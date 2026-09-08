@@ -3,6 +3,9 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {AppRibbon} from "./ribbon"
 import {DocumentHeadEditor, officialLanguageOptions, orderedLanguageOptions} from "./document-head-editor"
+import {DomEditorToolbox} from "./toolbox"
+import type {RibbonMenu} from "./ribbon-menu"
+import type {RibbonDrawer} from "./ribbon-drawer"
 import {
   WEBWRITER_GENERATOR,
   creativeCommonsLicenses,
@@ -27,6 +30,8 @@ const element = (values: Partial<DocumentHeadElementState> = {}): DocumentHeadEl
   ...values,
 })
 
+const originalShowPopover = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "showPopover")
+
 async function mount(
   mode: "common" | "advanced",
   documentHead = state(),
@@ -44,6 +49,8 @@ async function mount(
 
 afterEach(() => {
   document.body.replaceChildren()
+  if(originalShowPopover) Object.defineProperty(HTMLElement.prototype, "showPopover", originalShowPopover)
+  else delete (HTMLElement.prototype as unknown as Record<string, unknown>).showPopover
   vi.restoreAllMocks()
 })
 
@@ -175,6 +182,71 @@ describe("document head form", () => {
     })
   })
 
+  it("opens the language popup with a matching anchor and closes it on choice or Escape", async () => {
+    const showPopover = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "showPopover", {
+      configurable: true,
+      value: showPopover,
+    })
+    const editor = await mount("common")
+    const picker = Array.from(editor.shadowRoot!.querySelectorAll("document-head-combobox"))
+      .find(combobox => combobox.label === "Language")!
+    await picker.updateComplete
+
+    const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    let toggle = picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!
+    input.focus()
+    await picker.updateComplete
+    await Promise.resolve()
+
+    const listbox = picker.shadowRoot!.querySelector<HTMLElement>(".listbox")!
+    const control = picker.shadowRoot!.querySelector<HTMLElement>(".control")!
+    const listboxId = input.getAttribute("aria-controls")!
+    expect(showPopover).toHaveBeenCalledOnce()
+    expect(listbox).toHaveAttribute("popover", "manual")
+    expect(control.getAttribute("style")).toContain(`anchor-name: --${listboxId}`)
+    expect(listbox.getAttribute("style")).toContain(`position-anchor: --${listboxId}`)
+    expect((picker.constructor as typeof DocumentHeadEditor).styles.toString()).toMatch(/width:\s*anchor-size\(width\)/)
+
+    listbox.querySelectorAll<HTMLButtonElement>(".option")[1].click()
+    await picker.updateComplete
+    await Promise.resolve()
+    await picker.updateComplete
+    expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
+
+    toggle = picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!
+    toggle.click()
+    await picker.updateComplete
+    await Promise.resolve()
+    expect(picker.shadowRoot!.querySelector(".listbox")).not.toBeNull()
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
+    await picker.updateComplete
+    await Promise.resolve()
+    await picker.updateComplete
+    expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
+  })
+
+  it("does not show a popup after opening is cancelled before the async render completes", async () => {
+    const showPopover = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "showPopover", {
+      configurable: true,
+      value: showPopover,
+    })
+    const editor = await mount("common")
+    const picker = Array.from(editor.shadowRoot!.querySelectorAll("document-head-combobox"))
+      .find(combobox => combobox.label === "Language")!
+    await picker.updateComplete
+
+    const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    input.dispatchEvent(new Event("focus"))
+    picker.close(true)
+    await picker.updateComplete
+    await Promise.resolve()
+
+    expect(showPopover).not.toHaveBeenCalled()
+    expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
+  })
+
   it("shows attribute and remove icon buttons beside populated common fields when expanded", async () => {
     const title = element({
       id: "head-title",
@@ -246,10 +318,21 @@ describe("document head form", () => {
     expect(panel.querySelector("textarea")).toBeNull()
   })
 
-  it("opens common and advanced metadata in a dialog from the File menu", async () => {
+  it("opens metadata in the selected document Edit toolbox", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "File"
-    ribbon.documentHead = state({
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const fileMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await fileMenu.updateComplete
+    expect(fileMenu.groups.flatMap(group => group.buttons)
+      .some(button => typeof button === "string" ? button === "Metadata" : button.label === "Metadata")).toBe(false)
+    expect(ribbon.shadowRoot!.querySelector("#metadata-dialog")).toBeNull()
+
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.documentSelected = true
+    toolbox.documentHead = state({
       title: "Lesson",
       generator: WEBWRITER_GENERATOR,
       elements: [element({
@@ -261,32 +344,31 @@ describe("document head form", () => {
         content: "Lesson",
       })],
     })
-    document.body.append(ribbon)
-    await ribbon.updateComplete
-    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#metadata-dialog")!
-    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
-    const actions: string[] = []
-    ribbon.addEventListener("ribbon-button-click", event => actions.push((event as CustomEvent<{label: string}>).detail.label))
-    menu.dispatchEvent(new CustomEvent("ribbon-button-click", {
-      detail: {label: "Metadata"}, bubbles: true, composed: true,
-    }))
-    await ribbon.updateComplete
-    expect(dialog.open).toBe(true)
-    expect(ribbon.menuOpen).toBe(false)
-    expect(actions).toEqual([])
-    const common = dialog.querySelector<DocumentHeadEditor>('document-head-editor[mode="common"]')!
-    const advanced = dialog.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"]')!
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Metadata"]')!
+    expect(drawer).not.toBeNull()
+    await drawer.updateComplete
+    expect(drawer.pane).toBe(true)
+    const common = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="common"]')!
+    const advanced = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"]')!
     expect(common.expanded).toBe(true)
     expect(advanced).not.toBeNull()
 
     await common.updateComplete
     common.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Edit extra title attributes"]')!.click()
-    await ribbon.updateComplete
+    await toolbox.updateComplete
     await advanced.updateComplete
     expect(advanced.shadowRoot!.querySelector(".common-attributes")).not.toBeNull()
-    dialog.close()
-    await ribbon.updateComplete
-    expect(dialog.open).toBe(false)
-    await vi.waitFor(() => expect(dialog.querySelector("document-head-editor")).toBeNull())
+
+    toolbox.documentSelected = false
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).toBeNull()
+
+    toolbox.documentSelected = true
+    await toolbox.updateComplete
+    const reopened = toolbox.shadowRoot!.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"]')!
+    await reopened.updateComplete
+    expect(reopened.shadowRoot!.querySelector(".common-attributes")).toBeNull()
   })
 })

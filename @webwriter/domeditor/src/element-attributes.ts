@@ -65,7 +65,7 @@ const limitationsByElement: Readonly<Record<typeof deliberatelyUnsupportedElemen
   noscript: {
     title: "No-script content is not visually editable",
     description: "Body no-script behavior depends on the browser's scripting state and is deliberately not represented as ordinary editable content.",
-    guidance: "Use ordinary fallback content; head metadata remains available under File.",
+    guidance: "Use ordinary fallback content; head metadata remains available in the Document toolbox.",
     attributes: "editable",
   },
   slot: {

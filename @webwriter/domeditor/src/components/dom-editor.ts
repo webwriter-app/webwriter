@@ -4000,10 +4000,15 @@ export class DomEditor extends LitElement {
   private handleBreadcrumbItemSelect = (event: Event) => {
     const item = (event as CustomEvent<SelectionPathItem>).detail
     if(!item || !Array.isArray(item.path)) return
+    const path = [...item.path]
 
     void this.execute({
       type: "selectNode",
-      path: [...item.path],
+      path,
+    }).then(() => {
+      const body = this.editorDocument?.body
+      const node = path.reduce<Node | undefined>((node, index) => node?.childNodes[index], body)
+      if(body && node === getDocumentRoot(body)) this.openEditToolbox()
     }).finally(() => this.focusEditor())
   }
 
@@ -4778,7 +4783,6 @@ export class DomEditor extends LitElement {
           .liveSessionLink=${this.liveSessionLink}
           .liveLearners=${this.liveLearners}
           .storageLocation=${this.storageLocation}
-          .documentHead=${this.documentHead}
           .historyState=${this.historyState}
           .historyLoading=${this.historyLoading}
           .historyError=${this.historyError}
@@ -4792,7 +4796,6 @@ export class DomEditor extends LitElement {
           @live-learner-toggle=${this.handleLiveLearnerToggle}
           @file-name-change=${this.handleFileNameChange}
           @storage-location-change=${this.handleStorageLocationChange}
-          @document-head-action=${this.handleDocumentHeadAction}
           @backend-login-request=${this.loginToBackend}
           @backend-admin-request=${this.openBackendAdmin}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
@@ -4911,6 +4914,8 @@ export class DomEditor extends LitElement {
         .figure=${this.figure}
         .selectionPath=${this.selectionPath}
         .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
+        .documentHead=${this.documentHead}
+        @document-head-action=${this.handleDocumentHeadAction}
         .htmlMode=${this.htmlMode}
         .htmlSource=${this.htmlSource}
         .htmlPending=${this.htmlPending}

@@ -193,9 +193,16 @@ class DocumentHeadCombobox extends LitElement {
       box-sizing: border-box;
       display: grid;
       position: fixed;
-      z-index: 1100;
-      width: min(25rem, calc(100vw - 1rem));
-      max-height: min(26rem, calc(100vh - 1rem));
+      inset: auto;
+      position-area: bottom span-right;
+      align-self: start;
+      justify-self: start;
+      position-try-fallbacks: flip-block;
+      width: anchor-size(width);
+      max-width: calc(100vw - 1rem);
+      max-height: min(26rem, calc(100% - 0.4rem));
+      margin: 0.2rem 0;
+      color: #2f3742;
       padding: 0.35rem;
       overflow: auto;
       border: 1px solid #c8d2df;
@@ -220,12 +227,17 @@ class DocumentHeadCombobox extends LitElement {
 
     .option-group {
       display: grid;
+      min-width: 0;
     }
 
     .group-label {
       padding: 0.5rem 0.6rem 0.2rem;
+      overflow: hidden;
       color: #526b86;
+      font-size: 0.62rem;
       font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .divider {
@@ -243,12 +255,18 @@ class DocumentHeadCombobox extends LitElement {
     }
 
     .option-code {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-size: 0.72rem;
       font-weight: 750;
       line-height: 1rem;
     }
 
     .option-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-size: 0.68rem;
       line-height: 0.95rem;
     }
@@ -263,7 +281,6 @@ class DocumentHeadCombobox extends LitElement {
   private draft = ""
   private editing = false
   private activeIndex = -1
-  private position = {left: 8, top: 8}
   private readonly listboxId = `document-head-suggestions-${++comboboxInstanceCount}`
 
   private readonly documentPointerDown = (event: PointerEvent) => {
@@ -283,6 +300,7 @@ class DocumentHeadCombobox extends LitElement {
   }
 
   disconnectedCallback() {
+    this.close(true)
     document.removeEventListener("pointerdown", this.documentPointerDown)
     document.removeEventListener("keydown", this.documentKeydown)
     super.disconnectedCallback()
@@ -321,20 +339,8 @@ class DocumentHeadCombobox extends LitElement {
     this.open = open
     if(!this.open) return
     await this.updateComplete
-    const trigger = this.renderRoot.querySelector<HTMLElement>(".control")?.getBoundingClientRect()
-      ?? this.getBoundingClientRect()
-    const listbox = this.renderRoot.querySelector<HTMLElement>(".listbox")
-    const bounds = listbox?.getBoundingClientRect()
-    const width = bounds?.width ?? 400
-    const height = bounds?.height ?? 320
-    const margin = 8
-    const left = Math.min(Math.max(margin, trigger.left), Math.max(margin, window.innerWidth - width - margin))
-    const below = trigger.bottom + 4
-    const top = below + height <= window.innerHeight - margin
-      ? below
-      : Math.max(margin, trigger.top - height - 4)
-    this.position = {left, top}
-    this.requestUpdate()
+    if(!this.open || !this.isConnected) return
+    this.renderRoot.querySelector<HTMLElement>(".listbox")?.showPopover?.()
   }
 
   private emit(value: string) {
@@ -351,8 +357,8 @@ class DocumentHeadCombobox extends LitElement {
   }
 
   private select(option: ComboboxOption) {
-    this.emit(option.value)
     this.renderRoot.querySelector<HTMLInputElement>("input")?.focus()
+    this.emit(option.value)
   }
 
   private commitDraft() {
@@ -414,7 +420,7 @@ class DocumentHeadCombobox extends LitElement {
       groups.get(group)!.push({option, index})
     })
     return html`
-      <span class="control">
+      <span class="control" style=${`anchor-name: --${this.listboxId}`}>
         <input
           role="combobox"
           aria-label=${this.label}
@@ -449,13 +455,14 @@ class DocumentHeadCombobox extends LitElement {
         <div
           id=${this.listboxId}
           class="listbox"
+          popover="manual"
           role="listbox"
           aria-label=${`${this.label} suggestions`}
-          style=${`left:${this.position.left}px;top:${this.position.top}px`}
+          style=${`position-anchor: --${this.listboxId}`}
         >
           ${options.length ? Array.from(groups, ([group, entries]) => html`
             <div class="option-group" role=${group ? "group" : nothing} aria-label=${group || nothing}>
-              ${group ? html`<div class="group-label" aria-hidden="true">${group}</div>` : nothing}
+              ${group ? html`<div class="group-label" title=${group} aria-hidden="true">${group}</div>` : nothing}
               ${entries.map(({option, index}) => html`
                 ${option.dividerBefore ? html`<hr class="divider" role="separator" />` : nothing}
                 <button
@@ -463,6 +470,7 @@ class DocumentHeadCombobox extends LitElement {
                   class="option"
                   type="button"
                   role="option"
+                  title=${option.description ? `${option.label} — ${option.description}` : option.label}
                   aria-selected=${this.value === option.value}
                   data-active=${this.activeIndex === index ? "" : nothing}
                   @mousedown=${(event: MouseEvent) => event.preventDefault()}
@@ -764,7 +772,7 @@ export class DocumentHeadEditor extends LitElement {
     .common-grid {
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(6.75rem, 0.95fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
       gap: 0.2rem 0.3rem;
       width: 100%;

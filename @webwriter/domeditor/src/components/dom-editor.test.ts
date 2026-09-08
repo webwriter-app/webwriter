@@ -429,11 +429,11 @@ describe("DomEditor iframe setup", () => {
       data: {type: documentHeadStateChangeEvent, detail: nextState},
     }))
     await editor.updateComplete
-    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    expect(ribbon.documentHead.title).toBe("Head title")
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    expect(toolbox.documentHead.title).toBe("Head title")
 
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    ribbon.dispatchEvent(new CustomEvent("document-head-action", {
+    toolbox.dispatchEvent(new CustomEvent("document-head-action", {
       detail: {type: "setDocumentHeadField", field: "title", value: "Changed"},
       bubbles: true,
       composed: true,
@@ -2533,6 +2533,42 @@ describe("DomEditor.execute()", () => {
     const section = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.section-item[data-section-path="0"]')!
     expect(section.textContent).toBe("Section")
     expect(getComputedStyle(section).fontSize).toBe("8px")
+  })
+
+  it.each([
+    {html: "<p>Hello</p>", rootPath: [], name: "Document"},
+    {html: '<!--template-->\n<demo-widget role="document"><p>Hello</p></demo-widget>', rootPath: [2], name: "Content"},
+  ])("opens the document toolbox when clicking the $name breadcrumb", async ({html, rootPath, name}) => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = html
+    const root = {path: rootPath, name, icon: "Document"}
+    const select = (path: Array<{path: number[], name: string}>, nodeSelected = false) => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {path, nodeSelected}},
+        source: editorWindow,
+      }))
+    }
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "selectNode") select([root], true)
+    })
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+
+    for(const activeTool of [null, "Style"] as const) {
+      select([root, {path: [...rootPath, 0], name: "Paragraph"}])
+      toolbox.selectTool(activeTool)
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+
+      breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>("button.item")!.click()
+      await vi.waitFor(() => expect(toolbox.activeTool).toBe("Edit"))
+      await editor.updateComplete
+      await toolbox.updateComplete
+
+      expect(execute).toHaveBeenCalledWith({type: "selectNode", path: rootPath})
+      expect(toolbox.documentSelected).toBe(true)
+      expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).not.toBeNull()
+    }
   })
 
   it("uses a document template as the breadcrumb tree root and exposes the Document toolbox", async () => {

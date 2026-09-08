@@ -178,7 +178,7 @@ describe("mark ribbon controls", () => {
     await fileMenu.updateComplete
     expect(fileMenu.groups.map(group => group.label)).toEqual(["File"])
     expect(fileMenu.groups[0]!.buttons.map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["Settings", "New", "Open", "Save", "Metadata"])
+      .toEqual(["Settings", "New", "Open", "Save"])
 
     ribbon.previewActive = true
     await ribbon.updateComplete

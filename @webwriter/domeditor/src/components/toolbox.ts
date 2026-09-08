@@ -1,4 +1,6 @@
 import {css, html} from "lit"
+import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
+import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
 import {ribbonIcon} from "../ribbon-icons"
 import {AppRibbon} from "./ribbon"
@@ -25,6 +27,8 @@ export class DomEditorToolbox extends AppRibbon {
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
+    documentHead: {attribute: false},
+    documentHeadAttributeEditorId: {state: true},
     htmlMode: {type: Boolean, attribute: "html-mode", reflect: true},
     htmlSource: {type: String, attribute: false},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
@@ -428,6 +432,8 @@ export class DomEditorToolbox extends AppRibbon {
   activeTool: ToolboxTool | null = null
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
+  documentHead: DocumentHeadState = emptyDocumentHeadState()
+  private documentHeadAttributeEditorId = ""
   htmlMode = false
   htmlSource = ""
   htmlPending = false
@@ -509,7 +515,29 @@ export class DomEditorToolbox extends AppRibbon {
         </ribbon-drawer>
       `]
     }
-    return super.renderDrawers()
+    const drawers = super.renderDrawers()
+    if(this.activeTool === "Edit" && this.documentSelected) {
+      drawers.push(html`
+        <ribbon-drawer label="Metadata" icon="Properties" layout="document-head"
+          @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
+            this.documentHeadAttributeEditorId = event.detail.id
+          }}
+        >
+          <document-head-editor
+            mode="common"
+            expanded
+            .state=${this.documentHead}
+            .attributeEditorId=${this.documentHeadAttributeEditorId}
+          ></document-head-editor>
+          <document-head-editor
+            mode="advanced"
+            .state=${this.documentHead}
+            .attributeEditorId=${this.documentHeadAttributeEditorId}
+          ></document-head-editor>
+        </ribbon-drawer>
+      `)
+    }
+    return drawers
   }
 
   selectTool(tool: ToolboxTool | null) {
@@ -604,6 +632,9 @@ export class DomEditorToolbox extends AppRibbon {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    if(this.activeTool !== "Edit" || !this.documentSelected || this.htmlMode) {
+      this.documentHeadAttributeEditorId = ""
+    }
     if(changed.has("activeTool")) {
       if(this.activeTool === "Review") {
         this.dispatchEvent(new Event("history-state-request", {bubbles: true, composed: true}))

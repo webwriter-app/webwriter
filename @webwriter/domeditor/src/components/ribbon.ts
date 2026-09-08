@@ -92,7 +92,6 @@ import {
   type GraphicSelectionState,
   type GraphicViewportOperation,
 } from "../graphic"
-import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {
   aiEfforts,
@@ -108,7 +107,6 @@ import {
   type RibbonMenuName,
   type StorageLocation,
 } from "./ribbon-menu-config"
-import "./document-head-editor"
 import "./element-style-editor"
 import {type SettingsPanel} from "./settings-panel"
 import "./settings-panel"
@@ -247,8 +245,6 @@ export class AppRibbon extends LitElement {
     elementAttributes: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
-    documentHead: {attribute: false},
-    documentHeadAttributeEditorId: {type: String, state: true},
     previewActive: {type: Boolean, attribute: "preview-active"},
     previewTransitioning: {type: Boolean, attribute: "preview-transition", reflect: true},
     liveSessionActive: {type: Boolean, attribute: "live-session-active"},
@@ -1496,7 +1492,6 @@ export class AppRibbon extends LitElement {
       scrollbar-width: thin;
     }
 
-    .document-dialog document-head-editor + document-head-editor { margin-top: 1rem; }
     .sharing-document-actions { display: flex; border-top: 1px solid #d8dee6; padding-top: 0.35rem; }
     .sharing-document-actions ribbon-button { flex: 1; }
 
@@ -3354,7 +3349,7 @@ export class AppRibbon extends LitElement {
   activeMenu: RibbonMenuName = "Start"
   expanded = true
   menuOpen = false
-  private documentDialog: "settings" | "metadata" | null = null
+  private documentDialog: "settings" | null = null
   logoUrl = ""
   canMark = false
   canSection = false
@@ -3420,8 +3415,6 @@ export class AppRibbon extends LitElement {
   private sharingCopyLinkSuccessTimer: ReturnType<typeof setTimeout> | undefined
   fileName = ""
   fileDirty = false
-  documentHead: DocumentHeadState = emptyDocumentHeadState()
-  private documentHeadAttributeEditorId = ""
   previewActive = false
   liveSessionActive = false
   liveSessionRole: "host" | "learner" | "" = ""
@@ -7001,7 +6994,7 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private async showRibbonDialog(name: "settings" | "metadata") {
+  private async showRibbonDialog(name: "settings") {
     this.dismissCollapsedMenu()
     this.closeAIChat()
     this.documentDialog = name
@@ -7013,9 +7006,9 @@ export class AppRibbon extends LitElement {
 
   private handleFileMenuAction = (event: CustomEvent<{label: string}>) => {
     this.menuOpen = false
-    if(event.detail.label === "Metadata" || event.detail.label === "Settings") {
+    if(event.detail.label === "Settings") {
       event.stopPropagation()
-      void this.showRibbonDialog(event.detail.label === "Settings" ? "settings" : "metadata")
+      void this.showRibbonDialog("settings")
     }
   }
 
@@ -7043,32 +7036,6 @@ export class AppRibbon extends LitElement {
             @settings-change=${this.handleSettingsChange}
           ></settings-panel>
         </main>
-        ` : ""}
-      </dialog>
-      <dialog
-        id="metadata-dialog"
-        class="document-dialog"
-        aria-labelledby="metadata-dialog-title"
-        @close=${() => { this.documentHeadAttributeEditorId = ""; this.documentDialog = null }}
-        @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
-          this.documentHeadAttributeEditorId = event.detail.id
-        }}
-      >
-        ${this.documentDialog === "metadata" ? html`<header>
-          <h2 id="metadata-dialog-title">Metadata</h2>
-          <form method="dialog"><button aria-label="Close metadata">Close</button></form>
-        </header>
-        <document-head-editor
-          mode="common"
-          expanded
-          .state=${this.documentHead}
-          .attributeEditorId=${this.documentHeadAttributeEditorId}
-        ></document-head-editor>
-        <document-head-editor
-          mode="advanced"
-          .state=${this.documentHead}
-          .attributeEditorId=${this.documentHeadAttributeEditorId}
-        ></document-head-editor>
         ` : ""}
       </dialog>
     `
@@ -7615,7 +7582,7 @@ export class AppRibbon extends LitElement {
       const sharing = menuGroups.File.find(group => group.label === "Sharing")!
       return [this.renderSharingDrawer(sharing), this.renderLearnersDrawer()]
     }
-    const drawers = this.currentMenuGroups.filter(drawer => this.activeMenu !== "File" || drawer.label !== "Metadata").map(drawer => {
+    const drawers = this.currentMenuGroups.map(drawer => {
       const styleCategory = this.activeMenu === "Style"
         ? elementStyleCategories.find(category => category.label === drawer.label)
         : undefined
@@ -8112,7 +8079,6 @@ export class AppRibbon extends LitElement {
           .groups=${[{label: "File", buttons: [
             {label: "Settings"},
             ...menuGroups.File.find(group => group.label === "File")!.buttons,
-            {label: "Metadata", icon: "Properties"},
           ]}]}
           @ribbon-button-click=${this.handleFileMenuAction}
           @keydown=${(event: KeyboardEvent) => {

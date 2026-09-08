@@ -196,7 +196,6 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
       ],
     },
     {label: "Sharing", buttons: ["Share", "Print", "Download"]},
-    {label: "Metadata", buttons: []},
   ],
   Start: [
     {label: "Marks", buttons: []},
