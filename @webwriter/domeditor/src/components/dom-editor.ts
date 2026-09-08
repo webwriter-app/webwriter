@@ -1678,7 +1678,12 @@ export class DomEditor extends LitElement {
     return authoredChildren.length === 1
       && onlyChild?.nodeType === Node.ELEMENT_NODE
       && (onlyChild as Element).localName === "p"
-      && onlyChild.childNodes.length === 0
+      // Native editing can leave empty text nodes and a placeholder line break.
+      && (onlyChild as Element).children.length <= 1
+      && Array.from(onlyChild.childNodes).every(node =>
+        node.nodeType === Node.TEXT_NODE && !node.textContent
+        || node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "br"
+      )
   }
 
   private isAuthoredMutation(mutation: MutationRecord) {

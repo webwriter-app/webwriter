@@ -1064,12 +1064,56 @@ describe("DomEditor file actions", () => {
     expect((editor as any).fileDirty).toBe(false)
   })
 
-  it("tracks an empty paragraph as a change once the document has been saved", async () => {
+  it.each(["empty", "empty text", "placeholder break"])("clears unsaved changes for a fresh paragraph with %s content", async content => {
     const {editor, iframe} = await mountEditor()
     await new Promise(resolve => setTimeout(resolve, 0))
-    ;(editor as any).fileHandle = {name: "saved.html"}
+    const host = editor as any
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = "<p>Content</p>"
+    await vi.waitFor(() => expect(host.fileDirty).toBe(true))
 
-    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+    const paragraph = doc.body.firstElementChild!
+    paragraph.replaceChildren(...(content === "empty" ? [] : [doc.createTextNode("")]))
+    if(content === "placeholder break") paragraph.append(doc.createElement("br"))
+
+    await vi.waitFor(() => expect(host.fileDirty).toBe(false))
+    await editor.updateComplete
+    expect((editor.shadowRoot!.querySelector("app-ribbon") as AppRibbon).fileDirty).toBe(false)
+    const unload = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(false)
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal("confirm", confirm)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    await host.newDocument()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    "<p>Text</p>",
+    "<p> </p>",
+    '<p><img src="image.png"></p>',
+    "<p><test-widget></test-widget></p>",
+    "<p><br><br></p>",
+    "<p></p><p></p>",
+  ])("keeps authored content dirty in a fresh document: %s", async html => {
+    const {editor, iframe} = await mountEditor()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    iframe.contentDocument!.body.innerHTML = html
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
+    const unload = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+  })
+
+  it.each(["local", "development-server"])("tracks an empty paragraph as a change once the document has been saved to %s", async storageLocation => {
+    const {editor, iframe} = await mountEditor()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    if(storageLocation === "local") (editor as any).fileHandle = {name: "saved.html"}
+    else (editor as any).backendDocumentId = "saved"
+
+    iframe.contentDocument!.body.innerHTML = "<p><br></p>"
 
     await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
   })
