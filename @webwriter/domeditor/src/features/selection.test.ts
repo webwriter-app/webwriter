@@ -1071,6 +1071,39 @@ describe("document listeners", () => {
     button.dispatchEvent(click)
     expect(click.defaultPrevented).toBe(false)
   })
+  it.each(["host", "light", "slotted", "open", "closed"] as const)("capture-selects an element-selected widget on an ordinary click in its %s content", kind => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    if(kind === "open" || kind === "closed") {
+      widget.attachShadow({mode: kind}).append(button)
+    }
+    else {
+      const wrapper = document.createElement("span")
+      wrapper.append(button)
+      widget.append(wrapper)
+      if(kind === "slotted") widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    }
+    appendToBody(widget)
+    $.selectElement(widget)
+    feature.processSelection()
+    expect(feature.isCaptureSelection).toBe(false)
+    const target = kind === "host" ? widget : button
+    const onPointerDown = vi.fn()
+    target.addEventListener("pointerdown", onPointerDown)
+    const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+
+    target.dispatchEvent(event)
+
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(feature.isInDragSelection).toBe(false)
+    expect(event.defaultPrevented).toBe(false)
+    expect(onPointerDown).toHaveBeenCalledOnce()
+    target.dispatchEvent(new MouseEvent("pointerup", {bubbles: true, composed: true}))
+    target.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
+  })
   it("capture-selects a widget without starting an editor drag from its shadow DOM", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")

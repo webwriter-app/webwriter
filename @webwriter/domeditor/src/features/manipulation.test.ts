@@ -1689,6 +1689,58 @@ describe("unified content transfer", () => {
     return event
   }
 
+  it.each(["webwriter-map", "webwriter-code-javascript"])("capture-selects %s when its node drag surface is clicked", tag => {
+    document.body.innerHTML = `<${tag}></${tag}><p>end</p>`
+    const widget = document.body.firstElementChild!
+    $.selectElement(widget)
+    editor.features.selection.processSelection()
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+
+    surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    // Browsers queue selectionchange after the native mouse default. Happy
+    // DOM fires it synchronously, so defer that processing until after click.
+    document.addEventListener("selectionchange", event => event.stopImmediatePropagation(), {capture: true, once: true})
+    document.getSelection()?.setPosition(document.body, 0)
+    surface.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+
+    expect(editor.features.selection.captureSelectedWidget).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+  })
+
+  it("does not capture a widget from a stale node drag surface", () => {
+    document.body.innerHTML = '<test-widget></test-widget><p>end</p>'
+    const widget = document.body.firstElementChild!
+    $.selectElement(widget)
+    editor.features.selection.processSelection()
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
+    widget.replaceWith(document.createElement("hr"))
+
+    surface.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
+
+    expect(editor.features.selection.isCaptureSelection).toBe(false)
+  })
+
+  it.each(["pointercancel", "dragstart"])("does not capture a widget after %s on its drag surface", type => {
+    document.body.innerHTML = '<test-widget></test-widget><p>end</p>'
+    $.selectElement(document.body.firstElementChild!)
+    editor.features.selection.processSelection()
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
+    const data = new DataTransfer()
+    surface.dispatchEvent(transferEvent(type, data))
+    if(type === "dragstart") {
+      expect(data.getData("application/x-webwriter-node")).toBeTruthy()
+      surface.dispatchEvent(transferEvent("dragend", data))
+    }
+
+    surface.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
+
+    expect(editor.features.selection.isCaptureSelection).toBe(false)
+  })
+
   it("uses the same HTML and innerText for native copy, programmatic copy and node drag", async () => {
     document.body.innerHTML = '<p class="authored" style="color: red"><b>hello</b><br>world</p><p>end</p>'
     const element = document.body.firstElementChild! as HTMLElement

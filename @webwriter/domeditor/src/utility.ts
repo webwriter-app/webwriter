@@ -1108,7 +1108,7 @@ export function focusedWidgetHost() {
     : null
 }
 
-/** The editable widget host whose own surface or shadow tree originated an
+/** The editable widget host whose surface, light DOM, or shadow tree originated an
  * event. Composed events are retargeted to the host by the time they reach
  * document listeners, so inspect the full path instead. Hosts in the body's
  * own shadow tree belong to the editor appendix and are intentionally
@@ -1123,18 +1123,22 @@ function widgetHostForEventPath(event: Event) {
     if(host !== body && body.contains(host)) return host
     root = host.getRootNode()
   }
-  // A closed shadow root hides its internal nodes from composedPath() outside
-  // the root, making the mounted custom-element host the visible origin.
-  if(isElement(origin)
-    && origin.ownerDocument.body.contains(origin)
-    && origin.namespaceURI === "http://www.w3.org/1999/xhtml"
-    && (origin.localName.includes("-") || origin.hasAttribute("is"))) {
-    return origin
+  // Selected widgets also own interactions in their light-DOM and slotted
+  // children. Otherwise those children retain ordinary document editing.
+  // Closed shadow roots expose only their host as the origin.
+  let element = isElement(origin) ? origin : origin.parentElement
+  while(element && element !== element.ownerDocument.body && element.ownerDocument.body.contains(element)) {
+    if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && (element.localName.includes("-") || element.hasAttribute("is"))
+      && (element === origin || $.selectedElement === element || element.classList.contains("◆element-capture-selected"))) {
+      return element
+    }
+    element = element.parentElement
   }
   return null
 }
 
-/** The editable widget host whose shadow tree originated an interaction. */
+/** The editable widget host whose surface or contents originated an interaction. */
 export function widgetHostForShadowInteraction(event: Event) {
   if(event.type === "scroll") return null
   // Text controls report their internal caret changes as document-level

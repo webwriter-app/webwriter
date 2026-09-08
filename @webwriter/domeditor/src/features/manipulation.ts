@@ -92,7 +92,22 @@ export class ManipulationFeature extends EditorFeature {
     surface.setAttribute("aria-hidden", "true")
     surface.contentEditable = "false"
     surface.draggable = true
-    surface.addEventListener("dragstart", event => this.startNodeDrag(event, element))
+    let captureOnClick = false
+    surface.addEventListener("pointerdown", event => {
+      captureOnClick = event.button === 0 && element === $.selectedElement && Boolean(this.insertedWidget(element))
+    })
+    surface.addEventListener("click", event => {
+      // The native mouse default can collapse the outer range before click.
+      // Keep native dragging available and promote only a press on this live
+      // widget surface that ended as a click rather than a drag.
+      if(!captureOnClick || event.button !== 0 || this.nodeDrag || this.dragSurface !== surface
+        || !getDocumentRoot().contains(element)) return
+      captureOnClick = false
+      this.editor.features.selection.captureElement(element)
+      this.editor.postSelectionPath()
+    })
+    surface.addEventListener("pointercancel", () => { captureOnClick = false })
+    surface.addEventListener("dragstart", event => { captureOnClick = false; this.startNodeDrag(event, element) })
     surface.addEventListener("dragend", () => this.endNodeDrag())
     surface.addEventListener("dragover", event => this.dragOver(event))
     surface.addEventListener("dragleave", event => this.dragLeave(event))
