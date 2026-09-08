@@ -205,7 +205,7 @@ describe("insertion menu", () => {
     postSelectionPath.mockRestore()
   })
 
-  it("uses visible form defaults instead of inserting empty controls", async () => {
+  it("does not offer unsupported form controls", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeCommand()
@@ -215,8 +215,8 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe('<textarea placeholder="Enter text"></textarea>')
-    expect(menu.open).toBe(false)
+    expect(editorHTML()).toBe("<p>++textarea</p>")
+    expect(menu.shadowRoot?.querySelector(".item")).toBeNull()
   })
 
   it("inserts a complete declarative dialog pattern and selects the closed dialog", async () => {
@@ -230,8 +230,8 @@ describe("insertion menu", () => {
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
     const dialog = document.querySelector<HTMLDialogElement>("dialog")!
-    expect(document.querySelector('button[command="show-modal"]')).toHaveAttribute("commandfor", dialog.id)
-    expect(dialog.querySelector('button[command="close"]')).toHaveAttribute("commandfor", dialog.id)
+    expect(document.querySelector("button")).toBeNull()
+    expect(document.querySelector("button")).toBeNull()
     expect(dialog).toHaveClass("◆dialog-editing")
     expect(dialog).not.toHaveAttribute("open")
     expect(editorHTML()).not.toContain("◆")

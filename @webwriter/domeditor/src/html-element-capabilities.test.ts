@@ -15,6 +15,8 @@ import {
   elementEditingLimitation,
 } from "./element-attributes"
 
+import {formElementTypes} from "./form"
+
 const sorted = (values: Iterable<string>) => [...values].sort()
 
 describe("HTML Living Standard capability coverage", () => {
@@ -29,7 +31,7 @@ describe("HTML Living Standard capability coverage", () => {
   })
 
   it("keeps the reviewed support totals and remaining gaps explicit", () => {
-    expect(htmlElementSupportCounts()).toEqual({full: 103, partial: 11, none: 2})
+    expect(htmlElementSupportCounts()).toEqual({full: 88, partial: 11, none: 17})
     expect(sorted(Object.entries(htmlElementCapabilities)
       .filter(([, capability]) => capability.support === "partial")
       .map(([name]) => name))).toEqual(sorted([
@@ -38,7 +40,7 @@ describe("HTML Living Standard capability coverage", () => {
     ]))
     expect(sorted(Object.entries(htmlElementCapabilities)
       .filter(([, capability]) => capability.support === "none")
-      .map(([name]) => name))).toEqual(["script", "style"])
+      .map(([name]) => name))).toEqual(sorted(["script", "style", ...formElementTypes]))
   })
 
   it("keeps direct visual insertion in agreement with the actual built-in menu", () => {
@@ -66,7 +68,7 @@ describe("HTML Living Standard capability coverage", () => {
       .filter(([, capability]) => capability.intentionallyRestricted)
       .map(([name]) => name))).toEqual(sorted([
       "script", "style", "canvas", "template", "noscript", "slot", "iframe", "link",
-      "autonomous-custom-elements",
+      "autonomous-custom-elements", ...formElementTypes,
     ]))
   })
 
@@ -90,6 +92,6 @@ describe("HTML Living Standard capability coverage", () => {
 
     expect(sorted(Object.entries(htmlElementCapabilities)
       .filter(([, capability]) => !capability.attributeEditing)
-      .map(([name]) => name))).toEqual(["script", "style"])
+      .map(([name]) => name))).toEqual(sorted(["script", "style", ...formElementTypes]))
   })
 })

@@ -204,6 +204,21 @@ describe("DOMEditor stylesheets", () => {
     document.body.replaceChildren()
   })
 
+  it("extracts current input and textarea values without interpreting them as HTML", () => {
+    const template = document.createElement("template")
+    template.innerHTML = '<p><input value="old"> / <textarea>old</textarea></p>'
+    template.content.querySelector("input")!.value = '<b>current</b>'
+    template.content.querySelector("textarea")!.value = 'new notes'
+    const {fragment} = editor.prepareHTMLFragment(template.content, true)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<p>&lt;b&gt;current&lt;/b&gt; / new notes</p>')
+  })
+
+  it("unwraps every form element and preserves allowed nested content", () => {
+    const {fragment} = editor.parseHTMLFragment('<form><fieldset><legend>Title</legend><p>before <label><em>label</em></label><datalist><option value="choice"></option></datalist><selectedcontent>selected</selectedcontent> after</p></fieldset></form>', true)
+    expect(fragment.textContent).toBe("Titlebefore labelchoiceselected after")
+    expect(Array.from(fragment.children, element => element.outerHTML).join("")).toBe('<p>before <i>label</i>choiceselected after</p>')
+  })
+
   it("does not expose temporary schema attributes to registered widgets", () => {
     const observed: string[] = []
     class PreparationProbe extends HTMLElement {

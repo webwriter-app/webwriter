@@ -1746,6 +1746,22 @@ describe("unified content transfer", () => {
     expectBodyToBe('<h2>Title</h2><p><b>Bold</b></p><picture><img src="photo.png"></picture><p><i>Caption</i></p><ul><li>Item</li></ul>')
   })
 
+  it.each(["paste", "clipboard", "drop"])("unwraps forms and extracts control values on %s", async method => {
+    document.body.replaceChildren()
+    $.selectDocumentStart()
+    const html = '<form><fieldset><legend>Contact</legend><p>Before <label>Name <input value="Ada &amp; Bob"></label> after <textarea>Notes</textarea> <button><strong>Send</strong></button></p><p><select><optgroup label="Choices"><option value="a">Alpha</option><option value="b"></option></optgroup></select> <output>42</output> <meter value="3"></meter> <progress value="7"></progress></p></fieldset></form>'
+    const data = new DataTransfer()
+    data.setData("text/html", html)
+    if(method === "drop") dropAt(data, document.body, 0)
+    else if(method === "paste") document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+    else {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    expectBodyToBe('<p>Contact</p><p>Before Name Ada &amp; Bob after Notes <b>Send</b></p><p>Alphab 42 3 7</p>')
+    expect(document.body.querySelector('form,fieldset,legend,label,input,textarea,button,select,optgroup,option,output,meter,progress')).toBeNull()
+  })
+
   it("keeps widget-owned sections atomic while unwrapping their external containers", () => {
     const {fragment} = editor.parseHTMLFragment('<div><test-widget><section><div>widget structure</div></section></test-widget></div>', true)
     expect(fragment.firstElementChild?.outerHTML).toBe('<test-widget><section><div>widget structure</div></section></test-widget>')

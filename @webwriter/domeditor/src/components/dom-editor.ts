@@ -46,8 +46,6 @@ import {
   type MediaSelectionState,
 } from "../media"
 import {
-  formAttributeOptions,
-  isFormElementType,
   type FormSelectionState,
 } from "../form"
 import type {DialogSelectionState} from "../dialog"
@@ -2676,25 +2674,7 @@ export class DomEditor extends LitElement {
       void this.execute(tableActions[label as keyof typeof tableActions]).finally(() => this.focusEditor())
       return
     }
-    const formActions = {
-      "form-add-field": {type: "addFormField"},
-      "form-add-legend": {type: "addFormLegend"},
-      "form-add-option": {type: "addFormOption"},
-      "form-add-option-group": {type: "addFormOptionGroup"},
-      "form-customize-select": {type: "customizeFormSelect"},
-    } as const
-    if(label && Object.hasOwn(formActions, label)) {
-      void this.execute(formActions[label as keyof typeof formActions]).finally(() => this.focusEditor())
-      return
-    }
-    const dialogActions = {
-      "dialog-add-invoker": {type: "addDialogInvoker"},
-      "dialog-add-close": {type: "addDialogCloseButton"},
-    } as const
-    if(label && Object.hasOwn(dialogActions, label)) {
-      void this.execute(dialogActions[label as keyof typeof dialogActions]).finally(() => this.focusEditor())
-      return
-    }
+
     const item = insertionMenuItems.find(candidate => candidate.name === label)
     if(!item) {
       this.focusEditor()
@@ -2736,11 +2716,6 @@ export class DomEditor extends LitElement {
 
     if(isMediaType(item.tag)) {
       void this.execute({type: "insertMedia", media: item.tag}).finally(() => this.focusEditor())
-      return
-    }
-
-    if(isFormElementType(item.tag)) {
-      void this.execute({type: "insertFormElement", element: item.tag}).finally(() => this.focusEditor())
       return
     }
 
@@ -3713,40 +3688,6 @@ export class DomEditor extends LitElement {
       return
     }
     this.focusEditor()
-  }
-
-  private handleFormAttributeChange = (event: Event) => {
-    const detail = (event as CustomEvent<{
-      type?: unknown
-      attribute?: unknown
-      value?: unknown
-    }>).detail
-    if(!isFormElementType(detail?.type)
-      || typeof detail?.attribute !== "string"
-      || detail.value !== null && typeof detail.value !== "string") {
-      this.focusEditor()
-      return
-    }
-    const known = formAttributeOptions[detail.type].some(option => option.name === detail.attribute)
-    const custom = detail.attribute.length > 0 && detail.attribute === detail.attribute.trim()
-    if(!known && !custom) {
-      this.focusEditor()
-      return
-    }
-    void this.execute({
-      type: "setFormAttribute",
-      name: detail.attribute,
-      value: detail.value,
-    })
-  }
-
-  private handleFormTextChange = (event: Event) => {
-    const detail = (event as CustomEvent<{type?: unknown, value?: unknown}>).detail
-    if(!isFormElementType(detail?.type) || typeof detail.value !== "string") {
-      this.focusEditor()
-      return
-    }
-    void this.execute({type: "setFormText", value: detail.value})
   }
 
   private handleDialogAttributeChange = (event: Event) => {
@@ -4852,8 +4793,6 @@ export class DomEditor extends LitElement {
           @image-map-action=${this.handleImageMapAction}
           @element-attribute-change=${this.handleElementAttributeChange}
           @media-type-change=${this.handleMediaTypeChange}
-          @form-attribute-change=${this.handleFormAttributeChange}
-          @form-text-change=${this.handleFormTextChange}
           @dialog-attribute-change=${this.handleDialogAttributeChange}
           @table-insert=${this.handleTableInsert}
           @table-style-change=${this.handleTableStyleChange}
@@ -4989,8 +4928,6 @@ export class DomEditor extends LitElement {
         @image-map-action=${this.handleImageMapAction}
         @element-attribute-change=${this.handleElementAttributeChange}
         @media-type-change=${this.handleMediaTypeChange}
-        @form-attribute-change=${this.handleFormAttributeChange}
-        @form-text-change=${this.handleFormTextChange}
         @dialog-attribute-change=${this.handleDialogAttributeChange}
         @table-insert=${this.handleTableInsert}
         @table-style-change=${this.handleTableStyleChange}

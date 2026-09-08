@@ -2,14 +2,12 @@ import type {AIEffort} from "../ai-client"
 import {graphicShapeOptions} from "../graphic"
 import {
   detailsInsertionTags,
-  formInsertionTags,
   headingInsertionTags,
   insertionMenuItems,
   sectionInsertionTags,
 } from "./insertion-menu"
 import {type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {elementStyleCategories} from "../element-styles"
-import {topLevelFormElementTypes} from "../form"
 
 export type RibbonMenuName = "File" | "Start" | "Edit" | "Style" | "Develop" | "History"
 
@@ -105,18 +103,6 @@ const groupedMediaInsertionTags = new Set<string>([
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
   .filter(item => (sections as readonly string[]).includes(item.section))
   .flatMap<RibbonMenuButton>(item => {
-    if(item.section === "Forms") {
-      if(item.tag === "form") {
-        return [{
-          label: item.name,
-          action: item.name,
-          icon: item.icon ?? item.name,
-          submenu: insertionSubmenuForTags(formInsertionTags.filter(tag => tag !== "form")),
-        }]
-      }
-      if(topLevelFormElementTypes.includes(item.tag as typeof topLevelFormElementTypes[number])) return [item.name]
-      return []
-    }
     if(item.section === "Lists" && detailsInsertionTags.includes(item.tag as typeof detailsInsertionTags[number])) return []
     if(!item.tag) return [{label: item.name, action: item.name, icon: item.icon ?? item.name}]
     if(item.section === "Lists") {
@@ -185,7 +171,6 @@ export const insertionMenuGroups: RibbonMenuGroup[] = [
   groupedInsertionMenuGroup("Text", ["Paragraph", "Section", "Heading", "Details"]),
   groupedInsertionMenuGroup("Lists", ["List", "Table"]),
   groupedInsertionMenuGroup("Media", ["Image", "Graphic", "Audio", "Website", "Video", "Formula"]),
-  groupedInsertionMenuGroup("Interactive", ["Form", "HTML"]),
 ]
 
 const elementInsertionMenuGroup: RibbonMenuGroup = {

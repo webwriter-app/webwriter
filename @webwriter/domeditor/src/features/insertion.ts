@@ -3,7 +3,6 @@ import {emptyElementHTML, InsertionMenu, type InsertionMenuItem} from "../compon
 import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
 import {isMediaType, mediaDefaultHTML} from "../media"
 import {createTable} from "../table"
-import {formDefaultHTML, isFormElementType} from "../form"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {dialogDefaultHTML} from "../dialog"
 
@@ -440,7 +439,6 @@ export class InsertionFeature extends EditorFeature {
       : item.tag === "dialog"
       ? dialogDefaultHTML(document).html
       : isMediaType(item.tag) ? mediaDefaultHTML(item.tag)
-      : isFormElementType(item.tag) ? formDefaultHTML(item.tag)
       : item.tag ? emptyElementHTML(item.tag) : "")
     if(item.htmlUrl) {
       try {
@@ -532,7 +530,7 @@ export class InsertionFeature extends EditorFeature {
     else if(last.parentNode) {
       $.move(last.parentNode, Array.from(last.parentNode.childNodes).indexOf(last as ChildNode) + 1)
     }
-    if(isElement(last) && last.isConnected && (last.matches("table, svg, dialog") || isFormElementType(last.localName))) {
+    if(isElement(last) && last.isConnected && last.matches("table, svg, dialog")) {
       this.editor.postSelectionPath(true)
     }
     this.close(false)

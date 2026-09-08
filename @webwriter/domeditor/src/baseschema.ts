@@ -249,38 +249,9 @@ export const baseSchema = {
     group: ["interactive", "phrasing", "flow", "palpable"],
     content: {selector: hasNot("[tabindex]", "audio", "embed", "fencedframe", "iframe", "video", "a", "button", "details", "input", "label", "select", "textarea", "geolocation"), transparent: true}
   },
-  "button": {
-    group: ["interactive", "phrasing", "flow", "palpable", "formassociated", "listed", "labelable", "submittable"],
-    content: {options: [
-      {group: "phrasing", selector: hasNot("audio", "embed", "fencedframe", "iframe", "video", "a", "button", "details", "input", "label", "select", "textarea", "geolocation")},
-      {selector: {type: "text"}},
-      {selector: "selectedcontent"},
-    ], min: 0, max: Infinity}
-  },
   "details": {
     group: ["interactive", "flow", "palpable"],
     content: {terms: [{selector: "summary"}, {group: "flow", min: 0, max: Infinity}]}
-  },
-  "input": {
-    group: ["interactive", "phrasing", "flow", "formassociated", "listed", "submittable", "resettable", "labelable"]
-  },
-  "label": {
-    group: ["interactive", "phrasing", "flow", "palpable"],
-    content: {group: "phrasing", selector: hasNot("label"), min: 0, max: Infinity}
-  },
-  "select": {
-    group: ["interactive", "phrasing", "flow", "palpable", "formassociated", "listed", "labelable", "resettable", "submittable"],
-    content: {terms: [
-      {selector: "button", min: 0, max: 1},
-      {options: [
-        {selector: "option"}, {selector: "optgroup"}, {selector: "hr"},
-        {selector: "div"}, {selector: "noscript"}, {group: "scriptsupporting"},
-      ], min: 0, max: Infinity},
-    ]}
-  },
-  "textarea": {
-    group: ["interactive", "phrasing", "flow", "palpable", "formassociated", "listed", "labelable", "resettable", "submittable"],
-    content: { selector: { type: "text" }, min: 0, max: Infinity }
   },
   "geolocation": {
     group: ["interactive", "phrasing", "flow", "palpable"],
@@ -322,10 +293,6 @@ export const baseSchema = {
     group: ["phrasing", "flow", "palpable"],
     content: {options: [{group: "phrasing"}, {selector: {type: "text"}}], min: 0, max: Infinity},
   },
-  "datalist": {
-    group: ["phrasing", "flow"],
-    content: {options: [{group: "phrasing"}, {selector: {type: "text"}}, {selector: "option"}], min: 0, max: Infinity}
-  },
   "del": {
     group: ["phrasing", "flow", "palpable"],
     content: {transparent: true}
@@ -357,18 +324,6 @@ export const baseSchema = {
   "mark": {
     group: ["phrasing", "flow", "palpable"],
     content: {options: [{group: "phrasing"}, {selector: {type: "text"}}], min: 0, max: Infinity}
-  },
-  "meter": {
-    group: ["phrasing", "flow", "palpable"],
-    content: {options: [{group: "phrasing", selector: hasNot("meter")}, {selector: {type: "text"}}], min: 0, max: Infinity},
-  },
-  "output": {
-    group: ["phrasing", "flow", "formassociated", "listed", "labelable", "resettable"],
-    content: {options: [{group: "phrasing"}, {selector: {type: "text"}}], min: 0, max: Infinity}
-  },
-  "progress": {
-    group: ["phrasing", "flow", "palpable"],
-    content: {options: [{group: "phrasing", selector: hasNot("progress")}, {selector: {type: "text"}}], min: 0, max: Infinity}
   },
   "q": {
     group: ["phrasing", "flow", "palpable"],
@@ -457,13 +412,6 @@ export const baseSchema = {
       {selector: "template"},
     ], min: 0, max: Infinity}
   },
-  "fieldset": {
-    group: ["flow", "palpable", "formassociated", "listed"],
-    content: {terms: [
-      {selector: "legend", min: 0, max: 1},
-      {group: "flow", min: 0, max: Infinity},
-    ]}
-  },
   "figure": {
     group: ["flow", "palpable"],
     content: {options: [
@@ -474,10 +422,6 @@ export const baseSchema = {
   "footer": {
     group: ["flow", "palpable"],
     content: {group: "flow", selector: hasNot("header", "footer"), min: 0, max: Infinity},
-  },
-  "form": {
-    group: ["flow", "palpable"],
-    content: {group: "flow", selector: hasNot("form"), min: 0, max: Infinity},
   },
   "header": {
     group: ["flow"],
@@ -545,28 +489,8 @@ export const baseSchema = {
   "figcaption": {
     content: {group: "flow", min: 0, max: Infinity}
   },
-  "legend": {
-    directlyInsertable: false,
-    content: {options: [{group: "phrasing"}, {selector: "h1"}, {selector: "h2"}, {selector: "h3"}, {selector: "h4"}, {selector: "h5"}, {selector: "h6"}], min: 0, max: Infinity}
-  },
   "li": {
     content: {group: "flow", min: 0, max: Infinity}
-  },
-  "optgroup": {
-    directlyInsertable: false,
-    content: {terms: [
-      {selector: "legend", min: 0, max: 1},
-      {options: [
-        {selector: "option"}, {selector: "div"}, {selector: "noscript"}, {group: "scriptsupporting"},
-      ], min: 0, max: Infinity},
-    ]}
-  },
-  "option": {
-    directlyInsertable: false,
-    content: {selector: {type: "text"}, min: 0, max: Infinity}
-  },
-  "selectedcontent": {
-    directlyInsertable: false
   },
   "rp": {
     directlyInsertable: false,

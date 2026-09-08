@@ -70,7 +70,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="elements"]) {
-      --ribbon-drawer-expanded-width: 25.75rem;
+      --ribbon-drawer-expanded-width: 22rem;
       --ribbon-drawer-compact-width: 8rem;
     }
 

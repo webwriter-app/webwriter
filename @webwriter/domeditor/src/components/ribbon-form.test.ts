@@ -6,7 +6,7 @@ import type {RibbonButton} from "./ribbon-button"
 afterEach(() => document.body.replaceChildren())
 
 describe("form ribbon and toolbox controls", () => {
-  it("groups all form building blocks under one ribbon entry", async () => {
+  it("omits HTML and form insertion controls", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
@@ -18,8 +18,8 @@ describe("form ribbon and toolbox controls", () => {
     expect(labels.filter(label => [
       "Form", "Field Set", "Text Field", "Text Area", "Dropdown", "Button",
       "Label", "Data List", "Output", "Meter", "Progress", "Option", "Legend",
-      "Selected Content",
-    ].includes(label))).toEqual(["Form"])
+      "Selected Content", "HTML",
+    ].includes(label))).toEqual([])
   })
 
   it("renders complete input editing state and dispatches attribute changes", async () => {

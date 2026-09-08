@@ -3,7 +3,7 @@ import { property, state } from "lit/decorators.js"
 import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageInsertionItem} from "../packages"
-import {insertableFormElementTypes} from "../form"
+import {formElementTypes} from "../form"
 import {sectionNames} from "../sections"
 
 export type InsertionMenuItem = {
@@ -36,9 +36,8 @@ const insertionMenuItem = (
 
 export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hgroup", "hr"] as const
 export const detailsInsertionTags = ["dialog"] as const
-export const formInsertionTags = insertableFormElementTypes
 export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
-export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot"] as const
+export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", ...formElementTypes] as const
 
 export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
@@ -57,10 +56,8 @@ export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Media", "iframe"),
   insertionMenuItem("Media", "video"),
   insertionMenuItem("Media", "math"),
-  ...formInsertionTags.map(tag => insertionMenuItem("Forms", tag)),
   insertionMenuItem("Media", "section"),
   ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
-  {section: "Media", name: "HTML", icon: "Code", kind: "html"},
 ]
 
 const headingGroupItem = insertionMenuItems.find(item => item.tag === "hgroup")

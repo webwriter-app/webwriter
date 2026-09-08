@@ -22,19 +22,11 @@ export function nextDialogIds(root: ParentNode = document) {
   return {dialogId: `dialog-${index}`, titleId: `dialog-${index}-title`}
 }
 
-/** A useful, script-free dialog pattern. Every node is authored content: the
- * opener and closer use native command invokers, and the heading gives the
- * dialog an accessible name. */
+/** An accessible dialog containing supported document content. */
 export function dialogDefaultHTML(root: ParentNode = document) {
   const {dialogId, titleId} = nextDialogIds(root)
   const ownerDocument = root instanceof Document ? root : root.ownerDocument ?? document
   const container = ownerDocument.createElement("div")
-
-  const opener = ownerDocument.createElement("button")
-  opener.type = "button"
-  opener.setAttribute("commandfor", dialogId)
-  opener.setAttribute("command", "show-modal")
-  opener.textContent = "Open dialog"
 
   const dialog = ownerDocument.createElement("dialog")
   dialog.id = dialogId
@@ -46,14 +38,9 @@ export function dialogDefaultHTML(root: ParentNode = document) {
   title.textContent = "Dialog title"
   const content = ownerDocument.createElement("p")
   content.textContent = "Dialog content"
-  const close = ownerDocument.createElement("button")
-  close.type = "button"
-  close.setAttribute("commandfor", dialogId)
-  close.setAttribute("command", "close")
-  close.textContent = "Close"
-  dialog.append(title, content, close)
+  dialog.append(title, content)
 
-  container.append(opener, dialog)
+  container.append(dialog)
   return {html: container.innerHTML, dialogId, titleId}
 }
 

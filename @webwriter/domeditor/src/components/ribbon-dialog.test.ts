@@ -67,7 +67,7 @@ describe("dialog ribbon controls", () => {
 
     const button = (label: string) => ribbon.shadowRoot!
       .querySelector<RibbonButton>(`ribbon-drawer[label="Dialog"] ribbon-button[label="${label}"]`)!
-    expect(button("Add opener").action).toBe("dialog-add-invoker")
-    expect(button("Add close button").action).toBe("dialog-add-close")
+    expect(button("Add opener")).toBeNull()
+    expect(button("Add close button")).toBeNull()
   })
 })

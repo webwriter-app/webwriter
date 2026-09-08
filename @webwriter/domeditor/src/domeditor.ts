@@ -15,7 +15,7 @@ import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
 import { GraphicFeature } from "./features/graphic"
 import { HeadFeature } from "./features/head"
-import { FormFeature } from "./features/form"
+import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
@@ -376,7 +376,6 @@ export class DOMEditor {
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "graphic": new GraphicFeature(this),
-    "form": new FormFeature(this),
     "dialog": new DialogFeature(this),
     "selection": new SelectionFeature(this),
     "placeholder": new PlaceholderFeature(this),
@@ -974,7 +973,6 @@ export class DOMEditor {
     const headingGroup = this.features.manipulation.getHeadingGroupState()
     const figure = this.features.manipulation.getFigureState()
     const media = this.features.media.getState()
-    const form = this.features.form.getState()
     const dialog = this.features.dialog.getState()
     const table = this.features.table.getState()
     const graphic = this.features.graphic.getState()
@@ -1002,7 +1000,6 @@ export class DOMEditor {
       ...(headingGroup ? {headingGroup} : {}),
       ...(figure ? {figure} : {}),
       ...(media ? {media} : {}),
-      ...(form ? {form} : {}),
       ...(dialog ? {dialog} : {}),
       ...(table ? {table} : {}),
       ...(graphic ? {graphic} : {}),
@@ -1418,11 +1415,27 @@ export class DOMEditor {
         element.replaceWith(picture)
         picture.append(element)
       }
+      // Read live control properties before changing detached content.
+      const value = element.localName === "input"
+        ? (element as HTMLInputElement).value
+        : element.localName === "textarea" ? (element as HTMLTextAreaElement).value
+        : null
       if(element instanceof HTMLTemplateElement) this.canonizeTransferredContent(element.content)
       this.canonizeTransferredContent(element)
+      if(isFormElementType(element.localName)) {
+        if(value !== null) element.replaceWith(element.ownerDocument.createTextNode(value))
+        else {
+          // Preserve labels and rich fallback content; value-only controls
+          // still contribute their authored value as text.
+          if(!element.textContent && element.hasAttribute("value")) {
+            element.append(element.ownerDocument.createTextNode(element.getAttribute("value")!))
+          }
+          element.replaceWith(...Array.from(element.childNodes))
+        }
+      }
       // Captions lose their figure context when section wrappers are removed.
       // Unwrap them too so schema repair does not recreate a figure around them.
-      if(isSectionElement(element) || element.localName === "figcaption") {
+      else if(isSectionElement(element) || element.localName === "figcaption") {
         element.replaceWith(...Array.from(element.childNodes))
       }
     })

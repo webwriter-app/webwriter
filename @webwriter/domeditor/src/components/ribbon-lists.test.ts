@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
+import {formElementTypes} from "../form"
 import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -22,7 +23,6 @@ describe("list ribbon drawer", () => {
       "Paragraph", "Section", "Heading", "Details",
       "List", "Table",
       "Image", "Graphic", "Audio", "Website", "Video", "Formula",
-      "Form", "HTML",
     ])
   })
 
@@ -44,7 +44,7 @@ describe("list ribbon drawer", () => {
     expect(elements.layoutWidths.compact).toBe(128)
     expect(defaultSlot.hidden).toBe(true)
     expect(compactSlot.hidden).toBe(false)
-    expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Other"])
+    expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Details"])
     expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
     expect(button("Text").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual(["Paragraph", "Section", "Heading", "List"])
@@ -55,8 +55,7 @@ describe("list ribbon drawer", () => {
         "Audio: Select file", "Audio: Capture screen", "Audio: Record",
         "Video: Select file", "Video: Capture screen", "Video: Record",
       ])
-    expect(button("Other").submenu.map(item => typeof item === "string" ? item : item.label))
-      .toEqual(["Form", "HTML", "Details"])
+    expect(button("Details").action).toBe("insert-details")
     expect(button("Media").action).toBe("Image")
     expect(button("Media").dropdownOnClick).toBe(false)
 
@@ -75,7 +74,7 @@ describe("list ribbon drawer", () => {
     }))
   })
 
-  it("groups form, heading, and dialog insertions while keeping HTML direct", async () => {
+  it("groups heading and dialog insertions without form or HTML controls", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
@@ -89,17 +88,14 @@ describe("list ribbon drawer", () => {
       `ribbon-drawer[label="${drawer}"] ribbon-button[label="${label}"]`,
     )!
 
-    expect(submenuTags(button("Elements", "Form"))).toEqual([
-      "fieldset", "label", "input", "textarea", "select", "datalist", "button", "output", "meter", "progress",
-    ])
-    expect(button("Elements", "HTML").icon).toBe("Code")
-    expect(button("Elements", "HTML").submenu).toEqual([])
+    expect(button("Elements", "Form")).toBeNull()
+    expect(button("Elements", "HTML")).toBeNull()
     expect(button("Elements", "Script")).toBeNull()
     expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hgroup", "hr"])
     expect(insertionMenuItems.find(item => item.tag === "hgroup")?.html)
       .toBe("<hgroup><h1></h1><p></p></hgroup>")
     expect(submenuTags(button("Elements", "Details"))).toEqual(["dialog"])
-    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot"])
+    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot", ...formElementTypes])
     expect(insertionMenuItems.filter(item => (
       item.tag && (deliberatelyUnsupportedInsertionTags as readonly string[]).includes(item.tag)
     ))).toEqual([])
@@ -133,17 +129,16 @@ describe("list ribbon drawer", () => {
     await ribbon.updateComplete
 
     const elements = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
-    const buttons = ["Section", "Heading", "Details", "Form", "HTML"].map(label =>
+    const buttons = ["Section", "Heading", "Details"].map(label =>
       elements.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!,
     )
     await Promise.all([elements.updateComplete, ...buttons.map(button => button.updateComplete)])
 
-    expect(elements.layoutWidths.expanded).toBe(412)
+    expect(elements.layoutWidths.expanded).toBe(352)
     expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridAutoColumns).toBe("3.5rem")
-    for(const button of buttons.filter(button => button.label !== "Section" && button.label !== "HTML")) {
+    for(const button of buttons.filter(button => button.label !== "Section")) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
     }
-    expect(buttons.find(button => button.label === "HTML")!.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
     expect(buttons.find(button => button.label === "Section")!.shadowRoot!
       .querySelector('.submenu-trigger[aria-haspopup="dialog"]')).not.toBeNull()
   })

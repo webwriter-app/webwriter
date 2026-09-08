@@ -16,20 +16,15 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("declarative dialog editing", () => {
-  it("inserts an accessible script-free modal pattern and selects its dialog", () => {
+  it("inserts an accessible dialog without unsupported buttons", () => {
     editor.features.dialog.actions.insertDialog({type: "insertDialog"})
 
-    const opener = document.querySelector<HTMLButtonElement>('button[command="show-modal"]')!
     const dialog = document.querySelector<HTMLDialogElement>("dialog")!
-    const close = dialog.querySelector<HTMLButtonElement>('button[command="close"]')!
     const title = dialog.querySelector("h2")!
 
-    expect(opener).toHaveAttribute("type", "button")
-    expect(opener).toHaveAttribute("commandfor", dialog.id)
     expect(dialog).toHaveAttribute("closedby", "any")
     expect(dialog).toHaveAttribute("aria-labelledby", title.id)
-    expect(close).toHaveAttribute("commandfor", dialog.id)
-    expect(document.body.querySelector("script, style")).toBeNull()
+    expect(document.body.querySelector("script, style, button, form")).toBeNull()
     expect($.selectedElement).toBe(dialog)
     expect(dialog).toHaveClass("◆dialog-editing")
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -133,29 +128,13 @@ describe("declarative dialog editing", () => {
     expect(document.querySelector("button")).toHaveAttribute("commandfor", "duplicate")
   })
 
-  it("adds authored invoker controls without wrappers or editor attributes", () => {
-    document.body.innerHTML = "<dialog><p>Notice</p></dialog>"
-    const dialog = document.querySelector<HTMLDialogElement>("dialog")!
-    $.selectElement(dialog)
-    editor.features.dialog.refresh()
-
-    editor.features.dialog.actions.addDialogInvoker({type: "addDialogInvoker"})
-    editor.features.dialog.actions.addDialogCloseButton({type: "addDialogCloseButton"})
-
-    expect(dialog.id).toBe("dialog-1")
-    expect(dialog.previousElementSibling?.matches("button[command='show-modal'][commandfor='dialog-1']")).toBe(true)
-    expect(dialog.lastElementChild?.matches("button[command='close'][commandfor='dialog-1']")).toBe(true)
-    expect(document.body.querySelector("[data-webwriter-editor-only], .◆editor-only")).toBeNull()
-    expect(editor.toHTML(true)).not.toContain("◆")
-  })
-
   it("prevents authored dialog commands in editing mode", () => {
     document.body.innerHTML = `
       <button commandfor="notice" command="show-modal"><span>Open</span></button>
       <dialog id="notice"><button commandfor="notice" command="close">Close</button></dialog>`
-    const opener = document.querySelector<HTMLButtonElement>("body > button")!
-    const close = document.querySelector<HTMLButtonElement>("dialog button")!
 
+    const opener = document.querySelector<HTMLButtonElement>('button[command="show-modal"]')!
+    const close = document.querySelector<HTMLButtonElement>('button[command="close"]')!
     const openEvent = new MouseEvent("click", {bubbles: true, cancelable: true})
     opener.querySelector("span")!.dispatchEvent(openEvent)
     const closeEvent = new MouseEvent("click", {bubbles: true, cancelable: true})

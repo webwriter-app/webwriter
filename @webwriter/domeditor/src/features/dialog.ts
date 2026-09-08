@@ -2,7 +2,6 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {
   dialogDefaultHTML,
   isDialogClosedBy,
-  nextDialogIds,
   type DialogSelectionState,
 } from "../dialog"
 import {$, getContainer, isElement} from "../utility"
@@ -37,8 +36,6 @@ export class DialogFeature extends EditorFeature {
       name: string
       value: string | null
     }) => this.setDialogAttribute(name, value),
-    addDialogInvoker: ({}: {type: "addDialogInvoker"}) => this.addDialogInvoker(),
-    addDialogCloseButton: ({}: {type: "addDialogCloseButton"}) => this.addDialogCloseButton(),
   } as const
 
   activeListeners: DocumentListenerMap = {
@@ -137,51 +134,6 @@ export class DialogFeature extends EditorFeature {
       })
     }
     this.refresh()
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private ensureDialogId(dialog: HTMLDialogElement) {
-    if(dialog.id) return dialog.id
-    const {dialogId} = nextDialogIds(document)
-    dialog.id = dialogId
-    return dialogId
-  }
-
-  private addDialogInvoker() {
-    const dialog = this.activeDialog
-    const parent = dialog?.parentElement
-    if(!dialog || !parent) return false
-    const button = document.createElement("button")
-    button.type = "button"
-    button.setAttribute("commandfor", this.ensureDialogId(dialog))
-    button.setAttribute("command", "show-modal")
-    button.textContent = "Open dialog"
-    const proposed = Array.from(parent.childNodes)
-    proposed.splice(Array.from(parent.childNodes).indexOf(dialog), 0, button)
-    if(!this.editor.schema.isContentValid(parent, proposed)) return false
-    dialog.before(button)
-    $.selectElement(dialog)
-    this.refresh()
-    this.editor.features.selection.processSelection()
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private addDialogCloseButton() {
-    const dialog = this.activeDialog
-    if(!dialog) return false
-    const button = document.createElement("button")
-    button.type = "button"
-    button.setAttribute("commandfor", this.ensureDialogId(dialog))
-    button.setAttribute("command", "close")
-    button.textContent = "Close"
-    const proposed = [...Array.from(dialog.childNodes), button]
-    if(!this.editor.schema.isContentValid(dialog, proposed)) return false
-    dialog.append(button)
-    $.selectElement(dialog)
-    this.refresh()
-    this.editor.features.selection.processSelection()
     this.editor.postSelectionPath()
     return true
   }

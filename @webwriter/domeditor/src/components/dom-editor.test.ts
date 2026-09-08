@@ -3192,31 +3192,17 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<hr>"})
   })
 
-  it("inserts a form and applies or changes a section type", async () => {
+  it("applies or changes a section type without form insertion", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const form = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="Form"]',
-    )!
-    const section = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="Section"]',
-    )!
+    expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Form"]')).toBeNull()
+    const section = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Section"]')!
     ribbon.canSection = true
     await ribbon.updateComplete
-    await Promise.all([form.updateComplete, section.updateComplete])
-
-    form.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await section.updateComplete
     section.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
-    expect(execute).toHaveBeenNthCalledWith(1, {type: "insertFormElement", element: "form"})
-    expect(execute).toHaveBeenNthCalledWith(2, {type: "toggleSection", section: "section"})
-
-    form.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await form.updateComplete
-    const formMenu = form.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
-    await formMenu.updateComplete
-    formMenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Text Field"]')!.click()
-    expect(execute).toHaveBeenLastCalledWith({type: "insertFormElement", element: "input"})
+    expect(execute).toHaveBeenCalledWith({type: "toggleSection", section: "section"})
 
     section.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await section.updateComplete
@@ -3230,41 +3216,10 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenLastCalledWith({type: "setSectionType", section: "figure"})
   })
 
-  it("opens the double-width HTML Edit toolbox from the Code insert button", async () => {
+  it("does not offer HTML insertion", async () => {
     const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => (
-      action.type === "beginHTMLSelectionEdit" ? {html: "<p>Selected</p>"} : undefined
-    ))
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
-    const html = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="HTML"]',
-    )!
-    await html.updateComplete
-
-    expect(html.icon).toBe("Code")
-    expect(html.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
-    html.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
-    await vi.waitFor(() => expect(toolbox.htmlMode).toBe(true))
-    await toolbox.updateComplete
-    expect(toolbox.activeTool).toBe("Edit")
-    expect(getComputedStyle(toolbox).width).toBe("400px")
-    expect(toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")?.value)
-      .toBe("<p>Selected</p>")
-    expect(execute).toHaveBeenCalledWith({type: "beginHTMLSelectionEdit"})
-
-    const input = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
-    input.value = "<p>Changed</p>"
-    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
-    await vi.waitFor(() => expect(toolbox.htmlPending).toBe(true))
-    expect(execute).toHaveBeenCalledWith({type: "setHTMLSelectionEditPending", pending: true})
-    expect(ribbon.inert).toBe(true)
-
-    await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-source-action.discard")!.click()
-    await vi.waitFor(() => expect(toolbox.htmlPending).toBe(false))
-    expect(execute).toHaveBeenCalledWith({type: "discardHTMLSelectionEdit"})
-    expect(ribbon.inert).toBe(false)
+    expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="HTML"]')).toBeNull()
   })
 
   it("inserts dialog from the Details dropdown", async () => {

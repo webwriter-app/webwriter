@@ -6906,8 +6906,6 @@ export class AppRibbon extends LitElement {
     return html`
       <ribbon-drawer label="Dialog" icon="Details" layout="form">
         <ribbon-button label="Attributes" icon="Settings" .dropdown=${this.renderDialogEditor()}></ribbon-button>
-        <ribbon-button label="Add opener" action="dialog-add-invoker" icon="Plus"></ribbon-button>
-        <ribbon-button label="Add close button" action="dialog-add-close" icon="Plus"></ribbon-button>
       </ribbon-drawer>
     `
   }
@@ -6963,7 +6961,7 @@ export class AppRibbon extends LitElement {
         ],
       },
       buttonByLabel("Table"),
-      groupedButton("Other", "More", ["Form", "HTML", "Details"]),
+      buttonByLabel("Details"),
     ]
     const renderButton = (button: RibbonMenuButton, slot = "") => {
       const item = typeof button === "string" ? {label: button} : button
