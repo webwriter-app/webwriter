@@ -3777,27 +3777,9 @@ export class AppRibbon extends LitElement {
 
   private updatePackageCapacity() {
     const drawer = this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')
-    const controls = drawer?.shadowRoot?.querySelector<HTMLElement>(".controls")
-    if(!drawer || !controls) return
-    const style = getComputedStyle(controls)
-    const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0)
-    const measuredWidth = controls.getBoundingClientRect().width || drawer.getBoundingClientRect().width || drawer.layoutWidths.expanded
-    const usableWidth = Math.max(0, measuredWidth - padding)
-    const buttonWidth = 64
-    const gap = Number.parseFloat(style.columnGap) || 0
-    const columns = Math.max(1, Math.floor((usableWidth + gap) / (buttonWidth + gap)))
-    // A package button normally spans two grid tracks. Fewer than four tracks
-    // therefore means that only one package-button column fits.
-    drawer.singleColumn = columns < 4
-    // In the single-column layout, search uses the first of three rows and
-    // packages occupy the remaining two. Wider grids use two rows total and
-    // reserve two tracks in the first row for search.
-    const visibleCount = drawer.singleColumn
-      ? 2
-      : Math.max(
-        0,
-        Math.floor((columns - 2) / 2) + Math.floor(columns / 2),
-      )
+    if(!drawer) return
+    // Search occupies one cell of the same three-row grid at every width.
+    const visibleCount = drawer.packageColumnCount * 3 - 1
     if(this.packageVisibleCount !== visibleCount) this.packageVisibleCount = visibleCount
   }
 

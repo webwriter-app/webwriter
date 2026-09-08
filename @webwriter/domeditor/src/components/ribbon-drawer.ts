@@ -70,7 +70,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="elements"]) {
-      --ribbon-drawer-expanded-width: 22rem;
+      --ribbon-drawer-expanded-width: 22.25rem;
       --ribbon-drawer-compact-width: 8rem;
     }
 
@@ -331,15 +331,14 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="packages"]) .controls {
-      grid-template-columns: var(--package-grid-template-columns, repeat(auto-fill, minmax(4rem, 1fr)));
-      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(8rem, 100%), 1fr));
+      grid-template-rows: repeat(3, minmax(0, 1fr));
       grid-auto-flow: row;
-      grid-auto-columns: minmax(4rem, 1fr);
+      grid-auto-columns: minmax(0, 1fr);
       grid-auto-rows: minmax(0, 1fr);
       align-content: stretch;
       align-items: stretch;
-      /* Keep grid capacity unchanged when an expanded drawer becomes scrollable. */
-      scrollbar-gutter: stable;
+      scrollbar-width: none;
     }
 
     :host([layout="graphic"]) .controls {
@@ -360,7 +359,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="packages"][single-column]) .controls {
-      grid-template-columns: var(--package-grid-template-columns, minmax(0, 1fr));
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: repeat(3, minmax(0, 1fr));
       grid-auto-columns: minmax(0, 1fr);
       grid-auto-flow: row;
@@ -464,6 +463,9 @@ export class RibbonDrawer extends LitElement {
     :host([layout="packages"]) .drawer.expanded {
       height: var(--package-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
       max-height: var(--package-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
+      /* Reuse the adjacent drawer's separator without shifting the grid. */
+      margin-left: -1px;
+      padding-left: calc(0.5rem + 1px);
     }
 
     :host([layout="packages"]) .drawer.expanded.closing {
@@ -471,58 +473,41 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="packages"][drawer-visible]) .controls {
-      grid-template-rows: repeat(2, var(--package-row-height, 2.45rem));
+      grid-template-rows: repeat(3, var(--package-row-height, 2.45rem));
       grid-auto-rows: var(--package-row-height, 2.45rem);
       flex: 0 1 auto;
-      width: var(--package-expanded-controls-width, 100%);
-      max-width: 100%;
+      width: 100%;
       align-content: start;
       padding-top: var(--package-expanded-grid-offset, 0);
       padding-bottom: var(--package-expanded-grid-padding, 0.25rem);
       overflow-x: hidden;
       overflow-y: hidden;
-      scrollbar-color: transparent transparent;
-      scrollbar-width: thin;
-    }
-
-    :host([layout="packages"][single-column][drawer-visible]) .controls {
-      grid-template-rows: repeat(3, var(--package-row-height, 2.45rem));
     }
 
     :host([layout="packages"][drawer-open][drawer-settled][drawer-scrollable]) .controls {
       overflow-y: auto;
-      scrollbar-color: #b8c1cc transparent;
     }
 
-    :host([layout="packages"][drawer-visible]) .controls::-webkit-scrollbar {
-      width: 0.375rem;
+    :host([layout="packages"]) .controls::-webkit-scrollbar {
+      display: none;
     }
 
-    :host([layout="packages"][drawer-visible]) .controls::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    :host([layout="packages"][drawer-visible]) .controls::-webkit-scrollbar-thumb {
-      border-radius: 999px;
-      background: transparent;
-    }
-
-    :host([layout="packages"][drawer-open][drawer-settled][drawer-scrollable]) .controls::-webkit-scrollbar-thumb {
-      background: #b8c1cc;
+    :host([layout="packages"]) ::slotted(ribbon-button) {
+      grid-column: auto;
     }
 
     :host([layout="packages"]) ::slotted(package-search) {
-      grid-column: span 2;
+      grid-column: auto;
       width: 100%;
     }
 
     :host([layout="packages"]) ::slotted(select) {
-      grid-column: span 2;
+      grid-column: auto;
       width: 100%;
     }
 
     :host([layout="packages"]) ::slotted(.local-package-selection) {
-      grid-column: span 2;
+      grid-column: auto;
       width: 100%;
     }
 
@@ -806,6 +791,7 @@ export class RibbonDrawer extends LitElement {
     :host([pane]) .drawer.expanded,
     :host([pane]) .drawer.expanded.closing {
       box-sizing: border-box;
+      margin-left: 0;
       height: auto;
       max-height: none;
       min-height: 0;
@@ -1108,6 +1094,10 @@ export class RibbonDrawer extends LitElement {
       .forEach(combobox => combobox.close?.())
     this.forcedOpen = false
     if(!this.drawerOpen) return
+    if(this.layout === "packages") {
+      const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
+      if(controls) controls.scrollTop = 0
+    }
     this.cancelDrawerSettle()
     this.drawerSettled = false
     this.drawerScrollable = false
@@ -1124,14 +1114,11 @@ export class RibbonDrawer extends LitElement {
     const drawerBounds = drawer.getBoundingClientRect()
     const controlsBounds = controls.getBoundingClientRect()
     const controlsStyle = getComputedStyle(controls)
-    const gridTemplateColumns = controlsStyle.gridTemplateColumns
-    if(gridTemplateColumns) controls.style.setProperty("--package-grid-template-columns", gridTemplateColumns)
-    if(controlsBounds.width > 0) controls.style.setProperty("--package-expanded-controls-width", `${controlsBounds.width}px`)
     if(this.collapsed) return
     const rowGap = Number.parseFloat(controlsStyle.rowGap) || 0
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
-    const collapsedRowCount = this.singleColumn ? 3 : 2
+    const collapsedRowCount = 3
     const rowHeight = Math.max(
       0,
       (controlsBounds.height - paddingTop - paddingBottom - rowGap * (collapsedRowCount - 1)) /
@@ -1149,6 +1136,18 @@ export class RibbonDrawer extends LitElement {
     )
   }
 
+  /** Number of full package columns shared by capacity and expansion sizing. */
+  get packageColumnCount() {
+    const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
+    if(!controls || this.singleColumn) return 1
+    const style = getComputedStyle(controls)
+    const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0)
+    const width = controls.getBoundingClientRect().width || this.getBoundingClientRect().width || this.layoutWidths.expanded
+    const gap = Number.parseFloat(style.columnGap) || 0
+    const columnWidth = this.lengthInPixels("8rem", 128)
+    return Math.max(1, Math.floor((width - padding + gap) / (columnWidth + gap)))
+  }
+
   private updatePackageDrawerSize() {
     if(this.layout !== "packages" || this.collapsed) return false
     const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
@@ -1159,41 +1158,17 @@ export class RibbonDrawer extends LitElement {
     const controlsBounds = controls.getBoundingClientRect()
     const controlsStyle = getComputedStyle(controls)
     const rowGap = Number.parseFloat(controlsStyle.rowGap) || 0
-    const columnGap = Number.parseFloat(controlsStyle.columnGap) || 0
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
     const storedRowHeight = Number.parseFloat(controlsStyle.getPropertyValue("--package-row-height")) || 0
-    const collapsedRowCount = this.singleColumn ? 3 : 2
+    const collapsedRowCount = 3
     const rowHeight = storedRowHeight || Math.max(
       0,
       (controlsBounds.height - paddingTop - paddingBottom - rowGap * (collapsedRowCount - 1)) /
         collapsedRowCount,
     )
-    const columnWidth = 64
-    const columns = Math.max(1, Math.floor((controlsBounds.width + columnGap) / (columnWidth + columnGap)))
-    const singleColumn = columns < 4
-    const spans = Array.from(this.children)
-      .filter(child => child instanceof HTMLElement)
-      .map(child => {
-        const isPackageControl = child.localName === "package-search" || child.localName === "ribbon-button"
-        return isPackageControl ? singleColumn ? columns : 2 : 1
-      })
-    let row = 0
-    let column = 0
-    let rowCount = 0
-    for(const requestedSpan of spans) {
-      const span = Math.min(columns, requestedSpan)
-      if(column + span > columns) {
-        row++
-        column = 0
-      }
-      rowCount = Math.max(rowCount, row + 1)
-      column += span
-      if(column >= columns) {
-        row++
-        column = 0
-      }
-    }
+    const itemCount = Array.from(this.children).filter(child => child instanceof HTMLElement).length
+    const rowCount = Math.max(3, Math.ceil(itemCount / this.packageColumnCount))
     const storedChromeHeight = Number.parseFloat(
       drawer.style.getPropertyValue("--package-drawer-chrome-height"),
     )
@@ -1229,7 +1204,7 @@ export class RibbonDrawer extends LitElement {
     if(this.layout === "marks" && !this.collapsed) return
     if(force) this.forcedOpen = true
     if(this.drawerOpen) return
-    this.captureExpandedContentOffset()
+    if(!this.drawerContentOpen) this.captureExpandedContentOffset()
     this.cancelDrawerClose()
     if(!this.drawerContentOpen) {
       const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
@@ -1301,8 +1276,6 @@ export class RibbonDrawer extends LitElement {
     if(this.drawerOpen) return
     this.drawerContentOpen = false
     const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
-    controls?.style.removeProperty("--package-grid-template-columns")
-    controls?.style.removeProperty("--package-expanded-controls-width")
     controls?.style.removeProperty("--package-row-height")
     this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-drawer-close-complete", {
       detail: {label: this.label},

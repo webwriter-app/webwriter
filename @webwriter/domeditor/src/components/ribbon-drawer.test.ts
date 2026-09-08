@@ -135,6 +135,27 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(toggle).bottom).toBe("-10px")
   })
 
+  it("overlaps the adjacent separator while keeping the package grid in place", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "packages"
+    drawer.expandable = true
+    document.body.append(drawer)
+    await drawer.updateComplete
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const closedPadding = Number.parseFloat(getComputedStyle(section).paddingLeft)
+
+    drawer.openDrawer()
+    await drawer.updateComplete
+    const opened = getComputedStyle(section)
+    expect(opened.marginLeft).toBe("-1px")
+    expect(opened.paddingLeft).toBe(`calc(${closedPadding}px + 1px)`)
+    expect(opened.borderLeft).toBe(opened.borderRight)
+
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    expect(getComputedStyle(section).marginLeft).toBe("-1px")
+  })
+
   it("caps an expanded package drawer at the viewport bottom", async () => {
     const drawer = new RibbonDrawer()
     drawer.layout = "packages"
@@ -158,14 +179,9 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(section).transition).toContain("max-height")
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
     expect(getComputedStyle(controls).overflowY).toBe("hidden")
+    expect(RibbonDrawer.styles.toString()).toContain("scrollbar-width: none;")
     expect(RibbonDrawer.styles.toString()).toMatch(
-      /:host\(\[layout="packages"\]\) \.controls\s*\{[\s\S]*?scrollbar-gutter:\s*stable;/,
-    )
-    expect(RibbonDrawer.styles.toString()).toMatch(
-      /\.controls::-webkit-scrollbar\s*\{[\s\S]*?width:\s*0\.375rem;/,
-    )
-    expect(RibbonDrawer.styles.toString()).toMatch(
-      /\[drawer-open\]\[drawer-settled\]\[drawer-scrollable\]\) \.controls::-webkit-scrollbar-thumb\s*\{[\s\S]*?background:\s*#b8c1cc;/,
+      /\.controls::-webkit-scrollbar\s*\{[\s\S]*?display:\s*none;/,
     )
 
     const nestedTransition = new Event("transitionend", {bubbles: true}) as TransitionEvent
@@ -198,11 +214,14 @@ describe("responsive ribbon drawer", () => {
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-scrollable")).toBe(true)
     expect(getComputedStyle(controls).overflowY).toBe("auto")
+    expect(RibbonDrawer.styles.toString()).toContain("scrollbar-width: none;")
 
     const expandedRows = getComputedStyle(controls).gridAutoRows
+    controls.scrollTop = 100
     drawer.closeDrawer()
     await drawer.updateComplete
     expect(section.classList.contains("closing")).toBe(true)
+    expect(controls.scrollTop).toBe(0)
     expect(getComputedStyle(controls).gridAutoRows).toBe(expandedRows)
     expect(getComputedStyle(controls).overflowY).toBe("hidden")
   })
@@ -276,14 +295,41 @@ describe("responsive ribbon drawer", () => {
 
     expect(controls.style.getPropertyValue("--package-expanded-grid-offset")).toBe("0px")
     expect(controls.style.getPropertyValue("--package-expanded-grid-padding")).toBe("4px")
-    expect(controls.style.getPropertyValue("--package-grid-template-columns")).not.toBe("")
-    expect(controls.style.getPropertyValue("--package-expanded-controls-width")).toBe("240px")
-    expect(RibbonDrawer.styles.toString()).toContain("--package-grid-template-columns")
-    expect(RibbonDrawer.styles.toString()).toContain("--package-expanded-controls-width")
     expect(RibbonDrawer.styles.toString()).toContain("grid-auto-rows: var(--package-row-height, 2.45rem)")
   })
 
-  it("captures a compact package pullout's closed width before opening", async () => {
+  it("preserves the three-row sizing when reopening during the closing transition", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "packages"
+    drawer.expandable = true
+    document.body.append(drawer)
+    await drawer.updateComplete
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    let height = 88
+    Object.defineProperty(controls, "getBoundingClientRect", {
+      value: () => ({height, width: 240}), configurable: true,
+    })
+
+    drawer.openDrawer()
+    await drawer.updateComplete
+    expect(controls.style.getPropertyValue("--package-row-height")).toBe("28px")
+    height = 280
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    drawer.openDrawer()
+    await drawer.updateComplete
+
+    expect(controls.style.getPropertyValue("--package-row-height")).toBe("28px")
+    expect(controls.style.width).toBe("")
+    drawer.closeDrawer()
+    const closed = new Event("transitionend")
+    Object.defineProperty(closed, "propertyName", {value: "max-height"})
+    drawer.shadowRoot!.querySelector(".drawer")!.dispatchEvent(closed)
+    await drawer.updateComplete
+    expect(controls.style.getPropertyValue("--package-row-height")).toBe("")
+  })
+
+  it("lets a compact package pullout reflow with its available width", async () => {
     const drawer = new RibbonDrawer()
     drawer.layout = "packages"
     drawer.collapsed = true
@@ -297,8 +343,9 @@ describe("responsive ribbon drawer", () => {
 
     ;(drawer as unknown as {captureExpandedContentOffset(): void}).captureExpandedContentOffset()
 
-    expect(controls.style.getPropertyValue("--package-expanded-controls-width")).toBe("240px")
-    expect(controls.style.getPropertyValue("--package-grid-template-columns")).not.toBe("")
+    expect(controls.style.width).toBe("")
+    expect(controls.style.gridTemplateColumns).toBe("")
+    expect(drawer.packageColumnCount).toBe(1)
   })
 
   it("closes a compact drawer when the drawer expands again", async () => {
@@ -343,7 +390,7 @@ describe("responsive ribbon layout", () => {
       updateResponsiveLayout(drawers: RibbonDrawer[]): void
     }).updateResponsiveLayout.bind(ribbon)
 
-    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([295.6, 352, 192])
+    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([295.6, 356, 192])
 
     expect(drawers.map(drawer => drawer.layoutWidths.compact)).toEqual([undefined, 128, undefined])
     expect(drawers.map(drawer => drawer.layoutWidths.minimum)).toEqual([undefined, undefined, 128])

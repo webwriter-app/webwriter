@@ -61,7 +61,7 @@ describe("package ribbon controls", () => {
     expect(packageDrawer.layoutWidths.minimum).toBe(128)
   })
 
-  it("uses horizontal two-cell package buttons, a one-package search field, and member menus", async () => {
+  it("uses full-column horizontal package buttons, search, and member menus", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     const demoPackage = packageFixture()
@@ -84,11 +84,11 @@ describe("package ribbon controls", () => {
     expect(button.shadowRoot!.querySelector('button[aria-label="Show more Demo options"]')).not.toBeNull()
 
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
-    expect(getComputedStyle(controls).gridTemplateColumns).toContain("minmax(4rem, 1fr)")
+    expect(getComputedStyle(controls).gridTemplateColumns).toContain("minmax(min(8rem, 100%), 1fr)")
     expect(getComputedStyle(controls).gap).toBe("0")
     expect(getComputedStyle(controls).paddingBottom).toBe("4px")
-    expect(RibbonDrawer.styles.toString()).toContain("grid-column: span 2")
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
+    expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
     expect(getComputedStyle(search).height).toBe("calc(100% - 4px)")
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-row")!).height).toBe("100%")
     expect(getComputedStyle(search.shadowRoot!.querySelector(".field")!).backgroundColor).toBe("transparent")
@@ -253,24 +253,27 @@ describe("package ribbon controls", () => {
     expect(AppRibbon.styles.toString()).toContain(':host([package-drawer-open])')
   })
 
-  it("accounts for the unused cell beside search in odd-width grids", async () => {
+  it.each([
+    [110, 2], [240, 2], [255, 2], [256, 5], [383, 5], [384, 8], [462.4, 8], [512, 11],
+  ])("keeps three rows at %s pixels with %s visible packages", async (width, count) => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
-    ribbon.packages = Array.from({length: 9}, (_, index) => packageFixture(`package-${index + 1}`))
+    ribbon.packages = Array.from({length: 15}, (_, index) => packageFixture(`package-${index + 1}`))
     document.body.append(ribbon)
     await ribbon.updateComplete
 
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
     Object.defineProperty(controls, "getBoundingClientRect", {
-      value: () => ({width: 462.4}),
+      value: () => ({width}),
       configurable: true,
     })
     ;(ribbon as unknown as {updatePackageCapacity(): void}).updatePackageCapacity()
     await ribbon.updateComplete
 
-    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(5)
-    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(4)
+    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(count)
+    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(15 - count)
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
   })
 
   it("uses the full drawer width when only one package-button column fits", async () => {
@@ -294,16 +297,12 @@ describe("package ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    expect(drawer.singleColumn).toBe(true)
+    expect(drawer.packageColumnCount).toBe(1)
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(2)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(1)
-    expect(drawer.hasAttribute("single-column")).toBe(true)
     expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
-    expect(RibbonDrawer.styles.toString()).toContain(
-      'grid-template-columns: var(--package-grid-template-columns, minmax(0, 1fr))',
-    )
-    expect(RibbonDrawer.styles.toString()).toContain('[single-column]) ::slotted(ribbon-button[variant="package"])')
-    expect(RibbonDrawer.styles.toString()).toContain('[single-column]) ::slotted(package-search)')
+    expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(package-search\)\s*\{\s*grid-column: auto;/)
+    expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
   })
 
   it("opens management mode on search focus and only shows remove icons for installed packages", async () => {
