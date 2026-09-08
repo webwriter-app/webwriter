@@ -28,6 +28,8 @@ describe("element attribute editor", () => {
       .toBe("faq")
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: Initially open"]')!.checked)
       .toBe(true)
+    expect(editor.shadowRoot!.querySelector('[aria-label="Details: Accordion group"]')!.closest("details")).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Details: ID"]')!.closest("details")).not.toBeNull()
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: ID"]')!.value)
       .toBe("shipping")
     expect(editor.shadowRoot!.querySelector("summary")?.textContent).toContain("All attributes (3)")
@@ -124,11 +126,113 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector("form.add-attribute")).toBeNull()
   })
 
-  it("explains that custom-element internals depend on their package", async () => {
+  it("shows widget attributes without the component editing hint", async () => {
     const editor = await mount("course-quiz", {difficulty: "hard"})
 
-    expect(editor.shadowRoot!.querySelector(".limitation")?.textContent)
-      .toContain("Component editing depends on its package")
+    expect(editor.shadowRoot!.querySelector(".limitation")).toBeNull()
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="course-quiz: difficulty"]')).not.toBeDisabled()
   })
+
+  it.each(["div", "course-quiz"])("offers grouped language choices and arbitrary strings for %s", async localName => {
+    const editor = await mount(localName, {lang: "de"})
+    const picker = editor.shadowRoot!.querySelector("document-head-combobox")!
+    await picker.updateComplete
+    const input = picker.shadowRoot!.querySelector<HTMLInputElement>('[role="combobox"]')!
+    expect(input.value).toBe("German")
+    const listener = vi.fn()
+    editor.addEventListener("element-attribute-change", listener)
+
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await picker.updateComplete
+    expect(Array.from(picker.shadowRoot!.querySelectorAll('[role="group"]')).map(group => group.getAttribute("aria-label")))
+      .toEqual(["World languages", "European languages", "Other languages"])
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}))
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({name: "lang", value: "en"}),
+    }))
+
+    input.value = "German"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await picker.updateComplete
+    expect(picker.shadowRoot!.querySelector('[role="group"]')?.getAttribute("aria-label")).toBe("European languages")
+    expect(picker.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(2) // German and Swiss German.
+    picker.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"]')!.click()
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({name: "lang", value: "de"}),
+    }))
+
+    for(const value of ["x-custom", "any arbitrary string", ""]) {
+      input.value = value
+      input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+      input.dispatchEvent(new Event("change", {bubbles: true}))
+      expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+        detail: expect.objectContaining({name: "lang", value: value || null}),
+      }))
+    }
+  })
+
+  it.each(["div", "course-quiz", "html"])("displays English for the default language in %s", async localName => {
+    const editor = await mount(localName)
+    const picker = editor.shadowRoot!.querySelector("document-head-combobox")!
+    await picker.updateComplete
+    const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    expect(input.placeholder).toBe("English")
+    expect(input.value).toBe("")
+
+    editor.state = {...editor.state!, attributes: {lang: "en"}}
+    await editor.updateComplete
+    await picker.updateComplete
+    expect(input.value).toBe("English")
+    expect(picker.value).toBe("en")
+  })
+
+  it("disables the language combobox along with the attribute editor", async () => {
+    const editor = await mount("div")
+    editor.disabled = true
+    await editor.updateComplete
+    const picker = editor.shadowRoot!.querySelector("document-head-combobox")!
+    await picker.updateComplete
+    expect(picker.shadowRoot!.querySelector("input")).toBeDisabled()
+    expect(picker.shadowRoot!.querySelector("button")).toBeDisabled()
+    expect(picker.shadowRoot!.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it.each(["course-quiz", "div", "section"].flatMap(localName =>
+    ([{}, {id: "quiz", class: "practice", title: "Practice quiz", dir: "rtl", hidden: ""}] as Record<string, string>[])
+      .map(attributes => ({localName, attributes})),
+  ))(
+    "keeps identity, direction, and hidden fields inside All attributes: %j",
+    async ({localName, attributes}) => {
+      const editor = await mount(localName, attributes)
+      const root = editor.shadowRoot!
+      const details = root.querySelector("details")!
+      expect(details.open).toBe(false)
+      for(const label of ["ID", "Classes", "Title", "Direction", "Hidden"]) {
+        const field = root.querySelector(`[aria-label="${localName}: ${label}"]`)!
+        expect(field.closest("details")).toBe(details)
+        expect(field).not.toBeDisabled()
+      }
+      expect(root.querySelector(`[aria-label="${localName}: Language"]`)!.closest("details")).toBeNull()
+
+      details.open = true
+      const listener = vi.fn()
+      editor.addEventListener("element-attribute-change", listener)
+      const direction = details.querySelector<HTMLSelectElement>(`[aria-label="${localName}: Direction"]`)!
+      direction.value = "ltr"
+      direction.dispatchEvent(new Event("change", {bubbles: true}))
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+        detail: expect.objectContaining({name: "dir", value: "ltr"}),
+      }))
+      const hidden = details.querySelector<HTMLInputElement>(`[aria-label="${localName}: Hidden"]`)!
+      expect(hidden.checked).toBe(Object.hasOwn(attributes, "hidden"))
+      for(const checked of [true, false]) {
+        hidden.checked = checked
+        hidden.dispatchEvent(new Event("change", {bubbles: true}))
+        expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+          detail: expect.objectContaining({name: "hidden", value: checked ? "" : null}),
+        }))
+      }
+    },
+  )
 })

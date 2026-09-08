@@ -1,4 +1,6 @@
 import {LitElement, css, html, nothing} from "lit"
+import "./document-head-editor"
+import {groupedLanguageOptions} from "../language-suggestions"
 import {
   elementAttributeEditability,
   elementAttributeOptions,
@@ -23,6 +25,8 @@ const emptyAttributeState: ElementAttributeState = {
   name: "Element",
   attributes: {},
 }
+
+const languageOptions = groupedLanguageOptions()
 
 /** A schema-free attribute editor for the currently selected authored element. */
 export class ElementAttributeEditor extends LitElement {
@@ -203,6 +207,22 @@ export class ElementAttributeEditor extends LitElement {
   private renderPrimary(option: ElementAttributeOption, state: ElementAttributeState) {
     const value = state.attributes[option.name] ?? ""
     const editability = elementAttributeEditability(option.name, state.localName, state.namespaceURI)
+    if(option.name === "lang") {
+      return html`
+        <div class="field">
+          <span>${option.label}</span>
+          <document-head-combobox
+            aria-label=${`${state.name}: ${option.label}`}
+            .label=${`${state.name}: ${option.label}`}
+            .value=${value}
+            .placeholder=${option.placeholder ?? ""}
+            .options=${languageOptions}
+            .disabled=${this.disabled || !editability.editable}
+            @combobox-change=${(event: CustomEvent<{value: string}>) => this.dispatchAttribute("lang", event.detail.value || null)}
+          ></document-head-combobox>
+        </div>
+      `
+    }
     if(option.kind === "boolean") {
       return html`
         <label class="field">
@@ -272,6 +292,7 @@ export class ElementAttributeEditor extends LitElement {
     if(!state) return nothing
     const options = elementAttributeOptions(state.localName)
     const limitation = elementEditingLimitation(state.localName, state.namespaceURI)
+    const additionalOptions = options.filter(option => ["id", "class", "title", "dir", "hidden"].includes(option.name))
     return html`
       ${limitation ? html`
         <aside class="limitation" aria-label=${`${state.name} editing limitation`}>
@@ -281,11 +302,12 @@ export class ElementAttributeEditor extends LitElement {
         </aside>
       ` : nothing}
       <div class="fields" role="group" aria-label=${`${state.name} common attributes`}>
-        ${options.map(option => this.renderPrimary(option, state))}
+        ${options.filter(option => !additionalOptions.includes(option)).map(option => this.renderPrimary(option, state))}
       </div>
       <details>
         <summary>All attributes (${Object.keys(state.attributes).length})</summary>
         <div class="attribute-list">
+          ${additionalOptions.map(option => this.renderPrimary(option, state))}
           ${Object.entries(state.attributes).map(([name, value]) => {
             const editability = elementAttributeEditability(name, state.localName, state.namespaceURI)
             return html`

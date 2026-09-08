@@ -157,7 +157,7 @@ describe("document head form", () => {
     expect(choices[0].querySelector(".option-code")?.textContent).toBe("CC0-1.0")
     expect(choices[0].querySelector(".option-name")?.textContent).toBe("Creative Commons Zero 1.0 Universal")
 
-    choices[1].dispatchEvent(new MouseEvent("mousedown", {bubbles: true}))
+    choices[1].click()
     expect(actions).toContainEqual({
       type: "setDocumentHeadField",
       field: "license",

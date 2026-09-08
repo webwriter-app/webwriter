@@ -83,14 +83,6 @@ export function elementEditingLimitation(localName: string, namespaceURI: string
   if(namespaceURI !== htmlNamespace) return null
   const known = limitationsByElement[localName as keyof typeof limitationsByElement]
   if(known) return known
-  if(localName.includes("-")) {
-    return {
-      title: "Component editing depends on its package",
-      description: "Custom elements are preserved and treated as atomic; their internals are not generically editable.",
-      guidance: "Use package-provided controls when available. Generic attributes remain editable.",
-      attributes: "editable",
-    } satisfies ElementEditingLimitation
-  }
   return null
 }
 
@@ -98,7 +90,7 @@ const commonAttributeOptions: readonly ElementAttributeOption[] = [
   {name: "id", label: "ID"},
   {name: "class", label: "Classes"},
   {name: "title", label: "Title"},
-  {name: "lang", label: "Language", placeholder: "en"},
+  {name: "lang", label: "Language", placeholder: "English"},
   {name: "dir", label: "Direction", kind: "select", options: [
     {label: "Not set", value: ""},
     {label: "Left to right", value: "ltr"},
@@ -110,7 +102,7 @@ const commonAttributeOptions: readonly ElementAttributeOption[] = [
 
 const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[]>> = {
   html: [
-    {name: "lang", label: "Document language", placeholder: "en"},
+    {name: "lang", label: "Document language", placeholder: "English"},
     {name: "dir", label: "Text direction", kind: "select", options: commonAttributeOptions[4].options},
   ],
   bdo: [

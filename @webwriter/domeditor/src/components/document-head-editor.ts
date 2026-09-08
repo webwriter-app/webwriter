@@ -18,6 +18,7 @@ type ComboboxOption = {
   label: string
   description?: string
   dividerBefore?: boolean
+  group?: string
 }
 
 const commonElementPresets = new Set([
@@ -103,6 +104,7 @@ class DocumentHeadCombobox extends LitElement {
     label: {type: String},
     placeholder: {type: String},
     options: {attribute: false},
+    disabled: {type: Boolean, reflect: true},
     open: {type: Boolean, reflect: true, state: true},
   }
 
@@ -216,6 +218,16 @@ class DocumentHeadCombobox extends LitElement {
       cursor: pointer;
     }
 
+    .option-group {
+      display: grid;
+    }
+
+    .group-label {
+      padding: 0.5rem 0.6rem 0.2rem;
+      color: #526b86;
+      font-weight: 600;
+    }
+
     .divider {
       height: 1px;
       margin: 0.2rem 0.35rem;
@@ -246,6 +258,7 @@ class DocumentHeadCombobox extends LitElement {
   label = "Choose"
   placeholder = ""
   options: readonly ComboboxOption[] = []
+  disabled = false
   private open = false
   private draft = ""
   private editing = false
@@ -276,6 +289,7 @@ class DocumentHeadCombobox extends LitElement {
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
+    if(changed.has("disabled") && this.disabled) this.close(true)
     if(changed.has("value") && !this.editing) this.draft = this.selectedOption()?.label ?? this.value
   }
 
@@ -303,6 +317,7 @@ class DocumentHeadCombobox extends LitElement {
   }
 
   private async setOpen(open: boolean) {
+    if(this.disabled) return
     this.open = open
     if(!this.open) return
     await this.updateComplete
@@ -323,6 +338,7 @@ class DocumentHeadCombobox extends LitElement {
   }
 
   private emit(value: string) {
+    if(this.disabled) return
     this.value = value
     this.editing = false
     this.draft = this.selectedOption()?.label ?? value
@@ -349,12 +365,14 @@ class DocumentHeadCombobox extends LitElement {
   }
 
   private handleFocus() {
+    if(this.disabled) return
     this.editing = true
     this.draft ||= this.selectedOption()?.label ?? this.value
     void this.setOpen(true)
   }
 
   private handleInput(event: InputEvent) {
+    if(this.disabled) return
     this.editing = true
     this.draft = (event.currentTarget as HTMLInputElement).value
     this.activeIndex = -1
@@ -362,6 +380,7 @@ class DocumentHeadCombobox extends LitElement {
   }
 
   private handleKeydown(event: KeyboardEvent) {
+    if(this.disabled) return
     const options = this.filteredOptions()
     if(event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault()
@@ -388,6 +407,12 @@ class DocumentHeadCombobox extends LitElement {
 
   render() {
     const options = this.filteredOptions()
+    const groups = new Map<string, {option: ComboboxOption, index: number}[]>()
+    options.forEach((option, index) => {
+      const group = option.group ?? ""
+      if(!groups.has(group)) groups.set(group, [])
+      groups.get(group)!.push({option, index})
+    })
     return html`
       <span class="control">
         <input
@@ -402,6 +427,7 @@ class DocumentHeadCombobox extends LitElement {
           data-ribbon-input-persistent
           placeholder=${this.placeholder}
           .value=${this.draft}
+          ?disabled=${this.disabled}
           @focus=${this.handleFocus}
           @input=${this.handleInput}
           @change=${this.commitDraft}
@@ -411,6 +437,7 @@ class DocumentHeadCombobox extends LitElement {
           class="toggle"
           type="button"
           tabindex="-1"
+          ?disabled=${this.disabled}
           aria-label=${`Show ${this.label.toLocaleLowerCase()} suggestions`}
           aria-expanded=${this.open}
           aria-controls=${this.listboxId}
@@ -426,23 +453,26 @@ class DocumentHeadCombobox extends LitElement {
           aria-label=${`${this.label} suggestions`}
           style=${`left:${this.position.left}px;top:${this.position.top}px`}
         >
-          ${options.length ? options.map((option, index) => html`
-            ${option.dividerBefore ? html`<hr class="divider" role="separator" />` : nothing}
-            <button
-              id=${`${this.listboxId}-option-${index}`}
-              class="option"
-              type="button"
-              role="option"
-              aria-selected=${this.value === option.value}
-              data-active=${this.activeIndex === index ? "" : nothing}
-              @mousedown=${(event: MouseEvent) => {
-                event.preventDefault()
-                this.select(option)
-              }}
-            >
-              <strong class="option-code">${option.label}</strong>
-              ${option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
-            </button>
+          ${options.length ? Array.from(groups, ([group, entries]) => html`
+            <div class="option-group" role=${group ? "group" : nothing} aria-label=${group || nothing}>
+              ${group ? html`<div class="group-label" aria-hidden="true">${group}</div>` : nothing}
+              ${entries.map(({option, index}) => html`
+                ${option.dividerBefore ? html`<hr class="divider" role="separator" />` : nothing}
+                <button
+                  id=${`${this.listboxId}-option-${index}`}
+                  class="option"
+                  type="button"
+                  role="option"
+                  aria-selected=${this.value === option.value}
+                  data-active=${this.activeIndex === index ? "" : nothing}
+                  @mousedown=${(event: MouseEvent) => event.preventDefault()}
+                  @click=${() => this.select(option)}
+                >
+                  <strong class="option-code">${option.label}</strong>
+                  ${option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
+                </button>
+              `)}
+            </div>
           `) : html`<span class="option-name">Press Enter to use “${this.draft.trim()}”.</span>`}
         </div>
       ` : nothing}
