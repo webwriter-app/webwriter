@@ -47,25 +47,25 @@ export class DomEditorToolbox extends AppRibbon {
 
     :host {
       box-sizing: border-box;
-      display: block;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 30px minmax(0, 1fr);
       position: relative;
       z-index: 2;
       align-self: stretch;
       width: 122px;
       min-width: 0;
-      margin-left: -122px;
       height: 100%;
       max-height: none;
       overflow: visible;
       color: #2f3742;
       background: transparent;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      transition: width 180ms ease, margin-left 180ms ease;
+      transition: width 180ms ease;
     }
 
     :host([active-tool]) {
       width: 200px;
-      margin-left: 0;
     }
 
     :host([html-mode]) {
@@ -83,24 +83,18 @@ export class DomEditorToolbox extends AppRibbon {
     .toolbox-tabs {
       box-sizing: border-box;
       display: flex;
-      position: absolute;
-      top: 0;
-      right: 0;
-      left: 0;
+      position: relative;
+      grid-row: 1;
       z-index: 2;
       align-items: flex-end;
       justify-content: flex-end;
       height: 30px;
       padding: 0 4px;
       border: 0;
-      border-bottom-width: var(--toolbox-tabs-border-bottom-width, 0.5px);
+      border-bottom-width: 0.5px;
       border-bottom-style: solid;
       border-bottom-color: #a8a8a8;
       background: #ededed;
-    }
-
-    :host([breadcrumb-expanded]) .toolbox-tabs {
-      border-bottom-width: 0;
     }
 
     .toolbox-tab {
@@ -241,11 +235,10 @@ export class DomEditorToolbox extends AppRibbon {
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      position: absolute;
-      top: 30px;
-      right: 0;
-      bottom: 0;
+      position: relative;
+      grid-row: 2;
       width: 100%;
+      height: 100%;
       min-height: 0;
       border-left: 1px solid #a8a8a8;
       background: #f2f2f2;
@@ -416,22 +409,6 @@ export class DomEditorToolbox extends AppRibbon {
 
     .html-source-action.apply:hover:not(:disabled) {
       background: #115e59;
-    }
-
-    @supports (grid-template-rows: subgrid) {
-      :host {
-        display: grid;
-        grid-template-rows: subgrid;
-      }
-
-      .toolbox-pane {
-        position: relative;
-        top: auto;
-        right: auto;
-        bottom: auto;
-        grid-row: 2;
-        height: 100%;
-      }
     }
 
     @media (prefers-reduced-motion: reduce) {

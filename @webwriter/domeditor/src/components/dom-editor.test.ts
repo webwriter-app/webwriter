@@ -3052,14 +3052,23 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(breadcrumb).display).toBe("none")
   })
 
-  it("removes the toolbox baseline while the breadcrumb tree is expanded", async () => {
+  it("keeps the toolbox in an independent right column as the breadcrumb tree expands", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
 
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    const stage = editor.shadowRoot!.querySelector<HTMLElement>(".document-stage")!
+    expect(getComputedStyle(breadcrumb).gridColumn).toBe("1")
+    expect(getComputedStyle(toolbox).gridColumn).toBe("2")
+    expect(getComputedStyle(toolbox).gridRow).toBe("2")
+    expect(getComputedStyle(stage).gridColumn).toBe("1 / -1")
+    expect(getComputedStyle(tabs).alignItems).toBe("flex-end")
+    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
     expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
+    expect(getComputedStyle(toolbox).gridTemplateRows).toBe("30px minmax(0, 1fr)")
+    expect(getComputedStyle(tabs).height).toBe("30px")
 
     await breadcrumb.updateComplete
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
@@ -3067,7 +3076,15 @@ describe("DomEditor.execute()", () => {
     await breadcrumb.updateComplete
 
     expect(breadcrumb.treeOpen).toBe(true)
-    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0px")
+    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
+    expect(getComputedStyle(tabs).height).toBe("30px")
+
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    expect(getComputedStyle(toolbox).gridRow).toBe("2 / 4")
+    expect(getComputedStyle(toolbox).gridTemplateRows).toBe("30px minmax(0, 1fr)")
+    expect(getComputedStyle(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!).gridRow).toBe("2")
+    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
   })
 
   it("collapses the breadcrumb tree when the ribbon is collapsed", async () => {

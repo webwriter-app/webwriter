@@ -631,7 +631,8 @@ export class DomEditor extends LitElement {
     }
 
     dom-editor-breadcrumb {
-      --breadcrumb-inline-end-space: 8rem;
+      grid-column: 1;
+      min-width: 0;
     }
 
     app-ribbon:not([expanded]) + dom-editor-breadcrumb {
@@ -661,7 +662,7 @@ export class DomEditor extends LitElement {
       display: flex;
       position: relative;
       grid-row: 3;
-      grid-column: 1;
+      grid-column: 1 / -1;
       min-height: 0;
       width: 100%;
       overflow: hidden;
@@ -673,8 +674,16 @@ export class DomEditor extends LitElement {
       justify-self: end;
     }
 
-    .app-bar:has(dom-editor-breadcrumb[tree-open], dom-editor-breadcrumb[tree-animating]) ~ dom-editor-toolbox {
-      --toolbox-tabs-border-bottom-width: 0px;
+    dom-editor-toolbox:not([active-tool]) {
+      grid-row: 2;
+    }
+
+    .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {
+      grid-column: 1;
+    }
+
+    .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage {
+      grid-column: 1 / -1;
     }
 
     iframe {
@@ -4925,7 +4934,6 @@ export class DomEditor extends LitElement {
         .localPackageError=${this.localPackageError}
         .selectedLocalPackageName=${this.selectedLocalPackageName}
         .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
-        ?breadcrumb-expanded=${this.treeViewOpen}
         ?hidden=${this.previewActive || this.liveSessionActive}
         @ribbon-button-click=${this.handleRibbonButtonClick}
         @ribbon-combobox-change=${this.handleRibbonComboboxChange}
