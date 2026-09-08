@@ -481,10 +481,9 @@ export class AppRibbon extends LitElement {
       align-items: flex-start;
       align-self: flex-start;
       height: 41px;
-      min-width: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: thin;
+      /* Prefer a 100px filename and roomy actions, leaving room for the AI bar. */
+      min-width: min(calc(100px + 4rem), max(0px, calc(100% - 24px - 0.35rem)));
+      overflow: clip;
       --ribbon-active-tab-background: #f2f2f2;
       --ribbon-active-tab-border: #d8dee6;
     }
@@ -494,33 +493,36 @@ export class AppRibbon extends LitElement {
       --ribbon-active-tab-border: #a8a8a8;
     }
 
-    .tabs::-webkit-scrollbar {
-      height: 0.2rem;
-    }
-
-    .tabs::-webkit-scrollbar-thumb {
-      background: #c4ccd6;
-      border-radius: 1rem;
-    }
-
     .tabs > ribbon-tab[active] {
       anchor-name: --active-ribbon-tab;
+    }
+
+    .tabs > ribbon-tab[label="File"] {
+      /* Leave room for both actions when the navigation is very narrow. */
+      min-width: min(100px, max(0px, calc(100% - 3rem)));
     }
 
     .file-quick-actions {
       box-sizing: border-box;
       display: flex;
-      flex: 0 0 auto;
+      flex: 0 1 4rem;
+      width: 4rem;
+      min-width: 3rem;
       align-items: center;
       align-self: flex-start;
-      gap: 0.1rem;
+      justify-content: space-between;
       height: 40px;
-      padding: 0 0.2rem;
+    }
+
+    .file-quick-actions::before,
+    .file-quick-actions::after {
+      content: "";
+      flex: 0 100 0.2rem;
     }
 
     ribbon-button.file-quick-action {
-      flex: 0 0 1.75rem;
-      min-width: 1.75rem;
+      flex: 0 1 1.75rem;
+      min-width: 1.5rem;
       width: 1.75rem;
     }
 
@@ -3393,12 +3395,6 @@ export class AppRibbon extends LitElement {
       padding-inline-start: 0;
       border-block-start: 1px solid #d8dee6;
       border-inline-start: 0;
-    }
-
-    @media (max-width: 36rem) {
-      .ribbon-top {
-        gap: 0.35rem;
-      }
     }
   `
 

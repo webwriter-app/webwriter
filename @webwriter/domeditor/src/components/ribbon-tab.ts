@@ -22,7 +22,7 @@ export class RibbonTab extends LitElement {
 
     :host([label="File"]) {
       width: fit-content;
-      min-width: 50px;
+      min-width: 100px;
       max-width: 500px;
     }
 

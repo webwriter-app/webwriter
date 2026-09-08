@@ -63,7 +63,7 @@ describe("mark ribbon controls", () => {
 
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
     expect(getComputedStyle(fileTab).width).toBe("fit-content")
-    expect(getComputedStyle(fileTab).minWidth).toBe("50px")
+    expect(getComputedStyle(fileTab).minWidth).toBe("min(100px, max(0px, calc(100% - 48px)))")
     expect(getComputedStyle(fileTab).maxWidth).toBe("500px")
     const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
     await fileLabel.updateComplete
@@ -164,6 +164,24 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(fileName).maxWidth).toBe("500px")
     expect(getComputedStyle(fileName).overflow).toBe("hidden")
     expect(getComputedStyle(fileName).textOverflow).toBe("ellipsis")
+  })
+
+  it("keeps the file controls out of a scroll container and lets their spacing shrink", async () => {
+    const {ribbon} = await mountRibbon()
+    const tabs = ribbon.shadowRoot!.querySelector<HTMLElement>(".tabs")!
+    const actions = tabs.querySelector<HTMLElement>(".file-quick-actions")!
+    const buttons = Array.from(actions.querySelectorAll<RibbonButton>("ribbon-button"))
+    await Promise.all(buttons.map(button => button.updateComplete))
+
+    expect(getComputedStyle(tabs).overflow).toBe("clip")
+    expect(getComputedStyle(actions).flexShrink).toBe("1")
+    expect(getComputedStyle(actions).minWidth).toBe("48px")
+    expect(getComputedStyle(actions).justifyContent).toBe("space-between")
+    for(const button of buttons) {
+      expect(getComputedStyle(button).flexShrink).toBe("1")
+      expect(getComputedStyle(button).minWidth).toBe("24px")
+      expect(button.shadowRoot!.querySelector(".main-button")).not.toBeNull()
+    }
   })
 
   it("animates ribbon collapse and hides its tab indicators", async () => {
