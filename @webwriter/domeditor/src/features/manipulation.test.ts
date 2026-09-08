@@ -285,7 +285,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
   })
-  it("node-selects a directly inserted widget", () => {
+  it("capture-selects a directly inserted widget", () => {
     editor.features.manipulation.actions.insert({
       type: "insert",
       html: "<webwriter-demo></webwriter-demo>",
@@ -293,7 +293,36 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     const widget = document.querySelector("webwriter-demo")!
     expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expectBodyToBe("<webwriter-demo></webwriter-demo>")
+  })
+  it.each(["empty paragraph", "gap", "inline"])("capture-selects a widget inserted into an %s through the node API", context => {
+    editor.schema.extendWidgets([{tagName: "webwriter-demo", editingConfig: context === "inline" ? {inline: true, group: "phrasing"} : {}}])
+    if(context === "gap") {
+      document.body.innerHTML = "<section><p>before</p><!--keep--><p>after</p></section>"
+      $.selectGap(document.querySelector("p")!)
+    }
+    const widget = document.createElement("webwriter-demo")
+
+    editor.features.manipulation.insert(widget)
+
+    expect($.selectedElement).toBe(widget)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+  it("capture-selects an inline widget inserted through its action handler", () => {
+    editor.schema.extendWidgets([{tagName: "webwriter-demo", editingConfig: {inline: true, group: "phrasing"}}])
+    document.body.innerHTML = "<p>before after</p>"
+    $.move(document.querySelector("p")!.firstChild!, 6)
+
+    editor.features.manipulation.actions.insert({type: "insert", html: "<webwriter-demo></webwriter-demo>"})
+
+    const widget = document.querySelector("webwriter-demo")!
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expectBodyToBe("<p>before<webwriter-demo></webwriter-demo> after</p>")
   })
   it.each([
     [0, '<webwriter-demo></webwriter-demo><p>before after</p>'],
@@ -314,6 +343,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const widget = document.querySelector("webwriter-demo")!
     expect(widget.parentElement).toBe(document.body)
     expect($.selectedElement).toBe(widget)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
   })
 
   it("can insert <p> at document start", () => {
@@ -1184,6 +1214,7 @@ describe("paste()", () => {
     expectBodyToBe("<p>he</p><demo-widget>Widget</demo-widget><p>llo</p>")
     expect(document.querySelector("demo-widget")).not.toHaveAttribute("contenteditable")
     expect($.selectedElement).toBe(document.querySelector("demo-widget"))
+    expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector("demo-widget"))
   })
   it("preserves plain-text line boundaries as soft breaks", async () => {
     await navigator.clipboard.write([new ClipboardItem({"text/plain": "one\ntwo"})])

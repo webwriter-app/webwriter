@@ -1016,6 +1016,10 @@ export class ManipulationFeature extends EditorFeature {
     if(isVirtualSelection && isInlineContent && !this.ensureTextBlock()) return
     if(isVirtualSelection || isInlineContent) this.insertAtSelection(...nodes)
     else this.insertBlocks(nodes)
+    if(widget) {
+      this.editor.features.selection.captureElement(widget)
+      this.editor.postSelectionPath(true)
+    }
   }
 
   private firstTextDescendant(node: Node): Text | null {
@@ -1522,8 +1526,7 @@ export class ManipulationFeature extends EditorFeature {
       return this.withNormalization(() => {
         emptyDefaultBlock.replaceWith(insertedElement)
         if(insertedWidget) {
-          $.selectElement(insertedWidget)
-          this.editor.features.selection.processSelection()
+          this.editor.features.selection.captureElement(insertedWidget)
           this.editor.postSelectionPath(true)
         }
         else this.moveAfterInsertedNode(insertedElement)
@@ -1554,8 +1557,7 @@ export class ManipulationFeature extends EditorFeature {
         node? $.move(node, -1): $.move(next, 0)
       }
       if(insertedWidget?.isConnected) {
-        $.selectElement(insertedWidget)
-        this.editor.features.selection.processSelection()
+        this.editor.features.selection.captureElement(insertedWidget)
         this.editor.postSelectionPath(true)
       }
     })
@@ -1960,8 +1962,7 @@ export class ManipulationFeature extends EditorFeature {
       else block.replaceWith(widget)
       if(right.childNodes.length) widget.after(right)
     }
-    $.selectElement(widget)
-    this.editor.features.selection.processSelection()
+    this.editor.features.selection.captureElement(widget)
     this.editor.postSelectionPath(true)
   }
 }
