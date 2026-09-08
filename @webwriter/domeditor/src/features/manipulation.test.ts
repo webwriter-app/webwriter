@@ -1705,6 +1705,25 @@ describe("unified content transfer", () => {
     expect(widget.outerHTML).toBe('<test-widget><strong>keep alias</strong><template><span>safe</span></template></test-widget>')
   })
 
+  it.each([false, true])("preserves installed quiz subtrees despite editing metadata (transfer=%s)", transfer => {
+    editor.schema.extendWidgets([
+      {tagName: "webwriter-task", editingConfig: {content: "webwriter-task-prompt webwriter-mark"}},
+      {tagName: "webwriter-task-prompt", editingConfig: {group: "", content: "p+"}},
+      {tagName: "webwriter-mark", editingConfig: {group: "answer", content: "(text | br | wbr)*"}},
+    ])
+    const html = '<webwriter-task>\n  <webwriter-task-prompt slot="prompt"><p>Question</p></webwriter-task-prompt>\n  <!--keep--><webwriter-mark><p>Answer</p><svg viewBox="0 0 1 1"><path d="M0 0"></path></svg></webwriter-mark>\n</webwriter-task>'
+    const {fragment} = editor.parseHTMLFragment(html, transfer)
+
+    expect(fragment.firstElementChild?.outerHTML).toBe(html)
+    expect(fragment.querySelector("[contenteditable], [class]")).toBeNull()
+    expect(fragment.querySelector("svg")?.namespaceURI).toBe("http://www.w3.org/2000/svg")
+  })
+
+  it("preserves customized built-in widget content while sanitizing active markup", () => {
+    const {fragment} = editor.parseHTMLFragment('<div is="custom-quiz"><span><section>Widget layout</section></span><script>bad()</script></div>')
+    expect(fragment.firstElementChild?.outerHTML).toBe('<div is="custom-quiz"><span><section>Widget layout</section></span></div>')
+  })
+
   it.each(sectionNames)("unwraps external <%s> sections while preserving non-section content", name => {
     const {fragment} = editor.parseHTMLFragment(`<${name} id="wrapper"><p>first</p><!--keep--><p><strong>second</strong></p></${name}>`, true)
     const container = document.createElement("div")

@@ -212,20 +212,6 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
-  it("preserves themes, authored styles, editing attributes and isolated HTTPS embeds in preview", async () => {
-    const {editor} = await mountEditor()
-    const doc = new DOMParser().parseFromString('<html spellcheck="true"><head><style data-ww-theme="water">p { color: red }</style></head><body contenteditable="false"><p style="font-size: 2em">Text</p><iframe src="https://example.com/embed" sandbox="allow-same-origin allow-scripts"></iframe></body></html>', "text/html")
-    const html = (editor as any).preparePreviewDocument(doc) as string
-    expect(html).toContain('data-ww-theme="water"')
-    expect(html).toContain("color: red")
-    expect(html).toContain('contenteditable="false"')
-    expect(html).toContain('spellcheck="true"')
-    const preview = new DOMParser().parseFromString(html, "text/html")
-    expect(preview.querySelector("iframe")!.getAttribute("sandbox")).toBe("allow-scripts")
-    expect(preview.querySelector('meta[http-equiv="Content-Security-Policy"]')).not.toBeNull()
-  })
-
-
   it("shows and dismisses file errors outside the authored document", async () => {
     const {editor, iframe} = await mountEditor()
     vi.spyOn(console, "error").mockImplementation(() => {})
@@ -240,6 +226,20 @@ describe("DomEditor iframe setup", () => {
     alert.querySelector("button")!.click()
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector('[role="alert"]')).toBeNull()
+  })
+
+
+  it("preserves themes, authored styles, editing attributes and isolated HTTPS embeds in preview", async () => {
+    const {editor} = await mountEditor()
+    const doc = new DOMParser().parseFromString('<html spellcheck="true"><head><style data-ww-theme="water">p { color: red }</style></head><body contenteditable="false"><p style="font-size: 2em">Text</p><iframe src="https://example.com/embed" sandbox="allow-same-origin allow-scripts"></iframe></body></html>', "text/html")
+    const html = (editor as any).preparePreviewDocument(doc) as string
+    expect(html).toContain('data-ww-theme="water"')
+    expect(html).toContain("color: red")
+    expect(html).toContain('contenteditable="false"')
+    expect(html).toContain('spellcheck="true"')
+    const preview = new DOMParser().parseFromString(html, "text/html")
+    expect(preview.querySelector("iframe")!.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(preview.querySelector('meta[http-equiv="Content-Security-Policy"]')).not.toBeNull()
   })
 
 
@@ -508,7 +508,7 @@ describe("DomEditor iframe setup", () => {
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector("iframe")!
-    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
+    const postMessage = wirePackageLoadCompletion(iframe.contentWindow!)
     iframe.dispatchEvent(new Event("load"))
 
     expect(search).toHaveBeenCalledTimes(1)
@@ -531,6 +531,10 @@ describe("DomEditor iframe setup", () => {
     expect(srcdoc).toMatch(/style-src 'none'/)
     expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
     expect(srcdoc).toContain("style-src-attr 'unsafe-inline'")
+    expect(srcdoc).toContain("connect-src * data: blob:")
+    expect(srcdoc).toContain("frame-src https:")
+    expect(srcdoc).toContain("worker-src blob: https:")
+    expect(srcdoc).not.toContain("'unsafe-eval'")
     expect(srcdoc).toContain('data-ww-theme="base"')
     expect(srcdoc).toContain("Pico CSS ✨ v2.1.1")
   })
@@ -543,6 +547,15 @@ describe("DomEditor iframe setup", () => {
 
     expect(srcdoc).toContain('<style data-ww-theme="base" blocking="render">')
     expect(srcdoc.match(/data-ww-theme="base"/g)).toHaveLength(1)
+  })
+
+  it("permits installed widget compilers while keeping authored scripts nonce-gated", () => {
+    const editor = new DomEditor() as unknown as {installedPackages: WebWriterPackage[], readonly editorSrcdoc: string}
+    editor.installedPackages = [demoPackage]
+    expect(editor.editorSrcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic' 'unsafe-eval';/)
+    expect(editor.editorSrcdoc).toContain("style-src-elem * data: blob: 'unsafe-inline'")
+    editor.installedPackages = [{...demoPackage, scripts: []}]
+    expect(editor.editorSrcdoc).not.toContain("'unsafe-eval'")
   })
 
   it("preserves an explicitly selected document theme", () => {
@@ -564,7 +577,7 @@ describe("DomEditor iframe setup", () => {
       document.body.append(editor)
       await editor.updateComplete
       const iframe = editor.shadowRoot!.querySelector("iframe")!
-      const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
+      const postMessage = wirePackageLoadCompletion(iframe.contentWindow!)
 
       iframe.dispatchEvent(new Event("load"))
 
@@ -586,7 +599,7 @@ describe("DomEditor iframe setup", () => {
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector("iframe")!
-    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
+    const postMessage = wirePackageLoadCompletion(iframe.contentWindow!)
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
     iframe.dispatchEvent(new Event("load"))
@@ -622,7 +635,8 @@ describe("DomEditor iframe setup", () => {
 
     const adding = (editor as any).setPackageInstalled(demoPackage, true) as Promise<unknown>
     await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe")?.getAttribute("srcdoc")).toContain("<!-- frame 1 -->"))
-    editor.shadowRoot!.querySelector("iframe")!.dispatchEvent(new Event("load"))
+    const addedFrame = editor.shadowRoot!.querySelector("iframe")!
+    addedFrame.dispatchEvent(new Event("load"))
     completePendingPackageLoad(editor)
     await adding
 
@@ -630,7 +644,8 @@ describe("DomEditor iframe setup", () => {
 
     const removing = (editor as any).setPackageInstalled(demoPackage, false) as Promise<unknown>
     await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe")?.getAttribute("srcdoc")).toContain("<!-- frame 2 -->"))
-    editor.shadowRoot!.querySelector("iframe")!.dispatchEvent(new Event("load"))
+    const removedFrame = editor.shadowRoot!.querySelector("iframe")!
+    removedFrame.dispatchEvent(new Event("load"))
     completePendingPackageLoad(editor)
     await removing
 
@@ -1292,12 +1307,84 @@ describe("DomEditor.execute()", () => {
     })
   })
 
+  it("waits for package resources before posting an action", async () => {
+    const editor = new DomEditor()
+    document.body.append(editor)
+    await editor.updateComplete
+    const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    const editorWindow = iframe.contentWindow!
+    const postMessage = vi.spyOn(editorWindow, "postMessage").mockImplementation(() => undefined)
+    const execution = editor.execute({type: "lift"})
+    iframe.dispatchEvent(new Event("load"))
+
+    const loadCall = postMessage.mock.calls.find(([message]) => message?.type === loadWidgetsMessage)
+    expect(loadCall).toBeDefined()
+    expect(postMessage.mock.calls.some(([message]) => message?.type === "lift")).toBe(false)
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: executeCompleteEvent,
+        detail: {requestId: loadCall![0].requestId, result: undefined},
+        bridgeNonce: loadCall![0].bridgeNonce,
+      },
+      source: editorWindow,
+      origin: window.location.origin,
+    }))
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({type: "lift", requestId: expect.any(String)}),
+      expect.any(String),
+    ))
+
+    const actionCall = postMessage.mock.calls.find(([message]) => message?.type === "lift")!
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: executeCompleteEvent,
+        detail: {requestId: actionCall[0].requestId, result: "done"},
+        bridgeNonce: actionCall[0].bridgeNonce,
+      },
+      source: editorWindow,
+      origin: window.location.origin,
+    }))
+    await expect(execution).resolves.toBe("done")
+  })
+
+  it("propagates package loading failures to actions waiting for the frame", async () => {
+    const editor = new DomEditor()
+    document.body.append(editor)
+    await editor.updateComplete
+    const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    const editorWindow = iframe.contentWindow!
+    const postMessage = vi.spyOn(editorWindow, "postMessage").mockImplementation(() => undefined)
+    const execution = editor.execute({type: "lift"})
+    iframe.dispatchEvent(new Event("load"))
+
+    const loadCall = postMessage.mock.calls.find(([message]) => message?.type === loadWidgetsMessage)
+    expect(loadCall).toBeDefined()
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: executeFailureEvent,
+        detail: {
+          requestId: loadCall![0].requestId,
+          error: {name: "NetworkError", message: "widget script failed to load"},
+        },
+        bridgeNonce: loadCall![0].bridgeNonce,
+      },
+      source: editorWindow,
+      origin: window.location.origin,
+    }))
+
+    await expect(execution).rejects.toMatchObject({
+      name: "NetworkError",
+      message: "widget script failed to load",
+    })
+  })
+
   it("does not post an action aborted while the editor frame is initializing", async () => {
     const editor = new DomEditor()
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
-    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
+    const postMessage = wirePackageLoadCompletion(iframe.contentWindow!)
     const controller = new AbortController()
 
     const execution = editor.execute({type: "lift"}, {signal: controller.signal})
@@ -1988,6 +2075,7 @@ describe("DomEditor.execute()", () => {
     window.dispatchEvent(new MessageEvent("message", {
       data: {
         type: selectionChangeEvent,
+        bridgeNonce: (editor as any).bridgeNonce,
         detail: {
           path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
           nodeSelected: true,
@@ -2189,7 +2277,7 @@ describe("DomEditor.execute()", () => {
     expect(previewHTML).not.toContain("srcdoc")
     expect(previewHTML).toContain('style="color: red"')
     expect(previewHTML).toContain("display: none")
-    expect(previewHTML).toContain('rel="stylesheet"')
+    expect(previewHTML).not.toContain('href="javascript:')
     expect(previewHTML).not.toContain("window.evil")
   })
 
@@ -2379,6 +2467,7 @@ describe("DomEditor.execute()", () => {
     window.dispatchEvent(new MessageEvent("message", {
       data: {
         type: selectionChangeEvent,
+        bridgeNonce: (editor as any).bridgeNonce,
         detail: {
           path: [
             {path: [], name: "Document", icon: "Document"},
@@ -2487,13 +2576,16 @@ describe("DomEditor.execute()", () => {
   })
 
   it("renders package widget names and icons in breadcrumbs and the document tree", async () => {
-    const {editor, iframe, editorWindow} = await mountEditor()
+    const {editor} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).editorWindow).not.toBeNull())
+    const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    const editorWindow = iframe.contentWindow!
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
-    iframe.contentDocument!.body.innerHTML = "<webwriter-demo></webwriter-demo>"
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {
         type: selectionChangeEvent,
+        bridgeNonce: (editor as any).bridgeNonce,
         detail: {
           path: [
             {path: [], name: "Document", icon: "Document"},
@@ -2512,6 +2604,8 @@ describe("DomEditor.execute()", () => {
 
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
+    const editorDocument = (editor as unknown as {editorDocument: Document}).editorDocument!
+    editorDocument.body.innerHTML = "<webwriter-demo></webwriter-demo>"
     const widget = Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item"))[1]
     expect(widget.textContent?.trim()).toBe("Demo Widget")
     expect(widget.querySelector('img[src="https://example.com/demo.svg"]')).not.toBeNull()

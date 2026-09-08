@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {describe, expect, it, vi} from "vitest"
 import {
+  JSDELIVR_PACKAGE_FILES_ENDPOINT,
   NPM_SEARCH_ENDPOINT,
   WebWriterPackageRegistry,
   describePackageExport,
@@ -13,6 +14,87 @@ import {
 } from "./packages"
 
 describe("WebWriterPackageRegistry", () => {
+  it("omits inferred CSS only when the jsDelivr listing confirms it is absent", async () => {
+    const manifest = {
+      name: "@webwriter/chemdraw",
+      version: "2.1.1",
+      exports: {
+        "./widgets/webwriter-periodic-table.*": "./dist/widgets/webwriter-periodic-table.*",
+      },
+    }
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fchemdraw/2.1.1") return Response.json(manifest)
+      if(url.startsWith(JSDELIVR_PACKAGE_FILES_ENDPOINT)) {
+        return Response.json({default: null, files: [
+          {name: "/dist/widgets/webwriter-periodic-table.js"},
+        ]})
+      }
+      throw new Error("Unexpected request: " + url)
+    })
+
+    const pkg = await new WebWriterPackageRegistry(fetcher as typeof fetch).getPackage(manifest)
+
+    expect(fetcher).toHaveBeenCalledWith("https://data.jsdelivr.com/v1/package/npm/@webwriter/chemdraw@2.1.1/flat")
+    expect(pkg.scripts).toEqual(["https://cdn.jsdelivr.net/npm/@webwriter/chemdraw@2.1.1/dist/widgets/webwriter-periodic-table.js"])
+    expect(pkg.styles).toEqual([])
+  })
+
+  it("filters only the missing inferred CSS while retaining other widget assets", async () => {
+    const manifest = {
+      name: "@webwriter/branching-scenario",
+      version: "1.2.1",
+      exports: {
+        "./widgets/webwriter-branching-scenario.*": "./dist/widgets/webwriter-branching-scenario.*",
+        "./widgets/webwriter-gamebook-branch.*": "./dist/widgets/webwriter-gamebook-branch.*",
+      },
+    }
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fbranching-scenario/1.2.1") return Response.json(manifest)
+      if(url.startsWith(JSDELIVR_PACKAGE_FILES_ENDPOINT)) {
+        return Response.json({files: [
+          {name: "/dist/widgets/webwriter-branching-scenario.js"},
+          {name: "/dist/widgets/webwriter-branching-scenario.css"},
+          {name: "/dist/widgets/webwriter-gamebook-branch.js"},
+        ]})
+      }
+      throw new Error("Unexpected request: " + url)
+    })
+
+    const pkg = await new WebWriterPackageRegistry(fetcher as typeof fetch).getPackage(manifest)
+
+    expect(pkg.scripts).toEqual([
+      "https://cdn.jsdelivr.net/npm/@webwriter/branching-scenario@1.2.1/dist/widgets/webwriter-branching-scenario.js",
+      "https://cdn.jsdelivr.net/npm/@webwriter/branching-scenario@1.2.1/dist/widgets/webwriter-gamebook-branch.js",
+    ])
+    expect(pkg.styles).toEqual([
+      "https://cdn.jsdelivr.net/npm/@webwriter/branching-scenario@1.2.1/dist/widgets/webwriter-branching-scenario.css",
+    ])
+  })
+
+  it("keeps inferred CSS when the jsDelivr listing is unavailable", async () => {
+    const manifest = {
+      name: "@webwriter/branching-scenario",
+      version: "1.2.1",
+      exports: {
+        "./widgets/webwriter-gamebook-branch.*": "./dist/widgets/webwriter-gamebook-branch.*",
+      },
+    }
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fbranching-scenario/1.2.1") return Response.json(manifest)
+      if(url.startsWith(JSDELIVR_PACKAGE_FILES_ENDPOINT)) return new Response(null, {status: 503})
+      throw new Error("Unexpected request: " + url)
+    })
+
+    const pkg = await new WebWriterPackageRegistry(fetcher as typeof fetch).getPackage(manifest)
+
+    expect(pkg.styles).toEqual([
+      "https://cdn.jsdelivr.net/npm/@webwriter/branching-scenario@1.2.1/dist/widgets/webwriter-gamebook-branch.css",
+    ])
+  })
+
   it("discovers scoped packages and preserves ordered widget/snippet exports", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)

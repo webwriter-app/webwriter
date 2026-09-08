@@ -5,6 +5,7 @@ export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
 export const NPM_REGISTRY_ENDPOINT = "https://registry.npmjs.org"
 export const JSDELIVR_NPM_ENDPOINT = "https://cdn.jsdelivr.net/npm"
 export const SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL = `${JSDELIVR_NPM_ENDPOINT}/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js`
+export const JSDELIVR_PACKAGE_FILES_ENDPOINT = "https://data.jsdelivr.com/v1/package"
 export const WEBWRITER_PACKAGE_QUERY = "scope:webwriter keywords:webwriter-widget"
 /** Storage key for the standalone editor's serialized installed packages. */
 export const INSTALLED_PACKAGES_STORAGE_KEY = "webwriter_domeditor_installedPackages"
@@ -237,6 +238,8 @@ const packagePath = (path: string) => {
   return segments
 }
 
+const packageListingPath = (path: string) => path.replace(/^\/|^\.\//, "")
+
 /** Resolves the browser-facing target of a conditional package export. */
 export function resolvePackageExport(target: PackageExportTarget | undefined): string | undefined {
   if(typeof target === "string") return target
@@ -254,11 +257,12 @@ export function packageCdnUrl(name: string, version: string, path: string) {
 }
 
 /** Removes active content before a package-provided snippet enters authored DOM. */
-export function sanitizePackageSnippet(html: string, maximumLength = 1_000_000) {
+export function sanitizePackageSnippet(html: string, maximumLength = 50_000_000) {
   if(html.length > maximumLength) throw new RangeError("The package snippet is too large to insert safely")
-  const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html")
-  stripActiveContent(parsed.body)
-  return parsed.body.innerHTML
+  const template = document.createElement("template")
+  template.innerHTML = html
+  stripActiveContent(template.content, {allowIframes: true})
+  return template.innerHTML
 }
 
 function localized(value: LocalizedText | undefined, locale: string) {
@@ -429,6 +433,23 @@ export class WebWriterPackageRegistry {
     return request
   }
 
+  private async fetchPackageFiles(name: string, version: string) {
+    const packageName = name.split("/").map((segment, index) => index === 0 ? segment : encodeURIComponent(segment)).join("/")
+    try {
+      const url = JSDELIVR_PACKAGE_FILES_ENDPOINT + "/npm/" + packageName + "@" + encodeURIComponent(version) + "/flat"
+      const response = await this.fetcher(url)
+      if(!response.ok) return
+      const result = await response.json() as unknown
+      if(!isRecord(result) || !Array.isArray(result.files) || !result.files.every(file => (
+        isRecord(file) && typeof file.name === "string"
+      ))) return
+      return new Set(result.files.map(file => packageListingPath((file as {name: string}).name)))
+    }
+    catch {
+      // The listing is advisory. Keep inferred assets when it is unavailable.
+    }
+  }
+
   private async fetchPackage(summary: Pick<WebWriterPackage, "name" | "version"> & Partial<WebWriterPackage>) {
     const manifestUrl = `${NPM_REGISTRY_ENDPOINT}/${encodeURIComponent(summary.name)}/${encodeURIComponent(summary.version)}`
     const response = await this.fetcher(manifestUrl)
@@ -440,21 +461,35 @@ export class WebWriterPackageRegistry {
     const iconPath = resolveNamedExport("./icon")
     const iconUrl = iconPath ? packageCdnUrl(manifest.name, manifest.version, iconPath) : undefined
     const editingConfigPath = resolveNamedExport("./editing-config.json")
-    let externalEditingConfig: PackageEditingConfig | undefined
-    if(editingConfigPath) {
+    const externalEditingConfigRequest = (async() => {
+      if(!editingConfigPath) return
       try {
         const configResponse = await this.fetcher(packageCdnUrl(manifest.name, manifest.version, editingConfigPath))
-        if(configResponse.ok) externalEditingConfig = await configResponse.json() as PackageEditingConfig
+        if(configResponse.ok) return await configResponse.json() as PackageEditingConfig
       }
       catch {
         // Inline config and export-derived labels remain usable offline.
       }
-    }
+    })()
+    const hasWildcardWidget = Object.entries(exports).some(([exportName, exportTarget]) => (
+      exportName.startsWith("./widgets/") && resolvePackageExport(exportTarget)?.endsWith(".*")
+    ))
+    const packageFilesRequest = hasWildcardWidget
+      ? this.fetchPackageFiles(manifest.name, manifest.version)
+      : Promise.resolve<Set<string> | undefined>(undefined)
+    const [externalEditingConfig, packageFiles] = await Promise.all([
+      externalEditingConfigRequest,
+      packageFilesRequest,
+    ])
     const editingConfig = mergeEditingConfig(externalEditingConfig, manifest.editingConfig)
+    const inferredStylePaths = new Map<string, string>()
     const members = Object.entries(exports).flatMap(([exportName, exportTarget]) => {
       const target = resolvePackageExport(exportTarget)
       if(!target) return []
       const member = packageMember(manifest, exportName, target, editingConfig, iconUrl, this.locale)
+      if(member?.kind === "widget" && member.styleUrl && target.endsWith(".*")) {
+        inferredStylePaths.set(member.styleUrl, packageListingPath(target.slice(0, -1) + "css"))
+      }
       return member ? [member] : []
     })
     const globalConfig = editingConfig["."] ?? {}
@@ -480,7 +515,8 @@ export class WebWriterPackageRegistry {
       },
       members,
       scripts: [...new Set(members.flatMap(member => member.scriptUrl ? [member.scriptUrl] : []))],
-      styles: [...new Set(members.flatMap(member => member.styleUrl ? [member.styleUrl] : []))],
+      styles: [...new Set(members.flatMap(member => member.styleUrl ? [member.styleUrl] : []))]
+        .filter(style => !packageFiles || !inferredStylePaths.has(style) || packageFiles.has(inferredStylePaths.get(style)!)),
       editingConfig,
       manifest: {...manifest},
     } satisfies WebWriterPackage

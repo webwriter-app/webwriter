@@ -1,0 +1,6004 @@
+{
+  "date": "2026-09-08",
+  "scope": {
+    "packages": 23,
+    "customElements": 61,
+    "insertableWidgets": 33,
+    "snippets": 165,
+    "nestedFixtures": 2,
+    "packageDefaultsInPreview": 23
+  },
+  "note": "Insertion and initial rendering smoke tests; zero dimensions can be intentional for hidden pages and internal elements. Isolated reruns replace errors from previously removed widgets. Earlier CSP style notifications are omitted; the final installed-widget style policy was separately verified with CodeMirror.",
+  "editing": [
+    {
+      "name": "@webwriter/timeline@2.1.1",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/timeline: ./snippets/women-in-tech.html",
+      "inputLength": 7687,
+      "elements": [
+        {
+          "tag": "webwriter-timeline",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 3910
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 102,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 808
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 150,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 72
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 291,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 235
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 248,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 48
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 271,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 211
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 276,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 96
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 273,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 211
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 271,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 72
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 335,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 187
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 221,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 187
+        }
+      ],
+      "embeds": [
+        {
+          "src": "https://www.youtube.com/embed/aPweFhhXFvY",
+          "sandbox": "allow-scripts",
+          "height": 150
+        },
+        {
+          "src": "https://en.wikipedia.org/wiki/Reduction_(recursion_theory)",
+          "sandbox": "allow-scripts",
+          "height": 150
+        },
+        {
+          "src": "https://player.vimeo.com/video/304869290",
+          "sandbox": "allow-scripts",
+          "height": 150
+        },
+        {
+          "src": "https://www.youtube.com/embed/4-DyVzj-f3c",
+          "sandbox": "allow-scripts",
+          "height": 150
+        },
+        {
+          "src": "https://www.youtube.com/embed/I7FYG-XVgk4",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/timeline: ./snippets/webwriter-timeline.html",
+      "inputLength": 258,
+      "elements": [
+        {
+          "tag": "webwriter-timeline",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/timeline: ./snippets/history-of-olympic-games.html",
+      "inputLength": 5532,
+      "elements": [
+        {
+          "tag": "webwriter-timeline",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 1259
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 185,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 96
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 174,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 48
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 247,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 184
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 224,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 48
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 451,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 112
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 420,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 72
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 431,
+          "height": 19
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 936,
+          "height": 48
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart@2.1.1",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart: ./snippets/Switch.html",
+      "inputLength": 5959,
+      "elements": [
+        {
+          "tag": "webwriter-flowchart",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 432
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart: ./snippets/If-Else.html",
+      "inputLength": 3454,
+      "elements": [
+        {
+          "tag": "webwriter-flowchart",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 432
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart: ./snippets/Erklaerung.html",
+      "inputLength": 7224,
+      "elements": [
+        {
+          "tag": "webwriter-flowchart",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 432
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart: ./snippets/For-Schleife.html",
+      "inputLength": 5389,
+      "elements": [
+        {
+          "tag": "webwriter-flowchart",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 432
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart: ./snippets/Kontextbeispiel.html",
+      "inputLength": 7703,
+      "elements": [
+        {
+          "tag": "webwriter-flowchart",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 432
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart: ./widgets/webwriter-flowchart.*",
+      "inputLength": 43,
+      "elements": [
+        {
+          "tag": "webwriter-flowchart",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 432
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/slides@2.3.1",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/slides: ./snippets/example.html",
+      "inputLength": 64603,
+      "elements": [
+        {
+          "tag": "webwriter-slides",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 664
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": true,
+          "shadow": true,
+          "width": 942,
+          "height": 522
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/slides: ./widgets/webwriter-slides.*",
+      "inputLength": 37,
+      "elements": [
+        {
+          "tag": "webwriter-slides",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 656
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash@1.0.2",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./widgets/webwriter-hash.*",
+      "inputLength": 33,
+      "elements": [
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 602
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./snippets/password-pioneers-station-1.html",
+      "inputLength": 6422,
+      "elements": [
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 602
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": false,
+          "shadow": false,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": false,
+          "shadow": false,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./snippets/password-pioneers-station-2.html",
+      "inputLength": 68093,
+      "elements": [
+        {
+          "tag": "webwriter-slides",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 871
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 253
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 602
+        },
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 602
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 64
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 64
+        },
+        {
+          "tag": "webwriter-text",
+          "defined": false,
+          "shadow": false,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 224
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 64
+        },
+        {
+          "tag": "webwriter-order",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 144
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 24
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./snippets/password-pioneers-station-3.html",
+      "inputLength": 6519,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": false,
+          "shadow": false,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-text",
+          "defined": false,
+          "shadow": false,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 602
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder@1.0.1",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/flex-starter.html",
+      "inputLength": 11005,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/flow-starter.html",
+      "inputLength": 3151,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/grid-starter.html",
+      "inputLength": 15545,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/flex-advanced.html",
+      "inputLength": 29889,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/flow-advanced.html",
+      "inputLength": 11710,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/grid-advanced.html",
+      "inputLength": 40320,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/freeform-starter.html",
+      "inputLength": 3180,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/freeform-advanced.html",
+      "inputLength": 7565,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./widgets/webwriter-website-builder.*",
+      "inputLength": 55,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code@3.0.5",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./snippets/HTML.html",
+      "inputLength": 44,
+      "elements": [
+        {
+          "tag": "webwriter-code-html",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 282
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./snippets/java.html",
+      "inputLength": 129,
+      "elements": [
+        {
+          "tag": "webwriter-code-java",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 172
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./widgets/webwriter-code-html.*",
+      "inputLength": 43,
+      "elements": [
+        {
+          "tag": "webwriter-code-html",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 282
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./widgets/webwriter-code-python.*",
+      "inputLength": 47,
+      "elements": [
+        {
+          "tag": "webwriter-code-python",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 99
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./widgets/webwriter-code-javascript.*",
+      "inputLength": 55,
+      "elements": [
+        {
+          "tag": "webwriter-code-javascript",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 99
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./widgets/webwriter-code-typescript.*",
+      "inputLength": 55,
+      "elements": [
+        {
+          "tag": "webwriter-code-typescript",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 99
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./widgets/webwriter-code-webassembly.*",
+      "inputLength": 57,
+      "elements": [
+        {
+          "tag": "webwriter-code-webassembly",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 99
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geometry-cloze@2.4.2",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geometry-cloze: ./snippets/polygon.html",
+      "inputLength": 3478,
+      "elements": [
+        {
+          "tag": "ww-geometry-cloze",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 720
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geometry-cloze: ./widgets/ww-geometry-cloze.*",
+      "inputLength": 39,
+      "elements": [
+        {
+          "tag": "ww-geometry-cloze",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 720
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geometry-cloze: ./snippets/geometry-cloze.html",
+      "inputLength": 1644,
+      "elements": [
+        {
+          "tag": "ww-geometry-cloze",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 720
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geometry-cloze: ./snippets/right-triangle.html",
+      "inputLength": 1164,
+      "elements": [
+        {
+          "tag": "ww-geometry-cloze",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 720
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/network@2.0.7",
+      "tags": [
+        "ww-network"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/network: ./widgets/ww-network.*",
+      "inputLength": 25,
+      "elements": [
+        {
+          "tag": "ww-network",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 402
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot set properties of null (setting 'value')\n    at HTMLElement.updated (https://cdn.jsdelivr.net/npm/@webwriter/network@2.0.7/dist/widgets/ww-network.js:49944:69)"
+      ]
+    },
+    {
+      "name": "@webwriter/network: ./snippets/simple-network.html",
+      "inputLength": 7368,
+      "elements": [
+        {
+          "tag": "ww-network",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 402
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/network: ./snippets/triple-network.html",
+      "inputLength": 22440,
+      "elements": [
+        {
+          "tag": "ww-network",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 402
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/network: ./snippets/complex-network.html",
+      "inputLength": 18579,
+      "elements": [
+        {
+          "tag": "ww-network",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 402
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz@1.1.5",
+      "tags": [
+        "webwriter-mark",
+        "webwriter-quiz",
+        "webwriter-task",
+        "webwriter-text",
+        "webwriter-cloze",
+        "webwriter-order",
+        "webwriter-choice",
+        "webwriter-speech",
+        "webwriter-pairing",
+        "webwriter-cloze-gap",
+        "webwriter-task-hint",
+        "webwriter-order-item",
+        "webwriter-choice-item",
+        "webwriter-task-prompt",
+        "webwriter-pairing-item",
+        "webwriter-task-explainer"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/mark.html",
+      "inputLength": 148,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 152
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-mark",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/text.html",
+      "inputLength": 141,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 220
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-text",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 108
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/blank.html",
+      "inputLength": 16,
+      "elements": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/order.html",
+      "inputLength": 215,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 152
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-order",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/choice.html",
+      "inputLength": 219,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 146
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-choice",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 34
+        },
+        {
+          "tag": "webwriter-choice-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 34
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/speech.html",
+      "inputLength": 145,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 96
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-speech",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/beispiel-mark.html",
+      "inputLength": 2698,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 184
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-mark",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 72
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/beispiel-text.html",
+      "inputLength": 684,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 220
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-text",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 108
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/beispiel-order.html",
+      "inputLength": 1573,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 278
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-order",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 166
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/beispiel-choice.html",
+      "inputLength": 1634,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 272
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-task-hint",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-choice",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 160
+        },
+        {
+          "tag": "webwriter-choice-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 34
+        },
+        {
+          "tag": "webwriter-choice-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 34
+        },
+        {
+          "tag": "webwriter-choice-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 34
+        },
+        {
+          "tag": "webwriter-choice-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 34
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/deep-learning-model@1.0.2",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/deep-learning-model: ./widgets/webwriter-model-training.*",
+      "inputLength": 53,
+      "elements": [
+        {
+          "tag": "webwriter-model-training",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 54
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'id')\n    at AiWidgetsReferenceSelect.firstUpdated (https://cdn.jsdelivr.net/npm/@webwriter/deep-learning-model@1.0.2/dist/widgets/webwriter-model-training.js:118873:48)"
+      ]
+    },
+    {
+      "name": "@webwriter/deep-learning-model: ./snippets/MNIST-Image-to-Number.html",
+      "inputLength": 4440943,
+      "elements": [
+        {
+          "tag": "webwriter-feature-engineering",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 576
+        },
+        {
+          "tag": "webwriter-model-designing",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 524
+        },
+        {
+          "tag": "webwriter-model-training",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 54
+        },
+        {
+          "tag": "webwriter-model-prediction",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 431
+        },
+        {
+          "tag": "webwriter-model-evaluation",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 132
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/deep-learning-model: ./widgets/webwriter-model-designing.*",
+      "inputLength": 55,
+      "elements": [
+        {
+          "tag": "webwriter-model-designing",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 524
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'id')\n    at AiWidgetsReferenceSelect.firstUpdated (https://cdn.jsdelivr.net/npm/@webwriter/deep-learning-model@1.0.2/dist/widgets/webwriter-model-designing.js:112437:48)"
+      ]
+    },
+    {
+      "name": "@webwriter/deep-learning-model: ./widgets/webwriter-model-evaluation.*",
+      "inputLength": 57,
+      "elements": [
+        {
+          "tag": "webwriter-model-evaluation",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 88
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'id')\n    at AiWidgetsReferenceSelect.firstUpdated (https://cdn.jsdelivr.net/npm/@webwriter/deep-learning-model@1.0.2/dist/widgets/webwriter-model-evaluation.js:106560:48)",
+        "SyntaxError: Failed to execute 'querySelector' on 'Document': '#' is not a valid selector.\n    at AiWidgetsReferenceSelect.getRefElement (https://cdn.jsdelivr.net/npm/@webwriter/deep-learning-model@1.0.2/dist/widgets/webwriter-model-evaluation.js:106607:21)"
+      ]
+    },
+    {
+      "name": "@webwriter/deep-learning-model: ./widgets/webwriter-model-prediction.*",
+      "inputLength": 57,
+      "elements": [
+        {
+          "tag": "webwriter-model-prediction",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 79
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'id')\n    at AiWidgetsReferenceSelect.firstUpdated (https://cdn.jsdelivr.net/npm/@webwriter/deep-learning-model@1.0.2/dist/widgets/webwriter-model-prediction.js:106562:48)",
+        "SyntaxError: Failed to execute 'querySelector' on 'Document': '#' is not a valid selector.\n    at AiWidgetsReferenceSelect.getRefElement (https://cdn.jsdelivr.net/npm/@webwriter/deep-learning-model@1.0.2/dist/widgets/webwriter-model-prediction.js:106609:21)"
+      ]
+    },
+    {
+      "name": "@webwriter/deep-learning-model: ./widgets/webwriter-feature-engineering.*",
+      "inputLength": 63,
+      "elements": [
+        {
+          "tag": "webwriter-feature-engineering",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/neural-network@1.1.6",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/neural-network: ./snippets/Boston-House-Pricing.html",
+      "inputLength": 142134,
+      "elements": [
+        {
+          "tag": "webwriter-neural-network",
+          "defined": true,
+          "shadow": true,
+          "width": 796,
+          "height": 596
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/neural-network: ./widgets/webwriter-neural-network.*",
+      "inputLength": 53,
+      "elements": [
+        {
+          "tag": "webwriter-neural-network",
+          "defined": true,
+          "shadow": true,
+          "width": 956,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/neural-network: ./snippets/Pima-Indians-Diabetes.html",
+      "inputLength": 153242,
+      "elements": [
+        {
+          "tag": "webwriter-neural-network",
+          "defined": true,
+          "shadow": true,
+          "width": 796,
+          "height": 596
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation@1.0.7",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/neuron.html",
+      "inputLength": 113,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/density.html",
+      "inputLength": 115,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/density/latest/density_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/friction.html",
+      "inputLength": 117,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/friction/latest/friction_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/molarity.html",
+      "inputLength": 117,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/molarity/latest/molarity_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/ohms-law.html",
+      "inputLength": 117,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/ohms-law/latest/ohms-law_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/ph-scale.html",
+      "inputLength": 117,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/ph-scale/latest/ph-scale_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/diffusion.html",
+      "inputLength": 119,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/diffusion/latest/diffusion_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/trig-tour.html",
+      "inputLength": 119,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/trig-tour/latest/trig-tour_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/arithmetic.html",
+      "inputLength": 121,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/arithmetic/latest/arithmetic_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/hookes-law.html",
+      "inputLength": 121,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/hookes-law/latest/hookes-law_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/make-a-ten.html",
+      "inputLength": 121,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/make-a-ten/latest/make-a-ten_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/unit-rates.html",
+      "inputLength": 121,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/unit-rates/latest/unit-rates_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/gases-intro.html",
+      "inputLength": 123,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/gases-intro/latest/gases-intro_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/number-play.html",
+      "inputLength": 123,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/number-play/latest/number-play_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/sound-waves.html",
+      "inputLength": 123,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/sound-waves/latest/sound-waves_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/waves-intro.html",
+      "inputLength": 123,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/waves-intro/latest/waves-intro_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/area-builder.html",
+      "inputLength": 125,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/area-builder/latest/area-builder_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/color-vision.html",
+      "inputLength": 125,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/color-vision/latest/color-vision_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/coulombs-law.html",
+      "inputLength": 125,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/coulombs-law/latest/coulombs-law_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/faradays-law.html",
+      "inputLength": 125,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/faradays-law/latest/faradays-law_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/keplers-laws.html",
+      "inputLength": 125,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/keplers-laws/latest/keplers-laws_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/normal-modes.html",
+      "inputLength": 125,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/normal-modes/latest/normal-modes_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/pendulum-lab.html",
+      "inputLength": 125,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/pendulum-lab/latest/pendulum-lab_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/balancing-act.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/balancing-act/latest/balancing-act_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/beers-law-lab.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/beers-law-lab/latest/beers-law-lab_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/bending-light.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/bending-light/latest/bending-light_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/build-an-atom.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/build-an-atom/latest/build-an-atom_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/collision-lab.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/collision-lab/latest/collision-lab_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/concentration.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/concentration/latest/concentration_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/curve-fitting.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/curve-fitting/latest/curve-fitting_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/quadrilateral.html",
+      "inputLength": 127,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/quadrilateral/latest/quadrilateral_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/gas-properties.html",
+      "inputLength": 129,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/gas-properties/latest/gas-properties_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/graphing-lines.html",
+      "inputLength": 129,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/graphing-lines/latest/graphing-lines_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/number-compare.html",
+      "inputLength": 129,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/number-compare/latest/number-compare_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/under-pressure.html",
+      "inputLength": 129,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/under-pressure/latest/under-pressure_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/build-a-nucleus.html",
+      "inputLength": 131,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/build-a-nucleus/latest/build-a-nucleus_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/fractions-intro.html",
+      "inputLength": 131,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/fractions-intro/latest/fractions-intro_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/john-travoltage.html",
+      "inputLength": 131,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/john-travoltage/latest/john-travoltage_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/molecule-shapes.html",
+      "inputLength": 131,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/molecule-shapes/latest/molecule-shapes_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/my-solar-system.html",
+      "inputLength": 131,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/my-solar-system/latest/my-solar-system_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/ph-scale-basics.html",
+      "inputLength": 131,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/ph-scale-basics/latest/ph-scale-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/vector-addition.html",
+      "inputLength": 131,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/vector-addition/latest/vector-addition_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/build-a-fraction.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/build-a-fraction/latest/build-a-fraction_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/build-a-molecule.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/build-a-molecule/latest/build-a-molecule_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/calculus-grapher.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/calculus-grapher/latest/calculus-grapher_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/fraction-matcher.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/fraction-matcher/latest/fraction-matcher_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/function-builder.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/function-builder/latest/function-builder_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/geometric-optics.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/geometric-optics/latest/geometric-optics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/states-of-matter.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/states-of-matter/latest/states-of-matter_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/wave-on-a-string.html",
+      "inputLength": 133,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/wave-on-a-string/latest/wave-on-a-string_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/energy-skate-park.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/energy-skate-park/latest/energy-skate-park_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/equality-explorer.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/equality-explorer/latest/equality-explorer_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/gravity-force-lab.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/gravity-force-lab/latest/gravity-force-lab_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/greenhouse-effect.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/greenhouse-effect/latest/greenhouse-effect_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/molecule-polarity.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/molecule-polarity/latest/molecule-polarity_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/natural-selection.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/natural-selection/latest/natural-selection_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/projectile-motion.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/projectile-motion/latest/projectile-motion_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/wave-interference.html",
+      "inputLength": 135,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/wave-interference/latest/wave-interference_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/area-model-algebra.html",
+      "inputLength": 137,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/area-model-algebra/latest/area-model-algebra_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/blackbody-spectrum.html",
+      "inputLength": 137,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/blackbody-spectrum/latest/blackbody-spectrum_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/charges-and-fields.html",
+      "inputLength": 137,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/charges-and-fields/latest/charges-and-fields_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/fractions-equality.html",
+      "inputLength": 137,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/fractions-equality/latest/fractions-equality_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/gravity-and-orbits.html",
+      "inputLength": 137,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/gravity-and-orbits/latest/gravity-and-orbits_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/masses-and-springs.html",
+      "inputLength": 137,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/masses-and-springs/latest/masses-and-springs_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/plinko-probability.html",
+      "inputLength": 137,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/plinko-probability/latest/plinko-probability_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/acid-base-solutions.html",
+      "inputLength": 139,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/acid-base-solutions/latest/acid-base-solutions_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/area-model-decimals.html",
+      "inputLength": 139,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/area-model-decimals/latest/area-model-decimals_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/atomic-interactions.html",
+      "inputLength": 139,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/atomic-interactions/latest/atomic-interactions_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/expression-exchange.html",
+      "inputLength": 139,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/expression-exchange/latest/expression-exchange_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/graphing-quadratics.html",
+      "inputLength": 139,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/graphing-quadratics/latest/graphing-quadratics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/molecules-and-light.html",
+      "inputLength": 139,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/molecules-and-light/latest/molecules-and-light_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/capacitor-lab-basics.html",
+      "inputLength": 141,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/capacitor-lab-basics/latest/capacitor-lab-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/fourier-making-waves.html",
+      "inputLength": 141,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/fourier-making-waves/latest/fourier-making-waves_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/number-line-distance.html",
+      "inputLength": 141,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/number-line-distance/latest/number-line-distance_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/number-line-integers.html",
+      "inputLength": 141,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/number-line-integers/latest/number-line-integers_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/ratio-and-proportion.html",
+      "inputLength": 141,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/ratio-and-proportion/latest/ratio-and-proportion_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/resistance-in-a-wire.html",
+      "inputLength": 141,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/resistance-in-a-wire/latest/resistance-in-a-wire_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/proportion-playground.html",
+      "inputLength": 143,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/proportion-playground/latest/proportion-playground_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/rutherford-scattering.html",
+      "inputLength": 143,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/rutherford-scattering/latest/rutherford-scattering_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/center-and-variability.html",
+      "inputLength": 145,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/center-and-variability/latest/center-and-variability_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/mean-share-and-balance.html",
+      "inputLength": 145,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/mean-share-and-balance/latest/mean-share-and-balance_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/molecule-shapes-basics.html",
+      "inputLength": 145,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/molecule-shapes-basics/latest/molecule-shapes-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/number-line-operations.html",
+      "inputLength": 145,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/number-line-operations/latest/number-line-operations_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/area-model-introduction.html",
+      "inputLength": 147,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/area-model-introduction/latest/area-model-introduction_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/fractions-mixed-numbers.html",
+      "inputLength": 147,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/fractions-mixed-numbers/latest/fractions-mixed-numbers_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/function-builder-basics.html",
+      "inputLength": 147,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/function-builder-basics/latest/function-builder-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/geometric-optics-basics.html",
+      "inputLength": 147,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/geometric-optics-basics/latest/geometric-optics-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/states-of-matter-basics.html",
+      "inputLength": 147,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/states-of-matter-basics/latest/states-of-matter-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/energy-forms-and-changes.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/energy-forms-and-changes/latest/energy-forms-and-changes_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/energy-skate-park-basics.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/energy-skate-park-basics/latest/energy-skate-park-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/equality-explorer-basics.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/equality-explorer-basics/latest/equality-explorer-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/forces-and-motion-basics.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/forces-and-motion-basics/latest/forces-and-motion-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/graphing-slope-intercept.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/graphing-slope-intercept/latest/graphing-slope-intercept_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/gravity-force-lab-basics.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/gravity-force-lab-basics/latest/gravity-force-lab-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/isotopes-and-atomic-mass.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/isotopes-and-atomic-mass/latest/isotopes-and-atomic-mass_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/least-squares-regression.html",
+      "inputLength": 149,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/least-squares-regression/latest/least-squares-regression_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/area-model-multiplication.html",
+      "inputLength": 151,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/area-model-multiplication/latest/area-model-multiplication_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/masses-and-springs-basics.html",
+      "inputLength": 151,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/masses-and-springs-basics/latest/masses-and-springs-basics_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/vector-addition-equations.html",
+      "inputLength": 151,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/vector-addition-equations/latest/vector-addition-equations_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/gene-expression-essentials.html",
+      "inputLength": 153,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/gene-expression-essentials/latest/gene-expression-essentials_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/circuit-construction-kit-ac.html",
+      "inputLength": 155,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/circuit-construction-kit-ac/latest/circuit-construction-kit-ac_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/circuit-construction-kit-dc.html",
+      "inputLength": 155,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/circuit-construction-kit-dc/latest/circuit-construction-kit-dc_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/balancing-chemical-equations.html",
+      "inputLength": 157,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/balancing-chemical-equations/latest/balancing-chemical-equations_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/balloons-and-static-electricity.html",
+      "inputLength": 163,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/balloons-and-static-electricity/latest/balloons-and-static-electricity_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/equality-explorer-two-variables.html",
+      "inputLength": 163,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/equality-explorer-two-variables/latest/equality-explorer-two-variables_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/reactants-products-and-leftovers.html",
+      "inputLength": 165,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/reactants-products-and-leftovers/latest/reactants-products-and-leftovers_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/circuit-construction-kit-ac-virtual-lab.html",
+      "inputLength": 179,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/circuit-construction-kit-ac-virtual-lab/latest/circuit-construction-kit-ac-virtual-lab_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/circuit-construction-kit-dc-virtual-lab.html",
+      "inputLength": 179,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/circuit-construction-kit-dc-virtual-lab/latest/circuit-construction-kit-dc-virtual-lab_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/interactive-video@3.0.3",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/interactive-video: ./snippets/Mondlandung.html",
+      "inputLength": 5510063,
+      "elements": [
+        {
+          "tag": "webwriter-interactive-video",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 807
+        },
+        {
+          "tag": "webwriter-video-interaction",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-video-interaction",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'updateBaublePositions')\n    at HTMLElement.updateBaublePositions (https://cdn.jsdelivr.net/npm/@webwriter/interactive-video@3.0.3/dist/widgets/webwriter-interactive-video.js:37280:34)",
+        "ResizeObserver loop completed with undelivered notifications."
+      ]
+    },
+    {
+      "name": "@webwriter/interactive-video: ./widgets/webwriter-interactive-video.*",
+      "inputLength": 59,
+      "elements": [
+        {
+          "tag": "webwriter-interactive-video",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 627
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'updateBaublePositions')\n    at HTMLElement.updateBaublePositions (https://cdn.jsdelivr.net/npm/@webwriter/interactive-video@3.0.3/dist/widgets/webwriter-interactive-video.js:37280:34)"
+      ]
+    },
+    {
+      "name": "@webwriter/automaton@3.0.2",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./snippets/dfa-simple.html",
+      "inputLength": 100,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./snippets/nfa-simple.html",
+      "inputLength": 119,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./snippets/pda-simple.html",
+      "inputLength": 172,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./snippets/dfa-complex.html",
+      "inputLength": 169,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./snippets/nfa-complex.html",
+      "inputLength": 191,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./snippets/pda-complex.html",
+      "inputLength": 199,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./widgets/webwriter-automaton.*",
+      "inputLength": 43,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemdraw@2.1.1",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemdraw: ./widgets/webwriter-periodic-table.*",
+      "inputLength": 53,
+      "elements": [
+        {
+          "tag": "webwriter-periodic-table",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 533
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/branching-scenario@1.2.1",
+      "tags": [
+        "webwriter-gamebook-page",
+        "webwriter-gamebook-popup",
+        "webwriter-gamebook-branch",
+        "webwriter-gamebook-button",
+        "webwriter-branching-scenario",
+        "webwriter-gamebook-branch-button"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/branching-scenario: ./snippets/art-of-europe.html",
+      "inputLength": 28523806,
+      "elements": [
+        {
+          "tag": "webwriter-branching-scenario",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 810
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/branching-scenario: ./widgets/webwriter-branching-scenario.*",
+      "inputLength": 61,
+      "elements": [
+        {
+          "tag": "webwriter-branching-scenario",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 810
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/logic-circuit@1.2.0",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/logic-circuit: ./snippets/halfadder.html",
+      "inputLength": 758,
+      "elements": [
+        {
+          "tag": "webwriter-logic-circuit",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 652
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/logic-circuit: ./snippets/RS-FlipFlop.html",
+      "inputLength": 766,
+      "elements": [
+        {
+          "tag": "webwriter-logic-circuit",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 652
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/logic-circuit: ./widgets/webwriter-logic-circuit.*",
+      "inputLength": 51,
+      "elements": [
+        {
+          "tag": "webwriter-logic-circuit",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 652
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/block-based-code@1.7.3",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/block-based-code: ./snippets/bouncing-dvd.html",
+      "inputLength": 12490,
+      "elements": [
+        {
+          "tag": "webwriter-block-based-code",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 952
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/block-based-code: ./widgets/webwriter-block-based-code.*",
+      "inputLength": 57,
+      "elements": [
+        {
+          "tag": "webwriter-block-based-code",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 952
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra@1.1.0",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra: ./widgets/webwriter-geogebra.*",
+      "inputLength": 41,
+      "elements": [
+        {
+          "tag": "webwriter-geogebra",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 670
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra: ./widgets/webwriter-geogebra-3d.*",
+      "inputLength": 47,
+      "elements": [
+        {
+          "tag": "webwriter-geogebra-3d",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 670
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra: ./widgets/webwriter-geogebra-notes.*",
+      "inputLength": 53,
+      "elements": [
+        {
+          "tag": "webwriter-geogebra-notes",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 670
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra: ./widgets/webwriter-geogebra-classic.*",
+      "inputLength": 57,
+      "elements": [
+        {
+          "tag": "webwriter-geogebra-classic",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 670
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra: ./widgets/webwriter-geogebra-geometry.*",
+      "inputLength": 59,
+      "elements": [
+        {
+          "tag": "webwriter-geogebra-geometry",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 670
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra: ./widgets/webwriter-geogebra-scientific.*",
+      "inputLength": 63,
+      "elements": [
+        {
+          "tag": "webwriter-geogebra-scientific",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 670
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/map@2.2.0",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/map: ./widgets/webwriter-map.*",
+      "inputLength": 31,
+      "elements": [
+        {
+          "tag": "webwriter-map",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/map: ./snippets/Example-Location.html",
+      "inputLength": 132,
+      "elements": [
+        {
+          "tag": "webwriter-map",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemlab@1.0.7",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemlab: ./widgets/webwriter-chemlab.*",
+      "inputLength": 39,
+      "elements": [
+        {
+          "tag": "webwriter-chemlab",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 600
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemlab: ./snippets/Beispiel-Batterie.html",
+      "inputLength": 2557,
+      "elements": [
+        {
+          "tag": "webwriter-chemlab",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 600
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemlab: ./snippets/Beispiel-Titration.html",
+      "inputLength": 1625,
+      "elements": [
+        {
+          "tag": "webwriter-chemlab",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 600
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/word-puzzle@1.0.6",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/word-puzzle: ./snippets/Crossword-Animals.html",
+      "inputLength": 2176,
+      "elements": [
+        {
+          "tag": "webwriter-word-puzzle",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 568
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/word-puzzle: ./widgets/webwriter-word-puzzle.*",
+      "inputLength": 47,
+      "elements": [
+        {
+          "tag": "webwriter-word-puzzle",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 518
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/word-puzzle: ./snippets/Find-The-Words-Fruits.html",
+      "inputLength": 1812,
+      "elements": [
+        {
+          "tag": "webwriter-word-puzzle",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 1200
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/graph@1.0.1",
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/graph: ./widgets/ww-graph.*",
+      "inputLength": 21,
+      "elements": [
+        {
+          "tag": "ww-graph",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 993
+        }
+      ],
+      "errors": [
+        "ResizeObserver loop completed with undelivered notifications."
+      ]
+    },
+    {
+      "name": "@webwriter/quiz: nested components fixture",
+      "inputLength": 759,
+      "elements": [
+        {
+          "tag": "webwriter-quiz",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 433
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 940,
+          "height": 96
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 940,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-task-hint",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-cloze",
+          "defined": true,
+          "shadow": true,
+          "width": 940,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-cloze-gap",
+          "defined": true,
+          "shadow": true,
+          "width": 40,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-task-explainer",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 940,
+          "height": 211
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 940,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-pairing",
+          "defined": true,
+          "shadow": true,
+          "width": 940,
+          "height": 155
+        },
+        {
+          "tag": "webwriter-pairing-item",
+          "defined": true,
+          "shadow": true,
+          "width": 34,
+          "height": 92
+        },
+        {
+          "tag": "webwriter-pairing-item",
+          "defined": true,
+          "shadow": true,
+          "width": 16,
+          "height": 92
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/branching-scenario: nested components fixture",
+      "inputLength": 422,
+      "elements": [
+        {
+          "tag": "webwriter-branching-scenario",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 810
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-branch-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-branch",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "preview": [
+    {
+      "name": "@webwriter/timeline@2.1.1",
+      "tags": [
+        "webwriter-timeline",
+        "webwriter-timeline-event",
+        "webwriter-timeline-event-title",
+        "webwriter-timeline-event-details"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/timeline: ./snippets/women-in-tech.html",
+      "inputLength": 7687,
+      "elements": [
+        {
+          "tag": "webwriter-timeline",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-title",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-timeline-event-details",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "embeds": [
+        {
+          "src": "https://www.youtube.com/embed/aPweFhhXFvY",
+          "sandbox": "allow-scripts",
+          "height": 0
+        },
+        {
+          "src": "https://en.wikipedia.org/wiki/Reduction_(recursion_theory)",
+          "sandbox": "allow-scripts",
+          "height": 0
+        },
+        {
+          "src": "https://player.vimeo.com/video/304869290",
+          "sandbox": "allow-scripts",
+          "height": 0
+        },
+        {
+          "src": "https://www.youtube.com/embed/4-DyVzj-f3c",
+          "sandbox": "allow-scripts",
+          "height": 0
+        },
+        {
+          "src": "https://www.youtube.com/embed/I7FYG-XVgk4",
+          "sandbox": "allow-scripts",
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart@2.1.1",
+      "tags": [
+        "webwriter-flowchart"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/flowchart: ./snippets/Switch.html",
+      "inputLength": 5959,
+      "elements": [
+        {
+          "tag": "webwriter-flowchart",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 432
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/slides@2.3.1",
+      "tags": [
+        "webwriter-slide",
+        "webwriter-slides"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/slides: ./snippets/example.html",
+      "inputLength": 64603,
+      "elements": [
+        {
+          "tag": "webwriter-slides",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 826
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": true,
+          "shadow": true,
+          "width": 1230,
+          "height": 684
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash@1.0.2",
+      "tags": [
+        "webwriter-hash"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./widgets/webwriter-hash.*",
+      "inputLength": 33,
+      "elements": [
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 602
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder@1.0.1",
+      "tags": [
+        "webwriter-website-builder"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/website-builder: ./snippets/flex-starter.html",
+      "inputLength": 11005,
+      "elements": [
+        {
+          "tag": "webwriter-website-builder",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 850
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code@3.0.5",
+      "tags": [
+        "webwriter-code-html",
+        "webwriter-code-java",
+        "webwriter-code-python",
+        "webwriter-code-javascript",
+        "webwriter-code-typescript",
+        "webwriter-code-webassembly"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./snippets/HTML.html",
+      "inputLength": 44,
+      "elements": [
+        {
+          "tag": "webwriter-code-html",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 282
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geometry-cloze@2.4.2",
+      "tags": [
+        "ww-geometry-cloze"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geometry-cloze: ./snippets/polygon.html",
+      "inputLength": 3478,
+      "elements": [
+        {
+          "tag": "ww-geometry-cloze",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 874
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/network@2.0.7",
+      "tags": [
+        "ww-network"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/network: ./widgets/ww-network.*",
+      "inputLength": 25,
+      "elements": [
+        {
+          "tag": "ww-network",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 402
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot set properties of null (setting 'value')\n    at HTMLElement.updated (https://cdn.jsdelivr.net/npm/@webwriter/network@2.0.7/dist/widgets/ww-network.js:49944:69)"
+      ]
+    },
+    {
+      "name": "@webwriter/neural-network@1.1.6",
+      "tags": [
+        "webwriter-neural-network"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/neural-network: ./snippets/Boston-House-Pricing.html",
+      "inputLength": 142134,
+      "elements": [
+        {
+          "tag": "webwriter-neural-network",
+          "defined": true,
+          "shadow": true,
+          "width": 792,
+          "height": 592
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz@1.1.5",
+      "tags": [
+        "webwriter-mark",
+        "webwriter-quiz",
+        "webwriter-task",
+        "webwriter-text",
+        "webwriter-cloze",
+        "webwriter-order",
+        "webwriter-choice",
+        "webwriter-speech",
+        "webwriter-pairing",
+        "webwriter-cloze-gap",
+        "webwriter-task-hint",
+        "webwriter-order-item",
+        "webwriter-choice-item",
+        "webwriter-task-prompt",
+        "webwriter-pairing-item",
+        "webwriter-task-explainer"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/quiz: ./snippets/mark.html",
+      "inputLength": 148,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 104
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-mark",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 16
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/deep-learning-model@1.0.2",
+      "tags": [
+        "webwriter-model-training",
+        "webwriter-model-designing",
+        "webwriter-model-evaluation",
+        "webwriter-model-prediction",
+        "webwriter-feature-engineering"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/deep-learning-model: ./widgets/webwriter-model-training.*",
+      "inputLength": 53,
+      "elements": [
+        {
+          "tag": "webwriter-model-training",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 54
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'id')\n    at AiWidgetsReferenceSelect.firstUpdated (https://cdn.jsdelivr.net/npm/@webwriter/deep-learning-model@1.0.2/dist/widgets/webwriter-model-training.js:118873:48)"
+      ]
+    },
+    {
+      "name": "@webwriter/phet-simulation@1.0.7",
+      "tags": [],
+      "missing": [],
+      "errors": [
+        "CompileError: WebAssembly.compile(): Compiling or instantiating WebAssembly module violates the following Content Security policy directive because 'unsafe-eval' is not an allowed source of script in the following Content Security Policy directive: \"script-src 'nonce-2f19c660-e6f6-4db7-9e2b-13681cf52cd5' 'strict-dynamic'\".\n    at http://127.0.0.1:1235/node_modules/.vite/deps/es-module-lexer.js?v=5af37a97:69:24"
+      ]
+    },
+    {
+      "name": "@webwriter/phet-simulation: ./snippets/neuron.html",
+      "inputLength": 113,
+      "elements": [],
+      "embeds": [
+        {
+          "src": "https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html",
+          "sandbox": "allow-scripts",
+          "height": 150
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/interactive-video@3.0.3",
+      "tags": [
+        "webwriter-interactive-video",
+        "webwriter-video-interaction"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/interactive-video: ./snippets/Mondlandung.html",
+      "inputLength": 5510063,
+      "elements": [
+        {
+          "tag": "webwriter-interactive-video",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 1023
+        },
+        {
+          "tag": "webwriter-video-interaction",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-video-interaction",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": [
+        "TypeError: Cannot read properties of null (reading 'updateBaublePositions')\n    at HTMLElement.updateBaublePositions (https://cdn.jsdelivr.net/npm/@webwriter/interactive-video@3.0.3/dist/widgets/webwriter-interactive-video.js:37280:34)",
+        "ResizeObserver loop completed with undelivered notifications."
+      ]
+    },
+    {
+      "name": "@webwriter/chemdraw@2.1.1",
+      "tags": [
+        "webwriter-periodic-table"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemdraw: ./widgets/webwriter-periodic-table.*",
+      "inputLength": 53,
+      "elements": [
+        {
+          "tag": "webwriter-periodic-table",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 693
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton@3.0.2",
+      "tags": [
+        "webwriter-automaton"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/automaton: ./snippets/dfa-simple.html",
+      "inputLength": 100,
+      "elements": [
+        {
+          "tag": "webwriter-automaton",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/branching-scenario@1.2.1",
+      "tags": [
+        "webwriter-gamebook-page",
+        "webwriter-gamebook-popup",
+        "webwriter-gamebook-branch",
+        "webwriter-gamebook-button",
+        "webwriter-branching-scenario",
+        "webwriter-gamebook-branch-button"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/branching-scenario: ./snippets/art-of-europe.html",
+      "inputLength": 28523806,
+      "elements": [
+        {
+          "tag": "webwriter-branching-scenario",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 793
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 1230,
+          "height": 1635
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 1190,
+          "height": 54
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-page",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-popup",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-gamebook-button",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/logic-circuit@1.2.0",
+      "tags": [
+        "webwriter-logic-circuit"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/logic-circuit: ./snippets/halfadder.html",
+      "inputLength": 758,
+      "elements": [
+        {
+          "tag": "webwriter-logic-circuit",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 652
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/block-based-code@1.7.3",
+      "tags": [
+        "webwriter-block-based-code"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/block-based-code: ./snippets/bouncing-dvd.html",
+      "inputLength": 12490,
+      "elements": [
+        {
+          "tag": "webwriter-block-based-code",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 518
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra@1.1.0",
+      "tags": [
+        "webwriter-geogebra",
+        "webwriter-geogebra-3d",
+        "webwriter-geogebra-notes",
+        "webwriter-geogebra-classic",
+        "webwriter-geogebra-geometry",
+        "webwriter-geogebra-scientific"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/geogebra: ./widgets/webwriter-geogebra.*",
+      "inputLength": 41,
+      "elements": [
+        {
+          "tag": "webwriter-geogebra",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 702
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/map@2.2.0",
+      "tags": [
+        "webwriter-map"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/map: ./widgets/webwriter-map.*",
+      "inputLength": 31,
+      "elements": [
+        {
+          "tag": "webwriter-map",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 500
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemlab@1.0.7",
+      "tags": [
+        "webwriter-chemlab"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/chemlab: ./widgets/webwriter-chemlab.*",
+      "inputLength": 39,
+      "elements": [
+        {
+          "tag": "webwriter-chemlab",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 600
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/word-puzzle@1.0.6",
+      "tags": [
+        "webwriter-word-puzzle"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/word-puzzle: ./snippets/Crossword-Animals.html",
+      "inputLength": 2176,
+      "elements": [
+        {
+          "tag": "webwriter-word-puzzle",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 680
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/graph@1.0.1",
+      "tags": [
+        "ww-graph"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/graph: ./widgets/ww-graph.*",
+      "inputLength": 21,
+      "elements": [
+        {
+          "tag": "ww-graph",
+          "defined": true,
+          "shadow": true,
+          "width": 1248,
+          "height": 721
+        }
+      ],
+      "errors": [
+        "ResizeObserver loop completed with undelivered notifications."
+      ]
+    }
+  ],
+  "hashWithDependencies": [
+    {
+      "name": "@webwriter/hash@1.0.2",
+      "tags": [
+        "webwriter-hash"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./widgets/webwriter-hash.*",
+      "inputLength": 33,
+      "elements": [
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 602
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./snippets/password-pioneers-station-1.html",
+      "inputLength": 6422,
+      "elements": [
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 602
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 0
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./snippets/password-pioneers-station-2.html",
+      "inputLength": 68093,
+      "elements": [
+        {
+          "tag": "webwriter-slides",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 664
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": true,
+          "shadow": true,
+          "width": 942,
+          "height": 522
+        },
+        {
+          "tag": "webwriter-slide",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 0,
+          "height": 0
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 260
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 64
+        },
+        {
+          "tag": "webwriter-text",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 108
+        },
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 318
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 64
+        },
+        {
+          "tag": "webwriter-order",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 166
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        },
+        {
+          "tag": "webwriter-order-item",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 40
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/hash: ./snippets/password-pioneers-station-3.html",
+      "inputLength": 6519,
+      "elements": [
+        {
+          "tag": "webwriter-task",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 220
+        },
+        {
+          "tag": "webwriter-task-prompt",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 24
+        },
+        {
+          "tag": "webwriter-text",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 108
+        },
+        {
+          "tag": "webwriter-hash",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 602
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "codeWithFinalPolicy": [
+    {
+      "name": "@webwriter/code@3.0.5",
+      "tags": [
+        "webwriter-code-html",
+        "webwriter-code-java",
+        "webwriter-code-python",
+        "webwriter-code-javascript",
+        "webwriter-code-typescript",
+        "webwriter-code-webassembly"
+      ],
+      "missing": [],
+      "errors": []
+    },
+    {
+      "name": "@webwriter/code: ./widgets/webwriter-code-javascript.*",
+      "inputLength": 55,
+      "elements": [
+        {
+          "tag": "webwriter-code-javascript",
+          "defined": true,
+          "shadow": true,
+          "width": 960,
+          "height": 99
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "phetHTTPResponses": [
+    {
+      "url": "https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/density/latest/density_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/molarity/latest/molarity_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/ohms-law/latest/ohms-law_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/friction/latest/friction_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/ph-scale/latest/ph-scale_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/trig-tour/latest/trig-tour_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/diffusion/latest/diffusion_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/arithmetic/latest/arithmetic_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/unit-rates/latest/unit-rates_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/hookes-law/latest/hookes-law_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/gases-intro/latest/gases-intro_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/number-play/latest/number-play_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/make-a-ten/latest/make-a-ten_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/area-builder/latest/area-builder_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/waves-intro/latest/waves-intro_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/sound-waves/latest/sound-waves_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/coulombs-law/latest/coulombs-law_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/color-vision/latest/color-vision_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/normal-modes/latest/normal-modes_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/keplers-laws/latest/keplers-laws_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/faradays-law/latest/faradays-law_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/beers-law-lab/latest/beers-law-lab_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/balancing-act/latest/balancing-act_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/pendulum-lab/latest/pendulum-lab_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/bending-light/latest/bending-light_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/collision-lab/latest/collision-lab_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/build-an-atom/latest/build-an-atom_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/curve-fitting/latest/curve-fitting_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/concentration/latest/concentration_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/quadrilateral/latest/quadrilateral_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/gas-properties/latest/gas-properties_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/under-pressure/latest/under-pressure_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/number-compare/latest/number-compare_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/graphing-lines/latest/graphing-lines_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/build-a-nucleus/latest/build-a-nucleus_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/fractions-intro/latest/fractions-intro_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/john-travoltage/latest/john-travoltage_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/molecule-shapes/latest/molecule-shapes_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/vector-addition/latest/vector-addition_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/ph-scale-basics/latest/ph-scale-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/build-a-fraction/latest/build-a-fraction_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/my-solar-system/latest/my-solar-system_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/calculus-grapher/latest/calculus-grapher_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/fraction-matcher/latest/fraction-matcher_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/function-builder/latest/function-builder_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/geometric-optics/latest/geometric-optics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/states-of-matter/latest/states-of-matter_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/build-a-molecule/latest/build-a-molecule_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/wave-on-a-string/latest/wave-on-a-string_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/gravity-force-lab/latest/gravity-force-lab_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/energy-skate-park/latest/energy-skate-park_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/equality-explorer/latest/equality-explorer_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/greenhouse-effect/latest/greenhouse-effect_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/molecule-polarity/latest/molecule-polarity_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/projectile-motion/latest/projectile-motion_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/natural-selection/latest/natural-selection_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/wave-interference/latest/wave-interference_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/area-model-algebra/latest/area-model-algebra_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/charges-and-fields/latest/charges-and-fields_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/blackbody-spectrum/latest/blackbody-spectrum_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/fractions-equality/latest/fractions-equality_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/masses-and-springs/latest/masses-and-springs_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/gravity-and-orbits/latest/gravity-and-orbits_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/plinko-probability/latest/plinko-probability_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/acid-base-solutions/latest/acid-base-solutions_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/atomic-interactions/latest/atomic-interactions_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/area-model-decimals/latest/area-model-decimals_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/graphing-quadratics/latest/graphing-quadratics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/expression-exchange/latest/expression-exchange_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/capacitor-lab-basics/latest/capacitor-lab-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/molecules-and-light/latest/molecules-and-light_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/fourier-making-waves/latest/fourier-making-waves_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/number-line-distance/latest/number-line-distance_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/number-line-integers/latest/number-line-integers_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/ratio-and-proportion/latest/ratio-and-proportion_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/resistance-in-a-wire/latest/resistance-in-a-wire_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/proportion-playground/latest/proportion-playground_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/rutherford-scattering/latest/rutherford-scattering_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/mean-share-and-balance/latest/mean-share-and-balance_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/molecule-shapes-basics/latest/molecule-shapes-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/center-and-variability/latest/center-and-variability_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/area-model-introduction/latest/area-model-introduction_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/fractions-mixed-numbers/latest/fractions-mixed-numbers_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/number-line-operations/latest/number-line-operations_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/states-of-matter-basics/latest/states-of-matter-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/function-builder-basics/latest/function-builder-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/energy-skate-park-basics/latest/energy-skate-park-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/geometric-optics-basics/latest/geometric-optics-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/energy-forms-and-changes/latest/energy-forms-and-changes_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/graphing-slope-intercept/latest/graphing-slope-intercept_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/equality-explorer-basics/latest/equality-explorer-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/forces-and-motion-basics/latest/forces-and-motion-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/gravity-force-lab-basics/latest/gravity-force-lab-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/least-squares-regression/latest/least-squares-regression_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/isotopes-and-atomic-mass/latest/isotopes-and-atomic-mass_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/masses-and-springs-basics/latest/masses-and-springs-basics_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/vector-addition-equations/latest/vector-addition-equations_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/area-model-multiplication/latest/area-model-multiplication_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/circuit-construction-kit-ac/latest/circuit-construction-kit-ac_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/gene-expression-essentials/latest/gene-expression-essentials_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/balancing-chemical-equations/latest/balancing-chemical-equations_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/circuit-construction-kit-dc/latest/circuit-construction-kit-dc_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/equality-explorer-two-variables/latest/equality-explorer-two-variables_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/reactants-products-and-leftovers/latest/reactants-products-and-leftovers_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/balloons-and-static-electricity/latest/balloons-and-static-electricity_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/circuit-construction-kit-ac-virtual-lab/latest/circuit-construction-kit-ac-virtual-lab_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    },
+    {
+      "url": "https://phet.colorado.edu/sims/html/circuit-construction-kit-dc-virtual-lab/latest/circuit-construction-kit-dc-virtual-lab_all.html",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8"
+    }
+  ]
+}

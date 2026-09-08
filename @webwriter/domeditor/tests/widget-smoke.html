@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Widget catalog smoke test</title>
+<style>
+  body { font: 14px system-ui; margin: 1rem; }
+  button { padding: .5rem 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { padding: .4rem; border: 1px solid #ddd; text-align: left; }
+  iframe { width: 100%; height: 600px; border: 1px solid #aaa; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+<h1>Widget catalog smoke test</h1>
+<p>Runs the editor's package loader and insertion command against the public catalog in disposable frames. Optional URL filters: <code>?package=quiz</code> and <code>&member=choice</code>.</p>
+<p>Add <code>&isolated</code> for a fresh frame per member, <code>&default</code> for package-button defaults, and <code>&preview</code> or <code>&export</code> to check standalone rendering.</p>
+<p><code>&fixture</code> exercises nested components; <code>&also=quiz,slides</code> loads additional package dependencies.</p>
+<button id="run">Run catalog smoke test</button>
+<p id="status" role="status">Ready</p>
+<div id="stage"></div>
+<table><thead><tr><th>Package / member</th><th>Result</th></tr></thead><tbody id="results"></tbody></table>
+<details><summary>Machine-readable results</summary><pre id="report"></pre></details>
+<script type="module" src="./widget-smoke.ts"></script>
+</html>

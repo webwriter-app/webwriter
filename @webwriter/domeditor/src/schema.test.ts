@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, beforeAll } from "vitest"
+import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
@@ -410,6 +410,49 @@ describe("Schema methods", () => {
         tagName: "webwriter-broken",
         editingConfig: {content: "missing-child+"},
       }])).toThrow(SyntaxError)
+    })
+  })
+
+  describe("findAlternativeIndex()", () => {
+    const constrainedContainer = (content: string, children: string[]) => {
+      schema.extend({"x-constrained": {content: {terms: content.split(" ").map(selector => ({selector}))}}})
+      const container = el("x-constrained")
+      container.append(...children.map(el))
+      return container
+    }
+
+    it("finds a valid earlier position", () => {
+      const container = constrainedContainer("h1 p", ["p", "h1"])
+      const heading = container.lastChild!
+
+      expect(schema.findAlternativeIndex(container, [heading])).toBe(0)
+    })
+
+    it("finds a valid later position at the end", () => {
+      const container = constrainedContainer("p h1", ["h1", "p"])
+      const heading = container.firstChild!
+
+      expect(schema.findAlternativeIndex(container, [heading])).toBe(1)
+    })
+
+    it("returns null when no position can make the container valid", () => {
+      const container = constrainedContainer("p", ["h1"])
+      const invalid = container.firstChild!
+
+      expect(schema.findAlternativeIndex(container, [invalid])).toBeNull()
+    })
+
+    it("does not pass undefined placeholders to content validation", () => {
+      const container = constrainedContainer("h1 p", ["p", "h1"])
+      const heading = container.lastChild!
+      const validation = vi.spyOn(schema, "isContentValid")
+
+      schema.findAlternativeIndex(container, [heading])
+
+      expect(validation.mock.calls
+        .map(([, content]) => content)
+        .filter((content): content is Node[] => Array.isArray(content))
+        .every(content => content.every(Boolean))).toBe(true)
     })
   })
 

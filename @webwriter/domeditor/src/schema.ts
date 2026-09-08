@@ -312,6 +312,7 @@ export class Schema {
   } as unknown as Record<string, SchemaEntry>
   #schema: Record<string, SchemaEntry> = {}
   #nodes: Record<string, Node> = {}
+  #repairingContent = false
   #groups: Record<string, string[]> = {}
   #createdTypes = new WeakMap<Node, string>()
 
@@ -664,7 +665,9 @@ export class Schema {
 
   /** Whether `node` is valid as the next piece of content under `rule`. Stateful: A successful match decrements the rule's min/max in place, so calling this repeatedly with the same rule object consumes it across a sequence of nodes — which is how isContentValid uses it. Elements with `contenteditable=false` are always valid. Throws for malformed rules. */
   isNodeValid(node: Node, rule=this.getContentRule(node.parentElement!)): boolean {
-    if(node instanceof Element && node.getAttribute("contenteditable") === "false") {
+    if(node instanceof Element && (node.getAttribute("contenteditable") === "false"
+      || this.#repairingContent && (node.localName.includes("-") || node.hasAttribute("is")
+        || this.#getTypeKey(node) === "#unknownelement"))) {
       if(rule && "group" in rule) {
         rule.min = Math.max(0, (rule.min ?? 1) - 1)
         rule.max = Math.max(0, (rule.max ?? 1) - 1)
@@ -909,18 +912,23 @@ export class Schema {
 
   /** Finds the index closest to the content's current position where it could be moved to make the container valid, or null if none exists. */
   findAlternativeIndex(container: Element, content: Node[]) {
-    const newChildNodes = Array.from(container.childNodes).map(n => !content.includes(n)? n: undefined)
-    const sliceStart = newChildNodes.indexOf(undefined)
+    const childNodes = Array.from(container.childNodes)
+    const sliceStart = childNodes.indexOf(content[0] as ChildNode)
+    if(sliceStart < 0 || !content.every(node => childNodes.includes(node as ChildNode))) return null
+
+    const remainingChildNodes = childNodes.filter(node => !content.includes(node))
+    const currentIndex = Math.min(sliceStart, remainingChildNodes.length)
     const validIndices = []
-    for(let i = 0; i < newChildNodes.length; i++) {
-      const contentToTest = [...newChildNodes]
+    for(let i = 0; i <= remainingChildNodes.length; i++) {
+      const contentToTest = [...remainingChildNodes]
       contentToTest.splice(i, 0, ...(content as ChildNode[]))
-      contentToTest.splice(sliceStart, content.length)
-      if(this.isContentValid(container, contentToTest as Node[])) {
+      if(this.isContentValid(container, contentToTest)) {
         validIndices.push(i)
       }
     }
-    return !validIndices.length? null: validIndices.sort(i => Math.abs(sliceStart - i)).at(0)!
+    return !validIndices.length? null: validIndices.sort((a, b) => (
+      Math.abs(currentIndex - a) - Math.abs(currentIndex - b) || a - b
+    )).at(0)!
   }
 
   /** The element's children that are invalid at their position. */
@@ -982,8 +990,17 @@ export class Schema {
   /** Fixes the root element's content (see fixInvalidContent), and with `deep` all descendants too. Non-element roots are ignored. */
   checkAndCorrect(root: Node = document.documentElement, deep=false) {
     if(!(root instanceof Element)) return;
+    // Editing metadata guides commands, but widget-owned DOM may legitimately
+    // differ from it (including whitespace, slots and legacy snippets).
+    if(root.localName.includes("-") || root.hasAttribute("is")) return;
     if(this.#getTypeKey(root) === "#unknownelement") return;
-    this.fixInvalidContent(root)
+    // Opaque content must survive repair even when its package metadata does
+    // not describe this placement. Keep this separate from explicit command
+    // validation, and never signal repair by mutating authored attributes.
+    const repairing = this.#repairingContent
+    this.#repairingContent = true
+    try { this.fixInvalidContent(root) }
+    finally { this.#repairingContent = repairing }
     if(deep) Array.from(root.childNodes).forEach(node => this.checkAndCorrect(node, true));
   }
 

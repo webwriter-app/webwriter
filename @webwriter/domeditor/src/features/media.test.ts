@@ -24,6 +24,14 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it("inserts a package's remote simulation iframe with its sandbox intact", () => {
+    editor.features.manipulation.insertHTML('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html"></iframe>')
+    const frame = document.querySelector("iframe")!
+    expect(frame).not.toBeNull()
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(editor.toHTML(true)).toContain('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" sandbox="allow-scripts"></iframe>')
+  })
+
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
     "node-selects the %s surface and capture-selects its placeholder controls", async media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})

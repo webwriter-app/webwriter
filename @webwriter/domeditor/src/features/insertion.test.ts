@@ -325,6 +325,24 @@ describe("insertion menu", () => {
     }
   })
 
+  it("keeps the typed command and clears markers if snippet preparation fails", async () => {
+    const parse = vi.spyOn(editor, "parseHTMLFragment").mockImplementation(() => { throw new Error("Invalid snippet") })
+    try {
+      typeCommand()
+      typeText("paragraph")
+      const menu = editor.features.insertion.menu
+      await menu.updateComplete
+      menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+      await Promise.resolve()
+
+      expect(editorHTML()).toBe("<p>++paragraph</p>")
+      expect(menu.open).toBe(false)
+      expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+      expect(editor.appendix.querySelector(".◆insertion-trigger")).toBeNull()
+    }
+    finally { parse.mockRestore() }
+  })
+
   it("does not apply a downloaded snippet after its command was replaced", async () => {
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
       section: "Packages",

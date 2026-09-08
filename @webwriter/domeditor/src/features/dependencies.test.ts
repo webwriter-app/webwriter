@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {loadWidgetsMessage} from "../editor-bridge"
-import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {packageCdnUrl, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {DependencyFeature} from "./dependencies"
 
 const demoPackage: WebWriterPackage = {
@@ -128,6 +128,50 @@ describe("DependencyFeature", () => {
     editor.destroy()
   })
 
+  it("treats a missing cached wildcard stylesheet as optional after the bundle settles", async () => {
+    const cachedPackage: WebWriterPackage = {
+      ...demoPackage,
+      name: "@webwriter/cached",
+      version: "1.0.0",
+      scripts: [packageCdnUrl("@webwriter/cached", "1.0.0", "./dist/cached-widget.js")],
+      styles: [packageCdnUrl("@webwriter/cached", "1.0.0", "./dist/cached-widget.css")],
+      members: [{
+        ...demoPackage.members[0],
+        id: "@webwriter/cached@1.0.0:./widgets/widget",
+        packageName: "@webwriter/cached",
+        packageVersion: "1.0.0",
+        exportName: "./widgets/cached-widget.*",
+        tagName: "cached-widget",
+        scriptUrl: packageCdnUrl("@webwriter/cached", "1.0.0", "./dist/cached-widget.js"),
+        styleUrl: packageCdnUrl("@webwriter/cached", "1.0.0", "./dist/cached-widget.css"),
+      }],
+      manifest: {
+        name: "@webwriter/cached",
+        version: "1.0.0",
+        exports: {"./widgets/cached-widget.*": "./dist/cached-widget.*"},
+      },
+    }
+    const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
+    const editor = new DOMEditor()
+    let settled = false
+    const pending = editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: cachedPackage.name, version: cachedPackage.version}],
+      packages: [cachedPackage],
+    }).then(() => { settled = true })
+
+    await vi.waitFor(() => expect(append).toHaveBeenCalled())
+    const assets = append.mock.calls.flat().filter((asset): asset is HTMLElement => asset instanceof HTMLElement)
+    const style = assets.find(asset => asset instanceof HTMLLinkElement)!
+    const script = assets.find(asset => asset instanceof HTMLScriptElement)!
+    style.dispatchEvent(new Event("error"))
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    script.dispatchEvent(new Event("load"))
+    await expect(pending).resolves.toBeUndefined()
+    editor.destroy()
+  })
+
   it("settles a superseded asset barrier", async () => {
     vi.spyOn(document.head, "append").mockImplementation(() => {})
     const editor = new DOMEditor()
@@ -174,9 +218,9 @@ describe("DependencyFeature", () => {
       queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
     })
     const editor = new DOMEditor()
-    const authoredScript = document.createElement("script")
-    authoredScript.src = demoPackage.scripts[0]
-    document.head.appendChild(authoredScript)
+    // Parsing the authored script keeps Happy DOM from trying to fetch its
+    // external URL while still exercising its serialization path.
+    document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script>`)
 
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,

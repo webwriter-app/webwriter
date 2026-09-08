@@ -474,15 +474,20 @@ export class InsertionFeature extends EditorFeature {
       this.close()
       return
     }
-    range.deleteContents()
-    const fragment = this.editor.parseHTMLFragment(html).fragment
+    let fragment: DocumentFragment
+    try {
+      fragment = this.editor.parseHTMLFragment(html).fragment
+    }
+    catch {
+      this.close(false)
+      return
+    }
     const nodes = Array.from(fragment.childNodes)
     if(!nodes.length) {
       this.close()
       return
     }
-    nodes.forEach(node => {
-    })
+    range.deleteContents()
     if(item.kind === "widget" && nodes.length === 1 && isElement(nodes[0])) {
       $.move(range.startContainer, range.startOffset)
       this.editor.features.manipulation.insert(nodes[0])

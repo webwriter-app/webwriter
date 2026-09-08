@@ -204,6 +204,36 @@ describe("DOMEditor stylesheets", () => {
     document.body.replaceChildren()
   })
 
+  it("does not expose temporary schema attributes to registered widgets", () => {
+    const observed: string[] = []
+    class PreparationProbe extends HTMLElement {
+      static observedAttributes = ["contenteditable"]
+
+      attributeChangedCallback(name: string, _oldValue: string | null, newValue: string | null) {
+        observed.push(`${name}=${newValue}`)
+      }
+
+      connectedCallback() {
+        observed.push(`connected=${this.getAttribute("contenteditable")}`)
+      }
+    }
+    customElements.define("ww-preparation-probe", PreparationProbe)
+
+    const inertDocument = new DOMParser().parseFromString(
+      '<ww-preparation-probe contenteditable="true"></ww-preparation-probe>',
+      "text/html",
+    )
+    const source = inertDocument.createDocumentFragment()
+    source.append(...Array.from(inertDocument.body.childNodes))
+    const {fragment} = editor.prepareHTMLFragment(source)
+    expect(fragment.firstElementChild).toHaveAttribute("contenteditable", "true")
+    expect(observed).not.toContain("contenteditable=false")
+
+    document.body.append(fragment)
+    expect(observed).not.toContain("connected=false")
+    document.body.replaceChildren()
+  })
+
   it("hides Chromium's native label for an empty Details element", () => {
     expect(editorStyleString).toMatch(/details:empty\s*\{[\s\S]*?color:\s*transparent;/)
   })

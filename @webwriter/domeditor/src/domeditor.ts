@@ -1383,30 +1383,17 @@ export class DOMEditor {
    * edits retain authored structure and styles. */
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false) {
     this.clearEditingArtifacts(fragment)
-    const removedUnsafeItems = stripActiveContent(fragment, transfer ? {
-      removeAttribute: attribute => ["style", "class"].includes(attribute.name.toLowerCase()),
-    } : {})
+    const removedUnsafeItems = stripActiveContent(fragment, {
+      allowIframes: true,
+      ...(transfer ? {removeAttribute: (attribute: Attr) => ["style", "class"].includes(attribute.name.toLowerCase())} : {}),
+    })
     if(transfer) this.canonizeTransferredContent(fragment)
-    const stagingBody = document.createElement("body")
+    // Keep template contents inert until insertion, after sanitization and
+    // structural repair have finished.
+    const stagingBody = fragment.ownerDocument.createElement("body")
     stagingBody.append(fragment)
-    const atomicElements = Array.from(stagingBody.querySelectorAll("*"))
-      .filter(element => element.localName.includes("-") || element.hasAttribute("is")
-        || this.schema.get(element) === this.schema.get("#unknownelement"))
-      .map(element => ({
-        element,
-        contenteditable: element.getAttribute("contenteditable"),
-      }))
-    atomicElements.forEach(({element}) => element.setAttribute("contenteditable", "false"))
-    try {
-      this.schema.checkAndCorrect(stagingBody, true)
-    }
-    finally {
-      atomicElements.forEach(({element, contenteditable}) => {
-        if(contenteditable === null) element.removeAttribute("contenteditable")
-        else element.setAttribute("contenteditable", contenteditable)
-      })
-    }
-    const prepared = document.createDocumentFragment()
+    this.schema.checkAndCorrect(stagingBody, true)
+    const prepared = stagingBody.ownerDocument.createDocumentFragment()
     prepared.append(...Array.from(stagingBody.childNodes))
     return {fragment: prepared, removedUnsafeItems}
   }

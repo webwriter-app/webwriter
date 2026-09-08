@@ -470,6 +470,7 @@ export class DomEditor extends LitElement {
   private editorReadyPromise: Promise<Window> | null = null
   private editorReadyResolve: ((editorWindow: Window) => void) | null = null
   private editorReadyReject: ((reason: unknown) => void) | null = null
+  private packageLoadPromise: Promise<unknown> | null = null
   private requestSequence = 0
   private packageLoadSequence = 0
   private savedEditorSelection: SelectionBookmark | null = null
@@ -698,7 +699,14 @@ export class DomEditor extends LitElement {
     // also passed through the authenticated bridge, so a document script
     // cannot learn or forge it before editor initialization.
     const nonce = escapeAttribute(this.bridgeNonce)
-    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'none'; style-src-elem 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src *; media-src * data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'`
+    // Installed widget bundles include shader and code compilers. They need
+    // string evaluation, while authored scripts still require the secret nonce.
+    const hasWidgetScripts = this.installedPackages.some(pkg => pkg.scripts.length)
+    const packageEvaluation = hasWidgetScripts ? " 'unsafe-eval'" : ""
+    // Libraries such as CodeMirror create their own style elements inside
+    // widget shadows. They cannot inherit the nonce on their module script.
+    const packageStyles = hasWidgetScripts ? "* data: blob: 'unsafe-inline'" : `'nonce-${nonce}'`
+    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
     const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">`
     // Happy DOM deliberately disables external script execution but reports
     // each attempted iframe load as an uncaught exception. Keep virtual test
@@ -760,7 +768,8 @@ export class DomEditor extends LitElement {
     if(source.head) {
       const policy = source.createElement("meta")
       policy.httpEquiv = "Content-Security-Policy"
-      policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; object-src 'none'; base-uri 'none'; form-action 'none'`
+      const packageEvaluation = this.installedPackages.some(pkg => pkg.scripts.length) ? " 'unsafe-eval'" : ""
+      policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
       source.head.prepend(policy)
       const styles = [...new Set(this.installedPackages.flatMap(pkg => pkg.styles))]
         .map(href => {
@@ -1567,6 +1576,9 @@ export class DomEditor extends LitElement {
     iframe.addEventListener("focus", this.handleEditorFrameFocus)
     iframe.addEventListener("blur", this.handleEditorFrameBlur)
     if(this.editorWindow) {
+      const editorWindow = this.editorWindow
+      const editorReadyResolve = this.editorReadyResolve
+      const editorReadyReject = this.editorReadyReject
       const initializeMessage: InitializeEditorMessage = {
         type: initializeEditorMessage,
         syncUrl: this.syncUrl,
@@ -1597,6 +1609,7 @@ export class DomEditor extends LitElement {
           },
         })
       })
+      this.packageLoadPromise = packageLoad
       this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
       void packageLoad.catch(error => {
         const message = error instanceof Error ? error.message : String(error)
@@ -1604,7 +1617,10 @@ export class DomEditor extends LitElement {
         if(this.installedPackages.some(isLocalResourcePackage)) this.localPackageError = message
         else this.packageError = message
       })
-      this.editorReadyResolve?.(this.editorWindow)
+      void packageLoad.then(
+        () => editorReadyResolve?.(editorWindow),
+        error => editorReadyReject?.(error),
+      )
       this.dirtyTrackingTimer = setTimeout(() => {
         this.dirtyTrackingReady = true
         if(this.dirtyTrackingMutationPending) {
@@ -2100,6 +2116,9 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string) {
+    const reloadError = new Error("The editor iframe was reloaded for a document change")
+    this.editorReadyPromise?.catch(() => {})
+    this.editorReadyReject?.(reloadError)
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
@@ -2107,6 +2126,7 @@ export class DomEditor extends LitElement {
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
     this.editorWindow = null
+    this.packageLoadPromise = null
     this.editorReadyPromise = null
     this.editorReadyResolve = null
     this.editorReadyReject = null
@@ -2119,7 +2139,6 @@ export class DomEditor extends LitElement {
     this.historyDocumentTransitionCount = 0
     this.historyError = ""
     this.frameDocumentHTML = htmlSource
-    const reloadError = new Error("The editor iframe was reloaded for a document change")
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
       abortCleanup?.()
@@ -3256,6 +3275,9 @@ export class DomEditor extends LitElement {
     const snapshot = await this.execute({type: "snapshotState"}) as EditorStateSnapshot
     if(!snapshot || !Array.isArray(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")
     const shouldRefocus = this.isEditorFocused() || this.savedEditorSelection !== null
+    const reloadError = new Error("The editor iframe was reloaded for a package change")
+    this.editorReadyPromise?.catch(() => {})
+    this.editorReadyReject?.(reloadError)
 
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
@@ -3264,11 +3286,11 @@ export class DomEditor extends LitElement {
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
     this.editorWindow = null
+    this.packageLoadPromise = null
     this.editorReadyPromise = null
     this.editorReadyResolve = null
     this.editorReadyReject = null
     this.savedEditorSelection = null
-    const reloadError = new Error("The editor iframe was reloaded for a package change")
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
       abortCleanup?.()
@@ -4488,7 +4510,12 @@ export class DomEditor extends LitElement {
   }
 
   private waitForEditorWindow() {
-    if(this.editorWindow) return Promise.resolve(this.editorWindow)
+    if(this.editorWindow) {
+      const editorWindow = this.editorWindow
+      return this.packageLoadPromise
+        ? this.packageLoadPromise.then(() => editorWindow)
+        : Promise.resolve(editorWindow)
+    }
     if(!this.editorReadyPromise) {
       this.editorReadyPromise = new Promise<Window>((resolve, reject) => {
         this.editorReadyResolve = resolve
@@ -4687,6 +4714,7 @@ export class DomEditor extends LitElement {
     this.documentTree = null
     this.presenceUsers = []
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))
+    this.packageLoadPromise = null
     this.editorReadyPromise = null
     this.editorReadyResolve = null
     this.editorReadyReject = null

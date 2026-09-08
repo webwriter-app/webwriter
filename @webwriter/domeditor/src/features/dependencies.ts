@@ -1,7 +1,7 @@
 import { EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
-import {packageInsertionItems, packageWidgetSchemaDefinitions, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry} from "../packages"
+import {packageCdnUrl, packageInsertionItems, packageWidgetSchemaDefinitions, resolvePackageExport, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
@@ -77,6 +77,14 @@ export class DependencyFeature extends EditorFeature {
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
     this.editor.schema = new Schema()
     this.editor.schema.extendWidgets(widgetDefinitions)
+    // Old cached metadata can still infer CSS that a wildcard export never
+    // published. Only that inferred CSS is optional; explicit assets must load.
+    const inferredStyles = new Set(packages.flatMap(pkg => Object.entries(pkg.manifest?.exports ?? {}).flatMap(([exportName, target]) => {
+      const resolved = resolvePackageExport(target)
+      return exportName.startsWith("./widgets/") && resolved?.endsWith(".*")
+        ? [packageCdnUrl(pkg.name, pkg.version, resolved.slice(0, -1) + "css")]
+        : []
+    })))
 
     this.widgetAssets.forEach(element => element.remove())
     const styles = [...new Set(packages.flatMap(pkg => pkg.styles))].map(href => {
@@ -112,9 +120,12 @@ export class DependencyFeature extends EditorFeature {
         const cancel = () => settle(resolve)
         this.pendingAssetCancellations.add(cancel)
         element.addEventListener("load", () => settle(resolve), {once: true})
-        element.addEventListener("error", () => settle(() => reject(new Error(
-          `${local ? "Local package" : "Package"} ${element instanceof HTMLLinkElement ? "stylesheet" : "script"} failed to load: ${url}`,
-        ))), {once: true})
+        element.addEventListener("error", () => settle(() => {
+          if(element instanceof HTMLLinkElement && inferredStyles.has(url)) resolve()
+          else reject(new Error(
+            `${local ? "Local package" : "Package"} ${element instanceof HTMLLinkElement ? "stylesheet" : "script"} failed to load: ${url}`,
+          ))
+        }), {once: true})
       })
     })
     document.head.append(...this.widgetAssets)
