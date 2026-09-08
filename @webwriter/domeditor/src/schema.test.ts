@@ -851,6 +851,19 @@ describe("Schema methods", () => {
   })
 
   describe("findValidTypesToInsert()", () => {
+    it("includes the summary when resolving insertion positions inside details", () => {
+      document.body.innerHTML = '<details open><summary>Summary</summary><p>Body</p></details>'
+      const details = document.querySelector("details")!
+      for(const offset of [1, 2]) {
+        $.move(details, offset)
+        expect(schema.findValidTypesToInsert()).toContain("p")
+        expect(schema.findValidTypesToInsert()).not.toContain("summary")
+      }
+      $.move(details, 0)
+      expect(schema.findValidTypesToInsert()).toContain("summary")
+      expect(schema.findValidTypesToInsert()).not.toContain("p")
+    })
+
     it("returns the types insertable at the selection", () => {
       document.body.innerHTML = "<p>x</p>"
       $.move(document.body, 1)

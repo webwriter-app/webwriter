@@ -27,6 +27,9 @@ describe("document themes", () => {
     const source = documentTheme("base")!.source
 
     expect(source).toMatch(/details\s*\{[\s\S]*?margin-bottom:/)
+    expect(source).toMatch(/details\s*\{[^}]*?border:\s*var\(--pico-border-width\) solid var\(--pico-muted-border-color\);/)
+    expect(source).toMatch(/details\s*\{[^}]*?padding-inline-start:\s*calc\(var\(--pico-spacing\) \* 1\.5\);/)
+    expect(source).toMatch(/details > summary\s*\{\s*margin-inline-start:\s*calc\(var\(--pico-spacing\) \* -0\.75\);/)
     expect(source).toMatch(/details summary::after\s*\{[\s\S]*?background-image:/)
     expect(source).toMatch(/dialog\s*\{[\s\S]*?border-radius:[\s\S]*?box-shadow:/)
     expect(source).toMatch(/dialog::backdrop\s*\{[\s\S]*?backdrop-filter:[\s\S]*?background-color:/)

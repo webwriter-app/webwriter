@@ -208,9 +208,9 @@ export class SelectionFeature extends EditorFeature {
     return !hasEditingContent(remainder.cloneContents())
   }
 
-  /** Finds an atomic node immediately beside the live caret or the edge of its
+  /** Finds an element immediately beside the live caret or the edge of its
    * containing block, ignoring invisible formatting nodes between siblings. */
-  #adjacentAtomicElement(direction: "backward" | "forward", fromBlockBoundary = false) {
+  #adjacentNavigationElement(direction: "backward" | "forward", fromBlockBoundary = false) {
     const selection = document.getSelection()
     if(!selection?.isCollapsed || !selection.anchorNode) return null
     let node: Node = selection.anchorNode
@@ -239,7 +239,7 @@ export class SelectionFeature extends EditorFeature {
             continue
           }
           if(adjacent.matches(".◆editor-only")) continue
-          return isAtomicEditingElement(adjacent) ? adjacent : null
+          return adjacent
         }
       }
 
@@ -261,13 +261,87 @@ export class SelectionFeature extends EditorFeature {
       $.selectGap(selectedElement, direction === "backward" ? "before" : "after")
     }
     else {
-      let adjacent = this.#adjacentAtomicElement(direction)
+      let adjacent = this.#adjacentNavigationElement(direction)
+      if(adjacent && !isAtomicEditingElement(adjacent)) adjacent = null
       const block = this.#selectionBlock()
       if(!adjacent && block && (vertical || this.#isCaretAtBlockBoundary(block, direction))) {
-        adjacent = this.#adjacentAtomicElement(direction, true)
+        adjacent = this.#adjacentNavigationElement(direction, true)
       }
-      if(!adjacent) return false
+      if(!adjacent || !isAtomicEditingElement(adjacent)) return false
       $.selectElement(adjacent)
+    }
+    this.processSelection()
+    return true
+  }
+
+  /** Visible editing edge of a disclosure. Closed disclosures expose only
+   * their summary; custom elements remain atomic and are never traversed. */
+  #disclosureEdge(node: Node, direction: "backward" | "forward"): Node | null {
+    if(node instanceof Text) return node.textContent?.trim() ? node : null
+    if(!isElement(node) || node.matches("br, [hidden], .◆editor-only") || getComputedStyle(node).display === "none") return null
+    if(Boolean(isAtomicEditingElement(node))) return node
+    if(node.matches("details:not([open])")) {
+      const summary = node.querySelector(":scope > summary")
+      return summary ? this.#disclosureEdge(summary, direction) : node
+    }
+    const children = Array.from(node.childNodes)
+    if(direction === "forward") children.reverse()
+    for(const child of children) {
+      const edge = this.#disclosureEdge(child, direction)
+      if(edge) return edge
+    }
+    return node
+  }
+
+  #atDisclosureEdge(scope: Element, direction: "backward" | "forward", vertical: boolean) {
+    const edge = this.#disclosureEdge(scope, direction)
+    const end = direction === "forward"
+    const offset = edge ? end ? edge instanceof Text ? edge.length : edge.childNodes.length : 0 : 0
+    if(edge === $.anchor && offset === $.anchorOffset) return true
+    if(this.#isCaretAtBlockBoundary(scope, direction)) return true
+    if(!vertical || !$.anchor || !scope.contains($.anchor)) return false
+    if(!edge || typeof Range.prototype.getBoundingClientRect !== "function") return false
+    const boundary = caretRect(edge, offset)
+    const caret = caretRect($.anchor, $.anchorOffset)
+    return caret.height > 0 && boundary.height > 0
+      && Math.abs((end ? caret.bottom : caret.top) - (end ? boundary.bottom : boundary.top)) < 2
+  }
+
+  #navigateDisclosureGap(direction: "backward" | "forward", vertical: boolean) {
+    const selected = $.selectedElement
+    if(selected?.matches("details")) {
+      $.selectGap(selected, direction === "backward" ? "before" : "after")
+      this.processSelection()
+      return true
+    }
+    if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
+    const adjacent = this.#adjacentNavigationElement(direction)
+    if($.detailsGap) {
+      const outer = getContainer($.anchor).closest("details")
+      if(outer?.open && this.#atDisclosureEdge(outer, direction, false)) {
+        $.selectGap(outer, direction === "backward" ? "before" : "after")
+        this.processSelection()
+        return true
+      }
+      if(!adjacent) return this.#isCaretAtBlockBoundary(getDocumentRoot(), direction)
+      const edge = this.#disclosureEdge(adjacent, direction === "forward" ? "backward" : "forward")
+      if(!edge) return false
+      if(isAtomicEditingElement(edge)) $.selectElement(edge)
+      else $.move(edge, direction === "forward" ? 0 : -1)
+    }
+    else {
+      const details = getContainer($.anchor).closest("details")
+      const scope = details?.open ? details : details?.querySelector(":scope > summary")
+      if(details && scope && this.#atDisclosureEdge(scope, direction, vertical)) {
+        $.selectGap(details, direction === "backward" ? "before" : "after")
+      }
+      else {
+        const block = this.#selectionBlock()
+        const neighbor = adjacent ?? (block && this.#atDisclosureEdge(block, direction, vertical)
+          ? this.#adjacentNavigationElement(direction, true) : null)
+        if(!neighbor?.matches("details")) return false
+        $.selectGap(neighbor, direction === "forward" ? "before" : "after")
+      }
     }
     this.processSelection()
     return true
@@ -403,6 +477,18 @@ export class SelectionFeature extends EditorFeature {
 
   readonly #finishDrag = (event: PointerEvent) => {
     if(this.#drag?.pointerId !== undefined && this.#drag.pointerId !== event.pointerId) return
+    const drag = this.#drag
+    if(event.type === "pointerup" && drag && !drag.nativeClick && !drag.moved) {
+      // Chromium can replace a prevented gap click below SUMMARY while
+      // resolving native focus. Keep the position chosen by hit testing;
+      // live Ranges track intervening DOM edits without retaining stale offsets.
+      const root = getDocumentRoot()
+      if(root.contains(drag.anchor.startContainer) && root.contains(drag.focus.startContainer)) {
+        document.body.focus({preventScroll: true})
+        document.getSelection()?.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset,
+          drag.focus.startContainer, drag.focus.startOffset)
+      }
+    }
     const dragging = this.isInDragSelection
     this.#endDrag()
     if(dragging) this.processSelection()
@@ -1085,8 +1171,9 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const placement = !before || nestedListAfter ? "before": "after"
-        const element = placement === "after" ? before : after
+        const detailsGap = $.detailsGap
+        const placement = detailsGap?.placement ?? (!before || nestedListAfter ? "before": "after")
+        const element = detailsGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
           return
         }
@@ -1167,7 +1254,8 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
-        && this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")) {
+        && (this.#navigateDisclosureGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
+          || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
         ev.preventDefault()
       }
       else if(ev.key === "ArrowUp" && ev.altKey) {
@@ -1213,7 +1301,7 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => {
-      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button !== 0) {
+      if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button !== 0) {
         return
       }
       this.#endDrag()
@@ -1246,7 +1334,7 @@ export class SelectionFeature extends EditorFeature {
       }
       else {
         const point = $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target)
-        const nativeClick = (!point || !$.isGapSelection)
+        const nativeClick = (!point || !$.isGapSelection && !point.overrideNative)
           && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null)
         if(!nativeClick) ev.preventDefault()
         this.#beginDrag(ev, nativeClick)
@@ -1255,7 +1343,7 @@ export class SelectionFeature extends EditorFeature {
     },
     "click": ev => {
       this.hasDoubleClicked = false
-      if(ev.button === 2 || $.isElementSelection) {
+      if(this.editor.features.list.isDetailsToggleInteraction(ev) || ev.button === 2 || $.isElementSelection) {
         return
       }
       else if(ev.detail === 2) {

@@ -36,6 +36,23 @@ describe("DOMEditor stylesheets", () => {
     expect(hasExactSelector(stylesheet!, "#◆transform-overlay")).toBe(false)
   })
 
+  it.each([
+    ['<details open><summary></summary><p></p></details>', 1],
+    ['<details open><summary>Heading</summary>\n<!-- keep --><p><br></p></details>', 1],
+    ['<details open><summary></summary><p><b>Body</b></p></details>', 0],
+    ['<details open><summary></summary><p></p><p></p></details>', 0],
+    ['<details open><summary></summary><test-widget></test-widget><p></p></details>', 0],
+    ['<details open><summary><p></p></summary></details>', 0],
+  ] as const)("shows the Details placeholder only in a sole empty body paragraph: %s", (html, count) => {
+    const stylesheet = new CSSStyleSheet()
+    stylesheet.replaceSync(editorStyleString)
+    const rule = Array.from(stylesheet.cssRules).find(rule => (rule as CSSStyleRule).style?.content === '"Details"') as CSSStyleRule
+    expect(rule).toBeDefined()
+    const fixture = document.createElement("div")
+    fixture.innerHTML = html
+    expect(fixture.querySelectorAll(rule.selectorText.replace(/::after$/, ""))).toHaveLength(count)
+  })
+
   it("uses the main-DOM stylesheet to style exposed shadow parts", () => {
     const appendix = editor.appendix
     const overlay = editor.features.transformation.overlay
@@ -144,7 +161,12 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/body::part\(insertion-add\)[\s\S]*?position-anchor:\s*--empty-selected;[\s\S]*?left:\s*anchor\(left\);[\s\S]*?top:\s*anchor\(top\);[\s\S]*?font:\s*inherit;/)
     expect(editorStyleString).toMatch(/body\.◆empty-selected::part\(insertion-add\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)
-    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(br:only-child\)\)::after\s*\{[\s\S]*?content:\s*"Summary";/)
+    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
+    expect(editorStyleString).toMatch(/summary\s*\{\s*cursor:\s*text;/)
+    expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
+    expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
+    expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:is\(:empty, :has\(> br:only-child\)\)::after\s*\{\s*content:\s*"Details";/)
+    expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:has\(> br:only-child\) > br\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toContain("body::part(virtual-list-caret)")
     expect(editorStyleString).toMatch(/html:has\(> body\.◆template-active\),\s*body\.◆template-active\s*\{[\s\S]*?overflow:\s*hidden;/)
     expect(editorStyleString).toMatch(/body\.◆template-active\s*\{[\s\S]*?display:\s*contents;/)
@@ -152,7 +174,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body\.◆template-active:has\(> \[role~="document"\]\.◆element-selected:only-child\)::part\(selection-caret-node\)[\s\S]*?background:\s*rgb\(56 189 248 \/ 6%\);/)
     expect(editorStyleString).not.toContain("template-add")
     expect(editorStyleString).not.toContain('content: "Content"')
-    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(br:only-child\)\)\.◆empty-selected::before[\s\S]*?display:\s*inline-block;[\s\S]*?margin-inline-end:\s*-1px;/)
+    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)\.◆empty-selected::before[\s\S]*?border-inline-start-color:\s*currentColor;/)
+    expect(editorStyleString).toMatch(/@keyframes summary-caret-blink\s*\{\s*50%\s*\{\s*border-inline-start-color:\s*transparent;/)
     expect(editorStyleString).toMatch(/dl > dt:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Term";/)
     expect(editorStyleString).toMatch(/dl > dd:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Description";/)
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)

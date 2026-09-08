@@ -64,6 +64,9 @@ export class ListFeature extends EditorFeature {
       this.openSelectedDetails()
       this.syncVirtualMarker()
     }),
+    pointerdown: event => {
+      if(event.button === 0 && this.detailsToggleSummary(event)) event.preventDefault()
+    },
     click: event => this.handleDetailsClick(event),
     beforeinput: event => this.handleBeforeInput(event),
     compositionstart: () => {
@@ -789,25 +792,78 @@ export class ListFeature extends EditorFeature {
     const focusSummary = getContainer(selection.focusNode).closest("summary")
     if(anchorSummary && anchorSummary === focusSummary && anchorSummary.parentElement === details) return
     details.open = true
+    this.focusEmptyDetails(details)
   }
 
-  /** Native SUMMARY activation toggles from anywhere on its text. In an
-   * editor that makes placing a caret unexpectedly open/close the element, so
-   * retain the native action only in the disclosure-marker hit area. */
-  private handleDetailsClick(event: MouseEvent) {
-    if(!isElement(event.target)) return
+  private detailsSummary(event: MouseEvent) {
+    if(!isElement(event.target)) return null
     const summary = event.target.closest("summary") as HTMLElement | null
-    if(!summary || summary.parentElement?.localName !== "details") return
+    return summary?.parentElement?.localName === "details"
+      && summary.parentElement.querySelector(":scope > summary") === summary ? summary : null
+  }
+
+  isDetailsToggleInteraction(event: MouseEvent) {
+    return Boolean(this.detailsToggleSummary(event))
+  }
+
+  /** Resolve the disclosure hit area from the current DOM and theme for both
+   * pointerdown (selection prevention) and click (activation). */
+  private detailsToggleSummary(event: MouseEvent) {
+    const summary = this.detailsSummary(event)
+    if(!summary) return null
+    // Keyboard and assistive activation has no pointer position.
+    if(event.type === "click" && event.detail === 0 && event.clientX === 0 && event.clientY === 0) return summary
     const rect = summary.getBoundingClientRect()
+    if(event.clientY < rect.top || event.clientY > rect.bottom) return null
+    const style = getComputedStyle(summary)
+    const icon = getComputedStyle(summary, "::after")
+    const pixels = (value: string) => Number.parseFloat(value) || 0
+    // Pico/Base draw a floated ::after chevron instead of a native marker.
+    // Read its current side and size, including RTL and authored padding.
+    const themedMarker = icon.display !== "none" && icon.backgroundImage
+      && icon.backgroundImage !== "none" && (icon.cssFloat === "left" || icon.cssFloat === "right")
     // The native triangle occupies roughly one em. Keep this deliberately
     // narrower than the summary's text inset so clicking its first character
     // cannot be mistaken for disclosure-marker activation.
-    const markerHitWidth = Math.max(16, Number.parseFloat(getComputedStyle(summary).fontSize) * 1.125 || 18)
-    const isRtl = getComputedStyle(summary).direction === "rtl"
-    const inMarker = isRtl
-      ? event.clientX >= rect.right - markerHitWidth
-      : event.clientX <= rect.left + markerHitWidth
-    if(!inMarker) event.preventDefault()
+    const markerHitWidth = themedMarker ? pixels(icon.width)
+      : Math.max(16, pixels(style.fontSize) * 1.125 || 18)
+    const onRight = themedMarker ? icon.cssFloat === "right" : style.direction === "rtl"
+    const edge = onRight
+      ? rect.right - pixels(style.borderRightWidth) - pixels(style.paddingRight)
+      : rect.left + pixels(style.borderLeftWidth) + pixels(style.paddingLeft)
+    const inMarker = onRight
+      ? event.clientX >= edge - markerHitWidth && event.clientX <= edge
+      : event.clientX >= edge && event.clientX <= edge + markerHitWidth
+    return inMarker ? summary : null
+  }
+
+  /** SUMMARY text remains editable. Disclosure activation is handled here so
+   * it never starts text selection and an empty body gets an editing point. */
+  private handleDetailsClick(event: MouseEvent) {
+    if(event.defaultPrevented || event.button !== 0 || !this.detailsSummary(event)) return
+    event.preventDefault()
+    const summary = this.detailsToggleSummary(event)
+    if(!summary) return
+    const details = summary.parentElement as HTMLDetailsElement
+    details.open = !details.open
+    if(details.open) this.focusEmptyDetails(details)
+    else {
+      const selection = document.getSelection()
+      if(selection?.anchorNode && details.contains(selection.anchorNode) && !summary.contains(selection.anchorNode)) {
+        $.move(summary)
+      }
+    }
+  }
+
+  private focusEmptyDetails(details: HTMLDetailsElement) {
+    const summary = details.querySelector(":scope > summary")
+    if(!details.isConnected || !details.open || !summary) return
+    const hasContent = Array.from(details.childNodes).some(node => node !== summary
+      && (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim())))
+    if(hasContent) return
+    const paragraph = document.createElement("p")
+    details.append(paragraph)
+    $.move(paragraph)
   }
 
   private isEmptyTextBlock(block: Element) {

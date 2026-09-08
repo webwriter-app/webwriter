@@ -1,10 +1,20 @@
 // @vitest-environment happy-dom
-import {beforeEach, describe, expect, it} from "vitest"
+import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from "vitest"
 import "happy-dom"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 
 const editor = new DOMEditor()
+
+// Happy DOM toggles DETAILS while bubbling through the element, before the
+// document listener can cancel the click. Browsers run that default action
+// after propagation. These tests exercise the editor's explicit activation.
+let detailsDispatch: ReturnType<typeof vi.spyOn>
+beforeAll(() => {
+  detailsDispatch = vi.spyOn(HTMLDetailsElement.prototype, "dispatchEvent")
+    .mockImplementation(HTMLElement.prototype.dispatchEvent)
+})
+afterAll(() => detailsDispatch.mockRestore())
 
 const cleanHTML = () => editor.toHTML(true)
 
@@ -594,23 +604,173 @@ describe("semantic list editing", () => {
     expect(details.open).toBe(true)
   })
 
-  it("only leaves native Details toggling enabled over the summary chevron", () => {
+  it("only toggles Details over the summary chevron", () => {
     document.body.innerHTML = "<details><summary>Heading</summary></details>"
     const summary = document.querySelector("summary")!
     Object.defineProperty(summary, "getBoundingClientRect", {
       value: () => ({left: 20, right: 220, top: 20, bottom: 40, width: 200, height: 20, x: 20, y: 20, toJSON() { return {} }}),
     })
 
-    const textClick = new MouseEvent("click", {clientX: 120, bubbles: true, cancelable: true})
+    const textClick = new MouseEvent("click", {clientX: 120, clientY: 30, bubbles: true, cancelable: true})
     summary.dispatchEvent(textClick)
-    const firstCharacterClick = new MouseEvent("click", {clientX: 41, bubbles: true, cancelable: true})
+    const firstCharacterClick = new MouseEvent("click", {clientX: 41, clientY: 30, bubbles: true, cancelable: true})
     summary.dispatchEvent(firstCharacterClick)
-    const chevronClick = new MouseEvent("click", {clientX: 25, bubbles: true, cancelable: true})
+    const chevronClick = new MouseEvent("click", {clientX: 25, clientY: 30, bubbles: true, cancelable: true})
     summary.dispatchEvent(chevronClick)
 
     expect(textClick.defaultPrevented).toBe(true)
     expect(firstCharacterClick.defaultPrevented).toBe(true)
-    expect(chevronClick.defaultPrevented).toBe(false)
+    expect(chevronClick.defaultPrevented).toBe(true)
+    expect(document.querySelector("details")!.open).toBe(true)
+  })
+
+  it.each(["left", "right"])("uses the current %s-floated theme chevron, including summary padding", side => {
+    document.body.innerHTML = '<details><summary style="padding: 10px; border: 2px solid; font-size: 16px"><b>Heading</b></summary></details>'
+    const summary = document.querySelector("summary")!
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 200, 40))
+    const computedStyle = window.getComputedStyle.bind(window)
+    const styles = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      if(element === summary && pseudo === "::after") {
+        return {display: "block", backgroundImage: 'url("chevron.svg")', cssFloat: side, width: "16px"} as CSSStyleDeclaration
+      }
+      return computedStyle(element, pseudo)
+    })
+    try {
+      const clickAt = (clientX: number, target: Element = summary) => {
+        const event = new MouseEvent("click", {clientX, clientY: 35, bubbles: true, cancelable: true})
+        const wasOpen = summary.parentElement!.hasAttribute("open")
+        target.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+        return summary.parentElement!.hasAttribute("open") === wasOpen
+      }
+      expect(clickAt(side === "right" ? 200 : 40)).toBe(false)
+      expect(clickAt(side === "right" ? 40 : 200)).toBe(true)
+      expect(clickAt(120, summary.querySelector("b")!)).toBe(true)
+      expect(clickAt(side === "right" ? 215 : 25)).toBe(true)
+      // Removing the icon (e.g. a theme change) restores native marker geometry.
+      styles.mockImplementation((element, pseudo) => computedStyle(element, pseudo))
+      expect(clickAt(40)).toBe(false)
+      expect(clickAt(200)).toBe(true)
+    }
+    finally {
+      styles.mockRestore()
+    }
+  })
+
+  it("keeps RTL marker activation and non-pointer activation available", () => {
+    document.body.innerHTML = '<details><summary style="direction: rtl; padding: 10px">Heading</summary></details>'
+    const summary = document.querySelector("summary")!
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 200, 40))
+    const markerClick = new MouseEvent("click", {clientX: 205, clientY: 30, bubbles: true, cancelable: true})
+    const textClick = new MouseEvent("click", {clientX: 120, clientY: 30, bubbles: true, cancelable: true})
+    const activation = new MouseEvent("click", {bubbles: true, cancelable: true})
+    summary.dispatchEvent(markerClick)
+    expect(document.querySelector("details")!.open).toBe(true)
+    summary.dispatchEvent(textClick)
+    expect(document.querySelector("details")!.open).toBe(true)
+    summary.dispatchEvent(activation)
+    expect(document.querySelector("details")!.open).toBe(false)
+    expect(markerClick.defaultPrevented).toBe(true)
+    expect(textClick.defaultPrevented).toBe(true)
+    expect(activation.defaultPrevented).toBe(true)
+  })
+
+  it("prevents chevron pointerdown and double click from selecting text", () => {
+    document.body.innerHTML = '<p>Keep this selection</p><details><summary>Heading</summary><p>Body</p></details>'
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 2, text, 7)
+    const summary = document.querySelector("summary")!
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 200, 40))
+    const down = new PointerEvent("pointerdown", {clientX: 25, clientY: 30, button: 0, bubbles: true, cancelable: true})
+    summary.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    summary.dispatchEvent(new MouseEvent("click", {clientX: 25, clientY: 30, detail: 2, bubbles: true, cancelable: true}))
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+    expect(document.getSelection()!.focusOffset).toBe(7)
+    expect(document.querySelector("details")!.open).toBe(true)
+  })
+
+  it("does not treat clicks above or below the summary as chevron interactions", () => {
+    document.body.innerHTML = '<details><summary>Heading</summary></details>'
+    const summary = document.querySelector("summary")!
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 200, 40))
+    for(const clientY of [10, 70]) {
+      const event = new MouseEvent("click", {clientX: 25, clientY, bubbles: true, cancelable: true})
+      summary.dispatchEvent(event)
+      expect(editor.features.list.isDetailsToggleInteraction(event)).toBe(false)
+      expect(document.querySelector("details")!.open).toBe(false)
+    }
+  })
+
+  it.each(["", "\n  <!-- keep -->\n"])("opens a summary-only disclosure and focuses one empty paragraph (%j)", extra => {
+    document.body.innerHTML = `<details><summary>Heading</summary>${extra}</details>`
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    summary.click()
+    const paragraph = details.querySelector("p")!
+    expect(details.open).toBe(true)
+    expect(paragraph).not.toBeNull()
+    expect($.anchor).toBe(paragraph)
+    expect($.anchorOffset).toBe(0)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect(cleanHTML()).toBe(`<details open=""><summary>Heading</summary>${extra}<p></p></details>`)
+    summary.click()
+    expect(details.open).toBe(false)
+    summary.click()
+    expect(details.querySelectorAll("p")).toHaveLength(1)
+  })
+
+  it.each(["<p></p>", "<test-widget></test-widget>", "Bare text", "<span></span>"])("preserves existing details content: %s", content => {
+    document.body.innerHTML = `<details><summary>Heading</summary>${content}</details>`
+    const summary = document.querySelector("summary")!
+    const existing = summary.nextSibling
+    $.move(summary.firstChild!, 2)
+    summary.click()
+    expect(summary.nextSibling).toBe(existing)
+    expect(cleanHTML()).toBe(`<details open=""><summary>Heading</summary>${content}</details>`)
+    expect($.anchor).toBe(summary.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("rechecks content added between chevron pointerdown and click", () => {
+    document.body.innerHTML = "<details><summary>Heading</summary></details>"
+    const summary = document.querySelector("summary")!
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 200, 40))
+    summary.dispatchEvent(new PointerEvent("pointerdown", {clientX: 25, clientY: 30, bubbles: true, cancelable: true}))
+    const widget = document.createElement("test-widget")
+    summary.parentElement!.append(widget)
+    summary.click()
+    expect(summary.nextSibling).toBe(widget)
+    expect(document.querySelector("details > p")).toBeNull()
+  })
+
+  it("undoes and redoes opening an empty disclosure with its new paragraph", async () => {
+    document.body.innerHTML = '<details><summary>Heading</summary></details>'
+    $.move(document.querySelector("summary")!.firstChild!, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    document.querySelector("summary")!.click()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(editor.doc.body.toString()).toContain('<details open=""><summary>Heading</summary><p></p></details>')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<details><summary>Heading</summary></details>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<details open=""><summary>Heading</summary><p></p></details>')
+  })
+
+  it("leaves widget shadow interactions inside summaries alone", () => {
+    document.body.innerHTML = "<details><summary><test-widget></test-widget></summary></details>"
+    const widget = document.querySelector("test-widget")!
+    const root = widget.attachShadow({mode: "open"})
+    root.innerHTML = "<button>Widget action</button>"
+    const event = new MouseEvent("click", {clientX: 120, clientY: 30, bubbles: true, composed: true, cancelable: true})
+    root.querySelector("button")!.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
   })
 
   it("lifts a trailing empty paragraph out of Details and keeps its caret", () => {

@@ -1012,7 +1012,7 @@ export class Schema {
     }
     const allChildNodes = Array.from(parent!.childNodes)
     const index = getIndexBefore(range)
-    const content = allChildNodes.slice(0, index)
+    const content = allChildNodes.slice(0, index + 1)
     
     return this.findValidContentTypes(parent, undefined, content)
       .filter(type => this.get(type)?.directlyInsertable !== false)

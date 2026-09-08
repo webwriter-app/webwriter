@@ -1618,6 +1618,59 @@ describe("selection invariants", () => {
     expect(mouse.defaultPrevented).toBe(false)
   })
 
+  it("preserves an internal details gap through native focus changes", () => {
+    document.body.innerHTML = '<p>Before</p><details open><summary>Summary</summary><p>Body</p></details>'
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    const paragraph = details.querySelector("p")!
+    vi.spyOn(details, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 200, 150))
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 110, 180, 20))
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 160, 160, 20))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: document.body, offset: 1} as unknown as CaretPosition)
+    const down = pointer(details, "pointerdown", 80, 150)
+    expect(down.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(details)
+    expect($.anchorOffset).toBe(1)
+    // Native focus can replace even a prevented click below the summary.
+    $.selectRange(document.body.firstChild!.firstChild!, 0)
+    pointer(details, "pointerup", 80, 150)
+    expect($.anchor).toBe(details)
+    expect($.anchorOffset).toBe(1)
+    expect($.isGapSelection).toBe(true)
+    expect(summary).toHaveClass("◆gap-after-selected")
+    expect(editor.schema.findValidTypesToInsert()).toContain("p")
+    details.dispatchEvent(new KeyboardEvent("keydown", {key: "x", bubbles: true, cancelable: true}))
+    expect(details.children).toHaveLength(3)
+    expect($.anchor).toBe(details.children[1])
+  })
+
+  it("keeps the corrected empty paragraph position when clicking the details indentation", () => {
+    document.body.innerHTML = '<details open><summary>Summary</summary><p></p></details>'
+    const details = document.querySelector("details")!
+    const paragraph = details.querySelector("p")!
+    vi.spyOn(details, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 200, 150))
+    vi.spyOn(details.querySelector("summary")!, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 110, 180, 20))
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 160, 160, 20))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: document.body, offset: 0} as unknown as CaretPosition)
+    expect(pointer(details, "pointerdown", 30, 170).defaultPrevented).toBe(true)
+    $.selectRange(document.body, 0)
+    pointer(details, "pointerup", 30, 170)
+    expect($.anchor).toBe(paragraph)
+    expect($.anchorOffset).toBe(0)
+    expect(paragraph).toHaveClass("◆empty-selected")
+  })
+
+  it("does not restore a prevented gap click after pointer cancellation", () => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 0, 10)
+    $.selectRange(paragraph.firstChild!, 3)
+    pointer(paragraph, "pointercancel", 0, 10)
+    pointer(paragraph, "pointerup", 0, 10)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(3)
+  })
+
   it("projects a drag over nested SVG text to the outer graphic boundary", () => {
     const paragraph = textDocument()
     document.body.insertAdjacentHTML("beforeend", '<svg><svg><text>graphic label</text></svg></svg>')
@@ -1760,5 +1813,142 @@ describe("selection invariants", () => {
     expect(feature.isInDragSelection).toBe(false)
     expect(feature.dragAnchor).toBeNull()
     expect(document.body).not.toHaveClass("◆selection-dragging")
+  })
+})
+
+describe("disclosure gap navigation", () => {
+  const press = (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true, ...init})
+    document.dispatchEvent(event)
+    return event
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = '<p>Before</p>\n<details><summary><b>Heading</b></summary><p>Body</p></details>\n<p>After</p>'
+  })
+
+  it.each(["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"])("stops at both sides of a closed disclosure with %s", key => {
+    const details = document.querySelector("details")!
+    const backward = key === "ArrowLeft" || key === "ArrowUp"
+    const text = details.querySelector("b")!.firstChild!
+    $.move(text, backward ? 0 : -1)
+    expect(press(key).defaultPrevented).toBe(true)
+    expect($.detailsGap).toEqual({element: details, placement: backward ? "before" : "after"})
+    expect(details).toHaveClass(backward ? "◆gap-before-selected" : "◆gap-after-selected")
+    expect(details.open).toBe(false)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.appendix.querySelector('[part~="gap-caret"]')).not.toBeNull()
+  })
+
+  it.each(["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"])("stops beside a disclosure when approaching it with %s", key => {
+    const details = document.querySelector("details")!
+    const forward = key === "ArrowRight" || key === "ArrowDown"
+    $.move((forward ? details.previousElementSibling : details.nextElementSibling)!.firstChild!, forward ? -1 : 0)
+    expect(press(key).defaultPrevented).toBe(true)
+    expect($.detailsGap).toEqual({element: details, placement: forward ? "before" : "after"})
+    expect(press(key).defaultPrevented).toBe(true)
+    expect($.anchor).toBe(details.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(forward ? 0 : 7)
+    expect(details.open).toBe(false)
+  })
+
+  it("exits an open disclosure from its last body block and reenters from its following gap", () => {
+    const details = document.querySelector("details")!
+    details.open = true
+    const text = details.querySelector("p")!.firstChild!
+    $.move(text, -1)
+    expect(press("ArrowDown").defaultPrevented).toBe(true)
+    expect($.detailsGap?.placement).toBe("after")
+    expect(press("ArrowUp").defaultPrevented).toBe(true)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(4)
+  })
+
+  it.each(["section", "div", "li", "td"])("paints details gaps among bare text in a %s", tag => {
+    document.body.innerHTML = `<${tag}>Before<details><summary>Heading</summary></details>After</${tag}>`
+    const details = document.querySelector("details")!
+    for(const placement of ["before", "after"] as const) {
+      $.selectGap(details, placement)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(true)
+      expect(details).toHaveClass(`◆gap-${placement}-selected`)
+    }
+  })
+
+  it("crosses nested disclosure boundaries one at a time", () => {
+    document.body.innerHTML = '<details open><summary>Outer</summary><details><summary>Inner</summary></details></details>'
+    const outer = document.querySelector("details")!
+    const inner = outer.querySelector("details")!
+    $.move(inner.querySelector("summary")!.firstChild!, -1)
+    press("ArrowRight")
+    expect($.detailsGap?.element).toBe(inner)
+    press("ArrowRight")
+    expect($.detailsGap?.element).toBe(outer)
+  })
+
+  it("keeps the caret in an outer document gap when there is nowhere farther to move", () => {
+    document.body.innerHTML = '<details><summary>Heading</summary></details>'
+    const details = document.querySelector("details")!
+    $.selectGap(details, "before")
+    expect(press("ArrowUp").defaultPrevented).toBe(true)
+    expect($.detailsGap?.placement).toBe("before")
+    $.selectGap(details, "after")
+    expect(press("ArrowDown").defaultPrevented).toBe(true)
+    expect($.detailsGap?.placement).toBe("after")
+  })
+
+  it("does not intercept ordinary summary editing, shift selection, or stale endpoints", () => {
+    const details = document.querySelector("details")!
+    const text = details.querySelector("b")!.firstChild!
+    $.move(text, 3)
+    expect(press("ArrowRight").defaultPrevented).toBe(false)
+    $.move(text, 0)
+    expect(press("ArrowLeft", {shiftKey: true}).defaultPrevented).toBe(false)
+    details.remove()
+    expect(() => press("ArrowRight")).not.toThrow()
+  })
+
+  it("keeps an empty open body editable instead of turning it into an outer gap", () => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><p></p></details>'
+    const paragraph = document.querySelector("details > p")!
+    $.move(paragraph)
+    feature.processSelection()
+    expect($.isGapSelection).toBe(false)
+    expect(paragraph).toHaveClass("◆empty-selected")
+  })
+
+  it("only exits a multiline summary vertically from its first or last line", () => {
+    document.body.innerHTML = '<details><summary>012345678901234567890123456789</summary></details>'
+    const text = document.querySelector("summary")!.firstChild!
+    const original = Range.prototype.getBoundingClientRect
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {configurable: true, value: function(this: Range) {
+      return new DOMRect(20, 100 + Math.min(2, Math.floor(this.startOffset / 10)) * 20, 1, 20)
+    }})
+    try {
+      $.move(text, 15)
+      expect(press("ArrowUp").defaultPrevented).toBe(false)
+      expect(press("ArrowDown").defaultPrevented).toBe(false)
+      $.move(text, 5)
+      expect(press("ArrowUp").defaultPrevented).toBe(true)
+      expect($.detailsGap?.placement).toBe("before")
+      $.move(text, 25)
+      expect(press("ArrowDown").defaultPrevented).toBe(true)
+      expect($.detailsGap?.placement).toBe("after")
+    }
+    finally {
+      Object.defineProperty(Range.prototype, "getBoundingClientRect", {configurable: true, value: original})
+    }
+  })
+
+  it.each(["before", "after"] as const)("inserts typed content outside details from its %s gap", placement => {
+    const details = document.querySelector("details")!
+    const original = details.innerHTML
+    $.selectGap(details, placement)
+    feature.processSelection()
+    document.body.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "New", bubbles: true, cancelable: true}))
+    const paragraph = placement === "before" ? details.previousElementSibling : details.nextElementSibling
+    expect(paragraph?.textContent).toBe("New")
+    expect(details.innerHTML).toBe(original)
+    expect(details.open).toBe(false)
   })
 })

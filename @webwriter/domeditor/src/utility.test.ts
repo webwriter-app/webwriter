@@ -320,6 +320,143 @@ describe("selectCoords()", () => {
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(0)
   })
+
+  it.each([false, true])("resolves details outer gaps from summary or body hits (open: %s)", open => {
+    setBody(`<p>before</p>\n<details${open ? " open" : ""}><summary>Heading</summary><p>Body</p></details>\n<p>after</p>`)
+    const details = document.querySelector("details")!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 80)
+    const summary = details.querySelector("summary")!.firstChild as Text
+    const body = details.querySelector("p")!.firstChild as Text
+    for(const node of [summary, body, details, document.body]) {
+      mockHitTest(node, node === document.body ? 2 : 0)
+      expect($.pointFromCoords(50, 90)).toEqual({node: document.body, offset: 2})
+      expect($.pointFromCoords(50, 190)).toEqual({node: document.body, offset: 3})
+    }
+  })
+
+  it("keeps closed summary padding outside the disclosure instead of opening its body", () => {
+    setBody('<details><summary>Heading</summary><p>Hidden</p></details>')
+    const details = document.querySelector("details")!
+    const summary = document.querySelector("summary")!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 60)
+    summary.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    mockHitTest(summary.firstChild as Text, 7)
+    expect($.pointFromCoords(50, 145)).toEqual({node: document.body, offset: 1})
+    expect($.pointFromCoords(50, 120)).toEqual({node: summary.firstChild, offset: 7})
+  })
+
+  it("keeps gaps between open disclosure body blocks inside the disclosure", () => {
+    setBody('<details open><summary>Heading</summary><p>A</p><p>B</p></details>')
+    const details = document.querySelector("details")!
+    const paragraph = details.querySelector("p")!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 150)
+    details.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    paragraph.getBoundingClientRect = () => new DOMRect(30, 150, 180, 20)
+    paragraph.nextElementSibling!.getBoundingClientRect = () => new DOMRect(30, 190, 180, 20)
+    mockHitTest(paragraph.firstChild as Text, 1)
+    expect($.pointFromCoords(50, 180)).toEqual({node: details, offset: 2})
+  })
+
+  it("resolves the outermost crossed disclosure boundary for nested details", () => {
+    setBody('<details open><summary>Outer</summary><details><summary>Inner</summary></details></details>')
+    const outer = document.querySelector("details")!
+    const inner = outer.querySelector("details")!
+    outer.getBoundingClientRect = () => new DOMRect(20, 100, 200, 150)
+    inner.getBoundingClientRect = () => new DOMRect(30, 150, 180, 40)
+    mockHitTest(inner.querySelector("summary")!.firstChild as Text, 5)
+    expect($.pointFromCoords(50, 200)).toEqual({node: outer, offset: 2})
+    expect($.pointFromCoords(50, 260)).toEqual({node: document.body, offset: 1})
+  })
+
+  it("keeps bare text content inside details while exposing the bottom padding as an outer gap", () => {
+    setBody('<details open><summary>Heading</summary>Body</details>')
+    const details = document.querySelector("details")!
+    const text = details.lastChild as Text
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 100)
+    details.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true, value: () => new DOMRect(30, 150, 180, 20),
+    })
+    mockHitTest(text, 4)
+    expect($.pointFromCoords(50, 160)).toEqual({node: text, offset: 4})
+    expect($.pointFromCoords(50, 190)).toEqual({node: document.body, offset: 1})
+  })
+
+  it("uses the hit disclosure when native hit testing returns a parent offset near another details", () => {
+    setBody('<details><summary>First</summary></details><details open><summary>Second</summary><p>Body</p></details>')
+    const first = document.querySelector("details")!
+    const second = first.nextElementSibling!
+    first.getBoundingClientRect = () => new DOMRect(20, 100, 200, 50)
+    second.getBoundingClientRect = () => new DOMRect(20, 170, 200, 100)
+    second.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(30, 180, 180, 20)
+    second.querySelector("p")!.getBoundingClientRect = () => new DOMRect(30, 220, 180, 20)
+    mockHitTest(document.body, 1)
+    expect($.pointFromCoords(50, 260, second)).toEqual({node: document.body, offset: 2})
+  })
+
+  it("recovers the nearest internal gaps when the browser reports BODY inside open details", () => {
+    setBody('<details open><summary>Heading</summary><p>A</p><p>B</p></details>')
+    const details = document.querySelector("details")!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 150)
+    details.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    const paragraphs = details.querySelectorAll("p")
+    paragraphs[0].getBoundingClientRect = () => new DOMRect(40, 160, 160, 20)
+    paragraphs[1].getBoundingClientRect = () => new DOMRect(40, 210, 160, 20)
+    for(const offset of [0, 1]) {
+      mockHitTest(document.body, offset)
+      expect($.pointFromCoords(80, 150, details)).toEqual({node: details, offset: 1})
+      expect($.pointFromCoords(80, 190, details)).toEqual({node: details, offset: 2})
+      expect($.pointFromCoords(80, 233, details)).toEqual({node: details, offset: 3})
+      expect($.pointFromCoords(80, 248, details)).toEqual({node: document.body, offset: 1})
+    }
+  })
+
+  it("recovers an empty paragraph's caret when native hit testing misses its interior", () => {
+    setBody('<details open><summary>Heading</summary><p></p></details>')
+    const details = document.querySelector("details")!
+    const paragraph = details.querySelector("p")!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 120)
+    details.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    paragraph.getBoundingClientRect = () => new DOMRect(40, 160, 160, 20)
+    mockHitTest(document.body, 0)
+    expect($.pointFromCoords(80, 170, details)).toEqual({node: paragraph, offset: 0, overrideNative: true})
+  })
+
+  it("retries native caret hit testing inside the closest text block", () => {
+    setBody('<details open><summary>Heading</summary><p>Body</p></details>')
+    const details = document.querySelector("details")!
+    const paragraph = details.querySelector("p")!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 120)
+    details.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    paragraph.getBoundingClientRect = () => new DOMRect(50, 160, 150, 20)
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: (x: number) => (
+      x < 50 ? {offsetNode: document.body, offset: 0} : {offsetNode: paragraph.firstChild, offset: 0}
+    )})
+    expect($.pointFromCoords(40, 170, details)).toEqual({node: paragraph.firstChild, offset: 0, overrideNative: true})
+  })
+
+  it("resolves nested body gaps without entering custom elements", () => {
+    setBody('<details open><summary>Heading</summary><div><p>A</p><test-widget><p>Private</p></test-widget></div></details>')
+    const details = document.querySelector("details")!
+    const wrapper = details.querySelector("div")!
+    const widget = details.querySelector("test-widget")!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 180)
+    details.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    wrapper.getBoundingClientRect = () => new DOMRect(40, 150, 160, 100)
+    wrapper.querySelector("p")!.getBoundingClientRect = () => new DOMRect(40, 150, 160, 20)
+    widget.getBoundingClientRect = () => new DOMRect(40, 210, 160, 40)
+    widget.querySelector("p")!.getBoundingClientRect = () => { throw new Error("Widget content must stay atomic") }
+    mockHitTest(document.body, 0)
+    expect($.pointFromCoords(80, 175, details)).toEqual({node: wrapper, offset: 1})
+    expect($.pointFromCoords(80, 245, details)).toEqual({node: wrapper, offset: 2, overrideNative: true})
+  })
+
+  it("resolves a gap below the final details when native hit testing has no caret", () => {
+    setBody('<details><summary>Heading</summary></details>')
+    document.querySelector("details")!.getBoundingClientRect = () => new DOMRect(20, 100, 200, 50)
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => null})
+    expect($.pointFromCoords(50, 160)).toEqual({node: document.body, offset: 1})
+  })
 })
 
 describe("range", () => {

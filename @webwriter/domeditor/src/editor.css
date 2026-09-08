@@ -1092,40 +1092,60 @@ dialog.◆dialog-editing::backdrop {
   display: none !important;
 }
 
-/* SUMMARY's placeholder follows the native disclosure marker, keeping the
- * caret at the real text start instead of before a generated label. */
-summary:empty::before {
-  content: none;
+summary {
+  cursor: text;
 }
 
-summary:is(:empty, :has(br:only-child))::after {
+summary::after {
+  cursor: pointer;
+}
+
+/* Reserve ::after for theme disclosure icons. The placeholder occupies the
+ * text origin after the native marker, independently of a themed chevron. */
+summary:is(:empty, :has(> br:only-child))::before {
   content: "Summary";
+  visibility: visible;
+  display: inline-block;
   color: darkgray;
   pointer-events: none;
   user-select: none;
+  border-inline-start: 1px solid transparent;
+  margin-inline-start: -1px;
 }
 
 /* Chromium may paint the native caret on the marker side of an empty
  * SUMMARY. This caret participates at the inline content origin—the exact
  * position occupied by real summary text after the disclosure marker. */
-summary:is(:empty, :has(br:only-child)).◆empty-selected {
+summary:is(:empty, :has(> br:only-child)).◆empty-selected {
   caret-color: transparent;
 }
 
-summary:is(:empty, :has(br:only-child)).◆empty-selected::before {
-  content: "";
-  visibility: visible;
-  display: inline-block;
-  box-sizing: border-box;
-  width: 1px;
-  height: 1em;
-  margin-inline-end: -1px;
-  border-inline-start: 1px solid currentColor;
-  vertical-align: -0.125em;
-  animation: blink 1s step-end infinite;
+summary:is(:empty, :has(> br:only-child)).◆empty-selected::before {
+  border-inline-start-color: currentColor;
+  animation: summary-caret-blink 1s step-end infinite;
+}
+
+@keyframes summary-caret-blink {
+  50% { border-inline-start-color: transparent; }
 }
 
 summary:has(> br:only-child) > br {
+  display: none;
+}
+
+/* The empty details body is a sibling of SUMMARY, not its child. */
+details > summary:first-child + p:last-child:is(:empty, :has(> br:only-child))::after {
+  content: "Details";
+  color: darkgray;
+  pointer-events: none;
+  user-select: none;
+}
+
+details > summary:first-child + p:last-child:has(> br:only-child) > br {
+  display: none;
+}
+
+body:has(details > summary:first-child + p:last-child:is(:empty, :has(> br:only-child)).◆empty-selected)::part(insertion-add) {
   display: none;
 }
 

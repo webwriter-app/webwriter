@@ -286,18 +286,93 @@ export class EditingSelection {
   /** Resolves text and structural gaps identically for clicks and drags,
    * without ever installing an intermediate selection inside a widget. */
   static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null) {
-    const {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
+    let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = getDocumentRoot()
-    const point = (node: Node, offset: number) => ({node, offset})
+    let overrideNative = false
+    const point = (node: Node, offset: number) => ({node, offset, ...(overrideNative ? {overrideNative: true} : {})})
     const gap = (element: Element, placement: "before" | "after") => {
       const parent = element.parentNode!
       return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
     }
+    const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
+      && element !== document.documentElement && root.contains(element))
+    const layoutChildren = (element: Element) => Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
+      if(node instanceof Element && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
+      if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
+        const range = document.createRange()
+        range.selectNode(node)
+        return [{node, rect: range.getBoundingClientRect()}]
+      }
+      return []
+    }).filter(({rect}) => rect.bottom > rect.top)
+    // Native hit testing often returns summary text (or hidden body content)
+    // for space outside a disclosure. Resolve its outer edge before looking
+    // for atomic descendants or gaps around individual text blocks.
+    const caretElement = offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
+    const pointerElement = hit ?? (pointerTarget instanceof Element ? pointerTarget
+      : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
+    let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
+    const insideDisclosure = disclosure?.open && root.contains(disclosure)
+      && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
+      && y >= disclosure.getBoundingClientRect().top && y <= disclosure.getBoundingClientRect().bottom ? disclosure : null
+    let disclosureGap: ReturnType<typeof gap> | null = null
+    while(disclosure && root.contains(disclosure)) {
+      const rect = disclosure.getBoundingClientRect()
+      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+        disclosureGap = gap(disclosure, y < rect.top ? "before" : "after")
+      }
+      else if(!disclosureGap && !disclosure.open) {
+        const boxes = layoutChildren(disclosure)
+        if(boxes.length && y < boxes[0].rect.top) disclosureGap = gap(disclosure, "before")
+        else if(boxes.length && y > boxes.at(-1)!.rect.bottom) disclosureGap = gap(disclosure, "after")
+      }
+      disclosure = disclosure.parentElement?.closest("details") ?? null
+    }
+    if(disclosureGap) return disclosureGap
+    if(insideDisclosure) {
+      // Chromium can report BODY even for a click inside an open DETAILS.
+      // Recover from live child geometry rather than treating that parent
+      // offset as an instruction to leave the disclosure.
+      const distance = (rect: DOMRect) => Math.hypot(
+        Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),
+      )
+      let container: Element = insideDisclosure
+      while(true) {
+        const nearest = layoutChildren(container).sort((a, b) => distance(a.rect) - distance(b.rect))[0]
+        if(!nearest) break
+        const {node, rect} = nearest
+        if(y < rect.top || y > rect.bottom) {
+          const outer = insideDisclosure.getBoundingClientRect()
+          const before = y < rect.top
+          if(Math.abs(y - (before ? outer.top : outer.bottom)) < Math.abs(y - (before ? rect.top : rect.bottom))) {
+            return gap(insideDisclosure, before ? "before" : "after")
+          }
+          return node instanceof Element ? gap(node, before ? "before" : "after") : point(node, before ? 0 : node.length)
+        }
+        if(offsetNode && node.contains(offsetNode) && offsetNode !== container) break
+        if(node instanceof Element && !isAtomicEditingElement(node) && layoutChildren(node).length) {
+          container = node
+          continue
+        }
+        const native = document.caretPositionFromPoint(
+          Math.max(rect.left + 1, Math.min(x, rect.right - 1)),
+          Math.max(rect.top + 1, Math.min(y, rect.bottom - 1)),
+        )
+        if(native && node.contains(native.offsetNode)) {
+          offsetNode = native.offsetNode
+          offset = native.offset
+        }
+        else {
+          offsetNode = node
+          offset = node instanceof Text && x > rect.left + rect.width / 2 ? node.length : 0
+        }
+        overrideNative = true
+        break
+      }
+    }
     // Pointer capture retargets moves to BODY. Hit-test the authored stack
     // beneath appendix shields so iframe/audio positions still resolve even
     // when caretPositionFromPoint sees the overlay instead of the media.
-    const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
-      && element !== document.documentElement && root.contains(element))
     const atomic = atomicEditingContainer(hit ?? (pointerTarget instanceof Node ? pointerTarget : null))
       ?? atomicEditingContainer(offsetNode ?? null)
     if(atomic) {
@@ -314,6 +389,10 @@ export class EditingSelection {
     if(!offsetNode) {
       if(firstRootElement && y < firstRootElement.getBoundingClientRect().top) {
         return gap(firstRootElement, "before")
+      }
+      const lastRootElement = root.lastElementChild
+      if(lastRootElement?.matches("details") && y > lastRootElement.getBoundingClientRect().bottom) {
+        return gap(lastRootElement, "after")
       }
       return
     }
@@ -353,7 +432,7 @@ export class EditingSelection {
     }
     if(offsetNode instanceof Element && typeof offset === "number") {
       const gapAddressableElement = (node: Node | null) => isAtomicEditingElement(node)
-        || node instanceof Element && node.matches("table")
+        || node instanceof Element && node.matches("table, details")
       const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
       const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
       const elementAfterCaret = adjacentElement(offsetNode.childNodes, offset, "after")
@@ -376,11 +455,17 @@ export class EditingSelection {
         }
       }
       const beforeRect = atomicBeforeCaret?.getBoundingClientRect()
+      if(atomicBeforeCaret?.matches("details") && beforeRect && beforeRect.height > 0 && y < beforeRect.top) {
+        return gap(atomicBeforeCaret, "before")
+      }
       if(atomicBeforeCaret && beforeRect && (beforeRect.right > beforeRect.left || beforeRect.bottom > beforeRect.top)
         && y > beforeRect.bottom) {
         return gap(atomicBeforeCaret, "after")
       }
       const afterRect = atomicAfterCaret?.getBoundingClientRect()
+      if(atomicAfterCaret?.matches("details") && afterRect && afterRect.height > 0 && y < afterRect.top) {
+        return gap(atomicAfterCaret, "before")
+      }
       if(atomicAfterCaret && afterRect && (afterRect.right > afterRect.left || afterRect.bottom > afterRect.top)
         && y > afterRect.bottom) {
         return gap(atomicAfterCaret, "after")
@@ -429,6 +514,10 @@ export class EditingSelection {
     const hasBoundaryBox = boundaryRect.right > boundaryRect.left || boundaryRect.bottom > boundaryRect.top
     const isAtGap = caretAtEndOrStart && hasBoundaryBox && (y < boundaryRect.top || y > boundaryRect.bottom)
     if(isAtGap) {
+      const details = container.closest("details")
+      if(details && !details.open && container.closest("summary")?.parentElement === details) {
+        return gap(details, isBefore ? "before" : "after")
+      }
       return gap(offsetNode.parentElement!, isBefore? "before": "after")
     }
     return point(offsetNode, offset)
@@ -441,6 +530,7 @@ export class EditingSelection {
 
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
+    if(this.detailsGap) return true
     const root = getDocumentRoot()
     const firstRootElement = root.firstElementChild
     const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
@@ -456,6 +546,18 @@ export class EditingSelection {
       (!Array.from(this.anchor.childNodes).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
         || isRootBoundaryBeforeFirstElement
         || isNestedListBoundary)
+  }
+
+  /** A disclosure boundary is a gap even in a section, table cell, or parent
+   * containing bare text. Formatting whitespace does not change its anchor. */
+  static get detailsGap() {
+    const parent = this.anchor
+    if(!this.isEmpty || !isElement(parent) || !getDocumentRoot().contains(parent) || atomicEditingContainer(parent)) return null
+    const before = adjacentElement(parent.childNodes, this.anchorOffset, "before")
+    const after = adjacentElement(parent.childNodes, this.anchorOffset, "after")
+    if(before?.matches("details")) return {element: before as HTMLDetailsElement, placement: "after" as const}
+    if(after?.matches("details")) return {element: after as HTMLDetailsElement, placement: "before" as const}
+    return null
   }
 
   /** Whether exactly one element is selected (anchored in its parent,
@@ -806,6 +908,7 @@ export function getSelectionFocusBlock(schema: Schema) {
 export function getIndexBefore(range: Range): number {
   let parent = $.anchorContainer
   parent = parent instanceof Text? parent.parentElement!: parent
+  if(range.startContainer === parent) return range.startOffset - 1
   const allChildNodes = Array.from(parent!.childNodes)
   return allChildNodes.findIndex(v => range.comparePoint(v, 0) === 0) - 1
 }

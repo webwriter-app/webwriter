@@ -1709,6 +1709,14 @@ input:not([type=checkbox], [type=radio], [type=range], [type=file])[type=search]
 details {
   display: block;
   margin-bottom: var(--pico-spacing);
+  border: var(--pico-border-width) solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  padding: calc(var(--pico-spacing) * 0.75);
+  padding-inline-start: calc(var(--pico-spacing) * 1.5);
+}
+/* Indent all disclosure content, including bare text, without a wrapper. */
+details > summary {
+  margin-inline-start: calc(var(--pico-spacing) * -0.75);
 }
 details summary {
   line-height: 1rem;
