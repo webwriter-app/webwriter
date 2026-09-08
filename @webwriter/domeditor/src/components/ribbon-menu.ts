@@ -21,7 +21,7 @@ export class RibbonMenu extends LitElement {
       position: absolute;
       top: 39px;
       left: 0;
-      z-index: 0;
+      z-index: 4;
       display: block;
       width: 200px;
       max-width: calc(100% - 1rem);

@@ -8,7 +8,7 @@ import {
 } from "../app-settings"
 import {AppRibbon} from "./ribbon"
 import {SettingsPanel} from "./settings-panel"
-import type {RibbonDrawer} from "./ribbon-drawer"
+import type {RibbonMenu} from "./ribbon-menu"
 
 const shortcutEvent = (shortcut: string) => {
   const parts = shortcut.split("+")
@@ -97,6 +97,9 @@ describe("settings panel", () => {
     ribbon.activeMenu = "File"
     document.body.append(ribbon)
     await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    menu.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: "Settings"}, bubbles: true, composed: true}))
+    await ribbon.updateComplete
     const panel = ribbon.shadowRoot!.querySelector<SettingsPanel>("settings-panel")!
     await panel.updateComplete
     const changed = {
@@ -115,31 +118,48 @@ describe("settings panel", () => {
     expect(ribbon.settings).toEqual(changed)
     expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual(changed)
 
-    panel.shadowRoot!.querySelector<HTMLButtonElement>(".reset-button")!.click()
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".reset-settings-button")!.click()
     await panel.updateComplete
     expect(ribbon.settings).toEqual(defaultAppSettings())
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual(defaultAppSettings())
+    expect(panel.shadowRoot!.querySelector(".status")?.textContent).toContain("Settings reset")
+    expect(ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!.open).toBe(true)
   })
 })
 
-describe("settings drawer", () => {
-  it("stays narrow to the left of File and opens as a pullout", async () => {
+describe("settings dialog", () => {
+  it("opens from the first option in the file menu", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "File"
     document.body.append(ribbon)
     await ribbon.updateComplete
-    const drawers = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonDrawer>(".ribbon-content > ribbon-drawer"))
-    const settings = drawers[0]
-    await settings.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!
 
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Settings", "File", "Sharing", "Metadata"])
-    expect(settings.collapsed).toBe(true)
-    expect(settings.shadowRoot!.querySelector(".summary-label")).not.toBeNull()
-    expect(getComputedStyle(settings.shadowRoot!.querySelector(".summary-label")!).display).toBe("none")
-
-    settings.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
-    await settings.updateComplete
-    expect(settings.hasAttribute("drawer-open")).toBe(true)
-    expect(settings.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.getAttribute("aria-expanded"))
-      .toBe("true")
+    expect(menu.groups[0].buttons[0]).toEqual({label: "Settings"})
+    expect(dialog.open).toBe(false)
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(".item")!.click()
+    await ribbon.updateComplete
+    expect(dialog.open).toBe(true)
+    const panel = dialog.querySelector<SettingsPanel>("settings-panel")!
+    await panel.updateComplete
+    const nav = dialog.querySelector<HTMLElement>("nav")!
+    const main = dialog.querySelector<HTMLElement>("main")!
+    const close = nav.querySelector<HTMLButtonElement>(".settings-close-button")!
+    expect(nav.querySelector("h2")?.textContent).toBe("Settings")
+    expect(close.previousElementSibling?.textContent?.trim()).toBe("Reset settings")
+    expect(close.textContent?.trim()).toBe("")
+    expect(close.querySelector("svg")).not.toBeNull()
+    expect(getComputedStyle(close).borderTopWidth).toBe("0px")
+    expect(main.contains(panel)).toBe(true)
+    expect(main.contains(nav)).toBe(false)
+    expect(getComputedStyle(main).overflowY).toBe("auto")
+    expect(getComputedStyle(dialog).overflow).toBe("hidden")
+    expect(panel.shadowRoot!.querySelector(".settings-header")).toBeNull()
+    expect(panel.shadowRoot!.querySelector(".reset-button")).toBeNull()
+    expect(["", "none"]).toContain(getComputedStyle(panel.shadowRoot!.querySelector(".setting-card")!).borderTopStyle)
+    expect(ribbon.activeMenu).toBe("Start")
+    dialog.close()
+    expect(dialog.open).toBe(false)
   })
 })

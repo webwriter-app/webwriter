@@ -34,6 +34,17 @@ export class DomEditorToolbox extends AppRibbon {
   static styles = css`
     ${AppRibbon.styles}
 
+    .history-timeline {
+      flex-direction: column;
+      height: auto;
+      overflow: visible;
+    }
+
+    .history-version-card {
+      flex: 0 0 auto;
+      min-height: 8rem;
+    }
+
     :host {
       box-sizing: border-box;
       display: block;
@@ -474,7 +485,7 @@ export class DomEditorToolbox extends AppRibbon {
   protected get currentMenuGroups(): RibbonMenuGroup[] {
     if(this.activeTool === "Style") return menuGroups.Style
     if(this.activeTool === "Review") {
-      return menuGroups.Edit.filter(group => group.label === "Comments" || group.label === "Review")
+      return [...menuGroups.Edit.filter(group => group.label === "Comments" || group.label === "Review"), ...menuGroups.History]
     }
     if(this.activeTool === "Develop") return menuGroups.Develop
     if(this.activeTool === "Edit") {
@@ -616,9 +627,18 @@ export class DomEditorToolbox extends AppRibbon {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    if(changed.has("activeTool")) {
+      if(this.activeTool === "Review") {
+        this.dispatchEvent(new Event("history-state-request", {bubbles: true, composed: true}))
+      }
+      else if(changed.get("activeTool") === "Review") {
+        this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))
+      }
+    }
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => {
       drawer.collapsed = false
       drawer.pane = true
+      drawer.inert = this.historyState.preview !== null && drawer.layout !== "history-versions"
     })
   }
 
@@ -688,7 +708,7 @@ export class DomEditorToolbox extends AppRibbon {
           aria-label=${this.activeTool ? `${this.activeTool} tools` : "Toolbox"}
           ?hidden=${this.activeTool === null}
         >
-          <div class="toolbox-pane-content">
+          <div class="toolbox-pane-content" ?inert=${this.historyState.preview !== null && this.activeTool !== "Review"}>
             ${this.activeTool === "Edit" && this.htmlMode
               ? this.renderHTMLSourceEditor()
               : this.activeTool ? this.renderDrawers() : ""}

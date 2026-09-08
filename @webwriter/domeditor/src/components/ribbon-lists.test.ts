@@ -134,7 +134,7 @@ describe("list ribbon drawer", () => {
     )
     await Promise.all([elements.updateComplete, ...buttons.map(button => button.updateComplete)])
 
-    expect(elements.layoutWidths.expanded).toBe(352)
+    expect(elements.layoutWidths.expanded).toBe(356)
     expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridAutoColumns).toBe("3.5rem")
     for(const button of buttons.filter(button => button.label !== "Section")) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()

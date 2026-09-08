@@ -11,7 +11,7 @@ export class FileLabel extends LitElement {
     :host {
       display: block;
       width: fit-content;
-      min-width: 0;
+      min-width: 100px;
       max-width: 500px;
     }
 

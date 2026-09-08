@@ -41,70 +41,20 @@ export class SettingsPanel extends LitElement {
       box-sizing: border-box;
       display: block;
       width: 100%;
-      height: 100%;
       min-height: 0;
       color: #2f3742;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    .settings-panel {
-      box-sizing: border-box;
-      height: 100%;
-      min-height: 0;
-      overflow-x: hidden;
-      overflow-y: auto;
-      padding: 0.75rem 0.85rem 1rem;
-      scrollbar-color: #b8c1cc transparent;
-      scrollbar-width: thin;
-    }
-
-    .settings-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      margin-bottom: 0.75rem;
-    }
-
-    h2,
     h3 {
       margin: 0;
       color: #202a36;
       line-height: 1.2;
     }
 
-    h2 {
-      font-size: 1rem;
-    }
-
     h3 {
       margin: 1.1rem 0 0.45rem;
       font-size: 0.8rem;
-    }
-
-    .reset-button {
-      min-height: 1.8rem;
-      padding: 0.25rem 0.55rem;
-      border: 1px solid #c4ccd6;
-      border-radius: 0.35rem;
-      color: #465465;
-      background: #ffffff;
-      font: inherit;
-      font-size: 0.67rem;
-      cursor: pointer;
-    }
-
-    .reset-button:hover {
-      border-color: #8eb6df;
-      color: #1e4f87;
-      background: #eef4fb;
-    }
-
-    .setting-card {
-      padding: 0.7rem;
-      border: 1px solid #d5dce5;
-      border-radius: 0.5rem;
-      background: #ffffff;
     }
 
     .setting-title {
@@ -130,7 +80,6 @@ export class SettingsPanel extends LitElement {
     .command-icon svg {
       display: block;
       width: 100%;
-      height: 100%;
     }
 
     select {
@@ -272,7 +221,6 @@ export class SettingsPanel extends LitElement {
     }
 
     .shortcut-button:focus-visible,
-    .reset-button:focus-visible,
     select:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: 1px;
@@ -393,7 +341,7 @@ export class SettingsPanel extends LitElement {
       : "Shortcut updated."
   }
 
-  private resetSettings() {
+  resetSettings() {
     this.recordingCommandId = ""
     this.error = ""
     this.message = "Settings reset to their defaults."
@@ -419,11 +367,6 @@ export class SettingsPanel extends LitElement {
     const sections = ["Document", "Editor", "Text", "Insert", "Table", "Graphic"] as const
     return html`
       <div class="settings-panel">
-        <header class="settings-header">
-          <h2>Settings</h2>
-          <button class="reset-button" type="button" @click=${this.resetSettings}>Reset settings</button>
-        </header>
-
         <section class="setting-card" aria-labelledby="language-setting-heading">
           <div id="language-setting-heading" class="setting-title">
             <span class="setting-icon" aria-hidden="true">${ribbonIcon("Language")}</span>

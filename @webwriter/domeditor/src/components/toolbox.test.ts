@@ -360,7 +360,7 @@ describe("toolbox", () => {
     toolButton(toolbox, "Review").click()
     await toolbox.updateComplete
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Review"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Review", "Versions"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
     const review = drawers.find(drawer => drawer.label === "Review")!
     expect(Array.from(review.querySelectorAll<RibbonButton>("ribbon-button"))

@@ -52,7 +52,7 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
-  it("renders the File tab as a rich document label without changing its ribbon", async () => {
+  it("renders the File tab as a rich document label and keeps file actions compact", async () => {
     const {ribbon} = await mountRibbon()
     const saveEvents: string[] = []
     ribbon.addEventListener("ribbon-button-click", event => {
@@ -63,7 +63,7 @@ describe("mark ribbon controls", () => {
 
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
     expect(getComputedStyle(fileTab).width).toBe("fit-content")
-    expect(getComputedStyle(fileTab).minWidth).toBe("min(100px, max(0px, calc(100% - 48px)))")
+    expect(getComputedStyle(fileTab).minWidth).toBe("calc(100px + 19.2px)")
     expect(getComputedStyle(fileTab).maxWidth).toBe("500px")
     const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
     await fileLabel.updateComplete
@@ -71,6 +71,9 @@ describe("mark ribbon controls", () => {
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.tagName).toBe("STRONG")
     expect(fileLabel.shadowRoot!.querySelector(".location-icon")).toBeNull()
     expect(fileLabel.shadowRoot!.querySelector("button")).toBeNull()
+    const fileChevron = fileTab.shadowRoot!.querySelector<HTMLElement>(".file-chevron")!
+    expect(fileChevron).not.toBeNull()
+    expect(fileTab.active).toBe(false)
     const reservedDirtyIndicator = fileLabel.shadowRoot!.querySelector<HTMLElement>(".dirty-indicator")!
     expect(reservedDirtyIndicator.textContent).toBe("*")
     expect(getComputedStyle(reservedDirtyIndicator).visibility).toBe("hidden")
@@ -80,6 +83,7 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(fileTabButton).paddingRight).toBe("0px")
     const fileLabelElement = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-label")!
     expect(["0", "0px"]).toContain(getComputedStyle(fileLabelElement).gap)
+    expect(getComputedStyle(fileLabel).minWidth).toBe("100px")
     expect(getComputedStyle(fileLabelElement).position).toBe("relative")
     const quickActions = fileTab.nextElementSibling as HTMLElement
     expect(quickActions.classList.contains("file-quick-actions")).toBe(true)
@@ -89,15 +93,7 @@ describe("mark ribbon controls", () => {
     expect(quickButtons.every(button => button.compact)).toBe(true)
     expect(quickButtons[0].shadowRoot!.querySelector(".icon-tabler-device-floppy")).not.toBeNull()
     expect(quickButtons[1].shadowRoot!.querySelector(".icon-tabler-share")).not.toBeNull()
-
-    ribbon.activeMenu = "File"
-    await ribbon.updateComplete
-    expect(["#1e4f87", "rgb(30, 79, 135)"]).toContain(
-      getComputedStyle(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!).color,
-    )
-
-    ribbon.activeMenu = "Start"
-    await ribbon.updateComplete
+    expect(ribbon.activeMenu).toBe("Start")
     ribbon.fileDirty = true
     await ribbon.updateComplete
     await fileLabel.updateComplete
@@ -141,7 +137,57 @@ describe("mark ribbon controls", () => {
       new MouseEvent("click", {bubbles: true, composed: true}),
     )
     await ribbon.updateComplete
+    expect(ribbon.activeMenu).toBe("Start")
+    expect(ribbon.menuOpen).toBe(true)
+    expect(fileTab.active).toBe(true)
+  })
+
+  it("toggles the filename dropdown in expanded, collapsed, and preview modes", async () => {
+    const {ribbon} = await mountRibbon()
+    const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
+    const fileName = fileTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!
+    const fileChevron = fileTab.shadowRoot!.querySelector<HTMLElement>(".file-chevron")!
+
+    expect(fileTab.ribbonCollapsed).toBe(true)
+    expect(ribbon.expanded).toBe(true)
+    expect(ribbon.activeMenu).toBe("Start")
+
+    fileName.click()
+    await ribbon.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+    expect(ribbon.expanded).toBe(true)
+    expect(ribbon.activeMenu).toBe("Start")
+    expect(fileTab.active).toBe(true)
+    expect(getComputedStyle(fileChevron).transform).toBe("rotate(225deg)")
+    expect(getComputedStyle(ribbon.shadowRoot!.querySelector("ribbon-menu")!).zIndex).toBe("4")
+
+    fileName.click()
+    await ribbon.updateComplete
+    expect(ribbon.menuOpen).toBe(false)
+    expect(fileTab.active).toBe(false)
+    expect(getComputedStyle(fileChevron).transform).toBe("rotate(45deg)")
+
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    expect(fileTab.ribbonCollapsed).toBe(true)
+    fileName.click()
+    await ribbon.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+    expect(ribbon.activeMenu).toBe("Start")
+    const fileMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await fileMenu.updateComplete
+    expect(fileMenu.groups.map(group => group.label)).toEqual(["File"])
+    expect(fileMenu.groups[0]!.buttons.map(button => typeof button === "string" ? button : button.label))
+      .toEqual(["Settings", "New", "Open", "Save", "Metadata"])
+
+    ribbon.previewActive = true
+    await ribbon.updateComplete
+    expect(ribbon.expanded).toBe(false)
     expect(ribbon.activeMenu).toBe("File")
+    fileName.click()
+    await ribbon.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+    expect(ribbon.previewActive).toBe(true)
   })
 
   it("clips long file names within the File tab instead of growing past its maximum", async () => {
@@ -184,14 +230,14 @@ describe("mark ribbon controls", () => {
     }
   })
 
-  it("animates ribbon collapse and hides its tab indicators", async () => {
+  it("animates ribbon collapse while the File tab stays collapsed", async () => {
     const {ribbon} = await mountRibbon()
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
 
     expect(getComputedStyle(ribbon).transition).toContain("height")
     expect(getComputedStyle(ribbon).transition).toContain("max-height")
     expect(getComputedStyle(ribbon).height).toBe("140px")
-    expect(fileTab.ribbonCollapsed).toBe(false)
+    expect(fileTab.ribbonCollapsed).toBe(true)
 
     ribbon.expanded = false
     await ribbon.updateComplete
@@ -200,8 +246,8 @@ describe("mark ribbon controls", () => {
 
     ribbon.expanded = true
     await ribbon.updateComplete
-    expect(fileTab.ribbonCollapsed).toBe(false)
-    expect(fileTab.hasAttribute("ribbon-collapsed")).toBe(false)
+    expect(fileTab.ribbonCollapsed).toBe(true)
+    expect(fileTab.hasAttribute("ribbon-collapsed")).toBe(true)
   })
 
   it("disables the quick Save button while preview is active", async () => {
@@ -287,7 +333,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Settings", "File", "Sharing", "Metadata"])
+      .toEqual(["File", "Sharing"])
 
     const fileDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="File"]')!
     const fileNameInput = fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')!
@@ -361,6 +407,8 @@ describe("mark ribbon controls", () => {
     const shareMenu = shareButton.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await shareMenu.updateComplete
     expect(shareMenu.noScroll).toBe(true)
+    const shareDocumentActions = Array.from(shareMenu.querySelectorAll<RibbonButton>("ribbon-button"))
+    expect(shareDocumentActions.map(button => button.label)).toEqual(["Print", "Download"])
     expect(shareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
       .toBe("https://webwriter.app/share/placeholder")
     expect(Array.from(shareMenu.querySelectorAll("button")).map(button => button.getAttribute("aria-label")))

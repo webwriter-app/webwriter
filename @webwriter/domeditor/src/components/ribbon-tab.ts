@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit"
+import { LitElement, css, html, nothing } from "lit"
 import "./file-label"
 
 /** A selectable top-level tab in the editor ribbon. */
@@ -22,53 +22,23 @@ export class RibbonTab extends LitElement {
 
     :host([label="File"]) {
       width: fit-content;
-      min-width: 100px;
+      min-width: calc(100px + 1.2rem);
       max-width: 500px;
     }
 
-    :host([label="File"][active])::before,
-    :host([label="File"][active])::after,
-    :host([label="File"]:hover)::before,
-    :host([label="File"]:hover)::after {
-      content: "";
-      position: absolute;
-      left: calc(50% - 0.575rem);
-      bottom: -1px;
-      width: 0;
-      height: 0;
-      pointer-events: none;
-      transform: translateX(-50%);
+    .file-chevron {
+      flex: 0 0 auto;
+      width: 0.3rem;
+      height: 0.3rem;
+      margin: 0 0.5rem 0.15rem 0.25rem;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg);
+      transition: transform 120ms ease;
     }
 
-    :host([label="File"][active])::before {
-      border-right: 8px solid transparent;
-      border-bottom: 8px solid var(--ribbon-area-border, #d8dee6);
-      border-left: 8px solid transparent;
-    }
-
-    :host([label="File"][active])::after {
-      z-index: 1;
-      border-right: 7px solid transparent;
-      border-bottom: 7px solid var(--ribbon-area-background, #f2f2f2);
-      border-left: 7px solid transparent;
-    }
-
-    :host([label="File"]:hover)::before {
-      border-right: 8px solid transparent;
-      border-bottom: 8px solid #e8eef5;
-      border-left: 8px solid transparent;
-    }
-
-    :host([label="File"]:hover)::after {
-      z-index: 1;
-      border-right: 7px solid transparent;
-      border-bottom: 7px solid var(--ribbon-area-background, #f2f2f2);
-      border-left: 7px solid transparent;
-    }
-
-    :host([label="File"][ribbon-collapsed])::before,
-    :host([label="File"][ribbon-collapsed])::after {
-      display: none;
+    :host([active]) .file-chevron {
+      transform: rotate(225deg);
     }
 
     button {
@@ -135,7 +105,11 @@ export class RibbonTab extends LitElement {
       z-index: 1;
     }
 
-    button:focus-visible {
+    :host([label="File"]) button:focus {
+      outline: none;
+    }
+
+    :host(:not([label="File"])) button:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
     }
@@ -164,8 +138,10 @@ export class RibbonTab extends LitElement {
     return html`
       <button
         type="button"
-        role="tab"
-        aria-selected=${this.active}
+        role=${isFileTab ? "button" : "tab"}
+        aria-selected=${isFileTab ? nothing : this.active}
+        aria-haspopup=${isFileTab ? "menu" : nothing}
+        aria-expanded=${isFileTab ? this.active : nothing}
         @pointerdown=${this.handleFilePointer}
         @mousedown=${this.handleFilePointer}
         @click=${this.select}
@@ -174,6 +150,7 @@ export class RibbonTab extends LitElement {
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
         ></file-label>
+        <span class="file-chevron" aria-hidden="true"></span>
       ` : this.label}</button>
     `
   }

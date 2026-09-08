@@ -1679,24 +1679,19 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const historyButtons = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".history-button"))
 
-    expect(historyButtons.map(button => button.getAttribute("aria-label"))).toEqual([
-      "Undo",
-      "History",
-      "Redo",
-    ])
+    expect(historyButtons.map(button => button.getAttribute("aria-label"))).toEqual(["Undo", "Redo"])
     expect(historyButtons[0].querySelector(".icon-tabler-arrow-back-up")).not.toBeNull()
-    expect(historyButtons[1].querySelector(".icon-tabler-circle-dot")).not.toBeNull()
-    expect(historyButtons[2].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
-    expect(historyButtons[2].parentElement?.nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
+    expect(historyButtons[1].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
+    expect(historyButtons[1].parentElement?.nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
 
     historyButtons[0].click()
-    historyButtons[2].click()
+    historyButtons[1].click()
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "undo"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
   })
 
-  it("opens the History ribbon with full-height version cards and card restore actions", async () => {
+  it("opens Review in the toolbox with version cards and card restore actions", async () => {
     const {editor} = await mountEditor()
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
@@ -1741,29 +1736,19 @@ describe("DomEditor.execute()", () => {
       return state
     })
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    const historyButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="History"]')!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
 
-    historyButton.click()
+    toolbox.selectTool("Review")
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
-    await ribbon.updateComplete
+    await toolbox.updateComplete
 
-    expect(ribbon.activeMenu).toBe("History")
-    expect(historyButton.hasAttribute("active")).toBe(true)
-    expect(historyButton.getAttribute("aria-pressed")).toBe("true")
-    expect(Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Versions"])
-    const ribbonStyles = AppRibbon.styles.toString()
-    expect(ribbonStyles).toContain(".history-tab-button[active]::before")
-    expect(ribbonStyles).toContain("--ribbon-compact-bar-height: 24px")
-    expect(ribbonStyles).toContain("height: var(--ribbon-compact-bar-height)")
-    expect(ribbonStyles).toContain("background: transparent")
-    expect(ribbonStyles).toContain("padding: 0.35rem 0")
-    expect(ribbonStyles).toContain(".history-version-card[data-after-current]")
-    expect(ribbonStyles).toContain("filter: grayscale(0.8)")
-    expect(ribbon.shadowRoot!.querySelector(".history-change-panel")).toBeNull()
-    expect(ribbon.shadowRoot!.querySelector(".history-comments-panel")).toBeNull()
+    expect(toolbox.activeTool).toBe("Review")
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer")).map(drawer => drawer.getAttribute("label")))
+      .toEqual(["Comments", "Review", "Versions"])
+    expect(toolbox.shadowRoot!.querySelector(".history-change-panel")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".history-comments-panel")).toBeNull()
 
-    const versionCards = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
+    const versionCards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
     expect(versionCards).toHaveLength(2)
     expect(versionCards[0].querySelector(".history-checkpoint-label")?.textContent).toBe(
       `${new Intl.DateTimeFormat(undefined, {hour: "numeric", minute: "2-digit"}).format(new Date(earlierTimestamp))} · ${new Intl.DateTimeFormat(undefined, {dateStyle: "medium"}).format(new Date(earlierTimestamp))}`,
@@ -1779,15 +1764,14 @@ describe("DomEditor.execute()", () => {
       type: "previewVersionCheckpoint",
       checkpointId: "earlier",
     }))
-    await ribbon.updateComplete
-    const restore = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(
+    await toolbox.updateComplete
+    const restore = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(
       '.history-card-restore-button[data-checkpoint-id="earlier"]',
     )!
     await vi.waitFor(() => expect(restore.disabled).toBe(false))
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Redo"]')!.disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Preview"]')!.disabled).toBe(true)
-    expect(ribbon.shadowRoot!.querySelector<HTMLElement>("#ribbon-content")!.inert).toBe(false)
 
     versionCards[1].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
@@ -1806,10 +1790,10 @@ describe("DomEditor.execute()", () => {
     restore.click()
     expect(execute).toHaveBeenCalledWith({type: "revertVersionCheckpoint", checkpointId: "earlier"})
     await vi.waitFor(() => expect(
-      ribbon.shadowRoot!.querySelector('.history-version-card[data-after-current]'),
+      toolbox.shadowRoot!.querySelector('.history-version-card[data-after-current]'),
     ).not.toBeNull())
-    await ribbon.updateComplete
-    const restoredCards = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
+    await toolbox.updateComplete
+    const restoredCards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
     expect(restoredCards).toHaveLength(2)
     expect(restoredCards[0].hasAttribute("data-after-current")).toBe(false)
     expect(restoredCards[1].dataset.afterCurrent).toBe("")
@@ -1819,7 +1803,7 @@ describe("DomEditor.execute()", () => {
 
     scrollIntoView.mockClear()
     const newestTimestamp = Date.UTC(2026, 7, 19, 15, 5)
-    ribbon.historyState = {
+    toolbox.historyState = {
       ...restoredState,
       checkpoints: [{
         id: "newest",
@@ -1830,15 +1814,19 @@ describe("DomEditor.execute()", () => {
         commentCount: 0,
       }, ...restoredState.checkpoints],
     }
-    await ribbon.updateComplete
-    const newestCard = ribbon.shadowRoot!.querySelector<HTMLElement>(
+    await toolbox.updateComplete
+    const newestCard = toolbox.shadowRoot!.querySelector<HTMLElement>(
       '.history-version-card[data-checkpoint-id="newest"]',
     )!
     expect(newestCard).toBe(restoredCards[1].nextElementSibling)
     expect(scrollIntoView).toHaveBeenCalledWith({behavior: "smooth", block: "nearest", inline: "nearest"})
     expect(scrollIntoView.mock.instances.at(-1)).toBe(newestCard)
 
-    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    toolbox.selectTool("Style")
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
+    toolbox.selectTool("Review")
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
+    toolbox.selectTool(null)
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
   })
 
@@ -2352,8 +2340,9 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await ribbon.updateComplete
 
-    expect((editor as unknown as {previewActive: boolean}).previewActive).toBe(false)
+    expect((editor as unknown as {previewActive: boolean}).previewActive).toBe(true)
     expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(1)
+    expect(ribbon.activeMenu).toBe("File")
   })
 
   it("keeps repeated preview toggles on the same ribbon animation path", async () => {

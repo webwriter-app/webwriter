@@ -96,7 +96,6 @@ import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {
   aiEfforts,
-  dropdownMenus,
   graphicAlignButtons,
   graphicDistributeButtons,
   graphicOrderButtons,
@@ -111,6 +110,7 @@ import {
 } from "./ribbon-menu-config"
 import "./document-head-editor"
 import "./element-style-editor"
+import {type SettingsPanel} from "./settings-panel"
 import "./settings-panel"
 import {sectionOptions, type SectionName} from "../sections"
 import type {ElementAttributeState} from "../element-attributes"
@@ -206,6 +206,7 @@ export class AppRibbon extends LitElement {
     activeMenu: {type: String, attribute: "active-menu"},
     expanded: {type: Boolean, reflect: true},
     menuOpen: {type: Boolean, reflect: true},
+    documentDialog: {state: true},
     logoUrl: {type: String, attribute: "logo-url"},
     canMark: {type: Boolean, attribute: "can-mark"},
     canSection: {type: Boolean, attribute: "can-section"},
@@ -247,7 +248,6 @@ export class AppRibbon extends LitElement {
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
     documentHead: {attribute: false},
-    documentHeadDrawerOpen: {type: Boolean, state: true},
     documentHeadAttributeEditorId: {type: String, state: true},
     previewActive: {type: Boolean, attribute: "preview-active"},
     previewTransitioning: {type: Boolean, attribute: "preview-transition", reflect: true},
@@ -358,60 +358,8 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
-    .brand[active]::before,
-    .brand[active]::after,
-    .brand:hover::before,
-    .brand:hover::after {
-      content: "";
-      position: absolute;
-      left: 25px;
-      width: 0;
-      height: 0;
-      pointer-events: none;
-      transform: translateX(-50%);
-    }
-
-    .brand[active]::before {
-      bottom: -1px;
-      border-right: 8px solid transparent;
-      border-bottom: 8px solid var(--ribbon-area-border);
-      border-left: 8px solid transparent;
-    }
-
-    .brand[active]::after {
-      bottom: -1px;
-      border-right: 7px solid transparent;
-      border-bottom: 7px solid var(--ribbon-area-background);
-      border-left: 7px solid transparent;
-    }
-
-    .brand:hover {
-      background: transparent;
-    }
-
-    .brand:hover::before {
-      bottom: -1px;
-      border-right: 8px solid transparent;
-      border-bottom: 8px solid #e8eef5;
-      border-left: 8px solid transparent;
-    }
-
-    .brand:hover::after {
-      bottom: -1px;
-      border-right: 7px solid transparent;
-      border-bottom: 7px solid var(--ribbon-area-background);
-      border-left: 7px solid transparent;
-    }
-
     .brand:hover .brand-logo {
       opacity: 0.8;
-    }
-
-    :host(:not([expanded])) .brand::before,
-    :host(:not([expanded])) .brand::after,
-    :host([preview-transition]) .brand::before,
-    :host([preview-transition]) .brand::after {
-      display: none;
     }
 
     .brand:focus-visible {
@@ -482,7 +430,7 @@ export class AppRibbon extends LitElement {
       align-self: flex-start;
       height: 41px;
       /* Prefer a 100px filename and roomy actions, leaving room for the AI bar. */
-      min-width: min(calc(100px + 4rem), max(0px, calc(100% - 24px - 0.35rem)));
+      min-width: calc(100px + 1.2rem + 3rem);
       overflow: clip;
       --ribbon-active-tab-background: #f2f2f2;
       --ribbon-active-tab-border: #d8dee6;
@@ -498,8 +446,8 @@ export class AppRibbon extends LitElement {
     }
 
     .tabs > ribbon-tab[label="File"] {
-      /* Leave room for both actions when the navigation is very narrow. */
-      min-width: min(100px, max(0px, calc(100% - 3rem)));
+      /* Reserve filename text space in addition to its menu chevron. */
+      min-width: calc(100px + 1.2rem);
     }
 
     .file-quick-actions {
@@ -1460,6 +1408,98 @@ export class AppRibbon extends LitElement {
       }
     }
 
+    .document-dialog {
+      box-sizing: border-box;
+      width: min(42rem, calc(100vw - 2rem));
+      max-height: calc(100dvh - 2rem);
+      padding: 1.25rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.75rem;
+      color: #202833;
+      background: white;
+      box-shadow: 0 1.25rem 3rem rgb(15 23 42 / 28%);
+    }
+
+    .document-dialog::backdrop { background: rgb(15 23 42 / 45%); }
+    .document-dialog header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .document-dialog h2 { margin: 0; font-size: 1rem; }
+    .document-dialog header button {
+      padding: 0.35rem 0.65rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.35rem;
+      color: inherit;
+      background: #fff;
+      font: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .document-dialog header button:hover { background: #eef4fb; }
+    #settings-dialog {
+      height: min(45rem, calc(100dvh - 2rem));
+      padding: 0;
+      overflow: hidden;
+    }
+
+    #settings-dialog[open] {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .settings-dialog-nav {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .settings-dialog-nav form {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0;
+    }
+
+    .settings-dialog-nav button {
+      min-height: 2rem;
+      padding: 0.35rem 0.65rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.35rem;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .settings-dialog-nav button:hover { background: #eef4fb; }
+    .settings-dialog-nav button:focus-visible { outline: 2px solid #3977c7; outline-offset: 1px; }
+
+    .settings-dialog-nav .settings-close-button {
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      padding: 0;
+      border: 0;
+    }
+
+    .settings-close-button svg { width: 1.1rem; height: 1.1rem; }
+
+    .settings-dialog-main {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 1.25rem;
+      overflow-y: auto;
+      scrollbar-color: #b8c1cc transparent;
+      scrollbar-width: thin;
+    }
+
+    .document-dialog document-head-editor + document-head-editor { margin-top: 1rem; }
+    .sharing-document-actions { display: flex; border-top: 1px solid #d8dee6; padding-top: 0.35rem; }
+    .sharing-document-actions ribbon-button { flex: 1; }
+
     ribbon-menu {
       top: 39px;
       left: 0;
@@ -1517,46 +1557,6 @@ export class AppRibbon extends LitElement {
     .history-controls .history-button {
       height: 1.35rem;
       border-radius: 0.45rem;
-    }
-
-    .history-controls .history-tab-button {
-      position: relative;
-      flex-basis: 1.2rem;
-      width: 1.2rem;
-      height: 1.2rem;
-      margin: 0 0.1rem;
-      border-radius: 50%;
-      color: #5e6977;
-      background: transparent;
-    }
-
-    .history-tab-button[active] {
-      color: #3977c7;
-      background: transparent;
-      box-shadow: none;
-    }
-
-    .history-tab-button[active]::before,
-    .history-tab-button[active]::after {
-      position: absolute;
-      left: 50%;
-      bottom: -0.65rem;
-      width: 0;
-      height: 0;
-      border-right: 0.45rem solid transparent;
-      border-bottom: 0.45rem solid var(--ribbon-area-border);
-      border-left: 0.45rem solid transparent;
-      content: "";
-      pointer-events: none;
-      transform: translateX(-50%);
-    }
-
-    .history-tab-button[active]::after {
-      bottom: -0.67rem;
-      z-index: 1;
-      border-right-width: 0.4rem;
-      border-bottom: 0.4rem solid var(--ribbon-area-background);
-      border-left-width: 0.4rem;
     }
 
     .ribbon-top-actions {
@@ -1651,38 +1651,6 @@ export class AppRibbon extends LitElement {
       color: #1e4f87;
       background: #dcecff;
       box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
-    }
-
-    .preview-button[active]::before,
-    .preview-button[active]::after {
-      content: "";
-      position: absolute;
-      left: 50%;
-      bottom: -1px;
-      width: 0;
-      height: 0;
-      pointer-events: none;
-      transform: translateX(-50%);
-    }
-
-    .preview-button[active]::before {
-      border-right: 8px solid transparent;
-      border-bottom: 8px solid var(--ribbon-area-border);
-      border-left: 8px solid transparent;
-    }
-
-    .preview-button[active]::after {
-      z-index: 1;
-      border-right: 7px solid transparent;
-      border-bottom: 7px solid var(--ribbon-area-background);
-      border-left: 7px solid transparent;
-    }
-
-    :host(:not([expanded])) .preview-button[active]::before,
-    :host(:not([expanded])) .preview-button[active]::after,
-    :host([preview-transition]) .preview-button[active]::before,
-    :host([preview-transition]) .preview-button[active]::after {
-      display: none;
     }
 
     .preview-button:hover {
@@ -1809,16 +1777,6 @@ export class AppRibbon extends LitElement {
       background: #e8eef5;
     }
 
-    .history-controls .history-tab-button:hover {
-      color: #243447;
-      background: transparent;
-    }
-
-    .history-controls .history-tab-button[active]:hover {
-      color: #1e4f87;
-      background: transparent;
-    }
-
     .history-button:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
@@ -1826,11 +1784,6 @@ export class AppRibbon extends LitElement {
 
     .history-icon {
       display: block;
-      width: 1rem;
-      height: 1rem;
-    }
-
-    .history-tab-button .history-icon {
       width: 1rem;
       height: 1rem;
     }
@@ -3401,6 +3354,7 @@ export class AppRibbon extends LitElement {
   activeMenu: RibbonMenuName = "Start"
   expanded = true
   menuOpen = false
+  private documentDialog: "settings" | "metadata" | null = null
   logoUrl = ""
   canMark = false
   canSection = false
@@ -3467,7 +3421,6 @@ export class AppRibbon extends LitElement {
   fileName = ""
   fileDirty = false
   documentHead: DocumentHeadState = emptyDocumentHeadState()
-  private documentHeadDrawerOpen = false
   private documentHeadAttributeEditorId = ""
   previewActive = false
   liveSessionActive = false
@@ -3584,12 +3537,12 @@ export class AppRibbon extends LitElement {
       const path = event.composedPath()
       if(!path.includes(this)) this.closeLinkAttributeMenu()
     }
-    if(!this.menuOpen || this.expanded) return
+    if(!this.menuOpen) return
 
     const menu = this.renderRoot.querySelector("ribbon-menu")
     if(menu && event.composedPath().includes(menu)) return
 
-    this.selectStart()
+    this.menuOpen = false
   }
 
   protected readonly handleRibbonPointerDown = (event: MouseEvent) => {
@@ -3794,14 +3747,6 @@ export class AppRibbon extends LitElement {
       bubbles: true,
       composed: true,
     }))
-  }
-
-  private selectHistory = () => {
-    if(this.previewActive) return
-    this.closeAIChat()
-    this.activeMenu = "History"
-    this.expanded = true
-    this.menuOpen = false
   }
 
   private selectStart() {
@@ -4289,7 +4234,7 @@ export class AppRibbon extends LitElement {
   dismissCollapsedMenu() {
     this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     this.renderRoot.querySelectorAll<RibbonButton>("ribbon-button").forEach(button => button.closeSubmenu())
-    if(!this.expanded && this.menuOpen) this.selectStart()
+    this.menuOpen = false
   }
 
   dismissDrawers() {
@@ -4299,25 +4244,9 @@ export class AppRibbon extends LitElement {
 
   private selectMenu(event: Event) {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
-    if(label && menuTabs.includes(label as RibbonMenuName)) {
-      const nextMenu = label as RibbonMenuName
+    if(label === "File") {
       this.closeAIChat()
-      if(this.previewActive) {
-        if(nextMenu === "File") {
-          this.dispatchEvent(new Event("ribbon-preview-exit", {bubbles: true, composed: true}))
-        }
-        return
-      }
-      if(this.expanded) {
-        this.activeMenu = nextMenu
-        this.menuOpen = false
-        this.closeAIChat()
-        return
-      }
-
-      const isSameMenu = this.activeMenu === nextMenu
-      this.activeMenu = nextMenu
-      this.menuOpen = dropdownMenus.includes(nextMenu) && (!isSameMenu || !this.menuOpen)
+      this.menuOpen = !this.menuOpen
     }
   }
 
@@ -7072,45 +7001,76 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private renderSettingsDrawer() {
-    return html`
-      <ribbon-drawer label="Settings" icon="Settings" layout="settings" collapsed>
-        <settings-panel
-          .settings=${this.settings}
-          @settings-change=${this.handleSettingsChange}
-        ></settings-panel>
-      </ribbon-drawer>
-    `
+  private async showRibbonDialog(name: "settings" | "metadata") {
+    this.dismissCollapsedMenu()
+    this.closeAIChat()
+    this.documentDialog = name
+    await this.updateComplete
+    if(this.isConnected && this.documentDialog === name) {
+      this.renderRoot.querySelector<HTMLDialogElement>(`#${name}-dialog`)?.showModal()
+    }
   }
 
-  private renderDocumentHeadDrawer() {
+  private handleFileMenuAction = (event: CustomEvent<{label: string}>) => {
+    this.menuOpen = false
+    if(event.detail.label === "Metadata" || event.detail.label === "Settings") {
+      event.stopPropagation()
+      void this.showRibbonDialog(event.detail.label === "Settings" ? "settings" : "metadata")
+    }
+  }
+
+  private renderDocumentDialogs() {
     return html`
-      <ribbon-drawer
-        label="Metadata"
-        icon="Properties"
-        layout="document-head"
-        expandable
-        @ribbon-drawer-state-change=${(event: CustomEvent<{open: boolean}>) => {
-          this.documentHeadDrawerOpen = event.detail.open
-          if(!event.detail.open) this.documentHeadAttributeEditorId = ""
-        }}
+      <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"
+        @close=${() => { this.documentDialog = null }}>
+        ${this.documentDialog === "settings" ? html`
+        <nav class="settings-dialog-nav" aria-label="Settings">
+          <h2 id="settings-dialog-title">Settings</h2>
+          <form method="dialog">
+            <button
+              class="reset-settings-button"
+              type="button"
+              @click=${() => this.renderRoot.querySelector<SettingsPanel>("settings-panel")?.resetSettings()}
+            >Reset settings</button>
+            <button class="settings-close-button" aria-label="Close settings" title="Close settings">
+              ${ribbonIcon("Reject")}
+            </button>
+          </form>
+        </nav>
+        <main class="settings-dialog-main">
+          <settings-panel
+            .settings=${this.settings}
+            @settings-change=${this.handleSettingsChange}
+          ></settings-panel>
+        </main>
+        ` : ""}
+      </dialog>
+      <dialog
+        id="metadata-dialog"
+        class="document-dialog"
+        aria-labelledby="metadata-dialog-title"
+        @close=${() => { this.documentHeadAttributeEditorId = ""; this.documentDialog = null }}
         @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
           this.documentHeadAttributeEditorId = event.detail.id
         }}
       >
+        ${this.documentDialog === "metadata" ? html`<header>
+          <h2 id="metadata-dialog-title">Metadata</h2>
+          <form method="dialog"><button aria-label="Close metadata">Close</button></form>
+        </header>
         <document-head-editor
           mode="common"
+          expanded
           .state=${this.documentHead}
-          .expanded=${this.documentHeadDrawerOpen}
           .attributeEditorId=${this.documentHeadAttributeEditorId}
         ></document-head-editor>
         <document-head-editor
-          slot="more"
           mode="advanced"
           .state=${this.documentHead}
           .attributeEditorId=${this.documentHeadAttributeEditorId}
         ></document-head-editor>
-      </ribbon-drawer>
+        ` : ""}
+      </dialog>
     `
   }
 
@@ -7246,6 +7206,10 @@ export class AppRibbon extends LitElement {
             aria-label="Download"
             title="Download"
           >${ribbonIcon("Download")}</button>
+        </div>
+        <div class="sharing-document-actions">
+          <ribbon-button label="Print" action="Print" variant="toolbar"></ribbon-button>
+          <ribbon-button label="Download" action="Download" variant="toolbar"></ribbon-button>
         </div>
       </div>
     `
@@ -7527,7 +7491,7 @@ export class AppRibbon extends LitElement {
   }
 
   private scrollNewHistoryCardIntoView(previousState: unknown) {
-    if(this.activeMenu !== "History") return
+    if(!this.renderRoot.querySelector('.history-timeline')) return
     const previousCheckpoints = previousState && typeof previousState === "object"
       && Array.isArray((previousState as Partial<VersionHistoryState>).checkpoints)
       ? (previousState as VersionHistoryState).checkpoints
@@ -7651,12 +7615,12 @@ export class AppRibbon extends LitElement {
       const sharing = menuGroups.File.find(group => group.label === "Sharing")!
       return [this.renderSharingDrawer(sharing), this.renderLearnersDrawer()]
     }
-    const drawers = this.currentMenuGroups.map(drawer => {
+    const drawers = this.currentMenuGroups.filter(drawer => this.activeMenu !== "File" || drawer.label !== "Metadata").map(drawer => {
       const styleCategory = this.activeMenu === "Style"
         ? elementStyleCategories.find(category => category.label === drawer.label)
         : undefined
       if(styleCategory) return this.renderElementStyleDrawer(styleCategory)
-      if(this.activeMenu === "History" && drawer.label === "Versions") return this.renderHistoryVersionsDrawer()
+      if(drawer.label === "Versions") return this.renderHistoryVersionsDrawer()
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
@@ -7674,7 +7638,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Local packages") return this.renderDevelopDrawer()
       if(drawer.label === "Metadata") {
-        return this.activeMenu === "File" ? this.renderDocumentHeadDrawer() : this.renderMetadataDrawer()
+        return this.renderMetadataDrawer()
       }
       if(drawer.label === "Elements") return this.renderInsertionDrawer(drawer)
       const representative = drawer.buttons[0]
@@ -7697,7 +7661,7 @@ export class AppRibbon extends LitElement {
         </ribbon-drawer>
       `
     })
-    return this.activeMenu === "File" ? [this.renderSettingsDrawer(), ...drawers] : drawers
+    return drawers
   }
 
   protected get currentMenuGroups() {
@@ -7815,14 +7779,14 @@ export class AppRibbon extends LitElement {
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}
           </button>
           <nav class="ribbon-navigation" aria-label="Editor navigation">
-            <div class="tabs" role="tablist" aria-label="Editor menus" ?inert=${aiReviewPending}>
+            <div class="tabs" role="group" aria-label="File controls" ?inert=${aiReviewPending}>
               ${visibleTabs.map(tab => html`
                 <ribbon-tab
                   label=${tab}
-                  .active=${this.activeMenu === tab && !this.previewActive}
+                  .active=${tab === "File" ? this.menuOpen : this.activeMenu === tab && !this.previewActive}
                   .fileName=${tab === "File" ? this.fileName : ""}
                   .fileDirty=${tab === "File" && this.fileDirty}
-                  .ribbonCollapsed=${!this.expanded || this.previewTransitioning}
+                  .ribbonCollapsed=${true}
                 ></ribbon-tab>
                 ${tab === "File" ? html`
                   <div class="file-quick-actions" role="group" aria-label="File actions" ?inert=${aiReviewPending}>
@@ -7867,7 +7831,7 @@ export class AppRibbon extends LitElement {
           ${this.renderPresence()}
           <div class="ribbon-top-actions">
             ${this.previewActive ? "" : html`
-              <div class="history-controls" role="group" aria-label="Undo, version history, and redo">
+              <div class="history-controls" role="group" aria-label="Undo and redo">
                 <button
                   class="history-button"
                   type="button"
@@ -7877,19 +7841,6 @@ export class AppRibbon extends LitElement {
                   @click=${() => this.handleTopButtonClick("Undo")}
                 >
                   <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
-                </button>
-                <button
-                  class="history-button history-tab-button"
-                  type="button"
-                  ?active=${this.activeMenu === "History"}
-                  aria-label="History"
-                  title="Version history"
-                  aria-controls="ribbon-content"
-                  aria-pressed=${this.activeMenu === "History"}
-                  ?disabled=${aiReviewPending}
-                  @click=${this.selectHistory}
-                >
-                  <span class="history-icon" aria-hidden="true">${ribbonIcon("History")}</span>
                 </button>
                 <button
                   class="history-button"
@@ -8156,9 +8107,21 @@ export class AppRibbon extends LitElement {
           </form>
         </section>
         <ai-settings-dialog .store=${this.aiProviderStore}></ai-settings-dialog>
+        ${this.renderDocumentDialogs()}
         <ribbon-menu
-          .groups=${this.currentMenuGroups}
-          ?hidden=${!this.menuOpen || this.expanded}
+          .groups=${[{label: "File", buttons: [
+            {label: "Settings"},
+            ...menuGroups.File.find(group => group.label === "File")!.buttons,
+            {label: "Metadata", icon: "Properties"},
+          ]}]}
+          @ribbon-button-click=${this.handleFileMenuAction}
+          @keydown=${(event: KeyboardEvent) => {
+            if(event.key !== "Escape") return
+            event.stopPropagation()
+            this.dismissCollapsedMenu()
+            this.renderRoot.querySelector('ribbon-tab[label="File"]')?.shadowRoot?.querySelector<HTMLButtonElement>("button")?.focus()
+          }}
+          ?hidden=${!this.menuOpen}
           ?inert=${aiReviewPending || historyPreviewPending}
         ></ribbon-menu>
         <div

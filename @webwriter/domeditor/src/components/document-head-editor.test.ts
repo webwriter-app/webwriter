@@ -11,7 +11,6 @@ import {
   type DocumentHeadElementState,
   type DocumentHeadState,
 } from "../document-head"
-import type {RibbonDrawer} from "./ribbon-drawer"
 
 const state = (values: Partial<DocumentHeadState> = {}): DocumentHeadState => ({
   ...emptyDocumentHeadState(),
@@ -247,7 +246,7 @@ describe("document head form", () => {
     expect(panel.querySelector("textarea")).toBeNull()
   })
 
-  it("places common metadata in the closed File drawer and advanced controls in its expanded tier", async () => {
+  it("opens common and advanced metadata in a dialog from the File menu", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "File"
     ribbon.documentHead = state({
@@ -264,25 +263,30 @@ describe("document head form", () => {
     })
     document.body.append(ribbon)
     await ribbon.updateComplete
-    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Metadata"]')!
-    await drawer.updateComplete
-
-    expect(drawer).not.toBeNull()
-    expect(drawer.expandable).toBe(true)
-    expect(drawer.layoutWidths.expanded).toBe(400)
-    const common = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="common"]')!
-    expect(common.expanded).toBe(false)
-    const advanced = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"][slot="more"]')!
-    expect(advanced).not.toBeNull()
-
-    drawer.openDrawer()
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#metadata-dialog")!
+    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
+    const actions: string[] = []
+    ribbon.addEventListener("ribbon-button-click", event => actions.push((event as CustomEvent<{label: string}>).detail.label))
+    menu.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "Metadata"}, bubbles: true, composed: true,
+    }))
     await ribbon.updateComplete
+    expect(dialog.open).toBe(true)
+    expect(ribbon.menuOpen).toBe(false)
+    expect(actions).toEqual([])
+    const common = dialog.querySelector<DocumentHeadEditor>('document-head-editor[mode="common"]')!
+    const advanced = dialog.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"]')!
     expect(common.expanded).toBe(true)
+    expect(advanced).not.toBeNull()
 
     await common.updateComplete
     common.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Edit extra title attributes"]')!.click()
     await ribbon.updateComplete
     await advanced.updateComplete
     expect(advanced.shadowRoot!.querySelector(".common-attributes")).not.toBeNull()
+    dialog.close()
+    await ribbon.updateComplete
+    expect(dialog.open).toBe(false)
+    await vi.waitFor(() => expect(dialog.querySelector("document-head-editor")).toBeNull())
   })
 })

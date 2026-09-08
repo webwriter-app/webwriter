@@ -4913,6 +4913,13 @@ export class DomEditor extends LitElement {
         .graphic=${this.graphicSelection}
         .elementAttributes=${this.elementAttributes}
         .elementStyle=${this.elementStyle}
+        .historyState=${this.historyState}
+        .historyLoading=${this.historyLoading}
+        .historyError=${this.historyError}
+        @history-state-request=${this.requestHistoryState}
+        @history-checkpoint-select=${this.handleHistoryCheckpointSelect}
+        @history-revert=${this.handleHistoryRevert}
+        @history-preview-clear=${this.clearHistoryPreview}
         .localPackages=${this.localPackages}
         .localPackagesLoading=${this.localPackagesLoading}
         .localPackageError=${this.localPackageError}
