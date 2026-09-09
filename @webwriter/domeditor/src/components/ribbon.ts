@@ -288,9 +288,16 @@ export class AppRibbon extends LitElement {
       color: #2f3742;
       background: #ffffff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
       transition:
         height 180ms ease,
         max-height 180ms ease;
+    }
+
+    input, textarea {
+      -webkit-user-select: text;
+      user-select: text;
     }
 
     :host([preview-transition]) {
