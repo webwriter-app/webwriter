@@ -2245,7 +2245,7 @@ describe("DomEditor.execute()", () => {
     expect(users.dataset.userCount).toBe("4")
   })
 
-  it("renders the preview control after redo with the filled play icon", async () => {
+  it("renders the preview control after redo with the WebWriter play icon", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const previewButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!
@@ -2254,7 +2254,7 @@ describe("DomEditor.execute()", () => {
     expect(previewButton.previousElementSibling?.querySelector('[aria-label="Redo"]')).not.toBeNull()
     expect(previewButton.nextElementSibling).toBeNull()
     expect(previewButton.querySelector(".preview-icon")).not.toBeNull()
-    expect(previewButton.querySelector(".icon-tabler-player-play.icons-tabler-filled")).not.toBeNull()
+    expect(previewButton.querySelector(".icon-webwriter-preview")).not.toBeNull()
   })
 
   it("starts a live preview session and restores the editor selection when it stops", async () => {

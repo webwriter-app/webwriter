@@ -1628,11 +1628,11 @@ export class AppRibbon extends LitElement {
     .preview-button {
       box-sizing: border-box;
       display: flex;
-      flex: 0 0 2rem;
+      flex: 0 0 2.5rem;
       align-items: center;
       justify-content: center;
       gap: 0.3rem;
-      width: 2rem;
+      width: 2.5rem;
       height: 40px;
       padding: 0;
       border: 0;
@@ -1794,14 +1794,10 @@ export class AppRibbon extends LitElement {
     }
 
     .preview-icon {
-      box-sizing: border-box;
-      display: grid;
-      place-items: center;
-      width: 1.2rem;
-      height: 1.2rem;
-      padding: 0.1rem;
-      border: 1.5px solid currentColor;
-      border-radius: 50%;
+      display: block;
+      flex-shrink: 0;
+      width: 1.5rem;
+      height: 1.5rem;
     }
 
     .preview-icon svg {
