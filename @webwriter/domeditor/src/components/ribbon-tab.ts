@@ -22,8 +22,10 @@ export class RibbonTab extends LitElement {
 
     :host([label="File"]) {
       width: fit-content;
-      min-width: calc(100px + 1.2rem);
+      min-width: calc(100px + 1.7rem);
       max-width: 500px;
+      --ribbon-active-tab-background: #ffffff;
+      --ribbon-active-tab-border: #a8a8a8;
     }
 
     .file-chevron {
@@ -74,12 +76,16 @@ export class RibbonTab extends LitElement {
       max-width: 0;
     }
 
+    :host([label="File"]) button {
+      padding-left: 0.5rem;
+    }
+
     button:hover {
       color: #243447;
       background: #e8eef5;
     }
 
-    :host([label="File"]) button:hover {
+    :host([label="File"]:not([active])) button:hover {
       background: transparent;
     }
 
@@ -93,14 +99,14 @@ export class RibbonTab extends LitElement {
       --file-label-color: #1e4f87;
     }
 
-    :host([active]:not([label="File"])) button {
+    :host([active]) button {
       color: #1e4f87;
       background: var(--ribbon-active-tab-background, #f2f2f2);
       border: 1px solid var(--ribbon-active-tab-border, #d8dee6);
       border-bottom: 0;
     }
 
-    :host([active]:not([label="File"])) {
+    :host([active]) {
       position: relative;
       z-index: 1;
     }

@@ -128,7 +128,7 @@ describe("settings panel", () => {
 })
 
 describe("settings dialog", () => {
-  it("opens from the first option in the file menu", async () => {
+  it("opens from the last option in the file menu below a separator", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -136,9 +136,15 @@ describe("settings dialog", () => {
     await menu.updateComplete
     const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!
 
-    expect(menu.groups[0].buttons[0]).toEqual({label: "Settings"})
+    const items = menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item")
+    const settings = items[items.length - 1]
+    expect(settings.title).toBe("Settings")
+    const section = settings.closest("section")!
+    expect(section.previousElementSibling).not.toBeNull()
+    expect(getComputedStyle(section).borderTopStyle).toBe("solid")
+    expect(getComputedStyle(section).borderTopWidth).toBe("1px")
     expect(dialog.open).toBe(false)
-    menu.shadowRoot!.querySelector<HTMLButtonElement>(".item")!.click()
+    settings.click()
     await ribbon.updateComplete
     expect(dialog.open).toBe(true)
     const panel = dialog.querySelector<SettingsPanel>("settings-panel")!

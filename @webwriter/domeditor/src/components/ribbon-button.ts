@@ -603,6 +603,26 @@ export class RibbonButton extends LitElement {
       display: none;
     }
 
+    .sharing-document-actions,
+    .sharing-qr-group {
+      border: 1px solid #c8d2df;
+      border-radius: 0.25rem;
+      overflow: hidden;
+    }
+
+    .sharing-document-actions {
+      display: flex;
+      padding: 0.15rem;
+    }
+
+    .sharing-document-actions ribbon-button {
+      flex: 1;
+    }
+
+    .sharing-document-actions ribbon-button + ribbon-button {
+      border-left: 1px solid #c8d2df;
+    }
+
     .sharing-link-field {
       display: flex;
       flex-direction: column;
@@ -687,11 +707,12 @@ export class RibbonButton extends LitElement {
     }
 
     .sharing-dropdown-qr {
+      box-sizing: border-box;
       width: 100%;
       min-height: 0;
       display: flex;
       justify-content: center;
-      padding: 0 0.1rem;
+      padding: 0.35rem;
     }
 
     .sharing-dropdown-qr-code {
@@ -705,20 +726,26 @@ export class RibbonButton extends LitElement {
 
     .sharing-dropdown-actions {
       display: flex;
-      gap: 0.3rem;
+      border-top: 1px solid #c8d2df;
     }
 
     .sharing-dropdown-action {
       width: 50%;
       min-height: 1.5rem;
-      padding: 0.2rem;
+      padding: 0.35rem;
       display: inline-grid;
       place-items: center;
+      border: 0;
+      border-radius: 0;
+    }
+
+    .sharing-dropdown-action + .sharing-dropdown-action {
+      border-left: 1px solid #c8d2df;
     }
 
     .sharing-dropdown-action svg {
-      width: 0.78rem;
-      height: 0.78rem;
+      width: 1.25rem;
+      height: 1.25rem;
     }
 
     .sharing-dropdown-action.is-active,
@@ -920,6 +947,46 @@ export class RibbonButton extends LitElement {
       min-width: 0;
     }
 
+    :host([variant="tab"]) .button-row {
+      height: 40px;
+      transform: translateY(1px);
+    }
+
+    :host([variant="tab"]) .button-row[data-connected] {
+      border-color: #a8a8a8;
+      border-bottom-color: #ffffff;
+      border-radius: 0.45rem 0.45rem 0 0;
+      background: #ffffff;
+    }
+
+    :host([variant="tab"]) .button-row[data-connected="above"] {
+      border-top-color: #ffffff;
+      border-bottom-color: #a8a8a8;
+      border-radius: 0 0 0.45rem 0.45rem;
+    }
+
+    :host([variant="tab"]) .button-row[data-connected] .button-icon {
+      color: #1e4f87;
+    }
+
+    /* The popover is in the top layer, so cover its shared border there. */
+    ribbon-menu[data-connected]::before {
+      content: "";
+      position: absolute;
+      z-index: 1;
+      top: 0;
+      left: var(--ribbon-menu-join-left);
+      width: var(--ribbon-menu-join-width);
+      height: 1px;
+      background: #ffffff;
+      pointer-events: none;
+    }
+
+    ribbon-menu[data-connected="above"]::before {
+      top: auto;
+      bottom: 0;
+    }
+
     :host([variant="toolbar"]) .button-row,
     :host([variant="toolbar"]) .main-button {
       height: 1.55rem;
@@ -1113,8 +1180,11 @@ export class RibbonButton extends LitElement {
   private closeSubmenuPopover(restoreFocus = false) {
     const trigger = this.submenuTrigger
     this.submenuTrigger = null
-    this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>("ribbon-menu"))
+    const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
+    this.hidePopoverElement(submenu)
+    submenu?.removeAttribute("data-connected")
     this.submenuOpen = false
+    this.renderRoot.querySelector(".button-row")?.removeAttribute("data-connected")
     if(restoreFocus && trigger?.isConnected) trigger.focus()
   }
 
@@ -1197,22 +1267,37 @@ export class RibbonButton extends LitElement {
       this.dispatchEvent(new CustomEvent("ribbon-dropdown-open", {bubbles: true, composed: true}))
       void this.updateComplete.then(async () => {
         const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
-        if(!submenu) return
+        if(!submenu || !this.submenuOpen || !this.isConnected) return
         if(submenu instanceof LitElement) await submenu.updateComplete
+        if(!this.submenuOpen || !this.isConnected) return
         this.showPopoverElement(submenu)
-        const button = this.getBoundingClientRect()
+        const row = this.renderRoot.querySelector<HTMLElement>(".button-row")!
+        const connected = this.variant === "tab"
+        const button = (connected ? row : this).getBoundingClientRect()
         const menu = submenu.getBoundingClientRect()
         const margin = 8
         const left = Math.min(
           Math.max(margin, button.left),
           Math.max(margin, window.innerWidth - menu.width - margin),
         )
-        const below = button.bottom + 4
-        const top = below + menu.height <= window.innerHeight - margin
+        const gap = connected ? -1 : 4
+        const below = button.bottom + gap
+        const opensBelow = below + menu.height <= window.innerHeight - margin
+        const top = opensBelow
           ? below
-          : Math.max(margin, button.top - menu.height - 4)
+          : Math.max(margin, button.top - menu.height - gap)
         submenu.style.left = `${left}px`
         submenu.style.top = `${top}px`
+        if(connected && (opensBelow || top + menu.height === button.top + 1)) {
+          const placement = opensBelow ? "below" : "above"
+          row.setAttribute("data-connected", placement)
+          submenu.setAttribute("data-connected", placement)
+          submenu.style.setProperty("--ribbon-menu-join-left", `${button.left - left + 1}px`)
+          submenu.style.setProperty("--ribbon-menu-join-width", `${button.width - 2}px`)
+          submenu.style.setProperty("--ribbon-menu-border-radius", left === button.left
+            ? opensBelow ? "0 0.35rem 0.35rem 0.35rem" : "0.35rem 0.35rem 0.35rem 0"
+            : "0.35rem")
+        }
       })
     }
   }

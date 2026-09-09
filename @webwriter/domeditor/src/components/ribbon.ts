@@ -344,6 +344,11 @@ export class AppRibbon extends LitElement {
       z-index: 1;
     }
 
+    :host([menuopen]) .ribbon-top {
+      /* Let the active tab cover the menu's top border at their shared edge. */
+      z-index: 5;
+    }
+
     .brand {
       box-sizing: border-box;
       display: flex;
@@ -433,7 +438,9 @@ export class AppRibbon extends LitElement {
       align-self: flex-start;
       height: 41px;
       /* Prefer a 100px filename and roomy actions, leaving room for the AI bar. */
-      min-width: calc(100px + 1.2rem + 3rem);
+      min-width: calc(100px + 1.7rem + 3rem);
+      /* Extend the file tab toward the brand without moving its filename. */
+      margin-left: -0.5rem;
       overflow: clip;
       --ribbon-active-tab-background: #f2f2f2;
       --ribbon-active-tab-border: #d8dee6;
@@ -450,7 +457,7 @@ export class AppRibbon extends LitElement {
 
     .tabs > ribbon-tab[label="File"] {
       /* Reserve filename text space in addition to its menu chevron. */
-      min-width: calc(100px + 1.2rem);
+      min-width: calc(100px + 1.7rem);
     }
 
     .file-quick-actions {
@@ -1499,9 +1506,6 @@ export class AppRibbon extends LitElement {
       scrollbar-width: thin;
     }
 
-    .sharing-document-actions { display: flex; border-top: 1px solid #d8dee6; padding-top: 0.35rem; }
-    .sharing-document-actions ribbon-button { flex: 1; }
-
     ribbon-menu {
       top: 39px;
       left: 0;
@@ -1512,6 +1516,7 @@ export class AppRibbon extends LitElement {
         position-anchor: --active-ribbon-tab;
         top: calc(anchor(bottom) - 1px);
         left: anchor(left);
+        width: max(200px, anchor-size(width));
       }
     }
 
@@ -3608,6 +3613,10 @@ export class AppRibbon extends LitElement {
     ))
     if(aiAction) return
 
+    // Native image dragging needs the initiating pointer and mouse events.
+    if(event.composedPath().some(target => target instanceof HTMLImageElement
+      && target.matches('.sharing-dropdown-qr-code[draggable="true"]'))) return
+
     // Keep the editor iframe as the active element while the ribbon is used
     // with a pointer. The click event still performs the ribbon action.
     event.preventDefault()
@@ -4287,7 +4296,9 @@ export class AppRibbon extends LitElement {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     if(label === "File") {
       this.closeAIChat()
-      this.menuOpen = !this.menuOpen
+      const open = !this.menuOpen
+      this.dismissCollapsedMenu()
+      this.menuOpen = open
     }
   }
 
@@ -7200,6 +7211,10 @@ export class AppRibbon extends LitElement {
   private renderSharingDropdown(link: string) {
     return html`
       <div class="sharing-dropdown" role="group" aria-label="Sharing options">
+        <div class="sharing-document-actions" role="group" aria-label="Document actions">
+          <ribbon-button label="Print" action="Print" variant="toolbar"></ribbon-button>
+          <ribbon-button label="Download" action="Download" variant="toolbar"></ribbon-button>
+        </div>
         <webwriter-qr-code hidden .value=${link} .size=${56}></webwriter-qr-code>
         <label class="sharing-link-field">
           <span class="sharing-link-label">Link</span>
@@ -7221,36 +7236,34 @@ export class AppRibbon extends LitElement {
             >${ribbonIcon("Copy")}</button>
           </span>
         </label>
-        <div class="sharing-dropdown-qr" aria-label="Sharing QR code" role="img">
-          <img
-            class="sharing-dropdown-qr-code"
-            alt="Sharing QR code"
-            draggable="true"
-            src=${this.sharingQRCodeImageDataURL || undefined}
-            @error=${() => void this.handleSharingQRCodeImageError()}
-          />
-        </div>
-        <div class="sharing-dropdown-actions">
-          <button
-            class=${`button-dropdown-more sharing-dropdown-action${this.sharingCopyQRActive ? " is-active" : ""}${this.sharingCopyQRSuccess ? " is-success" : ""}`}
-            type="button"
-            aria-pressed=${this.sharingCopyQRActive}
-            @click=${() => void this.copySharingQRCodeAndShowFeedback()}
-            aria-label="Copy"
-            title=${this.sharingCopyQRSuccess ? "Copied QR code" : "Copy"}
-          >${ribbonIcon("Copy")}</button>
-          <button
-            class=${`button-dropdown-more sharing-dropdown-action${this.sharingDownloadQRActive ? " is-active" : ""}`}
-            type="button"
-            aria-pressed=${this.sharingDownloadQRActive}
-            @click=${() => void this.downloadSharingQRCodeAndShowFeedback()}
-            aria-label="Download"
-            title="Download"
-          >${ribbonIcon("Download")}</button>
-        </div>
-        <div class="sharing-document-actions">
-          <ribbon-button label="Print" action="Print" variant="toolbar"></ribbon-button>
-          <ribbon-button label="Download" action="Download" variant="toolbar"></ribbon-button>
+        <div class="sharing-qr-group" role="group" aria-label="QR code">
+          <div class="sharing-dropdown-qr" aria-label="Sharing QR code" role="img">
+            <img
+              class="sharing-dropdown-qr-code"
+              alt="Sharing QR code"
+              draggable="true"
+              src=${this.sharingQRCodeImageDataURL || undefined}
+              @error=${() => void this.handleSharingQRCodeImageError()}
+            />
+          </div>
+          <div class="sharing-dropdown-actions">
+            <button
+              class=${`button-dropdown-more sharing-dropdown-action${this.sharingCopyQRActive ? " is-active" : ""}${this.sharingCopyQRSuccess ? " is-success" : ""}`}
+              type="button"
+              aria-pressed=${this.sharingCopyQRActive}
+              @click=${() => void this.copySharingQRCodeAndShowFeedback()}
+              aria-label="Copy QR code"
+              title=${this.sharingCopyQRSuccess ? "Copied QR code" : "Copy QR code"}
+            >${ribbonIcon("Copy")}<span>Copy QR code</span></button>
+            <button
+              class=${`button-dropdown-more sharing-dropdown-action${this.sharingDownloadQRActive ? " is-active" : ""}`}
+              type="button"
+              aria-pressed=${this.sharingDownloadQRActive}
+              @click=${() => void this.downloadSharingQRCodeAndShowFeedback()}
+              aria-label="Download QR code"
+              title="Download QR code"
+            >${ribbonIcon("FileDownload")}<span>Download QR code</span></button>
+          </div>
         </div>
       </div>
     `
@@ -7844,6 +7857,7 @@ export class AppRibbon extends LitElement {
                     ></ribbon-button>
                     <ribbon-button
                       class="file-quick-action file-share-action"
+                      variant="tab"
                       label="Share"
                       action="Share"
                       compact
@@ -7852,7 +7866,10 @@ export class AppRibbon extends LitElement {
                       dropdown-no-scroll
                       .qrValue=${this.sharingLink}
                       .dropdown=${this.renderSharingDropdown(this.sharingLink)}
-                      @ribbon-dropdown-open=${() => void this.ensureSharingQRCodeImage(this.sharingLink)}
+                      @ribbon-dropdown-open=${() => {
+                        this.menuOpen = false
+                        void this.ensureSharingQRCodeImage(this.sharingLink)
+                      }}
                     ></ribbon-button>
                   </div>
                 ` : ""}
@@ -8154,10 +8171,10 @@ export class AppRibbon extends LitElement {
         <ai-settings-dialog .store=${this.aiProviderStore}></ai-settings-dialog>
         ${this.renderDocumentDialogs()}
         <ribbon-menu
-          .groups=${[{label: "File", buttons: [
-            {label: "Settings"},
-            ...menuGroups.File.find(group => group.label === "File")!.buttons,
-          ]}]}
+          .groups=${[
+            menuGroups.File.find(group => group.label === "File")!,
+            {label: "Settings", buttons: [{label: "Settings"}]},
+          ]}
           @ribbon-button-click=${this.handleFileMenuAction}
           @keydown=${(event: KeyboardEvent) => {
             if(event.key !== "Escape") return

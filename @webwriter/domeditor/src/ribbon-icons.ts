@@ -35,6 +35,7 @@ import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
 import download from "@tabler/icons/outline/download.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
 import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
+import fileDownload from "@tabler/icons/outline/file-download.svg?raw"
 import fileExport from "@tabler/icons/outline/file-export.svg?raw"
 import fileOrientation from "@tabler/icons/outline/file-orientation.svg?raw"
 import filePlus from "@tabler/icons/outline/file-plus.svg?raw"
@@ -213,6 +214,7 @@ const icons: Record<string, string> = {
   Save: deviceFloppy,
   "Save as": fileExport,
   Download: download,
+  FileDownload: fileDownload,
   Local: deviceDesktop,
   Cloud: cloud,
   Print: printer,

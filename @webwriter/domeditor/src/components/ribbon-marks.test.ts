@@ -63,7 +63,7 @@ describe("mark ribbon controls", () => {
 
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
     expect(getComputedStyle(fileTab).width).toBe("fit-content")
-    expect(getComputedStyle(fileTab).minWidth).toBe("calc(100px + 19.2px)")
+    expect(getComputedStyle(fileTab).minWidth).toBe("calc(100px + 27.2px)")
     expect(getComputedStyle(fileTab).maxWidth).toBe("500px")
     const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
     await fileLabel.updateComplete
@@ -79,7 +79,8 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(reservedDirtyIndicator).visibility).toBe("hidden")
     expect(getComputedStyle(reservedDirtyIndicator).width).toBe("8.8px")
     const fileTabButton = fileTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!
-    expect(getComputedStyle(fileTabButton).paddingLeft).toBe("0px")
+    expect(getComputedStyle(fileTabButton).paddingLeft).toBe("8px")
+    expect(getComputedStyle(fileTab.parentElement!).marginLeft).toBe("-8px")
     expect(getComputedStyle(fileTabButton).paddingRight).toBe("0px")
     const fileLabelElement = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-label")!
     expect(["0", "0px"]).toContain(getComputedStyle(fileLabelElement).gap)
@@ -115,7 +116,14 @@ describe("mark ribbon controls", () => {
     const quickShareMenu = quickButtons[1].shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await quickShareMenu.updateComplete
     expect(quickShareMenu.hidden).toBe(false)
+    const shareRow = quickButtons[1].shadowRoot!.querySelector<HTMLElement>(".button-row")!
+    expect(shareRow.getAttribute("data-connected")).toBe("below")
+    expect(getComputedStyle(shareRow).height).toBe("40px")
+    expect(getComputedStyle(shareRow).backgroundColor).toBe("#ffffff")
+    expect(getComputedStyle(shareRow).borderTopColor).toBe("#a8a8a8")
+    expect(quickShareMenu.getAttribute("data-connected")).toBe("below")
     expect(quickShareMenu.noScroll).toBe(true)
+    expect(getComputedStyle(quickShareMenu).overflow).toBe("visible")
     expect(getComputedStyle(quickShareMenu.shadowRoot!.querySelector<HTMLElement>(".menu")!).overflow)
       .toBe("hidden")
     expect(quickShareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
@@ -123,6 +131,19 @@ describe("mark ribbon controls", () => {
     const qrGenerator = quickShareMenu.querySelector<HTMLElement>("webwriter-qr-code")!
     expect(getComputedStyle(qrGenerator).display).toBe("none")
     expect(quickShareMenu.querySelectorAll("img.sharing-dropdown-qr-code")).toHaveLength(1)
+    const sharingDropdown = quickShareMenu.querySelector<HTMLElement>(".sharing-dropdown")!
+    const documentActions = sharingDropdown.querySelector<HTMLElement>(".sharing-document-actions")!
+    expect(sharingDropdown.firstElementChild).toBe(documentActions)
+    expect(getComputedStyle(documentActions).display).toBe("flex")
+    expect(Array.from(documentActions.querySelectorAll<RibbonButton>("ribbon-button"), button => button.label))
+      .toEqual(["Print", "Download"])
+    const qrGroup = sharingDropdown.querySelector<HTMLElement>(".sharing-qr-group")!
+    expect(getComputedStyle(qrGroup).borderTopWidth).toBe("1px")
+    expect(qrGroup.querySelector("img.sharing-dropdown-qr-code")).not.toBeNull()
+    expect(Array.from(qrGroup.querySelectorAll("button"), button => button.getAttribute("aria-label")))
+      .toEqual(["Copy QR code", "Download QR code"])
+    expect(Array.from(qrGroup.querySelectorAll("button span"), label => label.textContent))
+      .toEqual(["Copy QR code", "Download QR code"])
     const linkRow = quickShareMenu.querySelector<HTMLElement>(".sharing-link-input-row")!
     const linkCopy = quickShareMenu.querySelector<HTMLElement>(".sharing-link-copy")!
     expect(getComputedStyle(linkRow).display).toBe("block")
@@ -133,6 +154,11 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(linkCopy).height).toBe("18.4px")
     expect(getComputedStyle(linkCopy).backgroundColor).toBe("rgba(255, 255, 255, 0.5)")
 
+    quickButtons[1].closeSubmenu()
+    await quickButtons[1].updateComplete
+    expect(quickShareMenu.hidden).toBe(true)
+    expect(shareRow.hasAttribute("data-connected")).toBe(false)
+
     fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!.dispatchEvent(
       new MouseEvent("click", {bubbles: true, composed: true}),
     )
@@ -140,6 +166,59 @@ describe("mark ribbon controls", () => {
     expect(ribbon.activeMenu).toBe("Start")
     expect(ribbon.menuOpen).toBe(true)
     expect(fileTab.active).toBe(true)
+  })
+
+  it("allows native QR image dragging while preserving pointer handling for ribbon buttons", async () => {
+    const {ribbon} = await mountRibbon()
+    const share = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
+    const button = share.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    button.click()
+    await share.updateComplete
+    const menu = share.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    const image = menu.querySelector<HTMLImageElement>(".sharing-dropdown-qr-code")!
+    expect(image.getAttribute("draggable")).toBe("true")
+
+    for(const type of ["pointerdown", "mousedown"]) {
+      const imageEvent = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, button: 0})
+      image.dispatchEvent(imageEvent)
+      expect(imageEvent.defaultPrevented).toBe(false)
+      expect(menu.hidden).toBe(false)
+
+      const buttonEvent = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, button: 0})
+      button.dispatchEvent(buttonEvent)
+      expect(buttonEvent.defaultPrevented).toBe(true)
+    }
+  })
+
+  it("closes the other menu when opening File or Share without pointer events", async () => {
+    const {ribbon} = await mountRibbon()
+    const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
+    const fileButton = fileTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!
+    const share = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
+    const shareButton = share.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const shareMenu = share.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+
+    fileButton.click()
+    await ribbon.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+
+    shareButton.click()
+    await ribbon.updateComplete
+    await share.updateComplete
+    await shareMenu.updateComplete
+    expect(ribbon.menuOpen).toBe(false)
+    expect(fileTab.active).toBe(false)
+    expect(shareMenu.hidden).toBe(false)
+
+    fileButton.click()
+    await ribbon.updateComplete
+    await share.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+    expect(fileTab.active).toBe(true)
+    expect(shareMenu.hidden).toBe(true)
+    expect(shareButton.getAttribute("aria-expanded")).toBe("false")
+    expect(share.shadowRoot!.querySelector(".button-row")!.hasAttribute("data-connected")).toBe(false)
   })
 
   it("toggles the filename dropdown in expanded, collapsed, and preview modes", async () => {
@@ -160,12 +239,18 @@ describe("mark ribbon controls", () => {
     expect(fileTab.active).toBe(true)
     expect(getComputedStyle(fileChevron).transform).toBe("rotate(225deg)")
     expect(getComputedStyle(ribbon.shadowRoot!.querySelector("ribbon-menu")!).zIndex).toBe("4")
+    expect(getComputedStyle(fileName).backgroundColor).toBe("#ffffff")
+    expect(getComputedStyle(fileName).borderTopColor).toBe("#a8a8a8")
+    expect(getComputedStyle(fileName).borderBottomWidth).toBe("0px")
+    expect(getComputedStyle(ribbon.shadowRoot!.querySelector(".ribbon-top")!).zIndex).toBe("5")
 
     fileName.click()
     await ribbon.updateComplete
     expect(ribbon.menuOpen).toBe(false)
     expect(fileTab.active).toBe(false)
     expect(getComputedStyle(fileChevron).transform).toBe("rotate(45deg)")
+    expect(getComputedStyle(fileName).backgroundColor).toBe("transparent")
+    expect(getComputedStyle(ribbon.shadowRoot!.querySelector(".ribbon-top")!).zIndex).toBe("1")
 
     ribbon.expanded = false
     await ribbon.updateComplete
@@ -176,9 +261,9 @@ describe("mark ribbon controls", () => {
     expect(ribbon.activeMenu).toBe("Start")
     const fileMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await fileMenu.updateComplete
-    expect(fileMenu.groups.map(group => group.label)).toEqual(["File"])
+    expect(fileMenu.groups.map(group => group.label)).toEqual(["File", "Settings"])
     expect(fileMenu.groups[0]!.buttons.map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["Settings", "New", "Open", "Save"])
+      .toEqual(["New", "Open", "Save"])
 
     ribbon.previewActive = true
     await ribbon.updateComplete
@@ -412,7 +497,7 @@ describe("mark ribbon controls", () => {
     expect(shareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
       .toBe("https://webwriter.app/share/placeholder")
     expect(Array.from(shareMenu.querySelectorAll("button")).map(button => button.getAttribute("aria-label")))
-      .toEqual(["Copy link", "Copy", "Download"])
+      .toEqual(["Copy link", "Copy QR code", "Download QR code"])
     expect(shareMenu.querySelector("img.sharing-dropdown-qr-code")).not.toBeNull()
 
     const toDataURL = vi.spyOn(

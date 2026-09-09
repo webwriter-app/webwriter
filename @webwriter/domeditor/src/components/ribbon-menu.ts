@@ -42,6 +42,8 @@ export class RibbonMenu extends LitElement {
       border: 0;
       color: inherit;
       background: transparent;
+      /* Let the menu's shadow extend beyond the native popover bounds. */
+      overflow: visible;
     }
 
     :host([variant="button"][custom-content]) {
@@ -50,7 +52,7 @@ export class RibbonMenu extends LitElement {
     }
 
     :host([variant="button"]) .menu {
-      border-radius: 0.35rem;
+      border-radius: var(--ribbon-menu-border-radius, 0.35rem);
     }
 
     :host([custom-content]) .menu {
