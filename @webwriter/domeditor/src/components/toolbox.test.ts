@@ -71,8 +71,8 @@ describe("toolbox", () => {
     expect(getComputedStyle(tablist).paddingRight).toBe("4px")
     expect(getComputedStyle(tablist).paddingLeft).toBe("0px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .every(tab => getComputedStyle(tab).flexGrow === "1")).toBe(true)
-    expect(getComputedStyle(style).width).toBe("100%")
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0"])
+    expect(getComputedStyle(style).width).toBe("28px")
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
     const editClose = editTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!
@@ -87,6 +87,8 @@ describe("toolbox", () => {
     expect(style.getAttribute("aria-selected")).toBe("true")
     expect(getComputedStyle(editTab).width).toBe("28px")
     expect(getComputedStyle(styleTab).width).toBe("112px")
+    expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0"])
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
@@ -123,6 +125,8 @@ describe("toolbox", () => {
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
     const input = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
     expect(getComputedStyle(toolbox).width).toBe("400px")
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab"))
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0"])
     expect(getComputedStyle(pane).width).toBe("100%")
     expect(input.value).toBe("<p>Hello</p>")
     expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).toBeNull()

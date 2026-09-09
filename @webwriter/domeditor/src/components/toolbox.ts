@@ -118,6 +118,7 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     .toolbox-tab[data-active] {
+      flex-grow: 1;
       width: 112px;
       height: 30px;
       margin-bottom: -1px;
@@ -127,16 +128,8 @@ export class DomEditorToolbox extends AppRibbon {
       background: #f2f2f2;
     }
 
-    :host([active-tool]) .toolbox-tab {
-      flex-grow: 1;
-    }
-
     :host([active-tool]) .toolbox-tabs {
       padding-left: 0;
-    }
-
-    :host([active-tool]) .toolbox-tab:not([data-active]) .toolbox-tab-button {
-      width: 100%;
     }
 
     .toolbox-tab-button,
