@@ -12,6 +12,7 @@ const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwrit
  * a full replacement, whose replacement body is sanitized here as well. */
 const sanitizeAIContent = (root: ParentNode) => {
   return stripActiveContent(root, {
+    unwrapUnsupportedElements: true,
     removeAttribute: attribute => aiOnlyAttributes.has(attribute.name.toLowerCase()),
     removeClass: className => className.startsWith("◆"),
   })

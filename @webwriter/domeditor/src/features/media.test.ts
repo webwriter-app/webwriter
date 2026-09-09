@@ -560,12 +560,12 @@ describe("media editing", () => {
     expect(editor.features.media.actions.setTimedMediaFallbackHTML({
       type: "setTimedMediaFallbackHTML",
       expected,
-      html: '<p class="download">Download <a href="movie.mp4">the movie</a>.</p><script>alert(1)</script>',
-    })).toEqual({changed: true, removedUnsafeItems: 1})
+      html: '<dialog><hgroup><p class="download">Download <a href="movie.mp4">the movie</a>.</p></hgroup></dialog><script>alert(1)</script>',
+    })).toEqual({changed: true, removedUnsafeItems: 3})
 
     expect(video.querySelector("source")).toBe(source)
     expect(video.querySelector("track")).toBe(track)
-    expect(video.querySelector("script")).toBeNull()
+    expect(video.querySelector("script, dialog, hgroup")).toBeNull()
     expect(video.querySelector("p.download")?.textContent).toBe("Download the movie.")
     expect($.selectedElement).toBe(video)
   })

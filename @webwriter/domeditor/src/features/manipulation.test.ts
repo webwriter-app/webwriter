@@ -264,7 +264,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
   it("sanitizes arbitrary HTML while preserving safe inline styles", () => {
     editor.features.manipulation.actions.insert({
       type: "insert",
-      html: '<style>body { display: none }</style><link rel="stylesheet"><p style="color: red" onclick="evil()">Safe<script>while(true) {}</script></p>',
+      html: '<style>body { display: none }</style><link rel="stylesheet"><dialog><p style="color: red" onclick="evil()">Safe<script>while(true) {}</script></p></dialog>',
     })
 
     expectBodyToBe('<p style="color: red">Safe</p>')
@@ -277,6 +277,15 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expect(correct).toHaveBeenCalledWith(expect.any(HTMLBodyElement), true)
     expect(document.querySelector("ul")?.firstElementChild?.localName).toBe("li")
+  })
+  it.each([false, true])("unwraps inserted heading groups while preserving their content (transfer=%s)", transfer => {
+    const {fragment} = editor.parseHTMLFragment('<hgroup><p>Before</p><h2>Title</h2><hgroup><p>Nested</p></hgroup><!-- keep --><test-widget><hgroup><h3>Widget</h3></hgroup></test-widget></hgroup>', transfer)
+    expect(fragment.querySelector("hgroup")).toBeNull()
+    expect(Array.from(fragment.children).map(element => element.localName)).toEqual(["p", "h2", "p", "test-widget"])
+    expect(fragment.textContent).toBe("BeforeTitleNestedWidget")
+    expect(fragment.childNodes[3].nodeType).toBe(Node.COMMENT_NODE)
+    expect(fragment.childNodes[3].textContent).toBe(" keep ")
+    expect(fragment.querySelector("test-widget")?.innerHTML).toBe("<h3>Widget</h3>")
   })
   it("enables widget editing in HTML inserted through its action handler", () => {
     editor.features.manipulation.actions.insert({
@@ -1821,7 +1830,7 @@ describe("unified content transfer", () => {
   it.each(["paste", "drop", "beforeinput", "async paste"])("sanitizes and canonizes external %s", async method => {
     document.body.innerHTML = ""
     const data = new DataTransfer()
-    const html = '<script>bad()</script><style>p{color:red}</style><p class="external" style="color:red" onclick="bad()"><strong>bold</strong> <em>italic</em> <strike>old</strike><span><abbr title="abbreviation"><small>plain</small></abbr></span><ruby>漢<rp>(</rp><rt>かん</rt><rp>)</rp></ruby><a href="javascript:bad()">link</a></p><img src="photo.png" class="photo" style="width:10px">'
+    const html = '<script>bad()</script><style>p{color:red}</style><dialog open><hgroup><p class="external" style="color:red" onclick="bad()"><strong>bold</strong> <em>italic</em> <strike>old</strike><span><abbr title="abbreviation"><small>plain</small></abbr></span><ruby>漢<rp>(</rp><rt>かん</rt><rp>)</rp></ruby><a href="javascript:bad()">link</a></p></hgroup></dialog><img src="photo.png" class="photo" style="width:10px">'
     data.setData("text/html", html)
     data.setData("text/plain", "fallback")
     $.selectDocumentStart()
@@ -1865,7 +1874,7 @@ describe("unified content transfer", () => {
 
   it("undoes and redoes imported content without restoring stripped markup", () => {
     const data = new DataTransfer()
-    data.setData("text/html", '<p><span><small>plain</small></span><ruby>漢<rt>かん</rt></ruby></p>')
+    data.setData("text/html", '<dialog><hgroup><p><span><small>plain</small></span><ruby>漢<rt>かん</rt></ruby></p></hgroup></dialog>')
     document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
     editor.doc.syncFromDOM()
     expectBodyToBe('<p>plain漢</p>')
@@ -1873,7 +1882,7 @@ describe("unified content transfer", () => {
     expectBodyToBe('<p></p>')
     editor.doc.redo()
     expectBodyToBe('<p>plain漢</p>')
-    expect(editor.doc.body.toString()).not.toMatch(/<(span|small|ruby|rt)[ >]/)
+    expect(editor.doc.body.toString()).not.toMatch(/<(dialog|hgroup|span|small|ruby|rt)[ >]/)
   })
 
   it.each(["paste", "drop"])("enables all nested widgets on native %s", method => {

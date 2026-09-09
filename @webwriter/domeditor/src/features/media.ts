@@ -1158,7 +1158,7 @@ export class MediaFeature extends EditorFeature {
       const template = document.createElement("template")
       template.innerHTML = html
       this.editor.clearEditingArtifacts(template.content)
-      const removedUnsafeItems = stripActiveContent(template.content)
+      const removedUnsafeItems = stripActiveContent(template.content, {unwrapUnsupportedElements: true})
       const fragment = template.content
       if(fragment.querySelector("source, track, audio, video")) {
         throw new TypeError("Media fallback content cannot contain media resources or nested timed media")

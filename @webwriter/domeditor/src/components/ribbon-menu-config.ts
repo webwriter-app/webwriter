@@ -1,7 +1,6 @@
 import type {AIEffort} from "../ai-client"
 import {graphicShapeOptions} from "../graphic"
 import {
-  detailsInsertionTags,
   headingInsertionTags,
   insertionMenuItems,
   sectionInsertionTags,
@@ -103,7 +102,6 @@ const groupedMediaInsertionTags = new Set<string>([
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
   .filter(item => (sections as readonly string[]).includes(item.section))
   .flatMap<RibbonMenuButton>(item => {
-    if(item.section === "Lists" && detailsInsertionTags.includes(item.tag as typeof detailsInsertionTags[number])) return []
     if(!item.tag) return [{label: item.name, action: item.name, icon: item.icon ?? item.name}]
     if(item.section === "Lists") {
       if(item.tag === "ul") {
@@ -119,7 +117,6 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
         label: item.name,
         action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
         icon: item.icon ?? item.name,
-        ...(item.tag === "details" ? {submenu: insertionSubmenuForTags(detailsInsertionTags)} : {}),
       } satisfies RibbonMenuButton]
     }
     if(item.section === "Text" && item.tag === "pre") return []

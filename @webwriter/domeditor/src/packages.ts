@@ -261,7 +261,7 @@ export function sanitizePackageSnippet(html: string, maximumLength = 50_000_000)
   if(html.length > maximumLength) throw new RangeError("The package snippet is too large to insert safely")
   const template = document.createElement("template")
   template.innerHTML = html
-  stripActiveContent(template.content, {allowIframes: true})
+  stripActiveContent(template.content, {allowIframes: true, unwrapUnsupportedElements: true})
   return template.innerHTML
 }
 

@@ -4,6 +4,18 @@ import {stripActiveContent} from "./active-content"
 import {sanitizePackageSnippet} from "./packages"
 
 describe("package embeds", () => {
+  it.each(["dialog", "hgroup"])("unwraps %s in snippets and templates while sanitizing their children", tag => {
+    expect(sanitizePackageSnippet(`<${tag}><p onclick="bad()">Keep</p><${tag}><b>Nested</b></${tag}><script>bad()</script></${tag}><template><${tag}><span>Later</span></${tag}></template>`))
+      .toBe('<p>Keep</p><b>Nested</b><template><span>Later</span></template>')
+  })
+
+  it.each(["dialog", "hgroup"])("preserves existing %s markup when sanitizing a preview", tag => {
+    const template = document.createElement("template")
+    template.innerHTML = `<${tag}><p>Keep</p></${tag}>`
+    stripActiveContent(template.content)
+    expect(template.innerHTML).toBe(`<${tag}><p>Keep</p></${tag}>`)
+  })
+
   it("retains PhET's remote iframe in a script sandbox", () => {
     const html = sanitizePackageSnippet('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" title="Neuron"></iframe>')
     expect(html).toBe('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" title="Neuron" sandbox="allow-scripts"></iframe>')

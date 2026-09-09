@@ -1406,6 +1406,7 @@ export class DOMEditor {
     this.clearEditingArtifacts(fragment)
     const removedUnsafeItems = stripActiveContent(fragment, {
       allowIframes: true,
+      unwrapUnsupportedElements: true,
       ...(transfer ? {removeAttribute: (attribute: Attr) => ["style", "class"].includes(attribute.name.toLowerCase())} : {}),
     })
     if(transfer) {

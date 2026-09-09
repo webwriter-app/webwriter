@@ -14,6 +14,8 @@ export type ActiveContentStripOptions = {
   allowStyles?: boolean
   /** Retain remote HTTPS embeds in an opaque-origin script sandbox. */
   allowIframes?: boolean
+  /** Strip dialog and heading-group wrappers from incoming content, retaining their children. */
+  unwrapUnsupportedElements?: boolean
   removeAttribute?: (attribute: Attr) => boolean
   removeClass?: (className: string) => boolean
 }
@@ -23,6 +25,13 @@ export type ActiveContentStripOptions = {
  * are traversed explicitly because they are not descendants in the DOM tree. */
 export function stripActiveContent(root: ParentNode, options: ActiveContentStripOptions = {}) {
   let removed = 0
+  if(options.unwrapUnsupportedElements) {
+    root.querySelectorAll("dialog, hgroup").forEach(element => {
+      if(element.namespaceURI !== "http://www.w3.org/1999/xhtml") return
+      element.replaceWith(...Array.from(element.childNodes))
+      removed++
+    })
+  }
   root.querySelectorAll(unsafeElementSelector).forEach(element => {
     if(options.allowStyles && (element.localName === "style" || element.matches("link[rel~=stylesheet]"))) return
     if(options.allowIframes && element.localName === "iframe") {

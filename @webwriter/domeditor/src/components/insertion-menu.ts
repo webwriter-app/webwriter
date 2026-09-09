@@ -34,10 +34,9 @@ const insertionMenuItem = (
   return {section, tag, name: name ?? presentation.name, icon: presentation.icon}
 }
 
-export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hgroup", "hr"] as const
-export const detailsInsertionTags = ["dialog"] as const
+export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as const
 export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
-export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", ...formElementTypes] as const
+export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", "dialog", "hgroup", ...formElementTypes] as const
 
 export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
@@ -48,7 +47,6 @@ export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Lists", "ol"),
   insertionMenuItem("Lists", "dl"),
   insertionMenuItem("Lists", "details"),
-  ...detailsInsertionTags.map(tag => insertionMenuItem("Lists", tag)),
   insertionMenuItem("Media", "table"),
   insertionMenuItem("Media", "picture"),
   insertionMenuItem("Media", "svg"),
@@ -59,9 +57,6 @@ export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Media", "section"),
   ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
 ]
-
-const headingGroupItem = insertionMenuItems.find(item => item.tag === "hgroup")
-if(headingGroupItem) headingGroupItem.html = "<hgroup><h1></h1><p></p></hgroup>"
 
 /** Returns valid empty-element markup using the browser's HTML serializer. */
 export const emptyElementHTML = (tag: string) => document.createElement(tag).outerHTML

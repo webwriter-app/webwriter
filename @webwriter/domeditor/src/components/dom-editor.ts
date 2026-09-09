@@ -2714,10 +2714,6 @@ export class DomEditor extends LitElement {
       void this.execute({type: "insertDetails"}).finally(() => this.focusEditor())
       return
     }
-    if(item.tag === "dialog") {
-      void this.execute({type: "insertDialog"}).finally(() => this.focusEditor())
-      return
-    }
 
     if(item.tag === "table") {
       void this.execute({type: "insertTable", rows: 2, columns: 2})

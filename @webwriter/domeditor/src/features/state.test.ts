@@ -89,7 +89,7 @@ describe("StateFeature", () => {
 
     const result = editor.getActionHandler("replaceAIDocument")({
       type: "replaceAIDocument",
-      html: '<style>body{display:none}</style><link rel="stylesheet"><main style="color: red"><h1 onclick="steal()">After</h1><a href="javascript:steal()">Link</a><script>steal()</script></main>',
+      html: '<style>body{display:none}</style><link rel="stylesheet"><main style="color: red"><dialog open><hgroup><h1 onclick="steal()">After</h1></hgroup></dialog><a href="javascript:steal()">Link</a><script>steal()</script></main>',
     }) as {status: string, removedUnsafeItems: number}
 
     expect(result.status).toBe("applied")

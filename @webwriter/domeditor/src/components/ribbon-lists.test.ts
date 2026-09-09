@@ -74,7 +74,7 @@ describe("list ribbon drawer", () => {
     }))
   })
 
-  it("groups heading and dialog insertions without form or HTML controls", async () => {
+  it("groups heading insertions without dialog, form or HTML controls", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
@@ -91,11 +91,10 @@ describe("list ribbon drawer", () => {
     expect(button("Elements", "Form")).toBeNull()
     expect(button("Elements", "HTML")).toBeNull()
     expect(button("Elements", "Script")).toBeNull()
-    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hgroup", "hr"])
-    expect(insertionMenuItems.find(item => item.tag === "hgroup")?.html)
-      .toBe("<hgroup><h1></h1><p></p></hgroup>")
-    expect(submenuTags(button("Elements", "Details"))).toEqual(["dialog"])
-    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot", ...formElementTypes])
+    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
+    expect(insertionMenuItems.find(item => item.tag === "hgroup")).toBeUndefined()
+    expect(submenuTags(button("Elements", "Details"))).toEqual([])
+    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot", "dialog", "hgroup", ...formElementTypes])
     expect(insertionMenuItems.filter(item => (
       item.tag && (deliberatelyUnsupportedInsertionTags as readonly string[]).includes(item.tag)
     ))).toEqual([])
@@ -136,9 +135,11 @@ describe("list ribbon drawer", () => {
 
     expect(elements.layoutWidths.expanded).toBe(356)
     expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridAutoColumns).toBe("3.5rem")
-    for(const button of buttons.filter(button => button.label !== "Section")) {
+    for(const button of buttons.filter(button => button.label === "Heading")) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
     }
+    expect(buttons.find(button => button.label === "Details")!.shadowRoot!
+      .querySelector(".submenu-trigger")).toBeNull()
     expect(buttons.find(button => button.label === "Section")!.shadowRoot!
       .querySelector('.submenu-trigger[aria-haspopup="dialog"]')).not.toBeNull()
   })

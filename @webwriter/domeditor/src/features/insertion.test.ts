@@ -219,7 +219,7 @@ describe("insertion menu", () => {
     expect(menu.shadowRoot?.querySelector(".item")).toBeNull()
   })
 
-  it("inserts a complete declarative dialog pattern and selects the closed dialog", async () => {
+  it("does not offer dialog insertion", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeCommand()
@@ -229,13 +229,8 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    const dialog = document.querySelector<HTMLDialogElement>("dialog")!
-    expect(document.querySelector("button")).toBeNull()
-    expect(document.querySelector("button")).toBeNull()
-    expect(dialog).toHaveClass("◆dialog-editing")
-    expect(dialog).not.toHaveAttribute("open")
-    expect(editorHTML()).not.toContain("◆")
-    expect(menu.open).toBe(false)
+    expect(editorHTML()).toBe("<p>++dialog</p>")
+    expect(menu.shadowRoot?.querySelector(".item")).toBeNull()
   })
 
   it("shows installed package widgets and inserts their custom elements", async () => {
@@ -405,7 +400,7 @@ describe("insertion menu", () => {
     expect($.anchorOffset).toBe(0)
   })
 
-  it("inserts a complete heading-group template from the typed menu", async () => {
+  it("does not offer heading group insertion from the typed menu", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeCommand()
@@ -415,10 +410,8 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe("<hgroup><h1></h1><p></p></hgroup>")
-    expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
-      heading: "h1", beforeCount: 0, afterCount: 1,
-    })
+    expect(editorHTML()).toBe("<p>++heading group</p>")
+    expect(menu.shadowRoot?.querySelector(".item")).toBeNull()
   })
 
   it("closes when a space is inserted directly after ++", async () => {

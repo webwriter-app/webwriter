@@ -16,29 +16,18 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("declarative dialog editing", () => {
-  it("inserts an accessible dialog without unsupported buttons", () => {
-    editor.features.dialog.actions.insertDialog({type: "insertDialog"})
-
-    const dialog = document.querySelector<HTMLDialogElement>("dialog")!
-    const title = dialog.querySelector("h2")!
-
-    expect(dialog).toHaveAttribute("closedby", "any")
-    expect(dialog).toHaveAttribute("aria-labelledby", title.id)
-    expect(document.body.querySelector("script, style, button, form")).toBeNull()
-    expect($.selectedElement).toBe(dialog)
-    expect(dialog).toHaveClass("◆dialog-editing")
-    expect(editor.toHTML(true)).not.toContain("◆")
+  it("does not register dialog insertion", () => {
+    expect(editor.features.dialog.actions).not.toHaveProperty("insertDialog")
   })
 
-  it("uses collision-free dialog and title IDs", () => {
-    document.body.innerHTML = '<p id="dialog-1"></p><p id="dialog-2-title"></p>'
-    $.selectDocumentStart()
-
-    editor.features.dialog.actions.insertDialog({type: "insertDialog"})
-
-    const dialog = document.querySelector<HTMLDialogElement>("dialog")!
-    expect(dialog.id).toBe("dialog-3")
-    expect(dialog.querySelector("h2")?.id).toBe("dialog-3-title")
+  it.each([false, true])("strips incoming dialog wrappers while preserving content (transfer=%s)", transfer => {
+    const {fragment} = editor.parseHTMLFragment('<dialog open><p>Before</p><dialog><p>Nested</p></dialog><!-- keep --><test-widget><dialog><p>Widget</p></dialog></test-widget></dialog>', transfer)
+    expect(fragment.querySelector("dialog")).toBeNull()
+    expect(Array.from(fragment.children).map(element => element.localName)).toEqual(["p", "p", "test-widget"])
+    expect(fragment.textContent).toBe("BeforeNestedWidget")
+    expect(fragment.childNodes[2].nodeType).toBe(Node.COMMENT_NODE)
+    expect(fragment.childNodes[2].textContent).toBe(" keep ")
+    expect(fragment.querySelector("test-widget")?.innerHTML).toBe("<p>Widget</p>")
   })
 
   it("reveals a closed selected dialog without authoring open or UI nodes", () => {

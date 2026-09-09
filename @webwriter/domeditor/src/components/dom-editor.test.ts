@@ -3330,21 +3330,15 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="HTML"]')).toBeNull()
   })
 
-  it("inserts dialog from the Details dropdown", async () => {
+  it("does not offer dialog insertion in the Details button", async () => {
     const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const details = ribbon.shadowRoot!.querySelector<RibbonButton>(
       'ribbon-drawer[label="Elements"] ribbon-button[label="Details"]',
     )!
     await details.updateComplete
-    details.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await details.updateComplete
-    const menu = details.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
-    await menu.updateComplete
-    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Dialog"]')!.click()
-
-    expect(execute).toHaveBeenCalledWith({type: "insertDialog"})
+    expect(details.submenu).toEqual([])
+    expect(details.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
   })
 
   it("keeps Paragraph insertion without a Preformatted Text submenu", async () => {

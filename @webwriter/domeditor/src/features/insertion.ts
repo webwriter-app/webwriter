@@ -4,7 +4,6 @@ import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
 import {isMediaType, mediaDefaultHTML} from "../media"
 import {createTable} from "../table"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
-import {dialogDefaultHTML} from "../dialog"
 
 type CustomHighlightRegistry = {
   delete(name: string): void
@@ -436,8 +435,6 @@ export class InsertionFeature extends EditorFeature {
       ? createTable(2, 2).outerHTML
       : item.tag === "details"
       ? "<details><summary></summary></details>"
-      : item.tag === "dialog"
-      ? dialogDefaultHTML(document).html
       : isMediaType(item.tag) ? mediaDefaultHTML(item.tag)
       : item.tag ? emptyElementHTML(item.tag) : "")
     if(item.htmlUrl) {
@@ -506,11 +503,6 @@ export class InsertionFeature extends EditorFeature {
     else if(isElement(last) && last.matches("details") && last.firstElementChild) {
       $.move(last.firstElementChild)
     }
-    else if(isElement(last) && last.matches("dialog")) {
-      $.selectElement(last)
-      this.editor.features.dialog.refresh()
-      this.editor.features.selection.processSelection()
-    }
     else if(isElement(last) && last.matches("table")) {
       while(last.isConnected && last.parentElement && !this.editor.schema.isContentValid(last.parentElement)) {
         const parent = last.parentElement
@@ -530,7 +522,7 @@ export class InsertionFeature extends EditorFeature {
     else if(last.parentNode) {
       $.move(last.parentNode, Array.from(last.parentNode.childNodes).indexOf(last as ChildNode) + 1)
     }
-    if(isElement(last) && last.isConnected && last.matches("table, svg, dialog")) {
+    if(isElement(last) && last.isConnected && last.matches("table, svg")) {
       this.editor.postSelectionPath(true)
     }
     this.close(false)

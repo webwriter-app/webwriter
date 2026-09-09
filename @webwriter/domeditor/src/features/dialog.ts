@@ -1,6 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {
-  dialogDefaultHTML,
   isDialogClosedBy,
   type DialogSelectionState,
 } from "../dialog"
@@ -30,7 +29,6 @@ export class DialogFeature extends EditorFeature {
   }
 
   actions = {
-    insertDialog: ({}: {type: "insertDialog"}) => this.insertDialog(),
     setDialogAttribute: ({name, value}: {
       type: "setDialogAttribute"
       name: string
@@ -92,19 +90,6 @@ export class DialogFeature extends EditorFeature {
       closeControlCount: invokers.filter(button => ["close", "request-close"].includes(button.getAttribute("command") ?? "")).length,
       hasDialogForm: Boolean(dialog.querySelector('form[method="dialog"]')),
     }
-  }
-
-  insertDialog() {
-    const {html, dialogId} = dialogDefaultHTML(document)
-    this.editor.features.manipulation.insertHTML(html)
-    const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>("dialog"))
-      .find(candidate => candidate.id === dialogId)
-    if(!dialog?.isConnected) return false
-    $.selectElement(dialog)
-    this.refresh()
-    this.editor.features.selection.processSelection()
-    this.editor.postSelectionPath(true)
-    return true
   }
 
   private setDialogAttribute(name: string, value: string | null) {
