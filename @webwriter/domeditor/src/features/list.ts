@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
-import {$, cloneWithoutEditorMarkers, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
 
 const listSelector = "ul, ol, dl, menu"
@@ -479,6 +479,27 @@ export class ListFeature extends EditorFeature {
     const isAltGraph = event.getModifierState("AltGraph")
     const isPrintable = event.key.length === 1 && !event.metaKey && (!event.ctrlKey || isAltGraph)
     if(point && isPrintable) this.materializeVirtualItem(point)
+    // On the first insertion into a design-mode document, Chromium can show
+    // a caret in an empty SUMMARY but omit beforeinput for printable keys.
+    // Start the authored text through the normal input handlers (including
+    // stored marks); subsequent characters use native editing.
+    const summary = $.anchorContainer
+    if(isPrintable && !event.isComposing && $.isEmpty && $.isEmptySelection
+      && summary?.isConnected && !atomicEditingContainer(summary) && summary.matches("details > summary")
+      && summary.parentElement?.querySelector(":scope > summary") === summary) {
+      event.preventDefault()
+      const input = new InputEvent("beforeinput", {
+        inputType: "insertText", data: event.key, bubbles: true, cancelable: true,
+      })
+      if(!summary.dispatchEvent(input)) return
+      if(!summary.isConnected || $.anchorContainer !== summary || !$.isEmpty || !$.isEmptySelection) return
+      const text = document.createTextNode(event.key)
+      $.range.insertNode(text)
+      $.move(text, text.length)
+      summary.dispatchEvent(new InputEvent("input", {
+        inputType: "insertText", data: event.key, bubbles: true,
+      }))
+    }
   }
 
   private activeItem() {

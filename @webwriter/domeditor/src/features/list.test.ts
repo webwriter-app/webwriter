@@ -587,6 +587,96 @@ describe("semantic list editing", () => {
     expect(document.body.querySelector(".◆editor-only")).toBeNull()
   })
 
+  it("starts typing in a newly inserted summary without a preceding browser input event", () => {
+    editor.features.list.insertDetails()
+    const summary = document.querySelector("summary")!
+    expect($.anchorOffset).toBe(0)
+
+    expect(keydown("H").defaultPrevented).toBe(true)
+
+    expect(cleanHTML()).toBe("<details><summary>H</summary></details>")
+    expect($.anchor).toBe(summary.firstChild)
+    expect($.anchorOffset).toBe(1)
+    expect($.isTextSelection).toBe(true)
+    expect(keydown("i").defaultPrevented).toBe(false)
+  })
+
+  it("applies stored formatting to the first summary character", () => {
+    editor.features.list.insertDetails()
+    editor.features.mark.toggleMark("b")
+
+    keydown("H")
+
+    expect(cleanHTML()).toBe("<details><summary><b>H</b></summary></details>")
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it("shares the first summary character and supports undo and redo without editor artifacts", async () => {
+    editor.features.list.insertDetails()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    keydown("H")
+    editor.features.selection.processSelection()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    expect(editor.doc.body.toString()).toContain("<details><summary>H</summary></details>")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe("<details><summary></summary></details>")
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe("<details><summary>H</summary></details>")
+  })
+
+  it.each([
+    {isComposing: true}, {metaKey: true}, {ctrlKey: true},
+  ])("leaves composition and shortcuts native in an empty summary: %j", init => {
+    editor.features.list.insertDetails()
+
+    expect(keydown("h", init).defaultPrevented).toBe(false)
+    expect(cleanHTML()).toBe("<details><summary></summary></details>")
+  })
+
+  it("respects cancellation of the initial summary input", () => {
+    editor.features.list.insertDetails()
+    const summary = document.querySelector("summary")!
+    const input = vi.fn()
+    summary.addEventListener("beforeinput", event => event.preventDefault(), {once: true})
+    summary.addEventListener("input", input)
+
+    keydown("H")
+
+    expect(summary.childNodes).toHaveLength(0)
+    expect(input).not.toHaveBeenCalled()
+  })
+
+  it("does not insert at a selection changed by an input listener", () => {
+    editor.features.list.insertDetails()
+    const summary = document.querySelector("summary")!
+    const paragraph = document.createElement("p")
+    document.body.append(paragraph)
+    summary.addEventListener("beforeinput", () => {
+      summary.parentElement!.remove()
+      $.move(paragraph)
+    }, {once: true})
+
+    keydown("H")
+
+    expect(cleanHTML()).toBe("<p></p>")
+    expect($.anchor).toBe(paragraph)
+  })
+
+  it("does not bootstrap summary text inside an atomic widget", () => {
+    document.body.innerHTML = "<test-widget><details><summary></summary></details></test-widget>"
+    $.move(document.querySelector("summary")!)
+
+    expect(keydown("H").defaultPrevented).toBe(false)
+    expect(document.querySelector("summary")!.childNodes).toHaveLength(0)
+  })
+
   it("opens Details when selection enters content but not when it enters Summary", async () => {
     document.body.innerHTML = "<details><summary>Heading</summary><p>Body</p></details>"
     const details = document.querySelector("details")!
