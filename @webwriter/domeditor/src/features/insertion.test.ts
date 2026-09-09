@@ -85,9 +85,7 @@ describe("insertion menu", () => {
     expect(document.body.classList.contains("◆insertion-trigger")).toBe(true)
     expect(menu.activeItem).toBeUndefined()
     expect(menu.shadowRoot?.querySelector(".item[data-active]")).toBeNull()
-    expect(menu.shadowRoot?.textContent).toContain("Text")
-    expect(menu.shadowRoot?.textContent).toContain("Media")
-    expect(menu.shadowRoot?.textContent).toContain("Packages")
+    expect(Array.from(menu.shadowRoot!.querySelectorAll("h2"), heading => heading.textContent)).toEqual(["Elements", "Packages"])
     expect(menu.shadowRoot?.textContent).toContain("Paragraph")
     expect(menu.shadowRoot?.textContent).toContain("Website")
     expect(menu.shadowRoot?.textContent).not.toContain("HTML")
@@ -113,6 +111,73 @@ describe("insertion menu", () => {
 
     expect(menu.query).toBe("")
     expect(sections.scrollTop).toBe(0)
+  })
+
+  it("smoothly scrolls to each keyboard selection, including wrapped navigation", async () => {
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    try {
+      for(const key of ["ArrowUp", "ArrowDown", "ArrowDown", "ArrowUp"]) {
+        document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+        await menu.updateComplete
+        expect(scroll).toHaveBeenLastCalledWith({behavior: "smooth", block: "nearest", inline: "nearest"})
+        expect(scroll.mock.instances.at(-1)).toBe(menu.shadowRoot!.querySelector(".item[data-active]"))
+      }
+      expect(scroll).toHaveBeenCalledTimes(4)
+    }
+    finally { scroll.mockRestore() }
+  })
+
+  it("instantly resets scrolling and keyboard selection when the search changes", async () => {
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    const sections = menu.shadowRoot!.querySelector<HTMLElement>(".sections")!
+    const scroll = vi.spyOn(sections, "scrollTo")
+    try {
+      document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true}))
+      await menu.updateComplete
+      sections.scrollTop = 100
+      typeText("heading")
+      await menu.updateComplete
+
+      expect(scroll).toHaveBeenLastCalledWith({top: 0, behavior: "instant"})
+      expect(sections.scrollTop).toBe(0)
+      expect(menu.activeItem).toBeUndefined()
+      expect(menu.shadowRoot!.querySelector(".item[data-active]")).toBeNull()
+    }
+    finally { scroll.mockRestore() }
+  })
+
+  it("offers only generic Section and omits Preformatted Text and section variants", async () => {
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    const tags = menu.filteredItems.map(item => item.tag)
+    expect(tags).toContain("section")
+    for(const tag of ["pre", "div", "blockquote", "figure", "article", "aside", "header", "footer", "main", "nav", "search", "address"]) {
+      expect(tags).not.toContain(tag)
+      menu.query = tag
+      await menu.updateComplete
+      expect(menu.filteredItems.some(item => item.tag === tag)).toBe(false)
+    }
+  })
+
+  it.each(["@example/interactive-map", "interactive-map"])("prettifies and searches package names (%s)", async packageName => {
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages", name: "Marker", packageName, kind: "widget", tag: "example-marker",
+    }]
+    typeCommand()
+    typeText("interactive map")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    expect(menu.filteredItems).toHaveLength(1)
+    expect(menu.shadowRoot!.querySelector(".item-name")?.textContent).toBe("Marker")
+    expect(menu.shadowRoot!.querySelector(".item-package")?.textContent).toBe("Interactive Map")
+    expect(menu.filteredItems[0].packageName).toBe(packageName)
   })
 
   it("anchors the initial typed command to an empty block", async () => {
@@ -253,8 +318,8 @@ describe("insertion menu", () => {
     const menu = editor.features.insertion.menu
     await menu.updateComplete
 
-    expect(menu.shadowRoot?.textContent).toContain("@webwriter/demo")
-    expect(menu.shadowRoot?.querySelector(".item-package")?.textContent).toBe("@webwriter/demo")
+    expect(menu.shadowRoot?.textContent).not.toContain("@webwriter/demo")
+    expect(menu.shadowRoot?.querySelector(".item-package")?.textContent).toBe("Demo")
     menu.shadowRoot?.querySelector<HTMLButtonElement>('.item img[src="https://example.com/demo.svg"]')
       ?.closest<HTMLButtonElement>("button")?.click()
 
@@ -398,6 +463,46 @@ describe("insertion menu", () => {
     expect(menu.open).toBe(false)
     expect($.anchor?.nodeName).toBe("H1")
     expect($.anchorOffset).toBe(0)
+  })
+
+  it.each([false, true])("keeps typing searchable when mutations arrive before input (split trigger: %s)", async splitTrigger => {
+    const FrameMutationObserver = document.defaultView!.MutationObserver
+    let deliverMutations!: () => void
+    const observerConstructor = vi.spyOn(document.defaultView!, "MutationObserver").mockImplementation(function(callback) {
+      const observer = new FrameMutationObserver(callback)
+      deliverMutations = () => callback([], observer)
+      return observer
+    })
+    try {
+      if(splitTrigger) {
+        typeText("+")
+        document.dispatchEvent(new KeyboardEvent("keydown", {key: "+", bubbles: true, cancelable: true}))
+      }
+      else typeCommand()
+      const menu = editor.features.insertion.menu
+      await menu.updateComplete
+
+      for(const character of "table") {
+        const selection = document.getSelection()!
+        const text = selection.anchorNode as Text
+        const offset = selection.anchorOffset
+        text.insertData(offset, character)
+        $.move(text, offset + 1)
+        // Native editing can deliver its mutation observer before input.
+        deliverMutations()
+        expect(menu.open).toBe(true)
+        document.dispatchEvent(new InputEvent("input", {inputType: "insertText", data: character, bubbles: true}))
+        await menu.updateComplete
+      }
+
+      expect(menu.open).toBe(true)
+      expect(menu.query).toBe("table")
+      expect(menu.filteredItems.map(item => item.tag)).toEqual(["table"])
+      expect(editorHTML()).toBe("<p>++table</p>")
+      document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+      expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+    }
+    finally { observerConstructor.mockRestore() }
   })
 
   it("does not offer heading group insertion from the typed menu", async () => {

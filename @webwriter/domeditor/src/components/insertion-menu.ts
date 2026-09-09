@@ -2,7 +2,7 @@ import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
 import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
-import type {PackageInsertionItem} from "../packages"
+import {packageNameLabel, type PackageInsertionItem} from "../packages"
 import {formElementTypes} from "../form"
 import {sectionNames} from "../sections"
 
@@ -156,10 +156,12 @@ export class InsertionMenu extends LitElement {
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
     const items: InsertionMenuItem[] = [
-      ...insertionMenuItems.filter(item => item.kind !== "html"),
+      ...insertionMenuItems.filter(item => item.kind !== "html" && item.tag !== "pre"
+        && !sectionInsertionTags.some(tag => tag === item.tag)),
       ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
     ]
-    return items.filter(item => !query || [item.name, item.tag, item.packageName, item.kind]
+    return items.filter(item => !query || [item.name, item.tag, item.packageName,
+      item.packageName && packageNameLabel(item.packageName), item.kind]
       .filter(Boolean).join(" ").toLowerCase().includes(query))
   }
 
@@ -202,12 +204,17 @@ export class InsertionMenu extends LitElement {
   }
 
   protected updated(changed: Map<string, unknown>) {
-    if(changed.has("open") && this.open) this.resetScrollPosition()
+    if(!this.open) return
+    if(changed.has("open") || changed.has("query")) this.resetScrollPosition()
+    else if(changed.has("activeIndex")) {
+      this.shadowRoot?.querySelector<HTMLElement>(".item[data-active]")
+        ?.scrollIntoView({behavior: "smooth", block: "nearest", inline: "nearest"})
+    }
   }
 
   private resetScrollPosition() {
     const sections = this.shadowRoot?.querySelector<HTMLElement>(".sections")
-    if(sections) sections.scrollTop = 0
+    sections?.scrollTo({top: 0, behavior: "instant"})
   }
 
   private choose(item: InsertionMenuItem) {
@@ -247,10 +254,10 @@ export class InsertionMenu extends LitElement {
           @click=${this.close}
         >×</button>
         <div class="sections">
-          ${(["Text", "Lists", "Media", "Forms", "Packages"] as const).map(section => html`
+          ${(["Elements", "Packages"] as const).map(section => html`
             <section aria-label=${section}>
               <h2>${section}</h2>
-              ${items.filter(item => item.section === section).map(item => html`
+              ${items.filter(item => (item.section === "Packages") === (section === "Packages")).map(item => html`
                 <button
                   class="item"
                   type="button"
@@ -263,7 +270,7 @@ export class InsertionMenu extends LitElement {
                   </span>
                   <span class="item-text">
                     <span class="item-name">${item.name}</span>
-                    ${item.packageName ? html`<span class="item-package">${item.packageName}</span>` : ""}
+                    ${item.packageName ? html`<span class="item-package">${packageNameLabel(item.packageName)}</span>` : ""}
                   </span>
                 </button>
               `)}

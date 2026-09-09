@@ -22,6 +22,7 @@ export class InsertionFeature extends EditorFeature {
   private triggerBodyMarkerAdded = false
   private emptyTextBlock: Element | null = null
   private commandObserver: MutationObserver | null = null
+  private commandUpdateTimeout: ReturnType<typeof setTimeout> | null = null
   private commandGeneration = 0
   private readonly handleMenuSelect = (event: Event) => {
     void this.insert((event as CustomEvent<InsertionMenuItem>).detail)
@@ -160,7 +161,16 @@ export class InsertionFeature extends EditorFeature {
     this.commandGeneration++
     this.menu.showAt(rect.left, rect.bottom + 6)
     const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
-    const observer = new FrameMutationObserver(() => this.updateQuery())
+    const observer = new FrameMutationObserver(() => {
+      // Native editing can deliver mutations before input extends the command
+      // range. Check in the next task so the new caret is not mistaken for a
+      // selection outside the command.
+      if(this.commandUpdateTimeout !== null) return
+      this.commandUpdateTimeout = setTimeout(() => {
+        this.commandUpdateTimeout = null
+        this.updateQuery()
+      }, 0)
+    })
     try {
       observer.observe(document.body, {characterData: true, childList: true, subtree: true})
       this.commandObserver = observer
@@ -532,6 +542,8 @@ export class InsertionFeature extends EditorFeature {
     this.commandGeneration++
     this.commandObserver?.disconnect()
     this.commandObserver = null
+    if(this.commandUpdateTimeout !== null) clearTimeout(this.commandUpdateTimeout)
+    this.commandUpdateTimeout = null
     this.menu.open = false
     if(restoreSelection && this.commandRange?.endContainer.isConnected) {
       $.move(this.commandRange.endContainer, this.commandRange.endOffset)

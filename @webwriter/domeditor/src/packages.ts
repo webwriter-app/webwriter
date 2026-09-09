@@ -223,6 +223,8 @@ const titleCase = (value: string) => value
   .replaceAll(/[-_]+/g, " ")
   .replace(/\b\w/g, letter => letter.toUpperCase())
 
+export const packageNameLabel = (name: string) => titleCase(name.split("/").at(-1) ?? name)
+
 const configKey = (exportName: string) => exportName
   .replace(/\.\*$/, "")
   .replace(extensionPattern, "")
@@ -364,7 +366,7 @@ function summaryPackage(summary: NpmSearchPackage): WebWriterPackage {
   return {
     name: summary.name,
     version: summary.version,
-    label: titleCase(summary.name.split("/").at(-1) ?? summary.name),
+    label: packageNameLabel(summary.name),
     description: summary.description,
     authors: [...new Set(authors)],
     license: summary.license,
@@ -501,7 +503,7 @@ export class WebWriterPackageRegistry {
     return {
       name: manifest.name,
       version: manifest.version,
-      label: localized(globalConfig.label, this.locale) ?? summary.label ?? titleCase(manifest.name.split("/").at(-1) ?? manifest.name),
+      label: localized(globalConfig.label, this.locale) ?? summary.label ?? packageNameLabel(manifest.name),
       description: localized(globalConfig.description, this.locale) ?? manifest.description ?? summary.description,
       iconUrl,
       authors: [...new Set(manifestAuthors.length ? manifestAuthors : fallbackAuthors)],
