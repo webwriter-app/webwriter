@@ -4,8 +4,8 @@ import {LitElement, css, html} from "lit"
 export class LiveSessionControls extends LitElement {
   static properties = {
     playing: {type: Boolean, reflect: true},
-    step: {type: Number},
-    stepCount: {type: Number, attribute: "step-count"},
+    currentTime: {type: Number, attribute: "current-time"},
+    duration: {type: Number},
     live: {type: Boolean, reflect: true},
   }
 
@@ -19,9 +19,9 @@ export class LiveSessionControls extends LitElement {
       height: 30px;
       min-height: 30px;
       max-height: 30px;
-      color: #465465;
+      color: #000;
       border-bottom: 0.5px solid #a8a8a8;
-      background: #ededed;
+      background: #e7f1ff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
@@ -52,7 +52,7 @@ export class LiveSessionControls extends LitElement {
     }
 
     button:hover {
-      color: #243447;
+      color: #000;
       background: #dbe7f2;
     }
 
@@ -70,15 +70,15 @@ export class LiveSessionControls extends LitElement {
 
     .status {
       flex: 0 0 3.75rem;
-      color: #526b86;
+      color: #000;
+      font-weight: 700;
       font-size: 0.68rem;
       font-variant-numeric: tabular-nums;
       text-align: center;
       white-space: nowrap;
     }
 
-    .play-icon,
-    .stop-icon {
+    .play-icon {
       display: block;
       width: 0.7rem;
       height: 0.7rem;
@@ -110,28 +110,34 @@ export class LiveSessionControls extends LitElement {
       background: currentColor;
     }
 
-    .stop-icon {
-      border-radius: 0.08rem;
-      background: currentColor;
+    .time {
+      font-size: 0.68rem;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
   `
 
   playing = false
-  step = 0
-  stepCount = 0
+  currentTime = 0
+  duration = 0
   live = false
 
-  private normalizedStepCount() {
-    return Number.isFinite(this.stepCount) ? Math.max(0, Math.round(this.stepCount)) : 0
+  private normalizedDuration() {
+    return Number.isFinite(this.duration) ? Math.max(0, this.duration) : 0
   }
 
-  private normalizedStep() {
-    const count = this.normalizedStepCount()
-    const value = Number.isFinite(this.step) ? Math.round(this.step) : 0
-    return Math.max(0, Math.min(count, value))
+  private normalizedTime() {
+    return Math.max(0, Math.min(this.normalizedDuration(), Number.isFinite(this.currentTime) ? this.currentTime : 0))
   }
 
-  private dispatch(name: "live-session-play" | "live-session-pause" | "live-session-stop") {
+  private formatTime(time: number) {
+    const seconds = Math.floor(time)
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor(seconds / 60) % 60
+    return `${hours ? `${hours}:` : ""}${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`
+  }
+
+  private dispatch(name: "live-session-play" | "live-session-pause") {
     this.dispatchEvent(new Event(name, {bubbles: true, composed: true}))
   }
 
@@ -141,23 +147,24 @@ export class LiveSessionControls extends LitElement {
 
   private seek = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement
-    const count = this.normalizedStepCount()
+    const duration = this.normalizedDuration()
     const value = Number(input.value)
-    const step = Number.isFinite(value) ? Math.max(0, Math.min(count, Math.round(value))) : 0
-    this.dispatchEvent(new CustomEvent<{step: number}>("live-session-seek", {
-      detail: {step},
+    const time = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) * duration : 0
+    this.dispatchEvent(new CustomEvent<{time: number}>("live-session-seek", {
+      detail: {time},
       bubbles: true,
       composed: true,
     }))
   }
 
   render() {
-    const count = this.normalizedStepCount()
-    const step = this.normalizedStep()
-    const atEnd = step >= count
-    const status = this.live && atEnd ? "LIVE" : `${step} / ${count}`
+    const duration = this.normalizedDuration()
+    const time = this.normalizedTime()
+    const status = this.live ? "LIVE" : "PREVIEW"
+    // A fixed range avoids native step rounding as the live duration grows.
+    const position = duration > 0 ? time / duration : 1
     return html`
-      <div class="controls" role="group" aria-label="Live session controls">
+      <div class="controls" role="group" aria-label="Playback controls">
         <button
           type="button"
           aria-label=${this.playing ? "Pause" : "Play"}
@@ -169,20 +176,15 @@ export class LiveSessionControls extends LitElement {
         <input
           type="range"
           min="0"
-          max=${count}
-          step="1"
-          .value=${String(step)}
-          aria-label="Session step"
-          aria-valuetext=${status}
+          max="1"
+          step="any"
+          .value=${String(position)}
+          aria-label="Playback time"
+          aria-valuetext=${`${this.formatTime(time)} of ${this.formatTime(duration)}`}
           @input=${this.seek}
         />
+        <span class="time">${this.formatTime(time)}</span>
         <span class="status" role="status" aria-live="polite">${status}</span>
-        <button
-          type="button"
-          aria-label="Stop"
-          title="Stop"
-          @click=${() => this.dispatch("live-session-stop")}
-        ><span class="stop-icon" aria-hidden="true"></span></button>
       </div>
     `
   }

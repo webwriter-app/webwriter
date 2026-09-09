@@ -332,6 +332,12 @@ export class AppRibbon extends LitElement {
       transition: background-color 180ms ease;
     }
 
+    .ribbon.preview {
+      --ribbon-area-background: #f3f8ff;
+      --ribbon-control-color: #000;
+      --ribbon-qr-filter: brightness(0);
+    }
+
     .ribbon-top {
       box-sizing: border-box;
       display: flex;
@@ -1646,14 +1652,31 @@ export class AppRibbon extends LitElement {
 
     .preview-button[active] {
       position: relative;
-      color: #1e4f87;
-      background: #dcecff;
-      box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
+      border: 1px solid #d8dee6;
+      border-bottom: 0;
+      border-radius: 0.35rem 0.35rem 0 0;
+      color: var(--ribbon-control-color, #1e4f87);
+      background: var(--ribbon-area-background);
+      box-shadow: none;
+    }
+
+    .preview-button[active]::after {
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      left: -1px;
+      height: 1px;
+      background: var(--ribbon-area-background);
+      content: "";
     }
 
     .preview-button:hover {
-      color: #243447;
+      color: var(--ribbon-control-color, #243447);
       background: #e8eef5;
+    }
+
+    .preview-button[active]:hover {
+      background: var(--ribbon-area-background);
     }
 
     .preview-button:focus-visible {
@@ -1661,26 +1684,71 @@ export class AppRibbon extends LitElement {
       outline-offset: -2px;
     }
 
-    .preview-label {
-      display: block;
-      flex: 0 0 auto;
-      margin: 0;
-      color: #1e4f87;
-      font-size: 0.62rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      line-height: 1;
-    }
-
     .learners-summary {
       display: flex;
-      grid-row: 1 / -1;
       align-items: center;
       gap: 0.35rem;
       min-width: 0;
       padding: 0 0.3rem;
-      color: #526b86;
+      color: var(--ribbon-control-color, #526b86);
       font-size: 0.68rem;
+    }
+
+    .live-session-switch {
+      display: flex;
+      flex-direction: column;
+      align-self: center;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 1.55rem;
+      padding: 0.25rem;
+      border-radius: 0.3rem;
+      color: var(--ribbon-control-color, #334155);
+      font-size: 0.66rem;
+      cursor: pointer;
+    }
+
+    .live-session-switch:hover {
+      color: var(--ribbon-control-color, #1e4f87);
+    }
+
+    .live-session-switch:focus-within {
+      outline: 2px solid #3977c7;
+      outline-offset: -2px;
+    }
+
+    .live-session-switch input {
+      appearance: none;
+      position: relative;
+      margin: 0;
+      width: 1.9rem;
+      height: 1.05rem;
+      border: 1px solid #9aa9b8;
+      border-radius: 999px;
+      background: #d8dee6;
+      cursor: pointer;
+    }
+
+    .live-session-switch input::after {
+      position: absolute;
+      top: 0.12rem;
+      left: 0.12rem;
+      width: 0.69rem;
+      height: 0.69rem;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
+      content: "";
+      transition: transform 120ms ease;
+    }
+
+    .live-session-switch input:checked {
+      border-color: #3977c7;
+      background: #3977c7;
+    }
+
+    .live-session-switch input:checked::after {
+      transform: translateX(0.83rem);
     }
 
     .learners-summary-avatars {
@@ -4265,7 +4333,7 @@ export class AppRibbon extends LitElement {
         this.closeAIChat()
         this.previewExpandedBefore = this.expanded
         this.previewMenuBefore = this.activeMenu
-        this.expanded = this.liveSessionActive && this.liveSessionRole === "host"
+        this.expanded = this.liveSessionRole !== "learner"
         this.menuOpen = false
         this.activeMenu = "File"
         this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer")
@@ -4278,7 +4346,7 @@ export class AppRibbon extends LitElement {
       }
     }
     if(this.previewActive && (changed.has("liveSessionActive") || changed.has("liveSessionRole"))) {
-      this.expanded = this.liveSessionActive && this.liveSessionRole === "host"
+      this.expanded = this.liveSessionRole !== "learner"
       this.menuOpen = false
     }
     if(changed.has("marks")) this.syncSpanMarkSelection()
@@ -6987,7 +7055,7 @@ export class AppRibbon extends LitElement {
 
   private sharingButton() {
     return this.renderRoot.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Sharing"] ribbon-button[label="Share"]',
+      'ribbon-button.sharing-qr',
     ) ?? this.renderRoot.querySelector<RibbonButton>("ribbon-button.file-share-action")
   }
 
@@ -7292,26 +7360,13 @@ export class AppRibbon extends LitElement {
     })
   }
 
-  private renderSharingDrawer(drawer: RibbonMenuGroup) {
-    const link = this.sharingLink
+  private renderSharingDrawer(drawer: RibbonMenuGroup, excludeShare = false) {
     return html`
-      <ribbon-drawer label="Sharing" icon="Share" layout="sharing">
+      <ribbon-drawer label="Sharing" icon="Share" layout=${excludeShare ? "sharing-preview" : "sharing"}>
         ${drawer.buttons.map(button => {
           const item = typeof button === "string" ? {label: button} : button
-          if(item.label === "Share") return html`
-            <ribbon-button
-              class="sharing-qr"
-              label="Share"
-              action="Share"
-              variant="qr"
-              .qrValue=${link}
-              .dropdown=${this.renderSharingDropdown(link)}
-              keep-drawer-open
-              dropdown-no-scroll
-              @ribbon-button-click=${this.handleSharingButtonClick}
-              @ribbon-dropdown-open=${() => void this.ensureSharingQRCodeImage(link)}
-            ></ribbon-button>
-          `
+          if(excludeShare && item.label === "Share") return ""
+          if(item.label === "Share") return this.renderSharingButton()
           return html`
             <ribbon-button
               class="sharing-action"
@@ -7326,21 +7381,63 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private renderSharingButton(previewOnly = false) {
+    const link = this.sharingLink
+    const enabled = !previewOnly || Boolean(this.liveSessionActive && this.liveSessionLink)
+    return html`
+      <ribbon-button
+        class="sharing-qr"
+        label="Share"
+        action="Share"
+        variant="qr"
+        .qrValue=${link}
+        .dropdown=${this.renderSharingDropdown(link)}
+        keep-drawer-open
+        dropdown-no-scroll
+        ?disabled=${!enabled}
+        @ribbon-button-click=${this.handleSharingButtonClick}
+        @ribbon-dropdown-open=${() => void this.ensureSharingQRCodeImage(link)}
+      ></ribbon-button>
+    `
+  }
+
+  private handleLiveSessionToggle = (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement
+    this.dispatchEvent(new CustomEvent<{enabled: boolean}>("live-session-toggle", {
+      detail: {enabled: input.checked},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   private renderLearnersDrawer() {
     const enabledCount = this.liveLearners.filter(learner => learner.enabled).length
     const visibleAvatars = this.liveLearners.filter(learner => learner.enabled).slice(0, 4)
     return html`
       <ribbon-drawer label="Learners" icon="Plus" layout="learners" expandable>
-        <div class="learners-summary" aria-label=${`${enabledCount} of ${this.liveLearners.length} learners visualized`}>
-          <span class="learners-summary-avatars" aria-hidden="true">
-            ${visibleAvatars.map(learner => html`
-              <span class="learner-avatar" style=${`--learner-color:${learner.color}`}>${learner.initials}</span>
-            `)}
-          </span>
-          <span>${this.liveLearners.length
-            ? `${enabledCount}/${this.liveLearners.length} shown`
-            : "Waiting for learners"}</span>
-        </div>
+        ${this.liveSessionActive ? html`
+          <div class="learners-summary" aria-label=${`${enabledCount} of ${this.liveLearners.length} learners visualized`}>
+            <span class="learners-summary-avatars" aria-hidden="true">
+              ${visibleAvatars.map(learner => html`
+                <span class="learner-avatar" style=${`--learner-color:${learner.color}`}>${learner.initials}</span>
+              `)}
+            </span>
+            <span>${this.liveLearners.length
+              ? `${enabledCount}/${this.liveLearners.length} shown`
+              : "Waiting for learners"}</span>
+          </div>
+        ` : ""}
+        <label class="live-session-switch">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="LIVE"
+            .checked=${this.liveSessionActive}
+            @change=${this.handleLiveSessionToggle}
+          />
+          <span>LIVE</span>
+        </label>
+        ${this.renderSharingButton(true)}
         <div slot="more" class="learner-list" role="group" aria-label="Session learners">
           ${this.liveLearners.map(learner => html`
             <button
@@ -7524,9 +7621,9 @@ export class AppRibbon extends LitElement {
   }
 
   protected renderDrawers() {
-    if(this.previewActive && this.liveSessionActive && this.liveSessionRole === "host") {
+    if(this.previewActive && this.liveSessionRole !== "learner") {
       const sharing = menuGroups.File.find(group => group.label === "Sharing")!
-      return [this.renderSharingDrawer(sharing), this.renderLearnersDrawer()]
+      return [this.renderSharingDrawer(sharing, true), this.renderLearnersDrawer()]
     }
     const drawers = this.currentMenuGroups.map(drawer => {
       const styleCategory = this.activeMenu === "Style"
@@ -7674,7 +7771,7 @@ export class AppRibbon extends LitElement {
     const historyPreviewPending = this.historyState.preview !== null
     return html`
       <div
-        class="ribbon"
+        class=${this.previewActive ? "ribbon preview" : "ribbon"}
         @pointerdown=${this.handleRibbonPointerDown}
         @mousedown=${this.handleRibbonPointerDown}
         @focusin=${this.handleRibbonInputFocusIn}
@@ -7725,6 +7822,7 @@ export class AppRibbon extends LitElement {
                       dropdown-on-click
                       lazy-dropdown
                       dropdown-no-scroll
+                      ?disabled=${this.previewActive && !(this.liveSessionActive && this.liveSessionLink)}
                       .qrValue=${this.sharingLink}
                       .dropdown=${this.renderSharingDropdown(this.sharingLink)}
                       @ribbon-dropdown-open=${() => {
@@ -7781,13 +7879,12 @@ export class AppRibbon extends LitElement {
               class="preview-button"
               type="button"
               ?active=${this.previewActive}
-              aria-label=${this.previewActive ? "Stop live session" : "Preview"}
-              title=${this.previewActive ? "Stop live session" : "Preview"}
+              aria-label=${this.previewActive ? "Exit preview" : "Preview"}
+              title=${this.previewActive ? "Exit preview" : "Preview"}
               aria-pressed=${this.previewActive}
               ?disabled=${aiReviewPending || historyPreviewPending}
               @click=${() => this.handleTopButtonClick("Preview")}
             >
-              ${this.previewActive ? html`<span class="preview-label" aria-hidden="true">LIVE</span>` : ""}
               <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
             </button>
           </div>

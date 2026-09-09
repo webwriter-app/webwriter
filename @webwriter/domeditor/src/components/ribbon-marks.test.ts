@@ -267,7 +267,7 @@ describe("mark ribbon controls", () => {
 
     ribbon.previewActive = true
     await ribbon.updateComplete
-    expect(ribbon.expanded).toBe(false)
+    expect(ribbon.expanded).toBe(true)
     expect(ribbon.activeMenu).toBe("File")
     fileName.click()
     await ribbon.updateComplete

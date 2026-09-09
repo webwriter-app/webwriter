@@ -447,6 +447,8 @@ export class DomEditor extends LitElement {
     liveSteps: {attribute: false, state: true},
     liveStreamStep: {attribute: false, state: true},
     liveStreamPlaying: {attribute: false, state: true},
+    liveStreamTime: {attribute: false, state: true},
+    liveStreamDuration: {attribute: false, state: true},
     liveOverlayLearners: {attribute: false, state: true},
     liveOverlayWidgets: {attribute: false, state: true},
     backendState: {attribute: false, state: true},
@@ -553,6 +555,7 @@ export class DomEditor extends LitElement {
   private previewDocumentHTML: string | null = null
   private livePreviewSource: string | null = null
   private previewSelection: SelectionBookmark | null = null
+  private previewGeneration = 0
   private previewTransition = false
   private liveSessionActive = false
   private liveSessionRole: "host" | "learner" | "" = ""
@@ -563,6 +566,10 @@ export class DomEditor extends LitElement {
   private liveSteps: LiveSessionStep[] = []
   private liveStreamStep = 0
   private liveStreamPlaying = false
+  private liveStreamTime = 0
+  private liveStreamDuration = 0
+  private liveStreamStartedAt = 0
+  private livePlaybackLastTick = 0
   private livePlaybackTimer: ReturnType<typeof setTimeout> | undefined
   private liveOverlayLearners: OverlayLearner[] = []
   private liveOverlayWidgets: OverlayWidget[] = []
@@ -921,8 +928,7 @@ export class DomEditor extends LitElement {
 
   private syncLiveSession = (session = this.liveSession, change?: LiveSessionChange) => {
     if(!session || session !== this.liveSession) return
-    const previousStepCount = this.liveSteps.length
-    const followedLiveEdge = this.liveStreamPlaying && this.liveStreamStep >= previousStepCount
+    const followedLiveEdge = this.liveStreamPlaying && this.liveStreamTime >= this.liveStreamDuration
     let appendOnly = true
     const steps = change ? [...this.liveSteps] : session.steps
     change?.stepDeltas.forEach(delta => {
@@ -942,8 +948,9 @@ export class DomEditor extends LitElement {
     }
     this.liveLearners = sessionLearners.map(learner => this.liveLearnerRibbonItem(learner))
 
+    this.advanceLiveClock()
     if(followedLiveEdge) this.liveStreamStep = steps.length
-    else this.liveStreamStep = Math.max(0, Math.min(this.liveStreamStep, steps.length))
+    else this.updateLiveStep()
 
     if(this.liveSessionRole === "learner" && session.baseHTML && session.baseHTML !== this.livePreviewSource) {
       this.livePreviewSource = session.baseHTML
@@ -981,37 +988,66 @@ export class DomEditor extends LitElement {
     this.livePlaybackTimer = undefined
   }
 
-  private scheduleLivePlayback() {
+  private resetLivePlayback() {
     this.clearLivePlaybackTimer()
-    if(!this.liveStreamPlaying || this.liveStreamStep >= this.liveSteps.length) return
-    const previousTime = this.liveSteps[this.liveStreamStep - 1]?.time
-    const nextTime = this.liveSteps[this.liveStreamStep]?.time
-    const interval = previousTime === undefined || nextTime === undefined
-      ? 180
-      : Math.max(80, Math.min(750, nextTime - previousTime))
+    this.liveStreamStartedAt = Date.now()
+    this.livePlaybackLastTick = this.liveStreamStartedAt
+    this.liveStreamTime = 0
+    this.liveStreamDuration = 0
+    this.liveStreamStep = 0
+    this.liveStreamPlaying = true
+    this.scheduleLivePlayback()
+  }
+
+  private advanceLiveClock() {
+    const now = Date.now()
+    const following = this.liveStreamTime >= this.liveStreamDuration
+    this.liveStreamDuration = Math.max(this.liveStreamDuration, (now - this.liveStreamStartedAt) / 1000)
+    if(this.liveStreamPlaying) {
+      this.liveStreamTime = following ? this.liveStreamDuration
+        : Math.min(this.liveStreamDuration, this.liveStreamTime + Math.max(0, now - this.livePlaybackLastTick) / 1000)
+    }
+    this.livePlaybackLastTick = now
+  }
+
+  private updateLiveStep() {
+    const time = this.liveStreamStartedAt + this.liveStreamTime * 1000
+    let step = this.liveStreamTime >= this.liveStreamDuration ? this.liveSteps.length : 0
+    if(step === 0) {
+      while(step < this.liveSteps.length && this.liveSteps[step].time <= time) step++
+    }
+    this.liveStreamStep = step
+  }
+
+  private scheduleLivePlayback() {
+    if(this.livePlaybackTimer !== undefined || !this.previewActive) return
     this.livePlaybackTimer = setTimeout(() => {
       this.livePlaybackTimer = undefined
-      this.liveStreamStep = Math.min(this.liveSteps.length, this.liveStreamStep + 1)
-      this.updateLiveVisualization()
+      this.advanceLiveClock()
+      const previousStep = this.liveStreamStep
+      this.updateLiveStep()
+      if(previousStep !== this.liveStreamStep) this.updateLiveVisualization()
       this.scheduleLivePlayback()
-    }, interval)
+    }, 100)
   }
 
   private playLiveSession = () => {
+    this.advanceLiveClock()
     this.liveStreamPlaying = true
     this.scheduleLivePlayback()
   }
 
   private pauseLiveSession = () => {
+    this.advanceLiveClock()
     this.liveStreamPlaying = false
-    this.clearLivePlaybackTimer()
   }
 
   private seekLiveSession = (event: Event) => {
-    const step = (event as CustomEvent<{step?: unknown}>).detail?.step
-    if(typeof step !== "number" || !Number.isFinite(step)) return
+    const time = (event as CustomEvent<{time?: unknown}>).detail?.time
+    if(typeof time !== "number" || !Number.isFinite(time)) return
     this.pauseLiveSession()
-    this.liveStreamStep = Math.max(0, Math.min(this.liveSteps.length, Math.round(step)))
+    this.liveStreamTime = Math.max(0, Math.min(this.liveStreamDuration, time))
+    this.updateLiveStep()
     this.updateLiveVisualization()
   }
 
@@ -1860,6 +1896,7 @@ export class DomEditor extends LitElement {
     this.previewSelection = null
     this.previewDocumentHTML = session.baseHTML ?? `<!doctype html><html><head><title>Joining live session</title></head><body><p>Joining live session…</p></body></html>`
     this.previewActive = true
+    this.resetLivePlayback()
     this.connectLiveSession(session, "learner")
   }
 
@@ -1882,6 +1919,8 @@ export class DomEditor extends LitElement {
     this.liveSteps = []
     this.liveStreamStep = 0
     this.liveStreamPlaying = false
+    this.liveStreamTime = 0
+    this.liveStreamDuration = 0
     this.liveOverlayLearners = []
     this.liveOverlayWidgets = []
     this.liveLearnerVisibility.clear()
@@ -1909,23 +1948,13 @@ export class DomEditor extends LitElement {
       if(!this.editorDocument) await this.waitForEditorWindow()
       if(import.meta.env.MODE !== "test" && this.backendState === "probing") await this.loginToBackend()
       const previewHTML = this.currentPreviewHTML()
-      const sessionId = randomIdentifier("live")
-      const sessionToken = randomIdentifier("live-token")
-      const session = new LiveSession({
-        id: sessionId,
-        role: "host",
-        baseHTML: previewHTML,
-        ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
-        token: sessionToken,
-      })
-      this.liveStreamPlaying = true
-      this.liveStreamStep = 0
-      this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId, sessionToken))
+      const generation = ++this.previewGeneration
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
       this.previewFramePending = Boolean(ribbon && (!ribbon.expanded || ribbon.getAnimations?.().length))
       this.previewDocumentHTML = previewHTML
       this.previewActive = true
-      if(this.previewFramePending) void this.showPreviewAfterRibbonExpansion(session)
+      this.resetLivePlayback()
+      if(this.previewFramePending) void this.showPreviewAfterRibbonExpansion(generation)
     }
     catch(error) {
       this.previewSelection = null
@@ -1937,7 +1966,7 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async showPreviewAfterRibbonExpansion(session: LiveSession) {
+  private async showPreviewAfterRibbonExpansion(generation: number) {
     await this.updateComplete
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     await ribbon?.updateComplete
@@ -1945,7 +1974,7 @@ export class DomEditor extends LitElement {
     // styles. Loading srcdoc earlier makes document parsing and widget startup
     // compete with the ribbon's height transition on the main thread.
     await Promise.allSettled((ribbon?.getAnimations?.() ?? []).map(animation => animation.finished))
-    if(this.isConnected && this.previewActive && this.liveSession === session) {
+    if(this.isConnected && this.previewActive && this.previewGeneration === generation) {
       this.previewFramePending = false
     }
   }
@@ -1953,6 +1982,7 @@ export class DomEditor extends LitElement {
   private async exitPreview() {
     if(!this.previewActive || this.previewTransition) return
     const selection = this.previewSelection
+    this.previewGeneration++
     this.previewSelection = null
     this.disposeLiveSession()
     this.previewFramePending = false
@@ -1963,8 +1993,35 @@ export class DomEditor extends LitElement {
     this.focusEditor(true)
   }
 
-  private stopLiveSession = () => {
-    void this.exitPreview()
+  private toggleLiveSession = (event: Event) => {
+    const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
+    if(typeof enabled !== "boolean" || !this.previewActive || this.liveSessionRole === "learner" || enabled === this.liveSessionActive) return
+    if(!enabled) {
+      for(const path of this.liveSelectedWidgetLearners.keys()) this.applyLiveWidgetState(path, null)
+      this.disposeLiveSession()
+      this.resetLivePlayback()
+      return
+    }
+    try {
+      const sessionId = randomIdentifier("live")
+      const sessionToken = randomIdentifier("live-token")
+      const session = new LiveSession({
+        id: sessionId,
+        role: "host",
+        baseHTML: this.previewDocumentHTML ?? this.currentPreviewHTML(),
+        ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
+        token: sessionToken,
+      })
+      this.resetLivePlayback()
+      this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId, sessionToken))
+      const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
+      if(frame?.contentDocument) this.bindHostPreview(frame, frame.contentDocument)
+    }
+    catch(error) {
+      this.disposeLiveSession()
+      this.resetLivePlayback()
+      this.reportFileError(error)
+    }
   }
 
   private handleRibbonInputPointerDown = () => {
@@ -4823,6 +4880,7 @@ export class DomEditor extends LitElement {
           .aiEditReviewHandler=${this.handleAIEditReview}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
+          @live-session-toggle=${this.toggleLiveSession}
           @live-learner-toggle=${this.handleLiveLearnerToggle}
           @file-name-change=${this.handleFileNameChange}
           @storage-location-change=${this.handleStorageLocationChange}
@@ -4864,16 +4922,15 @@ export class DomEditor extends LitElement {
           @package-catalog-request=${this.loadPackageCatalog}
           @app-settings-change=${this.handleAppSettingsChange}
         ></app-ribbon>
-        ${this.liveSessionActive ? html`
+        ${this.previewActive ? html`
           <live-session-controls
             .playing=${this.liveStreamPlaying}
-            .step=${this.liveStreamStep}
-            .stepCount=${this.liveSteps.length}
-            .live=${this.liveSession?.status !== "stopped" && this.liveStreamStep >= this.liveSteps.length}
+            .currentTime=${this.liveStreamTime}
+            .duration=${this.liveStreamDuration}
+            .live=${this.liveSessionActive}
             @live-session-play=${this.playLiveSession}
             @live-session-pause=${this.pauseLiveSession}
             @live-session-seek=${this.seekLiveSession}
-            @live-session-stop=${this.stopLiveSession}
           ></live-session-controls>
         ` : html`
           <dom-editor-breadcrumb

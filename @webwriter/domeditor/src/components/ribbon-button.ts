@@ -83,7 +83,7 @@ export class RibbonButton extends LitElement {
     }
 
     .button-row button:active {
-      color: #1e4f87;
+      color: var(--ribbon-control-color, #1e4f87);
       background: #c4dcf4;
     }
 
@@ -137,7 +137,7 @@ export class RibbonButton extends LitElement {
       padding: 0.05rem 0.3rem;
       border: 0;
       border-radius: 0.25rem;
-      color: #2f3742;
+      color: var(--ribbon-control-color, #2f3742);
       background: transparent;
       font: inherit;
       font-size: 0.6rem;
@@ -183,7 +183,7 @@ export class RibbonButton extends LitElement {
     }
 
     .submenu-toggle:hover {
-      color: #1e4f87;
+      color: var(--ribbon-control-color, #1e4f87);
       background: #d7e7f7;
     }
 
@@ -210,15 +210,19 @@ export class RibbonButton extends LitElement {
       display: block;
       width: 1rem;
       height: 1rem;
-      color: #526b86;
+      color: var(--ribbon-control-color, #526b86);
     }
 
     :host([active]) .button-icon {
-      color: #1e5d9d;
+      color: var(--ribbon-control-color, #1e5d9d);
     }
 
     :host([disabled]) .button-icon {
       color: currentColor;
+    }
+
+    .button-icon webwriter-qr-code {
+      filter: var(--ribbon-qr-filter, none);
     }
 
     .button-icon svg {

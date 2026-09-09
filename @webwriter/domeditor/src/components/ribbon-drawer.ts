@@ -153,8 +153,14 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-height: 6rem;
     }
 
+    :host([layout="sharing-preview"]) {
+      --ribbon-drawer-expanded-width: 6.25rem;
+      --ribbon-drawer-width: min(6.25rem, calc(100vw - 1rem));
+      --ribbon-drawer-height: 6rem;
+    }
+
     :host([layout="learners"]) {
-      --ribbon-drawer-expanded-width: 12rem;
+      --ribbon-drawer-expanded-width: 20rem;
       --ribbon-drawer-width: min(30rem, calc(100vw - 1rem));
       --ribbon-drawer-height: min(22rem, calc(100vh - 3rem));
       --ribbon-drawer-more-height: min(16rem, calc(100vh - 9rem));
@@ -232,7 +238,7 @@ export class RibbonDrawer extends LitElement {
       padding: 0 0.5rem;
       border: 1px solid transparent;
       border-right-color: #d8dee6;
-      background: #f2f2f2;
+      background: var(--ribbon-area-background, #f2f2f2);
       transition: max-height 180ms ease;
     }
 
@@ -255,7 +261,7 @@ export class RibbonDrawer extends LitElement {
       border-right-color: #d8dee6;
       border-bottom-color: #d8dee6;
       border-left-color: #d8dee6;
-      background: #f2f2f2;
+      background: var(--ribbon-area-background, #f2f2f2);
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
       clip-path: polygon(
         0 0,
@@ -381,13 +387,37 @@ export class RibbonDrawer extends LitElement {
       gap: 0.1rem;
     }
 
-    :host([layout="learners"]) .controls {
+    :host([layout="sharing-preview"]) .controls {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: row;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: 0.1rem;
+    }
+
+    :host([layout="learners"]) .controls {
+      grid-template-columns: minmax(3.5rem, 0.55fr) minmax(5rem, 0.8fr) minmax(9rem, 1.45fr);
       grid-template-rows: minmax(0, 1fr);
       grid-auto-flow: row;
       grid-auto-columns: minmax(0, 1fr);
       grid-auto-rows: minmax(0, 1fr);
       gap: 0.1rem;
+    }
+
+    :host([layout="learners"]) ::slotted(.live-session-switch) {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    :host([layout="learners"]) ::slotted(.sharing-qr) {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+    }
+
+    :host([layout="learners"]) ::slotted(.learners-summary) {
+      grid-column: 3;
+      grid-row: 1;
     }
 
     :host([layout="metadata"]) .controls,
@@ -571,7 +601,7 @@ export class RibbonDrawer extends LitElement {
       padding: 0;
       border: 1px solid transparent;
       border-radius: 0.3rem;
-      color: #526b86;
+      color: var(--ribbon-control-color, #526b86);
       background: transparent;
       cursor: pointer;
       transform: translateX(-50%);
@@ -589,7 +619,7 @@ export class RibbonDrawer extends LitElement {
     .drawer-toggle:hover,
     .drawer-toggle[aria-expanded="true"] {
       border-color: #c8d2df;
-      color: #1e4f87;
+      color: var(--ribbon-control-color, #1e4f87);
       background: #eef4fb;
     }
 
@@ -626,7 +656,7 @@ export class RibbonDrawer extends LitElement {
       padding: 0 0.25rem;
       border-color: transparent;
       border-right-color: #d8dee6;
-      background: #f2f2f2;
+      background: var(--ribbon-area-background, #f2f2f2);
       box-shadow: none;
       clip-path: none;
     }
@@ -668,7 +698,7 @@ export class RibbonDrawer extends LitElement {
       flex: 0 0 1.25rem;
       width: 1.25rem;
       height: 1.25rem;
-      color: #526b86;
+      color: var(--ribbon-control-color, #526b86);
     }
 
     .summary-icon svg {
@@ -698,7 +728,7 @@ export class RibbonDrawer extends LitElement {
       max-height: 0;
       padding: 0 0.5rem;
       border: 1px solid #d8dee6;
-      background: #f2f2f2;
+      background: var(--ribbon-area-background, #f2f2f2);
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
       visibility: hidden;
       overflow: hidden;

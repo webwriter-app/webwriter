@@ -2288,14 +2288,14 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.previewActive).toBe(true)
     expect(ribbon.expanded).toBe(true)
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-label"))
-      .toBe("Stop live session")
+      .toBe("Exit preview")
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-pressed"))
       .toBe("true")
-    expect(previewButton.querySelector(".preview-label")?.textContent).toBe("LIVE")
+    expect(previewButton.querySelector(".preview-label")).toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"]')).not.toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Learners"]')).not.toBeNull()
     expect(editor.shadowRoot!.querySelector("live-session-controls")).not.toBeNull()
-    expect(editor.shadowRoot!.querySelector("live-session-overlay")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector("live-session-overlay")).toBeNull()
     expect(editor.shadowRoot!.querySelector("dom-editor-breadcrumb")).toBeNull()
 
     previewFrame.contentDocument!.body.textContent = "Preview changes are discarded"
@@ -2505,7 +2505,7 @@ describe("DomEditor.execute()", () => {
       expect((ribbon as AppRibbon).expanded).toBe(true)
       expect(ribbon.hasAttribute("preview-transition")).toBe(true)
       expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")
-        ?.querySelector(".preview-label")?.textContent).toBe("LIVE")
+        ?.querySelector(".preview-label")).toBeNull()
 
       ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
       await editor.updateComplete
@@ -2515,6 +2515,93 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("gates sharing with LIVE and resets the clock between preview and live", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
+    const share = () => ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Learners"] ribbon-button[label="Share"]')!
+    const toggle = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="LIVE"]')!
+    expect(share().disabled).toBe(true)
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Download"]')).not.toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Print"]')).not.toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Share"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector(".learners-summary")).toBeNull()
+    expect(controls.live).toBe(false)
+    expect((editor as unknown as {liveSession: LiveSession | null}).liveSession).toBeNull()
+
+    vi.useFakeTimers()
+    try {
+      // Restart the clock under fake timers so its lifecycle can be verified.
+      const playback = editor as unknown as {resetLivePlayback(): void}
+      playback.resetLivePlayback()
+      await vi.advanceTimersByTimeAsync(2500)
+      await editor.updateComplete
+      expect(controls.currentTime).toBe(2.5)
+      expect(controls.duration).toBe(2.5)
+      toggle().click()
+      await editor.updateComplete
+      await ribbon.updateComplete
+      expect(share().disabled).toBe(false)
+      expect(ribbon.shadowRoot!.querySelector(".learners-summary")?.textContent).toContain("Waiting for learners")
+      expect(controls.live).toBe(true)
+      expect(controls.currentTime).toBe(0)
+      const session = (editor as unknown as {liveSession: LiveSession}).liveSession
+      await vi.advanceTimersByTimeAsync(1500)
+      await editor.updateComplete
+      expect(controls.currentTime).toBe(1.5)
+      toggle().click()
+      await editor.updateComplete
+      await ribbon.updateComplete
+      expect(session.status).toBe("stopped")
+      expect(share().disabled).toBe(true)
+      expect(controls.live).toBe(false)
+      expect(controls.currentTime).toBe(0)
+      expect(controls.duration).toBe(0)
+      expect(ribbon.shadowRoot!.querySelector(".learners-summary")).toBeNull()
+      editor.remove()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("advances an idle timeline, holds a paused position, and resumes from a rewind", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
+    vi.useFakeTimers()
+    try {
+      ;(editor as unknown as {resetLivePlayback(): void}).resetLivePlayback()
+      await vi.advanceTimersByTimeAsync(3000)
+      await editor.updateComplete
+      expect(controls.currentTime).toBe(3)
+      expect(controls.currentTime).toBe(controls.duration)
+      controls.dispatchEvent(new Event("live-session-pause"))
+      await vi.advanceTimersByTimeAsync(2000)
+      await editor.updateComplete
+      expect(controls.currentTime).toBe(3)
+      expect(controls.duration).toBe(5)
+      controls.dispatchEvent(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      controls.dispatchEvent(new Event("live-session-play"))
+      await vi.advanceTimersByTimeAsync(1000)
+      await editor.updateComplete
+      expect(controls.currentTime).toBeCloseTo(2)
+      expect(controls.duration).toBe(6)
+      controls.dispatchEvent(new CustomEvent("live-session-seek", {detail: {time: 6}}))
+      controls.dispatchEvent(new Event("live-session-play"))
+      await vi.advanceTimersByTimeAsync(1000)
+      await editor.updateComplete
+      expect(controls.currentTime).toBe(7)
+      expect(controls.currentTime).toBe(controls.duration)
+      editor.remove()
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("keeps every learner in the live drawer and filters their combined visualization", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -2522,6 +2609,9 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await ribbon.updateComplete
 
+    ribbon.dispatchEvent(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    await editor.updateComplete
+    await ribbon.updateComplete
     const host = (editor as unknown as {liveSession: LiveSession}).liveSession
     const token = new URL((editor as unknown as {liveSessionLink: string}).liveSessionLink).searchParams.get("liveToken")!
     const learner = new LiveSession({
@@ -2543,7 +2633,7 @@ describe("DomEditor.execute()", () => {
       await ribbon.updateComplete
 
       const share = ribbon.shadowRoot!.querySelector<RibbonButton>(
-        'ribbon-drawer[label="Sharing"] ribbon-button[label="Share"]',
+        'ribbon-drawer[label="Learners"] ribbon-button[label="Share"]',
       )!
       const shareURL = new URL(share.qrValue)
       expect(shareURL.searchParams.get("liveSession")).toBe(host.id)
@@ -2561,7 +2651,7 @@ describe("DomEditor.execute()", () => {
         cursor: {x: 0.25, y: 0.4},
         scroll: 0.5,
       })])
-      expect(editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!.stepCount).toBe(1)
+      expect((editor as unknown as {liveStreamStep: number}).liveStreamStep).toBe(1)
 
       toggle.click()
       await editor.updateComplete
@@ -2589,6 +2679,9 @@ describe("DomEditor.execute()", () => {
 
     const previewFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
     previewFrame.dispatchEvent(new Event("load"))
+    ribbon.dispatchEvent(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    await editor.updateComplete
+    await ribbon.updateComplete
     const host = (editor as unknown as {liveSession: LiveSession}).liveSession
     const token = new URL((editor as unknown as {liveSessionLink: string}).liveSessionLink).searchParams.get("liveToken")!
     const learner = new LiveSession({
