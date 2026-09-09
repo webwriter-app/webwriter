@@ -367,13 +367,18 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
-    .brand:hover .brand-logo {
+    .brand:hover:not(:disabled) .brand-logo {
       opacity: 0.8;
     }
 
     .brand:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
+    }
+
+    .brand:disabled {
+      cursor: default;
+      opacity: 0.55;
     }
 
     .brand-logo {
@@ -1521,20 +1526,6 @@ export class AppRibbon extends LitElement {
       }
     }
 
-    .ribbon-toggle {
-      display: grid;
-      flex: 0 0 2rem;
-      place-items: center;
-      width: 2rem;
-      height: 40px;
-      padding: 0;
-      border: 0;
-      border-radius: 0.35rem;
-      color: #5e6977;
-      background: transparent;
-      cursor: pointer;
-    }
-
     .history-button {
       display: grid;
       flex: 0 0 2rem;
@@ -1817,37 +1808,6 @@ export class AppRibbon extends LitElement {
       display: block;
       width: 100%;
       height: 100%;
-    }
-
-    .ribbon-toggle:hover {
-      color: #243447;
-      background: #e8eef5;
-    }
-
-    .ribbon-toggle:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: -2px;
-    }
-
-    .ribbon-toggle:disabled {
-      color: #9aa4b1;
-      background: transparent;
-      cursor: default;
-      opacity: 0.55;
-    }
-
-    .chevron {
-      display: block;
-      width: 0.45rem;
-      height: 0.45rem;
-      border-right: 2px solid currentColor;
-      border-bottom: 2px solid currentColor;
-      transform: rotate(225deg);
-      transition: transform 120ms ease;
-    }
-
-    :host(:not([expanded])) .chevron {
-      transform: rotate(45deg);
     }
 
     .ribbon-content {
@@ -3807,8 +3767,6 @@ export class AppRibbon extends LitElement {
     this.menuOpen = false
     this.closeAIChat()
   }
-
-  private handleBrandClick = () => this.selectStart()
 
   private updateAIPrompt(event: Event) {
     this.aiPrompt = (event.currentTarget as HTMLTextAreaElement).value
@@ -7731,11 +7689,13 @@ export class AppRibbon extends LitElement {
         <div class="ribbon-top">
           <button
             class="brand"
-            ?active=${this.activeMenu === "Start" && !this.previewActive}
             type="button"
-            aria-label=${this.previewActive ? "Exit preview" : "Show Start menu"}
-            title=${this.previewActive ? "Exit preview" : "Show Start menu"}
-            @click=${this.handleBrandClick}
+            aria-controls="ribbon-content"
+            aria-expanded=${this.expanded}
+            ?disabled=${this.previewActive || this.previewTransitioning || aiReviewPending}
+            aria-label=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            title=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            @click=${this.toggleExpanded}
           >
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}
           </button>
@@ -7831,18 +7791,6 @@ export class AppRibbon extends LitElement {
             >
               ${this.previewActive ? html`<span class="preview-label" aria-hidden="true">LIVE</span>` : ""}
               <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
-            </button>
-            <button
-              class="ribbon-toggle"
-              type="button"
-              aria-controls="ribbon-content"
-              aria-expanded=${this.expanded}
-              ?disabled=${this.previewActive || this.previewTransitioning || aiReviewPending}
-              aria-label=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
-              title=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
-              @click=${this.toggleExpanded}
-            >
-              <span class="chevron" aria-hidden="true"></span>
             </button>
           </div>
         </div>

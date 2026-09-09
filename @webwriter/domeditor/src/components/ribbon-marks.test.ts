@@ -315,7 +315,7 @@ describe("mark ribbon controls", () => {
     }
   })
 
-  it("animates ribbon collapse while the File tab stays collapsed", async () => {
+  it("toggles the ribbon from the app icon while the File tab stays collapsed", async () => {
     const {ribbon} = await mountRibbon()
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
 
@@ -324,13 +324,26 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(ribbon).height).toBe("140px")
     expect(fileTab.ribbonCollapsed).toBe(true)
 
-    ribbon.expanded = false
+    const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
+    expect(ribbon.shadowRoot!.querySelector(".ribbon-toggle")).toBeNull()
+    expect(brand.getAttribute("aria-controls")).toBe("ribbon-content")
+    expect(brand.getAttribute("aria-expanded")).toBe("true")
+    expect(brand.getAttribute("aria-label")).toBe("Collapse ribbon")
+    ribbon.menuOpen = true
+    brand.click()
     await ribbon.updateComplete
+    expect(ribbon.expanded).toBe(false)
+    expect(ribbon.menuOpen).toBe(false)
+    expect(brand.getAttribute("aria-expanded")).toBe("false")
+    expect(brand.getAttribute("aria-label")).toBe("Expand ribbon")
     expect(fileTab.ribbonCollapsed).toBe(true)
     expect(fileTab.hasAttribute("ribbon-collapsed")).toBe(true)
 
-    ribbon.expanded = true
+    brand.click()
     await ribbon.updateComplete
+    expect(ribbon.expanded).toBe(true)
+    expect(brand.getAttribute("aria-expanded")).toBe("true")
+    expect(brand.getAttribute("aria-label")).toBe("Collapse ribbon")
     expect(fileTab.ribbonCollapsed).toBe(true)
     expect(fileTab.hasAttribute("ribbon-collapsed")).toBe(true)
   })

@@ -2252,7 +2252,7 @@ describe("DomEditor.execute()", () => {
 
     expect(previewButton.getAttribute("aria-label")).toBe("Preview")
     expect(previewButton.previousElementSibling?.querySelector('[aria-label="Redo"]')).not.toBeNull()
-    expect(previewButton.nextElementSibling?.getAttribute("aria-label")).toBe("Collapse ribbon")
+    expect(previewButton.nextElementSibling).toBeNull()
     expect(previewButton.querySelector(".preview-icon")).not.toBeNull()
     expect(previewButton.querySelector(".icon-tabler-player-play.icons-tabler-filled")).not.toBeNull()
   })
@@ -2282,7 +2282,11 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(1)
     expect(ribbon.shadowRoot!.querySelectorAll(".history-button")).toHaveLength(0)
     expect((ribbon as AppRibbon).expanded).toBe(true)
-    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ribbon-toggle")!.disabled).toBe(true)
+    const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
+    expect(brand.disabled).toBe(true)
+    brand.click()
+    expect(ribbon.previewActive).toBe(true)
+    expect(ribbon.expanded).toBe(true)
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-label"))
       .toBe("Stop live session")
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-pressed"))
@@ -2295,7 +2299,7 @@ describe("DomEditor.execute()", () => {
     expect(editor.shadowRoot!.querySelector("dom-editor-breadcrumb")).toBeNull()
 
     previewFrame.contentDocument!.body.textContent = "Preview changes are discarded"
-    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    previewButton.click()
     await editor.updateComplete
     await ribbon.updateComplete
 
