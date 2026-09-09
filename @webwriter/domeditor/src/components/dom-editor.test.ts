@@ -3325,18 +3325,35 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertDialog"})
   })
 
-  it("puts Preformatted Text in the Paragraph submenu", async () => {
+  it("keeps Paragraph insertion without a Preformatted Text submenu", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
-    paragraph.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Paragraph options"]')!.click()
-    await paragraph.updateComplete
-    const submenu = paragraph.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
-    submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Preformatted Text"]')!.click()
+    expect(paragraph.submenu).toEqual([])
+    expect(paragraph.shadowRoot!.querySelector('button[aria-label="Show more Paragraph options"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Preformatted Text"]')).toBeNull()
+    paragraph.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
-    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "pre"})
+    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "p"})
+  })
+
+  it.each(["p", "pre"])("converts %s from the paragraph toolbox switch", async tag => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.elementAttributes = {
+      path: [0], localName: tag, namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: tag === "p" ? "Paragraph" : "Preformatted Text", attributes: {},
+    }
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"]')!
+    expect(toggle.checked).toBe(tag === "pre")
+    toggle.click()
+
+    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: tag === "p" ? "pre" : "p"})
   })
 
   it("closes expanded ribbon-button menus when the editor receives focus", async () => {

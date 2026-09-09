@@ -527,27 +527,27 @@ describe("mark ribbon controls", () => {
     await drawer.updateComplete
 
     const textDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
-    const paragraph = Array.from(textDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
-      .find(button => button.label === "Paragraph")!
+    const heading = Array.from(textDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
+      .find(button => button.label === "Heading")!
     const standardButtons = [
       drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!,
       drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!,
     ]
-    await Promise.all([paragraph.updateComplete, ...standardButtons.map(button => button.updateComplete)])
+    await Promise.all([heading.updateComplete, ...standardButtons.map(button => button.updateComplete)])
 
-    const paragraphRow = paragraph.shadowRoot!.querySelector<HTMLElement>(".button-row")!
-    const paragraphTrigger = paragraph.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
-    const paragraphMenu = paragraph.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    const headingRow = heading.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+    const headingTrigger = heading.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
+    const headingMenu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
 
     for(const button of standardButtons) {
       const row = button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
       const trigger = button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
       const menu = button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
 
-      expect(button.constructor).toBe(paragraph.constructor)
-      expect(row.className).toBe(paragraphRow.className)
-      expect(trigger.className).toBe(paragraphTrigger.className)
-      expect(menu.constructor).toBe(paragraphMenu.constructor)
+      expect(button.constructor).toBe(heading.constructor)
+      expect(row.className).toBe(headingRow.className)
+      expect(trigger.className).toBe(headingTrigger.className)
+      expect(menu.constructor).toBe(headingMenu.constructor)
       expect(menu.variant).toBe("button")
       expect(menu.customContent).toBe(true)
       expect(button.shadowRoot!.querySelector(".button-dropdown")).toBeNull()
@@ -557,14 +557,14 @@ describe("mark ribbon controls", () => {
       expect(menu.hidden).toBe(false)
     }
 
-    paragraphTrigger.click()
-    await paragraph.updateComplete
-    expect(paragraphMenu.hidden).toBe(false)
-    expect(paragraphMenu.customContent).toBe(false)
+    headingTrigger.click()
+    await heading.updateComplete
+    expect(headingMenu.hidden).toBe(false)
+    expect(headingMenu.customContent).toBe(false)
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
-    await Promise.all([paragraph.updateComplete, ...standardButtons.map(button => button.updateComplete)])
-    expect(paragraphMenu.hidden).toBe(true)
+    await Promise.all([heading.updateComplete, ...standardButtons.map(button => button.updateComplete)])
+    expect(headingMenu.hidden).toBe(true)
     expect(standardButtons.every(button => button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!.hidden)).toBe(true)
   })
 

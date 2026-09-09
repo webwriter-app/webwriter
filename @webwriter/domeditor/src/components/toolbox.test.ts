@@ -264,6 +264,27 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).not.toBeNull()
   })
 
+  it("reflects the current paragraph type in its preformatted switch", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Edit")
+    for(const tag of ["p", "pre", "p"]) {
+      toolbox.elementAttributes = {
+        path: [0], localName: tag, namespaceURI: "http://www.w3.org/1999/xhtml",
+        name: tag === "p" ? "Paragraph" : "Preformatted Text", attributes: {},
+      }
+      await toolbox.updateComplete
+      expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Paragraph")
+      expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
+        .toEqual(["Paragraph", "Attributes"])
+      const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"]')!
+      expect(toggle.checked).toBe(tag === "pre")
+      expect(toggle.closest("label")!.textContent).toContain("Preformatted text")
+    }
+    toolbox.elementAttributes = {...toolbox.elementAttributes!, localName: "h1", name: "Heading"}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('input[role="switch"]')).toBeNull()
+  })
+
   it("offers understandable disclosure and heading-group tools alongside universal attributes", async () => {
     const toolbox = await mountToolbox()
     toolbox.activeTool = "Edit"

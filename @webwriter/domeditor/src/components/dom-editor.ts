@@ -3465,6 +3465,12 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleParagraphFormatChange = (event: Event) => {
+    const preformatted = (event as CustomEvent<{preformatted?: unknown}>).detail?.preformatted
+    if(typeof preformatted !== "boolean") return
+    void this.execute({type: "setBlockType", tag: preformatted ? "pre" : "p"}).finally(() => this.focusEditor())
+  }
+
   private handleHeadingGroupLevelChange = (event: Event) => {
     const level = (event as CustomEvent<{level?: unknown}>).detail?.level
     if(typeof level !== "string" || !/^h[1-6]$/.test(level)) {
@@ -4804,6 +4810,7 @@ export class DomEditor extends LitElement {
           @ruby-action=${this.handleRubyAction}
           @list-attribute-change=${this.handleListAttributeChange}
           @heading-group-level-change=${this.handleHeadingGroupLevelChange}
+          @paragraph-format-change=${this.handleParagraphFormatChange}
           @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
           @media-resource-action=${this.handleMediaResourceAction}
@@ -4947,6 +4954,7 @@ export class DomEditor extends LitElement {
         @ruby-action=${this.handleRubyAction}
         @list-attribute-change=${this.handleListAttributeChange}
         @heading-group-level-change=${this.handleHeadingGroupLevelChange}
+        @paragraph-format-change=${this.handleParagraphFormatChange}
         @comment-action=${this.handleCommentAction}
         @media-attribute-change=${this.handleMediaAttributeChange}
         @media-resource-action=${this.handleMediaResourceAction}

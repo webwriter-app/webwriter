@@ -122,15 +122,6 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
         ...(item.tag === "details" ? {submenu: insertionSubmenuForTags(detailsInsertionTags)} : {}),
       } satisfies RibbonMenuButton]
     }
-    if(item.section === "Text" && item.tag === "p") {
-      return [{
-        label: item.name,
-        action: item.name,
-        submenu: insertionMenuItems
-          .filter(submenuItem => submenuItem.section === item.section && submenuItem.tag === "pre")
-          .map(submenuItem => submenuItem.name),
-      } satisfies RibbonMenuButton]
-    }
     if(item.section === "Text" && item.tag === "pre") return []
     if(item.section === "Text" && item.tag === "h1") {
       return [{
@@ -210,6 +201,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
       ],
     },
     {label: "Section", buttons: []},
+    {label: "Paragraph", buttons: []},
     {label: "Heading group", buttons: []},
     {label: "List", buttons: []},
     {label: "Disclosure", buttons: []},

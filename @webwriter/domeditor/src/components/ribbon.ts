@@ -2930,6 +2930,47 @@ export class AppRibbon extends LitElement {
       accent-color: #3977c7;
     }
 
+    .paragraph-format-switch {
+      display: flex;
+      grid-column: 1 / -1;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .paragraph-format-switch input {
+      appearance: none;
+      flex: 0 0 auto;
+      width: 2rem;
+      height: 1.125rem;
+      margin: 0;
+      padding: 2px;
+      border: 1px solid #94a3b8;
+      border-radius: 1rem;
+      background: #e2e8f0;
+      cursor: pointer;
+    }
+
+    .paragraph-format-switch input::before {
+      display: block;
+      width: 0.75rem;
+      height: 0.75rem;
+      border-radius: 50%;
+      background: #fff;
+      content: "";
+    }
+
+    .paragraph-format-switch input:checked {
+      border-color: #2563eb;
+      background: #2563eb;
+    }
+
+    .paragraph-format-switch input:checked::before {
+      transform: translateX(0.875rem);
+    }
+
     .media-type-switch {
       box-sizing: border-box;
       width: 100%;
@@ -4864,6 +4905,32 @@ export class AppRibbon extends LitElement {
             />
           </label>
         ` : ""}
+      </ribbon-drawer>
+    `
+  }
+
+  protected get paragraphSelected() {
+    return this.elementAttributes?.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && (this.elementAttributes.localName === "p" || this.elementAttributes.localName === "pre")
+  }
+
+  private renderParagraphDrawer() {
+    if(!this.paragraphSelected) return nothing
+    return html`
+      <ribbon-drawer label="Paragraph" icon="Paragraph" layout="form">
+        <label class="paragraph-format-switch">
+          <span>Preformatted text</span>
+          <input
+            type="checkbox"
+            role="switch"
+            .checked=${this.elementAttributes?.localName === "pre"}
+            @change=${(event: Event) => this.dispatchEvent(new CustomEvent("paragraph-format-change", {
+              detail: {preformatted: (event.currentTarget as HTMLInputElement).checked},
+              bubbles: true,
+              composed: true,
+            }))}
+          />
+        </label>
       </ribbon-drawer>
     `
   }
@@ -7592,6 +7659,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Section") return this.renderSectionDrawer()
+      if(drawer.label === "Paragraph") return this.renderParagraphDrawer()
       if(drawer.label === "Heading group") return this.renderHeadingGroupDrawer()
       if(drawer.label === "List") return this.renderListDrawer()
       if(drawer.label === "Disclosure") return this.renderDisclosureDrawer()
@@ -7632,6 +7700,9 @@ export class AppRibbon extends LitElement {
   }
 
   protected get currentMenuGroups() {
+    if(this.activeMenu === "Edit" && this.paragraphSelected) {
+      return menuGroups.Edit.filter(group => group.label === "Paragraph" || group.label === "Attributes")
+    }
     if(this.activeMenu === "Edit" && this.media) {
       return menuGroups.Edit.filter(group => group.label === "Media" || Boolean(this.elementAttributes) && group.label === "Attributes")
     }

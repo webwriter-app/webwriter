@@ -445,6 +445,7 @@ export class DomEditorToolbox extends AppRibbon {
 
   private get editTypeLabel() {
     if(this.documentSelected) return "Document"
+    if(this.paragraphSelected) return "Paragraph"
     if(this.sectionSelected) return "Section"
     if(this.headingGroup) return "Heading group"
     if(this.listType === "ol") return "List"
@@ -474,6 +475,7 @@ export class DomEditorToolbox extends AppRibbon {
     if(this.activeTool === "Edit") {
       if(this.documentSelected) return menuGroups.Edit.filter(group => group.label === "Document"
         || Boolean(this.elementAttributes) && group.label === "Attributes")
+      if(this.paragraphSelected) return menuGroups.Edit.filter(group => group.label === "Paragraph" || group.label === "Attributes")
       const groups = menuGroups.Edit.filter(group => ![
         "Marks", "Document", "Section", "Comments", "Review", "View",
       ].includes(group.label))
