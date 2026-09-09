@@ -415,7 +415,7 @@ export class ListFeature extends EditorFeature {
   }
 
   private handleKeydown(event: KeyboardEvent) {
-    if(event.defaultPrevented || this.editor.features.transformation.target) return
+    if(event.defaultPrevented) return
     const point = this.virtualPoint
 
     if(event.key === "Enter" && !event.altKey && !event.shiftKey && !modifierKeyDown(event)) {

@@ -567,6 +567,26 @@ export class SharedDOMDoc {
     this.#undoManager.stopCapturing()
   }
 
+  /** Keep an interactive DOM edit in one undo item even when the pointer
+   * pauses longer than the normal typing capture window. Observation and
+   * remote synchronization remain active throughout the interaction. */
+  beginUndoGroup() {
+    this.syncFromDOM()
+    this.stopCapturing()
+    const captureTimeout = this.#undoManager.captureTimeout
+    this.#undoManager.captureTimeout = Infinity
+    let ended = false
+    return () => {
+      if(ended) return
+      ended = true
+      try { this.syncFromDOM() }
+      finally {
+        this.#undoManager.captureTimeout = captureTimeout
+        this.stopCapturing()
+      }
+    }
+  }
+
   /** Captures one DOM mutation as an isolated Yjs change. Unlike the normal
    * local undo stack, the returned change can be undone later without
    * rewinding unrelated edits that happened after it. */

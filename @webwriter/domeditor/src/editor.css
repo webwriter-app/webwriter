@@ -970,10 +970,6 @@ body:has(.◆transform-target):has(:is(.◆drop-caret-before, .◆drop-caret-aft
 .◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after {
   anchor-name: --gap-anchor;
 }
-.◆transform-target {
-  anchor-name: --transform-target;
-  caret-color: transparent !important;
-}
 
 .◆transform-containing-block {
   anchor-name: --transform-containing-block;
@@ -1205,14 +1201,6 @@ body.◆element-selected.◆style-target-hovered {
   anchor-name: --gap-anchor, --hover-anchor;
 }
 
-.◆transform-target:is(:hover, .◆element-hovered):not(table *) {
-  anchor-name: --transform-target, --hover-anchor;
-}
-
-.◆transform-target.◆style-target-hovered:not(table *) {
-  anchor-name: --transform-target, --hover-anchor;
-}
-
 .◆transform-containing-block:is(:hover, .◆element-hovered):not(table *) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
@@ -1276,10 +1264,6 @@ menu:empty {
       visibility: visible;
     }
   }
-}
-
-body:has(.◆transform-target):not(:has(:is(.◆drop-caret-before, .◆drop-caret-after)))::part(selection-caret) {
-  display: none;
 }
 
 body:has(.◆transform-target):has(:is(.◆drop-caret-before, .◆drop-caret-after))::part(transform-overlay) {
@@ -1418,31 +1402,21 @@ body.◆insertion-trigger::part(insertion-add) {
 }
 body::part(transform-overlay) {
   position: fixed;
-  position-anchor: --transform-target;
-  position-area: center;
-  width: anchor-size(--transform-target width);
-  height: anchor-size(--transform-target height);
-  outline-offset: 2px;
-  outline: 2px solid var(--sl-color-primary-400);
-  cursor: move;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
-  user-select: auto;
-  pointer-events: all;
+  box-sizing: border-box;
+  transform-origin: center;
+  display: block;
+  user-select: none;
+  pointer-events: none;
   margin: 0;
-  min-width: 30px;
-  min-height: 25px;
   z-index: 2147483647;
 }
 body::part(transform-overlay-hidden) {
   display: none !important;
 }
 body::part(transform-overlay-anchor) {
-  position: fixed;
-  position-area: start;
-  position-anchor: --transform-containing-block;
-
+  position: absolute;
+  left: -28px;
+  top: calc(50% - 8px);
   width: 16px;
   height: 16px;
   cursor: grab;
@@ -1453,7 +1427,7 @@ body::part(transform-overlay-anchor)::before {
     width: 16px;
     height: 16px;
     background-color: var(--sl-color-primary-400);
-    mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-anchor"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 9v12m-8 -8a8 8 0 0 0 16 0m1 0h-2m-14 0h-2" /><path d="M9 6a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /></svg>');
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-anchor"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 9v12m-8 -8a8 8 0 0 0 16 0m1 0h-2m-14 0h-2" /><path d="M9 6a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /></svg>');
 }
 body::part(transform-overlay-anchor-hidden) {
     display: none !important;
@@ -1477,85 +1451,42 @@ body::part(transform-overlay-anchor-sticky) {
   border: none;
   margin: none;
   position: absolute;
-  left: calc(50% + 3px);
-  top: 0;
+  left: -28px;
+  top: calc(50% + 14px);
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-pin"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4" /><path d="M9 15l-4.5 4.5" /><path d="M14.5 4l5.5 5.5" /></svg>');
 }
 body::part(transform-overlay-anchor-sticky)::before {
     width: 12px;
     height: 12px;
 }
+/* Center 8px handles on the existing 2px selection outline, offset by 2px. */
 body::part(transform-overlay-scale-up-left) {
-  grid-row: 1;
-  grid-column: 1;
-  justify-self: left;
-  align-self: top;
   top: -7px;
   left: -7px;
   cursor: nwse-resize;
 }
-body::part(transform-overlay-scale-up-up) {
-  grid-row: 1;
-  grid-column: 2;
-  justify-self: center;
-  align-self: top;
-  top: -7px;
-  cursor: ns-resize;
-}
 body::part(transform-overlay-scale-up-right) {
-  grid-row: 1;
-  grid-column: 3;
-  justify-self: right;
-  align-self: top;
   top: -7px;
   right: -7px;
   cursor: nesw-resize;
-}
-body::part(transform-overlay-scale-left-left) {
-  grid-row: 2;
-  grid-column: 1;
-  justify-self: left;
-  align-self: center;
-  bottom: -1px;
-  left: -7px;
-  cursor: ew-resize;
-}
-body::part(transform-overlay-scale-right-right) {
-  grid-row: 2;
-  grid-column: 3;
-  justify-self: right;
-  align-self: center;
-  bottom: -1px;
-  right: -7px;
-  cursor: ew-resize;
 }
 body::part(transform-overlay-scale-down-left) {
-  grid-row: 3;
-  grid-column: 1;
-  justify-self: left;
-  align-self: end;
   bottom: -7px;
   left: -7px;
   cursor: nesw-resize;
 }
-body::part(transform-overlay-scale-down-down) {
-  grid-row: 3;
-  grid-column: 2;
-  justify-self: center;
-  align-self: end;
-  bottom: -7px;
-  cursor: ns-resize;
-}
 body::part(transform-overlay-scale-down-right) {
-  grid-row: 3;
-  grid-column: 3;
-  justify-self: right;
-  align-self: end;
   bottom: -7px;
   right: -7px;
   cursor: nwse-resize;
 }
 body::part(transform-overlay-scale) {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  border: 0;
+  border-radius: 1px;
+  padding: 0;
   width: 8px;
   height: 8px;
   background: var(--sl-color-primary-400);
@@ -1566,7 +1497,7 @@ body::part(transform-overlay-scale):hover {
 body::part(transform-overlay-rotator) {
   position: absolute;
   left: calc(50% - 8px);
-  top: -30px;
+  top: var(--transform-rotate-top, -42px);
   width: 16px;
   height: 16px;
   cursor: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-rotate"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.95 11a8 8 0 1 0 -.5 4m.5 5v-5h-5" /></svg>'), auto;
@@ -1577,7 +1508,7 @@ body::part(transform-overlay-rotator)::before {
     width: 16px;
     height: 16px;
     background-color: var(--sl-color-primary-400);
-    mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-rotate"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.95 11a8 8 0 1 0 -.5 4m.5 5v-5h-5" /></svg>');
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-rotate"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.95 11a8 8 0 1 0 -.5 4m.5 5v-5h-5" /></svg>');
 }
 body::part(transform-overlay-rotator)::after {
     content: "";
@@ -1586,43 +1517,13 @@ body::part(transform-overlay-rotator)::after {
     background: var(--sl-color-primary-400);
     position: absolute;
     left: calc(50% - 1px);
-    top: 14px;
-    height: 16px;
-    pointer-events: none;
-}
-body::part(transform-overlay-restorer) {
-  position: absolute;
-  right: -11px;
-  top: -30px;
-  border: 2px solid var(--sl-color-primary-400);
-  border-radius: 100%;
-  --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-arrow-back-up"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 14l-4 -4l4 -4" /><path d="M5 10h11a4 4 0 1 1 0 8h-1" /></svg>');
-}
-body::part(transform-overlay-restorer):hover {
-    background: var(--sl-color-primary-100);
-}
-body::part(transform-overlay-restorer):active {
-    background: var(--sl-color-primary-400);
-}
-body::part(transform-overlay-restorer):active::before {
-      background-color: white !important;
-}
-body::part(transform-overlay-restorer)::before {
-    width: 12px;
-    height: 12px;
-}
-body::part(transform-overlay-restorer)::after {
-    content: "";
-    display: block;
-    width: 2px;
-    background: var(--sl-color-primary-400);
-    position: absolute;
-    right: 5px;
-    bottom: -14px;
-    height: 12px;
+    top: var(--transform-rotate-stem-top, 14px);
+    height: var(--transform-rotate-stem-height, 15px);
     pointer-events: none;
 }
 body::part(transform-overlay-button) {
+  pointer-events: auto;
+  touch-action: none;
   width: 16px;
   height: 16px;
   padding: 0;
@@ -1734,8 +1635,8 @@ body::part(transform-overlay-float-right)::before {
 body::part(transform-overlay-orderer) {
   anchor-name: --transform-overlay-orderer;
   position: absolute;
-  right: -11px;
-  top: -30px;
+  right: var(--transform-orderer-right, -11px);
+  top: var(--transform-orderer-top, -30px);
   background: var(--sl-color-primary-400);
   border-radius: 100%;
 }
@@ -1749,12 +1650,13 @@ body::part(transform-overlay-orderer-closed)::before {
 body::part(transform-overlay-orderer)::after {
     content: "";
     display: block;
-    width: 2px;
+    width: var(--transform-orderer-stem-width, 2px);
+    height: var(--transform-orderer-stem-height, 13px);
     background: var(--sl-color-primary-400);
     position: absolute;
-    right: 7px;
-    bottom: -14px;
-    height: 16px;
+    right: var(--transform-orderer-stem-right, 7px);
+    top: var(--transform-orderer-stem-top, auto);
+    bottom: var(--transform-orderer-stem-bottom, -11px);
     pointer-events: none;
 }
 body::part(transform-overlay-orderer-menu-hidden) {
@@ -1830,8 +1732,45 @@ body::part(transform-overlay-z-front):active {background: var(--sl-color-primary
 body::part(transform-overlay-z-front)::before {
     background-color: white;
 }
-body::part(transform-overlay-restorer-hidden) {
-  display: none;
+body::part(transform-overlay-mover) {
+  position: absolute;
+  left: calc(50% - 10px);
+  top: -13px;
+  width: 20px;
+  height: 20px;
+  cursor: move;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  background: white;
+  border: 2px solid var(--sl-color-primary-400);
+  border-radius: 50%;
+  --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9l3 3l-3 3M15 12h6M6 9l-3 3l3 3M3 12h6M9 18l3 3l3 -3M12 15v6M15 6l-3 -3l-3 3M12 3v6"/></svg>');
+}
+body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-mover) {
+  border-style: dotted;
+}
+body::part(transform-overlay-mover)::before {
+  width: 16px;
+  height: 16px;
+}
+body::part(transform-overlay-at-top) {
+  --transform-rotate-top: calc(100% + 22px);
+  --transform-rotate-stem-top: -19px;
+  --transform-rotate-stem-height: 21px;
+  --transform-orderer-right: -34px;
+  --transform-orderer-top: -11px;
+  --transform-orderer-stem-width: 17px;
+  --transform-orderer-stem-height: 2px;
+  --transform-orderer-stem-right: 14px;
+  --transform-orderer-stem-top: 7px;
+  --transform-orderer-stem-bottom: auto;
+}
+body::part(transform-overlay-rotator-hidden),
+body::part(transform-overlay-anchor-sticky-hidden),
+body::part(transform-overlay-arranger-menu-hidden),
+body::part(transform-overlay-orderer-menu-hidden) {
+  display: none !important;
 }
 /* AI edits are staged in a private Yjs branch and remain a visually distinct,
  * read-only proposal until the user accepts or rejects them. All marker

@@ -1,108 +1,72 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, angleOnCircle, distanceBetweenPoints, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, getZPos, intersectionPoint, isElement, midpoint, modifierKeyDown, rotatePoint, roundByDPR, roundTo, setPart } from "../utility"
-import {isDocumentRoot} from "../document-template"
+import { $, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, roundByDPR, roundTo, setPart } from "../utility"
+import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
-/**
- * On border click, overlay transform
- * On click outside of overlay, close overlay
- * Features:
- *** Anchor/element:
- *     DRAG: Reposition anchor in document (DOM placement)
- *     CTRL/CMD+CLICK: Cycle absolute/relative/sticky 
- *     ALT: No snapping
- *     SHIFT: Switch to fixed
- *** Translate: 
- *      If static:
- *        DRAG: Set position:absolute (snap) & set top/left of cursor
- *      If relative/absolute: 
- *        DRAG: highlight containing block & set top/left
- *      If fixed:
- *        DRAG: set top/left
- *      If sticky:
- *        DRAG: highlight container and scroller & set top/left
- *      CTRL/CMD: Place statically
- *      ALT: No snapping
- *      SHIFT: Set top OR left
- *** Scale: 
- *     If scaled via bottom or right scaler:
- *       DRAG: set width/height (or scale)
- *     If scaled via top or left scaler:
- *       DRAG: set width/height (or scale) and reposition offset
- *     CTRL/CMD: Scale symmetrically
- *     ALT: No snapping
- *     SHIFT: Stretch via scale()
- *** Rotate:
- *     DRAG: set transform:rotate() with x deg from the el center 
- *     CTRL/CMD: -
- *     ALT: No snapping
- *     SHIFT: 45° steps
+type TransformElement = HTMLElement | SVGSVGElement
+type Mode = "move" | "scale" | "rotate" | "anchor"
+type StyleValue = {value: string, priority: string}
+type Gesture = {
+  target: TransformElement
+  parent: Element | null
+  mode: Mode
+  handle: HTMLElement
+  pointerId?: number
+  x: number
+  y: number
+  rect: DOMRect
+  width: number
+  height: number
+  cssWidth: number
+  cssHeight: number
+  matrix: DOMMatrix
+  parentMatrix: DOMMatrix
+  rotate: number
+  scale: number[]
+  initial: CSSStyleDeclaration
+  written: Map<string, StyleValue>
+  moved: boolean
+  captured: boolean
+  endUndoGroup: () => void
+}
+
+/** Selection-owned spatial controls in the shadow appendix.
  *
- * 
- * TODO ------------------
- * - Translate: Place statically (if mouse over gap, show gap drop caret)
- * - Scale: Stretch, rounding/jiggle issue
- * - Anchor: Switch to sticky
-*/
-
-/** Editing feature for spatially transforming elements: an overlay with drag
- * handles for moving, scaling and rotating the transform target, plus
- * controls for float, z-order and positioning mode. Started with a modifier
- * double click on a selected element (see activeListeners); the target is
- * marked with `◆transform-target`. */
+ * Move: drag at least 8 CSS pixels to detach a static element into absolute
+ * positioning. Relative, sticky and fixed elements retain their mode.
+ * Ctrl/Cmd previews a gap and returns the element to normal flow on release.
+ * Shift constrains movement to one axis; Alt disables snapping.
+ *
+ * Resize: corners set width/height. Top/left handles keep the
+ * opposite edge fixed by adjusting offsets. Ctrl/Cmd resizes about the center;
+ * Shift stretches with CSS scale instead of reflowing content; Alt unsnaps.
+ * Rotate (absolute targets): drag about the center, snapping to 5 degrees
+ * (Shift: 45 degrees; Alt: no snapping).
+ *
+ * Anchor: drag to relocate the element in the DOM without changing its
+ * positioning mode. Ctrl/Cmd-click cycles absolute/relative/sticky;
+ * Shift-click switches to fixed. Stacking and positioning controls operate
+ * on the current DOM. Escape, pointer cancellation and teardown cancel a drag.
+ */
 export class TransformationFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
-
-  /** The transform interaction currently in progress. */
-  #mode: "move" | "scale" | "rotate" | undefined
-
+  protected handlesCapturedElementInteractions = true
+  #target: TransformElement | null = null
+  #gesture: Gesture | null = null
   #floatValues = ["none", "left", "right"] as const
+  #observer: MutationObserver | null = null
+  #frame: number | null = null
+  #drop: {element: Element, placement: "before" | "after", parent: Node} | null = null
+  #suppressClick = false
+  readonly #cancelGesture = () => this.#finish(true)
 
-  /** The target's style attribute before the current interaction. */
-  #prevStyle: string | null
-
-  /** Creates the invisible 1px element used as an empty drag image. */
-  #createEmptyDrag() {
-    const el = document.createElement("div")
-    el.id = "◆transform-overlay-empty-drag"
-    Object.assign(el.style, {
-      position: "fixed",
-      right: 0,
-      bottom: 0,
-      width: "1px",
-      height: "1px",
-      background: "transparent",
-      pointerEvents: "none",
-      userSelect: "none"
-    })
-    return el
-  }
-
-  /** The empty drag image element (hides the browser's drag ghost). */
-  get emptyDrag() {
-    return this.overlay.querySelector("#◆transform-overlay-empty-drag")!
-  }
-
-  /** Creates one of the eight draggable scale handles. */
   #createScaler(direction: string) {
-    const point = document.createElement("div")
+    const point = document.createElement("button")
     point.id = `◆transform-overlay-scale-${direction}`
     point.classList.add("◆transform-overlay-scale")
     point.setAttribute("part", `transform-overlay-scale transform-overlay-scale-${direction}`)
-    point.draggable = true
-    point.addEventListener("dragstart", ev => this.handleScaleStart(ev), {passive: true})
-    point.addEventListener("drag", ev => this.handleScaleDrag(ev), {passive: true})
-    point.addEventListener("dragend", ev => this.handleScaleEnd(ev), {passive: true})
+    point.dataset.transformMode = "scale"
+    point.title = `Resize ${direction}`
     return point
-  }
-
-  /** Creates the button that resets all transform styles (see restore()). */
-  #createRestorer() {
-    const restorer = document.createElement("button")
-    restorer.id = `◆transform-overlay-restorer`
-    restorer.classList.add("◆transform-overlay-button")
-    restorer.setAttribute("part", "transform-overlay-button transform-overlay-restorer transform-overlay-restorer-hidden")
-    restorer.addEventListener("click", ev => {this.restore(); ev.stopImmediatePropagation()})
-    return restorer
   }
 
   /** Creates the arranger control: opens the float menu, or (when the
@@ -125,7 +89,7 @@ export class TransformationFeature extends EditorFeature {
       ev.stopPropagation()
     })
     arranger.addEventListener("blur", (ev) => {
-      if(isElement(ev.relatedTarget) && ev.relatedTarget.parentElement?.parentElement !== arranger) {
+      if(isElement(ev.relatedTarget) && !arranger.contains(ev.relatedTarget)) {
         arranger.toggleAttribute("data-open", false)
         this.#syncControlParts()
       }
@@ -138,28 +102,28 @@ export class TransformationFeature extends EditorFeature {
   /** The target's float value, mirrored on the arranger's data-float
    * attribute. */
   set #float(value: "none" | "left" | "right") {
+    if(!this.target || this.editor.isEditingLocked) return
     this.target.style.float = value === "none"? "": value
     this.arranger?.setAttribute("data-float", value)
     this.arranger?.toggleAttribute("data-open", false)
-    this.#syncControlParts()
+    this.updateInfo()
   }
 
   get #float() {
     return this.arranger?.getAttribute("data-float") as "none" | "left" | "right" ?? "none"
   }
 
-  /** Toggles the target between absolute and relative positioning, clearing
-   * its position offsets. */
+  /** Explicit position controls use the live computed position. */
   toggleAbsoluteRelative() {
-    this.target.style.left = this.target.style.right = this.target.style.top = this.target.style.bottom = ""
-    this.target.style.position = this.target.style.position === "absolute"? "relative": "absolute"
-    this.updateInfo()
+    const target = this.target
+    if(!target || this.editor.isEditingLocked) return
+    const position = getComputedStyle(target).position
+    this.#setPosition(position === "absolute" ? "relative" : "absolute")
   }
 
-  /** Toggles the target between relative and sticky positioning. */
   toggleSticky() {
-    this.target.style.position = this.target.style.position === "relative"? "sticky": "relative"
-    this.updateInfo()
+    if(!this.target || this.editor.isEditingLocked) return
+    this.#setPosition(getComputedStyle(this.target).position === "sticky" ? "relative" : "sticky")
   }
 
   /** Creates the float menu (none/left/right) of the arranger. */
@@ -210,7 +174,7 @@ export class TransformationFeature extends EditorFeature {
       ev.stopPropagation()
     })
     orderer.addEventListener("blur", (ev) => {
-      if(isElement(ev.relatedTarget) && ev.relatedTarget.parentElement?.parentElement !== orderer) {
+      if(isElement(ev.relatedTarget) && !orderer.contains(ev.relatedTarget)) {
         orderer.toggleAttribute("data-open", false)
         this.#syncControlParts()
       }
@@ -227,7 +191,7 @@ export class TransformationFeature extends EditorFeature {
     zBack.id = `◆transform-overlay-z-back`
     zBack.setAttribute("part", "transform-overlay-button transform-overlay-z-back")
     zBack.addEventListener("click", ev => {
-      this.moveZ(this.target, true, true)
+      this.moveZ(this.target, false, true)
       ev.stopPropagation()
     })
     zBack.classList.add("◆transform-overlay-button")
@@ -262,874 +226,617 @@ export class TransformationFeature extends EditorFeature {
     const menu = document.createElement("div")
     menu.id = "◆transform-overlay-orderer-menu"
     menu.setAttribute("part", "transform-overlay-orderer-menu transform-overlay-orderer-menu-hidden")
-    menu.append(zForward, zBackward)
+    menu.append(zBack, zBackward, zForward, zFront)
     return menu
   }
 
-  /** Creates the draggable rotation handle. */
-  #createRotator() {
-    const rotator = document.createElement("div")
-    rotator.id = `◆transform-overlay-rotator`
-    rotator.classList.add("◆transform-overlay-button")
-    rotator.setAttribute("part", "transform-overlay-button transform-overlay-rotator")
-    rotator.draggable = true
-    rotator.addEventListener("dragstart", ev => this.handleRotateStart(ev), {passive: true})
-    rotator.addEventListener("drag", ev => this.handleRotateDrag(ev), {passive: true})
-    rotator.addEventListener("dragend", ev => this.handleRotateEnd(ev), {passive: true})
-    return rotator
-  }
-
-  /** Creates the position anchor: shows the target's static position for
-   * relative/sticky targets; clicking it toggles absolute/relative. */
-  #createAnchor() {
-    const anchor = document.createElement("div")
-    anchor.id = `◆transform-overlay-anchor`
-    anchor.setAttribute("part", "transform-overlay-anchor transform-overlay-anchor-hidden")
-    anchor.addEventListener("mouseenter", () => this.#syncControlParts())
-    anchor.addEventListener("mouseleave", () => this.#syncControlParts())
-    // anchor.draggable = true
-    anchor.contentEditable = "false"
-    anchor.setAttribute("visibility", "hidden")
-    anchor.addEventListener("click", ev => {this.toggleAbsoluteRelative(); ev.stopPropagation()})
-
-    const sticky = document.createElement("button")
-    sticky.classList.add("◆transform-overlay-button")
-    sticky.id = `◆transform-overlay-anchor-sticky`
-    sticky.setAttribute("part", "transform-overlay-button transform-overlay-anchor-sticky transform-overlay-anchor-sticky-hidden")
-    sticky.addEventListener("click", ev => {this.toggleSticky(); ev.stopPropagation()})
-    anchor.appendChild(sticky)
-
-    return anchor
-  }
-  
-  /** Creates the transform overlay with all its controls (scalers, rotator,
-   * arranger, orderer); dragging the overlay itself moves the target. */
   #createOverlay() {
     const overlay = document.createElement("div")
     overlay.id = "◆transform-overlay"
-    overlay.setAttribute("part", "transform-overlay")
+    overlay.setAttribute("part", "transform-overlay transform-overlay-hidden")
+    overlay.setAttribute("visibility", "hidden")
     overlay.contentEditable = "false"
-    overlay.draggable = true
-    overlay.addEventListener("dragstart", ev => this.handleMoveStart(ev), {passive: true})
-    overlay.addEventListener("drag", ev => this.handleMoveDrag(ev), {passive: true})
-    overlay.addEventListener("dragend", ev => this.handleMoveEnd(ev), {passive: true})
-    const scalePoints = ["up-left", "up-up", "up-right", "left-left", "right-right", "down-left", "down-down", "down-right"].map(dir => this.#createScaler(dir))
+    const control = (name: string, title: string, mode?: Mode) => {
+      const button = document.createElement("button")
+      button.id = `◆transform-overlay-${name}`
+      button.classList.add("◆transform-overlay-button")
+      button.setAttribute("part", `transform-overlay-button transform-overlay-${name}`)
+      button.title = title
+      if(mode) button.dataset.transformMode = mode
+      return button
+    }
+    const mover = control("mover", "Move", "move")
+    const rotator = control("rotator", "Rotate", "rotate")
+    const anchor = control("anchor", "Position anchor: drag to relocate; Ctrl/Cmd-click to cycle position; Shift-click for fixed", "anchor")
+    const sticky = control("anchor-sticky", "Toggle sticky positioning")
+    sticky.addEventListener("click", event => { this.toggleSticky(); event.stopPropagation() })
+    anchor.addEventListener("click", event => {
+      if(this.#suppressClick) return
+      if(event.shiftKey) this.#setPosition("fixed")
+      else if(modifierKeyDown(event) && this.target) {
+        const position = getComputedStyle(this.target).position
+        this.#setPosition(position === "absolute" ? "relative" : position === "relative" ? "sticky" : "absolute")
+      }
+      event.stopPropagation()
+    })
     overlay.append(
-      ...scalePoints,
-      this.#createRotator(),
-      this.#createArranger(),
-      this.#createOrderer(),
-      // this.#createRestorer(),
-      this.#createEmptyDrag(),
+      ...["up-left", "up-right", "down-left", "down-right"].map(dir => this.#createScaler(dir)),
+      mover, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
     )
+    overlay.querySelectorAll("button").forEach(button => {
+      button.type = "button"
+      const label = button.title || ({
+        restorer: "Reset transformations", arranger: "Float", orderer: "Stacking order",
+        "float-none": "No float", "float-left": "Float left", "float-right": "Float right",
+        "z-back": "Send to back", "z-backward": "Send backward", "z-forward": "Bring forward", "z-front": "Bring to front",
+      } as Record<string, string>)[button.id.replace("◆transform-overlay-", "")]
+      if(label) { button.title = label; button.setAttribute("aria-label", label) }
+    })
     return overlay
+  }
+
+  get overlay() {
+    const existing = this.editor.appendix.querySelector<HTMLElement>("#◆transform-overlay")
+    if(existing) return existing
+    const overlay = this.#createOverlay()
+    this.editor.addAppendix(overlay)
+    return overlay
+  }
+
+  get target() {
+    return this.#target && this.#canTransform(this.#target) ? this.#target : null
+  }
+  get targetRect() { return this.target!.getBoundingClientRect() }
+  get targetComputedStyle() { return getComputedStyle(this.target!) }
+  get arranger() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-arranger")! }
+  get orderer() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-orderer")! }
+  get anchor() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-anchor")! }
+  get isNarrow() { return this.overlay.classList.contains("◆transform-overlay-narrow") }
+
+  #canTransform(element: Element): element is TransformElement {
+    return (element instanceof HTMLElement || element instanceof SVGSVGElement)
+      && element !== document.documentElement && element !== document.head
+      && !isDocumentRoot(element) && getDocumentRoot().contains(element)
+  }
+
+  /** Called at the selection feature's invariant boundary, including capture
+   * changes that do not dispatch a native selectionchange. */
+  syncSelection(element: Element | null) {
+    if(!this.isEnabled) return
+    if(this.#gesture) return
+    if(element && this.#canTransform(element)) this.startTransform(element)
+    else this.clearTransform()
+  }
+
+  startTransform(element: Element) {
+    if(!this.#canTransform(element) || this.editor.isEditingLocked) return
+    if(this.#target !== element) {
+      this.clearTransform()
+      this.#target = element
+    }
+    if(!element.classList.contains("◆transform-target")) element.classList.add("◆transform-target")
+    this.overlay.removeAttribute("visibility")
+    this.updateInfo()
+    this.#scheduleFrame()
   }
 
   #syncControlParts() {
     const overlay = this.overlay
+    const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     setPart(overlay, "transform-overlay-hidden", overlay.hasAttribute("visibility"))
-    setPart(overlay, "transform-overlay-changed", overlay.classList.contains("◆transform-overlay-changed"))
-    setPart(overlay, "transform-overlay-narrow", overlay.classList.contains("◆transform-overlay-narrow"))
-
-    const restorer = overlay.querySelector("#◆transform-overlay-restorer")
-    restorer && setPart(restorer, "transform-overlay-restorer-hidden", !overlay.classList.contains("◆transform-overlay-changed"))
-
-    const arranger = this.arranger
-    const arrangerPosition = arranger.getAttribute("data-position")
-    const arrangerFloat = arranger.getAttribute("data-float") ?? "none"
-    setPart(arranger, "transform-overlay-arranger-hidden", arrangerPosition !== "static")
-    ;["none", "left", "right"].forEach(float => setPart(arranger, `transform-overlay-arranger-float-${float}`, arrangerFloat === float))
-    ;["none", "left", "right"].forEach(float => setPart(
-      overlay.querySelector(`#◆transform-overlay-float-${float}`)!,
-      `transform-overlay-float-${float}-hidden`,
-      arrangerFloat === float,
-    ))
-    setPart(this.editor.appendix.querySelector("#◆transform-overlay-arranger-menu")!, "transform-overlay-arranger-menu-hidden", !arranger.hasAttribute("data-open"))
-
-    const orderer = this.orderer
-    setPart(orderer, "transform-overlay-orderer-hidden", orderer.getAttribute("data-position") === "static")
-    setPart(orderer, "transform-overlay-orderer-open", orderer.hasAttribute("data-open"))
-    setPart(orderer, "transform-overlay-orderer-closed", !orderer.hasAttribute("data-open"))
-    setPart(orderer, "transform-overlay-orderer-narrow", overlay.classList.contains("◆transform-overlay-narrow"))
-    setPart(this.editor.appendix.querySelector("#◆transform-overlay-orderer-menu")!, "transform-overlay-orderer-menu-hidden", !orderer.hasAttribute("data-open"))
-
-    const anchor = this.anchor
-    const position = anchor.getAttribute("data-position")
-    setPart(anchor, "transform-overlay-anchor-hidden", anchor.hasAttribute("visibility"))
-    setPart(anchor, "transform-overlay-anchor-relative", position === "relative")
-    setPart(anchor, "transform-overlay-anchor-sticky", position === "sticky")
-    const sticky = anchor.querySelector("#◆transform-overlay-anchor-sticky")!
-    setPart(sticky, "transform-overlay-anchor-sticky-hidden", position !== "sticky" && !(position === "relative" && anchor.matches(":hover")))
-    setPart(sticky, "transform-overlay-anchor-sticky-active", position === "sticky")
+    setPart(overlay, "transform-overlay-narrow", this.isNarrow)
+    const hidden = (name: string, hide: boolean) => {
+      const control = overlay.querySelector<HTMLElement>(`#◆transform-overlay-${name}`)!
+      setPart(control, `transform-overlay-${name}-hidden`, hide)
+      control.hidden = hide
+    }
+    hidden("rotator", position !== "absolute")
+    hidden("orderer", position !== "absolute")
+    hidden("arranger", true)
+    hidden("anchor", position === "static")
+    hidden("anchor-sticky", !["relative", "sticky"].includes(position))
+    for(const name of ["arranger", "orderer"]) {
+      const control = name === "arranger" ? this.arranger : this.orderer
+      const open = !control.hidden && control.hasAttribute("data-open")
+      hidden(`${name}-menu`, !open)
+      control.setAttribute("aria-expanded", String(open))
+      setPart(control, `transform-overlay-${name}-open`, open)
+      setPart(control, `transform-overlay-${name}-closed`, !open)
+    }
+    setPart(this.orderer, "transform-overlay-orderer-narrow", this.isNarrow)
+    for(const value of this.#floatValues) {
+      setPart(this.arranger, `transform-overlay-arranger-float-${value}`, this.#float === value)
+      hidden(`float-${value}`, this.#float === value)
+    }
+    setPart(overlay.querySelector("#◆transform-overlay-anchor-sticky")!, "transform-overlay-anchor-sticky-active", position === "sticky")
   }
 
-  /** Snapping strategies for the drag interactions. */
-  #roundingFuncs = {
-    identity: (x: number) => x,
-    granular: roundByDPR,
-    snap05: (x: number) => roundTo(x, 5),
-    snap10: (x: number) => roundTo(x, 10),
-    snap45: (x: number) => roundTo(x, 45)
+  /** The linear part of the actual CSS transform, including ancestors.
+   * Translation and transform-origin are already reflected in the live rect. */
+  #matrix(element: Element | null): DOMMatrix {
+    if(!element) return new DOMMatrix()
+    const style = getComputedStyle(element)
+    const angle = this.#angle(style.rotate)
+    const scale = this.#scale(style.scale)
+    const own = new DOMMatrix().rotate(angle).scale(scale[0], scale[1])
+      .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
+    own.e = own.f = 0
+    return this.#matrix(element.parentElement).multiply(own)
   }
 
-  /** Suppresses the browser's drag ghost and payload for a drag event. */
-  #clearDataTransfer(ev: Event & {dataTransfer: DataTransfer | null}) {
-    if(!ev.dataTransfer) {return}
-    ev.dataTransfer.setDragImage(this.emptyDrag, 0, 0)
-    ev.dataTransfer.clearData()
-    ev.dataTransfer.effectAllowed = "none"
+  #angle(value: string) {
+    const angle = (value || "0").trim().split(/\s+/).at(-1) ?? "0"
+    const n = parseFloat(angle) || 0
+    return angle.endsWith("grad") ? n * .9 : angle.endsWith("rad") ? n * 180 / Math.PI : angle.endsWith("turn") ? n * 360 : n
   }
 
-  /** The snapping function for the current mode and modifiers: Alt disables
-   * snapping (device pixel rounding); rotating snaps to 5° (Shift: 45°),
-   * moving and scaling snap to 10px. */
-  getRoundingFunc(ev: DragEvent) {
-    if(this.#mode === "rotate" && ev.altKey) {
-      return this.#roundingFuncs.granular
-    }
-    else if(this.#mode === "rotate" && ev.shiftKey) {
-      return this.#roundingFuncs.snap45
-    }
-    else if(this.#mode === "rotate") {
-      return this.#roundingFuncs.snap05
-    }
-    else if(this.#mode === "move" && ev.altKey) {
-      return this.#roundingFuncs.granular
-    }
-    else if(this.#mode === "move") {
-      return this.#roundingFuncs.snap10
-    }
-    else if(this.#mode === "scale" && ev.altKey) {
-      return this.#roundingFuncs.granular
-    }
-    else if(this.#mode === "scale") {
-      return this.#roundingFuncs.snap10
-    }
-    return this.#roundingFuncs.identity
-  }
-
-  /** Begins a scale interaction: records the target's size, center and scale,
-   * and sets the resize cursor for the dragged handle's direction. */
-  handleScaleStart(ev: DragEvent) {
-    this.#clearDataTransfer(ev)
-    this.#mode = "scale"
-    const el = ev.target as HTMLElement
-    const [sx, sy] = el.style.scale.trim().split(/\s+/)
-    this.#sx = (sx?.includes("%")? parseInt(sx)/100: parseInt(sx)) || 1
-    this.#sy = (sy?.includes("%")? parseInt(sy)/100: parseInt(sy)) || 1
-    const rect = this.targetRect
-    this.#w = parseInt(this.targetComputedStyle.width)
-    this.#h = parseInt(this.targetComputedStyle.height)
-    const [cx, cy] = [rect.x + rect.width/2, rect.y + rect.height/2]
-    this.#cx = cx
-    this.#cy = cy
-    const direction = el.id.split("-").slice(-2).join("-")
-    if(direction === "up-left") {
-      document.body.classList.add("◆transform-scaling-nwse")
-    }
-    else if(direction === "up-up") {
-      document.body.classList.add("◆transform-scaling-ns")
-    }
-    else if(direction === "up-right") {
-      document.body.classList.add("◆transform-scaling-nesw")
-    }
-    else if(direction === "left-left") {
-      document.body.classList.add("◆transform-scaling-ew")
-    }
-    else if(direction === "right-right") {
-      document.body.classList.add("◆transform-scaling-ew")
-    }
-    else if(direction === "down-left") {
-      document.body.classList.add("◆transform-scaling-nesw")
-    }
-    else if(direction === "down-down") {
-      document.body.classList.add("◆transform-scaling-ns")
-    }
-    else if(direction === "down-right") {
-      document.body.classList.add("◆transform-scaling-nwse")
-    }
-    this.#prevStyle = this.target.getAttribute("style")
-  }
-
-  /** The scale handle diagonally/axially opposite to the given one (the
-   * fixed point of an asymmetric scale). */
-  getOppositeScaler(el: HTMLElement) {
-    const direction = el.id.split("-").slice(-2).join("-")
-    let reverse: string
-    if(direction === "up-left") {
-      reverse = "down-right"
-    }
-    else if(direction === "up-up") {
-      reverse = "down-down"
-    }
-    else if(direction === "up-right") {
-      reverse = "down-left"
-    }
-    else if(direction === "left-left") {
-      reverse = "right-right"
-    }
-    else if(direction === "right-right") {
-      reverse = "left-left"
-    }
-    else if(direction === "down-left") {
-      reverse = "up-right"
-    }
-    else if(direction === "down-down") {
-      reverse = "up-up"
-    }
-    else if(direction === "down-right") {
-      reverse = "up-left"
-    }
-    const id = `◆transform-overlay-scale-${reverse!}`
-    return this.overlay.querySelector(`[id="${id}"]`)!
-  }
-
-  /** Viewport coordinates of the given overlay corner, taking the current
-   * rotation into account (measured from the corner scale handles). */
-  getRotatedCorner(corner: "nw" | "ne" | "sw" | "se" = "nw") {
-    if(corner == "nw") {
-      const el = this.overlay.querySelector("#◆transform-overlay-scale-up-left")!
-      const {x, y} = el.getBoundingClientRect()
-      return [x + 2.5, y + 2.5]
-    }
-    else if(corner == "ne") {
-      const el = this.overlay.querySelector("#◆transform-overlay-scale-up-right")!
-      const {x, y} = el.getBoundingClientRect()
-      return [x + 5, y + 1]
-    }
-    else if(corner == "sw") {
-      const el = this.overlay.querySelector("#◆transform-overlay-scale-down-left")!
-      const {x, y} = el.getBoundingClientRect()
-      return [x + 5, y + 1]
-    }
-    else if(corner == "se") {
-      const el = this.overlay.querySelector("#◆transform-overlay-scale-down-right")!
-      const {x, y} = el.getBoundingClientRect()
-      return [x + 5, y + 1]
-    }
-    else {
-      throw TypeError(`Invalid corner '${corner}'`)
-    }
-  }
-
-  /** Scales the target while dragging a handle: computes the new box from
-   * the fixed point and the cursor (in the rotated coordinate system) and
-   * sets width/height/left/top. Modifier scales symmetrically around the
-   * center; Shift keeps the independent-axis stretch path active. */
-  handleScaleDrag(ev: DragEvent) {
-    if(ev.view !== window || !ev.buttons || ev.pageY < 0) {return}
-    const el = ev.target as HTMLElement
-    const dir = Array.from(new Set(el.id.split("-").slice(-2))).join("-")
-    const round = this.getRoundingFunc(ev)
-    {
-      const symmetrical = modifierKeyDown(ev)
-      const deg = this.#deg || 0
-      const [cx, cy] = [this.#cx!, this.#cy!]
-      let ax: number, ay: number, x: number, y: number
-      if(dir === "up-left") {
-        [ax, ay] = symmetrical
-          ? rotatePoint(ev.x - (ev.x - cx)*2, ev.y - (ev.y - cy)*2, cx, cy, -deg)
-          : [cx + this.#w/2, cy + this.#h/2];
-        [x, y] = [ev.x, ev.y]
-      }
-      else if(dir === "up") {
-        const [_, h] = rotatePoint(ev.x, ev.y, cx, cy, -deg);
-        const [ex, ey] = [cx - this.#w/2, cy - (h - cy)];
-        [ax, ay] = symmetrical
-          ? [ex, ey]
-          : [cx - this.#w/2, cy + this.#h/2];
-        [x, y] = rotatePoint(cx + this.#w/2, h, cx, cy, deg)
-      }
-      else if(dir === "up-right") {
-        [ax, ay] = symmetrical
-          ? rotatePoint(ev.x - (ev.x - cx)*2, ev.y - (ev.y - cy)*2, cx, cy, -deg)
-          : [cx - this.#w/2, cy + this.#h/2];
-        [x, y] = [ev.x, ev.y]
-      }
-      else if(dir === "right") {
-        const [w] = rotatePoint(ev.x, ev.y, cx, cy, -deg);
-        const [ex, ey] = [cx - (w - cx), cy - this.#h/2];
-        [ax, ay] = symmetrical
-          ? [ex, ey]
-          : [cx - this.#w/2, cy - this.#h/2];
-        [x, y] = rotatePoint(w, cy + this.#h/2, cx, cy, deg)
-      }
-      else if(dir === "down-right") {
-        [ax, ay] = symmetrical
-          ? rotatePoint(ev.x - (ev.x - cx)*2, ev.y - (ev.y - cy)*2, cx, cy, -deg)
-          : [cx - this.#w/2, cy - this.#h/2];
-        [x, y] = [ev.x, ev.y]
-      }
-      else if(dir === "down") {        
-        const [_, h] = rotatePoint(ev.x, ev.y, cx, cy, -deg);
-        const [ex, ey] = [cx - this.#w/2, cy - (h - cy)];
-        [ax, ay] = symmetrical
-          ? [ex, ey]
-          : [cx - this.#w/2, cy - this.#h/2];
-        [x, y] = rotatePoint(cx + this.#w/2, h, cx, cy, deg)
-      }
-      else if(dir === "down-left") {
-        [ax, ay] = symmetrical
-          ? rotatePoint(ev.x - (ev.x - cx)*2, ev.y - (ev.y - cy)*2, cx, cy, -deg)
-          : [cx + this.#w/2, cy - this.#h/2];
-        [x, y] = [ev.x, ev.y]
-      }
-      else if(dir === "left") {        
-        const [w] = rotatePoint(ev.x, ev.y, cx, cy, -deg);
-        const [ex, ey] = [cx - (w - cx), cy - this.#h/2];
-        [ax, ay] = symmetrical
-          ? [ex, ey]
-          : [cx + this.#w/2, cy - this.#h/2];
-        [x, y] = rotatePoint(w, cy + this.#h/2, cx, cy, deg)
-      }
-      else {
-        throw TypeError("Invalid direction")
-      }
-
-      const [ax2, ay2] = rotatePoint(ax, ay, cx, cy, deg)
-      const [cx2, cy2] = midpoint(ax2, ay2, x, y)
-      const [px, py] = rotatePoint(ax2, ay2, cx2, cy2, -deg)
-      const [qx, qy] = rotatePoint(x, y, cx2, cy2, -deg)
-      const [newWidth, newHeight] = [
-        Math.abs(qx - px),
-        Math.abs(qy - py)
-      ]
-
-      const {left, top} = this.targetOriginRect
-      this.target.style.left = `${round(Math.min(px, qx) - left)}px`
-      this.target.style.top = `${round(Math.min(py, qy) - top)}px`
-      if(dir.includes("left") || dir.includes("right")) {
-        this.target.style.width = `${round(newWidth)}px`
-      }
-      if(dir.includes("up") || dir.includes("down")) {
-        this.target.style.height = `${round(newHeight)}px`
-      }
-      this.updateInfo()
-    }
-  }
-
-  /** Ends the scale interaction and resets the resize cursor. */
-  handleScaleEnd(ev: DragEvent) {
-    this.#mode = undefined
-    document.body.classList.remove("◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nesw", "◆transform-scaling-nwse")
-  }
-
-  /** Begins a move interaction: positions static targets absolutely and
-   * records the grab offset. */
-  handleMoveStart(ev: DragEvent) {
-    this.#clearDataTransfer(ev)
-    if(!this.#mode) {
-      const pos = getComputedStyle(this.target).position
-      this.target.style.position = pos === "static"? "absolute": pos
-      const {left, top} = this.targetOriginRect
-      const rect = this.targetRect
-      this.#dx = ev.x - rect.left
-      this.#dy = ev.y - rect.top
-      this.#mx = (rect.left + rect.width/2) - left
-      this.#my = (rect.top + rect.height/2) - top
-      this.#mode = "move"
-      this.#prevStyle = this.target.getAttribute("style")
-      document.body.classList.add("◆transform-moving")
-      this.updateInfo()
-    }
-  }
-
-  /** Moves the target while dragging: sets left/top relative to its
-   * containing block (Shift constrains to one axis). Unless Alt is held,
-   * hovering near a static element's edges shows a drop caret for placing
-   * the target statically before/after it. */
-  handleMoveDrag(ev: DragEvent) {
-    if(ev.view !== window || !ev.buttons || ev.pageY < 0) {return}
-    if(this.#mode !== "move") {return}
-    const round = this.getRoundingFunc(ev)
-    const {left, top} = this.targetOriginRect
-    const x = ev.x - left - (this.#dx || 0)
-    const y = ev.y - top - (this.#dy || 0)
-    if(!ev.altKey) {
-      const bgEl = document.elementsFromPoint(ev.x, ev.y).find(el => el !== this.target)
-
-      if(bgEl && bgEl !== document.documentElement && bgEl !== document.body && bgEl !== this.target && getComputedStyle(bgEl).position === "static") {
-        const {top, left, bottom} = bgEl.getBoundingClientRect()
-        const beforeLeft = left - 10
-        const beforeTop = top - 10
-        const beforeRight = beforeLeft + 60
-        const beforeBottom = beforeTop + 30
-        const afterLeft = left - 10
-        const afterTop = bottom - 10
-        const afterRight = afterLeft + 60
-        const afterBottom = afterTop + 30
-
-        const inBeforeDropZone = (beforeLeft <= ev.x && ev.x <= beforeRight) && (beforeTop <= ev.y && ev.y <= beforeBottom) && Math.abs(ev.y - beforeTop) <= Math.abs(ev.y - afterBottom)
-        const inAfterDropZone = (afterLeft <= ev.x && ev.x <= afterRight) && (afterTop <= ev.y && ev.y <= afterBottom) && Math.abs(ev.y - beforeTop) > Math.abs(ev.y - afterBottom)
-        const pos = inBeforeDropZone || inAfterDropZone
-          ? inBeforeDropZone? "before": "after"
-          : undefined
-        if(pos) {
-          document.body.querySelectorAll(":is(.◆drop-caret-before, .◆drop-caret-after)").forEach(el => {
-            if(el !== bgEl) {
-              el.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-            }
-            else {
-              el.classList.remove(`◆drop-caret-${pos === "before"? "after": "before"}`)
-            }
-          })
-          bgEl.classList.add("◆", `◆drop-caret-${pos}`)
-          this.editor.features.selection.showDropCaret(pos)
-        }
-        else {
-          document.body.querySelectorAll(":is(.◆drop-caret-before, .◆drop-caret-after)").forEach(el => {
-            el.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-            if(Array.from(el.classList).filter(k => k.startsWith("◆")).length === 1 && el.classList.item(0) === "◆") {
-              el.classList.remove("◆")
-            }
-          })
-          this.editor.features.selection.clearDropCaret()
-        }
-      }
-      else {
-        document.body.querySelectorAll(":is(.◆drop-caret-before, .◆drop-caret-after)").forEach(el => {
-          el.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-          if(Array.from(el.classList).filter(k => k.startsWith("◆")).length === 1 && el.classList.item(0) === "◆") {
-            el.classList.remove("◆")
-          }
-        })
-        this.editor.features.selection.clearDropCaret()
-      }
-    }
-    
-    if(ev.shiftKey) {
-      const cx = this.#mx!
-      const cy = this.#my!
-      const x1 = ev.x
-      const y1 = ev.y
-      const x2 = distanceBetweenPoints(cx, cy, ev.x, ev.y)
-      const y2 = cy
-      let deg = angleOnCircle(cx, cy, x1, y1, x2, y2)
-      deg = (deg < 0? 360 + deg: deg) % 360
-      const vertical = (45 <= deg) && (deg <= 135) || (225 <= deg) && (deg <= 315)
-      this.target.setAttribute("style", this.#prevStyle!)
-      if(vertical) {
-        this.target.style.bottom = ""
-        this.target.style.top = `${round(y)}px`
-      }
-      else {
-        this.target.style.right = ""
-        this.target.style.left = `${round(x)}px`
-      }
-    }
-    else {
-      this.target.style.right = ""
-      this.target.style.left = `${round(x)}px`
-      this.target.style.bottom = ""
-      this.target.style.top = `${round(y)}px`
-    }
-    this.updateInfo()
-  }
-
-  /** Ends the move interaction; if a drop caret is active, places the target
-   * statically at that position (clearing its transform styles). */
-  handleMoveEnd(ev: DragEvent) {
-    if(this.#mode === "move") {
-      this.#mode = undefined
-      document.body.classList.remove("◆transform-moving")
-      const dropEls = document.body.querySelectorAll(":is(.◆drop-caret-before, .◆drop-caret-after)")
-      const dropEl = dropEls.item(0)
-      if(dropEl) {
-        const pos = dropEl.matches(".◆drop-caret-before")? "before": "after"
-        this.target.style.position = this.target.style.rotate = this.target.style.width = this.target.style.height = this.target.style.left = this.target.style.top = ""
-        dropEl[pos](this.target)
-        this.updateInfo(0)
-      }
-      dropEls.forEach(el => {
-        el.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-        if(Array.from(el.classList).filter(k => k.startsWith("◆")).length === 1 && el.classList.item(0) === "◆") {
-          el.classList.remove("◆")
-        }
-      })
-      this.editor.features.selection.clearDropCaret()
-    }
-  }
-
-  /** Begins a rotate interaction: records the target's center. */
-  handleRotateStart(ev: DragEvent) {
-    this.#clearDataTransfer(ev)
-    this.#mode = "rotate"
-    document.body.classList.add("◆transform-rotating")
-    const rect = this.targetRect
-    this.#cx = roundByDPR(rect.left + rect.width * 0.5)
-    this.#cy = roundByDPR(rect.top + rect.height * 0.5)
-  }
-
-  #cx?: number
-  #cy?: number
-  #dx?: number
-  #dy?: number
-  #sx?: number
-  #sy?: number
-  #w: number
-  #h: number
-  #mx?: number
-  #my?: number
-  #deg: number
-
-  /** Rotates the target while dragging: sets `rotate` to the angle between
-   * the cursor and the target center (snapped, see getRoundingFunc). */
-  handleRotateDrag(ev: DragEvent) {
-    if(ev.view !== window) {return}
-    if(!ev.buttons) {return}
-    const round = this.getRoundingFunc(ev)
-    const cx = this.#cx!
-    const cy = this.#cy!
-    const x1 = cx!
-    const y1 = roundByDPR(cy - ev.y)
-    const x2 = roundByDPR(ev.x)
-    const y2 = roundByDPR(ev.y)
-    this.#deg = round(angleOnCircle(cx, cy, x1, y1, x2, y2))
-    if(this.#deg !== 0) {
-      this.target.style.rotate = `${this.#deg}deg`
-      this.overlay.style.rotate = `${this.#deg}deg`
-    }
-    else {
-      this.target.style.rotate = ""
-      this.overlay.style.rotate = ""
-    }
-    this.updateInfo()
-  }
-
-  /** Ends the rotate interaction. */
-  handleRotateEnd(ev: DragEvent) {
-    document.body.classList.remove("◆transform-rotating")
-    this.#mode = undefined
-    this.#cx = 0
-    this.#cy = 0
-  }
-
-  /** Resets all transform-related styles of the target (size, rotation,
-   * scale, float, positioning). */
-  restore() {
-    Object.assign(this.target.style, {
-      width: "",
-      height: "",
-      rotate: "",
-      scale: "",
-      float: "",
-      position: "",
-      top: "",
-      left: ""
+  #scale(value: string) {
+    const values = (value || "1").trim().split(/\s+/).map(value => {
+      const number = parseFloat(value)
+      return Number.isFinite(number) ? number / (value.endsWith("%") ? 100 : 1) : 1
     })
-    this.overlay.style.rotate = ""
-    this.overlay.classList.remove("◆transform-overlay-changed")
+    return [values[0], values[1] ?? values[0]]
   }
 
-  /** The transform overlay element, created lazily and added to the editor
-   * appendix on first access. */
-  get overlay() {
-    const existing = this.editor.appendix.querySelector("#◆transform-overlay") as HTMLElement | null
-    if(!existing) {
-      const overlay = this.#createOverlay()
-      this.editor.addAppendix(overlay)
-      return overlay
-    }
-    else {
-      return existing
+  #size(element: TransformElement) {
+    const style = getComputedStyle(element)
+    const width = parseFloat(style.width) || element.getBoundingClientRect().width
+    const height = parseFloat(style.height) || element.getBoundingClientRect().height
+    const extra = (properties: string[]) => properties.reduce((sum, property) => sum + (parseFloat(style.getPropertyValue(property)) || 0), 0)
+    return {
+      cssWidth: width, cssHeight: height,
+      width: width + (style.boxSizing === "border-box" ? 0 : extra(["padding-left", "padding-right", "border-left-width", "border-right-width"])),
+      height: height + (style.boxSizing === "border-box" ? 0 : extra(["padding-top", "padding-bottom", "border-top-width", "border-bottom-width"])),
     }
   }
 
-  /** The element currently being transformed (marked `◆transform-target`). */
-  get target() {
-    return document.querySelector(".◆transform-target") as HTMLElement
+  #vector(matrix: DOMMatrix, x: number, y: number) {
+    return {x: matrix.a * x + matrix.c * y, y: matrix.b * x + matrix.d * y}
   }
 
-  /** The target's bounding rectangle. */
-  get targetRect() {
-    return this.target?.getBoundingClientRect()
-  }
-
-  /** The rectangle the target's offsets are relative to, depending on its
-   * positioning: the viewport for static/fixed, the static position for
-   * relative, the containing block for absolute, the scrolling ancestor for
-   * sticky. */
   get targetOriginRect(): DOMRect {
-    const position = this.targetComputedStyle.position
-    if(position === "static") {
-      return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
-    } else if(position === "relative") {
-      const [top, left] = getStaticCoords(this.target)
-      const {width, height} = this.targetComputedStyle
-      return new DOMRect(left, top, parseInt(width), parseInt(height))
-    } else if(position === "absolute") {
-      if(this.#containingBlock === window) {
-        return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
-      } else {
-        return (this.#containingBlock as HTMLElement).getBoundingClientRect()
-      }
-    } else if(position === "fixed") {
-      return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
-    } else if(position === "sticky") {
-      return this.#scrollingAncestor?.getBoundingClientRect()
-        ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight)
-    } else {
-      throw Error("Invalid position")
-    }
-  }
-
-  /** The arranger (float) control of the overlay. */
-  get arranger() {
-    return this.overlay.querySelector("#◆transform-overlay-arranger") as HTMLElement
-  }
-
-  /** The orderer (z-order) control of the overlay. */
-  get orderer() {
-    return this.overlay.querySelector("#◆transform-overlay-orderer") as HTMLElement
-  }
-
-  /** The position anchor element. */
-  get anchor() {
-    const existing = this.editor.appendix.querySelector("#◆transform-overlay-anchor") as HTMLElement | null
-    if(existing) return existing
-    const anchor = this.#createAnchor()
-    this.editor.addAppendix(anchor)
-    return anchor
-  }
-
-  /** The target's computed style. */
-  get targetComputedStyle() {
-    return getComputedStyle(this.target)
-  }
-
-  /** Whether the overlay is in its narrow layout (target < 120px wide),
-   * where the arranger/orderer act directly instead of opening menus. */
-  get isNarrow() {
-    return this.overlay.classList.contains("◆transform-overlay-narrow")
-  }
-
-  #containingBlock: HTMLElement | Window
-  #scrollingAncestor: HTMLElement | undefined
-  #stackingContainer: HTMLElement
-
-  /** Changes the element's paint order within its stacking container: one
-   * step (or with `toFrontOrBack` all the way) forward or backward, with
-   * `cycle` wrapping around. Renumbers the z-indexes of all non-editor
-   * elements in the container sequentially. */
-  moveZ(el: HTMLElement, forward=true, toFrontOrBack=false, cycle=false) {
-    if(!el.isConnected) return
-    const stackingContainer = findStackingContainer(el)
-    let descendants: (HTMLElement | undefined)[] = getDescendantsInStackingOrder(stackingContainer)
-    const n = descendants.length
-    const i = descendants.indexOf(el)
-    if(i < 0 || n < 1) return
-    const d = forward? (toFrontOrBack? n: 1): (toFrontOrBack? -n: -1)
-    descendants.splice(i, 1)
-    const j = cycle
-      ? ((i + d) % n + n) % n
-      : Math.min(Math.max(0, i + d), descendants.length)
-    descendants.splice(j, 0, el)
-    descendants = descendants.filter(node => node)
-    descendants.forEach((node,i) => node!.style.zIndex = String(i + 1))
-    this.updateInfo()
-  }
-
-  /** Synchronizes the overlay with the target: sizes and rotates the overlay
-   * to match, marks the target's containing block, scrolling ancestor and
-   * stacking container, updates the control states (float, position,
-   * z-order, changed/narrow markers) and positions the anchor for
-   * relative/sticky targets. */
-  updateInfo(deg?: number) {
-    this.#clearContextMarkers()
-    const {target, targetRect} = this
-    if(target) {
-      const elStyle = getComputedStyle(target)
-      this.overlay.style.width = elStyle.width
-      this.overlay.style.height = elStyle.height
-      this.#containingBlock = findContainingBlock(target, (elStyle.position || "static") as "static" | "relative" | "sticky" | "absolute" | "fixed")
-      if(this.#containingBlock instanceof Element) {
-        this.#containingBlock.classList.add("◆", "◆transform-containing-block")
-        this.#containingBlock.classList.toggle("◆transform-containing-block-no-outline", ["fixed", "static", "relative"].includes(elStyle.position))
-      }
-      this.#scrollingAncestor = findScrollingAncestor(target)
-      if(this.#scrollingAncestor) {
-        this.#scrollingAncestor.classList.add("◆", "◆transform-scrolling-ancestor")
-      }
-
-      this.#stackingContainer = findStackingContainer(target)
-      this.#stackingContainer.classList.add("◆", "◆transform-stacking-container")
-      this.orderer.setAttribute("data-z-order", String(getZPos(this.target) + 1))
-
-      if(targetRect.width < 120) {
-        this.overlay.classList.add("◆transform-overlay-narrow")
-      } else {
-        this.overlay.classList.remove("◆transform-overlay-narrow")
-      }
-
-      if(["rotate", "scale", "width", "height", "position", "top", "left"].some(k => target.style.getPropertyValue(k))) {
-        this.overlay.classList.add("◆transform-overlay-changed")
-      } else {
-        this.overlay.classList.remove("◆transform-overlay-changed")
-      }
-      this.#deg = deg ?? parseInt(elStyle.rotate || "0")
-      if(this.#deg !== 0) {
-        this.overlay.style.rotate = `${this.#deg}deg`
-      } else {
-        this.overlay.style.rotate = ""
-      }
-
-      this.arranger?.setAttribute("data-float", elStyle.float)
-      this.arranger?.setAttribute("data-position", elStyle.position)
-      this.orderer?.setAttribute("data-position", elStyle.position)
-      this.anchor?.setAttribute("data-position", elStyle.position)
-      if(elStyle.position === "relative" || elStyle.position === "sticky") {
-        this.anchor!.style.width = elStyle.width
-        this.anchor!.style.height = elStyle.height
-        const [x, y] = getStaticCoords(this.target) // @ts-ignore
-        this.anchor.style.positionAnchor = "none"
-        this.anchor.style.top = `${x}px`
-        this.anchor.style.left = `${y}px`
-      } else if(elStyle.position === "absolute") { // @ts-ignore
-        this.anchor.style.positionAnchor = this.anchor.style.top = this.anchor.style.left = this.anchor.style.width = this.anchor.style.height = ""
-        this.anchor.removeAttribute("visibility")
-      }
-      else { // @ts-ignore
-        this.anchor.style.positionAnchor = this.anchor.style.top = this.anchor.style.left = this.anchor.style.width = this.anchor.style.height = ""
-        this.anchor.setAttribute("visibility", "hidden")
-      }
-      this.#syncControlParts()
-    }
-    else {
-      this.overlay.classList.remove("◆transform-overlay-changed")
-      this.#syncControlParts()
-    }
-  }
-
-  /** Starts transforming the element: marks it as the transform target and
-   * shows the overlay and anchor. The document root, head and body are
-   * refused. */
-  startTransform(element: HTMLElement) {
-    if(element === document.documentElement || element === document.head || isDocumentRoot(element)) {return}
-    if(this.target && this.target !== element) this.clearTransform()
-    element.classList.add("◆", "◆transform-target")
-    this.overlay.removeAttribute("visibility")
-    this.anchor?.removeAttribute("visibility")
-    this.updateInfo()
-  }
-
-  /** Ends the transform: removes all transform marker classes from the
-   * document, hides the overlay and anchor, and closes the menus. */
-  clearTransform() {
-    document.querySelectorAll(".◆transform-target")
-      .forEach(el => this.#removeMarkerClass(el, "◆transform-target"))
-    this.#clearContextMarkers()
-    document.querySelectorAll(".◆drop-caret-before, .◆drop-caret-after")
-      .forEach(el => this.#removeMarkerClass(el, el.classList.contains("◆drop-caret-before") ? "◆drop-caret-before" : "◆drop-caret-after"))
-    this.editor.features.selection.clearDropCaret()
-    document.body.classList.remove(
-      "◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew",
-      "◆transform-scaling-ns", "◆transform-scaling-nesw", "◆transform-scaling-nwse",
-    )
-    const appendix = document.body.shadowRoot
-    const overlay = appendix?.querySelector<HTMLElement>("#◆transform-overlay") ?? null
-    const anchor = appendix?.querySelector<HTMLElement>("#◆transform-overlay-anchor") ?? null
-    overlay?.setAttribute("visibility", "hidden")
-    anchor?.setAttribute("visibility", "hidden")
-    if(overlay) {
-      overlay.classList.remove("◆transform-overlay-changed")
-      overlay.style.rotate = ""
-      overlay.querySelector("#◆transform-overlay-arranger")?.toggleAttribute("data-open", false)
-      overlay.querySelector("#◆transform-overlay-orderer")?.toggleAttribute("data-open", false)
-      this.#syncControlParts()
-    }
-  }
-
-  disable() {
-    this.#mode = undefined
-    this.clearTransform()
-    super.disable()
-  }
-
-  #removeMarkerClass(element: Element, marker: string) {
-    element.classList.remove(marker)
-    if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
-      element.classList.remove("◆")
-    }
-    if(!element.classList.length) element.removeAttribute("class")
-  }
-
-  /** Removes context markers before recalculating them, so changes to the
-   * target's positioning or ancestor structure cannot leave stale markers. */
-  #clearContextMarkers() {
-    document.querySelectorAll(".◆transform-containing-block")
-      .forEach(el => {
-        this.#removeMarkerClass(el, "◆transform-containing-block")
-        this.#removeMarkerClass(el, "◆transform-containing-block-no-outline")
-      })
-    document.querySelectorAll(".◆transform-scrolling-ancestor")
-      .forEach(el => this.#removeMarkerClass(el, "◆transform-scrolling-ancestor"))
-    document.querySelectorAll(".◆transform-stacking-container")
-      .forEach(el => this.#removeMarkerClass(el, "◆transform-stacking-container"))
-  }
-
-  private writeTargetToClipboard(event: ClipboardEvent, cut: boolean) {
     const target = this.target
-    if(!target || !event.clipboardData) return false
-    const targetIsRoot = isDocumentRoot(target)
-    const fragment = document.createDocumentFragment()
-    if(targetIsRoot) fragment.append(...Array.from(target.childNodes, node => node.cloneNode(true)))
-    else fragment.append(target.cloneNode(true))
-    const {html, text} = this.editor.serializeClipboardFragment(fragment)
+    if(!target) return new DOMRect()
+    const position = (getComputedStyle(target).position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
+    if(position === "relative" || position === "sticky") {
+      const [top, left] = getStaticCoords(target as HTMLElement)
+      return new DOMRect(left, top, 0, 0)
+    }
+    const block = findContainingBlock(target as HTMLElement, position)
+    if(block === window) return new DOMRect(position === "fixed" ? 0 : -window.scrollX, position === "fixed" ? 0 : -window.scrollY, window.innerWidth, window.innerHeight)
+    const element = block as HTMLElement
+    const rect = element.getBoundingClientRect()
+    return new DOMRect(rect.left + element.clientLeft - element.scrollLeft, rect.top + element.clientTop - element.scrollTop, element.clientWidth, element.clientHeight)
+  }
+
+  updateInfo() {
+    const target = this.target
+    if(!target) { if(this.#target) this.clearTransform(); return }
+    const rect = target.getBoundingClientRect()
+    const {width, height} = this.#size(target)
+    const matrix = this.#matrix(target)
+    const overlay = this.overlay
+    Object.assign(overlay.style, {
+      width: `${width}px`, height: `${height}px`,
+      left: `${rect.left + rect.width / 2 - width / 2}px`,
+      top: `${rect.top + rect.height / 2 - height / 2}px`,
+      transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, 0, 0)`,
+    })
+    overlay.classList.toggle("◆transform-overlay-narrow", rect.width < 120)
+    const centerY = rect.top + rect.height / 2
+    const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
+    const rotateTop = centerY + matrix.d * (-height / 2 - 34) - controlRadius
+    const ordererTop = centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 22) - controlRadius
+    setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop) < 0)
+    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
+    const style = getComputedStyle(target)
+    this.arranger.setAttribute("data-float", style.float || "none")
+    this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
+    this.#syncControlParts()
+    this.#updateContextMarkers()
+  }
+
+  #scheduleFrame() {
+    if(this.#frame !== null || !this.isEnabled || !this.target) return
+    this.#frame = requestAnimationFrame(() => {
+      this.#frame = null
+      if(this.#gesture && !this.#validGesture()) return
+      this.updateInfo()
+      this.#scheduleFrame()
+    })
+  }
+
+  #updateContextMarkers() {
+    const target = this.target
+    const position = target ? getComputedStyle(target).position || "static" : "static"
+    const block = target && this.#gesture && ["absolute", "relative", "sticky"].includes(position)
+      ? findContainingBlock(target as HTMLElement, position as "absolute" | "relative" | "sticky") : null
+    const scroller = target && this.#gesture && position === "sticky" ? findScrollingAncestor(target.parentElement as HTMLElement) : null
+    for(const [marker, current] of [["◆transform-containing-block", block], ["◆transform-scrolling-ancestor", scroller]] as const) {
+      document.querySelectorAll(`.${marker}`).forEach(element => { if(element !== current) this.#removeMarkerClass(element, marker) })
+      if(current instanceof Element && !current.classList.contains(marker)) current.classList.add(marker)
+    }
+  }
+
+  getRoundingFunc(event: MouseEvent) {
+    return event.altKey ? roundByDPR : this.#gesture?.mode === "rotate"
+      ? (n: number) => roundTo(n, event.shiftKey ? 45 : 5)
+      : (n: number) => roundTo(n, 10)
+  }
+
+  #begin(event: MouseEvent, mode: Mode, handle: HTMLElement) {
+    const target = this.target
+    if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
+    if(mode === "rotate" && getComputedStyle(target).position !== "absolute") return false
+    const matrix = this.#matrix(target)
+    if(!matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) return false
+    const initial = document.createElement("div").style
+    initial.cssText = target.style.cssText
+    const style = getComputedStyle(target)
+    this.#gesture = {
+      target, parent: target.parentElement, mode, handle,
+      pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
+      x: event.clientX, y: event.clientY, rect: target.getBoundingClientRect(), ...this.#size(target),
+      matrix, parentMatrix: this.#matrix(target.parentElement), rotate: this.#angle(style.rotate), scale: this.#scale(style.scale),
+      initial, written: new Map(), moved: false,
+      captured: this.editor.features.selection.captureSelectedElement === target,
+      endUndoGroup: this.editor.doc.beginUndoGroup(),
+    }
+    this.#suppressClick = false
     event.preventDefault()
-    event.stopImmediatePropagation()
-    event.clipboardData.setData("text/html", html)
-    event.clipboardData.setData("text/plain", text)
-    if(cut) {
-      if(targetIsRoot) target.replaceChildren()
-      else target.remove()
-      this.clearTransform()
+    if(event instanceof PointerEvent) {
+      try { handle.setPointerCapture?.(event.pointerId) }
+      catch { this.#finish(true); return false }
     }
     return true
   }
 
-  /** Pointer behavior: a click outside the overlay ends the transform; a
-   * modifier double click on a selected element starts one. */
-  activeListeners: DocumentListenerMap = {
-    "keydown": ev => {
-      if((ev.key === "Delete" || ev.key === "Backspace") && this.target) {
-        ev.preventDefault()
-        ev.stopImmediatePropagation()
-        if(isDocumentRoot(this.target)) this.target.replaceChildren()
-        else this.target.remove()
-        this.clearTransform()
-      }
-    },
-    "copy": ev => {
-      this.writeTargetToClipboard(ev, false)
-    },
-    "cut": ev => {
-      this.writeTargetToClipboard(ev, true)
-    },
-    "click": ev => {
-      if(isElement(ev.target) && ev.target.id !== "◆transform-overlay") {
-        this.clearTransform()
-      }
-      /*if(isElement(ev.target) && modifierKeyDown(ev)) {
-        this.startTransform(ev.target as HTMLElement)
-        ev.stopImmediatePropagation()
-      }
-      if(isElement(ev.target) && ev.target.classList.contains("◆element-selected")) {
-        const {offsetX: x, offsetY: y} = ev
-        const isOnTop = y <= 5
-        const isOnLeft = x <= 5
-        const isOnRight = x >= ev.target.clientWidth - 5
-        const isOnBottom = y >= ev.target.clientHeight - 5
-        if(isOnTop || isOnLeft || isOnRight || isOnBottom) {
-          this.startTransform(ev.target as HTMLElement)
-          ev.stopImmediatePropagation()
+  #validGesture() {
+    const gesture = this.#gesture
+    if(!gesture) return false
+    if(this.editor.isEditingLocked || gesture.target !== this.target || gesture.parent !== gesture.target.parentElement
+      || [...gesture.written].some(([key, last]) => gesture.target.style.getPropertyValue(key) !== last.value
+        || gesture.target.style.getPropertyPriority(key) !== last.priority)) {
+      this.#finish(true)
+      return false
+    }
+    return true
+  }
+
+  #write(property: string, value: string, priority = "") {
+    const gesture = this.#gesture
+    const target = gesture?.target ?? this.target
+    if(!target) return
+    if(value) target.style.setProperty(property, value, priority)
+    else target.style.removeProperty(property)
+    gesture?.written.set(property, {value: target.style.getPropertyValue(property), priority: target.style.getPropertyPriority(property)})
+  }
+
+  #resetWritten() {
+    const gesture = this.#gesture!
+    for(const property of gesture.written.keys()) this.#write(property, gesture.initial.getPropertyValue(property), gesture.initial.getPropertyPriority(property))
+  }
+
+  /** Adjust offsets by the measured viewport displacement. Measuring after a
+   * mode/size change accounts for margins, borders, scrollers and CSS origins. */
+  #offsetBy(dx: number, dy: number) {
+    const target = this.target!
+    if(Math.abs(dx) < .01 && Math.abs(dy) < .01) return
+    const delta = this.#vector(this.#matrix(target.parentElement).inverse(), dx, dy)
+    if(getComputedStyle(target).position === "static") this.#write("position", "relative")
+    const style = getComputedStyle(target)
+    const left = parseFloat(style.left) || -(parseFloat(style.right) || 0)
+    const top = parseFloat(style.top) || -(parseFloat(style.bottom) || 0)
+    this.#write("right", "auto")
+    this.#write("bottom", "auto")
+    this.#write("left", `${left + delta.x}px`)
+    this.#write("top", `${top + delta.y}px`)
+  }
+
+  #setPosition(position: string) {
+    if(!this.target || this.editor.isEditingLocked) return
+    const rect = this.targetRect
+    const size = this.#size(this.target)
+    this.#write("position", position)
+    if(position === "absolute" || position === "fixed") {
+      this.#write("width", `${size.cssWidth}px`)
+      this.#write("height", `${size.cssHeight}px`)
+    }
+    this.#write("left", "0px")
+    this.#write("top", "0px")
+    this.#write("right", "auto")
+    this.#write("bottom", "auto")
+    const current = this.targetRect
+    this.#offsetBy(rect.left - current.left, rect.top - current.top)
+    this.updateInfo()
+  }
+
+  handleMoveStart(event: MouseEvent) { this.#begin(event, "move", this.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!) }
+  handleScaleStart(event: MouseEvent) {
+    const handle = event.composedPath()[0] ?? event.target
+    if(handle instanceof HTMLElement && handle.dataset.transformMode === "scale") this.#begin(event, "scale", handle)
+  }
+  handleRotateStart(event: MouseEvent) { this.#begin(event, "rotate", this.overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!) }
+
+  handleMoveDrag(event: MouseEvent) {
+    if(!this.#validGesture()) return
+    const gesture = this.#gesture!
+    if(gesture.mode !== "move" && gesture.mode !== "anchor") return
+    const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y
+    if(!gesture.moved && Math.hypot(dx, dy) < 8) return
+    gesture.moved = true
+    document.body.classList.add("◆transform-moving")
+    if(gesture.mode === "anchor" || modifierKeyDown(event)) {
+      this.#resetWritten()
+      this.#previewDrop(event)
+      this.updateInfo()
+      return
+    }
+    this.#clearDrop()
+    this.#resetWritten()
+    const position = getComputedStyle(gesture.target).position || "static"
+    if(position === "static") this.#setPosition("absolute")
+    const round = this.getRoundingFunc(event)
+    const delta = this.#vector(gesture.parentMatrix.inverse(), dx, dy)
+    if(event.shiftKey) {
+      if(Math.abs(dx) >= Math.abs(dy)) delta.y = 0
+      else delta.x = 0
+    }
+    const viewportDelta = this.#vector(gesture.parentMatrix, round(delta.x), round(delta.y))
+    const current = this.targetRect
+    this.#offsetBy(gesture.rect.left + viewportDelta.x - current.left, gesture.rect.top + viewportDelta.y - current.top)
+    this.updateInfo()
+  }
+
+  handleScaleDrag(event: MouseEvent) {
+    if(!this.#validGesture() || this.#gesture!.mode !== "scale") return
+    const gesture = this.#gesture!
+    const delta = this.#vector(gesture.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
+    if(!gesture.moved && Math.hypot(delta.x, delta.y) < 1) return
+    gesture.moved = true
+    this.#resetWritten()
+    const direction = gesture.handle.id.replace("◆transform-overlay-scale-", "")
+    const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
+    const y = direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
+    document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
+    const symmetric = modifierKeyDown(event)
+    const round = this.getRoundingFunc(event)
+    const dw = x ? Math.max(1 - gesture.width, round(x * delta.x * (symmetric ? 2 : 1))) : 0
+    const dh = y ? Math.max(1 - gesture.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
+    const target = gesture.target
+    if(getComputedStyle(target).display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
+    if(event.shiftKey) {
+      this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
+    }
+    else {
+      if(x) this.#write("width", `${Math.max(0, gesture.cssWidth + dw)}px`)
+      if(y) this.#write("height", `${Math.max(0, gesture.cssHeight + dh)}px`)
+    }
+    const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * dw / 2, symmetric ? 0 : y * dh / 2)
+    const rect = this.targetRect
+    this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
+      gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))
+    this.updateInfo()
+  }
+
+  handleRotateDrag(event: MouseEvent) {
+    if(!this.#validGesture() || this.#gesture!.mode !== "rotate") return
+    const gesture = this.#gesture!
+    if(Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) < 1 && !gesture.moved) return
+    gesture.moved = true
+    document.body.classList.add("◆transform-rotating")
+    this.#resetWritten()
+    const cx = gesture.rect.left + gesture.rect.width / 2, cy = gesture.rect.top + gesture.rect.height / 2
+    const inverse = gesture.parentMatrix.inverse()
+    const start = this.#vector(inverse, gesture.x - cx, gesture.y - cy)
+    const end = this.#vector(inverse, event.clientX - cx, event.clientY - cy)
+    const degrees = (Math.atan2(end.y, end.x) - Math.atan2(start.y, start.x)) * 180 / Math.PI
+    const angle = this.getRoundingFunc(event)(gesture.rotate + degrees)
+    this.#write("rotate", `${angle}deg`)
+    const rect = this.targetRect
+    this.#offsetBy(cx - (rect.left + rect.width / 2), cy - (rect.top + rect.height / 2))
+    this.updateInfo()
+  }
+
+  handleMoveEnd(_event?: MouseEvent) { this.#finish(false) }
+  handleScaleEnd(_event?: MouseEvent) { this.#finish(false) }
+  handleRotateEnd(_event?: MouseEvent) { this.#finish(false) }
+
+  #previewDrop(event: MouseEvent) {
+    this.#clearDrop()
+    const target = this.target!
+    const hit = document.elementsFromPoint(event.clientX, event.clientY).find(element =>
+      getDocumentRoot().contains(element) && !target.contains(element) && !element.contains(target))
+    if(!hit) return
+    // Widgets are atomic, including their authored light-DOM contents.
+    let element = hit
+    for(let parent = hit.parentElement; parent && !isDocumentRoot(parent); parent = parent.parentElement) {
+      if(parent.localName.includes("-") || parent.hasAttribute("is")) element = parent
+    }
+    if(isDocumentRoot(element) || !element.parentNode || element.contains(target)) return
+    const rect = element.getBoundingClientRect()
+    const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+    this.#drop = {element, placement, parent: element.parentNode}
+    element.classList.add(`◆drop-caret-${placement}`)
+    this.editor.features.selection.showDropCaret(placement)
+  }
+
+  #clearDrop() {
+    if(this.#drop) this.#removeMarkerClass(this.#drop.element, `◆drop-caret-${this.#drop.placement}`)
+    this.#drop = null
+    this.editor.features.selection.clearDropCaret()
+  }
+
+  #finish(cancel: boolean) {
+    const gesture = this.#gesture
+    if(!gesture) return
+    const valid = gesture.target === this.target && gesture.parent === gesture.target.parentElement
+    const target = gesture.target
+    if(cancel || !valid) {
+      // Revert only properties still owned by this gesture. Concurrent changes
+      // to other properties, or to these same properties, remain authoritative.
+      for(const [key, last] of gesture.written) {
+        if(target.style.getPropertyValue(key) === last.value && target.style.getPropertyPriority(key) === last.priority) {
+          const value = gesture.initial.getPropertyValue(key)
+          if(value) target.style.setProperty(key, value, gesture.initial.getPropertyPriority(key))
+          else target.style.removeProperty(key)
         }
-      }*/
-    },
-    "dblclick": ev => {
-      if(modifierKeyDown(ev) && isElement(ev.target) && ev.target.classList.contains("◆element-selected")){
-        this.startTransform(ev.target as HTMLElement)
-        ev.stopImmediatePropagation()
       }
     }
+    else if(gesture.moved && this.#drop) {
+      const {element, placement, parent} = this.#drop
+      if(getDocumentRoot().contains(element) && element.parentNode === parent && !target.contains(element) && !element.contains(target)) {
+        if(gesture.mode === "move") {
+          for(const key of ["left", "top", "right", "bottom"]) this.#write(key, "auto")
+          this.#write("position", "static")
+        }
+        element[placement](target)
+      }
+    }
+    this.#gesture = null
+    this.#suppressClick = gesture.moved
+    if(!target.style.length) target.removeAttribute("style")
+    if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
+    document.body.classList.remove("◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nwse", "◆transform-scaling-nesw")
+    this.#clearDrop()
+    gesture.endUndoGroup()
+    if(valid) {
+      if(gesture.captured) this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
+      else { $.selectElement(target); this.editor.features.selection.processSelection() }
+    }
+    this.updateInfo()
+  }
+
+  restore() {
+    if(!this.target || this.editor.isEditingLocked) return
+    for(const property of ["width", "height", "rotate", "scale", "float", "position", "top", "left", "right", "bottom", "z-index"]) this.target.style.removeProperty(property)
+    if(!this.target.style.length) this.target.removeAttribute("style")
+    this.updateInfo()
+  }
+
+  /** Change only paint-order peers in the same stacking context. Descendants
+   * inside nested contexts and widget internals are never renumbered. */
+  moveZ(element: TransformElement | null, forward=true, toFrontOrBack=false, cycle=false) {
+    if(!element || !this.#canTransform(element) || this.editor.isEditingLocked) return
+    const container = findStackingContainer(element as HTMLElement)
+    const peers = getDescendantsInStackingOrder(container).filter(candidate => {
+      if(isDocumentRoot(candidate)) return false
+      if(candidate !== element && (element.contains(candidate) || candidate.contains(element))) return false
+      if(candidate !== element && findStackingContainer(candidate) !== container) return false
+      for(let parent = candidate.parentElement; parent && parent !== container; parent = parent.parentElement) {
+        if(parent.localName.includes("-") || parent.hasAttribute("is")) return false
+      }
+      const style = getComputedStyle(candidate)
+      const parentDisplay = candidate.parentElement && getComputedStyle(candidate.parentElement).display
+      return style.position && style.position !== "static" || parentDisplay?.includes("flex") || parentDisplay?.includes("grid")
+    })
+    const index = peers.indexOf(element as HTMLElement)
+    if(index < 0 || peers.length < 2) return
+    const destination = toFrontOrBack ? forward ? peers.length - 1 : 0
+      : cycle ? (index + (forward ? 1 : -1) + peers.length) % peers.length
+        : Math.max(0, Math.min(peers.length - 1, index + (forward ? 1 : -1)))
+    if(index === destination) return
+    peers.splice(index, 1)
+    peers.splice(destination, 0, element as HTMLElement)
+    // Prefer a target-only index; integer ties need the smallest affected run
+    // shifted to create room, while keeping every other peer's relative order.
+    const z = (node: Element) => parseInt(getComputedStyle(node).zIndex) || 0
+    const before = peers[destination - 1], after = peers[destination + 1]
+    let value = before ? z(before) + 1 : z(after) - 1
+    if(after && before && value >= z(after)) {
+      for(let i = destination + 1; i < peers.length && z(peers[i]) <= value; i++) peers[i].style.zIndex = String(++value)
+      value = z(before) + 1
+    }
+    element.style.zIndex = String(value)
+    this.updateInfo()
+  }
+
+  getOppositeScaler(element: HTMLElement) {
+    const direction = element.id.replace("◆transform-overlay-scale-", "").split("-").map(part => ({up: "down", down: "up", left: "right", right: "left"})[part]).join("-")
+    return this.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+  }
+
+  #removeMarkerClass(element: Element, marker: string) {
+    element.classList.remove(marker)
+    if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
+    if(!element.classList.length) element.removeAttribute("class")
+  }
+
+  clearTransform() {
+    this.#finish(true)
+    if(this.#target) this.#removeMarkerClass(this.#target, "◆transform-target")
+    this.#target = null
+    if(this.#frame !== null) cancelAnimationFrame(this.#frame)
+    this.#frame = null
+    this.#clearDrop()
+    this.#updateContextMarkers()
+    const overlay = document.body.shadowRoot?.querySelector<HTMLElement>("#◆transform-overlay")
+    if(overlay) {
+      overlay.setAttribute("visibility", "hidden")
+      overlay.querySelectorAll("[data-open]").forEach(control => control.removeAttribute("data-open"))
+      this.#syncControlParts()
+    }
+  }
+
+  enable() {
+    if(this.isEnabled) return
+    super.enable()
+    window.addEventListener("blur", this.#cancelGesture)
+    if(!this.#observer) {
+      this.#observer = new MutationObserver(() => { if(this.#target && !this.target) this.clearTransform() })
+      this.#observer.observe(document.body, {childList: true, subtree: true})
+    }
+  }
+
+  disable() {
+    super.disable()
+    window.removeEventListener("blur", this.#cancelGesture)
+    this.#observer?.disconnect()
+    this.#observer = null
+    this.clearTransform()
+    document.body.shadowRoot?.querySelector("#◆transform-overlay")?.remove()
+  }
+
+  captureListeners: DocumentListenerMap = {
+    keydown: event => {
+      if(event.key === "Escape" && this.#gesture) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        this.#finish(true)
+      }
+    },
+  }
+
+  activeListeners: DocumentListenerMap = {
+    pointerdown: event => {
+      const handle = event.composedPath()[0]
+      if(!(handle instanceof HTMLElement) || !this.overlay.contains(handle)) return
+      if(this.editor.isEditingLocked) { event.preventDefault(); event.stopImmediatePropagation(); return }
+      if(handle.dataset.transformMode) {
+        this.#begin(event, handle.dataset.transformMode as Mode, handle)
+        event.stopImmediatePropagation()
+      }
+      else event.preventDefault() // Keep authored selection while using menus.
+    },
+    pointermove: event => {
+      if(!this.#gesture || this.#gesture.pointerId !== event.pointerId) return
+      event.preventDefault()
+      if(this.#gesture.mode === "scale") this.handleScaleDrag(event)
+      else if(this.#gesture.mode === "rotate") this.handleRotateDrag(event)
+      else this.handleMoveDrag(event)
+    },
+    pointerup: event => {
+      if(!this.#gesture || this.#gesture.pointerId !== event.pointerId) return
+      if(this.#validGesture()) this.#finish(false)
+    },
+    pointercancel: event => { if(this.#gesture?.pointerId === event.pointerId) this.#finish(true) },
+    lostpointercapture: event => { if(this.#gesture?.pointerId === event.pointerId) this.#finish(true) },
+    click: event => {
+      if(this.#suppressClick && event.composedPath().some(node => node === this.overlay)) {
+        this.#suppressClick = false
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }
+    },
   }
 }

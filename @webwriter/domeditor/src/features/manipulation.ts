@@ -80,8 +80,7 @@ export class ManipulationFeature extends EditorFeature {
   refreshNodeDragTarget(element: Element | null) {
     if(this.nodeDrag) return
     if(!this.isEnabled || element === document.body || element === getDocumentRoot()
-      || !element?.isConnected || !getDocumentRoot().contains(element)
-      || this.editor.features.transformation.target) element = null
+      || !element?.isConnected || !getDocumentRoot().contains(element)) element = null
     if(element === this.dragTarget) return
     this.clearNodeDragSurface()
     if(!element) return
@@ -173,7 +172,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private acceptsDrop(event: DragEvent) {
-    return !event.defaultPrevented && !this.editor.features.transformation.target
+    return !event.defaultPrevented
       && Boolean(event.dataTransfer && Array.from(event.dataTransfer.types)
         .some(type => ["text/html", "text/plain", this.dragType].includes(type)))
   }
@@ -1446,7 +1445,7 @@ export class ManipulationFeature extends EditorFeature {
       this.ensureTextBlock()
     },
     "paste": ev => {
-      if(ev.defaultPrevented || this.editor.features.transformation.target) return
+      if(ev.defaultPrevented) return
       const fragment = this.#dataTransferToFragment(ev.clipboardData)
       if(fragment) {
         ev.preventDefault()
@@ -1466,9 +1465,6 @@ export class ManipulationFeature extends EditorFeature {
       $.delete()
     },
     "keydown": ev => {
-      if(this.editor.features.transformation.target) {
-        return
-      }
       const isAltGraph = ev.getModifierState("AltGraph")
       const isPrintable = ev.key.length === 1 && !ev.metaKey && (!ev.ctrlKey || isAltGraph)
       if(!ev.defaultPrevented && isPrintable) {

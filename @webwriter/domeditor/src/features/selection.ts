@@ -442,6 +442,7 @@ export class SelectionFeature extends EditorFeature {
     this.clearSelectedSection()
     this.#clearElementHover()
     this.#clearStyleTargetHover()
+    this.editor.features.transformation.clearTransform()
     this.#clearSelections()
     this.selectionCaret?.remove()
     this.editor.features.manipulation.endNodeDrag(false)
@@ -1138,6 +1139,9 @@ export class SelectionFeature extends EditorFeature {
     }
     const kind = this.#selectionKind(inDragSelection, capturedElement)
     this.#clearSelections()
+    this.editor.features.transformation.syncSelection(kind === "capture" ? capturedElement
+      : kind === "section" ? this.selectedSectionElement
+        : kind === "element" ? $.selectedElement ?? null : null)
     this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
     this.#scrollSelectionIntoView(kind, sel, capturedElement)
     if(kind === "cell") return
