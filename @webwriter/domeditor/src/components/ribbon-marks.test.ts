@@ -658,13 +658,13 @@ describe("mark ribbon controls", () => {
     const changed = vi.fn()
     ribbon.addEventListener("ribbon-combobox-change", changed)
     ribbon.canMark = true
-    ribbon.marks = ["time", "var"]
+    ribbon.marks = ["sup", "sub"]
     await ribbon.updateComplete
     await drawer.updateComplete
 
     const span = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!
     expect(span.active).toBe(true)
-    expect(span.label).toBe("Date/Time Annotation")
+    expect(span.label).toBe("Superscript")
     expect(span.selectionCount).toBe(1)
     await span.updateComplete
     const trigger = span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
@@ -676,43 +676,19 @@ describe("mark ribbon controls", () => {
     expect(dropdown.querySelector('[role="listbox"]')?.getAttribute("aria-multiselectable")).toBe("true")
     expect(Array.from(dropdown.querySelectorAll<HTMLElement>(".mark-dropdown-option-name")).map(option => option.textContent))
       .toEqual([
-        "Span",
         "Superscript",
         "Subscript",
-        "Side Comment",
         "Code",
         "Keyboard Shortcut",
         "Quotation",
-        "Abbreviation",
-        "Semantic Highlight",
-        "Bidirectional Isolate",
-        "Bidirectional Override",
-        "Citation Source",
-        "Data Annotation",
-        "Defined Term",
-        "Ruby Annotation",
-        "Sample Output",
-        "Date/Time Annotation",
-        "Variable",
-        "Deletion",
-        "Insertion",
       ])
     expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-icon svg')).not.toBeNull()
-    expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-name')?.textContent).toBe("Span")
-    expect(dropdown.querySelector('input[aria-label="Abbreviation: Title"]')).not.toBeNull()
+    expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-name')?.textContent).toBe("Superscript")
     expect(dropdown.querySelector('input[aria-label="Quotation: Source"]')).not.toBeNull()
-    expect(dropdown.querySelector('input[aria-label="Data Annotation: Value"]')).not.toBeNull()
-    expect(dropdown.querySelector('input[aria-label="Date/Time Annotation: Date/time"]')).not.toBeNull()
-    expect(Array.from(dropdown.querySelectorAll<HTMLOptionElement>('select[aria-label="Bidirectional Override: Direction"] option'))
-      .map(option => [option.textContent, option.value])).toEqual([
-        ["Choose direction", ""],
-        ["Left to right", "ltr"],
-        ["Right to left", "rtl"],
-      ])
 
-    dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Data Annotation"]')!.click()
+    dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Code"]')!.click()
     expect(changed).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {name: "mark-types", value: "time", values: ["time", "var", "data"]},
+      detail: {name: "mark-types", value: "sup", values: ["sup", "sub", "code"]},
     }))
     await ribbon.updateComplete
     expect(span.selectionCount).toBe(2)
@@ -734,14 +710,14 @@ describe("mark ribbon controls", () => {
     const changed = vi.fn()
     ribbon.addEventListener("ribbon-combobox-change", changed)
     ribbon.canMark = true
-    ribbon.marks = ["span"]
+    ribbon.marks = ["sup"]
     await ribbon.updateComplete
     await drawer.updateComplete
 
     const span = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!
     span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await span.updateComplete
-    span.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Select Span"]')!.click()
+    span.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Select Superscript"]')!.click()
     await ribbon.updateComplete
     await span.updateComplete
 
@@ -756,84 +732,45 @@ describe("mark ribbon controls", () => {
       .getAttribute("aria-expanded")).toBe("true")
   })
 
-  it("creates and edits ruby annotations through More", async () => {
+  it("hides removed marks and ruby controls even when that markup is selected", async () => {
     const {ribbon, drawer} = await mountRibbon()
-    const actions = vi.fn()
-    ribbon.addEventListener("ruby-action", actions)
+    const changed = vi.fn()
+    ribbon.addEventListener("ribbon-combobox-change", changed)
     ribbon.canMark = true
+    ribbon.marks = ["span", "small", "abbr", "mark", "bdi", "bdo", "cite", "data", "dfn", "ruby", "samp", "time", "var", "del", "ins"]
     ribbon.ruby = {
-      active: false,
-      canCreate: true,
+      active: true,
+      canCreate: false,
       base: "漢字",
-      annotations: [],
+      annotations: [{index: 1, text: "かんじ", hasMarkup: false}],
       fallbacks: [],
     }
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    expect(drawer.querySelector("ribbon-button.mark-ruby")).toBeNull()
     const button = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!
     await button.updateComplete
+    expect(button.label).toBe("More")
+    expect(button.active).toBe(false)
+    expect(button.selectionCount).toBe(0)
     button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await button.updateComplete
-    let dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.hidden).toBe(false)
-    expect(dropdown.querySelector<HTMLInputElement>('input[aria-label="Select Ruby Annotation"]')).not.toBeNull()
-    expect(dropdown.querySelector(".ruby-base-preview")?.textContent).toContain("漢字")
-    const annotation = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby annotation"]')!
-    annotation.value = "かんじ"
-    annotation.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
-    dropdown.querySelector<HTMLInputElement>('.ruby-fallback-toggle input')!.click()
-    dropdown.querySelector<HTMLButtonElement>(".button-dropdown-more")!.click()
-    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
-      detail: {action: "create", annotation: "かんじ", fallback: true},
-    }))
+    const dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
+    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(5)
+    expect(dropdown.querySelector(".ruby-dropdown")).toBeNull()
+    expect(dropdown.textContent).not.toContain("Annotation")
 
-    ribbon.ruby = {
-      active: true,
-      canCreate: false,
-      base: "漢字",
-      annotations: [{index: 2, text: "かんじ", hasMarkup: true}],
-      fallbacks: [
-        {index: 1, text: "(", hasMarkup: false},
-        {index: 3, text: ")", hasMarkup: false},
-      ],
-    }
-    ribbon.marks = ["ruby"]
-    await ribbon.updateComplete
-    await button.updateComplete
-    dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(button.label).toBe("Ruby Annotation")
-    expect(dropdown.textContent).toContain("Editing this text replaces its inline formatting")
-    const existing = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby annotation 1"]')!
-    existing.value = "kanji"
-    existing.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
-      detail: {action: "set-annotation", index: 2, expected: "かんじ", value: "kanji"},
+    dropdown.querySelector<HTMLInputElement>('input[aria-label="Select Code"]')!.click()
+    expect(changed).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {name: "mark-types", value: "span", values: [...ribbon.marks, "code"]},
     }))
-    dropdown.querySelector<HTMLButtonElement>('[aria-label="Remove ruby annotation 1"]')!.click()
-    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
-      detail: {action: "remove-annotation", index: 2, expected: "かんじ"},
-    }))
-    const fallback = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby fallback 1"]')!
-    fallback.value = "["
-    fallback.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
-      detail: {action: "set-fallback", index: 1, expected: "(", value: "["},
-    }))
-    dropdown.querySelector<HTMLButtonElement>("button.ruby-remove")!.click()
-    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({detail: {action: "remove-ruby"}}))
   })
 
   it("shows secondary mark attributes inside the span dropdown", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
-    ribbon.marks = ["abbr", "data", "time"]
-    ribbon.markAttributes = {
-      abbr: {title: "Hypertext Markup Language"},
-      data: {value: "42"},
-      time: {datetime: "2026-08-13"},
-    }
+    ribbon.marks = []
+    ribbon.markAttributes = {q: {cite: "https://example.com/source"}}
     await ribbon.updateComplete
     await drawer.updateComplete
 
@@ -841,12 +778,6 @@ describe("mark ribbon controls", () => {
     span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await span.updateComplete
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.querySelector<HTMLInputElement>('input[aria-label="Abbreviation: Title"]')!.value)
-      .toBe("Hypertext Markup Language")
-    expect(dropdown.querySelector<HTMLInputElement>('input[aria-label="Data Annotation: Value"]')!.value).toBe("42")
-    expect(dropdown.querySelector<HTMLInputElement>('input[aria-label="Date/Time Annotation: Date/time"]')!.value)
-      .toBe("2026-08-13")
-
     const quotation = dropdown.querySelector<HTMLInputElement>('input[aria-label="Quotation: Source"]')!
     expect(quotation.disabled).toBe(true)
     expect(quotation.parentElement!.getAttribute("aria-hidden")).toBe("true")
@@ -858,6 +789,7 @@ describe("mark ribbon controls", () => {
     const openDropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
     const activeQuotation = openDropdown.querySelector<HTMLInputElement>('input[aria-label="Quotation: Source"]')!
     expect(openDropdown.hidden).toBe(false)
+    expect(activeQuotation.value).toBe("https://example.com/source")
     expect(activeQuotation.disabled).toBe(false)
     expect(activeQuotation.parentElement!.getAttribute("aria-hidden")).toBe("false")
     expect(getComputedStyle(activeQuotation.parentElement!).visibility).not.toBe("hidden")
@@ -1065,8 +997,8 @@ describe("mark ribbon bridge", () => {
       type: markStateChangeEvent,
       detail: {
         canMark: true,
-        marks: ["time"],
-        attributes: {time: {datetime: "2026-08-13"}},
+        marks: ["q"],
+        attributes: {q: {cite: "https://example.com/source"}},
       },
     })
     await editor.updateComplete
@@ -1082,24 +1014,24 @@ describe("mark ribbon bridge", () => {
     span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await span.updateComplete
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Data Annotation"]')!.click()
-    const datetime = dropdown.querySelector<HTMLInputElement>(
-      'input[aria-label="Date/Time Annotation: Date/time"]',
+    dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Code"]')!.click()
+    const source = dropdown.querySelector<HTMLInputElement>(
+      'input[aria-label="Quotation: Source"]',
     )!
-    datetime.value = "2026-08-14"
-    datetime.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    source.value = "https://example.com/updated"
+    source.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "toggleMarkGroup", mark: "span"})
     expect(execute).toHaveBeenNthCalledWith(2, {
       type: "setMarkGroup",
       primary: "span",
-      marks: ["time", "data"],
+      marks: ["q", "code"],
     })
     expect(execute).toHaveBeenNthCalledWith(3, {
       type: "setMarkAttribute",
-      mark: "time",
-      attribute: "datetime",
-      value: "2026-08-14",
+      mark: "q",
+      attribute: "cite",
+      value: "https://example.com/updated",
     })
 
     ribbon.dispatchEvent(new CustomEvent("ribbon-combobox-change", {

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
+import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import type {DomEditorToolbox} from "./toolbox"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
@@ -1188,6 +1189,27 @@ describe("DomEditor file actions", () => {
     expect((editor as any).fileHandle).toBe(handle)
     expect((editor as any).fileName).toBe("opened")
     expect((editor as any).fileDirty).toBe(false)
+  })
+
+  it("strips excluded marks when opening HTML files and keeps rich base content", async () => {
+    const {editor} = await mountEditor()
+    const marks = excludedMarkNames.map(name => `<${name}><b>${name}</b><!--keep--></${name}>`).join("")
+    const body = `<p>${marks}<ruby><rb>漢</rb><rp>(</rp><rt>かん</rt><rp>)</rp><rtc><rt>character</rt></rtc></ruby></p><test-widget><span>widget</span></test-widget>`
+    const file = new File([`<!DOCTYPE html><html lang="de"><head><title>Imported</title></head><body>${body}</body></html>`], "imported.html", {type: "text/html"})
+    const handle = {name: "imported.html", getFile: vi.fn().mockResolvedValue(file)}
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
+    vi.spyOn(editor as any, "waitForEditorWindow").mockResolvedValue(undefined)
+
+    await (editor as any).openDocument()
+
+    const source = (editor as any).frameDocumentHTML as string
+    const parsed = new DOMParser().parseFromString(source, "text/html")
+    expect(source).toContain("<!DOCTYPE html>")
+    expect(parsed.documentElement.lang).toBe("de")
+    expect(parsed.title).toBe("Imported")
+    expect(parsed.querySelector("p")?.innerHTML).toBe(excludedMarkNames.map(name => `<b>${name}</b><!--keep-->`).join("") + "漢")
+    expect(parsed.querySelector("test-widget")?.innerHTML).toBe("<span>widget</span>")
+    expect((editor as any).fileHandle).toBe(handle)
   })
 
   it("opens documents from the development backend when logged in", async () => {

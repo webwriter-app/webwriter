@@ -20,7 +20,7 @@ import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isAppendixInteraction, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
-import {canonicalMarkName, isMarkElement, normalizeMarkElements} from "./marks"
+import {canonicalMarkName, isMarkElement, normalizeMarkElements, stripExcludedMarks} from "./marks"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -1400,7 +1400,7 @@ export class DOMEditor {
 
   /** Sanitizes detached authored HTML and repairs it with the active schema
    * before any part of it enters the live document. Transfers additionally
-   * strip styling and section wrappers and canonize aliases; explicit HTML
+   * strip styling, excluded marks, and section wrappers and canonize aliases; explicit HTML
    * edits retain authored structure and styles. */
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false) {
     this.clearEditingArtifacts(fragment)
@@ -1408,7 +1408,10 @@ export class DOMEditor {
       allowIframes: true,
       ...(transfer ? {removeAttribute: (attribute: Attr) => ["style", "class"].includes(attribute.name.toLowerCase())} : {}),
     })
-    if(transfer) this.canonizeTransferredContent(fragment)
+    if(transfer) {
+      stripExcludedMarks(fragment)
+      this.canonizeTransferredContent(fragment)
+    }
     // Keep template contents inert until insertion, after sanitization and
     // structural repair have finished.
     const stagingBody = fragment.ownerDocument.createElement("body")

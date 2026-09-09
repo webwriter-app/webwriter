@@ -27,6 +27,7 @@ import {
   isMarkElement,
   isStyleMarkName,
   mergedMarkGroupFor,
+  stripExcludedMarks,
   type MarkAttributeValues,
   type MarkName,
   type RubyState,
@@ -2128,6 +2129,8 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string) {
+    const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
+    stripExcludedMarks(parsed.body)
     const reloadError = new Error("The editor iframe was reloaded for a document change")
     this.editorReadyPromise?.catch(() => {})
     this.editorReadyReject?.(reloadError)
@@ -2150,7 +2153,7 @@ export class DomEditor extends LitElement {
     this.historyOperationCount = 0
     this.historyDocumentTransitionCount = 0
     this.historyError = ""
-    this.frameDocumentHTML = htmlSource
+    this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
       abortCleanup?.()

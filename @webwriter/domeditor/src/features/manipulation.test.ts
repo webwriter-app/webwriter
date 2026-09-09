@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "../domeditor"
 import { $, htmlToFragment } from "../utility"
+import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 
 let editor: DOMEditor
@@ -1820,7 +1821,7 @@ describe("unified content transfer", () => {
   it.each(["paste", "drop", "beforeinput", "async paste"])("sanitizes and canonizes external %s", async method => {
     document.body.innerHTML = ""
     const data = new DataTransfer()
-    const html = '<script>bad()</script><style>p{color:red}</style><p class="external" style="color:red" onclick="bad()"><strong>bold</strong> <em>italic</em> <strike>old</strike><a href="javascript:bad()">link</a></p><img src="photo.png" class="photo" style="width:10px">'
+    const html = '<script>bad()</script><style>p{color:red}</style><p class="external" style="color:red" onclick="bad()"><strong>bold</strong> <em>italic</em> <strike>old</strike><span><abbr title="abbreviation"><small>plain</small></abbr></span><ruby>漢<rp>(</rp><rt>かん</rt><rp>)</rp></ruby><a href="javascript:bad()">link</a></p><img src="photo.png" class="photo" style="width:10px">'
     data.setData("text/html", html)
     data.setData("text/plain", "fallback")
     $.selectDocumentStart()
@@ -1835,7 +1836,44 @@ describe("unified content transfer", () => {
       await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
       await editor.features.manipulation.paste()
     }
-    expectBodyToBe('<p><b>bold</b> <i>italic</i> <s>old</s><a>link</a></p><picture><img src="photo.png"></picture>')
+    expectBodyToBe('<p><b>bold</b> <i>italic</i> <s>old</s>plain漢<a>link</a></p><picture><img src="photo.png"></picture>')
+  })
+
+  it.each(excludedMarkNames)("strips imported <%s> marks while preserving nested content", name => {
+    const {fragment} = editor.parseHTMLFragment(`<p>before<${name} title="discard"><strong>keep</strong><sup>2</sup></${name}>after</p>`, true)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<p>before<b>keep</b><sup>2</sup>after</p>')
+  })
+
+  it("imports only ruby base content, including explicit and nested bases", () => {
+    const {fragment} = editor.parseHTMLFragment('<p><ruby><rb><strong>漢</strong></rb><rb><ruby>字<rt>じ</rt></ruby></rb><rp>(</rp><rt><em>かんじ</em></rt><rp>)</rp><rtc><rt>characters</rt></rtc></ruby></p>', true)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<p><b>漢</b>字</p>')
+  })
+
+  it("strips marks in imported templates while preserving widget and foreign subtrees", () => {
+    const {fragment} = editor.parseHTMLFragment('<template><p><span><abbr>plain</abbr></span></p></template><test-widget><span><abbr>widget</abbr></span></test-widget><p is="custom-text"><span>customized</span></p><svg><text><span>foreign</span></text></svg>', true)
+    expect(fragment.querySelector("template")?.innerHTML).toBe('<p>plain</p>')
+    expect(fragment.querySelector("test-widget")?.innerHTML).toBe('<span><abbr>widget</abbr></span>')
+    expect(fragment.querySelector('[is="custom-text"]')?.innerHTML).toBe('<span>customized</span>')
+    expect(fragment.querySelector("svg")?.innerHTML).toBe('<text><span>foreign</span></text>')
+  })
+
+  it("keeps explicit HTML edits intact when they contain excluded import marks", () => {
+    const html = '<p><span style="color:red"><abbr title="meaning">text</abbr></span><ruby>漢<rt>かん</rt></ruby></p>'
+    const {fragment} = editor.parseHTMLFragment(html)
+    expect(fragment.firstElementChild?.outerHTML).toBe(html)
+  })
+
+  it("undoes and redoes imported content without restoring stripped markup", () => {
+    const data = new DataTransfer()
+    data.setData("text/html", '<p><span><small>plain</small></span><ruby>漢<rt>かん</rt></ruby></p>')
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+    editor.doc.syncFromDOM()
+    expectBodyToBe('<p>plain漢</p>')
+    editor.doc.undo()
+    expectBodyToBe('<p></p>')
+    editor.doc.redo()
+    expectBodyToBe('<p>plain漢</p>')
+    expect(editor.doc.body.toString()).not.toMatch(/<(span|small|ruby|rt)[ >]/)
   })
 
   it.each(["paste", "drop"])("enables all nested widgets on native %s", method => {

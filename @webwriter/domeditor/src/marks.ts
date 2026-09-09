@@ -166,7 +166,7 @@ export const primaryDrawerMarkNames = [
   "s",
 ] as const satisfies readonly MarkName[]
 
-/** Marks represented by the generic More control's multi-select. */
+/** Marks handled by the generic mark group, including preserved authored marks. */
 export const advancedMarkNames = [
   "sup",
   "sub",
@@ -188,6 +188,30 @@ export const advancedMarkNames = [
   "del",
   "ins",
 ] as const satisfies readonly MarkName[]
+
+/** Marks omitted from More and unwrapped when importing external content. */
+export const excludedMarkNames: readonly MarkName[] = [
+  "span", "small", "abbr", "mark", "bdi", "bdo", "cite", "data", "dfn",
+  "ruby", "samp", "time", "var", "del", "ins",
+]
+
+/** Strip only imported HTML marks; widget and foreign-namespace subtrees stay atomic. */
+export function stripExcludedMarks(root: ParentNode) {
+  Array.from(root.children).forEach(element => {
+    if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || element.localName.includes("-") || element.hasAttribute("is")) return
+    // Ruby annotations and fallbacks do not belong to the base text.
+    if(["rt", "rp", "rtc"].includes(element.localName)) {
+      element.remove()
+      return
+    }
+    if(element.localName === "template") stripExcludedMarks((element as HTMLTemplateElement).content)
+    stripExcludedMarks(element)
+    if(excludedMarkNames.includes(element.localName as MarkName) || element.localName === "rb") {
+      element.replaceWith(...Array.from(element.childNodes))
+    }
+  })
+}
 
 const mergedMarkGroupDefinitions = [
   {primary: "span", alternatives: advancedMarkNames},
