@@ -238,7 +238,7 @@ export class RibbonDrawer extends LitElement {
       padding: 0 0.5rem;
       border: 1px solid transparent;
       border-right-color: #d8dee6;
-      background: var(--ribbon-area-background, #f2f2f2);
+      background: #f2f2f2;
       transition: max-height 180ms ease;
     }
 
@@ -261,7 +261,7 @@ export class RibbonDrawer extends LitElement {
       border-right-color: #d8dee6;
       border-bottom-color: #d8dee6;
       border-left-color: #d8dee6;
-      background: var(--ribbon-area-background, #f2f2f2);
+      background: #f2f2f2;
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
       clip-path: polygon(
         0 0,
@@ -656,7 +656,7 @@ export class RibbonDrawer extends LitElement {
       padding: 0 0.25rem;
       border-color: transparent;
       border-right-color: #d8dee6;
-      background: var(--ribbon-area-background, #f2f2f2);
+      background: #f2f2f2;
       box-shadow: none;
       clip-path: none;
     }
@@ -728,7 +728,7 @@ export class RibbonDrawer extends LitElement {
       max-height: 0;
       padding: 0 0.5rem;
       border: 1px solid #d8dee6;
-      background: var(--ribbon-area-background, #f2f2f2);
+      background: #f2f2f2;
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
       visibility: hidden;
       overflow: hidden;

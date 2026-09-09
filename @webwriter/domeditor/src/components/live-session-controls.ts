@@ -21,7 +21,7 @@ export class LiveSessionControls extends LitElement {
       max-height: 30px;
       color: #000;
       border-bottom: 0.5px solid #a8a8a8;
-      background: #e7f1ff;
+      background: #ededed;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 

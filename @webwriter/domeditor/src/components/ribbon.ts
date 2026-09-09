@@ -333,7 +333,6 @@ export class AppRibbon extends LitElement {
     }
 
     .ribbon.preview {
-      --ribbon-area-background: #f3f8ff;
       --ribbon-control-color: #000;
       --ribbon-qr-filter: brightness(0);
     }
@@ -1643,7 +1642,7 @@ export class AppRibbon extends LitElement {
       height: 40px;
       margin-left: 10px;
       padding: 0 0.5rem;
-      border: 0;
+      border: 1px solid transparent;
       border-radius: 0.35rem;
       color: #5e6977;
       background: transparent;
@@ -1652,8 +1651,8 @@ export class AppRibbon extends LitElement {
 
     .preview-button[active] {
       position: relative;
-      border: 1px solid #d8dee6;
-      border-bottom: 0;
+      border-color: #d8dee6;
+      border-bottom-color: transparent;
       border-radius: 0.35rem 0.35rem 0 0;
       color: var(--ribbon-control-color, #1e4f87);
       background: var(--ribbon-area-background);
@@ -1661,11 +1660,13 @@ export class AppRibbon extends LitElement {
     }
 
     .preview-button[active]::after {
+      box-sizing: border-box;
       position: absolute;
       right: -1px;
-      bottom: -1px;
+      bottom: -2px;
       left: -1px;
-      height: 1px;
+      height: 2px;
+      border-inline: 1px solid var(--ribbon-area-border);
       background: var(--ribbon-area-background);
       content: "";
     }
