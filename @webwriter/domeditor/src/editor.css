@@ -740,6 +740,7 @@ svg.◆graphic-grid-visible {
     linear-gradient(to right, rgb(100 116 139 / 12%) 1px, transparent 1px),
     linear-gradient(to bottom, rgb(100 116 139 / 12%) 1px, transparent 1px);
   background-size: 3.125% 5.5556%;
+  background-repeat: repeat;
 }
 
 .◆graphic-shape-locked {

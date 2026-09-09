@@ -1494,4 +1494,33 @@ describe("graphic editing", () => {
     expect(editor.features.graphic.getState()?.options?.grid).toBe(false)
     expect(editor.toHTML(true)).not.toContain("graphic-grid-visible")
   })
+
+  it.each([false, true])("repeats the grid despite a theme background reset (with shapes: %s)", withShapes => {
+    const theme = new CSSStyleSheet()
+    theme.replaceSync("* { background-repeat: no-repeat; }")
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, theme]
+    try {
+      editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+      const graphic = document.querySelector("svg")!
+      if(withShapes) editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+
+      expect(getComputedStyle(graphic).backgroundImage).toContain("linear-gradient")
+      expect(getComputedStyle(graphic).backgroundRepeat).toBe("repeat")
+
+      editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "grid"})
+      expect(getComputedStyle(graphic).backgroundImage).not.toContain("linear-gradient")
+      expect(getComputedStyle(graphic).backgroundRepeat).toBe("no-repeat")
+
+      editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "grid"})
+      expect(getComputedStyle(graphic).backgroundRepeat).toBe("repeat")
+      expect(editor.toHTML(true)).not.toContain("graphic-grid-visible")
+
+      editor.features.graphic.disable()
+      expect(graphic).not.toHaveClass("◆graphic-grid-visible")
+      expect(getComputedStyle(graphic).backgroundRepeat).toBe("no-repeat")
+    }
+    finally {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== theme)
+    }
+  })
 })
