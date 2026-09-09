@@ -1459,6 +1459,30 @@ body::part(transform-overlay-anchor-sticky)::before {
     width: 12px;
     height: 12px;
 }
+/* Transparent edge strips share the corner handles' selection-outline alignment. */
+body::part(transform-overlay-edge) {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+}
+body::part(transform-overlay-edge-up),
+body::part(transform-overlay-edge-down) {
+  left: 0;
+  width: 100%;
+  height: 8px;
+  cursor: ns-resize;
+}
+body::part(transform-overlay-edge-left),
+body::part(transform-overlay-edge-right) {
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+}
+body::part(transform-overlay-edge-up) { top: -7px; }
+body::part(transform-overlay-edge-down) { bottom: -7px; }
+body::part(transform-overlay-edge-left) { left: -7px; }
+body::part(transform-overlay-edge-right) { right: -7px; }
 /* Center 8px handles on the existing 2px selection outline, offset by 2px. */
 body::part(transform-overlay-scale-up-left) {
   top: -7px;

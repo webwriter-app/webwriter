@@ -36,7 +36,7 @@ type Gesture = {
  * Ctrl/Cmd previews a gap and returns the element to normal flow on release.
  * Shift constrains movement to one axis; Alt disables snapping.
  *
- * Resize: corners set width/height. Top/left handles keep the
+ * Resize: corners set width/height; edges resize one axis. Top/left handles keep the
  * opposite edge fixed by adjusting offsets. Ctrl/Cmd resizes about the center;
  * Shift stretches with CSS scale instead of reflowing content; Alt unsnaps.
  * Rotate (absolute targets): drag about the center, snapping to 5 degrees
@@ -59,13 +59,15 @@ export class TransformationFeature extends EditorFeature {
   #suppressClick = false
   readonly #cancelGesture = () => this.#finish(true)
 
-  #createScaler(direction: string) {
-    const point = document.createElement("button")
+  #createScaler(direction: string, edge = false) {
+    const point = document.createElement(edge ? "div" : "button")
+    const part = edge ? "transform-overlay-edge" : "transform-overlay-scale"
     point.id = `◆transform-overlay-scale-${direction}`
-    point.classList.add("◆transform-overlay-scale")
-    point.setAttribute("part", `transform-overlay-scale transform-overlay-scale-${direction}`)
+    point.classList.add(`◆${part}`)
+    point.setAttribute("part", `${part} ${part}-${direction}`)
     point.dataset.transformMode = "scale"
     point.title = `Resize ${direction}`
+    if(edge) point.setAttribute("aria-hidden", "true")
     return point
   }
 
@@ -260,6 +262,7 @@ export class TransformationFeature extends EditorFeature {
       event.stopPropagation()
     })
     overlay.append(
+      ...["up", "right", "down", "left"].map(dir => this.#createScaler(dir, true)),
       ...["up-left", "up-right", "down-left", "down-right"].map(dir => this.#createScaler(dir)),
       mover, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
     )

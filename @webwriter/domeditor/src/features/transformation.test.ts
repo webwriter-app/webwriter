@@ -106,6 +106,7 @@ describe("selection-owned transformation", () => {
     for(const direction of ["up-left", "up-right", "down-left", "down-right"]) {
       expect(editor.appendix.querySelector(`#◆transform-overlay-scale-${direction}`)).not.toBeNull()
     }
+    expect(editor.appendix.querySelectorAll(".◆transform-overlay-edge")).toHaveLength(4)
     for(const direction of ["up-up", "left-left", "right-right", "down-down"]) {
       expect(editor.appendix.querySelector(`#◆transform-overlay-scale-${direction}`)).toBeNull()
     }
@@ -258,6 +259,87 @@ describe("transform controls and geometry", () => {
 
     expect(parseFloat(target.style.width)).toBeGreaterThan(100)
     expect(target).toHaveClass("◆transform-target")
+  })
+
+  describe.each([false, true])("edge resizing with capture selection %s", captured => {
+    it.each([
+      {edge: "right", x: 200, y: 115, dx: 20, dy: 13, width: "120px", height: "50px", left: "0px", top: "0px"},
+      {edge: "left", x: 100, y: 115, dx: -20, dy: 13, width: "120px", height: "50px", left: "-20px", top: "0px"},
+      {edge: "up", x: 130, y: 100, dx: 13, dy: -20, width: "100px", height: "70px", left: "0px", top: "-20px"},
+      {edge: "down", x: 130, y: 150, dx: 13, dy: 20, width: "100px", height: "70px", left: "0px", top: "0px"},
+    ])("resizes only the $edge axis and preserves the opposite edge", ({edge, x, y, dx, dy, width, height, left, top}) => {
+      const target = targetElement(captured ? "demo-widget" : "p")
+      const child = target.appendChild(document.createElement(captured ? "unfamiliar-content" : "mark"))
+      target.appendChild(document.createComment("keep"))
+      target.setAttribute("data-authored", "keep")
+      Object.assign(target.style, {position: "relative", width: "100px", height: "50px", left: "0px", top: "0px"})
+      mockRect(target)
+      if(captured) captureNode(target)
+      else selectNode(target)
+      const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${edge}`)!
+
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: x, clientY: y}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: x + dx, clientY: y + dy}))
+      expect(document.body).toHaveClass(`◆transform-scaling-${dx === 13 ? "ns" : "ew"}`)
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+
+      expect(target.style.width).toBe(width)
+      expect(target.style.height).toBe(height)
+      expect(target.style.left).toBe(left)
+      expect(target.style.top).toBe(top)
+      expect(target.style.position).toBe("relative")
+      expect(target.firstElementChild).toBe(child)
+      expect(target.lastChild?.nodeType).toBe(Node.COMMENT_NODE)
+      expect(target).toHaveAttribute("data-authored", "keep")
+      expect(target).toHaveClass("◆element-selected")
+      expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
+      expect(document.body).not.toHaveClass("◆transform-scaling-ew", "◆transform-scaling-ns")
+      editor.doc.syncFromDOM()
+      expect(editor.toHTML(true)).not.toContain("transform-overlay-edge")
+      expect(editor.doc.body.toString()).not.toContain("transform-overlay-edge")
+    })
+  })
+
+  it.each([
+    {modifiers: {altKey: true}, width: "113px", left: "0px", scale: ""},
+    {modifiers: {ctrlKey: true}, width: "130px", left: "-15px", scale: ""},
+    {modifiers: {shiftKey: true}, width: "100px", left: "5px", scale: "1.1 1"},
+  ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
+    const target = targetElement()
+    Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 115}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 213, clientY: 115, ...modifiers}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+
+    expect(target.style.width).toBe(width)
+    expect(target.style.height).toBe("50px")
+    // The mock rect does not apply CSS scale; the measured offset compensates for it.
+    expect(target.style.left).toBe(left)
+    expect(target.style.getPropertyValue("scale")).toBe(scale)
+  })
+
+  it.each(["Escape", "pointercancel", "removed"])("cleans up an edge resize on %s", cancellation => {
+    const target = targetElement()
+    Object.assign(target.style, {position: "relative", width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 115}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 115}))
+    expect(target.style.width).toBe("120px")
+    target.style.color = "red"
+    if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    else {
+      target.remove()
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 230, clientY: 115}))
+    }
+    expect(target.style.width).toBe("100px")
+    expect(target.style.color).toBe("red")
+    expect(document.body).not.toHaveClass("◆transform-scaling-ew", "◆transform-scaling-ns")
   })
 
   it("rotates only an absolute target", () => {
