@@ -6872,6 +6872,7 @@ export class AppRibbon extends LitElement {
       return html`
         <ribbon-button
           slot=${slot}
+          variant="insertion"
           label=${item.label}
           .action=${item.action ?? item.label}
           .icon=${item.icon ?? item.label}

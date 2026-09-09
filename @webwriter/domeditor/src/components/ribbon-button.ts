@@ -166,6 +166,10 @@ export class RibbonButton extends LitElement {
       min-width: 0;
     }
 
+    :host([variant="insertion"]) .main-button {
+      padding-inline: calc(0.3rem - 2px);
+    }
+
     .submenu-toggle {
       position: absolute;
       top: 0.15rem;
