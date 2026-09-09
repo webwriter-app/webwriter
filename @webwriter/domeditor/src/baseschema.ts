@@ -87,7 +87,7 @@ export const baseSchema = {
     emptySelector: "h1:is(:has(br:only-child), :empty)",
     get placeholderStyle() {
       return {
-        content: `"${"Heading 1"}"`,
+        content: '"Heading"',
         width: "0px",
         overflow: "visible",
         color: "darkgray",
@@ -103,7 +103,7 @@ export const baseSchema = {
     emptySelector: "h2:is(:has(br:only-child), :empty)",
     get placeholderStyle() {
       return {
-        content: `"${"Heading 2"}"`,
+        content: '"Heading"',
         width: "0px",
         overflow: "visible",
         color: "darkgray"
@@ -117,7 +117,7 @@ export const baseSchema = {
     emptySelector: "h3:is(:has(br:only-child), :empty)",
     get placeholderStyle() {
       return {
-        content: `"${"Heading 3"}"`,
+        content: '"Heading"',
         width: "0px",
         overflow: "visible",
         color: "darkgray"
@@ -131,7 +131,7 @@ export const baseSchema = {
     emptySelector: "h4:is(:has(br:only-child), :empty)",
     get placeholderStyle() {
       return {
-        content: `"${"Heading 4"}"`,
+        content: '"Heading"',
         width: "0px",
         overflow: "visible",
         color: "darkgray"
@@ -145,7 +145,7 @@ export const baseSchema = {
     emptySelector: "h5:is(:has(br:only-child), :empty)",
     get placeholderStyle() {
       return {
-        content: `"${"Heading 5"}"`,
+        content: '"Heading"',
         width: "0px",
         overflow: "visible",
         color: "darkgray"
@@ -159,7 +159,7 @@ export const baseSchema = {
     emptySelector: "h6:is(:has(br:only-child), :empty)",
     get placeholderStyle() {
       return {
-        content: `"${"Heading 6"}"`,
+        content: '"Heading"',
         width: "0px",
         overflow: "visible",
         color: "darkgray"

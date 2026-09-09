@@ -294,7 +294,6 @@ const appendixStylesheet = createStylesheet(`
     background: #fffdf3;
   }
 `)
-const featuresDisabledByDefault = new Set(["placeholder"])
 
 /** DOMEditor
  * Core (transactions, schema, communication)
@@ -659,7 +658,6 @@ export class DOMEditor {
       this.#ensureDocumentContent()
       this.#enableWidgetEditing(document.body)
       Object.entries(this.features)
-        .filter(([key]) => !featuresDisabledByDefault.has(key))
         .forEach(([, feat]) => feat.enable())
       document.addEventListener("input", this.#handleInput)
       document.addEventListener("selectionchange", this.handleSelectionChange)

@@ -21,10 +21,10 @@ describe("DOMEditor stylesheets", () => {
   beforeAll(() => editor = new DOMEditor())
   afterAll(() => editor.destroy())
 
-  it("does not enable placeholder text by default", () => {
+  it("enables heading placeholders by default", () => {
     const placeholderStylesheet = editor.features.placeholder.placeholderStylesheet
 
-    expect(document.adoptedStyleSheets).not.toContain(placeholderStylesheet)
+    expect(document.adoptedStyleSheets).toContain(placeholderStylesheet)
   })
 
   it("mounts the main-DOM stylesheet on the document", () => {

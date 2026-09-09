@@ -541,8 +541,13 @@ describe("Schema methods", () => {
   })
 
   describe("placeholderKeys", () => {
+    it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("uses Heading as the empty %s placeholder", tag => {
+      const type = schema.get(tag)
+      expect(type.placeholderStyle?.content).toBe('"Heading"')
+    })
+
     it("contains types with an empty selector and placeholder or empty style", () => {
-      expect(schema.placeholderKeys).toContain("h1")
+      expect(schema.placeholderKeys).toEqual(expect.arrayContaining(["h1", "h2", "h3", "h4", "h5", "h6"]))
       expect(schema.placeholderKeys).not.toContain("p")
     })
   })
