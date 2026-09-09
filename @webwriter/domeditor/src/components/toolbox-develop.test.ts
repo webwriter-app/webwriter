@@ -34,13 +34,15 @@ afterEach(() => document.body.replaceChildren())
 describe("Develop toolbox", () => {
   it("shows local package actions and selects packages from the drawer select", async () => {
     const toolbox = new DomEditorToolbox()
-    toolbox.activeTool = "Develop"
+    toolbox.activeTool = "Edit"
+    toolbox.developMode = true
     toolbox.activeMenu = "Develop"
     toolbox.localPackages = [localPackage("Alpha"), localPackage("Beta")]
     document.body.append(toolbox)
     await toolbox.updateComplete
 
-    expect(toolbox.shadowRoot!.querySelector('button[data-tool="Develop"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('button[data-tool="Develop"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('.develop-mode-toggle[aria-pressed="true"]')).not.toBeNull()
     const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')!
     expect((drawer as HTMLElement & {expandable: boolean}).expandable).toBe(false)
     await (drawer as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
@@ -165,7 +167,8 @@ describe("Develop toolbox", () => {
       tagName: "alpha-widget",
     }]
     const toolbox = new DomEditorToolbox()
-    toolbox.activeTool = "Develop"
+    toolbox.activeTool = "Edit"
+    toolbox.developMode = true
     toolbox.activeMenu = "Develop"
     toolbox.localPackages = [pkg]
     toolbox.selectedLocalPackageName = pkg.name

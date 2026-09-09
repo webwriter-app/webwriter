@@ -8,13 +8,12 @@ import {menuGroups} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 
-export type ToolboxTool = "Edit" | "Style" | "Review" | "Develop"
+export type ToolboxTool = "Edit" | "Style" | "Review"
 
 const tools: readonly {label: ToolboxTool, icon: string}[] = [
   {label: "Edit", icon: "Pencil"},
   {label: "Style", icon: "Theme"},
   {label: "Review", icon: "Grammar"},
-  {label: "Develop", icon: "Develop"},
 ]
 
 /** Document toolbox presented beside the breadcrumb rather than as top-level
@@ -30,6 +29,7 @@ export class DomEditorToolbox extends AppRibbon {
     documentHead: {attribute: false},
     documentHeadAttributeEditorId: {state: true},
     htmlMode: {type: Boolean, attribute: "html-mode", reflect: true},
+    developMode: {type: Boolean, attribute: "develop-mode", reflect: true},
     htmlSource: {type: String, attribute: false},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     htmlSourceError: {type: String, attribute: false},
@@ -57,7 +57,7 @@ export class DomEditorToolbox extends AppRibbon {
       position: relative;
       z-index: 2;
       align-self: stretch;
-      width: 122px;
+      width: 94px;
       min-width: 0;
       height: 100%;
       max-height: none;
@@ -73,6 +73,10 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     :host([html-mode]) {
+      width: 400px;
+    }
+
+    :host([develop-mode]) {
       width: 400px;
     }
 
@@ -121,6 +125,18 @@ export class DomEditorToolbox extends AppRibbon {
       border-bottom-color: #f2f2f2;
       border-radius: 0.2rem 0.2rem 0 0;
       background: #f2f2f2;
+    }
+
+    :host([active-tool]) .toolbox-tab {
+      flex-grow: 1;
+    }
+
+    :host([active-tool]) .toolbox-tabs {
+      padding-left: 0;
+    }
+
+    :host([active-tool]) .toolbox-tab:not([data-active]) .toolbox-tab-button {
+      width: 100%;
     }
 
     .toolbox-tab-button,
@@ -347,7 +363,7 @@ export class DomEditorToolbox extends AppRibbon {
       background: #e9e9e9;
     }
 
-    .html-mode-toggle,
+    .edit-mode-toggle,
     .html-source-action {
       box-sizing: border-box;
       display: inline-flex;
@@ -365,24 +381,28 @@ export class DomEditorToolbox extends AppRibbon {
       cursor: pointer;
     }
 
-    .html-mode-toggle[aria-pressed="true"] {
+    .develop-mode-toggle {
+      margin-left: auto;
+    }
+
+    .edit-mode-toggle[aria-pressed="true"] {
       border-color: #8ba5be;
       color: #153b5c;
       background: #dbe7f2;
     }
 
-    .html-mode-toggle:hover:not(:disabled),
+    .edit-mode-toggle:hover:not(:disabled),
     .html-source-action:hover:not(:disabled) {
       background: #dbe7f2;
     }
 
-    .html-mode-toggle:focus-visible,
+    .edit-mode-toggle:focus-visible,
     .html-source-action:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: 1px;
     }
 
-    .html-mode-toggle:disabled {
+    .edit-mode-toggle:disabled {
       opacity: 0.6;
       cursor: default;
     }
@@ -393,7 +413,7 @@ export class DomEditorToolbox extends AppRibbon {
       cursor: default;
     }
 
-    .html-mode-toggle svg,
+    .edit-mode-toggle svg,
     .html-source-action svg {
       display: block;
       width: 15px;
@@ -435,6 +455,7 @@ export class DomEditorToolbox extends AppRibbon {
   documentHead: DocumentHeadState = emptyDocumentHeadState()
   private documentHeadAttributeEditorId = ""
   htmlMode = false
+  developMode = false
   htmlSource = ""
   htmlPending = false
   htmlSourceError = ""
@@ -471,8 +492,8 @@ export class DomEditorToolbox extends AppRibbon {
     if(this.activeTool === "Review") {
       return [...menuGroups.Edit.filter(group => group.label === "Comments" || group.label === "Review"), ...menuGroups.History]
     }
-    if(this.activeTool === "Develop") return menuGroups.Develop
     if(this.activeTool === "Edit") {
+      if(this.developMode) return menuGroups.Develop
       if(this.documentSelected) return menuGroups.Edit.filter(group => group.label === "Document"
         || Boolean(this.elementAttributes) && group.label === "Attributes")
       if(this.paragraphSelected) return menuGroups.Edit.filter(group => group.label === "Paragraph" || group.label === "Attributes")
@@ -518,7 +539,7 @@ export class DomEditorToolbox extends AppRibbon {
       `]
     }
     const drawers = super.renderDrawers()
-    if(this.activeTool === "Edit" && this.documentSelected) {
+    if(this.activeTool === "Edit" && !this.developMode && this.documentSelected) {
       drawers.push(html`
         <ribbon-drawer label="Metadata" icon="Properties" layout="document-head"
           @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
@@ -548,14 +569,12 @@ export class DomEditorToolbox extends AppRibbon {
     if(this.activeTool === nextTool) return
     const previousMenu = this.activeMenu
     this.dismissDrawers()
+    this.developMode = false
     this.activeTool = nextTool
     if(nextTool) {
       this.activeMenu = nextTool === "Review" ? "Edit" : nextTool
       if(previousMenu === nextTool && nextTool === "Style") {
         this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
-      }
-      if(previousMenu === nextTool && nextTool === "Develop") {
-        this.dispatchEvent(new Event("local-package-request", {bubbles: true, composed: true}))
       }
     }
     this.dispatchEvent(new CustomEvent<{tool: ToolboxTool | null}>("toolbox-change", {
@@ -567,11 +586,28 @@ export class DomEditorToolbox extends AppRibbon {
 
   private toggleHTMLMode() {
     if(this.htmlPending) return
+    this.dismissDrawers()
+    this.developMode = false
+    this.activeMenu = "Edit"
     this.dispatchEvent(new CustomEvent<{enabled: boolean}>("html-mode-change", {
       detail: {enabled: !this.htmlMode},
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private toggleDevelopMode() {
+    if(this.htmlPending) return
+    this.dismissDrawers()
+    this.developMode = !this.developMode
+    this.activeMenu = this.developMode ? "Develop" : "Edit"
+    if(this.htmlMode) {
+      this.dispatchEvent(new CustomEvent<{enabled: boolean}>("html-mode-change", {
+        detail: {enabled: false},
+        bubbles: true,
+        composed: true,
+      }))
+    }
   }
 
   private changeHTMLSource(event: Event) {
@@ -606,7 +642,7 @@ export class DomEditorToolbox extends AppRibbon {
     return html`
       <footer class="edit-mode-footer">
         <button
-          class="html-mode-toggle"
+          class="edit-mode-toggle html-mode-toggle"
           type="button"
           aria-label=${this.htmlMode ? "Show visual editing tools" : "Edit selection as HTML"}
           title=${this.htmlMode ? "Visual editing" : "Edit HTML"}
@@ -628,13 +664,22 @@ export class DomEditorToolbox extends AppRibbon {
             >${ribbonIcon("Accept")}<span>Apply</span></button>
           </div>
         ` : ""}
+        <button
+          class="edit-mode-toggle develop-mode-toggle"
+          type="button"
+          aria-label=${this.developMode ? "Show visual editing tools" : "Develop local packages"}
+          title=${this.developMode ? "Visual editing" : "Develop"}
+          aria-pressed=${this.developMode}
+          ?disabled=${this.htmlPending}
+          @click=${this.toggleDevelopMode}
+        ><span>Develop</span>${ribbonIcon("Develop")}</button>
       </footer>
     `
   }
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
-    if(this.activeTool !== "Edit" || !this.documentSelected || this.htmlMode) {
+    if(this.activeTool !== "Edit" || !this.documentSelected || this.htmlMode || this.developMode) {
       this.documentHeadAttributeEditorId = ""
     }
     if(changed.has("activeTool")) {
@@ -719,7 +764,7 @@ export class DomEditorToolbox extends AppRibbon {
           ?hidden=${this.activeTool === null}
         >
           <div class="toolbox-pane-content" ?inert=${this.historyState.preview !== null && this.activeTool !== "Review"}>
-            ${this.activeTool === "Edit" && this.htmlMode
+            ${this.activeTool === "Edit" && this.htmlMode && !this.developMode
               ? this.renderHTMLSourceEditor()
               : this.activeTool ? this.renderDrawers() : ""}
           </div>

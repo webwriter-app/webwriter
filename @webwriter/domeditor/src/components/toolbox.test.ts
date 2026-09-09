@@ -20,7 +20,7 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
-  it("renders Edit, Style, Review, and Develop as icon-only tabs on the breadcrumb baseline", async () => {
+  it("renders Edit, Style, and Review as icon-only tabs on the breadcrumb baseline", async () => {
     const toolbox = await mountToolbox()
     const tablist = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
     const tabs = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab"))
@@ -28,12 +28,12 @@ describe("toolbox", () => {
     const labels = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab-label"))
 
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
-      "Edit", "Style", "Review", "Develop",
+      "Edit", "Style", "Review",
     ])
     expect(buttons.map(button => button.getAttribute("aria-selected"))).toEqual([
-      "false", "false", "false", "false",
+      "false", "false", "false",
     ])
-    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Review", "Develop"])
+    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Review"])
     expect(labels.every(label => getComputedStyle(label).opacity === "0")).toBe(true)
     expect(tabs.every(tab => getComputedStyle(tab).width === "28px")).toBe(true)
     expect(getComputedStyle(tablist).borderBottomWidth).toBe("0.5px")
@@ -41,7 +41,6 @@ describe("toolbox", () => {
     expect(buttons[0].querySelector(".icon-tabler-pencil")).not.toBeNull()
     expect(buttons[1].querySelector(".icon-tabler-palette")).not.toBeNull()
     expect(buttons[2].querySelector(".icon-tabler-text-grammar")).not.toBeNull()
-    expect(buttons[3].querySelector(".icon-tabler-terminal-2")).not.toBeNull()
   })
 
   it("widens the active tab and narrows it when switching or closing", async () => {
@@ -70,9 +69,10 @@ describe("toolbox", () => {
     expect(getComputedStyle(editTab).borderBottomColor).toBe("#f2f2f2")
     expect(getComputedStyle(edit).justifyContent).toBe("flex-start")
     expect(getComputedStyle(tablist).paddingRight).toBe("4px")
-    const tabWidth = Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .reduce((width, tab) => width + Number.parseFloat(getComputedStyle(tab).width), 0)
-    expect(tabWidth + Number.parseFloat(getComputedStyle(tablist).paddingRight)).toBe(200)
+    expect(getComputedStyle(tablist).paddingLeft).toBe("0px")
+    expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
+      .every(tab => getComputedStyle(tab).flexGrow === "1")).toBe(true)
+    expect(getComputedStyle(style).width).toBe("100%")
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
     const editClose = editTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!
@@ -98,7 +98,7 @@ describe("toolbox", () => {
     expect(toolbox.activeTool).toBeNull()
     expect(toolbox.hasAttribute("active-tool")).toBe(false)
     expect(getComputedStyle(styleTab).width).toBe("28px")
-    expect(getComputedStyle(toolbox).width).toBe("122px")
+    expect(getComputedStyle(toolbox).width).toBe("94px")
   })
 
   it("keeps an HTML toggle at the bottom of Edit and doubles the toolbox width in HTML mode", async () => {
@@ -142,6 +142,79 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".html-source-action.apply")).not.toBeNull()
     toolbox.selectTool("Style")
     expect(toolbox.activeTool).toBe("Edit")
+  })
+
+  it("toggles Develop beside HTML inside Edit and resets it when leaving Edit", async () => {
+    const toolbox = await mountToolbox()
+    const request = vi.fn()
+    toolbox.addEventListener("local-package-request", request)
+    toolbox.addEventListener("html-mode-change", event => {
+      toolbox.htmlMode = (event as CustomEvent<{enabled: boolean}>).detail.enabled
+    })
+    toolbox.documentSelected = true
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const develop = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!
+    const html = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-mode-toggle")!
+    const footer = toolbox.shadowRoot!.querySelector(".edit-mode-footer")!
+    expect(footer.lastElementChild).toBe(develop)
+    expect(getComputedStyle(develop).marginLeft).toBe("auto")
+    expect(develop.lastElementChild?.classList.contains("icon-tabler-terminal-2")).toBe(true)
+
+    develop.click()
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolbox.activeMenu).toBe("Develop")
+    expect(develop.getAttribute("aria-pressed")).toBe("true")
+    expect(getComputedStyle(toolbox).width).toBe("400px")
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector("document-head-editor")).toBeNull()
+
+    develop.click()
+    await toolbox.updateComplete
+    expect(toolbox.developMode).toBe(false)
+    expect(toolbox.activeMenu).toBe("Edit")
+    expect(getComputedStyle(toolbox).width).toBe("200px")
+    expect(toolbox.shadowRoot!.querySelector("document-head-editor")).not.toBeNull()
+
+    develop.click()
+    await toolbox.updateComplete
+    expect(request).toHaveBeenCalledTimes(2)
+    html.click()
+    await toolbox.updateComplete
+    expect(toolbox.developMode).toBe(false)
+    expect(toolbox.htmlMode).toBe(true)
+    expect(toolbox.activeMenu).toBe("Edit")
+    expect(toolbox.shadowRoot!.querySelector(".html-source-input")).not.toBeNull()
+
+    toolbox.htmlPending = true
+    await toolbox.updateComplete
+    expect(develop.disabled).toBe(true)
+    develop.click()
+    expect(toolbox.developMode).toBe(false)
+    toolbox.htmlPending = false
+    await toolbox.updateComplete
+    develop.click()
+    await toolbox.updateComplete
+    expect(toolbox.htmlMode).toBe(false)
+    expect(toolbox.developMode).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector(".html-source-input")).toBeNull()
+
+    toolbox.selectTool("Style")
+    await toolbox.updateComplete
+    expect(toolbox.developMode).toBe(false)
+    expect(getComputedStyle(toolbox).width).toBe("200px")
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".develop-mode-toggle")!.getAttribute("aria-pressed")).toBe("false")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).toBeNull()
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!.click()
+    await toolbox.updateComplete
+    toolbox.selectTool(null)
+    await toolbox.updateComplete
+    expect(toolbox.developMode).toBe(false)
+    expect(getComputedStyle(toolbox).width).toBe("94px")
   })
 
   it("names element-specific Edit tools in the active blue", async () => {
@@ -435,7 +508,9 @@ describe("toolbox", () => {
     expect(getComputedStyle(advancedContent).overflow).toBe("visible")
     expect(getComputedStyle(advanced.shadowRoot!.querySelector<HTMLElement>(".advanced-divider")!).display).toBe("none")
 
-    toolButton(toolbox, "Develop").click()
+    toolButton(toolbox, "Edit").click()
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!.click()
     await toolbox.updateComplete
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.map(drawer => drawer.label)).toEqual([

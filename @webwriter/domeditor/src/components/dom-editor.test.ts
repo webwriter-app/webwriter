@@ -680,7 +680,9 @@ describe("Develop local packages", () => {
 
     await editor.updateComplete
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Develop"]')!.click()
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!.click()
     await toolbox.updateComplete
     expect(toolbox.localPackages).toEqual(packages)
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
