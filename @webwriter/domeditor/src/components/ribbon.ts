@@ -1560,6 +1560,7 @@ export class AppRibbon extends LitElement {
 
     .ribbon-top-actions {
       display: flex;
+      flex: 0 0 auto;
       align-items: center;
       margin-left: auto;
     }
@@ -1628,13 +1629,14 @@ export class AppRibbon extends LitElement {
     .preview-button {
       box-sizing: border-box;
       display: flex;
-      flex: 0 0 2.5rem;
+      flex: 0 0 auto;
       align-items: center;
       justify-content: center;
       gap: 0.3rem;
-      width: 2.5rem;
+      min-width: 2.5rem;
       height: 40px;
-      padding: 0;
+      margin-left: 10px;
+      padding: 0 0.5rem;
       border: 0;
       border-radius: 0.35rem;
       color: #5e6977;
@@ -1643,10 +1645,7 @@ export class AppRibbon extends LitElement {
     }
 
     .preview-button[active] {
-      flex-basis: auto;
       position: relative;
-      width: auto;
-      padding-inline: 0.35rem;
       color: #1e4f87;
       background: #dcecff;
       box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
@@ -3738,7 +3737,10 @@ export class AppRibbon extends LitElement {
   }
 
   private toggleExpanded() {
-    if(this.previewActive) return
+    if(this.previewActive) {
+      this.selectStart()
+      return
+    }
     this.expanded = !this.expanded
     this.menuOpen = false
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer")
@@ -7688,9 +7690,9 @@ export class AppRibbon extends LitElement {
             type="button"
             aria-controls="ribbon-content"
             aria-expanded=${this.expanded}
-            ?disabled=${this.previewActive || this.previewTransitioning || aiReviewPending}
-            aria-label=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
-            title=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            ?disabled=${!this.previewActive && (this.previewTransitioning || aiReviewPending)}
+            aria-label=${this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            title=${this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
             @click=${this.toggleExpanded}
           >
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}

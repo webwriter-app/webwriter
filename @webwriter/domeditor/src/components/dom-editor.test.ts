@@ -2283,8 +2283,8 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.shadowRoot!.querySelectorAll(".history-button")).toHaveLength(0)
     expect((ribbon as AppRibbon).expanded).toBe(true)
     const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
-    expect(brand.disabled).toBe(true)
-    brand.click()
+    expect(brand.disabled).toBe(false)
+    expect(brand.getAttribute("aria-label")).toBe("Return to editing")
     expect(ribbon.previewActive).toBe(true)
     expect(ribbon.expanded).toBe(true)
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-label"))
@@ -2313,6 +2313,27 @@ describe("DomEditor.execute()", () => {
     expect(restored.anchorOffset).toBe(1)
     expect(restored.focusNode).toBe(text)
     expect(restored.focusOffset).toBe(4)
+  })
+
+  it("returns to editing from the app button during a preview transition", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
+    expect(ribbon.previewActive).toBe(true)
+    expect(ribbon.previewTransitioning).toBe(true)
+    expect(brand.disabled).toBe(false)
+    brand.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    expect(ribbon.previewActive).toBe(false)
+    expect(ribbon.expanded).toBe(true)
+    expect(iframe.hidden).toBe(false)
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
   })
 
   it("cancels media capture before hiding the editor frame for preview", async () => {
