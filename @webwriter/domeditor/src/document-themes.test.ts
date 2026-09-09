@@ -47,6 +47,17 @@ describe("document themes", () => {
     }
   })
 
+  it("pads both sides of the divider while keeping its line in the content box", () => {
+    const source = documentTheme("base")!.source
+    const declarations = source.match(/\bhr\s*\{([^}]+)\}/)![1]
+
+    expect(declarations).toContain("padding-block: 5px;")
+    expect(declarations).toContain("box-sizing: content-box;")
+    expect(declarations).toContain("height: 1px;")
+    expect(declarations).toContain("border: 0;")
+    expect(declarations).toContain("background-clip: content-box;")
+  })
+
   it("layers older themes before applying them to the editing document", () => {
     const water = documentTheme("water")!
 

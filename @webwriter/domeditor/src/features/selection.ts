@@ -1171,9 +1171,9 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const detailsGap = $.detailsGap
-        const placement = detailsGap?.placement ?? (!before || nestedListAfter ? "before": "after")
-        const element = detailsGap?.element ?? (placement === "after" ? before : after)
+        const structuralGap = $.detailsGap ?? $.dividerGap
+        const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
+        const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
           return
         }
@@ -1307,10 +1307,11 @@ export class SelectionFeature extends EditorFeature {
       this.#endDrag()
       this.clearSelectedSection()
       const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
-      if(media) {
+      const divider = ev.target instanceof Element && ev.target.localName === "hr" ? ev.target : null
+      if(media || divider) {
         ev.preventDefault()
         this.#releaseCaptureSelection()
-        $.selectElement(media)
+        $.selectElement((media ?? divider)!)
         this.processSelection()
         return
       }

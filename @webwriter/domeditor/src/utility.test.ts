@@ -239,7 +239,7 @@ describe("selectCoords()", () => {
     expect($.anchorOffset).toBe(0)
   })
 
-  it.each(["interactive-widget", "video"])("selects the gap after a %s when clicking below it", tagName => {
+  it.each(["interactive-widget", "video", "hr"])("selects the gap after a %s when clicking below it", tagName => {
     setBody(`<${tagName}></${tagName}>`)
     const atomicElement = document.body.firstElementChild!
     setBlockRect(atomicElement, 100, 120)

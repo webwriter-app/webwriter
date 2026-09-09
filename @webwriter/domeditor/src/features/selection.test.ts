@@ -61,7 +61,7 @@ describe("processSelection()", () => {
     expect(paragraph.innerHTML).toBe(authored)
   })
 
-  it.each(["test-widget", "img", "video", "input", "select", "textarea", "button", "svg"])("overlays a selected %s and removes the overlay on collapse", tag => {
+  it.each(["test-widget", "img", "video", "input", "select", "textarea", "button", "svg", "hr"])("overlays a selected %s and removes the overlay on collapse", tag => {
     const element = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : el(tag)
     if(tag === "svg") appendToBody(element)
     $.selectElement(element)
@@ -1505,6 +1505,76 @@ describe("document listeners", () => {
 })
 
 
+describe("divider selection", () => {
+  const press = (key: string) => {
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    return event
+  }
+
+  it("selects a clicked divider and cleans up its markers when selection changes", () => {
+    document.body.innerHTML = '<p>before</p><hr title="break"><p>after</p>'
+    const divider = document.querySelector("hr")!
+    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true})
+    divider.dispatchEvent(event)
+    divider.dispatchEvent(new MouseEvent("pointerup", {bubbles: true}))
+    divider.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+
+    expect(event.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(divider)
+    expect(divider).toHaveClass("◆element-selected")
+    expect(feature.selectionCaret?.getRootNode()).toBe(editor.appendix)
+    expect(editor.toHTML(true)).toContain('<hr title="break">')
+    expect(editor.toHTML(true)).not.toContain("◆")
+
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    feature.processSelection()
+    expect(divider.outerHTML).toBe('<hr title="break">')
+  })
+
+  it.each([
+    '<p>before</p>\n<!--break-->\n<hr>\n<p>after</p>',
+    '<section>before<!--break--><hr>after</section>',
+    '<table><tbody><tr><td>before<hr>after</td></tr></tbody></table>',
+    '<hr>',
+  ])("navigates between both divider gaps and the element in %s", html => {
+    document.body.innerHTML = html
+    const divider = document.querySelector("hr")!
+    const parent = divider.parentNode!
+    const index = Array.from(parent.childNodes).indexOf(divider)
+    for(const [into, out, placement] of [
+      ["ArrowDown", "ArrowUp", "before"],
+      ["ArrowRight", "ArrowLeft", "before"],
+      ["ArrowUp", "ArrowDown", "after"],
+      ["ArrowLeft", "ArrowRight", "after"],
+    ] as const) {
+      $.selectGap(divider, placement)
+      expect(press(into).defaultPrevented).toBe(true)
+      expect($.selectedElement).toBe(divider)
+      expect(press(out).defaultPrevented).toBe(true)
+      expect($.isGapSelection).toBe(true)
+      expect($.anchor).toBe(parent)
+      expect($.anchorOffset).toBe(index + (placement === "after" ? 1 : 0))
+      expect(divider).toHaveClass(`◆gap-${placement}-selected`)
+      expect(divider).not.toHaveClass("◆element-selected")
+    }
+  })
+
+  it.each([
+    ["ArrowRight", "before", -1],
+    ["ArrowDown", "before", 2],
+    ["ArrowLeft", "after", 0],
+    ["ArrowUp", "after", 2],
+  ] as const)("selects a divider with %s from neighboring text", (key, placement, offset) => {
+    document.body.innerHTML = '<p>before</p>\n<!--break--><hr>\n<p>after</p>'
+    const divider = document.querySelector("hr")!
+    const paragraph = placement === "before" ? divider.previousElementSibling! : divider.nextElementSibling!
+    $.move(paragraph.firstChild!, offset)
+    expect(press(key).defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(divider)
+  })
+})
+
 describe("selection invariants", () => {
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   beforeEach(() => {
@@ -1537,6 +1607,23 @@ describe("selection invariants", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
     return paragraph
   }
+
+  it.each(["before", "after"] as const)("clicks the gap %s a divider using native parent hit testing", placement => {
+    document.body.innerHTML = '<section>before<!--break--><hr>after</section>'
+    const divider = document.querySelector("hr")!
+    const parent = divider.parentElement!
+    const index = Array.from(parent.childNodes).indexOf(divider)
+    vi.spyOn(divider, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 200, 11))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: parent, offset: index} as unknown as CaretPosition)
+    const y = placement === "before" ? 95 : 116
+
+    expect(pointer(parent, "pointerdown", 50, y).defaultPrevented).toBe(true)
+    pointer(parent, "pointerup", 50, y)
+    expect($.isGapSelection).toBe(true)
+    expect($.anchor).toBe(parent)
+    expect($.anchorOffset).toBe(index + (placement === "after" ? 1 : 0))
+    expect(divider).toHaveClass(`◆gap-${placement}-selected`)
+  })
 
   it("restores a visible caret when an active frame has no native range", () => {
     textDocument()

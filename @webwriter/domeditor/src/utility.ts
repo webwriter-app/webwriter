@@ -44,6 +44,7 @@ function focusEditorWindow() {
 export function isAtomicEditingElement(node: Node | null): node is Element {
   return node instanceof Element
     && (node.matches(mediaElementSelector)
+      || node.localName === "hr"
       || node.namespaceURI === SVG_NAMESPACE && node.localName === "svg"
       || node.matches(formControlSelector)
       || node.localName.includes("-")
@@ -530,7 +531,7 @@ export class EditingSelection {
 
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
-    if(this.detailsGap) return true
+    if(this.detailsGap || this.dividerGap) return true
     const root = getDocumentRoot()
     const firstRootElement = root.firstElementChild
     const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
@@ -551,12 +552,21 @@ export class EditingSelection {
   /** A disclosure boundary is a gap even in a section, table cell, or parent
    * containing bare text. Formatting whitespace does not change its anchor. */
   static get detailsGap() {
+    return this.#gapBeside("details")
+  }
+
+  /** Dividers expose gaps even within sections, table cells, or bare text. */
+  static get dividerGap() {
+    return this.#gapBeside("hr")
+  }
+
+  static #gapBeside(selector: string) {
     const parent = this.anchor
     if(!this.isEmpty || !isElement(parent) || !getDocumentRoot().contains(parent) || atomicEditingContainer(parent)) return null
     const before = adjacentElement(parent.childNodes, this.anchorOffset, "before")
     const after = adjacentElement(parent.childNodes, this.anchorOffset, "after")
-    if(before?.matches("details")) return {element: before as HTMLDetailsElement, placement: "after" as const}
-    if(after?.matches("details")) return {element: after as HTMLDetailsElement, placement: "before" as const}
+    if(before?.matches(selector)) return {element: before, placement: "after" as const}
+    if(after?.matches(selector)) return {element: after, placement: "before" as const}
     return null
   }
 

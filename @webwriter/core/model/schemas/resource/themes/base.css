@@ -1054,10 +1054,13 @@ figure figcaption {
  * Misc
  */
 hr {
-  height: 0;
+  box-sizing: content-box;
+  height: 1px;
   margin: var(--pico-typography-spacing-vertical) 0;
+  padding-block: 5px;
   border: 0;
-  border-top: 1px solid var(--pico-muted-border-color);
+  background-color: var(--pico-muted-border-color);
+  background-clip: content-box;
   color: inherit;
 }
 
