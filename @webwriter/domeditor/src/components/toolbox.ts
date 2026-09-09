@@ -88,6 +88,17 @@ export class DomEditorToolbox extends AppRibbon {
       display: contents;
     }
 
+    .toolbox-tabs-area {
+      grid-row: 1 / -1;
+      min-height: 30px;
+      background: #ededed;
+      box-shadow: inset 0 -0.5px #a8a8a8;
+    }
+
+    :host([active-tool]) .toolbox-tabs-area {
+      grid-row: 1;
+    }
+
     .toolbox-tabs {
       box-sizing: border-box;
       display: flex;
@@ -101,7 +112,7 @@ export class DomEditorToolbox extends AppRibbon {
       border: 0;
       border-bottom-width: 0.5px;
       border-bottom-style: solid;
-      border-bottom-color: #a8a8a8;
+      border-bottom-color: var(--toolbox-tabs-border-color, #a8a8a8);
       background: #ededed;
     }
 
@@ -701,52 +712,54 @@ export class DomEditorToolbox extends AppRibbon {
         @change=${this.handleRibbonInputChange}
         @keydown=${this.handleRibbonInputKeydown}
       >
-        <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
-          ${tools.map(tool => {
-            const active = this.activeTool === tool.label
-            const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
-            const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
-            const label = contextualLabel ?? tool.label
-            return html`
-              <div
-                class="toolbox-tab"
-                ?data-active=${active}
-                ?data-contextual=${contextualLabel !== null}
-                ?data-available=${contextualLabel !== null && this.activeTool === null}
-              >
-                <button
-                  id=${tabId}
-                  class="toolbox-tab-button"
-                  data-tool=${tool.label}
-                  type="button"
-                  role="tab"
-                  aria-label=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
-                  title=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
-                  aria-controls="toolbox-pane"
-                  aria-selected=${active}
-                  ?disabled=${this.htmlPending && tool.label !== "Edit"}
-                  @click=${() => this.selectTool(tool.label)}
+        <div class="toolbox-tabs-area">
+          <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
+            ${tools.map(tool => {
+              const active = this.activeTool === tool.label
+              const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
+              const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
+              const label = contextualLabel ?? tool.label
+              return html`
+                <div
+                  class="toolbox-tab"
+                  ?data-active=${active}
+                  ?data-contextual=${contextualLabel !== null}
+                  ?data-available=${contextualLabel !== null && this.activeTool === null}
                 >
-                  <span class="toolbox-tab-icon" aria-hidden="true">${ribbonIcon(tool.icon)}</span>
-                  <span
-                    class="toolbox-tab-label"
-                    ?data-contextual=${contextualLabel !== null}
+                  <button
+                    id=${tabId}
+                    class="toolbox-tab-button"
+                    data-tool=${tool.label}
+                    type="button"
+                    role="tab"
+                    aria-label=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
+                    title=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
+                    aria-controls="toolbox-pane"
+                    aria-selected=${active}
+                    ?disabled=${this.htmlPending && tool.label !== "Edit"}
+                    @click=${() => this.selectTool(tool.label)}
+                  >
+                    <span class="toolbox-tab-icon" aria-hidden="true">${ribbonIcon(tool.icon)}</span>
+                    <span
+                      class="toolbox-tab-label"
+                      ?data-contextual=${contextualLabel !== null}
+                      aria-hidden=${!active}
+                    >${label}</span>
+                  </button>
+                  <button
+                    class="toolbox-tab-close"
+                    type="button"
+                    aria-label=${`Close ${tool.label}`}
+                    title="Close"
                     aria-hidden=${!active}
-                  >${label}</span>
-                </button>
-                <button
-                  class="toolbox-tab-close"
-                  type="button"
-                  aria-label=${`Close ${tool.label}`}
-                  title="Close"
-                  aria-hidden=${!active}
-                  tabindex=${active ? 0 : -1}
-                  ?disabled=${!active || this.htmlPending}
-                  @click=${() => this.selectTool(null)}
-                >${ribbonIcon("Reject")}</button>
-              </div>
-            `
-          })}
+                    tabindex=${active ? 0 : -1}
+                    ?disabled=${!active || this.htmlPending}
+                    @click=${() => this.selectTool(null)}
+                  >${ribbonIcon("Reject")}</button>
+                </div>
+              `
+            })}
+          </div>
         </div>
         <aside
           id="toolbox-pane"

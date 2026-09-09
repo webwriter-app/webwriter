@@ -679,6 +679,11 @@ export class DomEditor extends LitElement {
       grid-row: 2;
     }
 
+    .app-bar:has(dom-editor-breadcrumb[tree-open]) ~ dom-editor-toolbox:not([active-tool]),
+    .app-bar:has(dom-editor-breadcrumb[tree-animating]) ~ dom-editor-toolbox:not([active-tool]) {
+      --toolbox-tabs-border-color: transparent;
+    }
+
     .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {
       grid-column: 1;
     }

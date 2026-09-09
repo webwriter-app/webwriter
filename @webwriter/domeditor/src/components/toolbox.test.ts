@@ -43,6 +43,19 @@ describe("toolbox", () => {
     expect(buttons[2].querySelector(".icon-tabler-text-grammar")).not.toBeNull()
   })
 
+  it("can hide the tabs underline without changing tab sizing", async () => {
+    const toolbox = await mountToolbox()
+    const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+
+    toolbox.style.setProperty("--toolbox-tabs-border-color", "transparent")
+    expect(getComputedStyle(tabs).borderBottomColor).toBe("transparent")
+    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
+    expect(getComputedStyle(tabs).height).toBe("30px")
+
+    toolbox.style.removeProperty("--toolbox-tabs-border-color")
+    expect(getComputedStyle(tabs).borderBottomColor).toBe("#a8a8a8")
+  })
+
   it("widens the active tab and narrows it when switching or closing", async () => {
     const toolbox = await mountToolbox()
     const edit = toolButton(toolbox, "Edit")
