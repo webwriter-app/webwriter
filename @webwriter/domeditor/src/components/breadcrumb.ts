@@ -192,6 +192,24 @@ export class DomEditorBreadcrumb extends LitElement {
       display: none;
     }
 
+    .position-icons {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 1px;
+      margin-left: -0.1rem;
+      color: var(--sl-color-primary-500, #0ea5e9);
+      line-height: 1;
+      transform: translateY(-4px);
+    }
+
+    .position-icon,
+    .position-icon svg {
+      display: block;
+      width: 10px;
+      height: 10px;
+    }
+
     .item-sections {
       display: inline-flex;
       align-items: flex-start;
@@ -201,6 +219,9 @@ export class DomEditorBreadcrumb extends LitElement {
     }
 
     .section-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.15rem;
       align-self: flex-start;
       min-width: 0;
       height: 16px;
@@ -438,7 +459,7 @@ export class DomEditorBreadcrumb extends LitElement {
       outline-offset: -1px;
     }
 
-    .tree-item > span:last-child {
+    .tree-item > .item-label {
       overflow: clip visible;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -512,6 +533,8 @@ export class DomEditorBreadcrumb extends LitElement {
         && entry.item.name === other.item.name
         && entry.item.icon === other.item.icon
         && entry.item.iconUrl === other.item.iconUrl
+        && entry.item.position === other.item.position
+        && entry.item.positionAnchor === other.item.positionAnchor
         && this.sectionsEqual(entry.item.sections, other.item.sections)
         && this.pathsEqual(entry.item.path, other.item.path)
     })
@@ -525,6 +548,8 @@ export class DomEditorBreadcrumb extends LitElement {
       return section.type === other.type
         && section.name === other.name
         && section.icon === other.icon
+        && section.position === other.position
+        && section.positionAnchor === other.positionAnchor
         && this.pathsEqual(section.path, other.path)
     })
   }
@@ -866,6 +891,21 @@ export class DomEditorBreadcrumb extends LitElement {
     return this.selectedSectionPath !== null && this.pathsEqual(this.selectedSectionPath, section.path)
   }
 
+  private renderPositionIcons(item: SelectionPathItem | SelectionPathSection) {
+    // Tree items share the current path's positioning context.
+    const current = this.path.find(candidate => this.pathsEqual(candidate.path, item.path))
+      ?? this.path.flatMap(candidate => candidate.sections ?? []).find(section => this.pathsEqual(section.path, item.path))
+      ?? item
+    const {position, positionAnchor} = current
+    const balloon = position === "relative" ? "BalloonFilled"
+      : position === "absolute" || position === "fixed" ? "Balloon" : null
+    if(!positionAnchor && !balloon) return ""
+    return html`<sup class="position-icons">
+      ${positionAnchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
+      ${balloon ? html`<span class="position-icon position-balloon" role="img" aria-label=${`${position} positioning`} title=${`${position} positioning`}>${ribbonIcon(balloon)}</span>` : ""}
+    </sup>`
+  }
+
   private dispatchSectionHover(section: SelectionPathSection | null) {
     this.dispatchEvent(new CustomEvent<SelectionPathSection | null>("breadcrumb-section-hover", {
       detail: section ? {...section, path: [...section.path]} : null,
@@ -897,7 +937,7 @@ export class DomEditorBreadcrumb extends LitElement {
             @mouseenter=${() => this.dispatchSectionHover(section)}
             @mouseleave=${() => this.dispatchSectionHover(null)}
             @click=${() => this.selectSection(section)}
-          >${section.name}</button>
+          >${section.name}${this.renderPositionIcons(section)}</button>
         `)}
       </span>
     `
@@ -965,6 +1005,7 @@ export class DomEditorBreadcrumb extends LitElement {
           >
             ${this.renderItemIcon(item)}
             <span class="item-label">${item.name}</span>
+            ${this.renderPositionIcons(item)}
           </button>
           ${this.renderSections(item)}
         </div>
@@ -1030,6 +1071,7 @@ export class DomEditorBreadcrumb extends LitElement {
         >
           ${this.renderItemIcon(entry.item)}
           <span class="item-label">${entry.item.name}</span>
+          ${this.renderPositionIcons(entry.item)}
         </button>
         ${this.renderSections(entry.item)}
       </li>

@@ -19,7 +19,7 @@ import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isAppendixInteraction, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
+import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeMarkElements, stripExcludedMarks} from "./marks"
 import {
   executeCompleteEvent,
@@ -953,11 +953,30 @@ export class DOMEditor {
     }
     elements.unshift(root)
 
+    const positions = new Map<Element, NonNullable<SelectionPathItem["position"]>>()
+    const anchors = new Set<Element>()
+    for(const currentElement of elements) {
+      const position = getComputedStyle(currentElement).position
+      if(position !== "absolute" && position !== "fixed" && position !== "relative" && position !== "sticky") continue
+      positions.set(currentElement, position)
+      if(position === "relative" || position === "sticky") {
+        anchors.add(currentElement)
+      }
+      else {
+        const block = findContainingBlock(currentElement as HTMLElement, position)
+        anchors.add(block instanceof Element && elements.includes(block) ? block : root)
+      }
+    }
+    const positioning = (element: Element) => ({
+      ...(positions.has(element) ? {position: positions.get(element)!} : {}),
+      ...(anchors.has(element) ? {positionAnchor: true} : {}),
+    })
     const sectionPathItem = (section: Element): SelectionPathSection => ({
       path: this.pathToElement(section),
       type: section.localName as SelectionPathSection["type"],
       name: getSectionOption(section.localName as SelectionPathSection["type"]).label,
       icon: getSectionOption(section.localName as SelectionPathSection["type"]).icon,
+      ...positioning(section),
     })
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
@@ -967,7 +986,8 @@ export class DOMEditor {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }
-      if(currentElement !== root && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)) return
+      if(currentElement !== root && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)
+        && !positions.has(currentElement) && !anchors.has(currentElement)) return
       const packageItem = globalThis.DOMEDITOR_PACKAGE_ITEMS?.find(item => (
         item.kind === "widget" && item.tag?.toLowerCase() === currentElement.localName
       ))
@@ -981,6 +1001,7 @@ export class DOMEditor {
             }
           : getElementPresentation(currentElement)),
         ...(pendingSections.length ? {sections: pendingSections} : {}),
+        ...positioning(currentElement),
       })
       pendingSections = []
     })

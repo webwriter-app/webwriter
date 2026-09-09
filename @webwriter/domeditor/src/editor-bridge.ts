@@ -151,11 +151,15 @@ export type SelectionPathItem = {
   icon?: string
   /** An optional package-provided icon displayed instead of the shared icon. */
   iconUrl?: string
+  /** The element's computed non-static positioning mode. */
+  position?: "absolute" | "fixed" | "relative" | "sticky"
+  /** Whether this element anchors positioning in the current selection path. */
+  positionAnchor?: boolean
   /** Transparent section wrappers applying to this structural element. */
   sections?: SelectionPathSection[]
 }
 
-export type SelectionPathSection = {
+export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor"> & {
   /** The child-node path from BODY to the section wrapper. */
   path: number[]
   /** The wrapper's semantic HTML element type. */
@@ -477,6 +481,11 @@ export function isExecuteResponse(value: unknown): value is ExecuteResponse {
   return true
 }
 
+function isSelectionPosition(value: Pick<SelectionPathItem, "position" | "positionAnchor">) {
+  return (value.position === undefined || ["absolute", "fixed", "relative", "sticky"].includes(value.position))
+    && (value.positionAnchor === undefined || typeof value.positionAnchor === "boolean")
+}
+
 export function isSelectionChangeMessage(value: unknown): value is SelectionChangeMessage {
   if(!value || typeof value !== "object") return false
   const message = value as Partial<SelectionChangeMessage>
@@ -490,6 +499,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
       && typeof pathItem.name === "string"
       && (pathItem.icon === undefined || typeof pathItem.icon === "string")
       && (pathItem.iconUrl === undefined || typeof pathItem.iconUrl === "string")
+      && isSelectionPosition(pathItem)
       && (pathItem.sections === undefined || Array.isArray(pathItem.sections)
         && pathItem.sections.every(section => !!section
           && typeof section === "object"
@@ -497,6 +507,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
           && section.path.every(index => Number.isInteger(index) && index >= 0)
           && isSectionName(section.type)
           && typeof section.name === "string"
+          && isSelectionPosition(section)
           && (section.icon === undefined || typeof section.icon === "string")))
   })) return false
 

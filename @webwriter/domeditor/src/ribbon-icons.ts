@@ -1,4 +1,7 @@
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
+import anchor from "@tabler/icons/outline/anchor.svg?raw"
+import balloon from "@tabler/icons/outline/balloon.svg?raw"
+import balloonFilled from "@tabler/icons/filled/balloon.svg?raw"
 
 import arrowBackUp from "@tabler/icons/outline/arrow-back-up.svg?raw"
 import arrowBack from "@tabler/icons/outline/arrow-back.svg?raw"
@@ -182,6 +185,9 @@ const splitTable = `
 `
 
 const icons: Record<string, string> = {
+  Anchor: anchor,
+  Balloon: balloon,
+  BalloonFilled: balloonFilled,
   Document: fileDescription,
   ChevronRight: chevronRight,
   Section: section,

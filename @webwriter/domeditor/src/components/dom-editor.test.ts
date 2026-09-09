@@ -2557,6 +2557,46 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(section).fontSize).toBe("8px")
   })
 
+  it("updates superscript positioning icons in breadcrumbs, sections, and the selected tree path", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = "<section><p>Text</p></section>"
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const sendPosition = async (position?: "absolute" | "fixed" | "relative" | "sticky") => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {path: [
+          {path: [], name: "Document", positionAnchor: position === "absolute" || position === "fixed"},
+          {path: [0, 0], name: "Paragraph", position,
+            positionAnchor: position === "relative" || position === "sticky",
+            sections: [{path: [0], type: "section", name: "Section", positionAnchor: position === "absolute"}]},
+        ]}},
+        source: editorWindow,
+      }))
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+    }
+
+    for(const position of ["absolute", "fixed", "sticky", "relative"] as const) {
+      await sendPosition(position)
+      const items = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
+      const floating = position === "absolute" || position === "fixed"
+      expect(items[0].querySelector("sup .icon-tabler-anchor") !== null).toBe(floating)
+      expect(items[1].querySelector("sup .icon-tabler-anchor") !== null).toBe(!floating)
+      expect(items[1].querySelector("sup .icon-tabler-balloon") !== null).toBe(position !== "sticky")
+      expect(items[1].querySelector("sup .icons-tabler-filled") !== null).toBe(position === "relative")
+      const superscript = items[1].querySelector("sup")!
+      expect(superscript.previousElementSibling?.className).toBe("item-label")
+      expect(getComputedStyle(superscript).transform).toBe("translateY(-4px)")
+      expect(getComputedStyle(superscript.querySelector("svg")!).width).toBe("10px")
+      expect(breadcrumb.shadowRoot!.querySelector(".section-item .position-anchor") !== null).toBe(position === "absolute")
+    }
+
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
+    await breadcrumb.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector('.tree-item[data-path="0,0"] sup .icons-tabler-filled')).not.toBeNull()
+    await sendPosition()
+    expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
+  })
+
   it.each([
     {html: "<p>Hello</p>", rootPath: [], name: "Document"},
     {html: '<!--template-->\n<demo-widget role="document"><p>Hello</p></demo-widget>', rootPath: [2], name: "Content"},

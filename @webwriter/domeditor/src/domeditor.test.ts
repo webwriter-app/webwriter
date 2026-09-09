@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
-import {executeCompleteEvent, selectionChangeEvent} from "./editor-bridge"
+import {executeCompleteEvent, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
 import {$} from "./utility"
 
@@ -457,6 +457,84 @@ describe("widget shadow interactions", () => {
 
     expect(event.defaultPrevented).toBe(true)
     widget.remove()
+  })
+})
+
+describe("breadcrumb positioning", () => {
+  const withSelection = (html: string, check: (editor: DOMEditor, readPath: () => SelectionChangeDetail["path"]) => void) => {
+    document.body.innerHTML = html
+    const editor = new DOMEditor()
+    const target = document.getElementById("target")!
+    const parent = target.parentNode!
+    const index = Array.from(parent.childNodes).indexOf(target)
+    $.selectRange(parent, index, parent, index + 1)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const readPath = () => {
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      return (postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail).path
+    }
+    try { check(editor, readPath) }
+    finally {
+      editor.destroy()
+      postMessage.mockRestore()
+      document.body.replaceChildren()
+    }
+  }
+
+  it.each(["absolute", "fixed"])("finds the actual %s anchor across irregular and custom-element nesting", position => {
+    withSelection(`<div style="transform: translateX(0)">text<!--keep--><custom-wrapper><span><p id="target" style="position: ${position}">Text</p></span></custom-wrapper></div>`, (editor, readPath) => {
+      const authoredHTML = editor.toHTML(true)
+      const path = readPath()
+      expect(path.flatMap(item => item.sections ?? []).find(section => section.path.join() === "0")?.positionAnchor).toBe(true)
+      expect(path.at(-1)).toMatchObject({path: [0, 2, 0, 0], position})
+      expect(path.at(-1)?.positionAnchor).toBeUndefined()
+      expect(path[0].positionAnchor).toBeUndefined()
+      expect(editor.toHTML(true)).toBe(authoredHTML)
+      expect(document.body.querySelector("sup, .position-icons")).toBeNull()
+    })
+  })
+
+  it.each(["absolute", "fixed"])("uses Document for the %s viewport anchor", position => {
+    withSelection(`<p id="target" style="position: ${position}">Text</p>`, (_editor, readPath) => {
+      expect(readPath()).toMatchObject([
+        {path: [], positionAnchor: true},
+        {path: [0], position},
+      ])
+    })
+  })
+
+  it.each(["relative", "sticky"])("marks the %s element's own normal-flow anchor", position => {
+    withSelection(`<div><p id="target" style="position: ${position}">Text</p></div>`, (_editor, readPath) => {
+      const path = readPath()
+      expect(path.at(-1)).toMatchObject({position, positionAnchor: true})
+      expect(path.slice(0, -1).every(item => !item.positionAnchor)).toBe(true)
+    })
+  })
+
+  it("keeps anchors on section labels and exposes otherwise hidden inline anchors", () => {
+    withSelection('<section style="position: relative"><span style="transform: translateX(0)"><p id="target" style="position: absolute">Text</p></span></section>', (_editor, readPath) => {
+      const path = readPath()
+      expect(path[1]).toMatchObject({
+        path: [0, 0], positionAnchor: true,
+        sections: [{path: [0], position: "relative", positionAnchor: true}],
+      })
+      expect(path.at(-1)).toMatchObject({position: "absolute"})
+    })
+  })
+
+  it("recomputes positioning after style changes and removal of the selected element", () => {
+    withSelection('<div style="position: relative"><p id="target" style="position: absolute">Text</p></div>', (_editor, readPath) => {
+      expect(readPath()[1].sections?.[0].positionAnchor).toBe(true)
+      const target = document.getElementById("target")!
+      target.style.position = "fixed"
+      expect(readPath()[0].positionAnchor).toBe(true)
+      target.style.position = "static"
+      expect(readPath().at(-1)?.position).toBeUndefined()
+      expect(readPath()[0].positionAnchor).toBeUndefined()
+      target.remove()
+      expect(readPath().some(item => item.position === "fixed" || item.position === "absolute")).toBe(false)
+    })
   })
 })
 

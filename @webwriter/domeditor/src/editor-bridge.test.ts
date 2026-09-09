@@ -407,6 +407,59 @@ describe("editor bridge message guards", () => {
     ])
   })
 
+  it("validates positioning metadata on breadcrumb items and sections", () => {
+    const positions = ["absolute", "fixed", "relative", "sticky"] as const
+    for(const position of positions) {
+      const message = {
+        type: selectionChangeEvent,
+        detail: {
+          path: [{
+            path: [],
+            name: "Document",
+            position,
+            positionAnchor: true,
+            sections: [{
+              path: [0],
+              type: "article",
+              name: "Article",
+              position,
+              positionAnchor: false,
+            }],
+          }],
+        },
+      }
+      expect(isSelectionChangeMessage(message)).toBe(true)
+    }
+
+    const valid = {
+      type: selectionChangeEvent,
+      detail: {
+        path: [{
+          path: [],
+          name: "Document",
+          sections: [{path: [0], type: "article", name: "Article"}],
+        }],
+      },
+    }
+    expectAllRejected(isSelectionChangeMessage, [
+      {...valid, detail: {...valid.detail, path: [{...valid.detail.path[0], position: "static"}]}},
+      {...valid, detail: {...valid.detail, path: [{...valid.detail.path[0], position: {value: "absolute"}}]}},
+      {...valid, detail: {...valid.detail, path: [{...valid.detail.path[0], positionAnchor: "true"}]}},
+      {...valid, detail: {...valid.detail, path: [{
+        ...valid.detail.path[0],
+        sections: [{...valid.detail.path[0].sections![0], position: "static"}],
+      }]}},
+      {...valid, detail: {...valid.detail, path: [{
+        ...valid.detail.path[0],
+        sections: [{...valid.detail.path[0].sections![0], position: ["absolute"]}],
+      }]}},
+      {...valid, detail: {...valid.detail, path: [{
+        ...valid.detail.path[0],
+        sections: [{...valid.detail.path[0].sections![0], positionAnchor: 1}],
+      }]}},
+    ])
+  })
+
   it("rejects noncanonical marks, unsupported styles, and unsafe attributes", () => {
     const message = {
       type: markStateChangeEvent,
