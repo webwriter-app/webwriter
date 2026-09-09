@@ -438,6 +438,7 @@ export class DomEditor extends LitElement {
     fileDirty: {attribute: false, state: true},
     fileError: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
+    previewFramePending: {attribute: false, state: true},
     previewDocumentHTML: {attribute: false, state: true},
     liveSessionActive: {attribute: false, state: true},
     liveSessionRole: {attribute: false, state: true},
@@ -548,6 +549,7 @@ export class DomEditor extends LitElement {
   private fileOperationActive = false
   private documentChangeSequence = 0
   private previewActive = false
+  private previewFramePending = false
   private previewDocumentHTML: string | null = null
   private livePreviewSource: string | null = null
   private previewSelection: SelectionBookmark | null = null
@@ -1919,8 +1921,11 @@ export class DomEditor extends LitElement {
       this.liveStreamPlaying = true
       this.liveStreamStep = 0
       this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId, sessionToken))
+      const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+      this.previewFramePending = Boolean(ribbon && (!ribbon.expanded || ribbon.getAnimations?.().length))
       this.previewDocumentHTML = previewHTML
       this.previewActive = true
+      if(this.previewFramePending) void this.showPreviewAfterRibbonExpansion(session)
     }
     catch(error) {
       this.previewSelection = null
@@ -1932,11 +1937,25 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private async showPreviewAfterRibbonExpansion(session: LiveSession) {
+    await this.updateComplete
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    await ribbon?.updateComplete
+    // Reading the animations after Lit reflects `expanded` flushes the new
+    // styles. Loading srcdoc earlier makes document parsing and widget startup
+    // compete with the ribbon's height transition on the main thread.
+    await Promise.allSettled((ribbon?.getAnimations?.() ?? []).map(animation => animation.finished))
+    if(this.isConnected && this.previewActive && this.liveSession === session) {
+      this.previewFramePending = false
+    }
+  }
+
   private async exitPreview() {
     if(!this.previewActive || this.previewTransition) return
     const selection = this.previewSelection
     this.previewSelection = null
     this.disposeLiveSession()
+    this.previewFramePending = false
     this.previewDocumentHTML = null
     this.previewActive = false
     await this.updateComplete
@@ -4675,6 +4694,7 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
     this.previewActive = false
     this.previewDocumentHTML = null
+    this.previewFramePending = false
     this.previewSelection = null
     this.previewTransition = false
     this.ribbonInputSession = false
@@ -4872,14 +4892,14 @@ export class DomEditor extends LitElement {
           ></dom-editor-breadcrumb>
         `}
       </header>
-      <div class="document-stage">
+      <div class="document-stage" aria-busy=${this.previewFramePending ? "true" : "false"}>
         ${this.fileError ? html`
           <div class="file-error" role="alert">
             <span>${this.fileError}</span>
             <button type="button" @click=${() => { this.fileError = "" }}>Dismiss</button>
           </div>
         ` : ""}
-        ${this.previewActive ? html`
+        ${this.previewActive && !this.previewFramePending ? html`
           <iframe
             class="preview-frame"
             title=${this.liveSessionActive ? "Live document preview" : "Document preview"}
@@ -4895,7 +4915,8 @@ export class DomEditor extends LitElement {
           sandbox="allow-scripts allow-same-origin"
           referrerpolicy="no-referrer"
           srcdoc=${this.editorSrcdoc}
-          ?hidden=${this.previewActive}
+          ?hidden=${this.previewActive && !this.previewFramePending}
+          ?inert=${this.previewActive}
           @load=${this.handleEditorFrameLoad}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
         ></iframe>

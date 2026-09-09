@@ -2324,7 +2324,7 @@ describe("DomEditor.execute()", () => {
 
     const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
     expect(ribbon.previewActive).toBe(true)
-    expect(ribbon.previewTransitioning).toBe(true)
+    expect(ribbon.hasAttribute("preview-transition")).toBe(true)
     expect(brand.disabled).toBe(false)
     brand.click()
     await editor.updateComplete
@@ -2334,6 +2334,103 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.expanded).toBe(true)
     expect(iframe.hidden).toBe(false)
     expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
+  })
+
+  it.each(["finished", "cancelled"])("loads preview after the ribbon expansion has %s", async outcome => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    let finishHeight!: () => void
+    let settleMaxHeight!: () => void
+    const height = new Promise<void>(resolve => { finishHeight = resolve })
+    const maxHeight = new Promise<void>((resolve, reject) => {
+      settleMaxHeight = outcome === "finished" ? resolve : () => reject(new DOMException("Cancelled", "AbortError"))
+    })
+    ribbon.getAnimations = vi.fn(() => [{finished: height}, {finished: maxHeight}] as unknown as Animation[])
+    const document = iframe.contentDocument!
+    const srcdoc = iframe.srcdoc
+
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(ribbon.expanded).toBe(true)
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
+    expect(iframe.hidden).toBe(false)
+    expect(iframe.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("true")
+
+    finishHeight()
+    await Promise.resolve()
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
+    settleMaxHeight()
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).not.toBeNull())
+    expect(iframe.hidden).toBe(true)
+    expect(iframe.contentDocument).toBe(document)
+    expect(iframe.srcdoc).toBe(srcdoc)
+    expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it("does not let an obsolete expansion load a stopped or restarted preview", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    let finishFirst!: () => void
+    let finishSecond!: () => void
+    const first = new Promise<void>(resolve => { finishFirst = resolve })
+    const second = new Promise<void>(resolve => { finishSecond = resolve })
+    ribbon.getAnimations = () => [{finished: first}] as unknown as Animation[]
+    const toggle = async () => {
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+      await editor.updateComplete
+      await ribbon.updateComplete
+    }
+    await toggle()
+    await toggle()
+    expect(iframe.hidden).toBe(false)
+    expect(iframe.inert).toBe(false)
+    expect(ribbon.expanded).toBe(false)
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
+
+    ribbon.getAnimations = () => [{finished: second}] as unknown as Animation[]
+    await toggle()
+    finishFirst()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
+    finishSecond()
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).not.toBeNull())
+  })
+
+  it("loads preview without a delay when expansion has no animations", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    ribbon.getAnimations = () => []
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).not.toBeNull())
+  })
+
+  it("discards a pending preview when the editor is disconnected and reconnected", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    let finish!: () => void
+    const finished = new Promise<void>(resolve => { finish = resolve })
+    ribbon.getAnimations = () => [{finished}] as unknown as Animation[]
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    editor.remove()
+    document.body.append(editor)
+    finish()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("false")
   })
 
   it("cancels media capture before hiding the editor frame for preview", async () => {
