@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isOutOfFlow, flowSibling, clearEditorMarkerClasses, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -255,7 +255,10 @@ export class ManipulationFeature extends EditorFeature {
       if(source) {
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
         range.insertNode(inserted)
-        if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
+        if(getDocumentRoot().contains(inserted)) {
+          clearInlinePlacement(inserted)
+          $.selectElement(inserted)
+        }
       }
       else {
         const fragment = this.#dataTransferToFragment(data)

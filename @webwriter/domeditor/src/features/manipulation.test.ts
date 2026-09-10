@@ -2121,10 +2121,15 @@ describe("unified content transfer", () => {
     expect(widget.innerHTML).toBe('<div><section>authored</section></div>')
   })
 
-  it("moves the actual widget between irregular siblings and supports collaboration undo/redo", () => {
+  it.each(["static", "relative", "absolute", "fixed", "sticky"])("drops a widget with %s positioning into flow between irregular siblings and supports collaboration undo/redo", position => {
     document.body.innerHTML = '<section><p>first</p><!--keep--><test-widget class="authored" style="color:red"><strong>unchanged</strong></test-widget><p>last</p></section>'
     const widget = document.querySelector("test-widget")!
     const section = document.querySelector("section")!
+    const style = (widget as HTMLElement).style
+    style.setProperty("position", position, "important")
+    style.width = "80px"
+    style.setProperty("inset", "30px")
+    const originalStyle = widget.getAttribute("style")
     const clicked = vi.fn()
     widget.addEventListener("custom-action", clicked)
     editor.doc.syncFromDOM()
@@ -2136,14 +2141,117 @@ describe("unified content transfer", () => {
     expect(clicked).toHaveBeenCalledOnce()
     expect(widget.querySelector("strong")).not.toBeNull()
     expect(widget).toHaveClass("authored")
-    expect(widget.getAttribute("style")).toBe("color:red")
+    expect(style.color).toBe("red")
+    expect(style.position).toBe("")
+    expect(style.width).toBe("")
+    expect(style.getPropertyValue("inset")).toBe("")
+    expect(style.length).toBe(1)
     editor.doc.syncFromDOM()
+    const droppedStyle = widget.getAttribute("style")
     expect(editor.doc.body.toString()).not.toContain("◆")
     expect(editor.doc.body.toString()).not.toContain("node-drag-surface")
+    expect(editor.toHTML(true)).not.toContain("◆")
     editor.doc.undo()
     expect(document.querySelector("section")!.childNodes[2].nodeName).toBe("TEST-WIDGET")
+    expect(document.querySelector("test-widget")!.getAttribute("style")).toBe(originalStyle)
     editor.doc.redo()
     expect(document.querySelector("section")!.firstElementChild!.nodeName).toBe("TEST-WIDGET")
+    expect(document.querySelector("test-widget")!.getAttribute("style")).toBe(droppedStyle)
+  })
+
+  it.each(["aside", "svg"])("clears inline size and placement from a dropped %s while preserving unrelated styles and descendants", tag => {
+    document.body.innerHTML = `<${tag} style="position: absolute !important; inset: 30px 40px; inset-block: 10px 20px; inset-inline: 5px 15px; width: 80px; height: 50px; min-width: 20px; max-width: 100px; min-height: 30px; max-height: 90px; inline-size: 80px; block-size: 50px; min-inline-size: 20px; max-inline-size: 100px; min-block-size: 30px; max-block-size: 90px; aspect-ratio: 2; float: left; z-index: 7; transform: translateX(10px); translate: 5px; rotate: 15deg; scale: 2; color: red; margin: 8px; --authored: value"><unfamiliar-node style="position: absolute; width: 12px">keep</unfamiliar-node></${tag}><p>end</p>`
+    const source = document.body.firstElementChild! as HTMLElement | SVGSVGElement
+    const child = source.firstElementChild!
+    const content = source.innerHTML
+    const {data} = beginDrag(source)
+
+    dropAt(data, document.body, 2)
+
+    expect(document.body.lastElementChild).toBe(source)
+    expect(source.style.cssText).toBe("color: red; margin: 8px; --authored: value;")
+    expect(source.style.getPropertyValue("--authored")).toBe("value")
+    expect(source.firstElementChild).toBe(child)
+    expect(editor.toHTML(true)).toContain(content)
+  })
+
+  it.each(["static", "fixed"])("lets destination stylesheet positioning apply when dropping a %s element", position => {
+    const sheet = document.createElement("style")
+    sheet.textContent = `.drop-positioned { position: ${position} !important } section > .drop-positioned { position: sticky !important }`
+    document.head.append(sheet)
+    try {
+      document.body.innerHTML = '<p class="drop-positioned" style="width: 80px; height: 50px; inset: 30px">source</p><section><p>target</p></section>'
+      const source = document.body.firstElementChild!
+      const section = document.querySelector("section")!
+      expect(getComputedStyle(source).position).toBe(position)
+      const {data} = beginDrag(source)
+
+      dropAt(data, section, 1)
+
+      expect(section.lastElementChild).toBe(source)
+      expect(source).not.toHaveAttribute("style")
+      expect(getComputedStyle(source).position).toBe("sticky")
+      expect(source).toHaveClass("drop-positioned")
+    }
+    finally { sheet.remove() }
+  })
+
+  it("clears inline dimensions from a dropped element without inline positioning", () => {
+    document.body.innerHTML = '<p style="width: 80px; height: 50px; max-inline-size: 100px">source</p><p>end</p>'
+    const source = document.body.firstElementChild!
+    const {data} = beginDrag(source)
+
+    dropAt(data, document.body, 2)
+
+    expect(document.body.lastElementChild).toBe(source)
+    expect(source).not.toHaveAttribute("style")
+  })
+
+  it.each(["ctrlKey", "altKey"])("returns only the dropped copy to flow when %s is pressed", modifier => {
+    document.body.innerHTML = '<p style="position: fixed; left: 30px; top: 40px; width: 80px; height: 50px">source</p><p>end</p>'
+    const source = document.body.firstElementChild!
+    const originalStyle = source.getAttribute("style")
+    const {data} = beginDrag(source)
+
+    dropAt(data, document.body, 2, {[modifier]: true})
+
+    const copy = document.body.lastElementChild!
+    expect(copy).not.toBe(source)
+    expect(copy.textContent).toBe("source")
+    expect(copy).not.toHaveAttribute("style")
+    expect(document.body.firstElementChild).toBe(source)
+    expect(source.getAttribute("style")).toBe(originalStyle)
+  })
+
+  it("uses positioning changed during a drag when returning the element to flow", () => {
+    document.body.innerHTML = '<p>source</p><p>end</p>'
+    const source = document.body.firstElementChild! as HTMLElement
+    const {data} = beginDrag(source)
+    source.style.position = "absolute"
+    source.style.width = "120px"
+
+    dropAt(data, document.body, 2)
+
+    expect(document.body.lastElementChild).toBe(source)
+    expect(source).not.toHaveAttribute("style")
+  })
+
+  it.each(["cancel", "self", "disconnected"])("preserves positioning when a drop ends with %s", ending => {
+    document.body.innerHTML = '<aside style="position: absolute; left: 30px; top: 40px; width: 80px; height: 50px"><p>source</p></aside><p>end</p>'
+    const source = document.body.firstElementChild!
+    const originalStyle = source.getAttribute("style")
+    const {data, surface} = beginDrag(source)
+    if(ending === "cancel") surface.dispatchEvent(transferEvent("dragend", data))
+    else if(ending === "self") dropAt(data, source.firstChild!, 0)
+    else {
+      source.replaceWith(document.createElement("hr"))
+      dropAt(data, document.body, 2)
+    }
+
+    expect(source.getAttribute("style")).toBe(originalStyle)
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    if(ending === "disconnected") expect(document.body.firstElementChild!.localName).toBe("hr")
+    else expect(document.body.firstElementChild).toBe(source)
   })
 
   it("treats spoofed editor data as an external drop", () => {

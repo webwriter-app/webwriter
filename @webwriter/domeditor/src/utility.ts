@@ -1218,6 +1218,21 @@ export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {
   return clearEditorMarkerClasses(inert ? cloneInert(node, deep) : node.cloneNode(deep)) as T
 }
 
+/** Removes inline size and placement overrides, letting authored CSS take over. */
+export function clearInlinePlacement(element: Element) {
+  const style = (element as Element & {style?: CSSStyleDeclaration}).style
+  if(!style) return
+  for(const property of [
+    "position", "top", "right", "bottom", "left", "inset",
+    "inset-block", "inset-block-start", "inset-block-end",
+    "inset-inline", "inset-inline-start", "inset-inline-end",
+    "width", "min-width", "max-width", "height", "min-height", "max-height",
+    "inline-size", "min-inline-size", "max-inline-size", "block-size", "min-block-size", "max-block-size",
+    "aspect-ratio", "float", "z-index", "transform", "translate", "rotate", "scale",
+  ]) style.removeProperty(property)
+  if(!style.length) element.removeAttribute("style")
+}
+
 /** Round a given value to the device pixel ratio. */
 export function roundByDPR(value: number) {
   const dpr = window.devicePixelRatio || 1

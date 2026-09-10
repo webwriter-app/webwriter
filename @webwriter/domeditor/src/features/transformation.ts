@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, roundByDPR, roundTo, setPart } from "../utility"
+import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 type TransformElement = HTMLElement | SVGSVGElement
@@ -715,10 +715,7 @@ export class TransformationFeature extends EditorFeature {
     else if(gesture.moved && this.#drop) {
       const {element, placement, parent} = this.#drop
       if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)) {
-        if(gesture.mode === "move") {
-          for(const key of ["left", "top", "right", "bottom"]) this.#write(key, "auto")
-          this.#write("position", "static")
-        }
+        if(gesture.mode === "move") clearInlinePlacement(target)
         element[placement](target)
       }
     }
@@ -738,8 +735,7 @@ export class TransformationFeature extends EditorFeature {
 
   restore() {
     if(!this.target || this.editor.isEditingLocked) return
-    for(const property of ["width", "height", "max-inline-size", "max-block-size", "rotate", "scale", "float", "position", "top", "left", "right", "bottom", "z-index"]) this.target.style.removeProperty(property)
-    if(!this.target.style.length) this.target.removeAttribute("style")
+    clearInlinePlacement(this.target)
     this.updateInfo()
   }
 

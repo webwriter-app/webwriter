@@ -719,10 +719,11 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target).not.toHaveClass("◆transform-target")
   })
 
-  it("returns a Ctrl/Cmd drop to normal flow while preserving size, rotation, and unknown structure", () => {
+  it("clears inline size and placement on a Ctrl/Cmd flow drop while preserving unrelated styling, structure, and undo/redo", async () => {
     const target = targetElement()
     const child = target.appendChild(document.createElement("unfamiliar-node"))
-    Object.assign(target.style, {width: "80px", height: "40px"})
+    Object.assign(target.style, {position: "absolute", width: "80px", height: "40px", maxInlineSize: "100px", color: "red"})
+    target.style.setProperty("inset", "12px")
     target.style.setProperty("rotate", "15deg")
     const dropTarget = targetElement()
     mockRect(target)
@@ -732,17 +733,28 @@ describe("drop, cancellation, and document ownership", () => {
       value: vi.fn(() => [dropTarget]),
     })
     selectNode(target)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const startingHTML = editor.toHTML(true)
 
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 150, ctrlKey: true}))
     feature.handleMoveEnd()
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
 
     expect(target.parentElement).toBe(dropTarget.parentElement)
     expect(dropTarget.nextElementSibling).toBe(target)
-    expect(target.style.width).toBe("80px")
-    expect(target.style.height).toBe("40px")
-    expect(target.style.getPropertyValue("rotate")).toBe("15deg")
+    expect(target.style.cssText).toBe("color: red;")
     expect(target.firstElementChild).toBe(child)
+    const droppedHTML = editor.toHTML(true)
+    editor.doc.undo()
+    await mutationsDelivered()
+    expect(editor.toHTML(true)).toBe(startingHTML)
+    editor.doc.redo()
+    await mutationsDelivered()
+    expect(editor.toHTML(true)).toBe(droppedHTML)
   })
 
   it.each(["absolute", "fixed"])("skips %s elements and their descendants as flow drop anchors", position => {
