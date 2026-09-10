@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Responsive document layout checks</title>
+<style>
+  body { font: 16px system-ui; margin: 1rem; }
+  button { font: inherit; padding: .5rem 1rem; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #stage { overflow: auto; }
+  iframe { display: block; border: 1px solid #aaa; height: 450px; }
+</style>
+<h1>Responsive document layout checks</h1>
+<p>Checks the base theme and a sample responsive widget in editing and standalone styles, including nested content, templates, and authored overrides.</p>
+<button id="run">Run layout checks</button>
+<p id="status" role="status">Ready</p>
+<div id="stage"></div>
+<pre id="report"></pre>
+<script type="module" src="./responsiveness.ts"></script>
+</html>

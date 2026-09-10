@@ -10,6 +10,9 @@
  */
 :root,
 :host {
+  --ww-page-max: 2160px;
+  --ww-prose-max: 45rem;
+  --ww-page-gutter: clamp(1rem, 2vw, 2rem);
   --pico-font-family-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --pico-font-family-sans-serif: system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, Arial, "Helvetica Neue", sans-serif, var(--pico-font-family-emoji);
   --pico-font-family-monospace: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace, var(--pico-font-family-emoji);
@@ -561,8 +564,11 @@ progress,
  * Landmarks
  */
 body {
-  width: 100%;
-  margin: 0;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: calc(var(--ww-page-max) + 2 * var(--ww-page-gutter));
+  margin: 1.25rem auto;
+  padding-inline: var(--ww-page-gutter);
   background-color: var(--pico-background-color);
   color: var(--pico-color);
 }
@@ -574,47 +580,19 @@ main {
 body > header,
 body > main,
 body > footer {
-  width: 100%;
-  margin-right: auto;
-  margin-left: auto;
-  padding: var(--pico-block-spacing-vertical) var(--pico-block-spacing-horizontal);
+  inline-size: 100%;
+  min-inline-size: 0;
+  margin-inline: auto;
+  padding-block: var(--pico-block-spacing-vertical);
 }
-@media (min-width: 576px) {
-  body > header,
-  body > main,
-  body > footer {
-    max-width: 510px;
-    padding-right: 0;
-    padding-left: 0;
-  }
-}
-@media (min-width: 768px) {
-  body > header,
-  body > main,
-  body > footer {
-    max-width: 700px;
-  }
-}
-@media (min-width: 1024px) {
-  body > header,
-  body > main,
-  body > footer {
-    max-width: 950px;
-  }
-}
-@media (min-width: 1280px) {
-  body > header,
-  body > main,
-  body > footer {
-    max-width: 1200px;
-  }
-}
-@media (min-width: 1536px) {
-  body > header,
-  body > main,
-  body > footer {
-    max-width: 1450px;
-  }
+
+/* Limit reading blocks without narrowing their containing sections or widgets.
+ * A shared rem measure keeps headings aligned with body text. Unknown document
+ * structures retain normal flow, and authored styles can override this layer. */
+:where(body, body > main, body > article, body > section)
+  > :where(h1, h2, h3, h4, h5, h6, p, ul, ol, dl, blockquote) {
+  max-inline-size: var(--ww-prose-max);
+  margin-inline: auto;
 }
 
 /**

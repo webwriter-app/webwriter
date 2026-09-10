@@ -1,7 +1,7 @@
 html {
   background: white;
   overflow-y: scroll;
-  overflow-x: hidden;
+  overflow-x: auto;
   height: 100%;
   --sl-color-danger-300: #fca5a5;
   --sl-color-primary-400: #38bdf8;
@@ -16,12 +16,9 @@ html.◆ai-review-active {
 }
 
 body {
-  --body-padding: 1.25rem;
+  --body-padding: var(--ww-page-gutter, 1.25rem);
   anchor-name: --body-anchor;
-  margin: 1.25rem auto;
-  padding: 0 var(--body-padding);
   min-height: calc(100% - 2.5rem);
-  max-width: calc(960px + var(--body-padding) + var(--body-padding));
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
@@ -32,11 +29,6 @@ body {
  * hosting the shadow appendix but stops generating a scrolling layout box;
  * the widget inherits the ordinary document width while its height follows
  * its content. */
-html:has(> body.◆template-active),
-body.◆template-active {
-  overflow: hidden;
-}
-
 body.◆template-active {
   display: contents;
 }
@@ -44,9 +36,10 @@ body.◆template-active {
 body.◆template-active > [role~="document"]:only-child {
   box-sizing: border-box;
   display: block;
-  width: 100%;
-  height: auto;
-  max-width: calc(960px + var(--body-padding) + var(--body-padding));
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: auto;
+  max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--body-padding));
   margin: 1.25rem auto;
   padding: 0 var(--body-padding);
 }

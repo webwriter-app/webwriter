@@ -24,7 +24,17 @@ export class ____classname____ extends LitElementWw {
   static scopedElements = {}
 
   /** Put the styles for your Shadow DOM (what is rendered through render()) here. */
-  static styles = css``
+  static styles = css`
+    :host {
+      display: block;
+      box-sizing: border-box;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 100%;
+      block-size: auto;
+      container-type: inline-size;
+    }
+  `
 
   /** Define your template here and return it. */
   render() {

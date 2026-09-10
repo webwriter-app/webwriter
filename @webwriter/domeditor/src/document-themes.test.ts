@@ -12,6 +12,27 @@ const ruleHeaders = (source: string) => Array.from(
 ).filter(header => !header.startsWith("@") && !/^(?:from|to|\d+%)$/.test(header))
 
 describe("document themes", () => {
+  it("shares a fluid page and stable reading measure with standalone documents", () => {
+    const source = defaultDocumentTheme.source
+    const landmarks = source.slice(source.indexOf(" * Landmarks"), source.indexOf(" * Section\n"))
+
+    expect(source).toContain("--ww-page-max: 2160px;")
+    expect(source).toContain("--ww-prose-max: 45rem;")
+    expect(source).toContain("--ww-page-gutter: clamp(1rem, 2vw, 2rem);")
+    expect(landmarks).toContain("max-inline-size: calc(var(--ww-page-max) + 2 * var(--ww-page-gutter));")
+    expect(landmarks).toContain("min-inline-size: 0;")
+    expect(landmarks).not.toMatch(/@media|min-(?:inline-size|width):\s*280px|overflow(?:-x)?:\s*hidden/)
+  })
+
+  it("constrains reading blocks without narrowing structural containers or widget content", () => {
+    const source = defaultDocumentTheme.source.replaceAll(/\/\*[\s\S]*?\*\//g, "")
+    const readingRule = Array.from(source.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+      .find(([, , declarations]) => declarations.includes("max-inline-size: var(--ww-prose-max)"))!
+    expect(readingRule[1].trim()).toBe(":where(body, body > main, body > article, body > section)\n"
+      + "  > :where(h1, h2, h3, h4, h5, h6, p, ul, ol, dl, blockquote)")
+    expect(readingRule[2]).toContain("margin-inline: auto;")
+  })
+
   it("uses a layered, classless Pico theme as the document default", () => {
     const source = documentTheme("base")!.source
 

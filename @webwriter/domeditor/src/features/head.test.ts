@@ -22,7 +22,14 @@ afterEach(() => {
 
 describe("document head editing", () => {
   it("applies the default theme as an editor-owned stylesheet", () => {
-    expect(document.adoptedStyleSheets).toHaveLength(2)
+    const enabledStylesheets = [...document.adoptedStyleSheets]
+    editor.features.head.disable()
+    const themeStylesheets = enabledStylesheets.filter(stylesheet => !document.adoptedStyleSheets.includes(stylesheet))
+    expect(themeStylesheets).toHaveLength(1)
+
+    editor.features.head.enable()
+    expect(document.adoptedStyleSheets).toContain(themeStylesheets[0])
+    expect(document.head.querySelector("style")).toBeNull()
   })
 
   it("maps the common form fields onto standard authored HTML", () => {
