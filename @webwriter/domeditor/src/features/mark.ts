@@ -1071,8 +1071,15 @@ export class MarkFeature extends EditorFeature {
   }
 
   private selectionContainsRuby(context: MarkSelection) {
-    return context.text.some(({node}) => this.rubyAt(node) !== null)
-      || !!context.range.cloneContents().querySelector?.("ruby")
+    if(context.text.some(({node}) => this.rubyAt(node) !== null)) return true
+    const walker = document.createTreeWalker(context.block, NodeFilter.SHOW_ELEMENT)
+    while(walker.nextNode()) {
+      const element = walker.currentNode as Element
+      if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
+        && element.localName === "ruby"
+        && context.range.intersectsNode(element)) return true
+    }
+    return false
   }
 
   private selectionInside(element: Element) {
@@ -1208,18 +1215,19 @@ export class MarkFeature extends EditorFeature {
     const text = this.selectedText(range, startBlock)
     if(!text.length || !text.some(slice => slice.end > slice.start)) return null
 
-    // Cloning gives an exact, side-effect-free view of selected element
-    // content. A mark command cannot safely consume blocks, replaced content,
-    // SVG/MathML, or empty atomic phrasing elements such as images and breaks.
-    const fragment = range.cloneContents()
-    const selectedElements = Array.from(fragment.querySelectorAll("*"))
-    if(selectedElements.some(element =>
-      element.namespaceURI !== "http://www.w3.org/1999/xhtml"
-      || !this.editor.schema.isPhrasing(element)
-      || !element.textContent
-        && canonicalMarkName(element.localName) === null
-        && !this.editor.schema.findValidContentTypes(element).includes("#text"),
-    )) return null
+    // Inspect the selected live elements directly. Cloning can invoke custom
+    // element constructors, while a mark command only needs to reject blocks,
+    // replaced content, SVG/MathML, and empty atomic phrasing elements.
+    const walker = document.createTreeWalker(startBlock, NodeFilter.SHOW_ELEMENT)
+    while(walker.nextNode()) {
+      const element = walker.currentNode as Element
+      if(!range.intersectsNode(element)) continue
+      if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
+        || !this.editor.schema.isPhrasing(element)
+        || !element.textContent
+          && canonicalMarkName(element.localName) === null
+          && !this.editor.schema.findValidContentTypes(element).includes("#text")) return null
+    }
 
     const start = this.textOffset(startBlock, range.startContainer, range.startOffset)
     const end = this.textOffset(startBlock, range.endContainer, range.endOffset)

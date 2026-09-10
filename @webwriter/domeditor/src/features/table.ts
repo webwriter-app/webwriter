@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, cloneWithoutEditorMarkers, modifierKeyDown} from "../utility"
+import {$, cloneWithoutEditorMarkers, getInertDocument, modifierKeyDown} from "../utility"
 import {
   buildTableMap,
   cellForNode,
@@ -876,7 +876,7 @@ export class TableFeature extends EditorFeature {
     const map = this.selectionMap()
     const rectangle = this.cellRectangle(map)
     if(!map || !rectangle) return null
-    const table = document.createElement("table")
+    const table = getInertDocument(document).createElement("table")
     const body = table.createTBody()
     for(let rowIndex = rectangle.top; rowIndex <= rectangle.bottom; rowIndex++) {
       const row = body.insertRow()
@@ -885,7 +885,7 @@ export class TableFeature extends EditorFeature {
           && placement.column + placement.columnSpan - 1 >= rectangle.left)
         .sort((a, b) => a.column - b.column)
         .forEach(placement => {
-          const clone = cloneWithoutEditorMarkers(placement.cell, true) as HTMLTableCellElement
+          const clone = cloneWithoutEditorMarkers(placement.cell, true, {inert: true}) as HTMLTableCellElement
           const rowSpan = Math.min(placement.rowSpan, rectangle.bottom - placement.row + 1)
           const columnSpan = Math.min(placement.columnSpan, rectangle.right - placement.column + 1)
           rowSpan > 1 ? clone.setAttribute("rowspan", String(rowSpan)) : clone.removeAttribute("rowspan")
@@ -928,11 +928,14 @@ export class TableFeature extends EditorFeature {
         const map = buildTableMap(table)
         return map.matrix.map(row => Array.from({length: map.width}, (_, column) => {
           const cell = row[column]?.cell
-          return cell ? Array.from(cell.childNodes).map(node => cloneWithoutEditorMarkers(node, true)) : []
+          return cell
+            ? Array.from(cell.childNodes).map(node => cloneWithoutEditorMarkers(node, true, {inert: true}))
+            : []
         }))
       }
     }
-    return plain.split(/\r?\n/).map(row => row.split("\t").map(text => [document.createTextNode(text)] as Node[]))
+    const ownerDocument = getInertDocument(document)
+    return plain.split(/\r?\n/).map(row => row.split("\t").map(text => [ownerDocument.createTextNode(text)] as Node[]))
   }
 
   private ensureSize(table: HTMLTableElement, rows: number, columns: number) {

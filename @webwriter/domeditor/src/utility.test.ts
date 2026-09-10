@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import {
   $, getContainer, getSidesOfPoint, getSelectionAnchorBlock, getSelectionFocusBlock,
   getIndexBefore, isElement, isComment, isText, isDocument, isOnApple, modifierKeyDown,
-  getPathTo, htmlToFragment, cloneWithoutEditorMarkers, roundByDPR, roundTo, angleOnCircle, rotatePoint,
+  getPathTo, htmlToFragment, cloneInert, cloneRangeIn, cloneRangeContents, cloneWithoutEditorMarkers, roundByDPR, roundTo, angleOnCircle, rotatePoint,
   distanceBetweenPoints, midpoint, intersectionPoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getZPos, getStaticCoords,
@@ -814,6 +814,69 @@ describe("slice/copy()", () => {
 
     expect(fragment.firstElementChild?.outerHTML).toBe("<b>ell</b>")
     expect(document.body.innerHTML).toBe("<p><b>hello</b></p>")
+  })
+})
+
+describe("inert DOM copies", () => {
+  const constructed = vi.fn()
+  customElements.define("inert-copy-widget", class extends HTMLElement {
+    constructor() {
+      super()
+      constructed()
+      this.attachShadow({mode: "open"}).textContent = "private widget state"
+    }
+  })
+
+  it("copies namespaces, comments, templates and attributes without initializing widgets", () => {
+    setBody('<inert-copy-widget class="authored ◆selected"><!--keep--><template><inert-copy-widget></inert-copy-widget></template><svg><use></use></svg></inert-copy-widget>')
+    const widget = document.body.firstElementChild!
+    widget.querySelector("use")!.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "#shape")
+    const original = widget.outerHTML
+    const shadow = widget.shadowRoot
+    constructed.mockClear()
+
+    const copy = cloneInert(widget, true)
+    const cleaned = cloneWithoutEditorMarkers(widget, true, {inert: true})
+
+    expect(constructed).not.toHaveBeenCalled()
+    expect(copy.ownerDocument.defaultView).toBeNull()
+    expect(copy.outerHTML).toBe(original)
+    expect(copy.shadowRoot).toBeNull()
+    expect(copy.querySelector("use")!.getAttributeNS("http://www.w3.org/1999/xlink", "href")).toBe("#shape")
+    expect(copy.querySelector("template")!.content.firstElementChild!.localName).toBe("inert-copy-widget")
+    expect(cleaned.className).toBe("authored")
+    expect(widget.outerHTML).toBe(original)
+    expect(widget.shadowRoot).toBe(shadow)
+    expect(widget.ownerDocument).toBe(document)
+    expect(widget.isConnected).toBe(true)
+  })
+
+  it("preserves partial range boundaries while copying selected widgets inertly", () => {
+    setBody('<p><b>before</b></p><!--keep--><inert-copy-widget></inert-copy-widget><p><i>after</i></p>')
+    const before = document.querySelector("b")!.firstChild!
+    const after = document.querySelector("i")!.firstChild!
+    $.selectRange(before, 2, after, 2)
+    constructed.mockClear()
+
+    for(const fragment of [cloneRangeContents($.range), $.copy(), $.slice]) {
+      expect(fragment.ownerDocument.defaultView).toBeNull()
+      expect(Array.from(fragment.childNodes).map(node => node instanceof Element ? node.outerHTML : `<!--${node.textContent}-->`).join(""))
+        .toBe('<p><b>fore</b></p><!--keep--><inert-copy-widget></inert-copy-widget><p><i>af</i></p>')
+    }
+    expect(constructed).not.toHaveBeenCalled()
+    expect($.anchor).toBe(before)
+    expect($.focus).toBe(after)
+  })
+
+  it("does not map endpoints outside the requested simulation root", () => {
+    setBody("<p>before</p><p>after</p>")
+    $.selectRange(firstText(), 1, firstText(document.body.lastElementChild), 2)
+    expect(cloneRangeIn(document.body.firstElementChild!, $.range)).toBeNull()
+    const root = document.body.firstElementChild!
+    const range = document.createRange()
+    range.selectNodeContents(root)
+    root.remove()
+    expect(cloneRangeIn(root, range)!.range.toString()).toBe("before")
   })
 })
 

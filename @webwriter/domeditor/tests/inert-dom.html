@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Inert DOM regression checks</title>
+<style>body {font: 14px system-ui; margin: 2rem} iframe {width: 100%; height: 240px} pre {white-space: pre-wrap}</style>
+<h1>Inert DOM regression checks</h1>
+<p>Runs constructor and identity checks in a native browser, independent of Happy DOM's inert-document compatibility layer.</p>
+<button id="run">Run checks</button>
+<pre id="results" role="status">Ready</pre>
+<div id="stage"></div>
+<script type="module" src="./inert-dom.ts"></script>
+</html>

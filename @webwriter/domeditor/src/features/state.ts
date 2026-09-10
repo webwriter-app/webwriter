@@ -3,6 +3,7 @@ import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
 import type {DOMChangePreview} from "../domdoc"
 import {stripActiveContent} from "../active-content"
 import {isMarkElement} from "../marks"
+import {cloneRangeContents} from "../utility"
 
 const maximumAIHTMLLength = 1_000_000
 const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
@@ -25,7 +26,7 @@ const checkedAIHTML = (html: unknown) => {
 }
 
 const serializeFragment = (fragment: DocumentFragment) => {
-  const container = document.createElement("div")
+  const container = fragment.ownerDocument.createElement("div")
   container.append(fragment)
   return container.innerHTML
 }
@@ -95,7 +96,7 @@ export class StateFeature extends EditorFeature {
   }
 
   private serializeHTMLRange(range: Range) {
-    const fragment = range.cloneContents()
+    const fragment = cloneRangeContents(range)
     this.editor.clearEditingArtifacts(fragment)
     return serializeFragment(fragment)
   }
@@ -418,7 +419,7 @@ export class StateFeature extends EditorFeature {
         return {html: "", text: "", collapsed: true}
       }
       const range = selection.getRangeAt(0)
-      const fragment = range.cloneContents()
+      const fragment = cloneRangeContents(range)
       sanitizeAIContent(fragment)
       const html = serializeFragment(fragment)
       return {

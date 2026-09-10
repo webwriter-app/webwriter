@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { DOMEditor } from "./domeditor"
 import {executeCompleteEvent, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
-import {$} from "./utility"
+import {$, cloneInert, getInertDocument} from "./utility"
 
 const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule =>
@@ -363,6 +363,33 @@ describe("DOMEditor stylesheets", () => {
     expect(directSlots).toHaveLength(1)
     expect(nested.parentElement).toBe(container)
     container.remove()
+  })
+})
+
+describe("DOMEditor serialization", () => {
+  it("does not construct widgets while serializing an inert clipboard fragment", () => {
+    let constructions = 0
+    const tag = "domeditor-serialization-probe"
+    if(!customElements.get(tag)) {
+      customElements.define(tag, class extends HTMLElement {
+        constructor() {
+          super()
+          constructions++
+        }
+      })
+    }
+    document.body.innerHTML = `<${tag}>Copied</${tag}>`
+    const source = document.body.firstElementChild!
+    const fragment = getInertDocument(document).createDocumentFragment()
+    fragment.append(cloneInert(source, true))
+    const editor = new DOMEditor()
+    const baseline = constructions
+
+    const {html} = editor.serializeClipboardFragment(fragment)
+
+    expect(html).toBe(`<${tag}>Copied</${tag}>`)
+    expect(constructions).toBe(baseline)
+    editor.destroy()
   })
 })
 

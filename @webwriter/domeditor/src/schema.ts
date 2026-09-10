@@ -1,5 +1,5 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
-import { $, getContainer, getIndexBefore, getSidesOfPoint } from "./utility"
+import { $, cloneInert, getContainer, getIndexBefore, getInertDocument, getSidesOfPoint } from "./utility"
 
 /** Defers to the parent's content rule ("transparent" content model, e.g. <a>, <ins>, <slot>), optionally restricted by an own selector. */
 export type ContentRuleTransparent = {
@@ -329,9 +329,10 @@ export class Schema {
       })
     })
     this.#schema = {...this.#schema, ...extensionSchema}
+    const inertDocument = getInertDocument()
     Object.keys(extensionSchema).forEach(key => {
       if(key === "#unknownelement") delete this.#nodes[key]
-      else this.#nodes[key] = this.create(key)
+      else this.#nodes[key] = this.create(key, inertDocument)
     })
     Object.keys(extensionSchema)
       .forEach(key => this.#schema[key].group?.forEach(group => {
@@ -407,23 +408,23 @@ export class Schema {
   }
 
   /** Creates a new node of the given type: `#text`, `#comment`, a namespaced `ns|tag` or a tag name. Defaults to the default node type. */
-  create(key: string = this.defaultNodeKey) {
+  create(key: string = this.defaultNodeKey, ownerDocument: Document = document) {
     let node: Node
     if(key === "#text") {
-      node = document.createTextNode("")
+      node = ownerDocument.createTextNode("")
     }
     else if(key === "#comment") {
-      node = document.createComment("")
+      node = ownerDocument.createComment("")
     }
     else {
       const contentNamespace = this.#schema[key]?.contentNamespace
       node = key.includes("|")
-        ? document.createElementNS(
+        ? ownerDocument.createElementNS(
           this.getNamespaceURL(key.split("|").at(0)!),
           key.split("|").at(1)!)
         : contentNamespace
-          ? document.createElementNS(contentNamespace, key)
-          : document.createElement(key)
+          ? ownerDocument.createElementNS(contentNamespace, key)
+          : ownerDocument.createElement(key)
     }
     this.#createdTypes.set(node, key)
     return node
@@ -559,7 +560,7 @@ export class Schema {
       ...siblings.slice(0, index),
       node,
       ...(insertee? [insertee]: []),
-      node.cloneNode(),
+      cloneInert(node),
       ...siblings.slice(index + 1)
     ]
     return this.isContentValid(container, newSiblings)
@@ -586,8 +587,8 @@ export class Schema {
       const leftChildren = siblings.slice(0, iParent); const rightChildren = siblings.slice(iParent + 1)
       const wouldSliceInseparable = parentSchema.inseperable && leftChildren.length && rightChildren.length
       if(wouldSliceInseparable || !this.isContentValid(parent, [...leftChildren, ...rightChildren])) return null;
-      const leftParent = leftChildren.length? parent.cloneNode() as Element: null; leftParent?.append(...leftChildren.map(n => n.cloneNode(true)))
-      const rightParent = rightChildren.length? parent.cloneNode() as Element: null; rightParent?.append(...rightChildren.map(n => n.cloneNode(true)))
+      const leftParent = leftChildren.length? cloneInert(parent) as Element: null; leftParent?.append(...leftChildren.map(n => cloneInert(n, true)))
+      const rightParent = rightChildren.length? cloneInert(parent) as Element: null; rightParent?.append(...rightChildren.map(n => cloneInert(n, true)))
       const liftInsert = [leftParent, node, rightParent].filter(n => n) as Node[]
       const grandparentContent = [
         ...grandsiblings.slice(0, iGrandparent),
@@ -644,7 +645,7 @@ export class Schema {
 
   /** Whether `content` (default: the node's current children) is valid for the node (given as node or type key). Each node is validated against a shared cloned rule (see isNodeValid), and the rule's minimum must be satisfied. Non-element nodes are always valid.. */
   isContentValid(node: Node | string, content?: Node[], rule=this.getContentRule(node)): boolean {
-    let nodeToCheck = typeof node === "string"? this.create(node): node
+    let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
     
     if(!(nodeToCheck instanceof Element)) return true;
     if(!rule && (content ?? Array.from(nodeToCheck.childNodes)).length) return false
@@ -790,7 +791,7 @@ export class Schema {
     content: Node[]=containerOrKey instanceof Node? Array.from(containerOrKey.childNodes): []    
   ) {
     if(!rule) throw Error("No content allowed in parent according to rule");
-    const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey)
+    const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey, getInertDocument())
     if(this.isContentValid(container, content, structuredClone(rule))) return content;
     let newContent = [] as Node[]
     let executionCount = 0
@@ -805,7 +806,7 @@ export class Schema {
         const defaultType = validContentTypes.includes(this.defaultNodeKey)
           ? this.defaultNodeKey
           : validContentTypes.at(0)!
-        const newNode = this.create(defaultType)
+        const newNode = this.create(defaultType, container.ownerDocument ?? document)
         if(this.isNodeValid(newNode, rule)) {
           newContent = [...newContent, newNode];
         }
@@ -824,7 +825,7 @@ export class Schema {
       return []
     }
 
-    const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey)
+    const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey, getInertDocument())
     if(content !== undefined) {
       rule = structuredClone(rule)
       if(!content.every(node => this.isNodeValid(node, rule))) return []

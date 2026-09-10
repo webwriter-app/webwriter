@@ -24,6 +24,27 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it("does not construct widgets while serializing timed-media fallback HTML", () => {
+    let constructions = 0
+    const tag = "media-serialization-probe"
+    if(!customElements.get(tag)) {
+      customElements.define(tag, class extends HTMLElement {
+        constructor() {
+          super()
+          constructions++
+        }
+      })
+    }
+    document.body.innerHTML = `<video><${tag}>Fallback</${tag}></video>`
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    const baseline = constructions
+
+    expect(editor.features.media.getState()!.fallbackHTML).toContain(`<${tag}>Fallback</${tag}>`)
+    expect(constructions).toBe(baseline)
+  })
+
   it("inserts a package's remote simulation iframe with its sandbox intact", () => {
     editor.features.manipulation.insertHTML('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html"></iframe>')
     const frame = document.querySelector("iframe")!

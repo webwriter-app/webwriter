@@ -858,15 +858,20 @@ export class CommentFeature extends EditorFeature {
       between.setStart(bContainer, bOffset)
       between.setEnd(aContainer, aOffset)
     }
-    const fragment = between.cloneContents()
-    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_ALL)
-    while(walker.nextNode()) {
-      const node = walker.currentNode
-      if(node instanceof Text && node.data.length > 0) return false
-      if(node instanceof Comment && !parseCommentMarker(node)) return false
-      if(node instanceof Element) return false
+    const hasAuthoredContent = (node: Node): boolean => {
+      if(!between.intersectsNode(node)) return false
+      if(node instanceof Text) {
+        const start = between.startContainer === node ? between.startOffset : 0
+        const end = between.endContainer === node ? between.endOffset : node.length
+        return end > start
+      }
+      if(node instanceof Comment) return !parseCommentMarker(node)
+      if(node instanceof Element) return true
+      return Array.from(node.childNodes).some(hasAuthoredContent)
     }
-    return true
+    const root = between.commonAncestorContainer
+    if(root instanceof Text || root instanceof Comment) return !hasAuthoredContent(root)
+    return !Array.from(root.childNodes).some(hasAuthoredContent)
   }
 
   private getSelection(): CommentSelection | null {

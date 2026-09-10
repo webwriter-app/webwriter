@@ -205,15 +205,20 @@ export class SelectionFeature extends EditorFeature {
       remainder.setEnd(block, block.childNodes.length)
     }
     const hasEditingContent = (node: Node): boolean => {
-      if(node instanceof Text) return Boolean(node.textContent?.trim())
+      if(!remainder.intersectsNode(node)) return false
+      if(node instanceof Text) {
+        const start = remainder.startContainer === node ? remainder.startOffset : 0
+        const end = remainder.endContainer === node ? remainder.endOffset : node.length
+        return Boolean(node.data.slice(start, end).trim())
+      }
       if(!(node instanceof Element || node instanceof DocumentFragment)) return false
       if(node instanceof Element) {
         if(node.matches(".◆editor-only, br")) return false
         if(!node.childNodes.length || isAtomicEditingElement(node, this.editor.schema)) return true
       }
-      return Array.from(node.childNodes).some(hasEditingContent)
+      return Array.from(node.childNodes).some(child => hasEditingContent(child))
     }
-    return !hasEditingContent(remainder.cloneContents())
+    return !Array.from(block.childNodes).some(hasEditingContent)
   }
 
   /** Finds an element immediately beside the live caret or the edge of its

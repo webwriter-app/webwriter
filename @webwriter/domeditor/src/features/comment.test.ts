@@ -50,6 +50,28 @@ function markers(root: Node = document.body) {
 }
 
 describe("CommentFeature spans", () => {
+  it("does not construct widget copies while comparing comment boundaries", () => {
+    const constructed = vi.fn()
+    const tag = "comment-query-widget"
+    customElements.define(tag, class extends HTMLElement {
+      constructor() {
+        super()
+        constructed()
+      }
+    })
+    const paragraph = setContent(`<p>before<${tag}>inside</${tag}>after</p>`)
+    const before = paragraph.firstChild!
+    const after = paragraph.lastChild!
+    $.selectRange(before, 0, after, after.textContent!.length)
+    expect(feature.toggleComment("Around widget")).toBe(true)
+    constructed.mockClear()
+
+    $.selectRange(after, 0, after, after.textContent!.length)
+    feature.getState()
+
+    expect(constructed).not.toHaveBeenCalled()
+  })
+
   it("toggles a plain-text comment around the selected fragment", () => {
     const paragraph = setContent("<p>abcd</p>")
     selectTextOffsets(paragraph, 1, 3)

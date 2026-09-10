@@ -12,6 +12,37 @@ afterEach(() => {
 })
 
 describe("StateFeature", () => {
+  it("does not construct widgets while serializing an AI selection", async () => {
+    let constructions = 0
+    const tag = "state-serialization-probe"
+    if(!customElements.get(tag)) {
+      customElements.define(tag, class extends HTMLElement {
+        constructor() {
+          super()
+          constructions++
+        }
+      })
+    }
+    document.body.innerHTML = `<p class="authored ◆selection-marker">Before </p><${tag}>Widget</${tag}><p> After</p>`
+    const editor = new DOMEditor()
+    try {
+      const [before, after] = Array.from(document.querySelectorAll("p"))
+      document.getSelection()!.setBaseAndExtent(before.firstChild!, 0, after.firstChild!, after.textContent!.length)
+      await Promise.resolve()
+      const baseline = constructions
+      const result = editor.getActionHandler("readAISelection")({type: "readAISelection"}) as {html: string, text: string}
+
+      expect(result.text).toBe("Before Widget After")
+      expect(result.html).toBe(`<p class="authored">Before </p><${tag}>Widget</${tag}><p> After</p>`)
+      const begin = editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit"}) as {html: string}
+      expect(begin.html).toBe(`<p class="authored">Before </p><${tag}>Widget</${tag}><p> After</p>`)
+      expect(constructions).toBe(baseline)
+    }
+    finally {
+      editor.destroy()
+    }
+  })
+
   it("reconstructs document HTML and the exact relative selection in a new editor realm", () => {
     document.body.innerHTML = "<p>Hello <strong>world</strong></p><webwriter-demo value=\"7\"></webwriter-demo>"
     const editor = new DOMEditor()

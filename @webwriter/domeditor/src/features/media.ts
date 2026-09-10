@@ -6,7 +6,7 @@ import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
-import {$, atomicEditingContainer, adoptStylesheet, createStylesheet, getContainer, isElement} from "../utility"
+import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getContainer, getInertDocument, isElement} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -1446,12 +1446,13 @@ export class MediaFeature extends EditorFeature {
   }
 
   private fallbackHTML(media: Element) {
-    const fragment = document.createDocumentFragment()
+    const ownerDocument = getInertDocument(media)
+    const fragment = ownerDocument.createDocumentFragment()
     Array.from(media.childNodes).forEach(node => {
-      if(!isTimedResourceElement(node)) fragment.append(node.cloneNode(true))
+      if(!isTimedResourceElement(node)) fragment.append(cloneInert(node, true))
     })
     this.editor.clearEditingArtifacts(fragment)
-    const container = document.createElement("div")
+    const container = ownerDocument.createElement("div")
     container.append(fragment)
     return container.innerHTML
   }

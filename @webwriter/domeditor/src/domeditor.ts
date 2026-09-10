@@ -1388,7 +1388,7 @@ export class DOMEditor {
   serializeClipboardFragment(fragment: DocumentFragment, innerText?: string) {
     this.clearEditingArtifacts(fragment)
     const text = innerText ?? plainTextFromDOM(fragment, element => this.schema.isBlock(element))
-    const container = document.createElement("div")
+    const container = fragment.ownerDocument.createElement("div")
     container.append(fragment)
     const html = container.innerHTML
     return {html, text}

@@ -326,6 +326,38 @@ describe("Schema methods", () => {
       schema.extend({"x-widget": {group: ["flow"]}})
       expect(schema.findValidContentTypes("body")).toEqual(expect.arrayContaining(["p", "div", "x-widget"]))
     })
+    it("uses inert nodes for schema probes while create() still constructs widgets", () => {
+      const tag = `schema-probe-${Math.random().toString(36).slice(2)}`
+      let constructorCalls = 0
+      customElements.define(tag, class extends HTMLElement {
+        constructor() {
+          super()
+          constructorCalls++
+        }
+      })
+      schema.extend({[tag]: {
+        group: ["flow"],
+        content: {selector: "p", min: 0, max: Infinity},
+      }})
+
+      expect(constructorCalls).toBe(0)
+      expect(schema.isContentValid(tag, [])).toBe(true)
+      expect(schema.findValidContentTypes(tag)).toEqual(["p"])
+      expect(schema.fillByRule(tag, undefined, [])).toEqual([])
+      expect(constructorCalls).toBe(0)
+
+      const widget = schema.create(tag)
+      expect(widget).toBeInstanceOf(HTMLElement)
+      expect(constructorCalls).toBe(1)
+
+      const wrapper = el("div")
+      wrapper.append(el("p"), widget)
+      document.body.append(wrapper)
+      expect(schema.canSplit(widget)).toBe(true)
+      const liftTarget = schema.getLiftTarget(widget)
+      expect(liftTarget?.[1].at(-1)).toBe(widget)
+      expect(constructorCalls).toBe(1)
+    })
     it("updates rather than duplicates group membership when overriding a type", () => {
       schema.extend({"x-widget": {group: ["flow"]}})
       schema.extend({"x-widget": {group: ["phrasing"]}})

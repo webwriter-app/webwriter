@@ -403,6 +403,29 @@ describe("table cell selection", () => {
     expect(data.getData("text/html")).not.toContain("◆")
   })
 
+  it("does not construct widgets while building table clipboard HTML", () => {
+    let constructions = 0
+    const tag = "table-serialization-probe"
+    if(!customElements.get(tag)) {
+      customElements.define(tag, class extends HTMLElement {
+        constructor() {
+          super()
+          constructions++
+        }
+      })
+    }
+    document.body.innerHTML = `<table><tbody><tr><td><${tag}>A</${tag}></td></tr></tbody></table>`
+    const cell = cells()[0]
+    editor.features.table.selectCells(cell)
+    const baseline = constructions
+    const data = new DataTransfer()
+
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(data.getData("text/html")).toContain(`<${tag}>A</${tag}>`)
+    expect(constructions).toBe(baseline)
+  })
+
   it("does not cut selected cells when a programmatic clipboard write fails", async () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     editor.features.table.selectCells(cells()[0])

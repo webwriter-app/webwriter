@@ -1665,6 +1665,31 @@ describe("document listeners", () => {
     feature.processSelection()
     expect(widget).not.toHaveClass("◆atomic-range-selected")
   })
+  it("does not construct widget copies while checking an arrow boundary", () => {
+    const constructed = vi.fn()
+    const tag = "selection-boundary-widget"
+    customElements.define(tag, class extends HTMLElement {
+      constructor() {
+        super()
+        constructed()
+      }
+    })
+    document.body.innerHTML = `<p>before<${tag}>inside</${tag}>after</p>`
+    const paragraph = document.querySelector("p")!
+    const widget = document.querySelector(tag)!
+    const before = paragraph.firstChild!
+    constructed.mockClear()
+
+    $.move(before, 2)
+    const event = new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect($.anchor).toBe(before)
+    expect($.anchorOffset).toBe(2)
+    expect(widget.isConnected).toBe(true)
+    expect(constructed).not.toHaveBeenCalled()
+  })
   it("ignores pointerdown on editor-only elements", () => {
     const p = el("p", "hello")
     $.move(p.firstChild!, 2)

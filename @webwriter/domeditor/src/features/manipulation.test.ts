@@ -33,6 +33,95 @@ beforeEach(async () => {
 
 afterEach(() => editor.destroy())
 
+describe("widget-safe validation and transfer", () => {
+  const constructed = vi.fn()
+  const adopted = vi.fn()
+  customElements.define("manipulation-probe-widget", class extends HTMLElement {
+    constructor() {
+      super()
+      constructed()
+      this.attachShadow({mode: "open"}).textContent = "private state"
+    }
+    adoptedCallback() { adopted() }
+  })
+
+  function content() {
+    editor.schema.extendWidgets([{tagName: "manipulation-probe-widget"}])
+    document.body.innerHTML = '<p>before</p><manipulation-probe-widget></manipulation-probe-widget><p>after</p>'
+    const widget = document.querySelector("manipulation-probe-widget")!
+    const before = document.body.firstElementChild!.firstChild!
+    return {widget, before}
+  }
+
+  it("validates Enter without constructing unrelated widgets or changing their identity", () => {
+    const {widget, before} = content()
+    const shadow = widget.shadowRoot
+    $.move(before, 2)
+    constructed.mockClear()
+    adopted.mockClear()
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(constructed).not.toHaveBeenCalled()
+    expect(adopted).not.toHaveBeenCalled()
+    expect(document.querySelector("manipulation-probe-widget")).toBe(widget)
+    expect(widget.shadowRoot).toBe(shadow)
+    expect(Array.from(document.querySelectorAll("p"), p => p.textContent)).toEqual(["be", "fore", "after"])
+  })
+
+  it("validates section wrapping and replacement while moving the original widget", () => {
+    const {widget} = content()
+    $.selectElement(widget)
+    constructed.mockClear()
+    adopted.mockClear()
+
+    expect(editor.features.manipulation.toggleSection()).toBe(true)
+    expect(widget.parentElement!.localName).toBe("section")
+    $.selectElement(widget)
+    expect(editor.features.manipulation.setSectionType("article")).toBe(true)
+
+    expect(widget.parentElement!.localName).toBe("article")
+    expect(widget.ownerDocument).toBe(document)
+    expect(constructed).not.toHaveBeenCalled()
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it.each(["copy", "cut"] as const)("serializes %s without initializing a temporary widget", async operation => {
+    const {widget} = content()
+    $.selectElement(widget)
+    const write = vi.spyOn(navigator.clipboard, "write").mockResolvedValue()
+    constructed.mockClear()
+
+    const result = editor.features.manipulation[operation]()
+    expect(constructed).not.toHaveBeenCalled()
+    await result
+
+    expect(write).toHaveBeenCalledOnce()
+    const item = write.mock.calls[0][0][0]
+    const html = await (await item.getType("text/html")).text()
+    expect(html).toContain("<manipulation-probe-widget")
+    expect(html).not.toContain("◆")
+    expect(widget.isConnected).toBe(operation === "copy")
+  })
+
+  it("starts a node drag without constructing its serialized widget", () => {
+    const {widget} = content()
+    $.selectElement(widget)
+    editor.features.selection.processSelection()
+    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    const data = new DataTransfer()
+    vi.spyOn(data, "setDragImage").mockImplementation(() => {})
+    constructed.mockClear()
+
+    surface.dispatchEvent(transferEvent("dragstart", data))
+
+    expect(data.getData("text/html")).toContain("<manipulation-probe-widget")
+    expect(data.getData("text/html")).not.toContain("◆")
+    expect(constructed).not.toHaveBeenCalled()
+    expect(widget.isConnected).toBe(true)
+  })
+})
+
 describe("insert()", () => { // deletes selection => selection = caret/gap
   it("creates a real editing target before the first printable key is committed", () => {
     const event = new KeyboardEvent("keydown", {key: "a", bubbles: true, cancelable: true})

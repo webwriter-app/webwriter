@@ -727,7 +727,7 @@ export class EditingSelection {
 
   /** A clone of the selected content. */
   static get slice() {
-    return this.range.cloneContents()
+    return cloneRangeContents(this.range)
   }
 
   /** The common ancestor's children covered by the selection (the selected element itself for element selections). Empty for selections within a single text node. Currently excludes children that contain the selection start, e.g. the first block of a cross-block selection. */
@@ -782,13 +782,13 @@ export class EditingSelection {
     const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
     const range = copyingRoot ? document.createRange() : this.range
     if(copyingRoot) range.selectNodeContents(root)
-    let fragment = range.cloneContents()
+    let fragment = cloneRangeContents(range)
     const commonAncestor = this.range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
     while(sharedMark && isMarkElement(sharedMark)) {
-      const wrapper = sharedMark.cloneNode(false) as Element
+      const wrapper = cloneInert(sharedMark)
       wrapper.append(fragment)
-      fragment = sharedMark.ownerDocument.createDocumentFragment()
+      fragment = wrapper.ownerDocument.createDocumentFragment()
       fragment.append(wrapper)
       sharedMark = sharedMark.parentElement
     }
@@ -998,7 +998,70 @@ export function getPathTo(element: Element | null): string {
 
 /** Parses an HTML string into a DocumentFragment. */
 export function htmlToFragment(html: string) {
-  return document.createRange().createContextualFragment(html)
+  const template = document.createElement("template")
+  template.innerHTML = html
+  return template.content
+}
+
+const inertDocuments = new WeakMap<Document, Document>()
+
+/** Scratch DOM has no browsing context or custom-element registry. Keep it
+ * in this document until actual insertion, including its wrapper elements. */
+export function getInertDocument(node: Node = document) {
+  const owner = node.nodeType === Node.DOCUMENT_NODE ? node as Document : node.ownerDocument!
+  if(!owner.defaultView) return owner
+  let inert = inertDocuments.get(owner)
+  if(!inert) {
+    inert = owner.implementation.createHTMLDocument("")
+    inertDocuments.set(owner, inert)
+  }
+  return inert
+}
+
+/** Copies authored DOM without running custom-element constructors. Inserting
+ * the result into the live document upgrades its widgets when needed. */
+export function cloneInert<T extends Node>(node: T, deep=false): T {
+  return node.nodeType === Node.DOCUMENT_NODE
+    ? node.cloneNode(deep) as T
+    : getInertDocument(node).importNode(node, deep) as T
+}
+
+/** Maps a range into an inert copy for structural validation or serialization.
+ * The copy is temporary; the live DOM remains the document state. */
+export function cloneRangeIn<T extends Node>(root: T, range: Range) {
+  const pathFromRoot = (node: Node) => {
+    const path: number[] = []
+    while(node !== root) {
+      const parent = node.parentNode
+      if(!parent) return null
+      const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
+      if(index < 0) return null
+      path.push(index)
+      node = parent
+    }
+    return path.reverse()
+  }
+  const startPath = pathFromRoot(range.startContainer)
+  const endPath = pathFromRoot(range.endContainer)
+  if(!startPath || !endPath) return null
+  const clonedRoot = cloneInert(root, true)
+  const resolve = (path: number[]) => path.reduce<Node | null>(
+    (node, index) => node?.childNodes.item(index) ?? null, clonedRoot,
+  )
+  const start = resolve(startPath)
+  const end = resolve(endPath)
+  if(!start || !end) return null
+  const clonedRange = getInertDocument(clonedRoot).createRange()
+  clonedRange.setStart(start, range.startOffset)
+  clonedRange.setEnd(end, range.endOffset)
+  return {root: clonedRoot, range: clonedRange}
+}
+
+/** Range.cloneContents() in the live document initializes selected widgets.
+ * Clone the range in inert DOM instead, preserving native partial-node rules. */
+export function cloneRangeContents(range: Range) {
+  if(range.collapsed) return getInertDocument(range.startContainer).createDocumentFragment()
+  return cloneRangeIn(range.commonAncestorContainer, range)!.range.cloneContents()
 }
 
 /** Removes transient editor marker classes from a node and all descendants,
@@ -1021,8 +1084,8 @@ export function clearEditorMarkerClasses(root: Node) {
 }
 
 /** Clones a node without copying transient editor marker classes. */
-export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false) {
-  return clearEditorMarkerClasses(node.cloneNode(deep)) as T
+export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {inert = false} = {}) {
+  return clearEditorMarkerClasses(inert ? cloneInert(node, deep) : node.cloneNode(deep)) as T
 }
 
 /** Round a given value to the device pixel ratio. */

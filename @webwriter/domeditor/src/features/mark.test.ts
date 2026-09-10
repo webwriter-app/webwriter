@@ -85,6 +85,24 @@ describe("MarkFeature DOM state", () => {
     expect(feature.getState()).toEqual({canMark: false, marks: []})
   })
 
+  it("does not construct widget copies while reading a range state", () => {
+    const constructed = vi.fn()
+    const tag = "mark-query-widget"
+    customElements.define(tag, class extends HTMLElement {
+      constructor() {
+        super()
+        constructed()
+      }
+    })
+    const paragraph = setContent(`<p>before<${tag}>inside</${tag}>after</p>`)
+    constructed.mockClear()
+
+    $.selectRange(paragraph.firstChild!, 0, paragraph.lastChild!, paragraph.lastChild!.textContent!.length)
+
+    expect(feature.getState()).toEqual({canMark: false, marks: []})
+    expect(constructed).not.toHaveBeenCalled()
+  })
+
   it("finds every supported tag directly from the selected DOM", () => {
     for(const mark of markNames) {
       const paragraph = setContent(`<p><${mark}>Text</${mark}></p>`)
