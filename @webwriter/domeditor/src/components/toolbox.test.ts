@@ -71,10 +71,10 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolbox.activeTool).toBe("Edit")
     expect(toolbox.getAttribute("active-tool")).toBe("Edit")
-    expect(getComputedStyle(toolbox).width).toBe("200px")
+    expect(getComputedStyle(toolbox).width).toBe("216px")
     expect(edit.getAttribute("aria-selected")).toBe("true")
     expect(style.getAttribute("aria-selected")).toBe("false")
-    expect(getComputedStyle(editTab).width).toBe("112px")
+    expect(getComputedStyle(editTab).width).toBe("128px")
     expect(getComputedStyle(editTab).height).toBe("30px")
     expect(getComputedStyle(editTab).marginBottom).toBe("-1px")
     expect(getComputedStyle(editTab).backgroundColor).toBe("#f2f2f2")
@@ -99,13 +99,13 @@ describe("toolbox", () => {
     expect(edit.getAttribute("aria-selected")).toBe("false")
     expect(style.getAttribute("aria-selected")).toBe("true")
     expect(getComputedStyle(editTab).width).toBe("28px")
-    expect(getComputedStyle(styleTab).width).toBe("112px")
+    expect(getComputedStyle(styleTab).width).toBe("128px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
       .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0"])
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
-    expect(getComputedStyle(toolbox).width).toBe("200px")
+    expect(getComputedStyle(toolbox).width).toBe("216px")
     expect(getComputedStyle(pane).width).toBe("100%")
 
     styleTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!.click()
@@ -192,7 +192,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolbox.developMode).toBe(false)
     expect(toolbox.activeMenu).toBe("Edit")
-    expect(getComputedStyle(toolbox).width).toBe("200px")
+    expect(getComputedStyle(toolbox).width).toBe("216px")
     expect(toolbox.shadowRoot!.querySelector("document-head-editor")).not.toBeNull()
 
     develop.click()
@@ -221,7 +221,7 @@ describe("toolbox", () => {
     toolbox.selectTool("Style")
     await toolbox.updateComplete
     expect(toolbox.developMode).toBe(false)
-    expect(getComputedStyle(toolbox).width).toBe("200px")
+    expect(getComputedStyle(toolbox).width).toBe("216px")
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector(".develop-mode-toggle")!.getAttribute("aria-pressed")).toBe("false")
@@ -259,20 +259,20 @@ describe("toolbox", () => {
     expect(label.textContent).toBe("Table")
     expect(edit.getAttribute("aria-label")).toBe("Edit Table")
     expect(label.hasAttribute("data-contextual")).toBe(true)
-    expect(getComputedStyle(label).color).toBe("#3977c7")
+    expect(getComputedStyle(label).color).toBe("#0ea5e9")
     expect(getComputedStyle(label).opacity).toBe("1")
-    expect(getComputedStyle(edit).color).toBe("#3977c7")
-    expect(getComputedStyle(editTab).width).toBe("88px")
+    expect(getComputedStyle(edit).color).toBe("#0ea5e9")
+    expect(getComputedStyle(editTab).width).toBe("100px")
 
     edit.click()
     await toolbox.updateComplete
-    expect(getComputedStyle(editTab).width).toBe("112px")
+    expect(getComputedStyle(editTab).width).toBe("128px")
 
     toolButton(toolbox, "Style").click()
     await toolbox.updateComplete
     expect(label.textContent).toBe("Table")
     expect(getComputedStyle(label).opacity).toBe("0")
-    expect(getComputedStyle(edit).color).toBe("#3977c7")
+    expect(getComputedStyle(edit).color).toBe("#0ea5e9")
     expect(getComputedStyle(editTab).width).toBe("28px")
 
     toolbox.table = null

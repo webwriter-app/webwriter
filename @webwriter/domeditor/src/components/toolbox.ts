@@ -69,7 +69,7 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     :host([active-tool]) {
-      width: 200px;
+      width: 216px;
     }
 
     :host([html-mode]) {
@@ -130,7 +130,7 @@ export class DomEditorToolbox extends AppRibbon {
 
     .toolbox-tab[data-active] {
       flex-grow: 1;
-      width: 112px;
+      width: 128px;
       height: 30px;
       margin-bottom: -1px;
       border: 1px solid #a8a8a8;
@@ -174,7 +174,7 @@ export class DomEditorToolbox extends AppRibbon {
 
     .toolbox-tab[data-available],
     .toolbox-tab[data-available] .toolbox-tab-button {
-      width: 88px;
+      width: 100px;
     }
 
     .toolbox-tab-close {
@@ -241,11 +241,11 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     .toolbox-tab-label[data-contextual] {
-      color: #3977c7;
+      color: var(--sl-color-primary-500, #0ea5e9);
     }
 
-    .toolbox-tab[data-contextual]:not([data-active]) .toolbox-tab-button {
-      color: #3977c7;
+    .toolbox-tab[data-contextual] .toolbox-tab-button {
+      color: var(--sl-color-primary-500, #0ea5e9);
     }
 
     .toolbox-tab-icon svg,
