@@ -175,7 +175,15 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     this.#capturedElement = element
-    if(!preserveNativeSelection) $.selectElement(element, false)
+    if(!preserveNativeSelection) {
+      if(element.localName.includes("-") || element.hasAttribute("is")) {
+        // Capture owns the widget independently of the native range. Spanning
+        // the host can also select all of its rendered shadow text on insertion.
+        const parent = element.parentNode!
+        document.getSelection()?.setPosition(parent, Array.from(parent.childNodes).indexOf(element))
+      }
+      else $.selectElement(element, false)
+    }
     this.processSelection()
   }
 

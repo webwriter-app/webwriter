@@ -350,7 +350,11 @@ describe("insertion menu", () => {
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
     expect(editorHTML()).toBe("<p>before</p><webwriter-demo></webwriter-demo>")
-    expect(document.querySelector("webwriter-demo")?.parentElement).toBe(document.body)
+    const widget = document.querySelector("webwriter-demo")!
+    expect(widget.parentElement).toBe(document.body)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(document.getSelection()!.isCollapsed).toBe(true)
   })
 
   it("enables editing for every widget inside inserted snippets", async () => {
