@@ -336,7 +336,9 @@ export class TransformationFeature extends EditorFeature {
     hidden("rotator", position !== "absolute")
     hidden("orderer", position !== "absolute")
     hidden("arranger", true)
-    hidden("anchor", position === "static")
+    // Relative and sticky offsets originate at the element's own normal-flow
+    // position, so there is no separate positioning ancestor to anchor to.
+    hidden("anchor", !["absolute", "fixed"].includes(position))
     hidden("anchor-sticky", !["relative", "sticky"].includes(position))
     for(const name of ["arranger", "orderer"]) {
       const control = name === "arranger" ? this.arranger : this.orderer
@@ -433,6 +435,22 @@ export class TransformationFeature extends EditorFeature {
     setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop) < 0)
     overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
     const style = getComputedStyle(target)
+    const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
+    const block = findContainingBlock(target as HTMLElement, position)
+    const corner = block instanceof Element ? block.getBoundingClientRect()
+      : {left: position === "fixed" ? 0 : -window.scrollX, top: position === "fixed" ? 0 : -window.scrollY}
+    // Controls stay in the transformed overlay, but sit upright at the live
+    // containing block's corner, with the sticky toggle just below the anchor.
+    if(matrix.is2D && Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) >= 1e-8) {
+      const inverse = matrix.inverse()
+      for(const [name, offset] of [["anchor", 0], ["anchor-sticky", 22]] as const) {
+        const point = this.#vector(inverse, corner.left - rect.left - rect.width / 2, corner.top + offset - rect.top - rect.height / 2)
+        Object.assign(overlay.querySelector<HTMLElement>(`#◆transform-overlay-${name}`)!.style, {
+          left: `${width / 2 + point.x}px`, top: `${height / 2 + point.y}px`,
+          transform: `matrix(${inverse.a}, ${inverse.b}, ${inverse.c}, ${inverse.d}, 0, 0)`,
+        })
+      }
+    }
     this.arranger.setAttribute("data-float", style.float || "none")
     this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
     this.#syncControlParts()

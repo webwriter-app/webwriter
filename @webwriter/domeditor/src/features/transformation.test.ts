@@ -164,6 +164,90 @@ describe("selection-owned transformation", () => {
 })
 
 describe("transform controls and geometry", () => {
+  function expectAnchorAt(left: number, top: number) {
+    const overlay = feature.overlay
+    const matrix = new DOMMatrix(overlay.style.transform)
+    const x = parseFloat(feature.anchor.style.left) - parseFloat(overlay.style.width) / 2
+    const y = parseFloat(feature.anchor.style.top) - parseFloat(overlay.style.height) / 2
+    expect(parseFloat(overlay.style.left) + parseFloat(overlay.style.width) / 2 + matrix.a * x + matrix.c * y).toBeCloseTo(left)
+    expect(parseFloat(overlay.style.top) + parseFloat(overlay.style.height) / 2 + matrix.b * x + matrix.d * y).toBeCloseTo(top)
+    const orientation = matrix.multiply(new DOMMatrix(feature.anchor.style.transform))
+    expect(orientation.a).toBeCloseTo(1)
+    expect(orientation.b).toBeCloseTo(0)
+    expect(orientation.c).toBeCloseTo(0)
+    expect(orientation.d).toBeCloseTo(1)
+  }
+
+  it.each(["absolute", "fixed"])("places the %s anchor at the positioning ancestor's top-left corner", position => {
+    const ancestor = append(document.createElement("section"))
+    ancestor.style.cssText = "position: relative; display: block; transform: scale(2)"
+    mockRect(ancestor, {left: 30, top: 40})
+    const wrapper = ancestor.appendChild(document.createElement("span"))
+    wrapper.style.display = "inline"
+    const target = wrapper.appendChild(document.createElement("custom-widget"))
+    target.style.position = position
+    target.style.rotate = "90deg"
+    mockRect(target)
+    selectNode(target)
+
+    expectAnchorAt(30, 40)
+    expect(feature.anchor.getRootNode()).toBe(editor.appendix)
+    expect(ancestor.querySelector("#◆transform-overlay-anchor")).toBeNull()
+  })
+
+  it.each(["static", "relative", "sticky"])("hides the anchor for %s positioning and updates it when the mode changes", position => {
+    const target = targetElement()
+    target.style.position = position
+    selectNode(target)
+
+    expect(feature.anchor.hidden).toBe(true)
+    expect(feature.anchor).toHaveAttribute("part", expect.stringContaining("transform-overlay-anchor-hidden"))
+
+    for(const visiblePosition of ["absolute", "fixed"]) {
+      target.style.position = visiblePosition
+      feature.updateInfo()
+      expect(feature.anchor.hidden).toBe(false)
+
+      target.style.position = position
+      feature.updateInfo()
+      expect(feature.anchor.hidden).toBe(true)
+    }
+  })
+
+  it("updates the anchor when the positioning ancestor moves or is replaced", () => {
+    const ancestor = append(document.createElement("section"))
+    ancestor.style.position = "relative"
+    mockRect(ancestor, {left: 30, top: 40})
+    const target = ancestor.appendChild(document.createElement("p"))
+    target.style.position = "absolute"
+    mockRect(target)
+    selectNode(target)
+    expectAnchorAt(30, 40)
+
+    ancestor.style.top = "-20px"
+    feature.updateInfo()
+    expectAnchorAt(30, 20)
+
+    const replacement = append(document.createElement("section"))
+    replacement.style.position = "relative"
+    mockRect(replacement, {left: 70, top: 80})
+    replacement.append(target)
+    ancestor.remove()
+    feature.updateInfo()
+    expectAnchorAt(70, 80)
+  })
+
+  it.each(["absolute", "fixed"])("places a %s anchor at the viewport origin without a positioning ancestor", position => {
+    vi.spyOn(window, "scrollX", "get").mockReturnValue(20)
+    vi.spyOn(window, "scrollY", "get").mockReturnValue(40)
+    const target = targetElement()
+    target.style.position = position
+    mockRect(target)
+    selectNode(target)
+
+    expectAnchorAt(position === "fixed" ? 0 : -20, position === "fixed" ? 0 : -40)
+  })
+
   it("does not move a static target before the eight-pixel threshold", () => {
     const target = targetElement()
     target.setAttribute("data-unknown", "keep")
