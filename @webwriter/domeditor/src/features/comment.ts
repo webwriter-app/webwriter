@@ -887,7 +887,7 @@ export class CommentFeature extends EditorFeature {
     let element = node instanceof Element ? node : node.parentElement
     while(element && element !== document.body) {
       const parent = element.parentElement
-      if(element.getAttribute("contenteditable") === "false" || isAtomicEditingElement(element)) return true
+      if(element.getAttribute("contenteditable") === "false" || isAtomicEditingElement(element, this.editor.schema)) return true
       element = parent
     }
     return false

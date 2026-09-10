@@ -1,4 +1,5 @@
 import {EditorFeature} from "."
+import type {Schema} from "../schema"
 import {MediaCapture} from "../components/media-capture"
 import {stripActiveContent} from "../active-content"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
@@ -208,7 +209,7 @@ class MediaPlaceholder {
     return this.element.isConnected && this.interactionActive
   }
 
-  constructor() {
+  constructor(private readonly schema: Schema) {
     this.element.classList.add("◆", "◆editor-only", "◆media-placeholder")
     this.element.contentEditable = "false"
     this.element.setAttribute("part", "media-placeholder")
@@ -304,7 +305,7 @@ class MediaPlaceholder {
 
   private applyUrl() {
     if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)
-      || atomicEditingContainer(this.target.parentElement)) return
+      || atomicEditingContainer(this.target.parentElement, this.schema)) return
     const input = this.root.querySelector<HTMLInputElement>(".url")!
     const source = input.value.trim()
     let url: URL | undefined
@@ -877,7 +878,7 @@ export class MediaFeature extends EditorFeature {
 
   get placeholder() {
     if(!this.mediaPlaceholder) {
-      this.mediaPlaceholder = new MediaPlaceholder()
+      this.mediaPlaceholder = new MediaPlaceholder(this.editor.schema)
       this.mediaPlaceholder.onSource = (target, source) => this.setSource(target, source)
       this.mediaPlaceholder.onCapture = (target, mode) => this.openCapture(target, mode)
       this.mediaPlaceholder.onFocus = target => {
@@ -911,7 +912,7 @@ export class MediaFeature extends EditorFeature {
       || style.display === "none"
       || style.visibility === "hidden"
       || style.visibility === "collapse"
-      || atomicEditingContainer(element.parentElement)
+      || atomicEditingContainer(element.parentElement, this.editor.schema)
       || element.parentElement?.closest(mediaSelector)) return false
     return true
   }
@@ -1474,7 +1475,7 @@ export class MediaFeature extends EditorFeature {
   private openCapture(target: Element, mode: MediaCaptureMode) {
     const sourceTarget = mediaSourceTarget(target, false)
     const valid = () => this.isEnabled && document.body.contains(target)
-      && !atomicEditingContainer(target.parentElement)
+      && !atomicEditingContainer(target.parentElement, this.editor.schema)
       && mediaCaptureOptions(target.localName as MediaType).some(option => option.mode === mode)
       && isEmptyMedia(target) && mediaSourceTarget(target, false) === sourceTarget
     if(!valid()) return false
@@ -1521,7 +1522,7 @@ export class MediaFeature extends EditorFeature {
   private refresh() {
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
     document.querySelectorAll(mediaSelector).forEach(element => {
-      if(element.matches("audio:not([controls])") && !atomicEditingContainer(element.parentElement)) {
+      if(element.matches("audio:not([controls])") && !atomicEditingContainer(element.parentElement, this.editor.schema)) {
         element.setAttribute("controls", "")
       }
       const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))

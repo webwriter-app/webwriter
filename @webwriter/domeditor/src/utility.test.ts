@@ -8,7 +8,8 @@ import {
   getPathTo, htmlToFragment, cloneWithoutEditorMarkers, roundByDPR, roundTo, angleOnCircle, rotatePoint,
   distanceBetweenPoints, midpoint, intersectionPoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
-  createsStackingContext, findStackingContainer, getZPos, getStaticCoords
+  createsStackingContext, findStackingContainer, getZPos, getStaticCoords,
+  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer
 } from "./utility"
 import { Schema } from "./schema"
 
@@ -29,6 +30,34 @@ function setBody(html: string) {
 function firstText(parent: Element | null = document.body.firstElementChild) {
   return parent!.firstChild as Text
 }
+
+describe("contentful widget boundaries", () => {
+  it("uses declared content even when empty, preserving unknown and contentless widget boundaries", () => {
+    const schema = new Schema()
+    schema.extendWidgets([
+      {tagName: "content-widget", editingConfig: {content: "flow*"}},
+      {tagName: "empty-widget", editingConfig: {content: ""}},
+    ])
+    setBody('<content-widget></content-widget><empty-widget></empty-widget><unknown-widget><p>private</p></unknown-widget><div is="content-widget"></div><div is="unknown-widget"><p>private</p></div>')
+    for(const element of Array.from(document.body.children)) {
+      const contentful = element.localName === "content-widget" || element.getAttribute("is") === "content-widget"
+      expect(isContentfulWidget(element, schema)).toBe(contentful)
+      expect(isAtomicEditingElement(element, schema)).toBe(!contentful)
+    }
+  })
+
+  it("opens nested light DOM while preserving private shadows and nested atomic widgets", () => {
+    const schema = new Schema()
+    schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "flow*"}}])
+    setBody('<content-widget><content-widget><p>text</p><opaque-widget></opaque-widget></content-widget></content-widget>')
+    const inner = document.querySelector("content-widget content-widget")!
+    expect(atomicEditingContainer(document.querySelector("p")!.firstChild, schema)).toBeNull()
+    expect(atomicEditingContainer(document.querySelector("opaque-widget"), schema)).toBe(document.querySelector("opaque-widget"))
+    const shadow = inner.attachShadow({mode: "open"})
+    shadow.textContent = "private"
+    expect(atomicEditingContainer(shadow.firstChild, schema)).toBe(inner)
+  })
+})
 
 describe("selectRange()", () => {
   it("sets anchor and focus", () => {

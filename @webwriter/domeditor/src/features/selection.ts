@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -55,6 +55,7 @@ export class SelectionFeature extends EditorFeature {
   #selectionMarkers = new Set<Element>()
   #atomicOverlays = new Map<Element, HTMLElement>()
   #atomicOverlayFrame: number | null = null
+  #lastScrollSelection: {element: Element} | {range: Range, backwards: boolean} | null = null
 
   #clearAtomicOverlays() {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
@@ -91,7 +92,7 @@ export class SelectionFeature extends EditorFeature {
       if(!range.intersectsNode(element)) return
       const children = element.children
       const isTable = element.localName === "table"
-      if(isTable || isAtomicEditingElement(element)) {
+      if(isTable || isAtomicEditingElement(element, this.editor.schema)) {
         const parent = element.parentNode!
         const index = Array.from(parent.childNodes).indexOf(element)
         // Touching an edge or selecting a control's internal text is not a
@@ -162,10 +163,17 @@ export class SelectionFeature extends EditorFeature {
 
   /** Capture-selects an authored element while keeping its internal pointer
    * interactions available to a focused feature such as SVG graphics.
-   * Focused appendix controls can preserve their native text selection. */
+   * Focused appendix controls can preserve their native text selection.
+   * Contentful widgets use ordinary element selection so their content stays editable. */
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
     if(!element.isConnected || element === document.body || !document.body.contains(element)) return
     this.clearSelectedSection()
+    if(isContentfulWidget(element, this.editor.schema)) {
+      this.#releaseCaptureSelection()
+      $.selectElement(element)
+      this.processSelection()
+      return
+    }
     this.#capturedElement = element
     if(!preserveNativeSelection) $.selectElement(element, false)
     this.processSelection()
@@ -201,7 +209,7 @@ export class SelectionFeature extends EditorFeature {
       if(!(node instanceof Element || node instanceof DocumentFragment)) return false
       if(node instanceof Element) {
         if(node.matches(".◆editor-only, br")) return false
-        if(!node.childNodes.length || isAtomicEditingElement(node)) return true
+        if(!node.childNodes.length || isAtomicEditingElement(node, this.editor.schema)) return true
       }
       return Array.from(node.childNodes).some(hasEditingContent)
     }
@@ -257,17 +265,17 @@ export class SelectionFeature extends EditorFeature {
    * into the boundary in the requested direction. */
   #navigateAtomicSelection(direction: "backward" | "forward", vertical = false) {
     const selectedElement = $.selectedElement
-    if(selectedElement && isAtomicEditingElement(selectedElement)) {
+    if(selectedElement && isAtomicEditingElement(selectedElement, this.editor.schema)) {
       $.selectGap(selectedElement, direction === "backward" ? "before" : "after")
     }
     else {
       let adjacent = this.#adjacentNavigationElement(direction)
-      if(adjacent && !isAtomicEditingElement(adjacent)) adjacent = null
+      if(adjacent && !isAtomicEditingElement(adjacent, this.editor.schema)) adjacent = null
       const block = this.#selectionBlock()
       if(!adjacent && block && (vertical || this.#isCaretAtBlockBoundary(block, direction))) {
         adjacent = this.#adjacentNavigationElement(direction, true)
       }
-      if(!adjacent || !isAtomicEditingElement(adjacent)) return false
+      if(!adjacent || !isAtomicEditingElement(adjacent, this.editor.schema)) return false
       $.selectElement(adjacent)
     }
     this.processSelection()
@@ -279,7 +287,7 @@ export class SelectionFeature extends EditorFeature {
   #disclosureEdge(node: Node, direction: "backward" | "forward"): Node | null {
     if(node instanceof Text) return node.textContent?.trim() ? node : null
     if(!isElement(node) || node.matches("br, [hidden], .◆editor-only") || getComputedStyle(node).display === "none") return null
-    if(Boolean(isAtomicEditingElement(node))) return node
+    if(Boolean(isAtomicEditingElement(node, this.editor.schema))) return node
     if(node.matches("details:not([open])")) {
       const summary = node.querySelector(":scope > summary")
       return summary ? this.#disclosureEdge(summary, direction) : node
@@ -326,7 +334,7 @@ export class SelectionFeature extends EditorFeature {
       if(!adjacent) return this.#isCaretAtBlockBoundary(getDocumentRoot(), direction)
       const edge = this.#disclosureEdge(adjacent, direction === "forward" ? "backward" : "forward")
       if(!edge) return false
-      if(isAtomicEditingElement(edge)) $.selectElement(edge)
+      if(isAtomicEditingElement(edge, this.editor.schema)) $.selectElement(edge)
       else $.move(edge, direction === "forward" ? 0 : -1)
     }
     else {
@@ -353,7 +361,7 @@ export class SelectionFeature extends EditorFeature {
     queueMicrotask(() => {
       this.#sharedRefreshQueued = false
       if(!this.isEnabled) return
-      this.processSelection()
+      this.processSelection(undefined, {scrollIntoView: false})
       this.editor.features.graphic.refresh()
       // Shared DOM changes can clamp a detached selection without firing a
       // native selectionchange event, so refresh the host breadcrumb as well.
@@ -400,7 +408,7 @@ export class SelectionFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
     const atomic = (node: Node) => node.getRootNode() instanceof ShadowRoot
-      ? atomicEditingContainer(node) : mediaContainerForNode(node) ?? (graphicContainerForNode(node) ? atomicEditingContainer(node) : null)
+      ? atomicEditingContainer(node, this.editor.schema) : mediaContainerForNode(node) ?? (graphicContainerForNode(node) ? atomicEditingContainer(node, this.editor.schema) : null)
     const anchor = atomic(selection.anchorNode)
     const focus = atomic(selection.focusNode)
     if(!anchor && !focus) return
@@ -439,6 +447,7 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("blur", this.#endDrag)
     this.#endDrag()
     this.#releaseCaptureSelection()
+    this.#lastScrollSelection = null
     this.clearSelectedSection()
     this.#clearElementHover()
     this.#clearStyleTargetHover()
@@ -459,7 +468,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   readonly #handleWindowFocus = () => {
-    if(!this.editor.features.media.isPlaceholderInteraction) this.processSelection()
+    if(!this.editor.features.media.isPlaceholderInteraction) this.processSelection(undefined, {scrollIntoView: false})
   }
 
   /** Pointer capture keeps the whole editor drag in the outer document, even
@@ -538,7 +547,7 @@ export class SelectionFeature extends EditorFeature {
     const point = atOrigin
       ? {node: drag.focus.startContainer, offset: drag.focus.startOffset}
       : $.pointFromCoords(Math.max(0, Math.min(event.clientX, window.innerWidth - 1)),
-        Math.max(0, Math.min(event.clientY, window.innerHeight - 1)), event.target)
+        Math.max(0, Math.min(event.clientY, window.innerHeight - 1)), event.target, this.editor.schema)
     if(!point) return
     document.getSelection()?.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset, point.node, point.offset)
     this.processSelection(true)
@@ -548,7 +557,7 @@ export class SelectionFeature extends EditorFeature {
     pointerdown: event => this.#handleWidgetShadowInteraction(event),
     pointermove: event => {
       if(this.isInDragSelection) event.preventDefault()
-      if(widgetHostForShadowInteraction(event) || isAppendixInteraction(event)) this.#extendDrag(event)
+      if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
     },
     pointerup: this.#finishDrag,
     pointercancel: this.#finishDrag,
@@ -577,7 +586,9 @@ export class SelectionFeature extends EditorFeature {
     click: event => this.#handleModifierClick(event),
     focusin: event => {
       this.#handleWidgetShadowInteraction(event)
-      if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) this.processSelection()
+      if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
+        this.processSelection(undefined, {scrollIntoView: false})
+      }
     },
     keydown: event => { this.#handleKeyState(event); this.#handleWidgetShadowInteraction(event) },
     keyup: event => this.#handleKeyState(event),
@@ -610,7 +621,7 @@ export class SelectionFeature extends EditorFeature {
   /** Cancels native modifier-click actions (navigation, activation, focus)
    * during capture, except inside the widget that currently owns capture. */
   readonly #handleModifierClick = (event: MouseEvent) => {
-    const widget = widgetHostForShadowInteraction(event)
+    const widget = widgetHostForShadowInteraction(event, this.editor.schema)
     if(event.button === 0 && modifierKeyDown(event)
       && (!widget || widget !== this.captureSelectedWidget)) {
       event.preventDefault()
@@ -619,10 +630,10 @@ export class SelectionFeature extends EditorFeature {
 
   /** Routes wheel input over an inactive widget to the editor document instead
    * of letting the widget consume it (for example, to zoom a map).
-   * Capture-selected widgets retain their native wheel behavior. */
+   * Contentful and capture-selected widgets retain their native wheel behavior. */
   readonly #handleWidgetWheel = (event: WheelEvent) => {
-    const widget = widgetHostForShadowInteraction(event)
-    if(!widget || widget === this.captureSelectedWidget) return
+    const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+    if(!widget || isContentfulWidget(widget, this.editor.schema) || widget === this.captureSelectedWidget) return
     event.stopPropagation()
     // Preserve browser page zoom while still keeping the event out of the
     // widget. Regular wheel scrolling has to be redirected explicitly because
@@ -641,18 +652,37 @@ export class SelectionFeature extends EditorFeature {
    * their shadow tree. Document capture listeners still receive the event so
    * editor overlays can follow layout changes. */
   readonly #handleWidgetScroll = (event: Event) => {
-    const widget = widgetHostForScrollEvent(event)
-    if(widget && widget !== this.captureSelectedWidget) event.stopPropagation()
+    const widget = widgetHostForScrollEvent(event, this.editor.schema)
+    if(widget && !isContentfulWidget(widget, this.editor.schema) && widget !== this.captureSelectedWidget) event.stopPropagation()
   }
 
   /** Keeps widget shadow trees atomic without cancelling their own controls.
    * Regular feature listeners ignore these events, so they cannot start or
-   * extend an editor drag selection. The first interaction node-selects and
-   * captures the host while leaving the widget's native focus, caret, input,
-   * and event handling untouched. */
+   * extend an editor drag selection. Contentful widgets only acquire an
+   * element selection on modifier-click; other widgets capture the host while
+   * leaving their native focus, caret, input, and event handling untouched. */
   readonly #handleWidgetShadowInteraction = (event: Event) => {
-    const widget = widgetHostForShadowInteraction(event)
+    const widget = widgetHostForShadowInteraction(event, this.editor.schema)
     if(!widget) return
+    if(isContentfulWidget(widget, this.editor.schema)) {
+      const hadCapture = this.isCaptureSelection
+      this.#releaseCaptureSelection()
+      if(event.type === "pointerdown") {
+        this.#endDrag()
+        this.clearSelectedSection()
+        if(hadCapture) focusedWidgetHost()?.blur()
+      }
+      if(event instanceof MouseEvent && event.type === "pointerdown"
+        && event.button === 0 && modifierKeyDown(event)) {
+        event.preventDefault()
+        $.selectElement(widget)
+        this.#lastScrollSelection = {element: widget}
+        this.processSelection(undefined, {scrollIntoView: false})
+        this.editor.postSelectionPath()
+      }
+      else if(hadCapture) this.processSelection(undefined, {scrollIntoView: false})
+      return
+    }
     if(widget === this.captureSelectedWidget) return
     this.clearSelectedSection()
     this.#endDrag()
@@ -694,7 +724,8 @@ export class SelectionFeature extends EditorFeature {
     let targetElement = getContainer(target)
     const table = targetElement.closest("table")
     if(table) return table
-    while(targetElement && (targetElement.matches("br, wbr") || this.editor.schema.isPhrasing(targetElement))) {
+    while(targetElement && !isContentfulWidget(targetElement, this.editor.schema)
+      && (targetElement.matches("br, wbr") || this.editor.schema.isPhrasing(targetElement))) {
       const parent = targetElement.parentElement
       if(!parent) break
       targetElement = parent
@@ -1025,16 +1056,24 @@ export class SelectionFeature extends EditorFeature {
     return "text"
   }
 
-  /** Smoothly reveals the selection's logical focus. Node-like selections
-   * reveal their authored element. Caret-like selections scroll each nested
-   * scrolling box and then the viewport by only the distance needed to expose
-   * the focus caret. */
+  /** Reveals a changed logical selection once. Live range snapshots follow DOM
+   * mutations so refreshes and edits around an unchanged caret do not scroll.
+   * Node and capture selections of the same element share one scroll target. */
   #scrollSelectionIntoView(kind: SelectionKind, selection: Selection | null, capturedElement: Element | null) {
     const selectedElement = kind === "capture" ? capturedElement
       : kind === "section" ? this.selectedSectionElement
         : kind === "element" ? $.selectedElement
           : kind === "cell" ? this.editor.features.table.selectionFocusCell
             : null
+    const previous = this.#lastScrollSelection
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const backwards = Boolean(range && $.isBackwards)
+    if(selectedElement ? previous && "element" in previous && previous.element === selectedElement
+      : range && previous && "range" in previous && previous.backwards === backwards
+        && previous.range.startContainer === range.startContainer && previous.range.startOffset === range.startOffset
+        && previous.range.endContainer === range.endContainer && previous.range.endOffset === range.endOffset) return
+    this.#lastScrollSelection = selectedElement ? {element: selectedElement}
+      : range ? {range: range.cloneRange(), backwards} : null
     if(selectedElement) {
       selectedElement.scrollIntoView({behavior: "smooth", block: "nearest", inline: "nearest"})
       return
@@ -1111,10 +1150,14 @@ export class SelectionFeature extends EditorFeature {
 
   /** Normalizes and re-applies exactly one selection kind for the current
    * document Selection. This is the invariant boundary used by native
-   * selectionchange events and every editor-driven refresh. */
-  processSelection(inDragSelection=this.isInDragSelection) {
+   * selectionchange events and every editor-driven refresh. Passive refreshes
+   * preserve the last interaction's scroll target without revealing it again. */
+  processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
     const focusedWidget = focusedWidgetHost()
-    if(focusedWidget && !this.isInDragSelection) this.#capturedElement = focusedWidget
+    if(focusedWidget && !this.isInDragSelection) {
+      this.#capturedElement = isContentfulWidget(focusedWidget, this.editor.schema) ? null : focusedWidget
+    }
+    if(isContentfulWidget(this.#capturedElement, this.editor.schema)) this.#releaseCaptureSelection()
     const capturedElement = this.captureSelectedElement
     let sel: Selection | null
     if(capturedElement) {
@@ -1143,7 +1186,9 @@ export class SelectionFeature extends EditorFeature {
       : kind === "section" ? this.selectedSectionElement
         : kind === "element" ? $.selectedElement ?? null : null)
     this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
-    this.#scrollSelectionIntoView(kind, sel, capturedElement)
+    if(scrollIntoView && !isContentfulWidget(focusedWidget, this.editor.schema)) {
+      this.#scrollSelectionIntoView(kind, sel, capturedElement)
+    }
     if(kind === "cell") return
     if(kind === "virtual") {
       this.editor.features.list.refreshSelectionPresentation()
@@ -1229,7 +1274,7 @@ export class SelectionFeature extends EditorFeature {
     "selectionchange": () => {
       if(this.editor.features.media.isPlaceholderInteraction) return
       this.clearSelectedSection()
-      this.processSelection(this.isInDragSelection)
+      this.processSelection(this.isInDragSelection, {scrollIntoView: false})
     },
 
   }
@@ -1338,9 +1383,9 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection(this.isInDragSelection)
       }
       else {
-        const point = $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target)
+        const point = $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target, this.editor.schema)
         const nativeClick = (!point || !$.isGapSelection && !point.overrideNative)
-          && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null)
+          && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
         if(!nativeClick) ev.preventDefault()
         this.#beginDrag(ev, nativeClick)
         this.processSelection(true)

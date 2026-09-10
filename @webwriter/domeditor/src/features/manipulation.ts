@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, cloneWithoutEditorMarkers, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, isOnApple } from "../utility"
+import { $, cloneWithoutEditorMarkers, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -80,6 +80,7 @@ export class ManipulationFeature extends EditorFeature {
   refreshNodeDragTarget(element: Element | null) {
     if(this.nodeDrag) return
     if(!this.isEnabled || element === document.body || element === getDocumentRoot()
+      || isContentfulWidget(element, this.editor.schema)
       || !element?.isConnected || !getDocumentRoot().contains(element)) element = null
     if(element === this.dragTarget) return
     this.clearNodeDragSurface()
@@ -220,7 +221,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Hover and drop resolve the same text or structural insertion point. */
   private dropRange(event: DragEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
-    const point = $.pointFromCoords(event.clientX, event.clientY, event.target)
+    const point = $.pointFromCoords(event.clientX, event.clientY, event.target, this.editor.schema)
     if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)) return null
     const range = document.createRange()
     range.setStart(point.node, point.offset)
@@ -679,7 +680,7 @@ export class ManipulationFeature extends EditorFeature {
     if(inAuthoredBody(selectedSection)) return selectedSection
 
     const focusedWidget = focusedWidgetHost()
-    if(inAuthoredBody(focusedWidget)) return focusedWidget
+    if(inAuthoredBody(focusedWidget) && !isContentfulWidget(focusedWidget, this.editor.schema)) return focusedWidget
 
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return root
@@ -704,15 +705,15 @@ export class ManipulationFeature extends EditorFeature {
     return style && typeof style.setProperty === "function"? style: null
   }
 
-  /** Whether an element is an authored, text-bearing editing block. Custom
-   * elements and registered widgets stay atomic unless their own public
-   * editing contract handles paragraph formatting. */
+  /** Whether an element is an authored, text-bearing editing block. Contentful
+   * widget ancestors expose their light DOM to ordinary paragraph formatting. */
   private isTextBlock(element: Element): element is HTMLElement {
     const root = getDocumentRoot()
     if(element === root || element === document.body || isSectionElement(element)) return false
     for(let ancestor: Element | null = element; ancestor && ancestor !== root; ancestor = ancestor.parentElement) {
-      if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")
-        || this.editor.schema.get(ancestor).group?.includes("widget")) return false
+      if((ancestor.localName.includes("-") || ancestor.hasAttribute("is")
+        || this.editor.schema.get(ancestor).group?.includes("widget"))
+        && (ancestor === element || !isContentfulWidget(ancestor, this.editor.schema))) return false
     }
     return this.editor.schema.isBlock(element)
   }

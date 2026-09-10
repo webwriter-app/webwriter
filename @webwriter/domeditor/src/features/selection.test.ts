@@ -39,6 +39,242 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("contentful widgets", () => {
+  const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+  beforeEach(() => {
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, writable: true, value: () => null})
+    editor.schema.extendWidgets([
+      {tagName: "timeline-widget", editingConfig: {content: "timeline-item*"}},
+      {tagName: "timeline-item", editingConfig: {content: "flow*"}},
+    ])
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    if(originalHitTest) Object.defineProperty(document, "caretPositionFromPoint", originalHitTest)
+    else Reflect.deleteProperty(document, "caretPositionFromPoint")
+  })
+
+  function timeline(slotted = false) {
+    document.body.innerHTML = '<timeline-widget><timeline-item><!--keep--><div><p><b>hello</b> world</p></div></timeline-item></timeline-widget>'
+    const widget = document.querySelector<HTMLElement>("timeline-widget")!
+    const item = document.querySelector("timeline-item")!
+    if(slotted) {
+      widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
+      item.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    }
+    return {widget, item, paragraph: document.querySelector("p")!}
+  }
+
+  it.each([false, true])("selects an inner paragraph directly, including when its widget is selected (slotted: %s)", slotted => {
+    const {widget, paragraph} = timeline(slotted)
+    for(const selected of [document.body, widget]) {
+      $.selectElement(selected)
+      feature.processSelection()
+      paragraph.querySelector("b")!.dispatchEvent(new MouseEvent("pointerdown", {
+        bubbles: true, composed: true, cancelable: true, ctrlKey: true,
+      }))
+
+      expect($.selectedElement).toBe(paragraph)
+      expect(paragraph).toHaveClass("◆element-selected")
+      expect(widget).not.toHaveClass("◆element-selected", "◆element-capture-selected")
+      expect(feature.isCaptureSelection).toBe(false)
+    }
+  })
+
+  it("keeps pointer selection and drags in slotted authored text", () => {
+    const {widget, paragraph} = timeline(true)
+    const text = paragraph.querySelector("b")!.firstChild!
+    const rect = new DOMRect(0, 0, 200, 40)
+    vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    const caret = vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1, getClientRect: () => rect})
+    $.selectElement(widget)
+    feature.processSelection()
+    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+
+    const pointerdown = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, clientX: 10, clientY: 10})
+    paragraph.dispatchEvent(pointerdown)
+    expect(pointerdown.defaultPrevented).toBe(false)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+
+    caret.mockReturnValue({offsetNode: text, offset: 4, getClientRect: () => rect})
+    paragraph.dispatchEvent(new MouseEvent("pointermove", {bubbles: true, composed: true, clientX: 30, clientY: 10}))
+    paragraph.dispatchEvent(new MouseEvent("pointerup", {bubbles: true, composed: true, clientX: 30, clientY: 10}))
+    expect(document.getSelection()!.toString()).toBe("ell")
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(widget).not.toHaveClass("◆element-selected", "◆element-capture-selected")
+    caret.mockRestore()
+  })
+
+  it.each(["host", "open", "closed"] as const)("never promotes repeated modifier clicks on a %s surface to capture", mode => {
+    const {widget} = timeline()
+    const target = mode === "host" ? widget : document.createElement("button")
+    if(mode !== "host") widget.attachShadow({mode}).append(target)
+    for(let i = 0; i < 3; i++) {
+      target.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true}))
+      expect($.selectedElement).toBe(widget)
+      expect(widget).toHaveClass("◆element-selected")
+      expect(widget).not.toHaveClass("◆element-capture-selected")
+      expect(feature.isCaptureSelection).toBe(false)
+    }
+  })
+
+  it.each(["open", "closed"] as const)("leaves %s shadow controls independent without capturing their host", mode => {
+    const {widget, paragraph} = timeline()
+    const control = document.createElement("input")
+    widget.attachShadow({mode}).append(control)
+    $.selectElement(paragraph)
+    feature.processSelection()
+    const input = new InputEvent("beforeinput", {bubbles: true, composed: true, cancelable: true, inputType: "insertParagraph"})
+    const received = vi.fn()
+    control.addEventListener("beforeinput", received)
+    control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    control.focus()
+    control.dispatchEvent(input)
+    feature.processSelection()
+    expect(received).toHaveBeenCalledOnce()
+    expect(input.defaultPrevented).toBe(false)
+    expect(paragraph.innerHTML).toBe("<b>hello</b> world")
+    expect($.selectedElement).toBe(paragraph)
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+  })
+
+  it("keeps focused light-DOM selections and styling on the inner paragraph", () => {
+    const {widget, paragraph} = timeline(true)
+    widget.tabIndex = 0
+    widget.focus()
+    $.selectRange(paragraph.firstChild!.firstChild!, 1)
+    document.dispatchEvent(new Event("selectionchange"))
+    editor.features.manipulation.setStyle({color: "red"})
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(paragraph).toHaveStyle({color: "red"})
+    expect(widget).not.toHaveAttribute("style")
+    expect($.anchor).toBe(paragraph.firstChild!.firstChild)
+  })
+
+  it("leaves retargeted closed-shadow pointer and keyboard events to the widget", () => {
+    const {widget, paragraph} = timeline()
+    $.selectElement(paragraph)
+    feature.processSelection()
+    // Closed roots expose only the host to document listeners in browsers.
+    const pointer = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+    widget.dispatchEvent(pointer)
+    expect(pointer.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+    const key = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true})
+    widget.dispatchEvent(key)
+    expect(key.defaultPrevented).toBe(false)
+    expect(paragraph.isConnected).toBe(true)
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+
+  it("lets a contentful widget scroll without capture", () => {
+    const {widget} = timeline()
+    const scroller = document.createElement("div")
+    widget.attachShadow({mode: "open"}).append(scroller)
+    const onWheel = vi.fn()
+    const onScroll = vi.fn()
+    scroller.addEventListener("wheel", onWheel)
+    scroller.addEventListener("scroll", onScroll)
+    const wheel = new WheelEvent("wheel", {deltaY: 100, bubbles: true, composed: true, cancelable: true})
+    scroller.dispatchEvent(wheel)
+    scroller.dispatchEvent(new Event("scroll", {bubbles: false}))
+    expect(wheel.defaultPrevented).toBe(false)
+    expect(onWheel).toHaveBeenCalledOnce()
+    expect(onScroll).toHaveBeenCalledOnce()
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+
+  it("releases another widget's capture when focus moves to a contentful widget", () => {
+    const {widget} = timeline()
+    const opaque = document.createElement("opaque-widget")
+    document.body.append(opaque)
+    feature.captureElement(opaque)
+    expect(opaque).toHaveClass("◆element-capture-selected")
+    const control = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(control)
+    control.focus()
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(opaque).not.toHaveClass("◆element-capture-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+  })
+
+  it.each(["open", "closed"] as const)("does not reveal the outer selection while a %s shadow control is active", async mode => {
+    const {widget} = timeline()
+    const control = document.createElement("input")
+    widget.attachShadow({mode}).append(control)
+    $.selectElement(widget)
+    feature.processSelection()
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    const nativeRect = Object.getOwnPropertyDescriptor(Range.prototype, "getBoundingClientRect")
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(10, window.innerHeight + 40, 0, 20),
+    })
+    try {
+      control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
+      control.focus({preventScroll: true})
+      expect(scrollIntoView).not.toHaveBeenCalled()
+      expect(scrollBy).not.toHaveBeenCalled()
+
+      // Native controls can project their selection to a gap beside the host.
+      document.getSelection()!.collapse(document.body, 0)
+      document.dispatchEvent(new Event("selectionchange"))
+      control.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+      feature.processSelection()
+      widget.append(document.createComment("widget mutation"))
+      editor.doc.syncFromDOM()
+      await Promise.resolve()
+      expect(scrollIntoView).not.toHaveBeenCalled()
+      expect(scrollBy).not.toHaveBeenCalled()
+      expect(feature.isCaptureSelection).toBe(false)
+
+    }
+    finally {
+      if(nativeRect) Object.defineProperty(Range.prototype, "getBoundingClientRect", nativeRect)
+      else Reflect.deleteProperty(Range.prototype, "getBoundingClientRect")
+    }
+  })
+
+  it("does not scroll when a contentful shadow interaction releases another widget's capture", () => {
+    const {widget} = timeline()
+    const control = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(control)
+    const opaque = document.createElement("opaque-widget")
+    document.body.append(opaque)
+    feature.captureElement(opaque)
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(opaque).not.toHaveClass("◆element-capture-selected")
+  })
+
+  it("modifier-selects a contentful widget from its shadow DOM without scrolling", () => {
+    const {widget} = timeline()
+    const control = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(control)
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, ctrlKey: true, cancelable: true}))
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it("cleans up nested selection markers without adding artifacts to serialized content", () => {
+    const {widget, paragraph} = timeline(true)
+    $.selectElement(paragraph)
+    feature.processSelection()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+    feature.disable()
+    expect(widget.querySelector('[class*="◆"]')).toBeNull()
+  })
+})
+
 describe("processSelection()", () => {
   const atomicOverlays = () => editor.appendix.querySelectorAll<HTMLElement>('[part="atomic-selection-overlay"]')
 
@@ -552,6 +788,95 @@ describe("processSelection()", () => {
 describe("scrolling selections into view", () => {
   const options = {behavior: "smooth", block: "nearest", inline: "nearest"} as const
 
+  it("reveals an element only when the selected element changes", () => {
+    document.body.innerHTML = "<p>first</p><p>second</p>"
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    try {
+      feature.actions.selectNode({type: "selectNode", path: [0]})
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+      feature.processSelection()
+      document.dispatchEvent(new Event("selectionchange"))
+      feature.actions.selectNode({type: "selectNode", path: [0]})
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+      feature.actions.selectNode({type: "selectNode", path: [1]})
+      expect(scrollIntoView).toHaveBeenCalledTimes(2)
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(document.body.children[1])
+    }
+    finally { scrollIntoView.mockRestore() }
+  })
+
+  it.each(["open", "closed"] as const)("does not scroll an already selected widget on capture, %s shadow focus, or input", mode => {
+    const widget = el("interactive-widget")
+    const input = document.createElement("input")
+    widget.attachShadow({mode}).append(input)
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    try {
+      $.selectElement(widget)
+      feature.processSelection()
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+      input.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
+      input.focus({preventScroll: true})
+      document.getSelection()!.collapse(document.body, 0)
+      for(const type of ["keydown", "input", "change"]) input.dispatchEvent(new Event(type, {bubbles: true, composed: true}))
+      feature.processSelection()
+      expect(feature.captureSelectedWidget).toBe(widget)
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+    }
+    finally { scrollIntoView.mockRestore() }
+  })
+
+  it("does not let passive native selection changes trigger or re-arm widget scrolling", () => {
+    const widget = el("interactive-widget")
+    const control = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(control)
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    try {
+      $.selectElement(widget)
+      feature.processSelection()
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+      scrollBy.mockClear()
+      document.getSelection()!.collapse(document.body, 0)
+      document.dispatchEvent(new Event("selectionchange"))
+      control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
+      expect(feature.captureSelectedWidget).toBe(widget)
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+      expect(scrollBy).not.toHaveBeenCalled()
+    }
+    finally {
+      scrollIntoView.mockRestore()
+      scrollBy.mockRestore()
+    }
+  })
+
+  it("reveals a changed caret but does not reveal refreshes or mutations before that caret", () => {
+    const paragraph = el("p", "hello")
+    const text = paragraph.firstChild as Text
+    const nativeRect = Object.getOwnPropertyDescriptor(Range.prototype, "getBoundingClientRect")
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true, value: () => new DOMRect(10, window.innerHeight + 40, 0, 20),
+    })
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    try {
+      $.move(text, 2)
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenCalledOnce()
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenCalledOnce()
+      text.insertData(0, "prefix")
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenCalledOnce()
+      $.move(text, 1)
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenCalledTimes(2)
+    }
+    finally {
+      if(nativeRect) Object.defineProperty(Range.prototype, "getBoundingClientRect", nativeRect)
+      else Reflect.deleteProperty(Range.prototype, "getBoundingClientRect")
+      scrollBy.mockRestore()
+    }
+  })
+
   it("smoothly reveals ordinary, capture, section, and cell element selections", () => {
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     try {
@@ -593,8 +918,9 @@ describe("scrolling selections into view", () => {
       configurable: true,
       value: () => new DOMRect(10, window.innerHeight + 40, 0, 20),
     })
-    const expectMinimalScroll = (behavior = "smooth") => {
+    const expectMinimalScroll = (select: () => void, behavior = "smooth") => {
       scrollBy.mockClear()
+      select()
       feature.processSelection()
       expect(scrollBy).toHaveBeenCalledOnce()
       expect(scrollBy).toHaveBeenCalledWith({left: 0, top: 60, behavior})
@@ -603,20 +929,16 @@ describe("scrolling selections into view", () => {
     try {
       document.body.innerHTML = "<p>text</p>"
       const text = document.querySelector("p")!.firstChild!
-      $.selectRange(text, 0, text, 2)
-      expectMinimalScroll()
+      expectMinimalScroll(() => $.selectRange(text, 0, text, 2))
 
       document.body.innerHTML = "<p></p>"
-      $.move(document.querySelector("p")!, 0)
-      expectMinimalScroll()
+      expectMinimalScroll(() => $.move(document.querySelector("p")!, 0))
 
       document.body.innerHTML = "<p>a</p><p>b</p>"
-      $.selectGap(document.querySelector("p")!, "after")
-      expectMinimalScroll("instant")
+      expectMinimalScroll(() => $.selectGap(document.querySelector("p")!, "after"), "instant")
 
       document.body.innerHTML = "<ul></ul>"
-      $.move(document.querySelector("ul")!, 0)
-      expectMinimalScroll()
+      expectMinimalScroll(() => $.move(document.querySelector("ul")!, 0))
     }
     finally {
       Object.defineProperty(Range.prototype, "getBoundingClientRect", {configurable: true, value: nativeRect})

@@ -54,7 +54,7 @@ export class EditorFeature {
           && Boolean(this.editor.features?.selection?.isCaptureSelection)
         if((!captureOwnsInteraction || this.handlesCapturedElementInteractions)
           && (this.handlesAppendixInteractions || !isAppendixInteraction(event))
-          && !isWidgetShadowInteraction(event)
+          && !isWidgetShadowInteraction(event, this.editor.schema)
           && (this.handlesFormControlInteractions || !isFormControlInteraction(event))) {
           listener(event as never)
         }

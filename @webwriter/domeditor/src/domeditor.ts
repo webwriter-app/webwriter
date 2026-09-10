@@ -19,7 +19,7 @@ import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
+import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeMarkElements, stripExcludedMarks} from "./marks"
 import {
   executeCompleteEvent,
@@ -681,7 +681,7 @@ export class DOMEditor {
   }
 
   #handleInput = (ev: Event) => {
-    if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev) || isFormControlInteraction(ev)) return
+    if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev, this.schema) || isFormControlInteraction(ev)) return
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
   }
 
@@ -749,7 +749,7 @@ export class DOMEditor {
   }
 
   private handleSelectionChange = (event: Event) => {
-    if(isAppendixInteraction(event) || isWidgetShadowInteraction(event) || isFormControlInteraction(event)
+    if(isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.schema) || isFormControlInteraction(event)
       || this.features.media.isPlaceholderInteraction) return
     const selection = document.getSelection()
     if(!selection?.anchorNode) return
@@ -938,7 +938,8 @@ export class DOMEditor {
   postSelectionPath(inserted = false) {
     const body = document.body
     const root = getDocumentRoot(body)
-    const focusedWidget = focusedWidgetHost()
+    const focusedHost = focusedWidgetHost()
+    const focusedWidget = isContentfulWidget(focusedHost, this.schema) ? null : focusedHost
     const selected = this.selectedElementForPath()
     const element = selected === body
       ? root
@@ -1392,7 +1393,7 @@ export class DOMEditor {
   }
 
   #onCopy = (ev: ClipboardEvent) => {
-    if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
+    if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev, this.schema) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
     ev.preventDefault()
     const {html, text} = this.serializeClipboardFragment($.copy(), $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
     ev.clipboardData.setData("text/html", html)

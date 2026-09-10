@@ -39,25 +39,36 @@ function focusEditorWindow() {
   window.focus()
 }
 
+/** A widget's declared content model opens its authored light DOM to editing,
+ * even while empty. Unknown widgets retain their atomic editing boundary. */
+export function isContentfulWidget(node: Node | null, schema?: Schema) {
+  if(!(node instanceof Element) || node.namespaceURI !== "http://www.w3.org/1999/xhtml") return false
+  const name = node.getAttribute("is")?.toLowerCase() ?? node.localName
+  if(!name.includes("-")) return false
+  const content = schema?.get(name)?.content
+  return Boolean(content && (!("expression" in content) || content.expression.kind !== "empty"))
+}
+
 /** Whether an element is edited as one indivisible node rather than through
  * its DOM contents. */
-export function isAtomicEditingElement(node: Node | null): node is Element {
+export function isAtomicEditingElement(node: Node | null, schema?: Schema): node is Element {
   return node instanceof Element
     && (node.matches(mediaElementSelector)
       || node.localName === "hr"
       || node.namespaceURI === SVG_NAMESPACE && node.localName === "svg"
       || node.matches(formControlSelector)
-      || node.localName.includes("-")
-      || node.hasAttribute("is"))
+      || (node.localName.includes("-") || node.hasAttribute("is")) && !isContentfulWidget(node, schema))
 }
 
 /** Outermost authored atomic host, including points reported inside open or
  * closed widget shadow trees. The document template remains an editing root. */
-export function atomicEditingContainer(node: Node | null) {
+export function atomicEditingContainer(node: Node | null, schema?: Schema) {
   const root = getDocumentRoot()
   let atomic: Element | null = null
   while(node && node !== root && node !== document.body) {
-    if(isAtomicEditingElement(node)) atomic = node
+    if(isAtomicEditingElement(node, schema)) atomic = node
+    // A contentful host exposes light DOM, never its private shadow tree.
+    if(node instanceof ShadowRoot && node.host !== document.body) atomic = node.host
     node = node.parentNode ?? (node instanceof ShadowRoot ? node.host : null)
   }
   return node ? atomic : null
@@ -275,9 +286,9 @@ export class EditingSelection {
   }
 
   /** Moves (or with `extend`, extends) the selection to the document position at the given viewport coordinates, snapping to element gaps at text boundaries. Requires layout (caretPositionFromPoint). */
-  static selectCoords(x: number, y: number, extend=false, pointerTarget?: EventTarget | null) {
+  static selectCoords(x: number, y: number, extend=false, pointerTarget?: EventTarget | null, schema?: Schema) {
     focusEditorWindow()
-    const point = this.pointFromCoords(x, y, pointerTarget)
+    const point = this.pointFromCoords(x, y, pointerTarget, schema)
     if(!point) return
     if(extend) this.extend(point.node, point.offset)
     else this.selectRange(point.node, point.offset)
@@ -285,8 +296,8 @@ export class EditingSelection {
   }
 
   /** Resolves text and structural gaps identically for clicks and drags,
-   * without ever installing an intermediate selection inside a widget. */
-  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null) {
+   * without installing an intermediate selection inside atomic content. */
+  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema) {
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = getDocumentRoot()
     let overrideNative = false
@@ -351,7 +362,7 @@ export class EditingSelection {
           return node instanceof Element ? gap(node, before ? "before" : "after") : point(node, before ? 0 : node.length)
         }
         if(offsetNode && node.contains(offsetNode) && offsetNode !== container) break
-        if(node instanceof Element && !isAtomicEditingElement(node) && layoutChildren(node).length) {
+        if(node instanceof Element && !isAtomicEditingElement(node, schema) && layoutChildren(node).length) {
           container = node
           continue
         }
@@ -374,8 +385,8 @@ export class EditingSelection {
     // Pointer capture retargets moves to BODY. Hit-test the authored stack
     // beneath appendix shields so iframe/audio positions still resolve even
     // when caretPositionFromPoint sees the overlay instead of the media.
-    const atomic = atomicEditingContainer(hit ?? (pointerTarget instanceof Node ? pointerTarget : null))
-      ?? atomicEditingContainer(offsetNode ?? null)
+    const atomic = atomicEditingContainer(hit ?? (pointerTarget instanceof Node ? pointerTarget : null), schema)
+      ?? atomicEditingContainer(offsetNode ?? null, schema)
     if(atomic) {
       const rect = atomic.getBoundingClientRect()
       const inline = getComputedStyle(atomic).display.startsWith("inline")
@@ -432,7 +443,7 @@ export class EditingSelection {
       }
     }
     if(offsetNode instanceof Element && typeof offset === "number") {
-      const gapAddressableElement = (node: Node | null) => isAtomicEditingElement(node)
+      const gapAddressableElement = (node: Node | null) => isAtomicEditingElement(node, schema)
         || node instanceof Element && node.matches("table, details")
       const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
       const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
@@ -448,8 +459,8 @@ export class EditingSelection {
         const hasBox = rect.right > rect.left || rect.bottom > rect.top
         if(hasBox && y < rect.top) {
           const previous = atomicAtCaret.previousElementSibling
-          return gap(isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? previous : atomicAtCaret,
-            isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? "after" : "before")
+          return gap(isAtomicEditingElement(previous, schema) && y > previous.getBoundingClientRect().bottom ? previous : atomicAtCaret,
+            isAtomicEditingElement(previous, schema) && y > previous.getBoundingClientRect().bottom ? "after" : "before")
         }
         if(hasBox && y > rect.bottom) {
           return gap(atomicAtCaret, "after")
@@ -1226,7 +1237,7 @@ export function focusedWidgetHost() {
  * document listeners, so inspect the full path instead. Hosts in the body's
  * own shadow tree belong to the editor appendix and are intentionally
  * excluded. */
-function widgetHostForEventPath(event: Event) {
+function widgetHostForEventPath(event: Event, schema?: Schema) {
   const origin = event.composedPath()[0] as Node | undefined
   if(typeof origin?.getRootNode !== "function") return null
   let root = origin.getRootNode()
@@ -1236,13 +1247,14 @@ function widgetHostForEventPath(event: Event) {
     if(host !== body && body.contains(host)) return host
     root = host.getRootNode()
   }
-  // Selected widgets also own interactions in their light-DOM and slotted
-  // children. Otherwise those children retain ordinary document editing.
+  // Selected opaque widgets also own light-DOM and slotted interactions.
+  // Contentful widgets always expose those children to document editing.
   // Closed shadow roots expose only their host as the origin.
   let element = isElement(origin) ? origin : origin.parentElement
   while(element && element !== element.ownerDocument.body && element.ownerDocument.body.contains(element)) {
     if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
       && (element.localName.includes("-") || element.hasAttribute("is"))
+      && (element === origin || !isContentfulWidget(element, schema))
       && (element === origin || $.selectedElement === element || element.classList.contains("◆element-capture-selected"))) {
       return element
     }
@@ -1252,26 +1264,30 @@ function widgetHostForEventPath(event: Event) {
 }
 
 /** The editable widget host whose surface or contents originated an interaction. */
-export function widgetHostForShadowInteraction(event: Event) {
+export function widgetHostForShadowInteraction(event: Event, schema?: Schema) {
   if(event.type === "scroll") return null
   // Text controls report their internal caret changes as document-level
   // selectionchange events, so the composed path cannot identify the shadow
   // origin. While focus is inside a widget, document.activeElement is its host
   // (also for closed roots), which preserves that boundary information.
   if(event.type === "selectionchange") {
-    return focusedWidgetHost()
+    const widget = focusedWidgetHost()
+    const selection = document.getSelection()
+    if(widget && isContentfulWidget(widget, schema) && selection?.anchorNode && selection.focusNode
+      && widget.contains(selection.anchorNode) && widget.contains(selection.focusNode)) return null
+    return widget
   }
-  return widgetHostForEventPath(event)
+  return widgetHostForEventPath(event, schema)
 }
 
 /** The mounted widget whose own surface or shadow tree originated a scroll. */
-export function widgetHostForScrollEvent(event: Event) {
-  return event.type === "scroll" ? widgetHostForEventPath(event) : null
+export function widgetHostForScrollEvent(event: Event, schema?: Schema) {
+  return event.type === "scroll" ? widgetHostForEventPath(event, schema) : null
 }
 
 /** Whether a non-scroll interaction originated in a mounted widget's shadow tree. */
-export function isWidgetShadowInteraction(event: Event) {
-  return widgetHostForShadowInteraction(event) !== null
+export function isWidgetShadowInteraction(event: Event, schema?: Schema) {
+  return widgetHostForShadowInteraction(event, schema) !== null
 }
 
 /** Whether an interaction originated in the editor-owned shadow appendix.

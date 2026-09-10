@@ -485,7 +485,7 @@ export class ListFeature extends EditorFeature {
     // stored marks); subsequent characters use native editing.
     const summary = $.anchorContainer
     if(isPrintable && !event.isComposing && $.isEmpty && $.isEmptySelection
-      && summary?.isConnected && !atomicEditingContainer(summary) && summary.matches("details > summary")
+      && summary?.isConnected && !atomicEditingContainer(summary, this.editor.schema) && summary.matches("details > summary")
       && summary.parentElement?.querySelector(":scope > summary") === summary) {
       event.preventDefault()
       const input = new InputEvent("beforeinput", {

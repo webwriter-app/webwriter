@@ -319,6 +319,59 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
     expectBodyToBe("<webwriter-demo></webwriter-demo>")
   })
+  it.each(["empty paragraph", "gap", "block split", "inline", "HTML", "paste"])("element-selects a contentful widget inserted through %s", async context => {
+    editor.schema.extendWidgets([{
+      tagName: "webwriter-demo",
+      editingConfig: {content: "flow*", ...(context === "inline" ? {inline: true, group: "phrasing"} : {})},
+    }])
+    if(context === "gap") {
+      document.body.innerHTML = "<section><p>before</p><!--keep--><p>after</p></section>"
+      $.selectGap(document.querySelector("p")!)
+    }
+    else if(context === "block split" || context === "inline") {
+      document.body.innerHTML = "<p>before after</p>"
+      $.move(document.querySelector("p")!.firstChild!, 6)
+    }
+    if(context === "HTML") editor.features.manipulation.actions.insert({type: "insert", html: "<webwriter-demo><p>inside</p></webwriter-demo>"})
+    else if(context === "paste") {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": "<webwriter-demo><p>inside</p></webwriter-demo>"})])
+      await editor.features.manipulation.paste()
+    }
+    else editor.features.manipulation.insert(document.createElement("webwriter-demo"))
+
+    const widget = document.querySelector("webwriter-demo")!
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+  it("edits and formats a paragraph inside a contentful widget with undo and redo", () => {
+    editor.schema.extendWidgets([{tagName: "webwriter-demo", editingConfig: {content: "flow*"}}])
+    document.body.innerHTML = '<webwriter-demo><!--keep--><div><p>hello</p></div></webwriter-demo>'
+    const widget = document.querySelector("webwriter-demo")!
+    widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    const input = new KeyboardEvent("keydown", {bubbles: true, composed: true, cancelable: true, key: "Enter"})
+    paragraph.dispatchEvent(input)
+    expect(input.defaultPrevented).toBe(true)
+    expectBodyToBe('<webwriter-demo><!--keep--><div><p>he</p><p>llo</p></div></webwriter-demo>')
+    expect(editor.features.manipulation.setBlockStyle({"text-align": "center"})).toBe(1)
+    editor.doc.syncFromDOM()
+    expect(widget.querySelectorAll("p")[1]).toHaveStyle({textAlign: "center"})
+    expect(editor.features.selection.isCaptureSelection).toBe(false)
+
+    editor.doc.undo()
+    expectBodyToBe('<webwriter-demo><!--keep--><div><p>hello</p></div></webwriter-demo>')
+    editor.doc.redo()
+    expect(document.querySelectorAll("p")).toHaveLength(2)
+    expect(document.querySelectorAll("p")[1]).toHaveStyle({textAlign: "center"})
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+  })
   it.each(["empty paragraph", "gap", "inline"])("capture-selects a widget inserted into an %s through the node API", context => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo", editingConfig: context === "inline" ? {inline: true, group: "phrasing"} : {}}])
     if(context === "gap") {
