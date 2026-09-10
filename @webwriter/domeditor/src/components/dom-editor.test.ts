@@ -8,6 +8,7 @@ import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenu} from "./ribbon-menu"
+import type {OpenDocumentMenu} from "./open-document-menu"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -1263,7 +1264,7 @@ describe("DomEditor file actions", () => {
   it("opens documents from the development backend when logged in", async () => {
     const {editor} = await mountEditor()
     const backend = {
-      listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Server lesson"}]),
+      listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Server lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}]),
       getDocument: vi.fn().mockResolvedValue({
         id: "doc-1",
         title: "Server lesson",
@@ -1273,15 +1274,115 @@ describe("DomEditor file actions", () => {
     }
     ;(editor as any).backendClient = backend
     ;(editor as any).storageLocation = "development-server"
-    Object.defineProperty(window, "prompt", {configurable: true, value: vi.fn().mockReturnValue("1")})
     const reload = vi.spyOn(editor as any, "reloadDocument").mockResolvedValue(undefined)
 
     await (editor as any).openDocument()
 
+    expect(backend.getDocument).not.toHaveBeenCalled()
+    const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(true)
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(".open")!.click()
+    await vi.waitFor(() => expect((editor as any).fileName).toBe("Server lesson"))
+    expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false)
     expect(backend.getDocument).toHaveBeenCalledWith("doc-1")
     expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"))
     expect((editor as any).backendDocumentId).toBe("doc-1")
     expect((editor as any).fileName).toBe("Server lesson")
+  })
+
+  it("refreshes saved documents on each opening, with newest first and retry after failure", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const older = {id: "older", title: "Older", format: "html", updatedAt: "2026-09-01T12:00:00Z"}
+    const newer = {id: "newer", title: "Newer", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
+    const listDocuments = vi.fn().mockRejectedValueOnce(new Error("Server unavailable"))
+      .mockResolvedValueOnce([older, newer]).mockResolvedValueOnce([])
+    host.backendClient = {listDocuments}
+    host.storageLocation = "development-server"
+    host.fileDirty = true
+    const confirm = vi.fn()
+    vi.stubGlobal("confirm", confirm)
+    await host.openDocument()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(host.documentsError).toBe("Server unavailable")
+    const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
+    menu.dispatchEvent(new CustomEvent("documents-retry"))
+    await vi.waitFor(() => expect(host.savedDocuments).toEqual([newer, older]))
+    expect(host.documentsError).toBe("")
+    menu.close()
+    await host.openDocument()
+    expect(host.savedDocuments).toEqual([])
+  })
+
+  it.each([true, false])("deletes saved documents without opening them (current: %s)", async current => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const summary = {id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
+    const backend = {listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockResolvedValue(undefined), getDocument: vi.fn()}
+    host.backendClient = backend
+    host.storageLocation = "development-server"
+    host.backendDocumentId = current ? "doc-1" : "other"
+    host.fileDirty = false
+    const reload = vi.spyOn(host, "reloadDocument")
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    await host.openDocument()
+    editor.shadowRoot!.querySelector("open-document-menu")!.dispatchEvent(new CustomEvent("document-delete", {detail: {id: "doc-1"}}))
+    await vi.waitFor(() => expect(host.savedDocuments).toEqual([]))
+    expect(backend.deleteDocument).toHaveBeenCalledWith("doc-1")
+    expect(backend.getDocument).not.toHaveBeenCalled()
+    expect(reload).not.toHaveBeenCalled()
+    expect(host.backendDocumentId).toBe(current ? null : "other")
+    expect(host.fileDirty).toBe(current)
+  })
+
+  it("keeps a saved document listed when deletion is cancelled or fails", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const summary = {id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
+    const backend = {listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockRejectedValue(new Error("Delete failed"))}
+    host.backendClient = backend
+    host.storageLocation = "development-server"
+    await host.openDocument()
+    const menu = editor.shadowRoot!.querySelector("open-document-menu")!
+    const confirm = vi.fn()
+    vi.stubGlobal("confirm", confirm)
+    confirm.mockReturnValue(false)
+    menu.dispatchEvent(new CustomEvent("document-delete", {detail: {id: "doc-1"}}))
+    expect(backend.deleteDocument).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    menu.dispatchEvent(new CustomEvent("document-delete", {detail: {id: "doc-1"}}))
+    await vi.waitFor(() => expect(host.documentsError).toBe("Delete failed"))
+    expect(host.savedDocuments).toEqual([summary])
+    expect(host.fileOperationActive).toBe(false)
+  })
+
+  it("checks discard only on selection and preserves concurrent edits while opening saved documents", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    let finish!: (value: unknown) => void
+    const getDocument = vi.fn(() => new Promise(resolve => { finish = resolve }))
+    host.backendClient = {listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}]), getDocument}
+    host.storageLocation = "development-server"
+    host.fileDirty = true
+    const confirm = vi.fn()
+    vi.stubGlobal("confirm", confirm)
+    confirm.mockReturnValue(false)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    await host.openDocument()
+    const menu = editor.shadowRoot!.querySelector("open-document-menu")!
+    menu.dispatchEvent(new CustomEvent("document-open", {detail: {id: "doc-1"}}))
+    await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+    expect(getDocument).not.toHaveBeenCalled()
+    confirm.mockReturnValue(true)
+    menu.dispatchEvent(new CustomEvent("document-open", {detail: {id: "doc-1"}}))
+    menu.dispatchEvent(new CustomEvent("document-open", {detail: {id: "doc-1"}}))
+    expect(getDocument).toHaveBeenCalledTimes(1)
+    host.documentChangeSequence++
+    finish({id: "doc-1", content: "<p>Saved</p>"})
+    await vi.waitFor(() => expect(host.documentsError).toContain("changed while opening"))
+    expect(reload).not.toHaveBeenCalled()
+    expect(host.fileDirty).toBe(true)
   })
 
   it("saves documents through the development backend by default after login", async () => {

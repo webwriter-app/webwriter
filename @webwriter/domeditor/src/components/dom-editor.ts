@@ -93,6 +93,8 @@ import {elementStylePropertyNames, paragraphStylePropertyNameSet} from "../eleme
 import "./breadcrumb"
 import "./toolbox"
 import "./ribbon"
+import type {OpenDocumentMenu} from "./open-document-menu"
+import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
 import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
@@ -122,6 +124,7 @@ import {
   BackendClient,
   probeDevelopmentBackend,
   type BackendSession,
+  type BackendDocumentSummary,
 } from "../backend-client"
 import {
   WEBWRITER_GENERATOR,
@@ -437,6 +440,10 @@ export class DomEditor extends LitElement {
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     fileError: {attribute: false, state: true},
+    fileOperationActive: {attribute: false, state: true},
+    savedDocuments: {attribute: false, state: true},
+    documentsLoading: {attribute: false, state: true},
+    documentsError: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
     previewFramePending: {attribute: false, state: true},
     previewDocumentHTML: {attribute: false, state: true},
@@ -549,6 +556,9 @@ export class DomEditor extends LitElement {
   private fileDirty = false
   private fileError = ""
   private fileOperationActive = false
+  private savedDocuments: BackendDocumentSummary[] = []
+  private documentsLoading = false
+  private documentsError = ""
   private documentChangeSequence = 0
   private previewActive = false
   private previewFramePending = false
@@ -2161,6 +2171,7 @@ export class DomEditor extends LitElement {
     if(event.composedPath().some(target => target instanceof HTMLElement
       && target.classList.contains("html-source-input"))) return
     if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
+    if(this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.shadowRoot?.querySelector("dialog")?.open) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => this.settings.shortcuts[candidate.id] === shortcut)
@@ -2288,7 +2299,67 @@ export class DomEditor extends LitElement {
   }
 
   private openDocument() {
+    if(this.storageLocation === "development-server" && this.backendClient) {
+      if(this.fileOperationActive) return Promise.resolve()
+      return this.showOpenDocumentMenu()
+    }
     return this.runFileOperation(() => this.performOpenDocument())
+  }
+
+  private async showOpenDocumentMenu() {
+    this.documentsError = ""
+    const loading = this.loadSavedDocuments()
+    await this.updateComplete
+    // The Open command's menu item is now hidden. Give the dialog a visible
+    // focus target to restore when it is dismissed.
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    await ribbon?.updateComplete
+    ribbon?.shadowRoot?.querySelector('ribbon-tab[label="File"]')?.shadowRoot
+      ?.querySelector<HTMLButtonElement>("button")?.focus()
+    await this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.show()
+    await loading
+  }
+
+  private async loadSavedDocuments() {
+    const client = this.backendClient
+    if(!client || this.documentsLoading || this.fileOperationActive) return
+    this.documentsLoading = true
+    this.documentsError = ""
+    try {
+      this.savedDocuments = (await client.listDocuments()).sort((a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt) || a.title.localeCompare(b.title))
+    }
+    catch(error) {
+      this.savedDocuments = []
+      this.documentsError = error instanceof Error ? error.message : String(error)
+    }
+    finally { this.documentsLoading = false }
+  }
+
+  private handleSavedDocumentOpen = (event: CustomEvent<{id: string}>) => {
+    if(this.documentsLoading || !this.savedDocuments.some(document => document.id === event.detail.id)) return
+    void this.runFileOperation(() => this.openBackendDocument(event.detail.id))
+  }
+
+  private handleSavedDocumentDelete = (event: CustomEvent<{id: string}>) => {
+    const client = this.backendClient
+    const summary = this.savedDocuments.find(document => document.id === event.detail.id)
+    if(!client || !summary || this.documentsLoading || this.fileOperationActive) return
+    if(!window.confirm(`Delete “${summary.title}”? This will remove the saved document.`)) return
+    void this.runFileOperation(async() => {
+      this.documentsError = ""
+      try {
+        await client.deleteDocument(summary.id)
+        this.savedDocuments = this.savedDocuments.filter(document => document.id !== summary.id)
+        if(this.backendDocumentId === summary.id) {
+          this.backendDocumentId = null
+          this.fileDirty = true
+        }
+      }
+      catch(error) {
+        this.documentsError = error instanceof Error ? error.message : String(error)
+      }
+    })
   }
 
   private saveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
@@ -2312,10 +2383,6 @@ export class DomEditor extends LitElement {
   }
 
   private async performOpenDocument() {
-    if(this.storageLocation === "development-server" && this.backendClient) {
-      await this.openBackendDocument()
-      return
-    }
     if(!this.confirmDiscardChanges()) return
     const revision = this.documentChangeSequence
     const picker = this.filePickerWindow().showOpenFilePicker
@@ -2376,24 +2443,12 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async openBackendDocument() {
+  private async openBackendDocument(id: string) {
     if(!this.backendClient || !this.confirmDiscardChanges()) return
     const revision = this.documentChangeSequence
     try {
-      const documents = await this.backendClient.listDocuments()
-      if(!documents.length) {
-        window.alert("The development server has no documents yet. Save this document to create one.")
-        return
-      }
-      const choices = documents.map((document, index) => `${index + 1}. ${document.title}`).join("\n")
-      const selected = window.prompt(`Open a development-server document:\n\n${choices}\n\nEnter a number or document ID:`)
-      if(selected === null) return
-      const index = Number.parseInt(selected.trim(), 10) - 1
-      const summary = Number.isInteger(index) && documents[index]
-        ? documents[index]
-        : documents.find(document => document.id === selected.trim())
-      if(!summary) throw new Error("Choose one of the listed documents")
-      const document = await this.backendClient.getDocument(summary.id)
+      this.documentsError = ""
+      const document = await this.backendClient.getDocument(id)
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       await this.reloadDocument(document.content)
       this.backendDocumentId = document.id
@@ -2401,10 +2456,11 @@ export class DomEditor extends LitElement {
       this.fileName = this.baseFileName(document.title)
       this.fileFormat = document.format
       this.fileDirty = false
+      this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
       this.focusEditor()
     }
     catch(error) {
-      this.reportFileError(error)
+      this.documentsError = error instanceof Error ? error.message : String(error)
     }
   }
 
@@ -4980,6 +5036,16 @@ export class DomEditor extends LitElement {
           ></dom-editor-breadcrumb>
         `}
       </header>
+      <open-document-menu
+        .documents=${this.savedDocuments}
+        .currentDocumentId=${this.backendDocumentId}
+        .loading=${this.documentsLoading}
+        .busy=${this.fileOperationActive}
+        .error=${this.documentsError}
+        @document-open=${this.handleSavedDocumentOpen}
+        @document-delete=${this.handleSavedDocumentDelete}
+        @documents-retry=${this.loadSavedDocuments}
+      ></open-document-menu>
       <div class="document-stage" aria-busy=${this.previewFramePending ? "true" : "false"}>
         ${this.fileError ? html`
           <div class="file-error" role="alert">
