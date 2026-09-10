@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -31,7 +31,7 @@ function isCaretAtStartOf(element: Element) {
       return false
     }
     const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
-    if(Array.from(parent.childNodes).slice(0, index).some(previous => previous.nodeType === Node.ELEMENT_NODE || previous.textContent)) {
+    if(Array.from(parent.childNodes).slice(0, index).some(previous => !isOutOfFlow(previous) && (previous.nodeType === Node.ELEMENT_NODE || previous.textContent))) {
       return false
     }
     node = parent
@@ -89,7 +89,7 @@ export class SelectionFeature extends EditorFeature {
     if(selection.isCollapsed || !selection.rangeCount) return
     const range = selection.getRangeAt(0)
     const visit = (element: Element) => {
-      if(!range.intersectsNode(element)) return
+      if(!$.includesNode(element) || !range.intersectsNode(element)) return
       const children = element.children
       const isTable = element.localName === "table"
       if(isTable || isAtomicEditingElement(element, this.editor.schema)) {
@@ -213,7 +213,7 @@ export class SelectionFeature extends EditorFeature {
       }
       if(!(node instanceof Element || node instanceof DocumentFragment)) return false
       if(node instanceof Element) {
-        if(node.matches(".◆editor-only, br")) return false
+        if(isOutOfFlow(node) || node.matches(".◆editor-only, br")) return false
         if(!node.childNodes.length || isAtomicEditingElement(node, this.editor.schema)) return true
       }
       return Array.from(node.childNodes).some(child => hasEditingContent(child))
@@ -251,12 +251,12 @@ export class SelectionFeature extends EditorFeature {
             if(adjacent instanceof Text && adjacent.textContent?.trim()) return null
             continue
           }
-          if(adjacent.matches(".◆editor-only")) continue
+          if(isOutOfFlow(adjacent) || adjacent.matches(".◆editor-only")) continue
           return adjacent
         }
       }
 
-      if(node === document.body) return null
+      if(node === document.body || node === $.flowRoot) return null
       const parent = node.parentNode
       if(!parent) return null
       const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
@@ -291,7 +291,7 @@ export class SelectionFeature extends EditorFeature {
    * their summary; custom elements remain atomic and are never traversed. */
   #disclosureEdge(node: Node, direction: "backward" | "forward"): Node | null {
     if(node instanceof Text) return node.textContent?.trim() ? node : null
-    if(!isElement(node) || node.matches("br, [hidden], .◆editor-only") || getComputedStyle(node).display === "none") return null
+    if(!isElement(node) || isOutOfFlow(node) || node.matches("br, [hidden], .◆editor-only") || getComputedStyle(node).display === "none") return null
     if(Boolean(isAtomicEditingElement(node, this.editor.schema))) return node
     if(node.matches("details:not([open])")) {
       const summary = node.querySelector(":scope > summary")
@@ -431,6 +431,26 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Enables the feature and places the selection at the document start. */
+  /** A native range can cross independent flows, but its active endpoint
+   * must stay in the flow where the interaction began. */
+  #constrainSelectionToFlow() {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode || selection.isCollapsed || $.selectedElement) return
+    const flow = editingFlowRoot(selection.anchorNode)
+    if(editingFlowRoot(selection.focusNode) === flow) return
+    const backwards = $.isBackwards
+    if(flow.contains(selection.focusNode)) {
+      let foreign = editingFlowRoot(selection.focusNode)
+      while(foreign.parentElement && editingFlowRoot(foreign.parentElement) !== flow) {
+        foreign = editingFlowRoot(foreign.parentElement)
+      }
+      const parent = foreign.parentNode!
+      const index = Array.from(parent.childNodes).indexOf(foreign)
+      selection.extend(parent, index + (backwards ? 0 : 1))
+    }
+    else selection.extend(flow, backwards ? 0 : flow.childNodes.length)
+  }
+
   enable() {
     if(this.isEnabled) return
     const first = document.body.firstElementChild
@@ -552,7 +572,7 @@ export class SelectionFeature extends EditorFeature {
     const point = atOrigin
       ? {node: drag.focus.startContainer, offset: drag.focus.startOffset}
       : $.pointFromCoords(Math.max(0, Math.min(event.clientX, window.innerWidth - 1)),
-        Math.max(0, Math.min(event.clientY, window.innerHeight - 1)), event.target, this.editor.schema)
+        Math.max(0, Math.min(event.clientY, window.innerHeight - 1)), event.target, this.editor.schema, editingFlowRoot(drag.anchor.startContainer))
     if(!point) return
     document.getSelection()?.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset, point.node, point.offset)
     this.processSelection(true)
@@ -994,7 +1014,7 @@ export class SelectionFeature extends EditorFeature {
     this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
       "◆element-capture-selected", "◆text-selected", "◆empty-selected",
-      "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected"]
+      "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded"]
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
     elements.forEach(element => {
@@ -1173,6 +1193,7 @@ export class SelectionFeature extends EditorFeature {
     else {
       this.#releaseCaptureSelection()
       this.#constrainSelectionToBody()
+      this.#constrainSelectionToFlow()
       this.#constrainSelectionToAtomicContent()
       sel = document.getSelection()
       const root = getDocumentRoot()
@@ -1187,6 +1208,9 @@ export class SelectionFeature extends EditorFeature {
     }
     const kind = this.#selectionKind(inDragSelection, capturedElement)
     this.#clearSelections()
+    if(sel?.rangeCount && !sel.isCollapsed) {
+      $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
+    }
     this.editor.features.transformation.syncSelection(kind === "capture" ? capturedElement
       : kind === "section" ? this.selectedSectionElement
         : kind === "element" ? $.selectedElement ?? null : null)
@@ -1219,8 +1243,8 @@ export class SelectionFeature extends EditorFeature {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
         const i = sel.anchorOffset
-        const before = Array.from(children).slice(0, i).reverse().find(isElement)
-        const after = Array.from(children).slice(i).find(isElement)
+        const before = Array.from(children).slice(0, i).reverse().find((node): node is Element => isElement(node) && !isOutOfFlow(node))
+        const after = Array.from(children).slice(i).find((node): node is Element => isElement(node) && !isOutOfFlow(node))
         const nestedListAfter = isElement(sel.anchorNode)
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
@@ -1303,7 +1327,7 @@ export class SelectionFeature extends EditorFeature {
       this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
-        const root = getDocumentRoot()
+        const root = $.flowRoot
         $.selectRange(root, 0, root, root.childNodes.length)
         this.processSelection()
       }
@@ -1312,6 +1336,13 @@ export class SelectionFeature extends EditorFeature {
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
         ev.preventDefault()
       }
+      else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !$.isElementSelection
+        && (isOutOfFlow($.flowRoot) || Array.from($.flowRoot.querySelectorAll("*")).some(isOutOfFlow))) {
+        ev.preventDefault()
+        const granularity = ev.key === "ArrowUp" || ev.key === "ArrowDown" ? "line" : "character"
+        ev.shiftKey ? $.extendBy(granularity, direction) : $.moveBy(granularity, direction)
+        this.processSelection()
+      }
       else if(ev.key === "ArrowUp" && ev.altKey) {
 
       } 
@@ -1319,7 +1350,7 @@ export class SelectionFeature extends EditorFeature {
 
       }
       else if(ev.key === "ArrowUp") {
-        const firstRootElement = getDocumentRoot().firstElementChild
+        const firstRootElement = Array.from(getDocumentRoot().children).find(element => !isOutOfFlow(element))
         if(!ev.shiftKey && firstRootElement && isCaretAtStartOf(firstRootElement)) {
           ev.preventDefault()
           $.selectGap(firstRootElement, "before")
@@ -1370,7 +1401,7 @@ export class SelectionFeature extends EditorFeature {
         return
       }
       this.#releaseCaptureSelection()
-      if($.isEmptyDocumentSelection) {
+      if($.isEmptyDocumentSelection && editingFlowRoot(ev.target instanceof Node ? ev.target : null) === getDocumentRoot()) {
         // Browsers focus an empty design-mode body on pointerdown but do not
         // consistently create a DOM selection for it. Restore the editing
         // position explicitly; pointerup restores it after the browser's

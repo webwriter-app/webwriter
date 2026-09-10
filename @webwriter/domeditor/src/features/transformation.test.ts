@@ -745,6 +745,24 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target.firstElementChild).toBe(child)
   })
 
+  it.each(["absolute", "fixed"])("skips %s elements and their descendants as flow drop anchors", position => {
+    const target = targetElement()
+    const floating = targetElement("div")
+    floating.style.position = position
+    const child = floating.appendChild(document.createElement("span"))
+    const dropTarget = targetElement()
+    mockRect(target)
+    vi.spyOn(dropTarget, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [child, floating, dropTarget])})
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 160, ctrlKey: true}))
+    feature.handleMoveEnd()
+    expect(dropTarget.nextElementSibling).toBe(target)
+    expect(floating.firstElementChild).toBe(child)
+    expect(target.parentElement).toBe(document.body)
+  })
+
   it("reverts only properties owned by an Escape-cancelled gesture", () => {
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})

@@ -930,7 +930,7 @@ export class ListFeature extends EditorFeature {
 
     const candidates = Array.from(document.body.querySelectorAll("*"))
       .filter(element => {
-        if(!isTextBlock(element) || element.closest(listSelector)) return false
+        if(!$.includesNode(element) || !isTextBlock(element) || element.closest(listSelector)) return false
         try {
           return range.intersectsNode(element)
         }
@@ -1034,7 +1034,7 @@ export class ListFeature extends EditorFeature {
     const range = selection.getRangeAt(0)
     return items.filter(item => {
       try {
-        return range.intersectsNode(item)
+        return $.includesNode(item) && range.intersectsNode(item)
       }
       catch {
         return false

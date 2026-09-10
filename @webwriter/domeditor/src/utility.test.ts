@@ -694,6 +694,11 @@ describe("isEmptyDocumentSelection", () => {
     $.selectDocumentStart()
     expect($.isEmptyDocumentSelection).toBe(true)
   })
+  it("ignores absolutely and fixedly positioned elements", () => {
+    setBody(`<div style="position: absolute">overlay</div><div style="position: fixed">toolbar</div>`)
+    $.selectDocumentStart()
+    expect($.isEmptyDocumentSelection).toBe(true)
+  })
 })
 
 describe("isBackwards, start/end", () => {
@@ -815,6 +820,24 @@ describe("slice/copy()", () => {
     expect(fragment.firstElementChild?.outerHTML).toBe("<b>ell</b>")
     expect(document.body.innerHTML).toBe("<p><b>hello</b></p>")
   })
+  it("omits positioned elements and their descendants from a broad range", () => {
+    setBody(`<p>before</p><div style="position: absolute"><b>overlay</b></div><div style="position: fixed"><i>fixed</i></div><p>after</p>`)
+    const texts = document.querySelectorAll("p")
+    $.selectRange(texts[0].firstChild!, 0, texts[1].firstChild!, texts[1].textContent!.length)
+
+    for(const fragment of [$.slice, $.copy()]) {
+      expect(fragment.textContent).toBe("beforeafter")
+      expect(fragment.querySelector("b")).toBeNull()
+      expect(fragment.querySelector("i")).toBeNull()
+    }
+  })
+  it("keeps an explicitly selected positioned element available to copy", () => {
+    setBody(`<div style="position: absolute"><b>overlay</b></div>`)
+    const overlay = document.body.firstElementChild!
+    $.selectElement(overlay)
+    const fragment = $.copy()
+    expect(fragment.firstElementChild?.outerHTML).toBe(overlay.outerHTML)
+  })
 })
 
 describe("inert DOM copies", () => {
@@ -901,6 +924,12 @@ describe("nodesBetween", () => {
     $.selectElement(document.querySelector("section")!)
     expect($.nodesBetween).toEqual(Array.from(document.querySelectorAll("p")))
   })
+  it("omits positioned elements and their descendants from a broad range", () => {
+    setBody(`<p>before</p><div style="position: absolute"><b>overlay</b></div><p>after</p>`)
+    const texts = document.querySelectorAll("p")
+    $.selectRange(texts[0].firstChild!, 0, texts[1].firstChild!, texts[1].textContent!.length)
+    expect($.nodesBetween).toEqual(Array.from(texts))
+  })
 })
 
 describe("elementBefore/elementAfter", () => {
@@ -928,6 +957,24 @@ describe("elementBefore/elementAfter", () => {
     expect($.elementBefore).toBe(document.body.firstElementChild)
     expect($.elementAfter).toBeFalsy()
   })
+  it("skips absolute and fixed siblings, including stylesheet-computed positions", () => {
+    const style = document.createElement("style")
+    style.textContent = ".absolute { position: absolute } .fixed { position: fixed }"
+    document.head.append(style)
+    setBody(`<p>before</p><div class="absolute">overlay</div><div class="fixed">toolbar</div><p>after</p>`)
+    const paragraphs = document.querySelectorAll("p")
+    $.selectGap(paragraphs[1], "before")
+    expect($.elementBefore).toBe(paragraphs[0])
+    expect($.elementAfter).toBe(paragraphs[1])
+  })
+  it("keeps relative and sticky siblings in the flow", () => {
+    setBody(`<p>before</p><p style="position: relative">relative</p><p style="position: sticky">sticky</p><p>after</p>`)
+    const relative = document.body.children[1]
+    const sticky = document.body.children[2]
+    $.move(document.body, 2)
+    expect($.elementBefore).toBe(relative)
+    expect($.elementAfter).toBe(sticky)
+  })
 })
 
 describe("delete()", () => {
@@ -942,6 +989,46 @@ describe("delete()", () => {
     $.move(firstText(), 2)
     $.delete()
     expect(document.body.innerHTML).toBe("<p>hello</p>")
+  })
+  it("preserves positioned nodes and their ancestors across a broad deletion", () => {
+    setBody(`<section><p>before</p><div style="position: absolute"><b>overlay</b></div><p>after</p></section>`)
+    const section = document.querySelector("section")!
+    const overlay = section.querySelector("div")!
+    const paragraphs = section.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, paragraphs[1].textContent!.length)
+    $.delete()
+    expect(overlay.isConnected).toBe(true)
+    expect(overlay.parentElement).toBe(section)
+  })
+  it("preserves positioned nodes for backwards broad deletions", () => {
+    setBody(`<p>before</p><div style="position: absolute"><b>overlay</b></div><p>after</p>`)
+    const overlay = document.querySelector("b")!
+    const paragraphs = document.querySelectorAll("p")
+    $.selectRange(paragraphs[1].firstChild!, paragraphs[1].textContent!.length, paragraphs[0].firstChild!, 0)
+    $.delete()
+    expect(overlay.isConnected).toBe(true)
+    expect(document.body.textContent).toContain("overlay")
+  })
+  it("preserves nested positioned nodes when editing within an outer positioned flow", () => {
+    setBody(`<div style="position: absolute"><span>before</span><i style="position: fixed">overlay</i><span>after</span></div>`)
+    const outer = document.body.firstElementChild!
+    const nested = outer.querySelector("i")!
+    const spans = outer.querySelectorAll("span")
+    $.selectRange(spans[1].firstChild!, spans[1].textContent!.length, spans[0].firstChild!, 0)
+    $.delete()
+    expect(nested.isConnected).toBe(true)
+    expect(nested.parentElement).toBe(outer)
+  })
+  it("edits text inside a positioned element while preserving nested positioned children", () => {
+    setBody(`<div style="position: absolute"><span>before</span><i class="nested">overlay</i><span>after</span></div>`)
+    const positioned = document.body.firstElementChild!
+    const nested = positioned.querySelector(".nested")!
+    const text = positioned.querySelector("span")!.firstChild!
+    $.selectRange(text, 0, text, text.textContent!.length)
+    $.delete()
+    expect(positioned.isConnected).toBe(true)
+    expect(nested.isConnected).toBe(true)
+    expect(positioned.textContent).toBe("overlayafter")
   })
 })
 
@@ -973,6 +1060,18 @@ describe("replace()", () => {
     $.move(firstText(), 5)
     $.replace(document.createElement("b"))
     expect(document.body.innerHTML).toBe("<p>hello<b></b> world</p>")
+  })
+  it("preserves positioned nodes and their ancestors across a broad replacement", () => {
+    setBody(`<section><p>before</p><div style="position: absolute"><b>overlay</b></div><p>after</p></section>`)
+    const section = document.querySelector("section")!
+    const overlay = section.querySelector("div")!
+    const paragraphs = section.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, paragraphs[1].textContent!.length)
+    $.replace(document.createTextNode("replacement"))
+    expect(overlay.isConnected).toBe(true)
+    expect(overlay.parentElement).toBe(section)
+    expect(section.textContent).toContain("overlay")
+    expect(section.textContent).toContain("replacement")
   })
 })
 

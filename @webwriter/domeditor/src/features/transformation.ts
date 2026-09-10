@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, roundByDPR, roundTo, setPart } from "../utility"
+import { $, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 type TransformElement = HTMLElement | SVGSVGElement
@@ -675,7 +675,7 @@ export class TransformationFeature extends EditorFeature {
     this.#clearDrop()
     const target = this.target!
     const hit = document.elementsFromPoint(event.clientX, event.clientY).find(element =>
-      getDocumentRoot().contains(element) && !target.contains(element) && !element.contains(target))
+      getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && !target.contains(element) && !element.contains(target))
     if(!hit) return
     // Widgets are atomic, including their authored light-DOM contents.
     let element = hit
@@ -714,7 +714,7 @@ export class TransformationFeature extends EditorFeature {
     }
     else if(gesture.moved && this.#drop) {
       const {element, placement, parent} = this.#drop
-      if(getDocumentRoot().contains(element) && element.parentNode === parent && !target.contains(element) && !element.contains(target)) {
+      if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)) {
         if(gesture.mode === "move") {
           for(const key of ["left", "top", "right", "bottom"]) this.#write(key, "auto")
           this.#write("position", "static")

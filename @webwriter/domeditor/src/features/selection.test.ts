@@ -518,6 +518,74 @@ describe("processSelection()", () => {
     expect(feature.gapCaret!.getAttribute("part")).toContain("gap-caret")
     expect(feature.gapCaret!.hasAttribute("visibility")).toBe(false)
   })
+  it("skips positioned siblings when presenting a gap", () => {
+    document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute">overlay</interactive-widget><hr style="position: fixed"><p>after</p>'
+    const before = document.querySelector("p")!
+    const after = document.querySelectorAll("p")[1]
+    $.selectGap(after, "before")
+    feature.processSelection()
+
+    expect(before).toHaveClass("◆gap-after-selected")
+    expect(document.querySelector("interactive-widget")).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    expect(document.querySelector("hr")).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+  })
+  it("keeps relative and sticky atomic siblings in keyboard navigation", () => {
+    for(const position of ["relative", "sticky"]) {
+      document.body.innerHTML = `<p>before</p><interactive-widget style="position: ${position}"></interactive-widget><p>after</p>`
+      const widget = document.querySelector("interactive-widget")!
+      const text = document.querySelector("p")!.firstChild!
+      $.move(text, -1)
+      const event = new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect($.selectedElement).toBe(widget)
+    }
+  })
+  it("skips positioned atomic widgets and dividers during keyboard navigation", () => {
+    document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute"></interactive-widget><hr style="position: fixed"><interactive-widget></interactive-widget><p>after</p>'
+    const widgets = document.querySelectorAll("interactive-widget")
+    const text = document.querySelector("p")!.firstChild!
+    $.move(text, -1)
+    const event = new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(widgets[1])
+    expect(document.querySelector("hr")).not.toHaveClass("◆atomic-range-selected")
+  })
+  it("marks positioned subtrees as flow-excluded without marking their atomic contents", () => {
+    document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute"></interactive-widget><hr style="position: fixed"><p>after</p>'
+    const paragraphs = document.querySelectorAll("p")
+    const widget = document.querySelector("interactive-widget")!
+    const divider = document.querySelector("hr")!
+    $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, 1)
+    feature.processSelection()
+
+    expect(widget).toHaveClass("◆flow-excluded")
+    expect(divider).toHaveClass("◆flow-excluded")
+    expect(widget).not.toHaveClass("◆atomic-range-selected")
+    expect(divider).not.toHaveClass("◆atomic-range-selected")
+    expect(editor.toHTML(true)).not.toContain("◆flow-excluded")
+
+    $.move(paragraphs[0].firstChild!, 0)
+    feature.processSelection()
+    expect(widget).not.toHaveClass("◆flow-excluded")
+    expect(divider).not.toHaveClass("◆flow-excluded")
+    editor.destroy()
+    expect(widget).not.toHaveClass("◆flow-excluded")
+    expect(divider).not.toHaveClass("◆flow-excluded")
+  })
+  it("keeps explicit positioned element selection available", () => {
+    const widget = el("interactive-widget")
+    widget.style.position = "absolute"
+    $.selectElement(widget)
+    feature.processSelection()
+
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆flow-excluded")
+  })
   it("reuses one shadow caret for node and gap selections", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectElement(p1)

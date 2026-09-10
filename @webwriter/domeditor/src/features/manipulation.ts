@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, clearEditorMarkerClasses, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isOutOfFlow, flowSibling, clearEditorMarkerClasses, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -46,20 +46,22 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
     const siblings = Array.from(parent.childNodes) as ChildNode[]
     const index = siblings.indexOf(node as ChildNode)
     if(boundary === "start") {
-      if(offset !== 0 || siblings.slice(0, index).some((sibling: ChildNode) => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
+      if(offset !== 0 || siblings.slice(0, index).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
         return false
       }
     }
     else {
       const length = node instanceof Text? node.length: node.childNodes.length
-      if(offset !== length || siblings.slice(index + 1).some((sibling: ChildNode) => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
+      if(offset !== length || siblings.slice(index + 1).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
         return false
       }
     }
     node = parent
     offset = boundary === "start"? index: index + 1
   }
-  return node === element && offset === (boundary === "start"? 0: element.childNodes.length)
+  return node === element && Array.from(element.childNodes)
+    .slice(boundary === "start" ? 0 : offset, boundary === "start" ? offset : undefined)
+    .every(sibling => isOutOfFlow(sibling) || sibling.nodeType !== Node.ELEMENT_NODE && !sibling.textContent)
 }
 
 /** Editing feature implementing content manipulation: inserting, deleting,
@@ -221,7 +223,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Hover and drop resolve the same text or structural insertion point. */
   private dropRange(event: DragEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
-    const point = $.pointFromCoords(event.clientX, event.clientY, event.target, this.editor.schema)
+    const point = $.pointFromCoords(event.clientX, event.clientY, event.target, this.editor.schema, getDocumentRoot())
     if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)) return null
     const range = document.createRange()
     range.setStart(point.node, point.offset)
@@ -444,7 +446,7 @@ export class ManipulationFeature extends EditorFeature {
         const first = Math.min(anchorIndex, focusIndex)
         const last = Math.max(anchorIndex, focusIndex)
         const targets = children.slice(first, last + 1).filter((node): node is Element => (
-          node instanceof Element && !isSectionElement(node) && !isMarkElement(node)
+          node instanceof Element && $.includesNode(node) && !isSectionElement(node) && !isMarkElement(node)
         ))
         if(targets.length) return targets
       }
@@ -464,7 +466,7 @@ export class ManipulationFeature extends EditorFeature {
 
     const targets = Array.from(container.childNodes).flatMap(node => {
       if(!(node instanceof Element)) return []
-      const flatten = (element: Element): Element[] => isMarkElement(element) || isSectionElement(element)
+      const flatten = (element: Element): Element[] => !$.includesNode(element) ? [] : isMarkElement(element) || isSectionElement(element)
         ? Array.from(element.children).flatMap(flatten)
         : [element]
       try {
@@ -499,13 +501,13 @@ export class ManipulationFeature extends EditorFeature {
       const index = children.indexOf(target)
       return index < first || index > last
     })) return null
-    return {parent, nodes: children.slice(first, last + 1), first, last}
+    return {parent, nodes: children.slice(first, last + 1).filter(node => $.includesNode(node)), first, last}
   }
 
   private canReplaceWithSection(parent: Element, first: number, last: number, section: Element) {
     const children = Array.from(parent.childNodes)
     const proposed = [...children]
-    proposed.splice(first, last - first + 1, section)
+    proposed.splice(first, last - first + 1, section, ...children.slice(first, last + 1).filter(node => !$.includesNode(node)))
     return this.editor.schema.isContentValid(section)
       && this.editor.schema.isContentValid(parent, proposed)
   }
@@ -741,7 +743,7 @@ export class ManipulationFeature extends EditorFeature {
     const range = selection.getRangeAt(0)
     const candidates = Array.from(document.body.querySelectorAll("*"))
       .filter((element): element is HTMLElement => {
-        if(!this.isTextBlock(element)) return false
+        if(!$.includesNode(element) || !this.isTextBlock(element)) return false
         try {
           return range.intersectsNode(element)
         }
@@ -999,7 +1001,7 @@ export class ManipulationFeature extends EditorFeature {
 
       const offset = this.splitTextLikePoint(block, $.range)
       const right = cloneWithoutEditorMarkers(block, false) as Element
-      right.append(...Array.from(block.childNodes).slice(offset))
+      right.append(...Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)))
       block.normalize()
       right.normalize()
 
@@ -1040,6 +1042,7 @@ export class ManipulationFeature extends EditorFeature {
   private firstTextDescendant(node: Node): Text | null {
     if(node instanceof Text) return node
     for(const child of Array.from(node.childNodes)) {
+      if(isOutOfFlow(child)) continue
       const text = this.firstTextDescendant(child)
       if(text) return text
     }
@@ -1092,7 +1095,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       else {
         const right = cloneWithoutEditorMarkers(pointNode, false) as Element
-        right.append(...Array.from(pointNode.childNodes).slice(pointOffset))
+        right.append(...Array.from(pointNode.childNodes).slice(pointOffset).filter(node => !isOutOfFlow(node)))
         pointNode.after(right)
         pointOffset = Array.from(parent.childNodes).indexOf(right)
       }
@@ -1119,7 +1122,7 @@ export class ManipulationFeature extends EditorFeature {
     if(splittingSummary) splitDepth = 0
 
     for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || container.nodeName === "HTML") break
+      if(isDocumentRoot(container) || isOutOfFlow(container) || container.nodeName === "HTML") break
       const parent = container.parentElement
       if(!parent) break
       const schema = this.editor.schema.get(container)
@@ -1127,7 +1130,7 @@ export class ManipulationFeature extends EditorFeature {
         ? this.editor.schema.create(undefined, container.ownerDocument)
         : cloneWithoutEditorMarkers(container, false)) as Element
       container.after(next)
-      const moving = Array.from(container.childNodes).slice(offset)
+      const moving = Array.from(container.childNodes).slice(offset).filter(node => !isOutOfFlow(node))
       this.editor.features.list.prepareSplitContinuation(container, next, moving)
       next.append(...moving)
       affected.add(container)
@@ -1366,6 +1369,18 @@ export class ManipulationFeature extends EditorFeature {
         if(fragment) this.insertClipboardFragment(fragment)
         return
       }
+      if($.excludedFlowElements.length) {
+        if(ev.inputType.startsWith("delete")) {
+          ev.preventDefault()
+          this.delete()
+          return
+        }
+        if(["insertText", "insertReplacementText", "insertCompositionText"].includes(ev.inputType) && ev.data !== null) {
+          ev.preventDefault()
+          this.insertAtSelection(document.createTextNode(ev.data))
+          return
+        }
+      }
       const selected = $.selectedElement
       if(ev.inputType.startsWith("delete") && (selected === getDocumentRoot() || selected === document.body)) {
         ev.preventDefault()
@@ -1424,9 +1439,16 @@ export class ManipulationFeature extends EditorFeature {
         this.ensureTextBlock()
       }
     },
+    "copy": ev => {
+      if(!ev.clipboardData || !$.excludedFlowElements.length) return
+      ev.preventDefault()
+      const {html, text} = this.editor.serializeClipboardFragment($.copy())
+      ev.clipboardData.setData("text/html", html)
+      ev.clipboardData.setData("text/plain", text)
+    },
     "cut": ev => {
       const selected = $.selectedElement
-      if(selected !== getDocumentRoot() && selected !== document.body || !ev.clipboardData) return
+      if(!ev.clipboardData || selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length) return
       ev.preventDefault()
       const {html, text} = this.editor.serializeClipboardFragment($.copy())
       ev.clipboardData.setData("text/html", html)
@@ -1526,7 +1548,7 @@ export class ManipulationFeature extends EditorFeature {
       for(let i = 0; i <= splitDepth; i++) {
         $.start instanceof Text && $.start.splitText($.startOffset)
         let container = getContainer(locus)
-        if(isDocumentRoot(container) || container.nodeName === "HTML") {continue}
+        if(isDocumentRoot(container) || isOutOfFlow(container) || container.nodeName === "HTML") {continue}
         const [,right] = getSidesOfPoint($.range)
         const schema = this.editor.schema.get(container)
         const next = (strict && schema.inseperable
@@ -1563,20 +1585,22 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       const container = $.anchorContainer
-      if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && container.previousElementSibling && !container.previousElementSibling.textContent) {
-        container.previousElementSibling.remove()
+      const previousElement = $.elementBefore
+      const nextElement = $.elementAfter
+      if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && previousElement && !previousElement.textContent) {
+        previousElement.remove()
         return
       }
-      if(direction === "forward" && container?.textContent && isCaretAtBoundary(container, "end") && container.nextElementSibling && !container.nextElementSibling.textContent) {
-        container.nextElementSibling.remove()
+      if(direction === "forward" && container?.textContent && isCaretAtBoundary(container, "end") && nextElement && !nextElement.textContent) {
+        nextElement.remove()
         return
       }
       const commonContainer = getContainer($.commonAncestor)
       if(!commonContainer.textContent && commonContainer !== document.body
-        && !isDocumentRoot(commonContainer) && commonContainer.nodeName !== "HTML") {
+        && !isDocumentRoot(commonContainer) && !isOutOfFlow(commonContainer) && commonContainer.nodeName !== "HTML") {
         const emptyContainer = commonContainer
-        const previous = emptyContainer.previousSibling
-        const next = emptyContainer.nextSibling
+        const previous = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "previous")
+        const next = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "next")
         $.delete()
         emptyContainer.remove()
         if(direction === "forward" && next) {
@@ -1608,10 +1632,10 @@ export class ManipulationFeature extends EditorFeature {
         }
         else {
           const joinTarget = elementAfter.firstChild
-          elementBefore.append(...elementAfter.childNodes)
+          elementBefore.append(...Array.from(elementAfter.childNodes).filter(node => !isOutOfFlow(node)))
           if(joinTarget) this.moveToStart(joinTarget)
           elementBefore.normalize()
-          elementAfter.remove()
+          if(!elementAfter.childNodes.length) elementAfter.remove()
         }
       }
       else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
@@ -1622,10 +1646,10 @@ export class ManipulationFeature extends EditorFeature {
         }
         else {
           const joinTarget = elementAfter.firstChild
-          elementAfter.prepend(...elementBefore.childNodes)
+          elementAfter.prepend(...Array.from(elementBefore.childNodes).filter(node => !isOutOfFlow(node)))
           if(joinTarget) this.moveToStart(joinTarget)
           elementAfter.normalize()
-          elementBefore.remove()
+          if(!elementBefore.childNodes.length) elementBefore.remove()
         }
       }
     })
@@ -1677,6 +1701,7 @@ export class ManipulationFeature extends EditorFeature {
         for(let j = 1; j < liftDepth && toReplace.parentElement; j++) {
           toReplace = toReplace.parentElement
         }
+        if(toReplace === $.flowRoot || Array.from(toReplace.querySelectorAll("*")).some(element => !node.contains(element) && isOutOfFlow(element))) return
         toReplace.replaceWith(...replacement)
       }
       $.selectElement(node)
@@ -1707,7 +1732,7 @@ export class ManipulationFeature extends EditorFeature {
       focusNode: selection.focusNode,
       focusOffset: selection.focusOffset,
     }
-    const item = this.#fragmentToClipboardItem(cloneRangeContents(selection.getRangeAt(0)))
+    const item = this.#fragmentToClipboardItem($.copy())
     await navigator.clipboard.write([item])
     if(selection.anchorNode !== captured.anchorNode || selection.anchorOffset !== captured.anchorOffset
       || selection.focusNode !== captured.focusNode || selection.focusOffset !== captured.focusOffset) return false
@@ -1934,7 +1959,7 @@ export class ManipulationFeature extends EditorFeature {
       if(!parent) return
       const offset = this.splitTextLikePoint(block, $.range)
       const right = cloneWithoutEditorMarkers(block, false) as Element
-      right.append(...Array.from(block.childNodes).slice(offset))
+      right.append(...Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)))
       block.normalize()
       right.normalize()
 

@@ -2317,3 +2317,69 @@ describe("unified content transfer", () => {
     editor.features.manipulation.enable()
   })
 })
+
+
+describe("independent positioned flows", () => {
+  it.each(["absolute", "fixed"])("deletes across %s widgets without changing them", position => {
+    document.body.innerHTML = `<p>before</p><flow-probe style="position: ${position}"><p>private</p></flow-probe><p>after</p>`
+    const widget = document.querySelector("flow-probe")!
+    const html = widget.outerHTML
+    $.selectRange(document.body, 0, document.body, 3)
+    editor.features.manipulation.delete()
+    expect(document.body.children).toHaveLength(1)
+    expect(document.body.firstElementChild).toBe(widget)
+    expect(editor.toHTML(true)).toBe(html)
+  })
+
+  it.each(["backward", "forward"] as const)("joins the flow across positioned siblings on %s deletion", direction => {
+    document.body.innerHTML = '<p>before</p><img style="position: fixed"><p>after</p>'
+    const image = document.querySelector("img")!
+    $.selectRange(document.body, 1)
+    editor.features.manipulation.delete(direction)
+    expect(image.parentElement).toBe(document.body)
+    expect(document.querySelector("p")!.textContent).toBe("beforeafter")
+    expect(document.querySelectorAll("p")).toHaveLength(1)
+  })
+
+  it("keeps nested positioned nodes in the original block on Enter", () => {
+    document.body.innerHTML = '<p>before<span style="position: absolute">floating</span>after</p>'
+    const block = document.querySelector("p")!
+    const floating = document.querySelector("span")!
+    $.move(block.firstChild!, 3)
+    editor.features.manipulation.insert()
+    expect(floating.parentElement).toBe(block)
+    expect(document.querySelectorAll("p")).toHaveLength(2)
+    expect(document.body.lastElementChild!.textContent).toBe("oreafter")
+  })
+
+  it("formats only text blocks belonging to the selected flow", () => {
+    document.body.innerHTML = '<p>before</p><aside style="position: fixed"><p>floating</p></aside><p>after</p>'
+    const floating = document.querySelector("aside")!
+    $.selectRange(document.body, 0, document.body, 3)
+    editor.features.manipulation.setBlockType("h2")
+    expect(document.querySelectorAll("h2")).toHaveLength(2)
+    expect(floating.firstElementChild!.localName).toBe("p")
+    expect(floating.textContent).toBe("floating")
+  })
+
+  it("wraps a section around flow siblings without moving a positioned sibling", () => {
+    document.body.innerHTML = '<p>before</p><aside style="position: fixed">floating</aside><p>after</p>'
+    const floating = document.querySelector("aside")!
+    $.selectRange(document.body, 0, document.body, 3)
+    expect(editor.features.manipulation.toggleSection()).toBe(true)
+    expect(floating.parentElement).toBe(document.body)
+    expect(document.querySelector("section")!.textContent).toBe("beforeafter")
+  })
+
+  it("replaces a native text range while preserving its positioned subtree", () => {
+    document.body.innerHTML = '<p>before<span style="position: absolute">floating</span>after</p>'
+    const block = document.querySelector("p")!
+    const floating = document.querySelector("span")!
+    $.selectRange(block.firstChild!, 2, block.lastChild!, 3)
+    const event = new InputEvent("beforeinput", {inputType: "insertText", data: "X", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(floating.parentElement).toBe(block)
+    expect(block.textContent).toBe("beXfloatinger")
+  })
+})

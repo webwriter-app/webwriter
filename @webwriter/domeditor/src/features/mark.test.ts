@@ -750,3 +750,29 @@ describe("MarkFeature shortcuts", () => {
     expect(cleanHTML()).toBe("<p><samp><code>Text</code></samp></p>")
   })
 })
+
+
+describe("independent positioned flows", () => {
+  it.each(["absolute", "fixed"])("formats surrounding text without changing %s content", position => {
+    const paragraph = setContent(`<p>before<span style="position: ${position}">floating</span>after</p>`)
+    const floating = paragraph.querySelector("span")!
+    $.selectRange(paragraph.firstChild!, 0, paragraph.lastChild!, 5)
+    expect(feature.addMark("code")).toBe(true)
+    expect(floating.parentElement).toBe(paragraph)
+    expect(floating.innerHTML).toBe("floating")
+    expect(Array.from(paragraph.querySelectorAll("code"), node => node.textContent)).toEqual(["before", "after"])
+    expect(feature.toggleMarkGroup("span")).toBe(true)
+    expect(paragraph.querySelector("code")).toBeNull()
+    expect(floating.parentElement).toBe(paragraph)
+  })
+
+  it("styles surrounding text while preserving a positioned widget's identity", () => {
+    const paragraph = setContent('<p>before<flow-widget style="position: fixed">floating</flow-widget>after</p>')
+    const widget = paragraph.querySelector("flow-widget")!
+    $.selectRange(paragraph.firstChild!, 0, paragraph.lastChild!, 5)
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+    expect(widget.parentElement).toBe(paragraph)
+    expect(widget.innerHTML).toBe("floating")
+    expect(Array.from(paragraph.querySelectorAll("span"), node => node.textContent)).toEqual(["before", "after"])
+  })
+})

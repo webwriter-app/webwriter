@@ -926,3 +926,14 @@ describe("semantic list editing", () => {
     expect(document.querySelectorAll("summary")).toHaveLength(1)
   })
 })
+
+
+it("excludes positioned blocks and their text descendants from list wrapping", () => {
+  document.body.innerHTML = '<p>before</p><aside style="position: fixed"><p>floating</p></aside><p>after</p>'
+  const floating = document.querySelector("aside")!
+  $.selectRange(document.body, 0, document.body, 3)
+  editor.features.list.toggleList("ul")
+  expect(floating.parentElement).toBe(document.body)
+  expect(floating.innerHTML).toBe("<p>floating</p>")
+  expect(Array.from(document.querySelectorAll("li"), node => node.textContent)).toEqual(["before", "after"])
+})

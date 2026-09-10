@@ -238,7 +238,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   /** Wraps the selected phrasing DOM as one ruby base and appends its first annotation. */
-  createRuby(annotation = "", fallback = false) {
+  createRuby(annotation = "", fallback = false): boolean {
+    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.createRuby(annotation, fallback))
     if(typeof annotation !== "string" || typeof fallback !== "boolean") return false
     const context = this.getSelection()
     if(!context || this.selectionContainsRuby(context)) return false
@@ -384,7 +385,8 @@ export class MarkFeature extends EditorFeature {
     return true
   }
 
-  addMark(mark: MarkName) {
+  addMark(mark: MarkName): boolean {
+    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.addMark(mark))
     this.assertMark(mark)
     if(mark === "ruby") return this.createRuby("", false)
     const caret = this.getCaret()
@@ -411,7 +413,8 @@ export class MarkFeature extends EditorFeature {
     return true
   }
 
-  removeMark(mark: MarkName) {
+  removeMark(mark: MarkName): boolean {
+    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.removeMark(mark))
     this.assertMark(mark)
     if(mark === "ruby") return this.removeRuby()
     const caret = this.getCaret()
@@ -523,7 +526,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   /** Sets or removes one supported element-specific attribute on active mark wrappers. */
-  setMarkAttribute(mark: MarkName, attribute: string, value: string) {
+  setMarkAttribute(mark: MarkName, attribute: string, value: string): boolean {
+    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setMarkAttribute(mark, attribute, value))
     this.assertMark(mark)
     if(!isMarkAttributeName(mark, attribute)) {
       throw new TypeError(`Unsupported attribute '${attribute}' for mark '${mark}'`)
@@ -568,7 +572,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   /** Sets one inline CSS property on span marks, or removes it for the default option. */
-  setStyleMark(property: StyleMarkName, value: string) {
+  setStyleMark(property: StyleMarkName, value: string): boolean {
+    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setStyleMark(property, value))
     this.assertStyleMark(property)
     const normalizedValue = this.normalizeStyleValue(property, value)
     const caret = this.getCaret()
@@ -787,7 +792,8 @@ export class MarkFeature extends EditorFeature {
     this.editor.postMarkState()
   }
 
-  private removeMatching(matches: (element: Element) => boolean) {
+  private removeMatching(matches: (element: Element) => boolean): boolean {
+    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.removeMatching(matches))
     const context = this.getSelection()
     if(!context) return false
     const originalElements = new Set(context.block.querySelectorAll("*"))
@@ -1196,6 +1202,31 @@ export class MarkFeature extends EditorFeature {
     return span.style.getPropertyValue(property).trim()
   }
 
+  /** Apply a formatting command to the native range's independent flow runs.
+   * Keep excluded nodes connected and restore the live enclosing selection. */
+  private acrossFlowRanges(command: () => boolean): boolean {
+    const selection = document.getSelection()!
+    const original = selection.getRangeAt(0).cloneRange()
+    const backwards = $.isBackwards
+    const ranges = $.flowRanges
+    let changed = false
+    try {
+      for(const range of ranges.reverse()) {
+        selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+        changed = command() || changed
+      }
+    }
+    finally {
+      selection.setBaseAndExtent(
+        backwards ? original.endContainer : original.startContainer,
+        backwards ? original.endOffset : original.startOffset,
+        backwards ? original.startContainer : original.endContainer,
+        backwards ? original.startOffset : original.endOffset,
+      )
+    }
+    return changed
+  }
+
   private getSelection(): MarkSelection | null {
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || selection.isCollapsed) return null
@@ -1221,7 +1252,7 @@ export class MarkFeature extends EditorFeature {
     const walker = document.createTreeWalker(startBlock, NodeFilter.SHOW_ELEMENT)
     while(walker.nextNode()) {
       const element = walker.currentNode as Element
-      if(!range.intersectsNode(element)) continue
+      if(!$.includesNode(element) || !range.intersectsNode(element)) continue
       if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
         || !this.editor.schema.isPhrasing(element)
         || !element.textContent
@@ -1259,7 +1290,7 @@ export class MarkFeature extends EditorFeature {
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
     while(walker.nextNode()) {
       const node = walker.currentNode as Text
-      if(!range.intersectsNode(node)) continue
+      if(!$.includesNode(node) || !range.intersectsNode(node)) continue
 
       const startRelation = range.comparePoint(node, 0)
       const endRelation = range.comparePoint(node, node.length)

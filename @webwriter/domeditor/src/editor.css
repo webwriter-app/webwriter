@@ -1810,3 +1810,12 @@ body::part(transform-overlay-orderer-menu-hidden) {
   0%, 35% { box-shadow: 0 0 0 6px rgb(124 58 237 / 30%); }
   100% { box-shadow: 0 0 0 18px rgb(124 58 237 / 0%); }
 }
+
+/* A native range remains contiguous, but independent positioned flows do not
+   participate in the surrounding flow's selection presentation. */
+.◆flow-excluded::selection,
+.◆flow-excluded *::selection {
+  background: transparent;
+  color: inherit;
+  text-shadow: none;
+}

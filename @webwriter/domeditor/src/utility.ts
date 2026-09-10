@@ -80,10 +80,36 @@ export function atomicEditingContainer(node: Node | null, schema?: Schema) {
   return node ? atomic : null
 }
 
+/** Positioned content owns an editing flow independent of its DOM siblings.
+ * Read computed style each time: authored styles and remote edits are live. */
+export function isOutOfFlow(node: Node | null): boolean {
+  if(!isElement(node)) return false
+  const position = node.ownerDocument.defaultView?.getComputedStyle(node).position
+  return position === "absolute" || position === "fixed"
+}
+
+export function editingFlowRoot(node: Node | null): Element {
+  const root = getDocumentRoot()
+  let element = isElement(node) ? node : node?.parentElement
+  while(element && element !== root && element !== document.body) {
+    if(isOutOfFlow(element)) return element
+    element = element.parentElement
+  }
+  return root
+}
+
+/** The next structural sibling in the same flow; DOM indexes remain intact. */
+export function flowSibling(node: Node, direction: "previous" | "next"): ChildNode | null {
+  let sibling = direction === "previous" ? node.previousSibling : node.nextSibling
+  while(sibling && isOutOfFlow(sibling)) sibling = direction === "previous" ? sibling.previousSibling : sibling.nextSibling
+  return sibling
+}
+
 function adjacentElement(nodes: NodeListOf<ChildNode>, offset: number, direction: "before" | "after") {
   const step = direction === "before" ? -1 : 1
   for(let index = direction === "before" ? offset - 1 : offset; 0 <= index && index < nodes.length; index += step) {
     const node = nodes.item(index)
+    if(isOutOfFlow(node)) continue
     if(node instanceof Element) return node
     if(node instanceof Text && node.textContent?.trim()) return null
   }
@@ -95,6 +121,7 @@ function edgeTextDescendant(node: Node, direction: "start" | "end"): Text | null
   const children = Array.from(node.childNodes)
   if(direction === "end") children.reverse()
   for(const child of children) {
+    if(isOutOfFlow(child)) continue
     const text = edgeTextDescendant(child, direction)
     if(text) return text
   }
@@ -199,6 +226,7 @@ function elementBoundaryCaretRect(container: Element, offset: number) {
 }
 
 function hasLayoutRect(node: Node) {
+  if(isOutOfFlow(node)) return false
   if(node instanceof Text && !node.textContent?.trim()) return false
   const rect = nodeEdgeRect(node)
   return rect.width > 0 || rect.height > 0
@@ -294,7 +322,7 @@ export class EditingSelection {
   /** Moves (or with `extend`, extends) the selection to the document position at the given viewport coordinates, snapping to element gaps at text boundaries. Requires layout (caretPositionFromPoint). */
   static selectCoords(x: number, y: number, extend=false, pointerTarget?: EventTarget | null, schema?: Schema) {
     focusEditorWindow()
-    const point = this.pointFromCoords(x, y, pointerTarget, schema)
+    const point = this.pointFromCoords(x, y, pointerTarget, schema, extend ? this.flowRoot : undefined)
     if(!point) return
     if(extend) this.extend(point.node, point.offset)
     else this.selectRange(point.node, point.offset)
@@ -303,7 +331,7 @@ export class EditingSelection {
 
   /** Resolves text and structural gaps identically for clicks and drags,
    * without installing an intermediate selection inside atomic content. */
-  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema) {
+  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element) {
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = getDocumentRoot()
     let overrideNative = false
@@ -315,7 +343,7 @@ export class EditingSelection {
     const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
       && element !== document.documentElement && root.contains(element))
     const layoutChildren = (element: Element) => Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
-      if(node instanceof Element && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
+      if(node instanceof Element && !isOutOfFlow(node) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
       if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
         const range = document.createRange()
         range.selectNode(node)
@@ -329,6 +357,32 @@ export class EditingSelection {
     const caretElement = offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
     const pointerElement = hit ?? (pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
+    const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
+    // Native hit testing can land on an overlapping positioned subtree while
+    // extending the surrounding flow. Resolve against that flow's own boxes.
+    if(offsetNode && editingFlowRoot(offsetNode) !== flow) {
+      const distance = (rect: DOMRect) => Math.hypot(
+        Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),
+      )
+      let container = flow
+      while(true) {
+        const nearest = layoutChildren(container).sort((a, b) => distance(a.rect) - distance(b.rect))[0]
+        if(!nearest) return point(container, 0)
+        const {node, rect} = nearest
+        if(node instanceof Element && !isAtomicEditingElement(node, schema) && layoutChildren(node).length) {
+          container = node
+          continue
+        }
+        overrideNative = true
+        if(node instanceof Element) return gap(node, y > rect.top + rect.height / 2 ? "after" : "before")
+        const native = document.caretPositionFromPoint(
+          Math.max(rect.left + 1, Math.min(x, rect.right - 1)),
+          Math.max(rect.top + 1, Math.min(y, rect.bottom - 1)),
+        )
+        if(native && editingFlowRoot(native.offsetNode) === flow) return point(native.offsetNode, native.offset)
+        return point(node, y > rect.bottom || y >= rect.top && x > rect.left + rect.width / 2 ? node.length : 0)
+      }
+    }
     let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
     const insideDisclosure = disclosure?.open && root.contains(disclosure)
       && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
@@ -393,7 +447,7 @@ export class EditingSelection {
     // when caretPositionFromPoint sees the overlay instead of the media.
     const atomic = atomicEditingContainer(hit ?? (pointerTarget instanceof Node ? pointerTarget : null), schema)
       ?? atomicEditingContainer(offsetNode ?? null, schema)
-    if(atomic) {
+    if(atomic && !isOutOfFlow(atomic)) {
       const rect = atomic.getBoundingClientRect()
       const inline = getComputedStyle(atomic).display.startsWith("inline")
       const after = y > rect.bottom || y >= rect.top && (inline
@@ -402,13 +456,13 @@ export class EditingSelection {
       return gap(atomic, after ? "after" : "before")
     }
     if(offsetNode && offsetNode !== root && !root.contains(offsetNode)) return
-    const firstRootElement = root.firstElementChild
+    const firstRootElement = Array.from(root.children).find(element => !isOutOfFlow(element)) ?? null
     const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
     if(!offsetNode) {
       if(firstRootElement && y < firstRootElement.getBoundingClientRect().top) {
         return gap(firstRootElement, "before")
       }
-      const lastRootElement = root.lastElementChild
+      const lastRootElement = Array.from(root.children).reverse().find(element => !isOutOfFlow(element))
       if(lastRootElement?.matches("details") && y > lastRootElement.getBoundingClientRect().bottom) {
         return gap(lastRootElement, "after")
       }
@@ -449,8 +503,8 @@ export class EditingSelection {
       }
     }
     if(offsetNode instanceof Element && typeof offset === "number") {
-      const gapAddressableElement = (node: Node | null) => isAtomicEditingElement(node, schema)
-        || node instanceof Element && node.matches("table, details")
+      const gapAddressableElement = (node: Node | null) => !isOutOfFlow(node) && (isAtomicEditingElement(node, schema)
+        || node instanceof Element && node.matches("table, details"))
       const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
       const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
       const elementAfterCaret = adjacentElement(offsetNode.childNodes, offset, "after")
@@ -531,7 +585,7 @@ export class EditingSelection {
     // the block must keep the boundary caret position.
     const hasBoundaryBox = boundaryRect.right > boundaryRect.left || boundaryRect.bottom > boundaryRect.top
     const isAtGap = caretAtEndOrStart && hasBoundaryBox && (y < boundaryRect.top || y > boundaryRect.bottom)
-    if(isAtGap) {
+    if(isAtGap && !isOutOfFlow(offsetNode.parentElement)) {
       const details = container.closest("details")
       if(details && !details.open && container.closest("summary")?.parentElement === details) {
         return gap(details, isBefore ? "before" : "after")
@@ -550,7 +604,7 @@ export class EditingSelection {
   static get isGapSelection() {
     if(this.detailsGap || this.dividerGap) return true
     const root = getDocumentRoot()
-    const firstRootElement = root.firstElementChild
+    const firstRootElement = Array.from(root.children).find(element => !isOutOfFlow(element)) ?? null
     const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
     const isRootBoundaryBeforeFirstElement = this.anchor === root &&
       firstRootElementIndex >= 0 &&
@@ -561,7 +615,7 @@ export class EditingSelection {
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
     const isInsideTable = isElement(this.anchor) && Boolean(this.anchor.closest("table"))
     return isElement(this.anchor) && !isSectionElement(this.anchor) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
-      (!Array.from(this.anchor.childNodes).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
+      (!Array.from(this.anchor.childNodes).filter(node => !isOutOfFlow(node)).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
         || isRootBoundaryBeforeFirstElement
         || isNestedListBoundary)
   }
@@ -593,7 +647,7 @@ export class EditingSelection {
     if(this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
-    return isElement(selected) && (selected === getDocumentRoot()
+    return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot()
       || !isMarkElement(selected) && !isSectionElement(selected))
   }
 
@@ -608,7 +662,7 @@ export class EditingSelection {
         return [
           this.anchor.childNodes.item(this.anchorOffset - 1),
           this.anchor.childNodes.item(this.anchorOffset),
-        ].some(node => node instanceof Text || isMarkElement(node))
+        ].some(node => !isOutOfFlow(node) && (node instanceof Text || isMarkElement(node)))
       }
       return false
     }
@@ -616,7 +670,7 @@ export class EditingSelection {
     // Cloning selected content runs custom-element constructors. Selection
     // queries must inspect the live DOM without creating widget instances.
     const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, {
-      acceptNode: node => range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+      acceptNode: node => this.includesNode(node) && range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
     })
     while(walker.nextNode()) {
       if(!isMarkElement(walker.currentNode) && !isSectionElement(walker.currentNode)) return false
@@ -628,12 +682,9 @@ export class EditingSelection {
   static get isEmptySelection() {
     const anchor = this.anchor
     const container = anchor ? getContainer(anchor) : null
-    return Boolean(container
-      && (container.childNodes.length === 0
-        || container.childNodes.length === 1
-          && container.childNodes.item(0) instanceof Text
-          && !container.childNodes.item(0)?.textContent)
-      && this.anchorOffset === 0)
+    const children = container ? Array.from(container.childNodes).filter(node => !isOutOfFlow(node)) : []
+    return Boolean(container && !children.some(node => !(node instanceof Text) || node.length)
+      && (this.anchor === container || this.anchor instanceof Text && !this.anchor.length))
   }
 
   /** Whether anchor and focus are different nodes. */
@@ -648,7 +699,7 @@ export class EditingSelection {
     const anchor = this.anchor
     const inRoot = anchor === root || Boolean(anchor && root.contains(anchor))
     return this.isEmpty && inRoot
-      && !Array.from(root.children).some(element => element.getAttribute("contenteditable") !== "false")
+      && !Array.from(root.children).some(element => !isOutOfFlow(element) && element.getAttribute("contenteditable") !== "false")
   }
 
   /** The selection's anchor node (where it started). */
@@ -731,9 +782,67 @@ export class EditingSelection {
     return Array.from(this.commonAncestor.childNodes) as Node[]
   }
 
+  /** Explicit node selection and carets inside positioned content keep that
+   * region editable; a surrounding range never implicitly enters it. */
+  static get flowRoot() {
+    return editingFlowRoot(this.selectedElement ?? this.anchor)
+  }
+
+  static includesNode(node: Node) {
+    const root = this.flowRoot
+    return node === root || root.contains(node) && editingFlowRoot(node) === root
+  }
+
+  /** Foreign positioned subtrees intersected by the native contiguous range. */
+  static get excludedFlowElements() {
+    const range = this.range
+    const excluded: Element[] = []
+    const visit = (element: Element) => {
+      if(!range.intersectsNode(element)) return
+      if(!this.includesNode(element) && !element.contains(this.flowRoot)) {
+        excluded.push(element)
+        return
+      }
+      Array.from(element.children).forEach(visit)
+    }
+    Array.from(getDocumentRoot().children).forEach(visit)
+    return excluded
+  }
+
+  /** Native ranges cannot contain holes. Split only for editing, retaining
+   * live DOM endpoints and the ancestor shells of excluded content. */
+  static get flowRanges() {
+    const range = this.range.cloneRange()
+    if(this.selectedElement === getDocumentRoot() || this.selectedElement === document.body) range.selectNodeContents(getDocumentRoot())
+    const ranges: Range[] = []
+    for(const element of this.excludedFlowElements) {
+      const before = range.cloneRange()
+      before.setEndBefore(element)
+      if(!before.collapsed) ranges.push(before)
+      range.setStartAfter(element)
+    }
+    if(!range.collapsed) ranges.push(range)
+    return ranges
+  }
+
+  private static cloneFlowContents(range: Range) {
+    if(range.collapsed) return getInertDocument(range.startContainer).createDocumentFragment()
+    const simulation = cloneRangeIn(range.commonAncestorContainer, range)!
+    const excluded = new Set(this.excludedFlowElements)
+    const prune = (live: Node, clone: Node) => {
+      const children = Array.from(clone.childNodes)
+      Array.from(live.childNodes).forEach((child, index) => {
+        if(isElement(child) && excluded.has(child)) children[index].remove()
+        else prune(child, children[index])
+      })
+    }
+    prune(range.commonAncestorContainer, simulation.root)
+    return simulation.range.cloneContents()
+  }
+
   /** A clone of the selected content. */
   static get slice() {
-    return cloneRangeContents(this.range)
+    return this.cloneFlowContents(this.range)
   }
 
   /** The common ancestor's children covered by the selection (the selected element itself for element selections). Empty for selections within a single text node. Currently excludes children that contain the selection start, e.g. the first block of a cross-block selection. */
@@ -747,7 +856,7 @@ export class EditingSelection {
   else if(this.isTextSelection) {
     return []
   }
-  const flattenSections = (node: Node): Node[] => isSectionElement(node)
+  const flattenSections = (node: Node): Node[] => !this.includesNode(node) ? [] : isSectionElement(node)
     ? Array.from(node.childNodes).flatMap(flattenSections)
     : [node]
   return this.siblings
@@ -757,16 +866,21 @@ export class EditingSelection {
 
   /** The element adjacent to the selection: the selected element's sibling, the element beside a gap, or the text container's sibling. Undefined for other selection kinds. */
   static #getAdjacentElement(direction: "previous" | "next" = "next") {
-    const siblingGetter = `${direction}ElementSibling` as const
+    const adjacent = (node: Node | null) => {
+      let sibling = node ? flowSibling(node, direction) : null
+      while(sibling && !isElement(sibling)) sibling = flowSibling(sibling, direction)
+      return sibling as Element | null
+    }
     if(this.isElementSelection) {
-      return this.selectedElement?.[siblingGetter] ?? null
+      return isOutOfFlow(this.selectedElement ?? null) ? null : adjacent(this.selectedElement ?? null)
     }
     else if(this.isGapSelection) {
       const [nodesBefore, nodesAfter] = getSidesOfPoint($.range)
-      return direction === "previous"? getContainer(nodesBefore.at(-1)!): getContainer(nodesAfter.at(0)!)
+      const node = direction === "previous" ? nodesBefore.at(-1) : nodesAfter.at(0)
+      return node ? getContainer(node) : null
     }
     else if(this.isTextSelection) {
-      return this.anchorContainer?.[siblingGetter]
+      return this.anchorContainer === this.flowRoot ? null : adjacent(this.anchorContainer)
     }
     return undefined
   }
@@ -788,7 +902,7 @@ export class EditingSelection {
     const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
     const range = copyingRoot ? document.createRange() : this.range
     if(copyingRoot) range.selectNodeContents(root)
-    let fragment = cloneRangeContents(range)
+    let fragment = this.cloneFlowContents(range)
     const commonAncestor = this.range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
     while(sharedMark && isMarkElement(sharedMark)) {
@@ -803,32 +917,23 @@ export class EditingSelection {
 
   /** Deletes the selected content (a no-op for collapsed selections). */
   static delete() {
-    const root = getDocumentRoot()
-    if(this.selectedElement === root || this.selectedElement === document.body) {
-      root.replaceChildren()
-      this.#selection.setPosition(root, 0)
-      window.focus()
-      return
-    }
     const range = this.range
-    range.deleteContents()
-    if(range.startContainer === root) range.collapse(true)
+    const root = getDocumentRoot()
+    const selectsRoot = this.selectedElement === root || this.selectedElement === document.body
+    for(const part of this.flowRanges.reverse()) part.deleteContents()
+    if(selectsRoot) this.#selection.setPosition(root, 0)
+    else range.collapse(true)
     window.focus()
   }
 
-  /** Removes the selected content from the document and returns it. */
+  /** Removes selected flow content, retaining the live excluded subtrees. */
   static cut() {
     const root = getDocumentRoot()
-    if(this.selectedElement === root || this.selectedElement === document.body) {
-      const fragment = document.createDocumentFragment()
-      fragment.append(...Array.from(root.childNodes))
-      this.#selection.setPosition(root, 0)
-      window.focus()
-      return fragment
-    }
-    const range = this.range
-    const fragment = range.extractContents()
-    if(range.startContainer === root) range.collapse(true)
+    const selectsRoot = this.selectedElement === root || this.selectedElement === document.body
+    const fragment = document.createDocumentFragment()
+    for(const part of this.flowRanges.reverse()) fragment.prepend(part.extractContents())
+    if(selectsRoot) this.#selection.setPosition(root, 0)
+    else this.range.collapse(true)
     window.focus()
     return fragment
   }
@@ -851,9 +956,27 @@ export class EditingSelection {
     window.focus()
   }
 
+  private static modify(alter: "move" | "extend", direction: Direction, granularity: Granularity) {
+    const flow = this.flowRoot
+    this.#selection.modify(alter, direction, granularity)
+    const focus = this.focus
+    if(!focus || editingFlowRoot(focus) === flow) return
+    const forward = direction === "forward" || direction === "right"
+    let node = editingFlowRoot(focus)
+    while(node.parentElement && editingFlowRoot(node.parentElement) !== flow && node !== getDocumentRoot()) {
+      node = editingFlowRoot(node.parentElement)
+    }
+    const parent = node.parentNode
+    const point = flow.contains(node) && parent
+      ? {node: parent, offset: Array.from(parent.childNodes).indexOf(node) + (forward ? 1 : 0)}
+      : {node: flow, offset: forward ? flow.childNodes.length : 0}
+    if(alter === "extend") this.#selection.extend(point.node, point.offset)
+    else this.#selection.setPosition(point.node, point.offset)
+  }
+
   /** Extends the focus by the given granularity. */
   static extendBy(granularity: Granularity, direction: Direction="forward") {
-    this.#selection.modify("extend", direction, granularity)
+    this.modify("extend", direction, granularity)
     window.focus()
   }
 
@@ -866,7 +989,7 @@ export class EditingSelection {
 
   /** Moves the caret by the given granularity (character, word, line) and direction (forward, backward). */
   static moveBy(granularity: Granularity, direction: Direction = "forward") {
-    this.#selection.modify("move", direction, granularity)
+    this.modify("move", direction, granularity)
     window.focus()
   }
 
@@ -877,7 +1000,7 @@ export class EditingSelection {
     if(!parent || !range) {
       throw TypeError("Invalid pos")
     }
-    return Array.from(parent!.childNodes).filter(node => range.comparePoint(node, 0) === 0)
+    return Array.from(parent!.childNodes).filter(node => this.includesNode(node) && range.comparePoint(node, 0) === 0)
   }
 
   /** Formats the selection as "anchor@offset-focus@offset". */
@@ -894,7 +1017,7 @@ export const $ = EditingSelection
  * and semantic section wrappers are transparent to ordinary selection. */
 export function getContainer(node: Node) {
   let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
-  while(element && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
+  while(element && !isOutOfFlow(element) && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
   return element!
 }
 
@@ -906,6 +1029,7 @@ export function getSidesOfPoint(point: Range) {
   const leftNodes = []
   const rightNodes = []
   for(const node of nodes) {
+    if(isOutOfFlow(node)) continue
     const isBefore = point?.comparePoint(node, 0) === -1
     if(isBefore) {
       leftNodes.push(node)
