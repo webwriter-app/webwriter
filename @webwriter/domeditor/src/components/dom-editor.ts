@@ -594,6 +594,7 @@ export class DomEditor extends LitElement {
   private historyDocumentTransitionCount = 0
   private historyError = ""
   private settings: AppSettings = loadAppSettings()
+  private motionStylesheet: {document: Document, sheet: CSSStyleSheet} | null = null
   private backendState: "probing" | "connected" | "unavailable" = "probing"
   private backendSession: BackendSession | null = null
   private backendClient: BackendClient | null = null
@@ -623,6 +624,11 @@ export class DomEditor extends LitElement {
       width: 100%;
       height: 100%;
       border: 0.5px solid #a8a8a8;
+    }
+
+    :host([disable-animations]) {
+      --ww-ui-transition: none;
+      --ww-ui-animation: none;
     }
 
     .app-bar {
@@ -1557,8 +1563,10 @@ export class DomEditor extends LitElement {
     previousIframe.removeEventListener("focus", this.handleEditorFrameFocus)
     previousIframe.removeEventListener("blur", this.handleEditorFrameBlur)
     const iframe = event.currentTarget as HTMLIFrameElement
+    this.clearMotionStylesheet()
     this.editorDocument = iframe.contentDocument
     this.editorWindow = iframe.contentWindow
+    this.updateMotionPreference()
     // Happy DOM parses the intentionally minimal initial srcdoc's metadata
     // into the body. Browsers place it in the head, but keep the authored DOM
     // correct in either environment before observers and bridge state start.
@@ -2108,12 +2116,33 @@ export class DomEditor extends LitElement {
     }).catch(error => this.reportFileError(error))
   }
 
+  private clearMotionStylesheet() {
+    if(!this.motionStylesheet) return
+    const {document, sheet} = this.motionStylesheet
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter(candidate => candidate !== sheet)
+    this.motionStylesheet = null
+  }
+
+  private updateMotionPreference() {
+    this.toggleAttribute("disable-animations", this.settings.disableAnimations)
+    this.clearMotionStylesheet()
+    const document = this.editorDocument
+    if(!this.settings.disableAnimations || !document?.defaultView) return
+    // Construct in the iframe's realm. Adopted sheets never enter authored HTML,
+    // collaboration, or serialization; only editor styles consume these tokens.
+    const sheet = new (document.defaultView as Window & typeof globalThis).CSSStyleSheet()
+    sheet.replaceSync(":root { --ww-ui-transition: none; --ww-ui-animation: none; }")
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+    this.motionStylesheet = {document, sheet}
+  }
+
   private handleAppSettingsChange = (event: Event) => {
     const settings = (event as CustomEvent<AppSettings>).detail
     if(!settings || typeof settings.language !== "string" || typeof settings.updateDocumentLanguage !== "boolean") return
     const previous = this.settings
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
     this.lang = settings.language
+    this.updateMotionPreference()
     if(settings.updateDocumentLanguage && (
       settings.language !== previous.language || !previous.updateDocumentLanguage
     )) {
@@ -4707,6 +4736,7 @@ export class DomEditor extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     this.lang = this.settings.language
+    this.updateMotionPreference()
     window.addEventListener("message", this.handleEditorMessage)
     window.addEventListener("beforeunload", this.handleBeforeUnload)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
@@ -4723,6 +4753,7 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.clearMotionStylesheet()
     this.disposeLiveSession()
     this.backendProbeController?.abort()
     this.backendProbeController = null

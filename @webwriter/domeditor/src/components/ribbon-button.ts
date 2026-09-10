@@ -105,7 +105,7 @@ export class RibbonButton extends LitElement {
       text-align: center;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 180ms ease;
+      transition: var(--ww-ui-transition, opacity 180ms ease);
     }
 
     .button-notification.visible {
@@ -199,7 +199,7 @@ export class RibbonButton extends LitElement {
       border-right: 1.25px solid currentColor;
       border-bottom: 1.25px solid currentColor;
       transform: rotate(45deg);
-      transition: transform 120ms ease;
+      transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
     .submenu-toggle[aria-expanded="true"] .submenu-chevron {

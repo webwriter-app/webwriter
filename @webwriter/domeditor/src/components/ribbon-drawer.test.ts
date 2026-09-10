@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
 import {RibbonButton} from "./ribbon-button"
 import {RibbonDrawer} from "./ribbon-drawer"
@@ -24,6 +24,24 @@ async function mountDrawer(collapsed = true) {
 }
 
 describe("responsive ribbon drawer", () => {
+  it("settles and closes without a transition event when motion is disabled", async () => {
+    const drawer = await mountDrawer()
+    drawer.style.setProperty("--ww-ui-transition", "none")
+    vi.useFakeTimers()
+    try {
+      drawer.openDrawer()
+      await vi.advanceTimersByTimeAsync(0)
+      await drawer.updateComplete
+      expect(drawer.hasAttribute("drawer-settled")).toBe(true)
+      expect(drawer.hasAttribute("drawer-visible")).toBe(true)
+      drawer.closeDrawer()
+      await vi.advanceTimersByTimeAsync(0)
+      await drawer.updateComplete
+      expect(drawer.hasAttribute("drawer-visible")).toBe(false)
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("widens three-column Style drawers in both states", () => {
     const styles = RibbonDrawer.styles.toString()
 

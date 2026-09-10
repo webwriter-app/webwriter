@@ -788,6 +788,26 @@ describe("processSelection()", () => {
 describe("scrolling selections into view", () => {
   const options = {behavior: "smooth", block: "nearest", inline: "nearest"} as const
 
+  it("reveals selections instantly while UI motion is disabled and restores smooth scrolling", () => {
+    document.body.innerHTML = "<p>first</p><p>second</p>"
+    // Happy DOM does not expose inherited custom properties in computed styles.
+    const style = document.createElement("style")
+    style.textContent = "p { --ww-ui-transition: none; }"
+    document.head.append(style)
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    try {
+      feature.actions.selectNode({type: "selectNode", path: [0]})
+      expect(scrollIntoView).toHaveBeenLastCalledWith({...options, behavior: "instant"})
+      style.remove()
+      feature.actions.selectNode({type: "selectNode", path: [1]})
+      expect(scrollIntoView).toHaveBeenLastCalledWith(options)
+    }
+    finally {
+      style.remove()
+      scrollIntoView.mockRestore()
+    }
+  })
+
   it("reveals an element only when the selected element changes", () => {
     document.body.innerHTML = "<p>first</p><p>second</p>"
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})

@@ -141,6 +141,7 @@ export const appCommands: readonly AppCommand[] = [
 export type AppSettings = {
   language: string
   updateDocumentLanguage: boolean
+  disableAnimations: boolean
   shortcuts: Record<string, string>
 }
 
@@ -148,6 +149,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
   return {
     language: "en",
     updateDocumentLanguage: true,
+    disableAnimations: false,
     shortcuts: Object.fromEntries(appCommands.map(command => [
       command.id,
       command.defaultShortcut?.(applePlatform) ?? "",
@@ -174,6 +176,9 @@ export function loadAppSettings(): AppSettings {
       updateDocumentLanguage: typeof value.updateDocumentLanguage === "boolean"
         ? value.updateDocumentLanguage
         : defaults.updateDocumentLanguage,
+      disableAnimations: typeof value.disableAnimations === "boolean"
+        ? value.disableAnimations
+        : defaults.disableAnimations,
       shortcuts,
     }
   }

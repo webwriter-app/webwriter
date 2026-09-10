@@ -18,6 +18,12 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+/** Inherited across editor UI shadow roots; authored styles do not use this token. */
+export function uiMotionDisabled(element: Element) {
+  return element.ownerDocument.defaultView?.getComputedStyle(element)
+    .getPropertyValue("--ww-ui-transition").trim() === "none"
+}
+
 export function setPart(element: Element, part: string, enabled = true) {
   const parts = new Set((element.getAttribute("part") ?? "").split(/\s+/).filter(Boolean))
   enabled ? parts.add(part) : parts.delete(part)

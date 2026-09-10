@@ -586,7 +586,7 @@ body::part(virtual-list-caret) {
   height: var(--virtual-list-line-height, 1.25em);
   min-height: 16px;
   background: CanvasText;
-  animation: blink 1s step-end infinite;
+  animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
 body::part(virtual-list-caret-hidden) {
@@ -1097,7 +1097,7 @@ summary:is(:empty, :has(> br:only-child)).◆empty-selected {
 
 summary:is(:empty, :has(> br:only-child)).◆empty-selected::before {
   border-inline-start-color: currentColor;
-  animation: summary-caret-blink 1s step-end infinite;
+  animation: var(--ww-ui-animation, summary-caret-blink 1s step-end infinite);
 }
 
 @keyframes summary-caret-blink {
@@ -1217,7 +1217,7 @@ body::part(empty-document-caret) {
   pointer-events: none;
   user-select: none;
   z-index: 2147483646;
-  animation: blink 1s step-end infinite;
+  animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
 body.◆empty-selected::part(empty-document-caret) {
@@ -1295,7 +1295,7 @@ body::part(gap-caret)::after {
     margin-left: calc(-0.4 * var(--size));
     margin-top: calc(-0.4 * var(--size));
     background: currentColor;
-    animation: blink 1s step-end 0s infinite;
+    animation: var(--ww-ui-animation, blink 1s step-end 0s infinite);
 }
 
 body.◆drop-selection-active,
@@ -1803,7 +1803,7 @@ body::part(transform-overlay-orderer-menu-hidden) {
 }
 
 .◆ai-preview-pulse {
-  animation: ◆ai-preview-pulse 1.2s ease-out;
+  animation: var(--ww-ui-animation, ◆ai-preview-pulse 1.2s ease-out);
 }
 
 @keyframes ◆ai-preview-pulse {

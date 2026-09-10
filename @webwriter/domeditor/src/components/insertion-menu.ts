@@ -1,5 +1,6 @@
 import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
+import {uiMotionDisabled} from "../utility"
 import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
 import {packageNameLabel, type PackageInsertionItem} from "../packages"
@@ -208,7 +209,7 @@ export class InsertionMenu extends LitElement {
     if(changed.has("open") || changed.has("query")) this.resetScrollPosition()
     else if(changed.has("activeIndex")) {
       this.shadowRoot?.querySelector<HTMLElement>(".item[data-active]")
-        ?.scrollIntoView({behavior: "smooth", block: "nearest", inline: "nearest"})
+        ?.scrollIntoView({behavior: uiMotionDisabled(this) ? "instant" : "smooth", block: "nearest", inline: "nearest"})
     }
   }
 

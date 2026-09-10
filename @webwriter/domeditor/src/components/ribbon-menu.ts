@@ -144,7 +144,7 @@ export class RibbonMenu extends LitElement {
       border-right: 1.5px solid currentColor;
       border-bottom: 1.5px solid currentColor;
       transform: rotate(45deg);
-      transition: transform 120ms ease;
+      transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
     .submenu-toggle[aria-expanded="true"] .submenu-toggle-chevron {

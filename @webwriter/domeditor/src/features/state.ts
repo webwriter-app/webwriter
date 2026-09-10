@@ -3,7 +3,7 @@ import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
 import type {DOMChangePreview} from "../domdoc"
 import {stripActiveContent} from "../active-content"
 import {isMarkElement} from "../marks"
-import {cloneRangeContents} from "../utility"
+import {cloneRangeContents, uiMotionDisabled} from "../utility"
 
 const maximumAIHTMLLength = 1_000_000
 const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
@@ -392,7 +392,7 @@ export class StateFeature extends EditorFeature {
   private gotoAIEdit(editId: string) {
     const target = this.targetsForAIEdit(editId)[0]
     if(!target) return {status: "unavailable", message: "The changed content is no longer in the document"}
-    target.scrollIntoView?.({block: "center", behavior: "smooth"})
+    target.scrollIntoView?.({block: "center", behavior: uiMotionDisabled(target) ? "instant" : "smooth"})
     target.classList.remove("◆ai-preview-pulse")
     // Restart the animation when Go to is used repeatedly.
     void target.offsetWidth

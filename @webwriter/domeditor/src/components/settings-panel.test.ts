@@ -4,6 +4,7 @@ import {
   APP_SETTINGS_STORAGE_KEY,
   appCommands,
   defaultAppSettings,
+  loadAppSettings,
   type AppSettings,
 } from "../app-settings"
 import {AppRibbon} from "./ribbon"
@@ -40,6 +41,31 @@ afterEach(() => {
 })
 
 describe("settings panel", () => {
+  it("defaults motion disabling to off", () => {
+    expect(defaultAppSettings().disableAnimations).toBe(false)
+  })
+
+  it("emits motion changes while preserving the other settings", async () => {
+    const settings = {...defaultAppSettings(), language: "de", updateDocumentLanguage: false}
+    const panel = await mountPanel(settings)
+    const changes: AppSettings[] = []
+    panel.addEventListener("settings-change", event => {
+      changes.push((event as CustomEvent<AppSettings>).detail)
+    })
+    const checkbox = panel.shadowRoot!.querySelector<HTMLElement>("#motion-setting-heading")!
+      .closest("section")!.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+
+    checkbox.checked = true
+    checkbox.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    checkbox.checked = false
+    checkbox.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+
+    expect(changes.map(change => change.disableAnimations)).toEqual([true, false])
+    expect(changes[0].language).toBe(settings.language)
+    expect(changes[0].updateDocumentLanguage).toBe(settings.updateDocumentLanguage)
+    expect(changes[0].shortcuts).toEqual(settings.shortcuts)
+  })
+
   it("shows language settings and every application command", async () => {
     const panel = await mountPanel()
 
@@ -106,6 +132,7 @@ describe("settings panel", () => {
       ...defaultAppSettings(),
       language: "de",
       updateDocumentLanguage: false,
+      disableAnimations: true,
       shortcuts: {...defaultAppSettings().shortcuts, "document.save": "Alt+S"},
     }
     panel.dispatchEvent(new CustomEvent("settings-change", {
@@ -124,6 +151,17 @@ describe("settings panel", () => {
     expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual(defaultAppSettings())
     expect(panel.shadowRoot!.querySelector(".status")?.textContent).toContain("Settings reset")
     expect(ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!.open).toBe(true)
+  })
+
+  it("loads motion settings compatibly with older and malformed stored values", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({language: "de"}))
+    expect(loadAppSettings().disableAnimations).toBe(false)
+
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableAnimations: "yes"}))
+    expect(loadAppSettings().disableAnimations).toBe(false)
+
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableAnimations: true}))
+    expect(loadAppSettings().disableAnimations).toBe(true)
   })
 })
 

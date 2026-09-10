@@ -32,7 +32,7 @@ import {
   type StyleMarkValues,
 } from "../marks"
 import { ribbonIcon } from "../ribbon-icons"
-import {isOnApple} from "../utility"
+import {uiMotionDisabled, isOnApple} from "../utility"
 import {
   appCommands,
   defaultAppSettings,
@@ -291,9 +291,9 @@ export class AppRibbon extends LitElement {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-user-select: none;
       user-select: none;
-      transition:
+      transition: var(--ww-ui-transition,
         height 180ms ease,
-        max-height 180ms ease;
+        max-height 180ms ease);
     }
 
     input, textarea {
@@ -329,7 +329,7 @@ export class AppRibbon extends LitElement {
       --ribbon-area-background: #f2f2f2;
       --ribbon-area-border: #d8dee6;
       --ribbon-compact-bar-height: 24px;
-      transition: background-color 180ms ease;
+      transition: var(--ww-ui-transition, background-color 180ms ease);
     }
 
     .ribbon.preview {
@@ -525,11 +525,11 @@ export class AppRibbon extends LitElement {
       line-height: 16px;
       overflow: hidden;
       resize: none;
-      transition:
+      transition: var(--ww-ui-transition,
         min-height 220ms ease,
         padding 220ms ease,
         border-color 220ms ease,
-        border-radius 220ms ease;
+        border-radius 220ms ease);
     }
 
     .ai-prompt-input::placeholder {
@@ -551,7 +551,7 @@ export class AppRibbon extends LitElement {
       color: #ffffff;
       background: #3977c7;
       cursor: pointer;
-      transition: background-color 120ms ease, color 120ms ease;
+      transition: var(--ww-ui-transition, background-color 120ms ease, color 120ms ease);
     }
 
     .ai-prompt-submit {
@@ -601,7 +601,7 @@ export class AppRibbon extends LitElement {
       border-right: 1.5px solid currentColor;
       border-bottom: 1.5px solid currentColor;
       transform: translateY(-1px) rotate(45deg);
-      transition: transform 120ms ease;
+      transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
     .ai-prompt-expand[aria-expanded="true"] .ai-prompt-expand-chevron {
@@ -627,18 +627,18 @@ export class AppRibbon extends LitElement {
       background: #ffffff;
       box-shadow: 0 0 0 rgb(0 0 0 / 0%);
       container-type: inline-size;
-      transition: border-color 120ms ease;
+      transition: var(--ww-ui-transition, border-color 120ms ease);
     }
 
     .ai-chat-panel[data-transitioning] {
-      transition:
+      transition: var(--ww-ui-transition,
         width 220ms ease,
         min-width 220ms ease,
         right 220ms ease,
         max-height 220ms ease,
         border-color 120ms ease,
         border-radius 220ms ease,
-        box-shadow 220ms ease;
+        box-shadow 220ms ease);
     }
 
     .ai-chat-panel:hover,
@@ -713,12 +713,12 @@ export class AppRibbon extends LitElement {
       color: #3977c7;
       background: transparent;
       cursor: pointer;
-      transition:
+      transition: var(--ww-ui-transition,
         top 220ms ease,
         left 220ms ease,
         width 220ms ease,
         height 220ms ease,
-        background-color 120ms ease;
+        background-color 120ms ease);
     }
 
     .ai-chat-brand-button:hover {
@@ -766,7 +766,7 @@ export class AppRibbon extends LitElement {
       opacity: 0;
       pointer-events: none;
       transform: translateY(-0.5rem);
-      transition: opacity 150ms ease, transform 220ms ease;
+      transition: var(--ww-ui-transition, opacity 150ms ease, transform 220ms ease);
     }
 
     .ai-chat-panel[data-open] .ai-chat-header {
@@ -861,7 +861,7 @@ export class AppRibbon extends LitElement {
       background: #ffffff;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 140ms ease 40ms;
+      transition: var(--ww-ui-transition, opacity 140ms ease 40ms);
     }
 
     .ai-chat-panel[data-open] .ai-chat-messages {
@@ -1110,13 +1110,13 @@ export class AppRibbon extends LitElement {
       background: #ffffff;
       visibility: visible;
       opacity: 1;
-      transition:
+      transition: var(--ww-ui-transition,
         height 220ms ease,
         padding 220ms ease,
         border-color 220ms ease,
         background-color 220ms ease,
         visibility 120ms ease,
-        opacity 120ms ease;
+        opacity 120ms ease);
     }
 
     .ai-chat-panel[data-open] .ai-chat-composer {
@@ -1139,7 +1139,7 @@ export class AppRibbon extends LitElement {
       border: 1px solid transparent;
       border-radius: 0.5rem;
       background: transparent;
-      transition: border-color 220ms ease, background-color 220ms ease;
+      transition: var(--ww-ui-transition, border-color 220ms ease, background-color 220ms ease);
     }
 
     .ai-chat-panel[data-open] .ai-composer-surface {
@@ -1190,7 +1190,7 @@ export class AppRibbon extends LitElement {
       opacity: 0;
       pointer-events: none;
       transform: translateY(0.25rem);
-      transition: opacity 140ms ease 40ms, transform 220ms ease;
+      transition: var(--ww-ui-transition, opacity 140ms ease 40ms, transform 220ms ease);
     }
 
     .ai-pending-attachments {
@@ -1740,7 +1740,7 @@ export class AppRibbon extends LitElement {
       background: white;
       box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
       content: "";
-      transition: transform 120ms ease;
+      transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
     .live-session-switch input:checked {
@@ -2386,7 +2386,7 @@ export class AppRibbon extends LitElement {
       content: "›";
       font-size: 0.9rem;
       transform: rotate(90deg);
-      transition: transform 120ms ease;
+      transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
     .develop-compact-details[open] summary::after {
@@ -3570,7 +3570,7 @@ export class AppRibbon extends LitElement {
     this.previewTransitionTimer = setTimeout(() => {
       this.previewTransitionTimer = undefined
       this.previewTransitioning = false
-    }, 180)
+    }, uiMotionDisabled(this) ? 0 : 180)
   }
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
@@ -3968,7 +3968,7 @@ export class AppRibbon extends LitElement {
     this.aiChatTransitionTimer = setTimeout(() => {
       this.aiChatTransitionTimer = undefined
       this.aiChatTransitioning = false
-    }, 220)
+    }, uiMotionDisabled(this) ? 0 : 220)
   }
 
   private startNewAIChat = () => {

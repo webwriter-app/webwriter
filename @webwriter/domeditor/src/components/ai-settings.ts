@@ -358,7 +358,7 @@ export class AISettingsDialog extends LitElement {
     }
 
     .models-refresh[data-loading] .models-refresh-icon {
-      animation: ai-settings-spin 700ms linear infinite;
+      animation: var(--ww-ui-animation, ai-settings-spin 700ms linear infinite);
     }
 
     .models-refresh-icon,

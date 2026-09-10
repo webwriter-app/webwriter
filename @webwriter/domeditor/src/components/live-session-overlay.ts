@@ -92,7 +92,7 @@ export class LiveSessionOverlay extends LitElement {
       filter: drop-shadow(0 1px 1px rgb(0 0 0 / 28%));
       pointer-events: none;
       transform: translate(-15%, -8%);
-      transition: left 80ms linear, top 80ms linear;
+      transition: var(--ww-ui-transition, left 80ms linear, top 80ms linear);
     }
 
     .cursor::before {
@@ -124,7 +124,7 @@ export class LiveSessionOverlay extends LitElement {
       opacity: 0;
       pointer-events: none;
       transform: translate(-50%, -50%);
-      animation: live-session-click 700ms ease-out both;
+      animation: var(--ww-ui-animation, live-session-click 700ms ease-out both);
     }
 
     @keyframes live-session-click {
@@ -142,7 +142,7 @@ export class LiveSessionOverlay extends LitElement {
       box-shadow: 0 0 0 1px rgb(255 255 255 / 75%);
       transform: translateY(-50%);
       pointer-events: none;
-      transition: top 80ms linear;
+      transition: var(--ww-ui-transition, top 80ms linear);
     }
 
     .widget-affordance {

@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit"
+import {uiMotionDisabled} from "../utility"
 import { repeat } from "lit/directives/repeat.js"
 import { ribbonIcon } from "../ribbon-icons"
 import type { SelectionGap, SelectionPathItem, SelectionPathSection } from "../editor-bridge"
@@ -75,7 +76,7 @@ export class DomEditorBreadcrumb extends LitElement {
       max-height: 0;
       overflow: hidden;
       pointer-events: none;
-      transition: max-height 180ms ease;
+      transition: var(--ww-ui-transition, max-height 180ms ease);
     }
 
     .tree-panel[aria-hidden="false"] {
@@ -111,7 +112,7 @@ export class DomEditorBreadcrumb extends LitElement {
     }
 
     .breadcrumb-fade-in {
-      animation: breadcrumb-fade-in 120ms ease both;
+      animation: var(--ww-ui-animation, breadcrumb-fade-in 120ms ease both);
     }
 
     .separator {
@@ -413,7 +414,7 @@ export class DomEditorBreadcrumb extends LitElement {
       display: inline-flex;
       width: 13px;
       height: 13px;
-      transition: transform 120ms ease;
+      transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
     .tree-expander[aria-expanded="true"] .tree-expander-icon {
@@ -669,7 +670,7 @@ export class DomEditorBreadcrumb extends LitElement {
     this.treeCollapseTimer = setTimeout(() => {
       this.treeCollapseTimer = null
       if(!this.treeOpen) this.treeAnimating = false
-    }, 180)
+    }, uiMotionDisabled(this) ? 0 : 180)
   }
 
   protected updated(changedProperties: Map<PropertyKey, unknown>) {

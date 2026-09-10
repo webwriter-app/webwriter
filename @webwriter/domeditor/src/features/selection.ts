@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -1080,7 +1080,7 @@ export class SelectionFeature extends EditorFeature {
     this.#lastScrollSelection = selectedElement ? {element: selectedElement}
       : range ? {range: range.cloneRange(), backwards} : null
     if(selectedElement) {
-      selectedElement.scrollIntoView({behavior: "smooth", block: "nearest", inline: "nearest"})
+      selectedElement.scrollIntoView({behavior: uiMotionDisabled(selectedElement) ? "instant" : "smooth", block: "nearest", inline: "nearest"})
       return
     }
     if(!selection?.focusNode || !["virtual", "gap", "text", "empty"].includes(kind)) return

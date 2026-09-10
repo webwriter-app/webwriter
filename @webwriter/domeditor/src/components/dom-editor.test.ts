@@ -368,6 +368,52 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
+  it("applies and reverses motion preferences without changing authored HTML", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const document = iframe.contentDocument!
+    const authoredHTML = document.documentElement.outerHTML
+    const originalSheets = [...document.adoptedStyleSheets]
+    const changeMotion = async (disableAnimations: boolean) => {
+      ribbon.dispatchEvent(new CustomEvent("app-settings-change", {
+        detail: {...defaultAppSettings(), disableAnimations}, bubbles: true, composed: true,
+      }))
+      await editor.updateComplete
+      await ribbon.updateComplete
+    }
+
+    expect(editor.hasAttribute("disable-animations")).toBe(false)
+    await changeMotion(true)
+    expect(editor.hasAttribute("disable-animations")).toBe(true)
+    expect(ribbon.settings.disableAnimations).toBe(true)
+    expect(document.adoptedStyleSheets).toHaveLength(originalSheets.length + 1)
+    expect(document.adoptedStyleSheets.at(-1)!.cssRules[0].cssText).toContain("--ww-ui-animation: none")
+    expect(document.documentElement.outerHTML).toBe(authoredHTML)
+
+    // A repeated frame load must reapply the preference without accumulating sheets.
+    iframe.dispatchEvent(new Event("load"))
+    expect(document.adoptedStyleSheets).toHaveLength(originalSheets.length + 1)
+    await changeMotion(false)
+    expect(editor.hasAttribute("disable-animations")).toBe(false)
+    expect(document.adoptedStyleSheets).toEqual(originalSheets)
+    expect(document.documentElement.outerHTML).toBe(authoredHTML)
+
+    await changeMotion(true)
+    editor.remove()
+    expect(document.adoptedStyleSheets).toEqual(originalSheets)
+  })
+
+  it("restores the saved motion preference before rendering the editing UI", async () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), disableAnimations: true}))
+    const {editor, iframe} = await mountEditor()
+    expect(editor.hasAttribute("disable-animations")).toBe(true)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    expect(ribbon.settings.disableAnimations).toBe(true)
+    expect(iframe.contentDocument!.adoptedStyleSheets.at(-1)!.cssRules[0].cssText).toContain("--ww-ui-animation: none")
+  })
+
   it("runs configured shortcuts in the editor frame and suppresses replaced defaults", async () => {
     const {editor, iframe} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

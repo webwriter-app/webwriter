@@ -65,7 +65,7 @@ export class DomEditorToolbox extends AppRibbon {
       color: #2f3742;
       background: transparent;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      transition: width 180ms ease;
+      transition: var(--ww-ui-transition, width 180ms ease);
     }
 
     :host([active-tool]) {
@@ -125,7 +125,7 @@ export class DomEditorToolbox extends AppRibbon {
       height: 28px;
       border-radius: 0.2rem;
       overflow: hidden;
-      transition: width 180ms ease, background-color 120ms ease;
+      transition: var(--ww-ui-transition, width 180ms ease, background-color 120ms ease);
     }
 
     .toolbox-tab[data-active] {
@@ -164,7 +164,7 @@ export class DomEditorToolbox extends AppRibbon {
       min-width: 28px;
       padding: 0.35rem;
       overflow: hidden;
-      transition: width 180ms ease;
+      transition: var(--ww-ui-transition, width 180ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-button {
@@ -183,7 +183,7 @@ export class DomEditorToolbox extends AppRibbon {
       opacity: 0;
       overflow: hidden;
       pointer-events: none;
-      transition: width 180ms ease, padding 180ms ease, opacity 90ms ease;
+      transition: var(--ww-ui-transition, width 180ms ease, padding 180ms ease, opacity 90ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-close {
@@ -228,7 +228,7 @@ export class DomEditorToolbox extends AppRibbon {
       line-height: 1;
       white-space: nowrap;
       transform: translateX(-0.2rem);
-      transition: max-width 180ms ease, margin-left 180ms ease, opacity 90ms ease, transform 180ms ease;
+      transition: var(--ww-ui-transition, max-width 180ms ease, margin-left 180ms ease, opacity 90ms ease, transform 180ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-label,

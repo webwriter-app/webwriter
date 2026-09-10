@@ -1,4 +1,5 @@
 import {LitElement, css, html} from "lit"
+import {uiMotionDisabled} from "../utility"
 import {ribbonIcon} from "../ribbon-icons"
 
 export type RibbonDrawerLayoutWidths = {
@@ -239,7 +240,7 @@ export class RibbonDrawer extends LitElement {
       border: 1px solid transparent;
       border-right-color: #d8dee6;
       background: #f2f2f2;
-      transition: max-height 180ms ease;
+      transition: var(--ww-ui-transition, max-height 180ms ease);
     }
 
     :host(:last-child) .drawer {
@@ -605,7 +606,7 @@ export class RibbonDrawer extends LitElement {
       background: transparent;
       cursor: pointer;
       transform: translateX(-50%);
-      transition: bottom 180ms ease;
+      transition: var(--ww-ui-transition, bottom 180ms ease);
     }
 
     .drawer.expanded .drawer-toggle {
@@ -636,7 +637,7 @@ export class RibbonDrawer extends LitElement {
       border-right: 1.25px solid currentColor;
       border-bottom: 1.25px solid currentColor;
       transform: rotate(45deg);
-      transition: transform 120ms ease;
+      transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
     .drawer-toggle[aria-expanded="true"] .drawer-icon {
@@ -738,9 +739,9 @@ export class RibbonDrawer extends LitElement {
 
     :host([collapsed][drawer-visible]) .controls {
       visibility: visible;
-      transition:
+      transition: var(--ww-ui-transition,
         max-height 180ms ease,
-        padding 180ms ease;
+        padding 180ms ease);
     }
 
     :host([collapsed][drawer-open]) .controls {
@@ -968,7 +969,7 @@ export class RibbonDrawer extends LitElement {
       border-color: transparent;
       background: transparent;
       transform: none;
-      transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+      transition: var(--ww-ui-transition, border-color 120ms ease, color 120ms ease, background-color 120ms ease);
     }
 
     :host([pane][layout="element-style"]) .drawer-toggle:hover {
@@ -1299,7 +1300,7 @@ export class RibbonDrawer extends LitElement {
     this.cancelDrawerSettle()
     // The height transition lasts 180ms. Give the browser a frame to settle
     // its final grid layout before deciding whether a scrollbar is needed.
-    this.drawerSettleTimer = setTimeout(() => this.finishDrawerSettle(), 220)
+    this.drawerSettleTimer = setTimeout(() => this.finishDrawerSettle(), uiMotionDisabled(this) ? 0 : 220)
   }
 
   private finishDrawerClose() {
@@ -1317,7 +1318,7 @@ export class RibbonDrawer extends LitElement {
 
   private scheduleDrawerClose() {
     this.cancelDrawerClose()
-    this.drawerCloseTimer = setTimeout(() => this.finishDrawerClose(), 180)
+    this.drawerCloseTimer = setTimeout(() => this.finishDrawerClose(), uiMotionDisabled(this) ? 0 : 180)
   }
 
   private readonly handleDrawerTransitionEnd = (event: TransitionEvent) => {

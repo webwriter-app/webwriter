@@ -289,6 +289,13 @@ export class SettingsPanel extends LitElement {
     })
   }
 
+  private changeDisableAnimations(event: Event) {
+    this.emitSettings({
+      ...this.settings,
+      disableAnimations: (event.currentTarget as HTMLInputElement).checked,
+    })
+  }
+
   private startRecording(commandId: string) {
     this.recordingCommandId = commandId
     this.message = "Press a new shortcut. Escape cancels; Backspace removes it."
@@ -386,6 +393,19 @@ export class SettingsPanel extends LitElement {
             />
             <span class="checkbox-label">Update language across document</span>
             <span class="checkbox-description">When the language changes, update the active document language so its content and widgets inherit it.</span>
+          </label>
+        </section>
+
+        <section class="setting-card" aria-labelledby="motion-setting-heading">
+          <div id="motion-setting-heading" class="setting-title">Motion</div>
+          <label class="checkbox-setting">
+            <input
+              type="checkbox"
+              .checked=${this.settings.disableAnimations}
+              @change=${this.changeDisableAnimations}
+            />
+            <span class="checkbox-label">Disable animations and transitions</span>
+            <span class="checkbox-description">Make the editing interface respond instantly, including menus, panels, and selection indicators.</span>
           </label>
         </section>
 
