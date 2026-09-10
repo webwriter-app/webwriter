@@ -606,11 +606,16 @@ export class EditingSelection {
       }
       return false
     }
-    const fragment = this.range.cloneContents()
-    return Boolean(fragment.textContent)
-      && !Array.from(fragment.querySelectorAll("*")).some(element => (
-        !isMarkElement(element) && !isSectionElement(element)
-      ))
+    const range = this.range
+    // Cloning selected content runs custom-element constructors. Selection
+    // queries must inspect the live DOM without creating widget instances.
+    const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, {
+      acceptNode: node => range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    })
+    while(walker.nextNode()) {
+      if(!isMarkElement(walker.currentNode) && !isSectionElement(walker.currentNode)) return false
+    }
+    return Boolean(range.toString())
   }
 
   /** Whether the caret is at offset 0 of a container that has no content (no children, or a single empty text node). */

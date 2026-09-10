@@ -1635,6 +1635,36 @@ describe("document listeners", () => {
     $.move(document.body, 0)
     await Promise.resolve()
   })
+  it.each([false, true])("does not construct widget copies when a text range crosses one (backward: %s)", backward => {
+    const constructed = vi.fn()
+    const tag = `selection-code-widget-${backward}`
+    customElements.define(tag, class extends HTMLElement {
+      constructor() {
+        super()
+        constructed()
+        this.attachShadow({mode: "open"}).innerHTML = '<div contenteditable="true">code</div>'
+      }
+    })
+    const before = el("p", "before").firstChild!
+    const widget = el(tag)
+    const after = el("p", "after").firstChild!
+    constructed.mockClear()
+
+    $.selectRange(backward ? after : before, 2, backward ? before : after, 2)
+    feature.processSelection()
+    editor.postSelectionPath()
+    editor.postMarkState()
+    editor.postCommentState()
+
+    expect(constructed).not.toHaveBeenCalled()
+    expect($.anchor).toBe(backward ? after : before)
+    expect($.focus).toBe(backward ? before : after)
+    expect(widget).toHaveClass("◆atomic-range-selected")
+
+    $.move(before, 0)
+    feature.processSelection()
+    expect(widget).not.toHaveClass("◆atomic-range-selected")
+  })
   it("ignores pointerdown on editor-only elements", () => {
     const p = el("p", "hello")
     $.move(p.firstChild!, 2)

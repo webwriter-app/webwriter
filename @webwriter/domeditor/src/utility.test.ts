@@ -624,6 +624,26 @@ describe("isTextSelection", () => {
     $.selectElement(document.querySelector("section")!)
     expect($.isTextSelection).toBe(true)
   })
+  it.each([
+    ['<b>hello</b><!--keep--><i>world</i>', true],
+    ['<b></b><!--no text--><i></i>', false],
+    ['hello<br>world', false],
+    ['hello<inline-widget></inline-widget>world', false],
+    ['hello<svg><text>world</text></svg>', false],
+    ['<section>hello</section><span>world</span>', true],
+  ])("classifies selected descendants without changing their structure: %s", (html, expected) => {
+    setBody(`<div>${html}</div>`)
+    const container = document.querySelector("div")!
+    $.selectRange(container, 0, container, container.childNodes.length)
+    expect($.isTextSelection).toBe(expected)
+    expect(container.innerHTML).toBe(html)
+  })
+  it("ignores widgets outside the range, including at its boundaries", () => {
+    setBody('<p><outside-widget></outside-widget><b>hello</b> world<outside-widget></outside-widget></p>')
+    const paragraph = document.querySelector("p")!
+    $.selectRange(paragraph, 1, paragraph, 3)
+    expect($.isTextSelection).toBe(true)
+  })
 })
 
 describe("isEmptySelection", () => {
