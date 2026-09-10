@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Build a four-beat groove</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #6d28d9; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-gap.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-gap-item.js"></script>
+</head>
+<body>
+<header><h1>Build a four-beat groove</h1></header>
+<main>
+
+<h2>Your mission</h2>
+<p>Your group will create an eight-bar body-percussion soundtrack for a school animation. Keep a steady pulse, read simple rhythm patterns, and explain how a rest changes the music. No instrument or recording is needed.</p>
+<h2>1. Feel the pulse</h2>
+<p>Count “1, 2, 3, 4” at a comfortable walking pace. Repeat four times. Keep tapping the pulse on your knees while your partner claps a pattern. In this lesson, a quarter note lasts one beat and two eighth notes share one beat.</p>
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 130" role="img" aria-labelledby="rhythm-title">
+<title id="rhythm-title">Four beat boxes: clap, two quick taps, rest, clap</title>
+<g fill="#ede9fe" stroke="#6d28d9" stroke-width="2">
+<rect x="10" y="15" width="145" height="95" rx="10"/>
+<rect x="170" y="15" width="145" height="95" rx="10"/>
+<rect x="330" y="15" width="145" height="95" rx="10"/>
+<rect x="490" y="15" width="140" height="95" rx="10"/>
+</g>
+<g font-family="system-ui" font-size="20" fill="#36245e" text-anchor="middle">
+<text x="82" y="48">1</text>
+<text x="82" y="85">clap</text>
+<text x="242" y="48">2 &amp;</text>
+<text x="242" y="85">tap tap</text>
+<text x="402" y="48">3</text>
+<text x="402" y="85">rest</text>
+<text x="560" y="48">4</text>
+<text x="560" y="85">clap</text>
+</g>
+</svg>
+<figcaption>A rest takes time even though you make no sound.</figcaption>
+</figure>
+<h2>2. Rehearse three variations</h2>
+<p>Read each card, practise it four times, and describe what changed. Use a quieter gesture if clapping is uncomfortable.</p>
+<webwriter-slides type="slides">
+<webwriter-slide active>
+<h3>A · Steady</h3>
+<p>
+<strong>Clap | clap | clap | clap</strong>
+</p>
+<p>Four quarter notes: four sounds across four beats. Keep each beat equally spaced.</p>
+</webwriter-slide>
+<webwriter-slide>
+<h3>B · Space</h3>
+<p>
+<strong>Clap | rest | clap | rest</strong>
+</p>
+<p>Two sounds and two rests still take four beats. Keep silently counting during the rests.</p>
+</webwriter-slide>
+<webwriter-slide>
+<h3>C · Subdivide</h3>
+<p>
+<strong>Clap | tap-tap | rest | clap</strong>
+</p>
+<p>Each quick tap lasts half a beat. This pattern has four sounds, but the time is divided differently from A.</p>
+</webwriter-slide>
+</webwriter-slides>
+<h2>3. Compose and check</h2>
+<p>Choose A, B, or C for each of eight bars. Give the opening two bars a clear pattern, change something in the middle, and repeat the opening at the end. Write your bar sequence before performing. One learner keeps the pulse and another cues the changes.</p>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Pattern B is shorter in time than pattern A when both use the same pulse.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="false">
+</webwriter-true-false>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Complete the duration statement.</p>
+</webwriter-task-prompt>
+<webwriter-gap ignore-case>
+<p>Two eighth notes together last <webwriter-gap-item>one</webwriter-gap-item> beat.</p>
+</webwriter-gap>
+</webwriter-task>
+</webwriter-quiz>
+<p>
+<label for="rhythm-composition">Write your eight-bar sequence. Explain one deliberate use of silence.</label>
+</p>
+<textarea id="rhythm-composition" name="rhythm-composition" rows="4" placeholder="Write your reasoning here.">
+</textarea>
+<p>
+<strong>Peer feedback:</strong> Identify one bar where the pulse stayed steady and one transition to rehearse again.</p>
+</main>
+</body>
+</html>

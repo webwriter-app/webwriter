@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Catering the Class Fundraiser</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #0f766e; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-gap.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-gap-item.js"></script>
+</head>
+<body>
+<header><h1>Catering the Class Fundraiser</h1></header>
+<main>
+<h2>Reasoning toolkit</h2>
+<webwriter-slides type="tabs">
+<webwriter-slide active>
+<h3>Recipe model</h3>
+<p>For 12 visitors: 3 loaves, 450 g filling, 2.4 L soup.</p>
+<p>Predict the scale factor for 90 visitors before reading the worked example.</p>
+</webwriter-slide>
+<webwriter-slide>
+<h3>Purchasing model</h3>
+<p>A recipe can scale exactly; a shopping list must use whole packs.</p>
+<p>Compare buying 7 × 500 g with 5 × 750 g. Which costs less? Which leaves more filling?</p>
+</webwriter-slide>
+</webwriter-slides>
+<h2>Investigate the scenario</h2>
+<p>The fictional Year 8 council is planning a fundraiser for 90 visitors. A caterer’s tested recipe serves 12 people and uses 3 loaves, 450 g of filling, and 2.4 L of soup. The shop sells loaves for €1.80, filling in 500 g tubs for €4.25, and soup in 1 L cartons for €2.60. Treat these prices and quantities as a fictional dataset.</p>
+<table>
+<caption>Recipe and price data</caption>
+<thead>
+<tr>
+<th>Item</th>
+<th>For 12</th>
+<th>For 90</th>
+<th>Pack price</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Loaves</td>
+<td>3</td>
+<td>22.5</td>
+<td>€1.80 each</td>
+</tr>
+<tr>
+<td>Filling</td>
+<td>450 g</td>
+<td>3,375 g</td>
+<td>€4.25 per 500 g</td>
+</tr>
+<tr>
+<td>Soup</td>
+<td>2.4 L</td>
+<td>18 L</td>
+<td>€2.60 per litre</td>
+</tr>
+</tbody>
+</table>
+<p>
+<strong>Worked reasoning:</strong> The scale factor is 90 ÷ 12 = 7.5. Filling is 450 × 7.5 = 3,375 g. Because packs cannot be bought as fractions, 3,375 ÷ 500 = 6.75, so buy 7 tubs: 7 × €4.25 = €29.75. Buy 23 loaves, since 22.5 must round up. Soup costs 18 × €2.60 = €46.80. The total is (23 × €1.80) + €29.75 + €46.80 = <strong>€117.95</strong>. The rounded purchasing step means the shopping list is not exactly proportional, even though the recipe is.</p>
+<ol>
+<li>
+<strong>Audit the model:</strong> Recalculate each 90-person quantity and identify where rounding is required. State whether rounding up protects against shortage.</li>
+<li>
+<strong>Compare unit rates:</strong> A second fictional supplier sells 750 g of filling for €5.70. Calculate €/100 g for each supplier and recommend one, explaining the trade-off between price and packaging.</li>
+<li>
+<strong>Make a decision:</strong> The council has a €130 budget and expects €2.50 per serving. Using the original supplier first, calculate the planned surplus before other costs, then write one assumption that could change the result.</li>
+</ol>
+<p>
+<label for="math-fundraiser-reflection">Reflection: Which calculation most affected your recommendation, and why?</label>
+<br>
+<textarea id="math-fundraiser-reflection" rows="3">
+</textarea>
+</p>
+<h2>Check your understanding</h2>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>The scale factor from 12 servings to 90 servings is 7.5.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="true">
+</webwriter-true-false>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Calculate the cheaper supplier’s price per 100 g.</p>
+</webwriter-task-prompt>
+<webwriter-gap ignore-case>
+<p>The cheaper fictional filling supplier costs €<webwriter-gap-item>0.76</webwriter-gap-item> per 100 g.</p>
+</webwriter-gap>
+</webwriter-task>
+</webwriter-quiz>
+</main>
+</body>
+</html>

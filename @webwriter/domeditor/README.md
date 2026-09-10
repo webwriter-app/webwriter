@@ -10,6 +10,10 @@ The server listens on `http://127.0.0.1:1234` and refuses non-loopback bind addr
 
 Data is stored in the ignored `.webwriter-dev/` directory. Provider files have owner-only permissions, but API keys are still stored as plaintext development secrets. `OPENAI_API_KEY` can instead be set in `.env.local`; it creates an OpenAI provider whose key stays in the environment.
 
+## Example lessons
+
+[`examples/`](examples/) contains twelve editable HTML documents. Open them in the editor or a browser; widget assets load online.
+
 ## APIs
 
 - `GET /api/session` — backend probe and no-auth login metadata

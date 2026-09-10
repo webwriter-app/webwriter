@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Program a greenhouse decision</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #4338ca; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/dist/widgets/webwriter-flowchart.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/dist/widgets/webwriter-flowchart.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+</head>
+<body>
+<header><h1>Program a greenhouse decision</h1></header>
+<main>
+
+<h2>Your mission</h2>
+<p>A fictional school greenhouse uses a moisture reading from 0 to 100. The class rule is simple: if the reading is below 35, recommend watering; otherwise recommend waiting. Write and test the decision logic. The program only prints advice for this simulation; it controls no equipment.</p>
+<h2>1. Trace the rule</h2>
+<p>Follow the decision diagram for readings 20, 35, and 60. Predict which branch each takes. The arrow labels “Yes” and “No” refer to the condition in the diamond.</p>
+<webwriter-flowchart height="530" graphnodes="[{&quot;id&quot;:&quot;848762bc-ada3-4dda-a574-e4c7f93e889b&quot;,&quot;node&quot;:&quot;start&quot;,&quot;text&quot;:&quot;Read moisture&quot;,&quot;x&quot;:169.88883900000002,&quot;y&quot;:57.2285714285714,&quot;connections&quot;:[{&quot;anchor&quot;:2,&quot;direction&quot;:&quot;to&quot;,&quot;connectedToId&quot;:&quot;f0f0f21a-cd9b-4e67-8b0a-99493abbd612&quot;,&quot;arrowID&quot;:&quot;6b4d44dd-cca7-4e4c-b87b-f06a421b61fc&quot;}]},{&quot;id&quot;:&quot;f0f0f21a-cd9b-4e67-8b0a-99493abbd612&quot;,&quot;node&quot;:&quot;decision&quot;,&quot;text&quot;:&quot;Moisture &lt; 35?&quot;,&quot;x&quot;:126.68883899999997,&quot;y&quot;:160.1785714285714,&quot;connections&quot;:[{&quot;anchor&quot;:0,&quot;direction&quot;:&quot;from&quot;,&quot;connectedToId&quot;:&quot;848762bc-ada3-4dda-a574-e4c7f93e889b&quot;,&quot;arrowID&quot;:&quot;6b4d44dd-cca7-4e4c-b87b-f06a421b61fc&quot;},{&quot;anchor&quot;:2,&quot;direction&quot;:&quot;to&quot;,&quot;connectedToId&quot;:&quot;2f3de0a8-7dda-42fa-b7c0-5f70e0dc1b3d&quot;,&quot;arrowID&quot;:&quot;e777cac6-6d68-4882-9cc7-9f5c785d896e&quot;,&quot;text&quot;:&quot;Yes&quot;},{&quot;anchor&quot;:1,&quot;direction&quot;:&quot;to&quot;,&quot;connectedToId&quot;:&quot;2a32d5d3-6abe-42a4-9bcc-f7cfa46afe25&quot;,&quot;arrowID&quot;:&quot;f0c370f1-2dea-4549-8862-11378e83d19f&quot;,&quot;text&quot;:&quot;No&quot;}]},{&quot;id&quot;:&quot;2f3de0a8-7dda-42fa-b7c0-5f70e0dc1b3d&quot;,&quot;node&quot;:&quot;op&quot;,&quot;text&quot;:&quot;Print Water&quot;,&quot;x&quot;:155.48883899999998,&quot;y&quot;:291.1785714285714,&quot;connections&quot;:[{&quot;anchor&quot;:0,&quot;direction&quot;:&quot;from&quot;,&quot;connectedToId&quot;:&quot;f0f0f21a-cd9b-4e67-8b0a-99493abbd612&quot;,&quot;arrowID&quot;:&quot;e777cac6-6d68-4882-9cc7-9f5c785d896e&quot;},{&quot;anchor&quot;:2,&quot;direction&quot;:&quot;to&quot;,&quot;connectedToId&quot;:&quot;2654604f-5f44-4743-8ea0-3b43c1801011&quot;,&quot;arrowID&quot;:&quot;df010942-7ce7-4e71-862c-3eed6972eb6d&quot;}]},{&quot;id&quot;:&quot;2a32d5d3-6abe-42a4-9bcc-f7cfa46afe25&quot;,&quot;node&quot;:&quot;op&quot;,&quot;text&quot;:&quot;Print Wait&quot;,&quot;x&quot;:352.58571400000005,&quot;y&quot;:291.1785714285714,&quot;connections&quot;:[{&quot;anchor&quot;:0,&quot;direction&quot;:&quot;from&quot;,&quot;connectedToId&quot;:&quot;f0f0f21a-cd9b-4e67-8b0a-99493abbd612&quot;,&quot;arrowID&quot;:&quot;f0c370f1-2dea-4549-8862-11378e83d19f&quot;},{&quot;anchor&quot;:2,&quot;direction&quot;:&quot;to&quot;,&quot;connectedToId&quot;:&quot;2654604f-5f44-4743-8ea0-3b43c1801011&quot;,&quot;arrowID&quot;:&quot;4819d362-1b33-4369-b51c-ddd029993510&quot;}]},{&quot;id&quot;:&quot;2654604f-5f44-4743-8ea0-3b43c1801011&quot;,&quot;node&quot;:&quot;end&quot;,&quot;text&quot;:&quot;End&quot;,&quot;x&quot;:179.48883899999998,&quot;y&quot;:447.22857142857134,&quot;connections&quot;:[{&quot;anchor&quot;:0,&quot;direction&quot;:&quot;from&quot;,&quot;connectedToId&quot;:&quot;2f3de0a8-7dda-42fa-b7c0-5f70e0dc1b3d&quot;,&quot;arrowID&quot;:&quot;df010942-7ce7-4e71-862c-3eed6972eb6d&quot;},{&quot;anchor&quot;:0,&quot;direction&quot;:&quot;from&quot;,&quot;connectedToId&quot;:&quot;2a32d5d3-6abe-42a4-9bcc-f7cfa46afe25&quot;,&quot;arrowID&quot;:&quot;4819d362-1b33-4369-b51c-ddd029993510&quot;}]}]" disablestudentedit>
+</webwriter-flowchart>
+<p>
+<strong>Text equivalent:</strong> Read moisture → Is moisture less than 35? → Yes: print Water; No: print Wait → End.</p>
+<h2>2. Run and change the program</h2>
+<p>Press Run and compare the output with your predictions. Change the reading to 35 and run again. Then try 34. Why is that pair a better boundary test than testing only 10 and 90?</p>
+<webwriter-code-javascript code="const moisture = 20;
+if (moisture &lt; 35) {
+  console.log(&quot;Water&quot;);
+} else {
+  console.log(&quot;Wait&quot;);
+}">
+</webwriter-code-javascript>
+<table>
+<caption>Test plan: make a prediction before each run</caption>
+<thead>
+<tr>
+<th scope="col">Reading</th>
+<th scope="col">Reason for testing</th>
+<th scope="col">Expected output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">20</th>
+<td>Below the threshold</td>
+<td>Water</td>
+</tr>
+<tr>
+<th scope="row">34</th>
+<td>Just below the threshold</td>
+<td>Water</td>
+</tr>
+<tr>
+<th scope="row">35</th>
+<td>Exactly at the threshold</td>
+<td>Wait</td>
+</tr>
+<tr>
+<th scope="row">60</th>
+<td>Above the threshold</td>
+<td>Wait</td>
+</tr>
+</tbody>
+</table>
+<h2>3. Debug a change request</h2>
+<p>A teammate changes <code>&lt;</code> to <code>&lt;=</code>. Explain which test changes result. Then extend the program to print “Invalid reading” for a number below 0 or above 100 before it checks whether to water.</p>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>With the original rule, what prints when moisture is exactly 35?</p>
+</webwriter-task-prompt>
+<webwriter-choice solution='{"greenhouse-0":false,"greenhouse-1":true,"greenhouse-2":false}'>
+<webwriter-choice-item id="greenhouse-0">Water</webwriter-choice-item>
+<webwriter-choice-item id="greenhouse-1">Wait</webwriter-choice-item>
+<webwriter-choice-item id="greenhouse-2">Nothing</webwriter-choice-item>
+</webwriter-choice>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Testing only readings far from 35 is enough to check whether the comparison includes 35.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="false">
+</webwriter-true-false>
+</webwriter-task>
+</webwriter-quiz>
+<p>
+<label for="greenhouse-tests">Describe the bug caused by using <= and write two extra tests for invalid readings.</label>
+</p>
+<textarea id="greenhouse-tests" name="greenhouse-tests" rows="4" placeholder="Write your reasoning here.">
+</textarea>
+<p>
+<strong>Pair review:</strong> One partner predicts outputs; the other runs tests. Swap roles and explain any mismatch before editing again.</p>
+</main>
+</body>
+</html>

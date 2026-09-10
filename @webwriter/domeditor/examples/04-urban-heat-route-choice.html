@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Heat, Shade, and the School Route</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #0369a1; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-gap.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-gap-item.js"></script>
+</head>
+<body>
+<header><h1>Heat, Shade, and the School Route</h1></header>
+<main>
+<h2>Reasoning toolkit</h2>
+<webwriter-slides type="tabs">
+<webwriter-slide active>
+<h3>Physical process</h3>
+<p>Shading can reduce direct solar heating of pavement. Surface temperature and air temperature are different measurements.</p>
+<p>Look for what this dataset actually measured before making a claim about comfort.</p>
+</webwriter-slide>
+<webwriter-slide>
+<h3>Human decision</h3>
+<p>Distance, accessible crossings, bridge width, and maintenance can change a route decision.</p>
+<p>State whose needs you considered and what you would need to check on site.</p>
+</webwriter-slide>
+</webwriter-slides>
+<h2>Investigate the scenario</h2>
+<p>Riverton is a fictional town. The council measured four possible walking corridors to school at 14:00 on the same summer day. “Surface temperature” describes the pavement; “shade” records the proportion of the route shaded by trees or buildings. These measurements are fictional and simplified.</p>
+<table>
+<caption>Fictional Riverton route data</caption>
+<thead>
+<tr>
+<th>Route</th>
+<th>Distance (km)</th>
+<th>Surface temp (°C)</th>
+<th>Shade (%)</th>
+<th>Human features</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A Market Street</td>
+<td>1.2</td>
+<td>39</td>
+<td>10</td>
+<td>Wide road; two crossings</td>
+</tr>
+<tr>
+<td>B Canal Path</td>
+<td>1.7</td>
+<td>31</td>
+<td>65</td>
+<td>One narrow bridge</td>
+</tr>
+<tr>
+<td>C Park Edge</td>
+<td>1.5</td>
+<td>33</td>
+<td>50</td>
+<td>Bench and staffed gate</td>
+</tr>
+<tr>
+<td>D Station Road</td>
+<td>1.3</td>
+<td>37</td>
+<td>20</td>
+<td>Heavy traffic; signal crossing</td>
+</tr>
+</tbody>
+</table>
+<p>
+<strong>Worked interpretation:</strong> Route B is coolest and most shaded but is 0.5 km longer than A and has a narrow bridge. Route C is 0.3 km longer than A, 6°C cooler, and includes a bench and staffed gate. Physical geography helps explain heat: dark pavement absorbs solar energy, while shade reduces direct heating. Human geography shapes exposure through road design, traffic, crossings, access, and maintenance.</p>
+<ol>
+<li>
+<strong>Read the evidence:</strong> Rank routes by surface temperature and separately by distance. Calculate the temperature difference between A and C, then explain why temperature alone cannot decide accessibility.</li>
+<li>
+<strong>Make a recommendation:</strong> For a class walking at 14:00, choose a route and cite three data points, including one physical and one human feature. State a condition that would make you change your choice.</li>
+<li>
+<strong>Plan an intervention:</strong> Propose one council change—trees, reflective paving, a crossing, water access, or traffic control. Predict which measure it would affect and how you would evaluate it.</li>
+</ol>
+<p>
+<label for="geography-heat-reflection">Reflection: How did physical and human geography combine in your route decision?</label>
+<br>
+<textarea id="geography-heat-reflection" rows="3">
+</textarea>
+</p>
+<h2>Check your understanding</h2>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Route B has the highest surface temperature in the fictional dataset.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="false">
+</webwriter-true-false>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Read the table: how long is Route C?</p>
+</webwriter-task-prompt>
+<webwriter-gap ignore-case>
+<p>Route C is <webwriter-gap-item>1.5</webwriter-gap-item> km long.</p>
+</webwriter-gap>
+</webwriter-task>
+</webwriter-quiz>
+</main>
+</body>
+</html>

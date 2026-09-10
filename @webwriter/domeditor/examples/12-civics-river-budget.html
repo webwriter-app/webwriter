@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>A river town decides</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #a16207; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/map@2.2.0/dist/widgets/webwriter-map.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/map@2.2.0/dist/widgets/webwriter-map.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slides.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/slides@2.3.1/dist/widgets/webwriter-slide.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+</head>
+<body>
+<header><h1>A river town decides</h1></header>
+<main>
+
+<h2>Your mission</h2>
+<p>You are a citizens’ panel in a fictional river town. Recommend how to spend a budget of 100 planning units. Compare competing priorities and explain opportunity cost. These invented costs are for classroom debate; they are not engineering estimates or a plan for the real place on the map.</p>
+<h2>1. Read a river landscape</h2>
+<p>The map is centred on the Rhine near Mainz, Germany, as a real example of a river crossing an urban area. Locate a bridge, riverbank, and built-up area. Use them to generate questions a fictional town would need to investigate; a base map alone cannot establish flood risk.</p>
+<webwriter-map initialpos='{"lat":50.0,"lng":8.27}' initialzoom="12" mapheight="380" markers='[{"lat":50.0,"lng":8.27,"title":"Rhine: landscape observation only"}]'>
+</webwriter-map>
+<p>
+<strong>Without map tiles:</strong> Imagine homes on the west bank, a station on the east bank, one connecting bridge, and a riverside park. Discuss whose access depends on the bridge. All budget work below can be completed using this description.</p>
+<h2>2. Compare the proposals</h2>
+<table>
+<caption>Fictional one-off costs; choose whole projects within 100 units</caption>
+<thead>
+<tr>
+<th scope="col">Project</th>
+<th scope="col">Cost</th>
+<th scope="col">Stated aim</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">A · Riverside wetland</th>
+<td>45</td>
+<td>Habitat and water storage; needs space</td>
+</tr>
+<tr>
+<th scope="row">B · Raised walking route</th>
+<td>35</td>
+<td>More reliable pedestrian access</td>
+</tr>
+<tr>
+<th scope="row">C · Warning and outreach</th>
+<td>20</td>
+<td>Accessible information and practice drills</td>
+</tr>
+<tr>
+<th scope="row">D · Community shelter upgrade</th>
+<td>50</td>
+<td>Improve a shared building and access</td>
+</tr>
+</tbody>
+</table>
+<webwriter-slides type="slides">
+<webwriter-slide active>
+<h3>Resident perspective</h3>
+<p>“Information must reach people without a smartphone and people who use different languages.”</p>
+<p>Ask: how will you check whether the outreach is accessible?</p>
+</webwriter-slide>
+<webwriter-slide>
+<h3>Business perspective</h3>
+<p>“We depend on people being able to cross the river, but construction may disrupt us.”</p>
+<p>Ask: who experiences the benefits and the temporary costs?</p>
+</webwriter-slide>
+<webwriter-slide>
+<h3>Ecology perspective</h3>
+<p>“A wetland could provide habitat as well as water storage, but the location and design matter.”</p>
+<p>Ask: what site-specific evidence would be needed before making a claim about its effect?</p>
+</webwriter-slide>
+</webwriter-slides>
+<h2>3. Deliberate and justify</h2>
+<p>In groups of four, assign chair, budget checker, accessibility advocate, and evidence checker. Compare at least two affordable combinations. Agree on one recommendation and name a valuable project it excludes.</p>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Which combination uses exactly 100 units?</p>
+</webwriter-task-prompt>
+<webwriter-choice solution='{"budget-0":true,"budget-1":false,"budget-2":false}'>
+<webwriter-choice-item id="budget-0">A + B + C</webwriter-choice-item>
+<webwriter-choice-item id="budget-1">A + D + C</webwriter-choice-item>
+<webwriter-choice-item id="budget-2">B + C + D</webwriter-choice-item>
+</webwriter-choice>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>A project’s low price alone proves it is the best choice for every resident.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="false">
+</webwriter-true-false>
+</webwriter-task>
+</webwriter-quiz>
+<p>
+<label for="council-recommendation">Write a 100-word recommendation with total cost, an opportunity cost, an equity concern, and two missing pieces of evidence.</label>
+</p>
+<textarea id="council-recommendation" name="council-recommendation" rows="4" placeholder="Write your reasoning here.">
+</textarea>
+<p>
+<strong>Exit ticket:</strong> State one reason a reasonable panel could choose differently.</p>
+</main>
+</body>
+</html>

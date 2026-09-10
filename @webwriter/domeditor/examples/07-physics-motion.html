@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>The rolling-cart investigation</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #1d4ed8; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+</head>
+<body>
+<header><h1>The rolling-cart investigation</h1></header>
+<main>
+
+<h2>Your mission</h2>
+<p>A science club is testing whether a toy cart moves at a steady speed. Use the supplied fictional measurements to calculate interval speeds, challenge a claim, and plan a better measurement. Distances are measured from the same starting line.</p>
+<h2>1. Predict before calculating</h2>
+<table>
+<caption>Fictional cart measurements; time in seconds, distance in metres</caption>
+<thead>
+<tr>
+<th scope="col">Time (s)</th>
+<th scope="col">Cart A (m)</th>
+<th scope="col">Cart B (m)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">0</th>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<th scope="row">1</th>
+<td>2</td>
+<td>1</td>
+</tr>
+<tr>
+<th scope="row">2</th>
+<td>4</td>
+<td>4</td>
+</tr>
+<tr>
+<th scope="row">3</th>
+<td>6</td>
+<td>9</td>
+</tr>
+<tr>
+<th scope="row">4</th>
+<td>8</td>
+<td>16</td>
+</tr>
+</tbody>
+</table>
+<p>Which cart covers equal distances in equal times? Which travels farther during the final second? Circle the two table entries you used for the second question.</p>
+<blockquote>
+<p>“Cart B must move at 4 m/s throughout because it covers 16 m in 4 s.”</p>
+<footer>A fictional learner’s claim</footer>
+</blockquote>
+<h2>2. Test the claim</h2>
+<p>Average speed over an interval equals distance travelled divided by elapsed time. In symbols:</p>
+<p>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+<msub>
+<mi>v</mi>
+<mtext>average</mtext>
+</msub>
+<mo>=</mo>
+<mfrac>
+<mrow>
+<mi>Δ</mi>
+<mi>d</mi>
+</mrow>
+<mrow>
+<mi>Δ</mi>
+<mi>t</mi>
+</mrow>
+</mfrac>
+</math>
+</p>
+<p>Calculate the first and last one-second intervals by hand. Then press Run in the code widget. Change the distances to Cart A’s values and run it again; leave the times unchanged.</p>
+<webwriter-code-javascript code="const times = [0, 1, 2, 3, 4];
+const distances = [0, 1, 4, 9, 16];
+for (let i = 1; i &lt; times.length; i++) {
+  const speed = (distances[i] - distances[i - 1]) / (times[i] - times[i - 1]);
+  console.log(`Interval ${i}: ${speed} m/s`);
+}">
+</webwriter-code-javascript>
+<h2>3. Make a defensible conclusion</h2>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>What is Cart B’s average speed from 3 s to 4 s?</p>
+</webwriter-task-prompt>
+<webwriter-choice solution='{"cart-speed-0":false,"cart-speed-1":true,"cart-speed-2":false}'>
+<webwriter-choice-item id="cart-speed-0">4 m/s</webwriter-choice-item>
+<webwriter-choice-item id="cart-speed-1">7 m/s</webwriter-choice-item>
+<webwriter-choice-item id="cart-speed-2">16 m/s</webwriter-choice-item>
+</webwriter-choice>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>An overall average speed proves that speed was constant during the journey.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="false">
+</webwriter-true-false>
+</webwriter-task>
+</webwriter-quiz>
+<p>
+<label for="cart-conclusion">Explain whether the claim is supported. Quote two interval speeds and suggest one measurement improvement.</label>
+</p>
+<textarea id="cart-conclusion" name="cart-conclusion" rows="4" placeholder="Write your reasoning here.">
+</textarea>
+<p>
+<strong>Plan a follow-up:</strong> In pairs, choose one factor to keep the same in a real toy-cart test. Explain why repeating each run would help.</p>
+</main>
+</body>
+</html>

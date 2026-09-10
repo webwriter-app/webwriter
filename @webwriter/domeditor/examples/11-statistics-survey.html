@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Can this survey speak for everyone?</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #0e7490; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+</head>
+<body>
+<header><h1>Can this survey speak for everyone?</h1></header>
+<main>
+
+<h2>Your mission</h2>
+<p>A school committee asks whether students want a later library closing time. A volunteer surveys friends already using the library. Evaluate the evidence before writing a recommendation. All responses and study times below are fictional classroom data.</p>
+<h2>1. Separate the questions</h2>
+<p>The volunteer asks twelve library users how many hours they studied independently last week and whether they want later opening. Ten say yes. The committee wants to know what <em>all</em> students want, including those who rarely use the library.</p>
+<table>
+<caption>Fictional independent-study hours for twelve respondents</caption>
+<thead>
+<tr>
+<th scope="col">Respondents</th>
+<th scope="col">Hours</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">1–6</th>
+<td>2, 3, 3, 4, 4, 4</td>
+</tr>
+<tr>
+<th scope="row">7–12</th>
+<td>5, 5, 6, 6, 7, 23</td>
+</tr>
+</tbody>
+</table>
+<p>Predict whether the mean is above or below the median. Explain which single value has the greatest effect on the mean.</p>
+<h2>2. Calculate, then question</h2>
+<p>Run the code. Change the last value from 23 to 8 as a hypothetical correction and compare the two summaries. Do not discard a value merely because it is unusual: a real correction would require checking the original response.</p>
+<webwriter-code-javascript code="const hours = [2, 3, 3, 4, 4, 4, 5, 5, 6, 6, 7, 23];
+const sorted = [...hours].sort((a, b) =&gt; a - b);
+const mean = hours.reduce((sum, value) =&gt; sum + value, 0) / hours.length;
+const median = (sorted[5] + sorted[6]) / 2;
+console.log(`Mean: ${mean} hours`);
+console.log(`Median: ${median} hours`);">
+</webwriter-code-javascript>
+<blockquote>
+<p>“Ten out of twelve said yes, so around 83% of all students support later opening.”</p>
+<footer>The volunteer’s draft conclusion</footer>
+</blockquote>
+<p>Distinguish a correct description of these twelve respondents from a justified inference about the whole school. Changing the measure of centre does not fix how people were selected.</p>
+<h2>3. Design a stronger study</h2>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Which is the clearest limitation of the claim about all students?</p>
+</webwriter-task-prompt>
+<webwriter-choice solution='{"survey-0":false,"survey-1":true,"survey-2":false}'>
+<webwriter-choice-item id="survey-0">Twelve is an even number.</webwriter-choice-item>
+<webwriter-choice-item id="survey-1">The sample includes only the volunteer’s friends using the library.</webwriter-choice-item>
+<webwriter-choice-item id="survey-2">The median is lower than the mean.</webwriter-choice-item>
+</webwriter-choice>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Removing the value 23 would make this convenience sample representative of the school.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="false">
+</webwriter-true-false>
+</webwriter-task>
+</webwriter-quiz>
+<p>
+<label for="survey-design">Write a cautious conclusion and propose a sampling plan, a neutral survey question, and one way to track non-response.</label>
+</p>
+<textarea id="survey-design" name="survey-design" rows="4" placeholder="Write your reasoning here.">
+</textarea>
+<p>
+<strong>Peer review:</strong> Check whether the plan includes different year groups and students who do not already use the library.</p>
+</main>
+</body>
+</html>

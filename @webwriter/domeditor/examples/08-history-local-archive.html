@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Whose town is in the archive?</title>
+<style>:root { color-scheme: light; font: 17px/1.65 system-ui, sans-serif; color: #1e293b; background: #f5f5f0; --lesson-accent: #9f1239; }
+body { max-width: 900px; margin: 0 auto; padding: 48px 36px 64px; background: #fff; }
+header { border-bottom: 3px solid var(--lesson-accent); padding-bottom: 24px; margin-bottom: 28px; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--lesson-accent); } h3 { font-size: 1.1rem; }
+p, li { max-width: 76ch; } li { margin-bottom: .6rem; }
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .9rem; } caption { text-align: left; font-weight: 600; padding-bottom: .6rem; }
+th, td { padding: .65rem; text-align: left; border-bottom: 1px solid #cbd5e1; } th { background: #f1f5f9; }
+blockquote { margin: 1.5rem 0; padding: 8px 24px; border-left: 4px solid var(--lesson-accent); background: #f8fafc; } blockquote footer, figcaption { color: #475569; font-size: .85rem; }
+figure { margin: 1.5rem 0; } svg { width: 100%; height: auto; } textarea { box-sizing: border-box; display: block; width: 100%; min-height: 110px; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; background: #fff; color: #1e293b; }
+label { font-weight: 600; }
+webwriter-quiz, webwriter-slides, webwriter-timeline, webwriter-flowchart, webwriter-code-javascript, webwriter-map { display: block; margin: 24px 0; max-width: 100%; }
+webwriter-slide { padding: 12px 20px; } :focus-visible { outline: 3px solid var(--lesson-accent); outline-offset: 3px; }
+@media (max-width: 600px) { body { padding: 24px 16px; } table { font-size: .78rem; } th, td { padding: .35rem; } }
+@media print { :root { background: white; } body { max-width: none; padding: 0; } header { break-after: avoid; } }</style>
+<script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/timeline@2.1.1/dist/webwriter-timeline.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/timeline@2.1.1/dist/webwriter-timeline.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/timeline@2.1.1/dist/webwriter-timeline-event.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/timeline@2.1.1/dist/webwriter-timeline-event-title.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/timeline@2.1.1/dist/webwriter-timeline-event-details.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-quiz.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-task-prompt.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-true-false.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/dist/widgets/webwriter-choice-item.js"></script>
+</head>
+<body>
+<header><h1>Whose town is in the archive?</h1></header>
+<main>
+
+<h2>Your mission</h2>
+<p>You are preparing a museum label about a fictional town called Millhaven. The archive below is invented for source-analysis practice. Build a chronology, compare two viewpoints, and distinguish what a source says from what it can establish.</p>
+<h2>1. Explore the archive timeline</h2>
+<p>Open each event. Record one change in transport, work, or public space. The dates refer only to this fictional town.</p>
+<webwriter-timeline panels="timeline">
+<webwriter-timeline-event date="1890">
+<webwriter-timeline-event-title>Railway station opens</webwriter-timeline-event-title>
+<webwriter-timeline-event-details>
+<p>A council notice announces a new passenger station and asks residents to keep the approach road clear.</p>
+</webwriter-timeline-event-details>
+</webwriter-timeline-event>
+<webwriter-timeline-event date="1910">
+<webwriter-timeline-event-title>Market moves to Station Square</webwriter-timeline-event-title>
+<webwriter-timeline-event-details>
+<p>A map marks the new market beside the station. It does not record who supported or opposed the move.</p>
+</webwriter-timeline-event-details>
+</webwriter-timeline-event>
+<webwriter-timeline-event date="1930">
+<webwriter-timeline-event-title>Factory adds a night shift</webwriter-timeline-event-title>
+<webwriter-timeline-event-details>
+<p>A company newsletter celebrates longer production hours. No worker interviews survive in this collection.</p>
+</webwriter-timeline-event-details>
+</webwriter-timeline-event>
+<webwriter-timeline-event date="1950">
+<webwriter-timeline-event-title>Residents request a playground</webwriter-timeline-event-title>
+<webwriter-timeline-event-details>
+<p>A petition asks the council for a play area away from busy delivery roads. Signing the petition did not mean every resident agreed.</p>
+</webwriter-timeline-event-details>
+</webwriter-timeline-event>
+</webwriter-timeline>
+<h2>2. Compare two voices from 1910</h2>
+<blockquote>
+<p>“The new square gives traders room to sell and visitors a fine first impression of our town.”</p>
+<footer>Source A: fictional council publicity leaflet, 1910</footer>
+</blockquote>
+<blockquote>
+<p>“My stall is easier to unload now, but the walk is longer for customers from the old streets.”</p>
+<footer>Source B: fictional market trader’s diary, 1910</footer>
+</blockquote>
+<table>
+<caption>Use these questions to interrogate each source</caption>
+<thead>
+<tr>
+<th scope="col">Question</th>
+<th scope="col">What to look for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">Who made it?</th>
+<td>Role, intended audience, and purpose</td>
+</tr>
+<tr>
+<th scope="row">What does it claim?</th>
+<td>Specific words or details</td>
+</tr>
+<tr>
+<th scope="row">What is missing?</th>
+<td>Other residents’ experiences and independent evidence</td>
+</tr>
+</tbody>
+</table>
+<h2>3. Curate the label</h2>
+<webwriter-quiz detailed-feedback>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Both sources support the claim that every resident benefited equally from the move.</p>
+</webwriter-task-prompt>
+<webwriter-true-false solution="false">
+</webwriter-true-false>
+</webwriter-task>
+<webwriter-task>
+<webwriter-task-prompt slot="prompt">
+<p>Which additional source best helps test the claim about a longer walk?</p>
+</webwriter-task-prompt>
+<webwriter-choice solution='{"archive-0":true,"archive-1":false,"archive-2":false}'>
+<webwriter-choice-item id="archive-0">A street map showing the old and new market sites</webwriter-choice-item>
+<webwriter-choice-item id="archive-1">Another copy of the publicity leaflet</webwriter-choice-item>
+<webwriter-choice-item id="archive-2">A list of factory machines</webwriter-choice-item>
+</webwriter-choice>
+</webwriter-task>
+</webwriter-quiz>
+<p>
+<label for="museum-label">Write a 60–80 word museum label using both sources. Include one uncertainty and one question for further research.</label>
+</p>
+<textarea id="museum-label" name="museum-label" rows="4" placeholder="Write your reasoning here.">
+</textarea>
+<p>
+<strong>Peer review:</strong> Underline a supported claim in your partner’s label. Mark any sentence that treats one person’s experience as everyone’s.</p>
+</main>
+</body>
+</html>
