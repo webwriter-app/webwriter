@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {beforeEach, describe, expect, it, vi} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "happy-dom"
 import "@testing-library/jest-dom/vitest"
 
@@ -100,6 +100,80 @@ describe("table grid", () => {
 })
 
 describe("table cell selection", () => {
+  describe.each(["MacIntel", "Win32"])("modifier node selection on %s", platform => {
+    const originalPlatform = navigator.platform
+    const modifier = platform === "MacIntel" ? {metaKey: true} : {ctrlKey: true}
+
+    beforeEach(() => {
+      Object.defineProperty(navigator, "platform", {value: platform, configurable: true})
+      document.body.innerHTML = "<table><tbody><tr><td><strong>A</strong></td><td>B</td></tr></tbody></table>"
+    })
+
+    afterEach(() => {
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})
+    })
+
+    it.each([false, true])("keeps the table selected after pointer movement (existing cell selection: %s)", existingSelection => {
+      const table = document.querySelector("table")!
+      if(existingSelection) editor.features.table.selectCells(cells()[0])
+      const pointerdown = new PointerEvent("pointerdown", {
+        ...modifier, shiftKey: existingSelection, clientX: 50, clientY: 15, bubbles: true, cancelable: true,
+      })
+      table.querySelector("strong")!.dispatchEvent(pointerdown)
+
+      expect(pointerdown.defaultPrevented).toBe(true)
+      expect($.selectedElement).toBe(table)
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      expect(table).toHaveClass("◆element-selected")
+
+      // Node selection disables hit testing on descendants, so even a small
+      // pointer movement can arrive on TABLE instead of the clicked cell.
+      table.dispatchEvent(new PointerEvent("pointermove", {
+        ...modifier, buttons: 1, clientX: 51, clientY: 15, bubbles: true, cancelable: true,
+      }))
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      // Releasing the modifier before the pointer must not arm a cell drag.
+      cells()[1].dispatchEvent(new PointerEvent("pointermove", {
+        buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true,
+      }))
+      table.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+
+      expect($.selectedElement).toBe(table)
+      expect(table).toHaveClass("◆element-selected")
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
+      expect(document.body).not.toHaveClass("◆table-cell-selection")
+      expect(editor.features.selection.isInDragSelection).toBe(false)
+    })
+
+    it("selects the table without resizing an armed column edge", () => {
+      const table = document.querySelector("table")!
+      const first = cells()[0]
+      first.getBoundingClientRect = () => ({
+        x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30,
+        toJSON: () => ({}),
+      })
+      const before = editor.toHTML(true)
+      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
+      expect(document.body).toHaveClass("◆table-column-edge")
+
+      first.dispatchEvent(new PointerEvent("pointerdown", {
+        ...modifier, clientX: 100, clientY: 15, bubbles: true, cancelable: true,
+      }))
+      expect(document.body).not.toHaveClass("◆table-column-edge")
+      table.dispatchEvent(new PointerEvent("pointermove", {
+        ...modifier, buttons: 1, clientX: 130, clientY: 15, bubbles: true, cancelable: true,
+      }))
+      expect(document.body).not.toHaveClass("◆table-column-resize")
+      table.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+
+      expect($.selectedElement).toBe(table)
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      expect(editor.toHTML(true)).toBe(before)
+    })
+  })
+
   it("does not refresh recursively from its own selection markers", async () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     await new Promise(resolve => setTimeout(resolve, 0))

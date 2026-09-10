@@ -1261,7 +1261,9 @@ export class TableFeature extends EditorFeature {
   activeListeners = {
     pointerdown: (event: PointerEvent) => {
       const cell = cellForNode(event.target instanceof Node ? event.target : null)
-      if(!cell) {
+      // Modifier-click belongs to node selection; leave no cell drag or
+      // column resize pending for subsequent pointer movement.
+      if(!cell || modifierKeyDown(event)) {
         this.setResizeHover(null)
         this.clearCellSelection()
         return
