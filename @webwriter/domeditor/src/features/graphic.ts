@@ -1519,10 +1519,14 @@ export class GraphicFeature extends EditorFeature {
       && interaction.attachedConnectors.every(item => item.source.isConnected
         && this.#geometrySignature(item.source) === item.signature)
     if(interaction.active && sourcesAreCurrent) {
-      this.editor.doc.stopCapturing()
-      this.#applyInteractionSet(interaction.items.map(item => item.source), interaction)
-      this.#applyAttachedConnectors(interaction.attachedConnectors)
-      this.editor.doc.stopCapturing()
+      const endUndoGroup = this.editor.doc.beginUndoGroup()
+      try {
+        this.#applyInteractionSet(interaction.items.map(item => item.source), interaction)
+        this.#applyAttachedConnectors(interaction.attachedConnectors)
+      }
+      finally {
+        endUndoGroup()
+      }
     }
     this.#cleanupInteraction(interaction)
     this.#interaction = null

@@ -499,6 +499,56 @@ describe("graphic editing", () => {
   })
 
   it.each([
+    {handle: "move", start: [800, 450], moves: [[810, 470], [830, 490]]},
+    {handle: "resize-se", start: [920, 570], moves: [[940, 590], [960, 610]]},
+    {handle: "rotate", start: [800, 306], moves: [[944, 450], [800, 594]]},
+  ])("keeps an SVG $handle gesture separate from adjacent edits in undo and redo", ({handle, start, moves}) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 1600, 900),
+    })
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const rectangle = graphic.querySelector("rect")!
+    clickShape(rectangle)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    rectangle.setAttribute("data-before", "keep")
+    const before = editor.toHTML(true)
+    const control = handle === "move" ? rectangle
+      : editor.appendix.querySelector(`[data-graphic-handle="${handle}"]`)!
+    control.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, composed: true, button: 0, clientX: start[0], clientY: start[1],
+    }))
+    for(const [clientX, clientY] of moves) {
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX, clientY}))
+      editor.doc.syncFromDOM()
+      expect(editor.toHTML(true)).toBe(before)
+    }
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    const after = editor.toHTML(true)
+    expect(after).not.toBe(before)
+    rectangle.setAttribute("data-after", "later")
+    editor.doc.syncFromDOM()
+
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(after)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.undo()
+    expect(rectangle).not.toHaveAttribute("data-before")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+    editor.doc.redo()
+    expect(rectangle).toHaveAttribute("data-after", "later")
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+  })
+
+  it.each([
     {label: "snaps to 5° when Snap is on", snap: true, altKey: false, expected: 15},
     {label: "does not snap when Snap is off", snap: false, altKey: false, expected: 13},
     {label: "temporarily bypasses Snap with Alt", snap: true, altKey: true, expected: 13},

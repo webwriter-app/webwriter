@@ -140,6 +140,7 @@ export class TableFeature extends EditorFeature {
     columnElement: HTMLTableColElement
     startX: number
     startWidth: number
+    endUndoGroup: () => void
   } | null = null
 
   get hasCellSelection() {
@@ -162,6 +163,7 @@ export class TableFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    window.addEventListener("blur", this.finishResize)
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(mutations => {
@@ -190,6 +192,7 @@ export class TableFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    window.removeEventListener("blur", this.finishResize)
     this.observer?.disconnect()
     this.observer = null
     this.clearCellSelection(false)
@@ -1047,21 +1050,28 @@ export class TableFeature extends EditorFeature {
   }
 
   private startResize(edge: TableResizeEdge, startX: number) {
-    if(!edge.table.isConnected) return false
+    if(this.resize || !edge.table.isConnected) return false
     const map = buildTableMap(edge.table)
     if(edge.column < 0 || edge.column >= map.width) return false
-    const columns = this.normalizeColumnElements(edge.table, map.width)
-    const columnElement = columns[edge.column]
-    if(!columnElement) return false
-    const placement = map.matrix.find(row => row[edge.column])?.[edge.column]
-    const cellWidth = placement?.cell.getBoundingClientRect().width ?? 0
-    const persistedWidth = inlineWidthInPixels(columnElement)
-    const startWidth = persistedWidth ?? (cellWidth > 0 ? cellWidth / (placement?.columnSpan ?? 1)
-      : Number.parseFloat(getComputedStyle(columnElement).width) || 80
-    )
-    this.resize = {table: edge.table, column: edge.column, columnElement, startX, startWidth}
-    document.body.classList.add("◆", "◆table-column-resize")
-    return true
+    // Column creation and every intermediate width belong to the same drag.
+    const endUndoGroup = this.editor.doc.beginUndoGroup()
+    try {
+      const columns = this.normalizeColumnElements(edge.table, map.width)
+      const columnElement = columns[edge.column]
+      if(!columnElement) return false
+      const placement = map.matrix.find(row => row[edge.column])?.[edge.column]
+      const cellWidth = placement?.cell.getBoundingClientRect().width ?? 0
+      const persistedWidth = inlineWidthInPixels(columnElement)
+      const startWidth = persistedWidth ?? (cellWidth > 0 ? cellWidth / (placement?.columnSpan ?? 1)
+        : Number.parseFloat(getComputedStyle(columnElement).width) || 80
+      )
+      document.body.classList.add("◆", "◆table-column-resize")
+      this.resize = {table: edge.table, column: edge.column, columnElement, startX, startWidth, endUndoGroup}
+      return true
+    }
+    finally {
+      if(!this.resize) endUndoGroup()
+    }
   }
 
   private captureTextDragAnchor() {
@@ -1124,6 +1134,10 @@ export class TableFeature extends EditorFeature {
 
   private updateResize(event: PointerEvent) {
     if(!this.resize) return false
+    if(!this.resize.table.isConnected || tableForNode(this.resize.columnElement) !== this.resize.table) {
+      this.stopResize()
+      return false
+    }
     const width = Math.max(24, this.resize.startWidth + event.clientX - this.resize.startX)
     this.resize.columnElement.style.width = `${Math.round(width)}px`
     return true
@@ -1131,11 +1145,23 @@ export class TableFeature extends EditorFeature {
 
   private stopResize() {
     if(!this.resize) return
+    const {endUndoGroup} = this.resize
     this.resize = null
     document.body.classList.remove("◆table-column-resize")
     if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) document.body.classList.remove("◆")
     if(!document.body.classList.length) document.body.removeAttribute("class")
+    endUndoGroup()
     this.editor.postSelectionPath()
+  }
+
+  private finishResize = () => {
+    this.stopResize()
+    this.pendingCell = null
+    this.pointerSelecting = false
+    this.textDragAnchor = null
+    this.pendingResize = null
+    this.editor.features.selection.isInDragSelection = false
+    this.setResizeHover(null)
   }
 
   private navigateCells(event: KeyboardEvent) {
@@ -1324,15 +1350,7 @@ export class TableFeature extends EditorFeature {
       this.pendingResize = null
       this.setResizeHover(null)
     },
-    pointercancel: () => {
-      this.stopResize()
-      this.pendingCell = null
-      this.pointerSelecting = false
-      this.textDragAnchor = null
-      this.pendingResize = null
-      this.editor.features.selection.isInDragSelection = false
-      this.setResizeHover(null)
-    },
+    pointercancel: this.finishResize,
     keydown: (event: KeyboardEvent) => {
       if((event.key === "Backspace" || event.key === "Delete") && this.hasCellSelection) {
         event.preventDefault()

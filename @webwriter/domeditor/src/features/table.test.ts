@@ -441,6 +441,94 @@ describe("table cell selection", () => {
     expect(document.querySelector<HTMLTableColElement>("col")?.style.width).toBe("180px")
   })
 
+  it.each([
+    "",
+    '<colgroup><col style="width: 160px" span="2"></colgroup>',
+    '<colgroup><col style="width: 160px"><col></colgroup>',
+  ])("undoes a paused column resize from final to original columns: %s", async columns => {
+    document.body.innerHTML = `<table><caption>Data</caption>${columns}<tbody><tr><td><demo-widget>A</demo-widget></td><td>B</td></tr></tbody></table>`
+    const table = document.querySelector("table")!
+    const [first] = cells()
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    table.setAttribute("data-before", "keep")
+    const before = editor.toHTML(true)
+    try {
+      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
+      first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
+      for(const clientX of [120, 140, 160]) {
+        document.dispatchEvent(new PointerEvent("pointermove", {clientX, clientY: 15, bubbles: true}))
+        editor.doc.syncFromDOM()
+        if(clientX === 120) await new Promise(resolve => setTimeout(resolve, 550))
+      }
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+      const after = editor.toHTML(true)
+      expect(after).not.toBe(before)
+      expect(document.querySelector("col")!.getAttribute("style")).toContain(columns ? "220px" : "160px")
+      expect(editor.doc.body.toString()).not.toContain("◆")
+      table.setAttribute("data-after", "later")
+      editor.doc.syncFromDOM()
+
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(after)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.undo()
+      expect(table).not.toHaveAttribute("data-before")
+      expect(table.querySelector("demo-widget")).toHaveTextContent("A")
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(after)
+      editor.doc.redo()
+      expect(table).toHaveAttribute("data-after", "later")
+    }
+    finally {
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      restoreCaretPosition()
+    }
+  })
+
+  it.each(["pointercancel", "blur", "disable", "removed column"])("closes a column resize undo group on %s", end => {
+    document.body.innerHTML = '<table><colgroup><col style="width: 100px"></colgroup><tbody><tr><td>A</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const [first] = cells()
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+    editor.doc.syncFromDOM()
+    const before = editor.toHTML(true)
+    try {
+      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
+      first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
+      editor.doc.syncFromDOM()
+      if(end === "disable") editor.features.table.disable()
+      else if(end === "blur") window.dispatchEvent(new Event("blur"))
+      else if(end === "removed column") {
+        table.querySelector("col")!.remove()
+        document.dispatchEvent(new PointerEvent("pointermove", {clientX: 140, clientY: 15, bubbles: true}))
+      }
+      else document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      const after = editor.toHTML(true)
+      expect(document.body).not.toHaveClass("◆table-column-resize")
+      table.setAttribute("data-after", "later")
+      editor.doc.syncFromDOM()
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(after)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(after)
+    }
+    finally {
+      editor.features.table.enable()
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      restoreCaretPosition()
+    }
+  })
+
   it("does not resize from an unarmed edge drag", () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     const [first] = cells()
