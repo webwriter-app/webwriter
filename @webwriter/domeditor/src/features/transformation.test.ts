@@ -215,22 +215,18 @@ describe("transform controls and geometry", () => {
     expect(ancestor.querySelector("#◆transform-overlay-anchor")).toBeNull()
   })
 
-  it.each(["static", "relative", "sticky"])("hides the anchor for %s positioning and updates it when the mode changes", position => {
+  it("keeps legacy anchor and sticky controls hidden when positioning changes", () => {
     const target = targetElement()
-    target.style.position = position
     selectNode(target)
 
-    expect(feature.anchor.hidden).toBe(true)
-    expect(feature.anchor).toHaveAttribute("part", expect.stringContaining("transform-overlay-anchor-hidden"))
-
-    for(const visiblePosition of ["absolute", "fixed"]) {
-      target.style.position = visiblePosition
-      feature.updateInfo()
-      expect(feature.anchor.hidden).toBe(false)
-
+    for(const position of ["static", "relative", "absolute", "sticky", "fixed", "relative"]) {
       target.style.position = position
       feature.updateInfo()
-      expect(feature.anchor.hidden).toBe(true)
+      for(const name of ["anchor", "anchor-sticky"]) {
+        const control = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${name}`)!
+        expect(control.hidden).toBe(true)
+        expect(control).toHaveAttribute("part", expect.stringContaining(`transform-overlay-${name}-hidden`))
+      }
     }
   })
 

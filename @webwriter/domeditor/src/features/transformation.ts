@@ -338,10 +338,8 @@ export class TransformationFeature extends EditorFeature {
     hidden("rotator", position !== "absolute")
     hidden("orderer", position !== "absolute")
     hidden("arranger", true)
-    // Relative and sticky offsets originate at the element's own normal-flow
-    // position, so there is no separate positioning ancestor to anchor to.
-    hidden("anchor", !["absolute", "fixed"].includes(position))
-    hidden("anchor-sticky", !["relative", "sticky"].includes(position))
+    hidden("anchor", true)
+    hidden("anchor-sticky", true)
     for(const name of ["arranger", "orderer"]) {
       const control = name === "arranger" ? this.arranger : this.orderer
       const open = !control.hidden && control.hasAttribute("data-open")

@@ -505,10 +505,40 @@ describe("breadcrumb positioning", () => {
   })
 
   it.each(["relative", "sticky"])("marks the %s element's own normal-flow anchor", position => {
-    withSelection(`<div><p id="target" style="position: ${position}">Text</p></div>`, (_editor, readPath) => {
+    withSelection(`<div><p id="target" style="position: ${position}; top: 8px">Text</p></div>`, (_editor, readPath) => {
       const path = readPath()
       expect(path.at(-1)).toMatchObject({position, positionAnchor: true})
       expect(path.slice(0, -1).every(item => !item.positionAnchor)).toBe(true)
+    })
+  })
+
+  it.each(["", "inset: auto", "inset: 0", "top: 0px; right: auto; bottom: 0%; left: -0px"])("omits relative positioning without an offset: %s", offsets => {
+    withSelection(`<section style="position: relative"><span style="position: relative"><custom-widget id="target" style="position: relative; ${offsets}">Text</custom-widget></span></section>`, (editor, readPath) => {
+      const authoredHTML = editor.toHTML(true)
+      const path = readPath()
+      expect(path.map(item => item.path)).toEqual([[], [0, 0, 0]])
+      expect(path.flatMap(item => [item, ...(item.sections ?? [])]).every(item => !item.position && !item.positionAnchor)).toBe(true)
+      expect(editor.toHTML(true)).toBe(authoredHTML)
+    })
+  })
+
+  it.each(["top: 4px", "right: -4px", "bottom: 0.5px", "left: -0.5px"])("updates relative positioning indicators as offsets change: %s", offsets => {
+    withSelection('<p id="target" style="position: relative">Text</p>', (_editor, readPath) => {
+      const target = document.getElementById("target")!
+      expect(readPath().at(-1)?.position).toBeUndefined()
+      target.style.cssText = `position: relative; ${offsets}`
+      expect(readPath().at(-1)).toMatchObject({position: "relative", positionAnchor: true})
+      target.style.cssText = "position: relative; inset: 0"
+      expect(readPath().at(-1)?.position).toBeUndefined()
+      expect(readPath().at(-1)?.positionAnchor).toBeUndefined()
+    })
+  })
+
+  it("keeps a relative element without an offset as an absolute child's anchor", () => {
+    withSelection('<section style="position: relative; inset: 0"><p id="target" style="position: absolute">Text</p></section>', (_editor, readPath) => {
+      const section = readPath().at(-1)?.sections?.[0]
+      expect(section?.position).toBeUndefined()
+      expect(section?.positionAnchor).toBe(true)
     })
   })
 
@@ -517,8 +547,10 @@ describe("breadcrumb positioning", () => {
       const path = readPath()
       expect(path[1]).toMatchObject({
         path: [0, 0], positionAnchor: true,
-        sections: [{path: [0], position: "relative", positionAnchor: true}],
+        sections: [{path: [0]}],
       })
+      expect(path[1].sections?.[0].position).toBeUndefined()
+      expect(path[1].sections?.[0].positionAnchor).toBeUndefined()
       expect(path.at(-1)).toMatchObject({position: "absolute"})
     })
   })

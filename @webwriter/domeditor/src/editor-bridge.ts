@@ -151,7 +151,7 @@ export type SelectionPathItem = {
   icon?: string
   /** An optional package-provided icon displayed instead of the shared icon. */
   iconUrl?: string
-  /** The element's computed non-static positioning mode. */
+  /** The element's computed non-static positioning mode, omitting relative positioning without an offset. */
   position?: "absolute" | "fixed" | "relative" | "sticky"
   /** Whether this element anchors positioning in the current selection path. */
   positionAnchor?: boolean

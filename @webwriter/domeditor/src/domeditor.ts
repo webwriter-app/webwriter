@@ -955,8 +955,10 @@ export class DOMEditor {
     const positions = new Map<Element, NonNullable<SelectionPathItem["position"]>>()
     const anchors = new Set<Element>()
     for(const currentElement of elements) {
-      const position = getComputedStyle(currentElement).position
+      const style = getComputedStyle(currentElement)
+      const position = style.position
       if(position !== "absolute" && position !== "fixed" && position !== "relative" && position !== "sticky") continue
+      if(position === "relative" && ![style.top, style.right, style.bottom, style.left].some(offset => parseFloat(offset))) continue
       positions.set(currentElement, position)
       if(position === "relative" || position === "sticky") {
         anchors.add(currentElement)
