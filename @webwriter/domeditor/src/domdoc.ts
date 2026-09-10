@@ -259,6 +259,10 @@ export class SharedDOMDoc {
     return this.#documentHead
   }
 
+  get documentAttributes() {
+    return this.#documentAttributes
+  }
+
   get selection() {
     return this.#absoluteSelection(this.#relativeSelection)
   }
@@ -503,7 +507,8 @@ export class SharedDOMDoc {
       this.#reconcileYElement(this.root, this.#body)
       if(this.#headRoot && this.#documentHead) {
         this.#reconcileYElement(this.#headRoot, this.#documentHead)
-        this.#headMetadata.set("language", this.#document.documentElement.getAttribute("lang") ?? "")
+        const language = this.#document.documentElement.getAttribute("lang") ?? ""
+        if(this.#headMetadata.get("language") !== language) this.#headMetadata.set("language", language)
         this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes!, ["lang"])
       }
     }, origin)

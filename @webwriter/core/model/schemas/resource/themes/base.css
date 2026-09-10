@@ -8,11 +8,14 @@
 /**
  * Styles
  */
-:root,
-:host {
+:root {
   --ww-page-max: 2160px;
   --ww-prose-max: 45rem;
   --ww-page-gutter: clamp(1rem, 2vw, 2rem);
+}
+
+:root,
+:host {
   --pico-font-family-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --pico-font-family-sans-serif: system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, Arial, "Helvetica Neue", sans-serif, var(--pico-font-family-emoji);
   --pico-font-family-monospace: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace, var(--pico-font-family-emoji);
@@ -573,6 +576,13 @@ body {
   color: var(--pico-color);
 }
 
+/* Direct page content starts at the reading measure. Authored document styles
+ * can remove this maximum for wider blocks, landmarks, and widget hosts. */
+body > * {
+  max-inline-size: var(--ww-prose-max, 45rem);
+  margin-inline: auto;
+}
+
 main {
   display: block;
 }
@@ -586,9 +596,8 @@ body > footer {
   padding-block: var(--pico-block-spacing-vertical);
 }
 
-/* Limit reading blocks without narrowing their containing sections or widgets.
- * A shared rem measure keeps headings aligned with body text. Unknown document
- * structures retain normal flow, and authored styles can override this layer. */
+/* Keep reading blocks aligned even inside a section that opts into more space.
+ * Authored styles can override this layer. */
 :where(body, body > main, body > article, body > section)
   > :where(h1, h2, h3, h4, h5, h6, p, ul, ol, dl, blockquote) {
   max-inline-size: var(--ww-prose-max);

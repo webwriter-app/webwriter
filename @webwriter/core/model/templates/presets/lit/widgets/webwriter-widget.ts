@@ -30,7 +30,8 @@ export class ____classname____ extends LitElementWw {
       box-sizing: border-box;
       inline-size: 100%;
       min-inline-size: 0;
-      max-inline-size: 100%;
+      max-inline-size: var(--ww-prose-max, 45rem);
+      margin-inline: auto;
       block-size: auto;
       container-type: inline-size;
     }

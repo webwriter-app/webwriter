@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
-  <title id="title">Container driven widget layout</title>
-  <desc id="desc">Two schematic views of one widget. At a narrow container, controls, work area, and results stack vertically. At a wide container, controls and results sit beside an expanding work area.</desc>
+  <title id="title">Container driven layout for an opted-out wide widget</title>
+  <desc id="desc">Two schematic views of one wide widget after it opts out of the prose maximum. At a narrow allocation, controls, work area, and results stack vertically. At a wider allocation, controls and results sit beside an expanding work area.</desc>
   <style>
     .ink { fill: #1f2937; font: 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .small { fill: #4b5563; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -12,8 +12,8 @@
     .bracket { fill: none; stroke: #64748b; stroke-width: 1.5; }
   </style>
   <rect width="720" height="420" fill="#ffffff"/>
-  <text class="heading" x="180" y="30" text-anchor="middle">narrow container</text>
-  <text class="small" x="180" y="51" text-anchor="middle">controls stack for readable text</text>
+  <text class="heading" x="180" y="30" text-anchor="middle">opted-out widget · narrow</text>
+  <text class="small" x="180" y="51" text-anchor="middle">max-inline-size: unset</text>
   <rect class="frame" x="25" y="70" width="310" height="285" rx="10"/>
   <rect class="control" x="45" y="90" width="270" height="58" rx="6"/>
   <text class="ink" x="180" y="126" text-anchor="middle">controls</text>
@@ -21,10 +21,10 @@
   <text class="ink" x="180" y="220" text-anchor="middle">work area</text>
   <rect class="result" x="45" y="280" width="270" height="58" rx="6"/>
   <text class="ink" x="180" y="316" text-anchor="middle">results</text>
-  <text class="small" x="180" y="390" text-anchor="middle">one column below 48rem</text>
+  <text class="small" x="180" y="390" text-anchor="middle">stacked example arrangement</text>
 
-  <text class="heading" x="540" y="30" text-anchor="middle">wide container</text>
-  <text class="small" x="540" y="51" text-anchor="middle">work area receives extra space</text>
+  <text class="heading" x="540" y="30" text-anchor="middle">opted-out widget · wide</text>
+  <text class="small" x="540" y="51" text-anchor="middle">same widget, more inline space</text>
   <rect class="frame" x="385" y="70" width="310" height="190" rx="10"/>
   <rect class="control" x="405" y="90" width="62" height="150" rx="6"/>
   <text class="ink" x="436" y="171" text-anchor="middle">controls</text>
@@ -34,5 +34,5 @@
   <text class="ink" x="646" y="171" text-anchor="middle">results</text>
   <path class="bracket" d="M479 278V290M605 278V290M479 284H605"/>
   <text class="small" x="542" y="313" text-anchor="middle">minmax(0, 1fr)</text>
-  <text class="small" x="542" y="390" text-anchor="middle">three columns from 90rem</text>
+  <text class="small" x="542" y="390" text-anchor="middle">column example at a chosen threshold</text>
 </svg>

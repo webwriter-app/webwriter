@@ -24,13 +24,30 @@ describe("document themes", () => {
     expect(landmarks).not.toMatch(/@media|min-(?:inline-size|width):\s*280px|overflow(?:-x)?:\s*hidden/)
   })
 
-  it("constrains reading blocks without narrowing structural containers or widget content", () => {
+  it("defaults every direct body child to the reading measure without changing its display", () => {
+    const source = defaultDocumentTheme.source.replaceAll(/\/\*[\s\S]*?\*\//g, "")
+    const declarations = source.match(/body > \*\s*\{([^}]*)\}/)![1]
+
+    expect(declarations).toContain("max-inline-size: var(--ww-prose-max, 45rem);")
+    expect(declarations).toContain("margin-inline: auto;")
+    expect(declarations).not.toMatch(/(?:^|;)\s*(?:display|min-inline-size|block-size)\s*:/)
+  })
+
+  it("keeps nested reading blocks capped when their section opts into more space", () => {
     const source = defaultDocumentTheme.source.replaceAll(/\/\*[\s\S]*?\*\//g, "")
     const readingRule = Array.from(source.matchAll(/([^{}]+)\{([^{}]*)\}/g))
       .find(([, , declarations]) => declarations.includes("max-inline-size: var(--ww-prose-max)"))!
     expect(readingRule[1].trim()).toBe(":where(body, body > main, body > article, body > section)\n"
       + "  > :where(h1, h2, h3, h4, h5, h6, p, ul, ol, dl, blockquote)")
     expect(readingRule[2]).toContain("margin-inline: auto;")
+  })
+
+  it("lets widget hosts inherit document sizing tokens when adopting the theme", () => {
+    const source = defaultDocumentTheme.source.replaceAll(/\/\*[\s\S]*?\*\//g, "")
+    const sizingRules = Array.from(source.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+      .filter(([, , declarations]) => /--ww-(?:page-max|prose-max|page-gutter)\s*:/.test(declarations))
+
+    expect(sizingRules.map(([, selector]) => selector.trim())).toEqual([":root"])
   })
 
   it("uses a layered, classless Pico theme as the document default", () => {

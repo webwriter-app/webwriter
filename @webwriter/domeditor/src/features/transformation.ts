@@ -36,8 +36,10 @@ type Gesture = {
  * Ctrl/Cmd previews a gap and returns the element to normal flow on release.
  * Shift constrains movement to one axis; Alt disables snapping.
  *
- * Resize: corners set width/height; edges resize one axis. Top/left handles keep the
- * opposite edge fixed by adjusting offsets. Ctrl/Cmd resizes about the center;
+ * Resize: corners set max-inline/block-size; edges constrain one logical axis.
+ * Existing dimensions and intrinsic content can keep the element smaller.
+ * Top/left handles keep the opposite edge fixed by adjusting offsets.
+ * Ctrl/Cmd resizes about the center;
  * Shift stretches with CSS scale instead of reflowing content; Alt unsnaps.
  * Rotate (absolute targets): drag about the center, snapping to 5 degrees
  * (Shift: 45 degrees; Alt: no snapping).
@@ -433,7 +435,7 @@ export class TransformationFeature extends EditorFeature {
     const rotateTop = centerY + matrix.d * (-height / 2 - 34) - controlRadius
     const ordererTop = centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 22) - controlRadius
     setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop) < 0)
-    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
+    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-inline-size", "max-block-size", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
     const style = getComputedStyle(target)
     const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
     const block = findContainingBlock(target as HTMLElement, position)
@@ -625,15 +627,23 @@ export class TransformationFeature extends EditorFeature {
     const dw = x ? Math.max(1 - gesture.width, round(x * delta.x * (symmetric ? 2 : 1))) : 0
     const dh = y ? Math.max(1 - gesture.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
     const target = gesture.target
-    if(getComputedStyle(target).display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
+    const style = getComputedStyle(target)
+    if(style.display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
+    let actualDW = dw, actualDH = dh
     if(event.shiftKey) {
       this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
     }
     else {
-      if(x) this.#write("width", `${Math.max(0, gesture.cssWidth + dw)}px`)
-      if(y) this.#write("height", `${Math.max(0, gesture.cssHeight + dh)}px`)
+      const vertical = /^(?:vertical|sideways)-/.test(style.writingMode)
+      if(x) this.#write(vertical ? "max-block-size" : "max-inline-size", `${Math.max(0, gesture.cssWidth + dw)}px`)
+      if(y) this.#write(vertical ? "max-inline-size" : "max-block-size", `${Math.max(0, gesture.cssHeight + dh)}px`)
+      // Maximums may not change the used size (for example, an image's natural
+      // size can be smaller). Keep the anchor tied to the actual rendered box.
+      const size = this.#size(target)
+      actualDW = size.width - gesture.width
+      actualDH = size.height - gesture.height
     }
-    const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * dw / 2, symmetric ? 0 : y * dh / 2)
+    const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, symmetric ? 0 : y * actualDH / 2)
     const rect = this.targetRect
     this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
       gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))
@@ -730,7 +740,7 @@ export class TransformationFeature extends EditorFeature {
 
   restore() {
     if(!this.target || this.editor.isEditingLocked) return
-    for(const property of ["width", "height", "rotate", "scale", "float", "position", "top", "left", "right", "bottom", "z-index"]) this.target.style.removeProperty(property)
+    for(const property of ["width", "height", "max-inline-size", "max-block-size", "rotate", "scale", "float", "position", "top", "left", "right", "bottom", "z-index"]) this.target.style.removeProperty(property)
     if(!this.target.style.length) this.target.removeAttribute("style")
     this.updateInfo()
   }

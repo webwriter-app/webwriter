@@ -25,24 +25,9 @@ body {
   caret-color: currentColor;
 }
 
-/* A sole role=document widget is the authored document template. BODY keeps
- * hosting the shadow appendix but stops generating a scrolling layout box;
- * the widget inherits the ordinary document width while its height follows
- * its content. */
-body.◆template-active {
-  display: contents;
-}
-
-body.◆template-active > [role~="document"]:only-child {
-  box-sizing: border-box;
-  display: block;
-  inline-size: 100%;
-  min-inline-size: 0;
-  block-size: auto;
-  max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--body-padding));
-  margin: 1.25rem auto;
-  padding: 0 var(--body-padding);
-}
+/* BODY supplies the page and appendix for ordinary and template documents.
+ * The base theme caps direct children at the prose measure; authored document
+ * styles can opt out without a separate editor sizing rule. */
 
 html.◆key-mod-down,
 html:has(> body.◆key-mod-down),

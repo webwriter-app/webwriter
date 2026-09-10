@@ -37,13 +37,33 @@ function targetElement(tag = "p") {
 
 /** Happy-dom has no layout. Keep the rect tied to authored offsets so the
  * movement/resize code still exercises its geometry calculations. */
-function mockRect(target: HTMLElement, values: {left?: number, top?: number, width?: number, height?: number} = {}) {
+function mockRect(target: HTMLElement | SVGSVGElement, values: {left?: number, top?: number, width?: number, height?: number} = {}) {
   const base = {left: 100, top: 100, width: 100, height: 50, ...values}
+  const computedStyle = vi.mocked(getComputedStyle).getMockImplementation?.() ?? getComputedStyle
+  const size = () => {
+    const style = computedStyle(target)
+    const vertical = /^(?:vertical|sideways)-/.test(style.writingMode)
+    const limit = (value: string) => Number.isFinite(parseFloat(value)) ? parseFloat(value) : Infinity
+    return {
+      width: Math.min(parseFloat(style.width) || base.width, limit(vertical ? style.maxBlockSize : style.maxInlineSize)),
+      height: Math.min(parseFloat(style.height) || base.height, limit(vertical ? style.maxInlineSize : style.maxBlockSize)),
+    }
+  }
+  // Browsers expose used dimensions after max-size constraints; Happy DOM does not.
+  vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element, pseudo) => {
+    const style = computedStyle(element, pseudo)
+    return element !== target ? style : new Proxy(style, {
+      get(style, property) {
+        if(property === "width" || property === "height") return `${size()[property]}px`
+        const value = Reflect.get(style, property, style)
+        return typeof value === "function" ? value.bind(style) : value
+      },
+    })
+  })
   vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => {
     const left = base.left + (parseFloat(target.style.left) || 0)
     const top = base.top + (parseFloat(target.style.top) || 0)
-    const width = parseFloat(target.style.width) || base.width
-    const height = parseFloat(target.style.height) || base.height
+    const {width, height} = size()
     return {x: left, y: top, left, top, right: left + width, bottom: top + height, width, height, toJSON: () => ({})} as DOMRect
   })
 }
@@ -341,16 +361,20 @@ describe("transform controls and geometry", () => {
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 220, clientY: 150}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 150}))
 
-    expect(parseFloat(target.style.width)).toBeGreaterThan(100)
+    expect(target.style.width).toBe("100px")
+    expect(target.style.maxInlineSize).toBe("120px")
+    expect(target.style.maxBlockSize).toBe("50px")
+    expect(target.style.left).toBe("0px")
+    expect(target.style.top).toBe("0px")
     expect(target).toHaveClass("◆transform-target")
   })
 
   describe.each([false, true])("edge resizing with capture selection %s", captured => {
     it.each([
-      {edge: "right", x: 200, y: 115, dx: 20, dy: 13, width: "120px", height: "50px", left: "0px", top: "0px"},
-      {edge: "left", x: 100, y: 115, dx: -20, dy: 13, width: "120px", height: "50px", left: "-20px", top: "0px"},
-      {edge: "up", x: 130, y: 100, dx: 13, dy: -20, width: "100px", height: "70px", left: "0px", top: "-20px"},
-      {edge: "down", x: 130, y: 150, dx: 13, dy: 20, width: "100px", height: "70px", left: "0px", top: "0px"},
+      {edge: "right", x: 200, y: 115, dx: -20, dy: 13, width: "80px", height: "", left: "0px", top: "0px"},
+      {edge: "left", x: 100, y: 115, dx: 20, dy: 13, width: "80px", height: "", left: "20px", top: "0px"},
+      {edge: "up", x: 130, y: 100, dx: 13, dy: 20, width: "", height: "30px", left: "0px", top: "20px"},
+      {edge: "down", x: 130, y: 150, dx: 13, dy: -20, width: "", height: "30px", left: "0px", top: "0px"},
     ])("resizes only the $edge axis and preserves the opposite edge", ({edge, x, y, dx, dy, width, height, left, top}) => {
       const target = targetElement(captured ? "demo-widget" : "p")
       const child = target.appendChild(document.createElement(captured ? "unfamiliar-content" : "mark"))
@@ -367,8 +391,10 @@ describe("transform controls and geometry", () => {
       expect(document.body).toHaveClass(`◆transform-scaling-${dx === 13 ? "ns" : "ew"}`)
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
-      expect(target.style.width).toBe(width)
-      expect(target.style.height).toBe(height)
+      expect(target.style.maxInlineSize).toBe(width)
+      expect(target.style.maxBlockSize).toBe(height)
+      expect(target.style.width).toBe("100px")
+      expect(target.style.height).toBe("50px")
       expect(target.style.left).toBe(left)
       expect(target.style.top).toBe(top)
       expect(target.style.position).toBe("relative")
@@ -386,8 +412,8 @@ describe("transform controls and geometry", () => {
 
   it.each([
     {modifiers: {altKey: true}, width: "113px", left: "0px", scale: ""},
-    {modifiers: {ctrlKey: true}, width: "130px", left: "-15px", scale: ""},
-    {modifiers: {shiftKey: true}, width: "100px", left: "5px", scale: "1.1 1"},
+    {modifiers: {ctrlKey: true}, width: "130px", left: "0px", scale: ""},
+    {modifiers: {shiftKey: true}, width: "", left: "5px", scale: "1.1 1"},
   ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
@@ -398,7 +424,8 @@ describe("transform controls and geometry", () => {
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 213, clientY: 115, ...modifiers}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
-    expect(target.style.width).toBe(width)
+    expect(target.style.maxInlineSize).toBe(width)
+    expect(target.style.width).toBe("100px")
     expect(target.style.height).toBe("50px")
     // The mock rect does not apply CSS scale; the measured offset compensates for it.
     expect(target.style.left).toBe(left)
@@ -413,7 +440,7 @@ describe("transform controls and geometry", () => {
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 115}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 115}))
-    expect(target.style.width).toBe("120px")
+    expect(target.style.maxInlineSize).toBe("120px")
     target.style.color = "red"
     if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
@@ -422,8 +449,103 @@ describe("transform controls and geometry", () => {
       document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 230, clientY: 115}))
     }
     expect(target.style.width).toBe("100px")
+    expect(target.style.maxInlineSize).toBe("")
     expect(target.style.color).toBe("red")
     expect(document.body).not.toHaveClass("◆transform-scaling-ew", "◆transform-scaling-ns")
+  })
+
+  it.each(["horizontal-tb", "vertical-rl", "vertical-lr", "sideways-rl"])("maps resize edges to logical maxima in %s", writingMode => {
+    const target = targetElement("demo-widget")
+    Object.assign(target.style, {writingMode, width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    const resize = (edge: string, dx: number, dy: number) => {
+      const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${edge}`)!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy}))
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    }
+    resize("right", -20, 0)
+    const vertical = writingMode !== "horizontal-tb"
+    expect(target.style.maxInlineSize).toBe(vertical ? "" : "80px")
+    expect(target.style.maxBlockSize).toBe(vertical ? "80px" : "")
+    resize("down", 0, -20)
+    expect(target.style.maxInlineSize).toBe(vertical ? "30px" : "80px")
+    expect(target.style.maxBlockSize).toBe(vertical ? "80px" : "30px")
+    expect(target.style.width).toBe("100px")
+    expect(target.style.height).toBe("50px")
+  })
+
+  it("expands an existing maximum without fixing the widget's dimensions and groups undo/redo", async () => {
+    const target = targetElement("demo-widget")
+    target.contentEditable = "true"
+    Object.assign(target.style, {maxInlineSize: "100px", maxBlockSize: "50px"})
+    mockRect(target, {width: 300, height: 200})
+    selectNode(target)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 210, clientY: 160}))
+    await mutationsDelivered()
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 170}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    await mutationsDelivered()
+
+    expect(target.style.maxInlineSize).toBe("120px")
+    expect(target.style.maxBlockSize).toBe("70px")
+    expect(target.style.width).toBe("")
+    expect(target.style.height).toBe("")
+    expect(target.getBoundingClientRect().width).toBe(120)
+    expect(feature.overlay).toHaveClass("◆transform-overlay-changed")
+    expect(editor.toHTML(true)).toContain("max-inline-size: 120px")
+    expect(editor.doc.body.toString()).toContain("max-inline-size: 120px")
+    editor.doc.undo()
+    await mutationsDelivered()
+    // Happy DOM can cache .style after attribute replacement; assert authored DOM.
+    expect(document.querySelector("demo-widget")!.getAttribute("style")).toContain("max-inline-size: 100px")
+    expect(document.querySelector("demo-widget")!.getAttribute("style")).toContain("max-block-size: 50px")
+    editor.doc.redo()
+    await mutationsDelivered()
+    expect(document.querySelector("demo-widget")!.getAttribute("style")).toContain("max-inline-size: 120px")
+    expect(document.querySelector("demo-widget")!.getAttribute("style")).toContain("max-block-size: 70px")
+  })
+
+  it("retains a concurrent maximum while restoring other gesture-owned properties", () => {
+    const target = targetElement("demo-widget")
+    Object.assign(target.style, {width: "100px", height: "50px", maxInlineSize: "100px"})
+    target.style.setProperty("max-block-size", "50px", "important")
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 130}))
+    target.style.maxInlineSize = "90px"
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 170, clientY: 120}))
+
+    expect(target.style.maxInlineSize).toBe("90px")
+    expect(target.style.maxBlockSize).toBe("50px")
+    expect(target.style.getPropertyPriority("max-block-size")).toBe("important")
+    expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
+  })
+
+  it("constrains an SVG root without altering its authored dimensions or children", () => {
+    const target = append(document.createElementNS("http://www.w3.org/2000/svg", "svg"))
+    target.setAttribute("width", "100")
+    target.setAttribute("height", "50")
+    const child = target.appendChild(document.createElementNS(target.namespaceURI, "rect"))
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 150}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+
+    expect(target.style.maxInlineSize).toBe("80px")
+    expect(target.style.maxBlockSize).toBe("")
+    expect(target).toHaveAttribute("width", "100")
+    expect(target).toHaveAttribute("height", "50")
+    expect(target.firstElementChild).toBe(child)
   })
 
   it("rotates only an absolute target", () => {
@@ -463,6 +585,7 @@ describe("drop, cancellation, and document ownership", () => {
     const target = targetElement()
     Object.assign(target.style, {
       width: "80px", height: "40px", position: "absolute", top: "12px", left: "14px",
+      maxInlineSize: "70px", maxBlockSize: "30px",
       float: "left", color: "rebeccapurple",
     })
     target.style.setProperty("rotate", "15deg")
@@ -471,7 +594,7 @@ describe("drop, cancellation, and document ownership", () => {
     selectNode(target)
     feature.restore()
 
-    for(const property of ["width", "height", "rotate", "float", "position", "top", "left", "z-index"]) {
+    for(const property of ["width", "height", "max-inline-size", "max-block-size", "rotate", "float", "position", "top", "left", "z-index"]) {
       expect(target.style.getPropertyValue(property)).toBe("")
     }
     expect(target.style.color).toBe("rebeccapurple")

@@ -7,27 +7,28 @@ order: 305.2
 
 Widgets are placed in a page that can be narrower or wider than the browser window used during development. A widget must fit the inline size its parent allocates, keep its controls usable, and let its content determine its block size.
 
-![A page content width is allocated by ordinary CSS. The reading column stays readable while a block widget uses the available content width.](images/responsiveness-page-width.svg)
+![The prose column and default block widget share the 45rem reading width. An authored document rule removes the wide widget's maximum so it can use the page content width.](images/responsiveness-page-width.svg)
 
 ## Fit the allocated width
 
-The parent chooses a widget's inline size through normal CSS. A block widget should fill that allocation and must not require a particular screen size. Its host should establish a predictable sizing boundary:
+The parent chooses a widget's inline size through normal CSS. A block widget should fit that allocation and must not require a particular screen size. The widget's own host styles should establish a predictable sizing boundary:
 
 ```css
 :host {
   display: block;
-  box-sizing: border-box;
+  max-inline-size: var(--ww-prose-max, 45rem);
+  margin-inline: auto;
   inline-size: 100%;
   min-inline-size: 0;
-  max-inline-size: 100%;
   block-size: auto;
+  box-sizing: border-box;
   container-type: inline-size;
 }
 ```
 
 This contract applies to block widgets. Inline widgets, such as an inline equation or icon, can choose their own inline formatting and should not inherit this block styling.
 
-Keep this declaration on each block widget's host. Do not impose it with a universal selector that changes every element in the document.
+Keep this declaration in each block widget's own styles. The Lit widget starter includes it for new widgets; existing widgets should adopt it themselves so they also have a sensible default when nested. The base theme additionally caps every direct child of `body` at the prose width and gives it `margin-inline: auto` to center blocks within the page. That outer rule does not change an element's display or turn inline widgets into blocks.
 
 Block widgets should support allocated widths from **280 CSS px through 2160 CSS px**. The 280 CSS px value is a test target, not a `min-width`. A widget must narrow gracefully below 280 CSS px as well, including in a 280 CSS px viewport where page gutters reduce the content width. Do not assume that the widget's width equals the browser viewport or a desktop monitor width.
 
@@ -35,7 +36,7 @@ The widget owns its internal layout and its natural height. Do not set a fixed h
 
 ## Set page and reading widths
 
-The base theme provides the page sizing defaults. Its content cap is 2160 CSS px, excluding gutters. Prose is capped at 45rem, and the page gutter is responsive. The body owns the page width and gutters; adding the same padding to `main` would apply the gutters twice.
+The base theme provides the page sizing defaults. Its content cap is 2160 CSS px, excluding gutters. Every direct child of `body` defaults to `max-inline-size: var(--ww-prose-max, 45rem)`, including widgets, structural containers such as `main`, and unfamiliar elements. The body owns the page width and responsive gutters; adding the same padding to `main` would apply the gutters twice.
 
 These rules belong to the `webwriter-theme` cascade layer, so authored CSS can override them:
 
@@ -54,6 +55,11 @@ body {
   padding-inline: var(--ww-page-gutter);
 }
 
+body > * {
+  max-inline-size: var(--ww-prose-max, 45rem);
+  margin-inline: auto;
+}
+
 body > header,
 body > main,
 body > footer {
@@ -70,13 +76,37 @@ body > footer {
 }
 ```
 
-The base theme applies border-box sizing globally. Keep a comfortable prose measure without forcing every widget into that column. A wide widget can use the page content width when its parent allocates it. Authors can also size a widget with ordinary CSS, for example `inline-size: min(100%, 60rem)`, as long as the widget remains able to shrink.
+The base theme applies border-box sizing globally. The parent page remains fluid up to the 2160 CSS px content ceiling, while direct children have a 45rem upper bound. Nested reading blocks keep that measure even when their containing section is made wider.
 
 Exported documents include their theme CSS. If an existing document contains an older copy of the base theme, update that copy to use these defaults in preview and export as well.
 
+## Use more space
+
+The default block widget matches the prose width so it aligns with surrounding reading content. For a widget directly inside `body`, remove its maximum with an authored document rule:
+
+```css
+body > webwriter-my-widget {
+  max-inline-size: unset;
+}
+```
+
+A wider widget inside a structural container also needs enough space from that container. For example, author `body > main { max-inline-size: unset; }` to let `main` use the page width. The nested widget can then remove its own default maximum in its shadow-DOM stylesheet:
+
+```css
+:host {
+  max-inline-size: unset;
+}
+```
+
+`max-inline-size` is not inherited, so `unset` removes the widget's own maximum. Ordinary document styles on a host outrank its inner `:host` rules, even when the document rule is layered. A direct child of `body` therefore needs the authored document rule above; a widget inside a wider structural container can opt out in its shadow-DOM stylesheet. The opt-out changes an upper bound, so content can still remain smaller and respond to its allocation. Use logical properties consistently; `width` and `max-width` are the horizontal equivalents when physical properties are required.
+
+## Resize during transformations
+
+Transformation resizing defaults to the authored `max-inline-size` and `max-block-size` on the affected logical axes. These are upper bounds, so content can remain smaller and continue responding to its available space. Existing explicit dimensions remain in place; raising a maximum does not force an element beyond its explicit or natural size. Shift still uses CSS `scale` for visual resizing; it does not change the layout bounds.
+
 ## Respond to the container
 
-The useful breakpoint for a widget is the width of its allocated container, not the browser screen. Give the host `container-type: inline-size`, then use [CSS container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries) inside the widget's shadow DOM. This behavior is defined by the [CSS Conditional Rules Module](https://www.w3.org/TR/css-conditional-5/#container-type). Query descendants that own the layout:
+The useful breakpoint for a widget is the width of its allocated container, not the browser screen. After allowing any needed width in the document styles, give the host `container-type: inline-size`, then use [CSS container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries) inside the widget's shadow DOM. This behavior is defined by the [CSS Conditional Rules Module](https://www.w3.org/TR/css-conditional-5/#container-type). Query descendants that own the layout:
 
 ```html
 <div class="layout">
@@ -87,6 +117,10 @@ The useful breakpoint for a widget is the width of its allocated container, not 
 ```
 
 ```css
+:host {
+  max-inline-size: unset;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -121,9 +155,9 @@ The useful breakpoint for a widget is the width of its allocated container, not 
 }
 ```
 
-The 48rem and 90rem values are useful examples, not required breakpoints. Choose thresholds from the space your controls and work area need. The one-column base layout keeps a narrower allocation usable without a query. Use `minmax(0, 1fr)` and `min-inline-size: 0` on grid and flex children so long labels, code, and replaced elements can shrink. At a narrow allocation, stack controls and results around the work area. At a wider allocation, give the work area the extra space.
+The 48rem and 90rem values are useful examples, not required breakpoints, widget states, or an API. Choose thresholds from the space your controls and work area need. The one-column base layout keeps a narrower allocation usable without a query. Use `minmax(0, 1fr)` and `min-inline-size: 0` on grid and flex children so long labels, code, and replaced elements can shrink. At a narrow allocation, stack controls and results around the work area. At a wider allocation, give the work area the extra space.
 
-The Lit widget starter includes the host declaration above for new widgets. Existing widgets should adopt the same host styles in their shadow-DOM stylesheet.
+Widgets that retain the prose maximum can use smaller query thresholds without opting out. Container queries can also target a toolbar, options panel, or individual control: establish an inline-size container at that component's boundary and choose its thresholds independently. Grid and flex layouts can adapt continuously without any query breakpoints.
 
 ![The same widget changes its internal arrangement from stacked controls to columns as its container grows.](images/responsiveness-widget-layout.svg)
 
@@ -139,26 +173,28 @@ Avoid these patterns:
 
 ```css
 /* Do not turn the test target into a minimum width. */
-:host { min-width: 280px; }
+:host { min-inline-size: 280px; }
 
 /* Do not clip the document to hide an overflowing layout. */
 body { overflow: hidden; }
 
 /* Do not make a fixed viewport assumption. */
-.widget { width: 100vw; }
+.widget { inline-size: 100vw; }
 ```
 
 ## Preserve the document model
 
-Authors size widgets with ordinary CSS. Do not add editor wrappers or state attributes to authored content to make responsiveness work. The live HTML DOM remains the document state, and it must continue to support native editing, widget mutations, collaboration, and export. Editor menus, handles, and other editor UI belong in the editor's shadow appendix.
+Authors size widgets with ordinary CSS. Do not add editor wrappers or state attributes to authored content to make responsiveness work. The shared base theme supplies the direct-child width in editing, preview, and export; widget and template hosts remain in normal document flow. The live HTML DOM remains the document state, and it must continue to support native editing, widget mutations, collaboration, and export. Editor menus, handles, and other editor UI belong in the editor's shadow appendix.
 
 ## Test allocated widths
 
-Test the widget at allocated widths of **280, 320, 640, 960, 1440, 1920, and 2160 CSS px**, plus at least one narrower allocation. Check the rendered DOM and shadow DOM at each width, including:
+Test parent allocations of **280, 320, 640, 960, 1440, 1920, and 2160 CSS px**, plus at least one narrower allocation. A default widget should stop growing at the prose maximum; a widget that opts out should use the available width. Check the rendered DOM and shadow DOM at each width, including:
 
 - controls, labels, and results remain readable and usable;
 - columns have no horizontal overflow and the work area gets the available space;
 - nested widgets and nested editable content still fit their parent;
+- direct body children, including structural containers and unfamiliar elements, receive the default width, and authored document rules can change it;
+- changing `--ww-prose-max` updates default widgets, including widgets that adopt the theme in shadow DOM;
 - browser zoom changes do not create a fixed-width assumption;
 - native editing, preview, and export preserve the same authored DOM;
 - resizing while the widget is active does not lose focus, selection, or local work.

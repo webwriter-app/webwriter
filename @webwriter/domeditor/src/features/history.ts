@@ -354,6 +354,7 @@ export class HistoryFeature extends EditorFeature {
       this.editor.doc.body,
       this.editor.doc.head,
       this.editor.doc.headElement,
+      this.editor.doc.documentAttributes,
     ])
     for(const changedType of transaction.changedParentTypes.keys()) {
       let current: any = changedType
@@ -386,7 +387,7 @@ export class HistoryFeature extends EditorFeature {
     const before = parser.parseFromString(beforeSource, "text/html")
     const after = parser.parseFromString(afterSource, "text/html")
     const changes = emptyChanges()
-    if(before.documentElement.getAttribute("lang") !== after.documentElement.getAttribute("lang")) changes.modified++
+    if(this.#attributeSignature(before.documentElement) !== this.#attributeSignature(after.documentElement)) changes.modified++
     this.#diffElement(before.head, after.head, changes)
     this.#diffElement(before.body, after.body, changes)
     return changes

@@ -734,4 +734,20 @@ describe("relative selections and history", () => {
     right.shared.undo()
     expect(right.root.innerHTML).toBe("<p>remote</p>")
   })
+
+  it("does not add an undo item when a document sync leaves language and content unchanged", () => {
+    const {owner, shared} = createDocumentShared("", "<p>before</p>", "en")
+    owner.querySelector("p")!.textContent = "after"
+    shared.syncFromDOM()
+    shared.stopCapturing()
+    shared.syncFromDOM()
+    shared.syncFromDOM()
+
+    shared.undo()
+    expect(owner.querySelector("p")!.textContent).toBe("before")
+    expect(owner.documentElement.lang).toBe("en")
+    shared.redo()
+    expect(owner.querySelector("p")!.textContent).toBe("after")
+    expect(owner.documentElement.lang).toBe("en")
+  })
 })
