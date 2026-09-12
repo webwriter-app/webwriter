@@ -134,7 +134,7 @@ describe("OpenAI-compatible AI client", () => {
     await expect(completeAIConversation({
       provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], toolHandler, fetch,
     })).rejects.toThrow("could not queue")
-    expect(toolHandler).not.toHaveBeenCalled()
+    expect(toolHandler).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({name: "read_editor_capabilities"}), expect.anything())
     expect(fetch).toHaveBeenCalledTimes(8)
   })
 

@@ -107,6 +107,7 @@ import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {LocalPackageManager, type LocalPackageRecord} from "../local-package-manager"
 import {defaultDocumentTheme, documentTheme} from "../document-themes"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
+import {aiPage} from "../ai-tools"
 import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "../table"
 import {
   isGraphicArrangeOperation,
@@ -1780,12 +1781,41 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private readonly handleAIDocumentTool: AIDocumentToolHandler = async (call: AIDocumentToolCall) => {
+  private listAIWidgets(args: Record<string, unknown>) {
+    const {offset, limit} = aiPage(args)
+    if(args.query !== undefined && (typeof args.query !== "string" || args.query.length > 200)) throw new TypeError("Provide a short widget search query")
+    const query = String(args.query ?? "").toLowerCase()
+    const packages = new Map([...this.packages, ...this.localPackages, ...this.installedPackages].map(pkg => [`${pkg.name}@${pkg.version}`, pkg]))
+    const members = [...packages.values()].flatMap(pkg => {
+      const installed = this.installedPackages.some(item => item.name === pkg.name && item.version === pkg.version)
+      const local = [...this.localPackageManager.records.values()].find(record => record.package.name === pkg.name && record.package.version === pkg.version)
+      return pkg.members.map(member => {
+        const registered = member.kind === "snippet" || Boolean(member.tagName && this.editorWindow?.customElements.get(member.tagName))
+        const available = installed && member.insertable && registered && !local?.error
+        return {
+          id: member.id, packageName: pkg.name, version: pkg.version, label: member.label,
+          description: member.description ?? pkg.description, tagName: member.tagName, kind: member.kind,
+          source: local ? "local" : "published", localRevision: local?.revision,
+          installed, insertable: member.insertable, registered, available,
+          unavailableReason: available ? null : !installed ? "Package is not enabled in this document"
+            : !member.insertable ? "Package marks this member uninsertable" : local?.error ?? "Widget has not registered in the editor",
+          editingConfig: member.editingConfig ?? {}, documentation: "Read this package's README before configuring the widget",
+        }
+      })
+    }).filter(member => `${member.packageName} ${member.label} ${member.description ?? ""} ${member.tagName ?? ""}`.toLowerCase().includes(query))
+    return {members: members.slice(offset, offset + limit), total: members.length, nextOffset: offset + limit < members.length ? offset + limit : undefined,
+      scope: "Installed, local, and previously discovered catalog packages", catalogLoading: this.packagesLoading}
+  }
+
+  private readonly handleAIDocumentTool: AIDocumentToolHandler = async (call: AIDocumentToolCall, options = {}) => {
+    if(call.name === "read_editor_capabilities") return this.execute({...call.arguments, type: "readAIEditorCapabilities"}, options)
+    if(call.name === "inspect_elements") return this.execute({...call.arguments, type: "inspectAIElements"}, options)
+    if(call.name === "list_widgets") return this.listAIWidgets(call.arguments)
     if(call.name === "read_current_document") {
-      return await this.execute({type: "readAIDocument"})
+      return await this.execute({...call.arguments, type: "readAIDocument"}, options)
     }
     if(call.name === "read_current_selection") {
-      return await this.execute({type: "readAISelection"})
+      return await this.execute({type: "readAISelection"}, options)
     }
     const html = call.arguments.html
     if(typeof html !== "string") throw new TypeError("The document tool did not provide HTML")

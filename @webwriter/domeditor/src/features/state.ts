@@ -3,7 +3,11 @@ import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
 import type {DOMChangePreview} from "../domdoc"
 import {stripActiveContent} from "../active-content"
 import {isMarkElement} from "../marks"
-import {cloneRangeContents, removeEditorMarker, uiMotionDisabled} from "../utility"
+import {cloneRangeContents, cloneWithoutEditorMarkers, removeEditorMarker, uiMotionDisabled, atomicEditingContainer} from "../utility"
+import {aiPage, type AIReadDocumentOptions, type AIInspectOptions} from "../ai-tools"
+import {htmlElementCapabilities} from "../html-element-capabilities"
+import {elementStyleCategories} from "../element-styles"
+import {layoutPresets} from "../layouts"
 
 const maximumAIHTMLLength = 1_000_000
 const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
@@ -34,6 +38,10 @@ const serializeFragment = (fragment: DocumentFragment) => {
 /** Realm-independent state transfer used when package changes reload the
  * iframe and, with it, the custom-element registry. */
 export class StateFeature extends EditorFeature {
+  private readonly aiReadPrefix = crypto.randomUUID()
+  private aiReadSequence = 0
+  private readonly aiTargets = new Map<string, {node: Node, parent: Node | null, html: string, complete: boolean}>()
+  private readonly aiRanges = new Map<string, {range: Range, html: string, identity: Set<Node>}>()
   private activeAIEditId: string | null = null
   private aiEditSequence = 0
   private readonly aiEditMarkers = new Map<string, string>()
@@ -46,6 +54,88 @@ export class StateFeature extends EditorFeature {
   private htmlEditPending = false
   private readonly htmlEditTargets = new Set<HTMLElement>()
   private readonly htmlEditLock = {}
+
+  private aiHTML(node: Node, contents = false): string {
+    const range = document.createRange()
+    if(contents || node === document.body) range.selectNodeContents(node)
+    else range.selectNode(node)
+    return this.serializeHTMLRange(range)
+  }
+
+  private aiTarget(node: Node, complete = true) {
+    const id = `${this.aiReadPrefix}/${++this.aiReadSequence}`
+    this.aiTargets.set(id, {node, parent: node.parentNode, html: this.aiHTML(node), complete})
+    if(this.aiTargets.size > 1000) this.aiTargets.delete(this.aiTargets.keys().next().value!)
+    return id
+  }
+
+  private resolveAITarget(id: string, verify = false) {
+    const target = this.aiTargets.get(id)
+    if(!target || !document.body.contains(target.node) || target.node.parentNode !== target.parent
+      || verify && (!target.complete || this.aiHTML(target.node) !== target.html)) {
+      throw new Error("The target changed or the read was incomplete; read the current target again")
+    }
+    const atomic = atomicEditingContainer(target.node, this.editor.schema)
+    if(atomic && atomic !== target.node) throw new Error("Widget internals are atomic; target the widget host")
+    return target.node
+  }
+
+  private aiNodeInfo(node: Node) {
+    const element = node instanceof Element ? node : null
+    return {
+      target: this.aiTarget(node, false),
+      nodeType: node.nodeType,
+      tagName: element?.localName ?? null,
+      namespaceURI: element?.namespaceURI ?? null,
+      text: (node.textContent ?? "").slice(0, 200),
+      childCount: node.childNodes.length,
+      atomic: Boolean(element && atomicEditingContainer(element, this.editor.schema) === element),
+    }
+  }
+
+  private readAIDocument(options: AIReadDocumentOptions) {
+    if(options.mode !== undefined && !["html", "outline"].includes(options.mode)) throw new TypeError("Unknown document read mode")
+    if(options.includeHead !== undefined && typeof options.includeHead !== "boolean") throw new TypeError("includeHead must be boolean")
+    const node = options.target === undefined ? document.body : this.resolveAITarget(options.target)
+    const outline = options.mode === "outline"
+    const {offset, limit} = aiPage(options, outline ? 50 : 200000)
+    const html = this.aiHTML(node)
+    const children = node instanceof Element && atomicEditingContainer(node, this.editor.schema) === node ? [] : Array.from(node.childNodes)
+    const total = outline ? children.length : html.length
+    const nextOffset = offset + limit < total ? offset + limit : undefined
+    return {
+      target: this.aiTarget(node, !outline && offset === 0 && nextOffset === undefined),
+      ...(outline ? {nodes: children.slice(offset, offset + limit).map(child => this.aiNodeInfo(child))}
+        : {html: html.slice(offset, offset + limit), text: (node.textContent ?? "").slice(offset, offset + limit)}),
+      offset, total, nextOffset, truncated: offset > 0 || nextOffset !== undefined,
+      ...(options.includeHead ? {head: this.editor.features.head.state(), headWritable: false} : {}),
+    }
+  }
+
+  private inspectAIElements(options: AIInspectOptions) {
+    const {offset, limit} = aiPage(options)
+    if(options.selector !== undefined && (typeof options.selector !== "string" || options.selector.length > 1000)) throw new TypeError("Provide a bounded CSS selector")
+    if(options.targets !== undefined && (!Array.isArray(options.targets) || options.targets.length > 50 || options.targets.some(id => typeof id !== "string"))) throw new TypeError("Provide up to 50 target IDs")
+    const properties = options.properties ?? []
+    if(!Array.isArray(properties) || properties.length > 50 || properties.some(name => typeof name !== "string" || name.length > 100)) throw new TypeError("Provide up to 50 CSS property names")
+    if(!options.targets && !options.selector) throw new TypeError("Provide target IDs or a CSS selector")
+    const nodes = options.targets ? options.targets.map(id => this.resolveAITarget(id)) : Array.from(document.body.querySelectorAll(options.selector!))
+    const elements = nodes.filter((node): node is Element => node instanceof Element
+      && (!atomicEditingContainer(node, this.editor.schema) || atomicEditingContainer(node, this.editor.schema) === node))
+    return {
+      elements: elements.slice(offset, offset + limit).map(element => {
+        const html = this.aiHTML(element)
+        const clone = cloneWithoutEditorMarkers(element, false, {inert: true})
+        return {
+          ...this.aiNodeInfo(element), target: this.aiTarget(element, html.length <= 10000),
+          html: html.slice(0, 10000), truncated: html.length > 10000,
+          attributes: Object.fromEntries(Array.from(clone.attributes, attr => [attr.name, attr.value])),
+          style: this.editor.features.manipulation.getStyleState(properties, element, false),
+        }
+      }),
+      total: elements.length, nextOffset: offset + limit < elements.length ? offset + limit : undefined,
+    }
+  }
 
   get isHTMLSelectionEditPending() {
     return this.htmlEditPending
@@ -402,28 +492,46 @@ export class StateFeature extends EditorFeature {
     snapshotState: ({}: {type: "snapshotState"}) => this.editor.doc.snapshot(),
     serializeDocument: ({offline = false}: {type: "serializeDocument", offline?: boolean}) =>
       this.editor.serializeHTML(offline),
-    readAIDocument: ({}: {type: "readAIDocument"}) => {
-      const html = this.editor.toHTML(true)
-      const maximumLength = 200_000
+    readAIDocument: (options: {type: "readAIDocument"} & AIReadDocumentOptions) => this.readAIDocument(options),
+    inspectAIElements: (options: {type: "inspectAIElements"} & AIInspectOptions) => this.inspectAIElements(options),
+    readAIEditorCapabilities: ({topic = "overview"}: {type: "readAIEditorCapabilities", topic?: string}) => {
+      if(!["overview", "elements", "styles", "layouts"].includes(topic)) throw new TypeError("Unknown capability topic")
       return {
-        html: html.slice(0, maximumLength),
-        text: document.body.innerText.slice(0, maximumLength),
-        truncated: html.length > maximumLength,
+        documentModel: "The live authored DOM is authoritative. Preserve unfamiliar valid content and custom elements.",
+        ...(topic === "overview" ? {
+          topics: ["elements", "styles", "layouts"],
+          operations: ["replace_current_document", "replace_current_selection"],
+          restrictions: ["Read current targets before editing", "Widget internals are atomic", "Head writes are unavailable", "HTML imports currently unwrap dialog/hgroup; inspect element support"],
+        } : {}),
+        ...(topic === "elements" ? {elements: Object.fromEntries(Object.entries(htmlElementCapabilities).map(([tag, capability]) => [tag, {
+          ...capability, aiInsertion: !capability.intentionallyRestricted && capability.insertion !== "none" && !["dialog", "hgroup", "style", "link", "base", "meta", "title"].includes(tag),
+          ...(["dialog", "hgroup"].includes(tag) ? {aiRestriction: "Current HTML import unwraps this element"} : {}),
+        }]))} : {}),
+        ...(topic === "styles" ? {categories: elementStyleCategories, writes: "Authored HTML styles only; computed CSS is read-only"} : {}),
+        ...(topic === "layouts" ? {presets: layoutPresets, guidance: "Use an existing layout container when possible; sections are only necessary for grouping layout items"} : {}),
       }
     },
     readAISelection: ({}: {type: "readAISelection"}) => {
       const selection = document.getSelection()
       if(!selection?.rangeCount || !selection.anchorNode || !document.body.contains(selection.anchorNode)) {
-        return {html: "", text: "", collapsed: true}
+        return {html: "", text: "", collapsed: true, kind: "none"}
       }
       const range = selection.getRangeAt(0)
       const fragment = cloneRangeContents(range)
-      sanitizeAIContent(fragment)
+      this.editor.clearEditingArtifacts(fragment)
       const html = serializeFragment(fragment)
+      const selectionId = `${this.aiReadPrefix}/selection/${++this.aiReadSequence}`
+      this.aiRanges.set(selectionId, {range: range.cloneRange(), html, identity: this.captureHTMLSelectionIdentity(range)})
+      if(this.aiRanges.size > 32) this.aiRanges.delete(this.aiRanges.keys().next().value!)
+      const container = range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement
       return {
         html: html.slice(0, 100_000),
         text: range.toString().slice(0, 100_000),
         collapsed: range.collapsed,
+        selectionId,
+        kind: this.editor.features.selection.isCaptureSelection ? "capture" : range.collapsed ? "caret"
+          : range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1 && range.startContainer.childNodes[range.startOffset] instanceof Element ? "element" : "range",
+        context: container ? this.aiNodeInfo(container) : null,
         truncated: html.length > 100_000,
       }
     },
@@ -525,6 +633,8 @@ export class StateFeature extends EditorFeature {
     this.aiPreview = null
     for(const editId of this.aiEditMarkers.keys()) this.clearAIEditMarkers(editId)
     this.aiEditResults.clear()
+    this.aiTargets.clear()
+    this.aiRanges.clear()
     this.activeAIEditId = null
     this.reviewToolbar?.remove()
     this.reviewToolbar = null

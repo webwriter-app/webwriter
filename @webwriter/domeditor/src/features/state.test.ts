@@ -12,6 +12,50 @@ afterEach(() => {
 })
 
 describe("StateFeature", () => {
+  it("reads paginated DOM targets without losing valid elements, comments, or authored attributes", () => {
+    document.body.innerHTML = '<hgroup><h1>Title</h1></hgroup><!--keep--><dialog open><p>Body</p></dialog>'
+    const editor = new DOMEditor()
+    const read = editor.getActionHandler("readAIDocument")
+    const first = read({type: "readAIDocument", limit: 12}) as any
+    const second = read({type: "readAIDocument", offset: first.nextOffset}) as any
+    expect(first.truncated).toBe(true)
+    expect(first.html + second.html).toBe(editor.toHTML(true))
+    const outline = read({type: "readAIDocument", mode: "outline", limit: 1}) as any
+    expect(outline.nodes[0].tagName).toBe("hgroup")
+    expect(read({type: "readAIDocument", target: outline.nodes[0].target})).toMatchObject({html: "<hgroup><h1>Title</h1></hgroup>", truncated: false})
+    expect(() => read({type: "readAIDocument", offset: -1})).toThrow()
+    editor.destroy()
+  })
+
+  it("inspects exact targets independently of the selection and excludes widget internals", () => {
+    document.body.innerHTML = '<p style="text-align: right">Selected</p><aside class="authored ◆hover" style="text-align: left">Target</aside><read-probe><p>Private</p></read-probe>'
+    const editor = new DOMEditor()
+    const text = document.querySelector("p")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 0, text, 8)
+    const inspect = editor.getActionHandler("inspectAIElements")
+    const result = inspect({type: "inspectAIElements", selector: "aside", properties: ["text-align"]}) as any
+    expect(result.elements[0].style.inline["text-align"].value).toBe("left")
+    expect(result.elements[0].attributes.class).toBe("authored")
+    const all = inspect({type: "inspectAIElements", selector: "p"}) as any
+    expect(all.elements).toHaveLength(1)
+    const ref = result.elements[0].target
+    document.querySelector("aside")!.remove()
+    expect(() => inspect({type: "inspectAIElements", targets: [ref]})).toThrow("target changed")
+    editor.destroy()
+  })
+
+  it("reports capability restrictions and distinguishes absent selections from carets", () => {
+    document.body.innerHTML = "<p>Text</p>"
+    const editor = new DOMEditor()
+    const capabilities = editor.getActionHandler("readAIEditorCapabilities")({type: "readAIEditorCapabilities", topic: "elements"}) as any
+    expect(capabilities.elements.script.intentionallyRestricted).toBe(true)
+    expect(capabilities.elements.dialog.aiInsertion).toBe(false)
+    vi.spyOn(document, "getSelection").mockReturnValueOnce(null)
+    expect(editor.getActionHandler("readAISelection")({type: "readAISelection"})).toMatchObject({kind: "none"})
+    document.getSelection()!.setPosition(document.querySelector("p")!.firstChild!, 2)
+    expect(editor.getActionHandler("readAISelection")({type: "readAISelection"})).toMatchObject({kind: "caret", selectionId: expect.any(String), context: {tagName: "p"}})
+    editor.destroy()
+  })
   it("rejects unchanged proposals without retaining a preview or review lock", () => {
     document.body.innerHTML = "<p>Unchanged</p>"
     const editor = new DOMEditor()

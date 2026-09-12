@@ -214,6 +214,23 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("reports dynamic AI widget readiness and keeps read tools on their fixed bridge actions", async () => {
+    const editor = new DomEditor()
+    const state = editor as any
+    state.packages = [demoPackage]
+    state.editorWindow = window
+    expect(state.listAIWidgets({}).members[0]).toMatchObject({installed: false, available: false})
+    state.installedPackages = [demoPackage]
+    expect(state.listAIWidgets({}).members[0]).toMatchObject({installed: true, registered: false, available: false})
+    if(!customElements.get("webwriter-demo")) customElements.define("webwriter-demo", class extends HTMLElement {})
+    expect(state.listAIWidgets({}).members[0]).toMatchObject({available: true, version: "1.0.0"})
+    state.installedPackages = []
+    expect(state.listAIWidgets({query: "demo"}).members[0].available).toBe(false)
+    expect(state.listAIWidgets({query: "absent"}).members).toEqual([])
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({})
+    await state.handleAIDocumentTool({id: "inspect", name: "inspect_elements", arguments: {type: "replaceAIDocument", selector: "p"}})
+    expect(execute).toHaveBeenCalledWith({type: "inspectAIElements", selector: "p"}, {})
+  })
   it("shows and dismisses file errors outside the authored document", async () => {
     const {editor, iframe} = await mountEditor()
     vi.spyOn(console, "error").mockImplementation(() => {})

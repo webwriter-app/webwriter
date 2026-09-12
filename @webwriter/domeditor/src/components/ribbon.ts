@@ -9,6 +9,7 @@ import {
   type AIEffort,
 } from "../ai-client"
 import {AIProviderStore, type AIProviderConfig} from "../ai-provider"
+import {isAIReadTool} from "../ai-tools"
 import {persistAppSettings, type AppSettings} from "../app-settings"
 import type {BackendClient} from "../backend-client"
 import {type PresenceUser} from "../editor-bridge"
@@ -2599,9 +2600,9 @@ export class AppRibbon extends EditingControls {
   }
 
   private handleAIDocumentTool(call: AIDocumentToolCall, chatId: string): Promise<unknown> {
-    if(call.name === "read_current_document" || call.name === "read_current_selection") {
+    if(isAIReadTool(call.name)) {
       return this.aiDocumentToolHandler
-        ? this.aiDocumentToolHandler(call)
+        ? this.aiDocumentToolHandler(call, {signal: this.aiAbortController?.signal})
         : Promise.resolve({status: "unavailable", message: "The document editor is not connected"})
     }
     const html = call.arguments.html

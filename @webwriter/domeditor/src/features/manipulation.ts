@@ -831,7 +831,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
-  getStyleState(properties: string[] = [], target = this.styleTarget): ElementStyleState {
+  getStyleState(properties: string[] = [], target = this.styleTarget, includeSelection = true): ElementStyleState {
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
       return {
@@ -854,7 +854,7 @@ export class ManipulationFeature extends EditorFeature {
     const computedStyle = getComputedStyle(target)
     const computed = Object.fromEntries(requested.map(name => [name, computedStyle.getPropertyValue(name)]))
     const paragraphProperties = requested.filter(name => paragraphStylePropertyNameSet.has(name))
-    const blocks = paragraphProperties.length ? this.selectedTextBlocks() : []
+    const blocks = includeSelection && paragraphProperties.length ? this.selectedTextBlocks() : []
     paragraphProperties.forEach(name => {
       if(!blocks.length) return
       delete inline[name]
