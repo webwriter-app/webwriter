@@ -3,6 +3,19 @@ import { DOMEditor } from "../domeditor"
 import {isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 
 export type DocumentListenerMap = {[key in keyof DocumentEventMap]?: (event: DocumentEventMap[key]) => void}
+type FeatureActionHandler = (action: never) => unknown
+
+/** Collects the fixed feature command surface once, rejecting ambiguous names. */
+export function collectFeatureActions(features: Iterable<{actions?: Record<string, FeatureActionHandler>}>) {
+  const handlers = new Map<string, FeatureActionHandler>()
+  for(const feature of features) {
+    for(const [type, handler] of Object.entries(feature.actions ?? {})) {
+      if(handlers.has(type)) throw new TypeError(`Duplicate editor action '${type}'`)
+      handlers.set(type, handler)
+    }
+  }
+  return handlers as ReadonlyMap<string, FeatureActionHandler>
+}
 
 type ConstraintMap = Record<string, (transaction: EditingMutation[]) => void>
 type ListenerRegistration = {
@@ -30,7 +43,7 @@ export class EditorFeature {
   passiveListeners: DocumentListenerMap = {}
   activeListeners: DocumentListenerMap = {}
   constraints: ConstraintMap = {}
-  actions?: Record<string, CallableFunction>
+  actions?: Record<string, FeatureActionHandler>
   /** FormFeature opts in so all other editor features leave captured native
    * control events to the browser and the form-state synchronizer. */
   protected handlesFormControlInteractions = false

@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
 import type {DOMEditor} from "../domeditor"
-import {EditorFeature, type DocumentListenerMap} from "."
+import {collectFeatureActions, EditorFeature, type DocumentListenerMap} from "."
+
+it("rejects duplicate feature commands instead of silently replacing their owner", () => {
+  const first = {actions: {read: (_: {type: "read"}) => "first"}}
+  const second = {actions: {read: (_: {type: "read"}) => "second"}}
+  expect(() => collectFeatureActions([first, second])).toThrow("Duplicate editor action 'read'")
+})
 
 class ListenerProbeFeature extends EditorFeature {
   calls: string[] = []

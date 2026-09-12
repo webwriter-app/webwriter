@@ -1,4 +1,5 @@
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
+import {collectFeatureActions} from "./features"
 import {CollaborationFeature} from "./features/collaboration"
 import { DependencyFeature } from "./features/dependencies"
 import { HistoryFeature } from "./features/history"
@@ -341,6 +342,12 @@ type FeatureAction<F extends keyof DOMEditor["features"]> = {
 export type EditingAction = {
   [F in keyof DOMEditor["features"]]: FeatureAction<F>
 }[keyof DOMEditor["features"]]
+type EditingActionHandler<T extends EditingAction["type"]> = {
+  [F in keyof DOMEditor["features"]]: string extends keyof FeatureActions<F>
+    ? never
+    : T extends keyof FeatureActions<F> ? FeatureActions<F>[T] : never
+}[keyof DOMEditor["features"]]
+type DynamicActionHandler = (action: EditingAction) => unknown
 
 /** Orchestrates the one live editor for the current browser document. Feature
  * listeners, authored selection, and the BODY shadow appendix are document-
@@ -386,6 +393,8 @@ export class DOMEditor {
     "collaboration": new CollaborationFeature(this),
     "media": new MediaFeature(this),
   } as const
+
+  readonly #actionHandlers = collectFeatureActions(Object.values(this.features))
 
   ignoreAttrs: string[] = []
   ignoreClasses = ["◆"]
@@ -461,9 +470,11 @@ export class DOMEditor {
   }
 
 
-  getActionHandler(key: string) {
-    const allHandlers = Object.fromEntries(Object.keys(this.features).flatMap(fk => Object.entries((this.features as any)[fk].actions ?? {})))
-    return allHandlers[key] as CallableFunction
+  getActionHandler<T extends EditingAction["type"]>(key: T): EditingActionHandler<T>
+  getActionHandler(key: string): DynamicActionHandler | undefined
+  getActionHandler(key: string): DynamicActionHandler | undefined {
+    // Each stored function accepts the action matching its registered key.
+    return this.#actionHandlers.get(key) as DynamicActionHandler | undefined
   }
 
   /** Nonce for package assets explicitly trusted by the host editor. */

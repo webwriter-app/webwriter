@@ -702,3 +702,17 @@ describe("command normalization boundaries", () => {
     finally { editor.destroy() }
   })
 })
+
+describe("registered editor commands", () => {
+  it("resolves only registered names and retains stable handler identity", () => {
+    const editor = new DOMEditor()
+    try {
+      for(const name of ["toString", "constructor", "__proto__", "missing-command"]) {
+        expect(editor.getActionHandler(name)).toBeUndefined()
+      }
+      expect(editor.getActionHandler("getStyleState")).toBe(editor.features.manipulation.actions.getStyleState)
+      expect(editor.getActionHandler("getStyleState")).toBe(editor.getActionHandler("getStyleState"))
+    }
+    finally { editor.destroy() }
+  })
+})
