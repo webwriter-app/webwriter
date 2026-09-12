@@ -5424,6 +5424,71 @@ export class AppRibbon extends LitElement {
     return "Website"
   }
 
+  private renderMediaAttributeField(
+    option: MediaAttributeOption,
+    {
+      attributes,
+      label,
+      onChange,
+      disabled = false,
+      selectFallback = "",
+      className = "media-attribute",
+    }: {
+      attributes: Record<string, string>
+      label: string
+      onChange: (event: Event) => void
+      disabled?: boolean
+      selectFallback?: string
+      className?: string
+    },
+  ) {
+    if(option.kind === "boolean") return html`
+      <label class=${`${className} media-attribute-boolean`}>
+        <span>${option.label}</span>
+        <input
+          type="checkbox"
+          data-ribbon-input-persistent
+          aria-label=${label}
+          .checked=${Object.hasOwn(attributes, option.name)}
+          ?disabled=${disabled}
+          @change=${onChange}
+        />
+      </label>
+    `
+    if(option.kind === "select") return html`
+      <label class=${className}>
+        <span>${option.label}</span>
+        <select
+          data-ribbon-input-persistent
+          aria-label=${label}
+          ?disabled=${disabled}
+          @change=${onChange}
+        >
+          ${option.options?.map(item => html`
+            <option
+              value=${item.value}
+              ?selected=${item.value === (attributes[option.name] ?? selectFallback)}
+            >${item.label}</option>
+          `)}
+        </select>
+      </label>
+    `
+    return html`
+      <label class=${className}>
+        <span>${option.label}</span>
+        <input
+          data-ribbon-input-persistent
+          type=${option.kind === "url" ? "url" : option.kind === "number" ? "number" : "text"}
+          aria-label=${label}
+          placeholder=${option.placeholder ?? ""}
+          .value=${attributes[option.name] ?? ""}
+          ?disabled=${disabled}
+          @change=${onChange}
+        />
+      </label>
+    `
+  }
+
   private dispatchMediaAttribute(type: MediaType, option: MediaAttributeOption, event: Event) {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
     const value = option.kind === "boolean"
@@ -5439,52 +5504,13 @@ export class AppRibbon extends LitElement {
   private renderMediaAttribute(type: MediaType, option: MediaAttributeOption) {
     const active = this.mediaSelectionMatches(type)
     const attributes = active ? this.media?.attributes ?? {} : {}
-    if(option.kind === "boolean") {
-      return html`
-        <label class="mark-attribute media-attribute media-attribute-boolean">
-          <span>${option.label}</span>
-          <input
-            type="checkbox"
-            data-ribbon-input-persistent
-            aria-label=${`${this.mediaLabel(type)}: ${option.label}`}
-            .checked=${Object.hasOwn(attributes, option.name)}
-            ?disabled=${!active}
-            @change=${(event: Event) => this.dispatchMediaAttribute(type, option, event)}
-          />
-        </label>
-      `
-    }
-    if(option.kind === "select") {
-      return html`
-        <label class="mark-attribute media-attribute">
-          <span>${option.label}</span>
-          <select
-            data-ribbon-input-persistent
-            aria-label=${`${this.mediaLabel(type)}: ${option.label}`}
-            ?disabled=${!active}
-            @change=${(event: Event) => this.dispatchMediaAttribute(type, option, event)}
-          >
-            ${option.options?.map(item => html`
-              <option value=${item.value} ?selected=${item.value === (attributes[option.name] ?? "")}>${item.label}</option>
-            `)}
-          </select>
-        </label>
-      `
-    }
-    return html`
-      <label class="mark-attribute media-attribute">
-        <span>${option.label}</span>
-        <input
-          data-ribbon-input-persistent
-          type=${option.kind === "url" ? "url" : option.kind === "number" ? "number" : "text"}
-          aria-label=${`${this.mediaLabel(type)}: ${option.label}`}
-          placeholder=${option.placeholder ?? ""}
-          .value=${attributes[option.name] ?? ""}
-          ?disabled=${!active}
-          @change=${(event: Event) => this.dispatchMediaAttribute(type, option, event)}
-        />
-      </label>
-    `
+    return this.renderMediaAttributeField(option, {
+      attributes,
+      label: `${this.mediaLabel(type)}: ${option.label}`,
+      onChange: event => this.dispatchMediaAttribute(type, option, event),
+      disabled: !active,
+      className: "mark-attribute media-attribute",
+    })
   }
 
   private dispatchMediaResourceAction(detail: Record<string, unknown>) {
@@ -5521,48 +5547,12 @@ export class AppRibbon extends LitElement {
     option: MediaAttributeOption,
   ) {
     const label = `${resource === "source" ? "Source" : "Track"}: ${option.label}`
-    if(option.kind === "boolean") return html`
-      <label class="media-attribute media-attribute-boolean">
-        <span>${option.label}</span>
-        <input
-          type="checkbox"
-          data-ribbon-input-persistent
-          aria-label=${label}
-          .checked=${Object.hasOwn(row.attributes, option.name)}
-          @change=${(event: Event) => this.dispatchMediaResourceAttribute(resource, row, option, event)}
-        />
-      </label>
-    `
-    if(option.kind === "select") return html`
-      <label class="media-attribute">
-        <span>${option.label}</span>
-        <select
-          data-ribbon-input-persistent
-          aria-label=${label}
-          @change=${(event: Event) => this.dispatchMediaResourceAttribute(resource, row, option, event)}
-        >
-          ${option.options?.map(item => html`
-            <option
-              value=${item.value}
-              ?selected=${item.value === (row.attributes[option.name] ?? option.options?.[0]?.value)}
-            >${item.label}</option>
-          `)}
-        </select>
-      </label>
-    `
-    return html`
-      <label class="media-attribute">
-        <span>${option.label}</span>
-        <input
-          data-ribbon-input-persistent
-          type=${option.kind === "url" ? "url" : "text"}
-          aria-label=${label}
-          placeholder=${option.placeholder ?? ""}
-          .value=${row.attributes[option.name] ?? ""}
-          @change=${(event: Event) => this.dispatchMediaResourceAttribute(resource, row, option, event)}
-        />
-      </label>
-    `
+    return this.renderMediaAttributeField(option, {
+      attributes: row.attributes,
+      label,
+      onChange: event => this.dispatchMediaResourceAttribute(resource, row, option, event),
+      selectFallback: option.options?.[0]?.value,
+    })
   }
 
   private renderMediaResourceList(resource: TimedMediaResourceType, rows: TimedMediaResourceState[]) {
@@ -5667,36 +5657,12 @@ export class AppRibbon extends LitElement {
 
   private renderImageMapAreaAttribute(area: ImageMapAreaState, option: MediaAttributeOption) {
     const label = `Hotspot: ${option.label}`
-    if(option.kind === "select") return html`
-      <label class="media-attribute">
-        <span>${option.label}</span>
-        <select
-          data-ribbon-input-persistent
-          aria-label=${label}
-          @change=${(event: Event) => this.dispatchImageMapAreaAttribute(area, option, event)}
-        >
-          ${option.options?.map(item => html`
-            <option
-              value=${item.value}
-              ?selected=${item.value === (area.attributes[option.name] ?? (option.name === "shape" ? "rect" : ""))}
-            >${item.label}</option>
-          `)}
-        </select>
-      </label>
-    `
-    return html`
-      <label class="media-attribute">
-        <span>${option.label}</span>
-        <input
-          data-ribbon-input-persistent
-          type=${option.kind === "url" ? "url" : "text"}
-          aria-label=${label}
-          placeholder=${option.placeholder ?? ""}
-          .value=${area.attributes[option.name] ?? ""}
-          @change=${(event: Event) => this.dispatchImageMapAreaAttribute(area, option, event)}
-        />
-      </label>
-    `
+    return this.renderMediaAttributeField(option, {
+      attributes: area.attributes,
+      label,
+      onChange: event => this.dispatchImageMapAreaAttribute(area, option, event),
+      selectFallback: option.name === "shape" ? "rect" : "",
+    })
   }
 
   private renderImageMapControls() {
