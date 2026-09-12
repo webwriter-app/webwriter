@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {"noEmit": true},
+  "include": ["custom.d.ts", "tests/native-browser.ts", "tests/native-browser-frame.ts"],
+  "exclude": []
+}

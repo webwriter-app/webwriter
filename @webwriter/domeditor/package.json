@@ -10,9 +10,10 @@
   "scripts": {
     "start": "node dev-server/server.mjs",
     "start:frontend": "vite",
+    "test:native-browser": "node scripts/native-browser.mjs",
     "test": "vitest watch --reporter=minimal",
     "vitest": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.native-browser.json"
   },
   "dependencies": {
     "@csstools/css-tokenizer": "^3.0.4",

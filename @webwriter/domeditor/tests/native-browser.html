@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Native browser regression checks</title>
+<style>body { font: 16px system-ui; margin: 2rem; } #hit-stage { position: relative; width: 240px; height: 120px; } #hit-target { position: absolute; inset: 20px 40px; } pre { white-space: pre-wrap; }</style>
+<h1>Native browser regression checks</h1>
+<p id="status">Running…</p>
+<pre id="report"></pre>
+<div id="fixture" contenteditable="true"><span id="before">before</span><native-audit-widget contenteditable="false"></native-audit-widget><span id="after">after</span></div>
+<div id="hit-stage"><button id="hit-target" type="button">hit target</button></div>
+<iframe id="lifecycle" title="lifecycle fixture" srcdoc="<!doctype html><p>ready</p><script type='module' src='/tests/native-browser-frame.ts'></script>"></iframe>
+<script type="module" src="./native-browser.ts"></script>
+</html>
