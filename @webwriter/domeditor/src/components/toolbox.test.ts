@@ -4,6 +4,7 @@ import {DomEditorToolbox} from "./toolbox"
 import type {ElementStyleEditor} from "./element-style-editor"
 import type {RibbonButton} from "./ribbon-button"
 import {RibbonDrawer} from "./ribbon-drawer"
+import {AIProviderStore} from "../ai-provider"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -41,6 +42,33 @@ describe("toolbox", () => {
     expect(buttons[0].querySelector(".icon-tabler-pencil")).not.toBeNull()
     expect(buttons[1].querySelector(".icon-tabler-palette")).not.toBeNull()
     expect(buttons[2].querySelector(".icon-tabler-text-grammar")).not.toBeNull()
+  })
+
+  it("does not install app-only AI or resize listeners across reconnects", async () => {
+    const aiListener = vi.spyOn(AIProviderStore.prototype, "addEventListener")
+    const windowListener = vi.spyOn(window, "addEventListener")
+    try {
+      const toolbox = await mountToolbox()
+      document.body.replaceChildren()
+      document.body.append(toolbox)
+      await toolbox.updateComplete
+
+      expect(aiListener).not.toHaveBeenCalled()
+      expect(windowListener.mock.calls.filter(([type]) => type === "resize")).toHaveLength(0)
+
+      const styleStateRequest = vi.fn()
+      const toolboxChange = vi.fn()
+      toolbox.addEventListener("element-style-state-request", styleStateRequest)
+      toolbox.addEventListener("toolbox-change", toolboxChange)
+      toolbox.selectTool("Style")
+      await toolbox.updateComplete
+      expect(styleStateRequest).toHaveBeenCalledTimes(1)
+      expect(toolboxChange).toHaveBeenCalledTimes(1)
+    }
+    finally {
+      aiListener.mockRestore()
+      windowListener.mockRestore()
+    }
   })
 
   it("can hide the tabs underline without changing tab sizing", async () => {

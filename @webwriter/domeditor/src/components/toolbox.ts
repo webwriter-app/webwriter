@@ -3,7 +3,7 @@ import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
 import {ribbonIcon} from "../ribbon-icons"
-import {AppRibbon} from "./ribbon"
+import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy, menuGroups} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
@@ -20,9 +20,9 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * ribbon tabs. Its pane reuses the ribbon's established controls so
  * commands, selection preservation, and specialized editors keep one event
  * contract. */
-export class DomEditorToolbox extends AppRibbon {
+export class DomEditorToolbox extends EditingControls {
   static properties = {
-    ...AppRibbon.properties,
+    ...EditingControls.properties,
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
@@ -36,7 +36,7 @@ export class DomEditorToolbox extends AppRibbon {
   }
 
   static styles = css`
-    ${AppRibbon.styles}
+    ${EditingControls.styles}
 
     .history-timeline {
       flex-direction: column;
