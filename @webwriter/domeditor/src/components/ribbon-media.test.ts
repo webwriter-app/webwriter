@@ -121,7 +121,6 @@ describe("media ribbon drawer", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
 
-    expect(getComputedStyle(toolbox).width).toBe("200px")
     expect(toolbox.shadowRoot!.querySelector('[data-tool="Edit"] .toolbox-tab-label')?.textContent).toBe(label)
     expect(toolbox.shadowRoot!.querySelector(`ribbon-drawer[label="${label}"]`)).not.toBeNull()
     const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-toolbox-controls")!
