@@ -4,7 +4,7 @@ import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
 import {ribbonIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
-import {contextDrawerPolicy, menuGroups} from "./ribbon-menu-config"
+import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 

@@ -6,7 +6,7 @@ import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
-import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getContainer, getInertDocument, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
+import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,

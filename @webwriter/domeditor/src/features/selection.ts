@@ -1433,7 +1433,7 @@ export class SelectionFeature extends EditorFeature {
         $.extendBy("line")
       }
     },
-    "pointerup": ev => {
+    "pointerup": () => {
       this.isInDragSelection = false
       if(getDocumentRoot().childNodes.length === 0) {
         $.selectDocumentStart()

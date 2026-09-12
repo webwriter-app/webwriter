@@ -314,7 +314,7 @@ export class ListFeature extends EditorFeature {
       return
     }
 
-    const {list, offset} = point
+    const {list} = point
     const previous = this.itemsBefore(point).at(-1)
     const anchor = previous ?? list
     anchor.classList.add("◆", this.markerClass)

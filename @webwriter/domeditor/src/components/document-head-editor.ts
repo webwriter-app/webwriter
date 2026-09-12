@@ -1149,10 +1149,6 @@ export class DocumentHeadEditor extends LitElement {
     this.setField(field, value)
   }
 
-  private handleThemeChange(event: Event) {
-    this.setField("theme", (event as CustomEvent<{value: string}>).detail.value)
-  }
-
   private entryForPreset(preset: string) {
     return this.state.elements.find(element => element.preset === preset)
   }

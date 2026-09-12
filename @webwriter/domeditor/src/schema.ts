@@ -1,5 +1,5 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
-import { $, cloneInert, getContainer, getIndexBefore, getInertDocument, getSidesOfPoint } from "./utility"
+import { $, cloneInert, getContainer, getIndexBefore, getInertDocument } from "./utility"
 
 /** Defers to the parent's content rule ("transparent" content model, e.g. <a>, <ins>, <slot>), optionally restricted by an own selector. */
 export type ContentRuleTransparent = {
@@ -692,7 +692,7 @@ export class Schema {
       return true
     }
     else if("options" in rule) {
-      const {min, max, options} = rule
+      const {max, options} = rule
       if(options.length === 0) return false;
       const valid = (max ?? 1) > 0 && options.some(option => this.isNodeValid(node, structuredClone(option)))
       if(valid) {
@@ -702,7 +702,7 @@ export class Schema {
       } else return false
     }
     else if("group" in rule) {
-      const {min, max, group, selector} = rule
+      const {max, group, selector} = rule
       const valid = (max ?? 1) > 0
         && this.#getTypeKey(node) !== "#unknownelement"
         && this.getGroupMembers(group).includes(this.#getTypeKey(node))
@@ -771,7 +771,7 @@ export class Schema {
       return false
     }
     else if("selector" in rule) {
-      const {min, max, selector} = rule
+      const {max, selector} = rule
       const valid = (max ?? 1) > 0 && this.testSelectorRule(node, selector)
       if(valid) {
         rule.min = Math.max(0, (rule.min ?? 1) - 1)

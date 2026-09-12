@@ -1,7 +1,6 @@
 import type {LocalPackageDirectoryHandle} from "./local-package-worker"
 
 /** Side-effect-free protocol shared by the page client and worker entry. */
-export const LOCAL_PACKAGE_WORKER_MESSAGE = "local-package-worker"
 export const LOCAL_PACKAGE_WORKER_DB = "webwriter-local-package-worker"
 export const LOCAL_PACKAGE_WORKER_STORE = "directories"
 

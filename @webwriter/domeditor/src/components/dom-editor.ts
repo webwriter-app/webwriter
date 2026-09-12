@@ -52,7 +52,6 @@ import type {ElementAttributeState} from "../element-attributes"
 import {
   aiEditReviewEvent,
   executeCompleteEvent,
-  executeFailureEvent,
   emptyVersionHistoryState,
   initializeEditorMessage,
   isBlockFormatTag,
@@ -85,7 +84,6 @@ import {
   type LoadWidgetsMessage,
   type AIEditReviewMessage,
   type CommentState,
-  type VersionHistoryState,
 } from "../editor-bridge"
 import {elementStylePropertyNames, paragraphStylePropertyNameSet} from "../element-styles"
 import "./breadcrumb"
@@ -366,7 +364,6 @@ export class DomEditor extends LitElement {
     captureSelection: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
-    treeViewOpen: {attribute: false, state: true},
     canMark: {attribute: false, state: true},
     canSection: {attribute: false, state: true},
     sectionType: {attribute: false, state: true},
@@ -581,7 +578,6 @@ export class DomEditor extends LitElement {
   private packageCatalogRequested = false
   private installedPackagesRestored = false
   private readonly packageRegistry = new WebWriterPackageRegistry()
-  private treeViewOpen = false
   private breadcrumbHoverPath: number[] | null = null
   private pendingExecutions = new Map<string, {
     resolve: (value: unknown) => void
@@ -3801,9 +3797,7 @@ export class DomEditor extends LitElement {
     return getElementPresentation(element)
   }
 
-  private handleBreadcrumbTreeToggle = (event: Event) => {
-    const open = (event as CustomEvent<{open?: unknown}>).detail?.open === true
-    this.treeViewOpen = open
+  private handleBreadcrumbTreeToggle = () => {
     this.documentTree = this.buildDocumentTree()
   }
 
@@ -4293,7 +4287,6 @@ export class DomEditor extends LitElement {
     this.previewTransition = false
     this.ribbonInputSession = false
     this.restoreEditorAfterRibbonInput = false
-    this.treeViewOpen = false
     this.breadcrumbHoverPath = null
     this.documentTree = null
     this.presenceUsers = []

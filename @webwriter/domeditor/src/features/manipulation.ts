@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
