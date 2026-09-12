@@ -366,9 +366,11 @@ export class StateFeature extends EditorFeature {
 
   private previewAIEdit(editId: string, summary: string, scope: "document" | "selection", html: string) {
     if(this.activeAIEditId) throw new Error("Another AI document change is already awaiting review")
+    const before = this.editor.toHTML(true)
     const preview = this.editor.doc.beginDOMPreview()
     try {
       const replacement = scope === "document" ? this.replaceDocument(html) : this.replaceSelection(html)
+      if(this.editor.toHTML(true) === before) throw new Error("The proposal does not change the document")
       this.markAIEdit(editId, replacement.nodes, "fallbackTarget" in replacement ? replacement.fallbackTarget : document.body)
       this.aiPreview = preview
       this.aiEditResults.set(editId, {scope: replacement.scope, removedUnsafeItems: replacement.removedUnsafeItems})

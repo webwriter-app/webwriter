@@ -1,5 +1,6 @@
 import {css, html} from "lit"
 import {
+  requestsReadOnlyAI,
   completeAIConversation,
   type AIAttachment,
   type AIConversationMessage,
@@ -2774,6 +2775,7 @@ export class AppRibbon extends EditingControls {
         model: this.aiModel,
         effort: this.aiEffort,
         messages: this.conversationFor(chatId),
+        readOnly: requestsReadOnlyAI(prompt),
         toolHandler: call => this.handleAIDocumentTool(call, chatId),
         signal: controller.signal,
       })

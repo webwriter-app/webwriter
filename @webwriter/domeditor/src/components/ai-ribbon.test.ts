@@ -18,6 +18,7 @@ const mountRibbon = async () => {
 }
 
 const configureProvider = async (ribbon: AppRibbon) => {
+  ribbon.aiDocumentToolHandler = async () => ({html: "", text: ""})
   const store = (ribbon as unknown as {aiProviderStore: AIProviderStore}).aiProviderStore
   const provider = store.upsert({
     ...createAIProvider("ollama"),
@@ -147,7 +148,7 @@ describe("AI prompt ribbon", () => {
     expect(send.parentElement?.classList.contains("ai-composer-surface")).toBe(true)
     expect(getComputedStyle(send).position).toBe("absolute")
 
-    textarea.value = "Explain the selection"
+    textarea.value = "Explain the selection without editing"
     textarea.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
     await ribbon.updateComplete
     send.click()
@@ -368,12 +369,12 @@ describe("AI prompt ribbon", () => {
   it("previews a proposed change, blocks chat, and protocols acceptance with selective undo", async () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)
-    const review = vi.fn(async (action: string) => ({status: action === "undo" ? "undone" : action}))
+    const review = vi.fn(async (action: string) => ({status: action === "undo" ? "undone" : action === "accept" ? "applied" : action}))
     ribbon.aiEditReviewHandler = review
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({choices: [{message: {
         content: null,
-        tool_calls: [{
+        tool_calls: [{id: "read", function: {name: "read_current_document", arguments: "{}"}}, {
           id: "edit-1",
           type: "function",
           function: {
@@ -400,7 +401,7 @@ describe("AI prompt ribbon", () => {
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="approve"]')!.click()
     await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", expect.objectContaining({id: "edit-1"})))
-    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("The heading was added."))
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Applied: Add a heading."))
     expect(ribbon.shadowRoot!.textContent).toContain("Accepted: Add a heading")
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="undo"]')!.click()
@@ -416,7 +417,7 @@ describe("AI prompt ribbon", () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({choices: [{message: {
         content: null,
-        tool_calls: [{
+        tool_calls: [{id: "read", function: {name: "read_current_document", arguments: "{}"}}, {
           id: "edit-reject",
           type: "function",
           function: {

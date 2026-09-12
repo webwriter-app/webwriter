@@ -89,7 +89,7 @@ const normalizeBaseUrl = value => {
   return url.toString().replace(/\/$/, "")
 }
 
-const DEFAULT_AI_INSTRUCTIONS = "Fulfill every request by using the document tools to propose a document change, unless the user explicitly asks for planning only. Use clean semantic HTML with the flattest practical structure; avoid unnecessary wrappers such as <div>."
+const DEFAULT_AI_INSTRUCTIONS = ""
 
 const providerInput = (value, previous = {}, {allowEnvironmentReference = false} = {}) => {
   if(!isRecord(value)) throw Object.assign(new Error("Provider must be a JSON object"), {status: 400})

@@ -12,6 +12,16 @@ afterEach(() => {
 })
 
 describe("StateFeature", () => {
+  it("rejects unchanged proposals without retaining a preview or review lock", () => {
+    document.body.innerHTML = "<p>Unchanged</p>"
+    const editor = new DOMEditor()
+    expect(() => editor.getActionHandler("previewAIDocument")({
+      type: "previewAIDocument", editId: "noop", summary: "No change", html: "<p>Unchanged</p>",
+    })).toThrow("does not change")
+    expect(editor.appendix.querySelector(".◆ai-review-toolbar")).toBeNull()
+    expect(editor.toHTML(true)).toBe("<p>Unchanged</p>")
+    editor.destroy()
+  })
   it("does not construct widgets while serializing an AI selection", async () => {
     let constructions = 0
     const tag = "state-serialization-probe"

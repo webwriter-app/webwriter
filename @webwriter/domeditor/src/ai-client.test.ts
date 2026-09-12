@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it, vi} from "vitest"
-import {completeAIConversation, listAIModels} from "./ai-client"
+import {aiProposalSummary, completeAIConversation, listAIModels, requestsReadOnlyAI} from "./ai-client"
 import {createAIProvider} from "./ai-provider"
 
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
@@ -65,6 +65,7 @@ describe("OpenAI-compatible AI client", () => {
       model: "test-model",
       effort: "medium",
       messages: [{role: "user", content: "What is in this document?"}],
+      readOnly: true,
       toolHandler,
       fetch,
     })).resolves.toBe("The document has one heading.")
@@ -84,6 +85,7 @@ describe("OpenAI-compatible AI client", () => {
       provider,
       model: "vision",
       effort: "low",
+      readOnly: true,
       messages: [{
         role: "user",
         content: "Review these",
@@ -104,5 +106,44 @@ describe("OpenAI-compatible AI client", () => {
       expect.objectContaining({type: "text", text: expect.stringContaining("notes.txt")}),
       {type: "file", file: {filename: "paper.pdf", file_data: "data:application/pdf;base64,AQID"}},
     ]))
+  })
+
+  it("recovers privately from questions and finishes only after an effective proposal", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({choices: [{message: {content: "What style would you like?"}}]}))
+      .mockResolvedValueOnce(response({choices: [{message: {tool_calls: [
+        {id: "read", function: {name: "read_current_document", arguments: "{}"}},
+        {id: "edit", function: {name: "replace_current_document", arguments: JSON.stringify({summary: "Add a heading", html: "<h1>Hello</h1>"})}},
+      ]}}]}))
+    const toolHandler = vi.fn(async call => call.name.startsWith("read_") ? {html: ""} : {status: "queued"})
+    await expect(completeAIConversation({
+      provider: {...createAIProvider("ollama"), customInstructions: ""}, model: "test", effort: "low",
+      messages: [{role: "user", content: "Improve this"}], toolHandler, fetch,
+    })).resolves.toBe("Queued: Add a heading.")
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages).toContainEqual(expect.objectContaining({
+      role: "system", content: expect.stringContaining("No document change was queued"),
+    }))
+  })
+
+  it("does not count a failed or unread proposal as success", async () => {
+    const fetch = vi.fn().mockImplementation(async () => response({choices: [{message: {tool_calls: [
+      {id: "edit", function: {name: "replace_current_document", arguments: JSON.stringify({summary: "Add a heading", html: "<h1>Hello</h1>"})}},
+    ]}}]}))
+    const toolHandler = vi.fn()
+    await expect(completeAIConversation({
+      provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], toolHandler, fetch,
+    })).rejects.toThrow("could not queue")
+    expect(toolHandler).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(8)
+  })
+
+  it("validates concise declarative proposal summaries and explicit read-only requests", () => {
+    for(const value of ["", "Which title?", "One. Two. Three.", "- A heading", "I have updated the heading.", "<p>Heading</p>"]) {
+      expect(() => aiProposalSummary(value), value).toThrow()
+    }
+    expect(aiProposalSummary("Add a title. Preserve the introduction.")).toBe("Add a title. Preserve the introduction.")
+    expect(requestsReadOnlyAI("What would improve this?")).toBe(false)
+    expect(requestsReadOnlyAI("Explain the selection without editing")).toBe(true)
   })
 })
