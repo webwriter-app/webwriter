@@ -1,16 +1,14 @@
-import {
-  LOCAL_PACKAGE_WORKER_DB,
-  LOCAL_PACKAGE_WORKER_STORE,
-  type LocalPackageWorkerRequest,
-} from "./local-package-worker-protocol"
+import type {LocalPackageWorkerRequest} from "./local-package-worker-protocol"
 import type {LocalPackageDirectoryHandle} from "./local-package-worker"
+import {
+  readLocalPackageDirectories,
+  removeLocalPackageDirectory,
+  saveLocalPackageDirectory,
+} from "./local-package-storage"
 
 const DEFAULT_TIMEOUT_MS = 5000
 
-export type StoredLocalPackageDirectory = {
-  readonly id: string
-  readonly handle: LocalPackageDirectoryHandle
-}
+export {isStoredLocalPackageDirectory, type StoredLocalPackageDirectory} from "./local-package-storage"
 
 /**
  * Restored File System Access handles commonly return `prompt` after a page
@@ -22,20 +20,6 @@ export async function requestLocalPackageDirectoryPermission(handle: LocalPackag
   const descriptor = {mode: "readwrite"} as const
   if(await handle.queryPermission(descriptor) === "granted") return true
   return await handle.requestPermission(descriptor) === "granted"
-}
-
-/** Runtime guard for records read from IndexedDB (which is untrusted input). */
-export function isStoredLocalPackageDirectory(value: unknown): value is StoredLocalPackageDirectory {
-  if(!value || typeof value !== "object") return false
-  const record = value as Partial<StoredLocalPackageDirectory>
-  const handle = record.handle
-  return typeof record.id === "string"
-    && record.id.length > 0
-    && !!handle
-    && typeof handle === "object"
-    && handle.kind !== "file"
-    && typeof handle.getDirectoryHandle === "function"
-    && typeof handle.getFileHandle === "function"
 }
 
 export type LocalPackageWorkerClientOptions = {
@@ -84,70 +68,6 @@ async function waitForActiveWorker(registration: ServiceWorkerRegistration, time
   return registration
 }
 
-function openDatabase() {
-  if(typeof indexedDB === "undefined") return Promise.resolve<IDBDatabase | null>(null)
-  return new Promise<IDBDatabase | null>(resolve => {
-    try {
-      const request = indexedDB.open(LOCAL_PACKAGE_WORKER_DB, 1)
-      request.onupgradeneeded = () => {
-        if(!request.result.objectStoreNames.contains(LOCAL_PACKAGE_WORKER_STORE)) {
-          request.result.createObjectStore(LOCAL_PACKAGE_WORKER_STORE, {keyPath: "id"})
-        }
-      }
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => resolve(null)
-    }
-    catch {
-      resolve(null)
-    }
-  })
-}
-
-async function saveDirectory(record: StoredLocalPackageDirectory) {
-  const database = await openDatabase()
-  if(!database) return
-  await new Promise<void>(resolve => {
-    const transaction = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readwrite")
-    transaction.objectStore(LOCAL_PACKAGE_WORKER_STORE).put(record)
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => resolve()
-    transaction.onabort = () => resolve()
-  })
-  database.close()
-}
-
-async function removeDirectory(id: string) {
-  const database = await openDatabase()
-  if(!database) return
-  await new Promise<void>(resolve => {
-    const transaction = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readwrite")
-    transaction.objectStore(LOCAL_PACKAGE_WORKER_STORE).delete(id)
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => resolve()
-    transaction.onabort = () => resolve()
-  })
-  database.close()
-}
-
-async function readDirectories(): Promise<StoredLocalPackageDirectory[]> {
-  const database = await openDatabase()
-  if(!database) return []
-  return new Promise<StoredLocalPackageDirectory[]>(resolve => {
-    const request = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readonly")
-      .objectStore(LOCAL_PACKAGE_WORKER_STORE)
-      .getAll()
-    request.onsuccess = () => {
-      database.close()
-      const records = Array.isArray(request.result) ? request.result : []
-      resolve(records.filter(isStoredLocalPackageDirectory))
-    }
-    request.onerror = () => {
-      database.close()
-      resolve([])
-    }
-  })
-}
-
 /** Registers and synchronizes local directory handles with the root-scope worker. */
 export class LocalPackageWorkerClient {
   private readonly scriptUrl: string
@@ -180,7 +100,7 @@ export class LocalPackageWorkerClient {
    * so callers can still offer a fresh picker flow.
    */
   async storedDirectories() {
-    return await readDirectories()
+    return await readLocalPackageDirectories()
   }
 
   async register(id: string, handle: LocalPackageDirectoryHandle) {
@@ -188,7 +108,7 @@ export class LocalPackageWorkerClient {
     // Save the picker result before worker setup. Besides making IndexedDB the
     // durable source of truth, this preserves the handle when worker startup
     // fails or the page is reloaded while registration is in progress.
-    await saveDirectory({id, handle})
+    await saveLocalPackageDirectory({id, handle})
     await this.registration()
     await this.send({type: "register-local-package", id, handle})
   }
@@ -196,14 +116,14 @@ export class LocalPackageWorkerClient {
   async unregister(id: string) {
     await this.registration()
     await this.send({type: "unregister-local-package", id})
-    await removeDirectory(id)
+    await removeLocalPackageDirectory(id)
   }
 
   async clear() {
     await this.registration()
     await this.send({type: "clear-local-packages"})
     const persisted = await this.storedDirectories()
-    await Promise.all(persisted.map(record => removeDirectory(record.id)))
+    await Promise.all(persisted.map(record => removeLocalPackageDirectory(record.id)))
   }
 
   private registration() {

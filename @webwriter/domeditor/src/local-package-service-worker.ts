@@ -3,16 +3,14 @@ import {
   localPackageFetchResponse,
   type LocalPackageDirectoryHandle,
 } from "./local-package-worker"
+import type {LocalPackageWorkerMessage} from "./local-package-worker-protocol"
 import {
-  LOCAL_PACKAGE_WORKER_DB,
-  LOCAL_PACKAGE_WORKER_STORE,
-  type LocalPackageWorkerMessage,
-} from "./local-package-worker-protocol"
-
-type StoredDirectory = {
-  id: string
-  handle: LocalPackageDirectoryHandle
-}
+  clearLocalPackageDirectories,
+  isLocalPackageDirectoryHandle,
+  readLocalPackageDirectories,
+  removeLocalPackageDirectory,
+  saveLocalPackageDirectory,
+} from "./local-package-storage"
 
 type WorkerScope = ServiceWorkerGlobalScope & {
   indexedDB?: IDBFactory
@@ -22,88 +20,10 @@ const worker = globalThis as unknown as WorkerScope
 const roots = new Map<string, LocalPackageDirectoryHandle>()
 const requestHandler = createLocalPackageRequestHandler(roots)
 
-function isDirectoryHandle(value: unknown): value is LocalPackageDirectoryHandle {
-  if(!value || typeof value !== "object") return false
-  const candidate = value as Partial<LocalPackageDirectoryHandle>
-  return candidate.kind !== "file"
-    && typeof candidate.getDirectoryHandle === "function"
-    && typeof candidate.getFileHandle === "function"
-}
-
-function openDatabase() {
-  if(!worker.indexedDB) return Promise.resolve<IDBDatabase | null>(null)
-  return new Promise<IDBDatabase | null>(resolve => {
-    try {
-      const request = worker.indexedDB!.open(LOCAL_PACKAGE_WORKER_DB, 1)
-      request.onupgradeneeded = () => {
-        if(!request.result.objectStoreNames.contains(LOCAL_PACKAGE_WORKER_STORE)) {
-          request.result.createObjectStore(LOCAL_PACKAGE_WORKER_STORE, {keyPath: "id"})
-        }
-      }
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => resolve(null)
-    }
-    catch {
-      resolve(null)
-    }
-  })
-}
-
-async function writeDirectory(record: StoredDirectory) {
-  const database = await openDatabase()
-  if(!database) return
-  await new Promise<void>(resolve => {
-    const transaction = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readwrite")
-    transaction.objectStore(LOCAL_PACKAGE_WORKER_STORE).put(record)
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => resolve()
-    transaction.onabort = () => resolve()
-  })
-  database.close()
-}
-
-async function deleteDirectory(id: string) {
-  const database = await openDatabase()
-  if(!database) return
-  await new Promise<void>(resolve => {
-    const transaction = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readwrite")
-    transaction.objectStore(LOCAL_PACKAGE_WORKER_STORE).delete(id)
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => resolve()
-    transaction.onabort = () => resolve()
-  })
-  database.close()
-}
-
-async function clearDirectories() {
-  const database = await openDatabase()
-  if(!database) return
-  await new Promise<void>(resolve => {
-    const transaction = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readwrite")
-    transaction.objectStore(LOCAL_PACKAGE_WORKER_STORE).clear()
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => resolve()
-    transaction.onabort = () => resolve()
-  })
-  database.close()
-}
-
 async function restoreDirectories() {
-  const database = await openDatabase()
-  if(!database) return
-  await new Promise<void>(resolve => {
-    const request = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readonly")
-      .objectStore(LOCAL_PACKAGE_WORKER_STORE)
-      .getAll()
-    request.onsuccess = () => {
-      for(const record of request.result as StoredDirectory[]) {
-        if(record?.id && isDirectoryHandle(record.handle)) roots.set(record.id, record.handle)
-      }
-      resolve()
-    }
-    request.onerror = () => resolve()
-  })
-  database.close()
+  for(const record of await readLocalPackageDirectories(worker.indexedDB)) {
+    roots.set(record.id, record.handle)
+  }
 }
 
 // A worker can be restarted without running its activate handler again. Start
@@ -128,24 +48,24 @@ async function handleMessage(event: ExtendableMessageEvent) {
   try {
     await directoriesReady
     if(message.type === "register-local-package") {
-      if(typeof message.id !== "string" || !isDirectoryHandle(message.handle)) {
+      if(typeof message.id !== "string" || !isLocalPackageDirectoryHandle(message.handle)) {
         throw new TypeError("Invalid local package directory handle")
       }
       roots.set(message.id, message.handle)
-      await writeDirectory({id: message.id, handle: message.handle})
+      await saveLocalPackageDirectory({id: message.id, handle: message.handle}, worker.indexedDB)
       acknowledge(event, message.requestId, true)
       return
     }
     if(message.type === "unregister-local-package") {
       if(typeof message.id !== "string" || !message.id) throw new TypeError("Invalid local package id")
       roots.delete(message.id)
-      await deleteDirectory(message.id)
+      await removeLocalPackageDirectory(message.id, worker.indexedDB)
       acknowledge(event, message.requestId, true)
       return
     }
     if(message.type === "clear-local-packages") {
       roots.clear()
-      await clearDirectories()
+      await clearLocalPackageDirectories(worker.indexedDB)
       acknowledge(event, message.requestId, true)
     }
   }
