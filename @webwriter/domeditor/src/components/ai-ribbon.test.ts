@@ -369,7 +369,7 @@ describe("AI prompt ribbon", () => {
   it("previews a proposed change, blocks chat, and protocols acceptance with selective undo", async () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)
-    const review = vi.fn(async (action: string) => ({status: action === "undo" ? "undone" : action === "accept" ? "applied" : action}))
+    const review = vi.fn(async (action: string) => ({status: action === "undo" ? "undone" : action === "accept" ? "applied" : "previewing"}))
     ribbon.aiEditReviewHandler = review
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({choices: [{message: {
@@ -393,6 +393,9 @@ describe("AI prompt ribbon", () => {
 
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector(".ai-edit-approval")).not.toBeNull())
     expect(review).toHaveBeenCalledWith("preview", expect.objectContaining({name: "replace_current_document"}))
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Queued: Add a heading."))
+    expect((ribbon as any).aiBusy).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(1)
     expect(ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelectorAll(".ai-prompt-review-actions button")).toHaveLength(3)
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-submit")).toBeNull()
@@ -400,19 +403,20 @@ describe("AI prompt ribbon", () => {
       .toBe(ribbon.shadowRoot!.querySelector(".ai-prompt-expand"))
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="approve"]')!.click()
-    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", expect.objectContaining({id: "edit-1"})))
-    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Applied: Add a heading."))
-    expect(ribbon.shadowRoot!.textContent).toContain("Accepted: Add a heading")
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", expect.objectContaining({id: expect.stringContaining("/edit-1")})))
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Accepted: Add a heading"))
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect((ribbon as any).conversationFor("chat-1")).toContainEqual(expect.objectContaining({content: expect.stringContaining("accepted")}))
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="undo"]')!.click()
-    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("undo", expect.objectContaining({id: "edit-1"})))
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("undo", expect.objectContaining({id: expect.stringContaining("/edit-1")})))
     await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Undone: Add a heading"))
   })
 
   it("rejects a preview from the collapsed bar and records the decision", async () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)
-    const review = vi.fn(async (action: string) => ({status: action}))
+    const review = vi.fn(async (action: string) => ({status: action === "preview" ? "previewing" : "rejected"}))
     ribbon.aiEditReviewHandler = review
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({choices: [{message: {
@@ -437,18 +441,18 @@ describe("AI prompt ribbon", () => {
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelectorAll(".ai-prompt-review-actions button")).toHaveLength(3))
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Reject AI change"]')!.click()
 
-    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("reject", expect.objectContaining({id: "edit-reject"})))
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("reject", expect.objectContaining({id: expect.stringContaining("/edit-reject")})))
     await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Rejected: Remove the introduction"))
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-review-actions")).toBeNull()
   })
 
   it("queues an in-document choice made while the preview bridge is still completing", async () => {
     const ribbon = await mountRibbon()
-    let finishPreview!: () => void
-    const preview = new Promise<void>(resolve => { finishPreview = resolve })
+    let finishPreview!: (value: {status: string}) => void
+    const preview = new Promise<{status: string}>(resolve => { finishPreview = resolve })
     const review = vi.fn((action: string) => action === "preview"
       ? preview
-      : Promise.resolve({status: action}))
+      : Promise.resolve({status: "applied"}))
     ribbon.aiEditReviewHandler = review
     const call = {
       id: "edit-early-choice",
@@ -457,11 +461,36 @@ describe("AI prompt ribbon", () => {
     } as const
 
     const result = (ribbon as any).handleAIDocumentTool(call, "chat-1") as Promise<unknown>
+    expect((ribbon as any).handleAIDocumentTool(call, "chat-1")).toBe(result)
     ribbon.reviewPendingAIEdit("accept", call.id)
     expect(review).toHaveBeenCalledTimes(1)
 
-    finishPreview()
+    finishPreview({status: "previewing"})
     await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", call))
-    await expect(result).resolves.toEqual({status: "accept"})
+    await expect(result).resolves.toMatchObject({status: "queued", proposalId: call.id})
+  })
+
+  it("settles cancelled preview requests and rejects late previews", async () => {
+    const ribbon = await mountRibbon()
+    let finish!: (value: {status: string}) => void
+    const review = vi.fn((action: string) => action === "preview"
+      ? new Promise<{status: string}>(resolve => { finish = resolve }) : Promise.resolve({status: "rejected"}))
+    ribbon.aiEditReviewHandler = review
+    const call = {id: "cancel", name: "replace_current_document", arguments: {summary: "Add title", html: "<h1>Title</h1>"}}
+    const result = (ribbon as any).handleAIDocumentTool(call, "chat-1")
+    await ribbon.cancelAIWork()
+    await expect(result).resolves.toMatchObject({status: "error"})
+    finish({status: "previewing"})
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("reject", call))
+    expect((ribbon as any).pendingAIEdit).toBeNull()
+  })
+
+  it("does not record acceptance when the editor cannot apply a proposal", async () => {
+    const ribbon = await mountRibbon()
+    ribbon.aiEditReviewHandler = vi.fn(async action => ({status: action === "preview" ? "previewing" : "unavailable"}))
+    await (ribbon as any).handleAIDocumentTool({id: "failed", name: "replace_current_document", arguments: {summary: "Add title", html: "<h1>Title</h1>"}}, "chat-1")
+    ribbon.reviewPendingAIEdit("accept", "failed")
+    await vi.waitFor(() => expect((ribbon as any).aiError).toContain("could not be accepted"))
+    expect((ribbon as any).conversationFor("chat-1")).toEqual([])
   })
 })

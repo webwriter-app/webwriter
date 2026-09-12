@@ -314,6 +314,7 @@ export async function completeAIConversation(options: AICompletionOptions) {
     })),
   ]
   const compatibility = {reasoningEffort: true}
+  const requestId = crypto.randomUUID()
   let readDocument = false
   let readSelection = false
 
@@ -367,7 +368,7 @@ export async function completeAIConversation(options: AICompletionOptions) {
             if(typeof args.html !== "string") throw new TypeError("Provide replacement HTML")
           }
           result = await options.toolHandler({
-            id,
+            id: editing ? `${requestId}/${id}` : id,
             name,
             arguments: args,
           })
@@ -377,9 +378,9 @@ export async function completeAIConversation(options: AICompletionOptions) {
             if(name === "read_current_document") readDocument = true
             if(name === "read_current_selection") readSelection = true
           }
-          if(editing && ["queued", "applied", "denied"].includes(String(status))) {
+          if(editing && status === "queued") {
             const summary = aiProposalSummary(args.summary)
-            return `${status === "applied" ? "Applied" : status === "denied" ? "Rejected" : "Queued"}: ${summary}`
+            return `Queued: ${summary}`
           }
         }
         catch(error) {

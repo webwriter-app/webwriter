@@ -2098,6 +2098,7 @@ export class AppRibbon extends EditingControls {
   private aiError = ""
 
   private pendingAIEdit: PendingAIEdit | null = null
+  private pendingAIQueue: Promise<unknown> | null = null
 
   private aiAbortController: AbortController | null = null
 
@@ -2196,7 +2197,7 @@ export class AppRibbon extends EditingControls {
 
   disconnectedCallback() {
     this.aiProviderStore.removeEventListener("change", this.handleAIProviderChange)
-    this.stopAIRequest()
+    void this.cancelAIWork()
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
     this.previewTransitionTimer = undefined
     if(this.aiChatTransitionTimer !== undefined) clearTimeout(this.aiChatTransitionTimer)
@@ -2588,10 +2589,9 @@ export class AppRibbon extends EditingControls {
   private conversationFor(chatId: string): AIConversationMessage[] {
     const chat = this.aiChats.find(candidate => candidate.id === chatId)
     return chat?.messages
-      .filter((message): message is AIChatMessage & {role: "user" | "assistant"} => message.role !== "event")
       .map(message => ({
-      role: message.role,
-      content: message.content,
+      role: message.role === "event" ? "assistant" as const : message.role,
+      content: message.edit ? `Document change ${message.edit.editId}: ${message.edit.decision}. ${message.edit.summary}` : message.content,
       ...(message.attachments?.length
         ? {attachments: message.attachments.map(attachment => ({...attachment}))}
         : {}),
@@ -2609,28 +2609,36 @@ export class AppRibbon extends EditingControls {
     if(typeof html !== "string" || typeof summary !== "string") {
       return Promise.resolve({status: "error", message: "The proposed edit is missing its HTML or summary"})
     }
-    return new Promise(resolve => {
-      this.pendingAIEdit?.resolve({status: "denied", message: "A newer edit replaced this proposal"})
+    if(this.pendingAIEdit) {
+      return this.pendingAIEdit.call.id === call.id && JSON.stringify(this.pendingAIEdit.call) === JSON.stringify(call)
+        ? this.pendingAIQueue!
+        : Promise.resolve({status: "error", message: "Another document change is awaiting review"})
+    }
+    this.pendingAIQueue = new Promise(resolve => {
       this.pendingAIEdit = {call, chatId, summary, html, previewing: true, deciding: false, resolve}
       this.activeAIChatId = chatId
       const preview = this.aiEditReviewHandler
         ? this.aiEditReviewHandler("preview", call)
         : Promise.reject(new Error("The document editor cannot preview AI changes"))
       void preview.then(
-        () => {
+        result => {
+          const status = (result as {status?: string})?.status
+          if(status !== "previewing") throw new Error("The editor did not create a document preview")
           if(this.pendingAIEdit?.call.id === call.id) {
             const queuedDecision = this.pendingAIEdit.queuedDecision
             this.pendingAIEdit = {...this.pendingAIEdit, previewing: false, queuedDecision: undefined}
+            resolve({status: "queued", proposalId: call.id, summary})
             if(queuedDecision) queueMicrotask(() => this.reviewPendingAIEdit(queuedDecision, call.id))
           }
+          else void this.aiEditReviewHandler?.("reject", call).catch(() => {})
         },
-        error => {
+      ).catch(error => {
           if(this.pendingAIEdit?.call.id === call.id) this.pendingAIEdit = null
           resolve({status: "error", message: error instanceof Error ? error.message : String(error)})
-        },
-      )
+      })
       void this.updateComplete.then(() => this.scrollAIChatToEnd())
     })
+    return this.pendingAIQueue
   }
 
   private approveAIEdit = async () => {
@@ -2642,9 +2650,9 @@ export class AppRibbon extends EditingControls {
       const result = this.aiEditReviewHandler
         ? await this.aiEditReviewHandler("accept", pending.call)
         : {status: "unavailable", message: "The document editor is not connected"}
+      if((result as {status?: string})?.status !== "applied") throw new Error("The document change could not be accepted")
       this.appendAIEditProtocol(pending, "accepted")
       if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = null
-      pending.resolve(result)
     }
     catch(error) {
       this.aiError = error instanceof Error ? error.message : String(error)
@@ -2658,10 +2666,10 @@ export class AppRibbon extends EditingControls {
     this.pendingAIEdit = {...pending, deciding: true}
     this.aiError = ""
     try {
-      if(this.aiEditReviewHandler) await this.aiEditReviewHandler("reject", pending.call)
+      const result = await this.aiEditReviewHandler?.("reject", pending.call)
+      if((result as {status?: string})?.status !== "rejected") throw new Error("The document change could not be rejected")
       this.appendAIEditProtocol(pending, "rejected")
       this.pendingAIEdit = null
-      pending.resolve({status: "denied", message: "The user rejected the proposed edit"})
     }
     catch(error) {
       this.aiError = error instanceof Error ? error.message : String(error)
@@ -2728,6 +2736,20 @@ export class AppRibbon extends EditingControls {
     }
     this.aiAbortController?.abort()
     this.aiAbortController = null
+  }
+
+  /** Called before an iframe is replaced, and when the ribbon is destroyed. */
+  async cancelAIWork() {
+    this.aiAbortController?.abort()
+    this.aiAbortController = null
+    this.aiBusy = false
+    const pending = this.pendingAIEdit
+    this.pendingAIEdit = null
+    this.pendingAIQueue = null
+    pending?.resolve({status: "error", message: "The document change was cancelled"})
+    if(pending && !pending.previewing) {
+      await this.aiEditReviewHandler?.("reject", pending.call).catch(() => {})
+    }
   }
 
   private async runAIPrompt(prompt: string) {

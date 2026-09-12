@@ -1959,6 +1959,7 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string) {
+    await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
     stripExcludedMarks(parsed.body)
     const reloadError = new Error("The editor iframe was reloaded for a document change")
@@ -2952,6 +2953,7 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadEditor(nextPackages: WebWriterPackage[]) {
+    await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const snapshot = await this.execute({type: "snapshotState"}) as EditorStateSnapshot
     if(!snapshot || !Array.isArray(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")
     const shouldRefocus = this.isEditorFocused() || this.savedEditorSelection !== null
