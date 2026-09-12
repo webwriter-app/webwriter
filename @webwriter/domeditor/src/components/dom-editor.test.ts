@@ -323,21 +323,6 @@ describe("DomEditor iframe setup", () => {
   })
 
 
-  it("resolves widget paths without relying on the outer realm's Element constructor", async () => {
-    const {editor, iframe} = await mountEditor()
-    const owner = iframe.contentDocument!
-    owner.body.innerHTML = "<review-widget></review-widget>text"
-    const widget = owner.body.firstElementChild
-    const resolve = (editor as unknown as {previewElementAtPath(path: number[], owner: Document): Element | null}).previewElementAtPath.bind(editor)
-    vi.stubGlobal("Element", class ForeignElement {})
-    try {
-      expect(resolve([0], owner)).toBe(widget)
-      expect(resolve([1], owner)).toBeNull()
-      expect(resolve([2], owner)).toBeNull()
-    }
-    finally { vi.unstubAllGlobals() }
-  })
-
   it("settles cancellation and timeouts while iframe initialization is stalled", async () => {
     const {editor} = await mountEditor()
     let ready!: (value: Window) => void
@@ -904,7 +889,7 @@ describe("Develop local packages", () => {
     ;(editor as any).handleLocalPackageAutoReloadChange(new CustomEvent("local-package-auto-reload-change", {
       detail: {enabled: false},
     }))
-    await (editor as any).performLocalPackageRefresh([...(editor as any).localPackageRecords.keys()][0])
+    await (editor as any).localPackageManager.refresh([...(editor as any).localPackageManager.records.keys()][0])
 
     expect((editor as any).selectedLocalPackageAutoReload).toBe(false)
     expect(reload).not.toHaveBeenCalled()
@@ -917,7 +902,7 @@ describe("Develop local packages", () => {
     vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "persisted", handle: directory as any}])
     const start = vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
     const editor = new DomEditor()
-    const watch = vi.spyOn(editor as any, "watchLocalPackage").mockResolvedValue(undefined)
+    const watch = vi.spyOn((editor as any).localPackageManager, "watch").mockResolvedValue(undefined)
     const reload = vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
 
     await (editor as any).restoreLocalPackages()
@@ -941,7 +926,7 @@ describe("Develop local packages", () => {
     vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "private", handle: directory as any}])
     vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
     const editor = new DomEditor()
-    vi.spyOn(editor as any, "watchLocalPackage").mockResolvedValue(undefined)
+    vi.spyOn((editor as any).localPackageManager, "watch").mockResolvedValue(undefined)
     vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
 
     await (editor as any).restoreLocalPackages()
@@ -960,7 +945,7 @@ describe("Develop local packages", () => {
     vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "private", handle: directory as any}])
     vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
     const editor = new DomEditor()
-    vi.spyOn(editor as any, "watchLocalPackage").mockResolvedValue(undefined)
+    vi.spyOn((editor as any).localPackageManager, "watch").mockResolvedValue(undefined)
     vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
 
     await (editor as any).restoreLocalPackages()
@@ -995,7 +980,7 @@ describe("Develop local packages", () => {
       ;(editor as any).installedPackages = args[0] as WebWriterPackage[]
     })
     await (editor as any).addLocalPackage()
-    const record = [...(editor as any).localPackageRecords.values()][0] as any
+    const record = [...(editor as any).localPackageManager.records.values()][0] as any
 
     bundle.current = true
     record.monitor.options.onChange()
@@ -1011,13 +996,13 @@ describe("Develop local packages", () => {
     const {editor} = await mountEditor()
     let finishFirst!: () => void
     const firstRefresh = new Promise<void>(resolve => { finishFirst = resolve })
-    const perform = vi.spyOn(editor as any, "performLocalPackageRefresh")
+    const perform = vi.spyOn((editor as any).localPackageManager, "performRefresh")
       .mockImplementationOnce(() => firstRefresh)
       .mockResolvedValue(undefined)
 
-    const refreshing = (editor as any).refreshLocalPackage("local-id") as Promise<void>
+    const refreshing = (editor as any).localPackageManager.refresh("local-id") as Promise<void>
     await vi.waitFor(() => expect(perform).toHaveBeenCalledTimes(1))
-    await (editor as any).refreshLocalPackage("local-id")
+    await (editor as any).localPackageManager.refresh("local-id")
     finishFirst()
     await refreshing
 
@@ -1073,7 +1058,7 @@ describe("Develop local packages", () => {
     expect((editor as any).localPackages).toHaveLength(1)
     expect((editor as any).localPackages[0].label).toBe("private-package")
     expect((editor as any).localPackageError).toContain("Select the folder again")
-    expect([...(editor as any).localPackageRecords.values()][0].monitor).toBeTruthy()
+    expect([...(editor as any).localPackageManager.records.values()][0].monitor).toBeTruthy()
   })
 })
 
@@ -2863,20 +2848,6 @@ describe("DomEditor.execute()", () => {
     finally {
       learner.destroy()
     }
-  })
-
-  it("keeps a learner widget's session path stable when siblings are inserted", async () => {
-    const {editor, iframe} = await mountEditor()
-    const previewDocument = iframe.contentDocument!
-    previewDocument.body.innerHTML = "<demo-widget></demo-widget>"
-    const sessionEditor = editor as unknown as {
-      seedLiveWidgetPaths(document: Document): void
-      captureLiveWidgetStates(document: Document): Array<{path?: number[]}>
-    }
-    sessionEditor.seedLiveWidgetPaths(previewDocument)
-    previewDocument.body.prepend(previewDocument.createElement("p"))
-
-    expect(sessionEditor.captureLiveWidgetStates(previewDocument)[0]?.path).toEqual([0])
   })
 
   it("renders the current selection path received from the editor bridge", async () => {

@@ -95,18 +95,14 @@ import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
 import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
 import {
-  loadLocalPackage,
-  localPackageWatchPaths,
   normalizeLocalPackagePath,
-  type LocalPackageDirectory,
-  type LocalPackageWarning,
 } from "../local-package"
-import {LocalPackageMonitor} from "../local-package-monitor"
-import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
-import {LocalPackageWorkerClient, requestLocalPackageDirectoryPermission} from "../local-package-worker-client"
+import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
+import {LocalPackageManager, type LocalPackageRecord} from "../local-package-manager"
 import {defaultDocumentTheme, documentTheme} from "../document-themes"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "../table"
@@ -135,9 +131,7 @@ import {
   type LiveSessionChange,
   type LiveSessionLearner as SessionLearner,
   type LiveSessionLearnerState,
-  type LiveSessionRegion as SessionRegion,
   type LiveSessionStep,
-  type LiveSessionWidgetState,
 } from "../live-session"
 import type {
   LiveSessionLearner as OverlayLearner,
@@ -201,17 +195,6 @@ const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
 
-type LocalPackageRecord = {
-  id: string
-  directory: FileSystemDirectoryHandle
-  package: WebWriterPackage
-  warnings: LocalPackageWarning[]
-  revision: number
-  enabled: boolean
-  monitor?: LocalPackageMonitor
-  error?: string
-  autoReload: boolean
-}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -312,22 +295,6 @@ const isLocalResourcePackage = (pkg: WebWriterPackage) => [
   ...pkg.styles,
   ...pkg.members.flatMap(member => [member.iconUrl, member.htmlUrl, member.scriptUrl, member.styleUrl]),
 ].some(url => url?.includes(localPackageResourcePath))
-
-const localPackageId = () => globalThis.crypto?.randomUUID?.()
-  ?? `package-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-
-const localPackagePlaceholder = (directory: FileSystemDirectoryHandle, id: string): WebWriterPackage => ({
-  name: `@local/${(directory.name || id).toLowerCase().replaceAll(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || id}`,
-  version: "0.0.0",
-  label: directory.name || "Local package",
-  description: "This local package could not be loaded yet.",
-  authors: [],
-  keywords: ["local", "development"],
-  links: {},
-  members: [],
-  scripts: [],
-  styles: [],
-})
 
 const isStoredPackageMember = (value: unknown): value is PackageMember => {
   if(!isRecord(value)) return false
@@ -540,10 +507,17 @@ export class DomEditor extends LitElement {
   private localPackageError = ""
   private selectedLocalPackageName = ""
   private selectedLocalPackageAutoReload = false
-  private readonly localPackageRecords = new Map<string, LocalPackageRecord>()
-  private readonly localPackageReloads = new Set<string>()
-  private readonly localPackageReloadPending = new Set<string>()
-  private readonly localPackageWorker = new LocalPackageWorkerClient()
+  private readonly localPackageManager = new LocalPackageManager({
+    changed: packages => { this.localPackages = packages },
+    error: message => { this.localPackageError = message },
+    loaded: record => this.selectLocalPackage(record.package.name),
+    install: async(pkg, previousName) => {
+      await this.reloadEditor([
+        ...this.installedPackages.filter(candidate => candidate.name !== previousName && candidate.name !== pkg.name),
+        pkg,
+      ])
+    },
+  })
   private frameState: EditorStateSnapshot | undefined
   private frameRevision = 0
   private frameDocumentHTML: string | null = null
@@ -583,12 +557,7 @@ export class DomEditor extends LitElement {
   private liveStateCache = new Map<string, LiveSessionLearnerState>()
   private liveStateCacheStep = 0
   private liveSelectedWidgetLearners = new Map<string, string>()
-  private liveBaseWidgetStates = new Map<string, LiveSessionWidgetState>()
-  private liveWidgetPaths = new WeakMap<Element, number[]>()
-  private livePreviewObserver: MutationObserver | null = null
-  private livePreviewCleanup: (() => void)[] = []
-  private livePendingMutations: MutationRecord[] = []
-  private liveDocumentUpdateQueued = false
+  private readonly livePreview = new LivePreview()
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
   private storageLocation: StorageLocation = "local"
@@ -972,7 +941,7 @@ export class DomEditor extends LitElement {
       this.liveStreamPlaying = false
       this.clearLivePlaybackTimer()
       if(this.liveSessionRole === "learner") {
-        this.cleanupLivePreview()
+        this.livePreview.disconnect()
         queueMicrotask(() => {
           if(this.liveSession === session && this.previewActive) void this.exitPreview()
         })
@@ -1170,114 +1139,6 @@ export class DomEditor extends LitElement {
     if(this.backendSession) window.open(this.backendSession.adminUrl, "_blank", "noopener,noreferrer")
   }
 
-  private previewElementPath(element: Element, previewDocument = element.ownerDocument) {
-    const body = previewDocument.body
-    if(!body || element === body) return []
-    const path: number[] = []
-    let current: Node | null = element
-    while(current && current !== body) {
-      const parent: Node | null = current.parentNode
-      if(!parent) return null
-      path.unshift(Array.from(parent.childNodes).indexOf(current as ChildNode))
-      current = parent
-    }
-    return current === body ? path : null
-  }
-
-  private previewElementAtPath(path: number[], previewDocument = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")?.contentDocument) {
-    let current: Node | null = previewDocument?.body ?? null
-    for(const index of path) current = current?.childNodes.item(index) ?? null
-    return current?.nodeType === Node.ELEMENT_NODE ? current as Element : null
-  }
-
-  private previewWidgetElements(previewDocument: Document) {
-    return Array.from(previewDocument.body?.querySelectorAll("*") ?? [])
-      .filter(element => element.localName.includes("-"))
-  }
-
-  private seedLiveWidgetPaths(previewDocument: Document) {
-    this.liveWidgetPaths = new WeakMap()
-    this.previewWidgetElements(previewDocument).forEach(widget => {
-      const path = this.previewElementPath(widget, previewDocument)
-      if(path) this.liveWidgetPaths.set(widget, path)
-    })
-  }
-
-  private captureWidgetPublicState(widget: Element) {
-    const state: Record<string, unknown> = {}
-    for(const key of Object.keys(widget).slice(0, 64)) {
-      if(key === "__proto__" || key === "constructor" || key === "prototype") continue
-      try {
-        const value = (widget as unknown as Record<string, unknown>)[key]
-        if(typeof value === "function" || value instanceof Node || (
-          value !== null && typeof value === "object" && typeof (value as {nodeType?: unknown}).nodeType === "number"
-        )) continue
-        const serialized = JSON.stringify(value)
-        if(serialized === undefined || serialized.length > 32_000) continue
-        state[key] = JSON.parse(serialized)
-      }
-      catch {
-        // Cyclic or host-owned fields are not part of the widget's portable state.
-      }
-    }
-    return state
-  }
-
-  private captureLiveWidgetStates(previewDocument: Document): LiveSessionWidgetState[] {
-    return this.previewWidgetElements(previewDocument).flatMap(widget => {
-      const path = this.liveWidgetPaths.get(widget) ?? this.previewElementPath(widget, previewDocument)
-      if(path && !this.liveWidgetPaths.has(widget)) this.liveWidgetPaths.set(widget, path)
-      return path ? [{path, html: widget.outerHTML, state: this.captureWidgetPublicState(widget)}] : []
-    })
-  }
-
-  private previewHTML(previewDocument: Document) {
-    return `${serializeDoctype(previewDocument.doctype)}${previewDocument.documentElement.outerHTML}`
-  }
-
-  private normalizedPreviewPoint(x: number, y: number, previewDocument: Document) {
-    const view = previewDocument.defaultView
-    const width = view?.innerWidth || previewDocument.documentElement.clientWidth || 1
-    const height = view?.innerHeight || previewDocument.documentElement.clientHeight || 1
-    return {x: clampUnit(x / width), y: clampUnit(y / height)}
-  }
-
-  private mutationRegions(mutations: MutationRecord[], previewDocument: Document): SessionRegion[] {
-    const view = previewDocument.defaultView
-    const width = view?.innerWidth || previewDocument.documentElement.clientWidth || 1
-    const height = view?.innerHeight || previewDocument.documentElement.clientHeight || 1
-    const regions = new Map<string, SessionRegion>()
-    for(const mutation of mutations) {
-      const element = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement
-      if(!element || element === previewDocument.documentElement || !previewDocument.body?.contains(element)) continue
-      const path = this.previewElementPath(element, previewDocument)
-      if(!path) continue
-      const key = JSON.stringify(path)
-      const rect = element.getBoundingClientRect()
-      regions.set(key, {
-        id: key,
-        path,
-        x: clampUnit(rect.left / width),
-        y: clampUnit(rect.top / height),
-        width: clampUnit((rect.width || width) / width),
-        height: clampUnit((rect.height || Math.min(20, height)) / height),
-      })
-      if(regions.size >= 32) break
-    }
-    return [...regions.values()]
-  }
-
-  private previewScrollState(previewDocument: Document) {
-    const scroller = previewDocument.scrollingElement ?? previewDocument.documentElement
-    const view = previewDocument.defaultView
-    return {
-      top: scroller.scrollTop,
-      left: scroller.scrollLeft,
-      height: scroller.scrollHeight,
-      viewport: view?.innerHeight || previewDocument.documentElement.clientHeight,
-    }
-  }
-
   private publishLiveLearnerStep(input: Parameters<LiveSession["publish"]>[0]) {
     if(this.liveSessionRole !== "learner" || !this.liveSession) return
     try {
@@ -1286,157 +1147,6 @@ export class DomEditor extends LitElement {
     catch {
       // The host may stop while a throttled browser event is being delivered.
     }
-  }
-
-  private cleanupLivePreview() {
-    this.livePreviewObserver?.disconnect()
-    this.livePreviewObserver = null
-    this.livePreviewCleanup.splice(0).forEach(cleanup => cleanup())
-    this.livePendingMutations = []
-    this.liveDocumentUpdateQueued = false
-  }
-
-  private observeLearnerPreview(frame: HTMLIFrameElement, previewDocument: Document) {
-    const view = frame.contentWindow
-    const body = previewDocument.body
-    if(!view || !body || !this.liveSession?.baseHTML) return
-    this.seedLiveWidgetPaths(previewDocument)
-
-    const listen = (
-      target: EventTarget,
-      type: string,
-      listener: EventListener,
-      options?: AddEventListenerOptions | boolean,
-    ) => {
-      target.addEventListener(type, listener, options)
-      this.livePreviewCleanup.push(() => target.removeEventListener(type, listener, options))
-    }
-
-    let pendingPointer: {x: number, y: number} | null = null
-    let pointerTimer: ReturnType<typeof setTimeout> | undefined
-    let lastPointerTime = -Infinity
-    const flushPointer = () => {
-      pointerTimer = undefined
-      if(!pendingPointer) return
-      this.publishLiveLearnerStep({kind: "pointer", pointer: pendingPointer})
-      pendingPointer = null
-      lastPointerTime = view.performance.now()
-    }
-    const pointer = (event: Event) => {
-      const pointerEvent = event as PointerEvent
-      pendingPointer = this.normalizedPreviewPoint(pointerEvent.clientX, pointerEvent.clientY, previewDocument)
-      const delay = Math.max(0, 80 - (view.performance.now() - lastPointerTime))
-      if(delay === 0) flushPointer()
-      else if(pointerTimer === undefined) pointerTimer = setTimeout(flushPointer, delay)
-    }
-    const click = (event: Event) => {
-      const pointerEvent = event as PointerEvent
-      const point = this.normalizedPreviewPoint(pointerEvent.clientX, pointerEvent.clientY, previewDocument)
-      this.publishLiveLearnerStep({
-        kind: "click",
-        click: {...point, button: pointerEvent.button},
-        pointer: point,
-        widgets: this.captureLiveWidgetStates(previewDocument),
-      })
-    }
-    const selection = () => {
-      const selected = previewDocument.getSelection()
-      if(!selected?.focusNode) return
-      try {
-        const range = previewDocument.createRange()
-        range.setStart(selected.focusNode, selected.focusOffset)
-        range.collapse(true)
-        const rect = range.getBoundingClientRect()
-        this.publishLiveLearnerStep({
-          kind: "cursor",
-          cursor: this.normalizedPreviewPoint(rect.left, rect.top, previewDocument),
-        })
-      }
-      catch {
-        // A widget may replace the focus node while selectionchange is delivered.
-      }
-    }
-    let scrollTimer: ReturnType<typeof setTimeout> | undefined
-    const scroll = () => {
-      if(scrollTimer !== undefined) return
-      scrollTimer = setTimeout(() => {
-        scrollTimer = undefined
-        this.publishLiveLearnerStep({
-          kind: "scroll",
-          scroll: this.previewScrollState(previewDocument),
-        })
-      }, 80)
-    }
-    const widget = () => this.publishLiveLearnerStep({
-      kind: "widget",
-      widgets: this.captureLiveWidgetStates(previewDocument),
-    })
-
-    listen(previewDocument, "pointermove", pointer, {capture: true, passive: true})
-    listen(previewDocument, "pointerdown", pointer, {capture: true, passive: true})
-    listen(previewDocument, "click", click, true)
-    listen(previewDocument, "selectionchange", selection)
-    listen(previewDocument, "scroll", scroll, {capture: true, passive: true})
-    listen(view, "scroll", scroll, {passive: true})
-    listen(previewDocument, "input", widget, true)
-    listen(previewDocument, "change", widget, true)
-    this.livePreviewCleanup.push(() => {
-      if(pointerTimer !== undefined) clearTimeout(pointerTimer)
-      if(scrollTimer !== undefined) clearTimeout(scrollTimer)
-    })
-
-    const FrameMutationObserver = (view as unknown as {MutationObserver?: typeof MutationObserver}).MutationObserver
-      ?? MutationObserver
-    const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
-      this.livePendingMutations.push(...mutations)
-      if(this.liveDocumentUpdateQueued) return
-      this.liveDocumentUpdateQueued = true
-      queueMicrotask(() => {
-        this.liveDocumentUpdateQueued = false
-        const pending = this.livePendingMutations.splice(0)
-        if(!pending.length || !this.liveSessionActive) return
-        this.publishLiveLearnerStep({
-          kind: "document",
-          html: this.previewHTML(previewDocument),
-          regions: this.mutationRegions(pending, previewDocument),
-          widgets: this.captureLiveWidgetStates(previewDocument),
-          scroll: this.previewScrollState(previewDocument),
-        })
-      })
-    })
-    this.livePreviewObserver = observer
-    observer.observe(body, {
-      attributes: true,
-      characterData: true,
-      childList: true,
-      subtree: true,
-    })
-    this.publishLiveLearnerStep({
-      kind: "document",
-      html: this.previewHTML(previewDocument),
-      regions: [],
-      widgets: this.captureLiveWidgetStates(previewDocument),
-      scroll: this.previewScrollState(previewDocument),
-    })
-  }
-
-  private bindHostPreview(frame: HTMLIFrameElement, previewDocument: Document) {
-    this.liveBaseWidgetStates.clear()
-    this.seedLiveWidgetPaths(previewDocument)
-    this.previewWidgetElements(previewDocument).forEach(widget => {
-      const path = this.previewElementPath(widget, previewDocument)
-      if(path) this.liveBaseWidgetStates.set(JSON.stringify(path), {
-        path,
-        html: widget.outerHTML,
-        state: this.captureWidgetPublicState(widget),
-      })
-    })
-    const update = () => this.updateLiveWidgetAffordances()
-    frame.contentWindow?.addEventListener("scroll", update, {passive: true})
-    frame.contentWindow?.addEventListener("resize", update)
-    this.livePreviewCleanup.push(() => frame.contentWindow?.removeEventListener("scroll", update))
-    this.livePreviewCleanup.push(() => frame.contentWindow?.removeEventListener("resize", update))
-    this.updateLiveWidgetAffordances()
   }
 
   private updateLiveWidgetAffordances() {
@@ -1450,8 +1160,8 @@ export class DomEditor extends LitElement {
     if(!previewDocument?.body || !view) return
     const width = view.innerWidth || previewDocument.documentElement.clientWidth || 1
     const height = view.innerHeight || previewDocument.documentElement.clientHeight || 1
-    this.liveOverlayWidgets = this.previewWidgetElements(previewDocument).flatMap<OverlayWidget>(widget => {
-      const path = this.previewElementPath(widget, previewDocument)
+    this.liveOverlayWidgets = previewWidgetElements(previewDocument).flatMap<OverlayWidget>(widget => {
+      const path = previewElementPath(widget, previewDocument)
       if(!path) return []
       const key = JSON.stringify(path)
       const learners = this.liveLearners.flatMap(learner => {
@@ -1491,10 +1201,10 @@ export class DomEditor extends LitElement {
     catch {
       return
     }
-    let current = this.previewElementAtPath(path, previewDocument)
+    let current = previewElementAtPath(path, previewDocument)
     const snapshot = learnerId
       ? this.widgetStateAtStep(pathKey, learnerId)
-      : this.liveBaseWidgetStates.get(pathKey)
+      : this.livePreview.baseWidgetStates.get(pathKey)
     if(!current || !snapshot) return
     if(snapshot.html && current.outerHTML !== snapshot.html) {
       const template = previewDocument.createElement("template")
@@ -1503,7 +1213,7 @@ export class DomEditor extends LitElement {
       const replacement = template.content.firstElementChild
       if(!replacement || replacement.localName !== current.localName || replacement.namespaceURI !== current.namespaceURI) return
       current.replaceWith(replacement)
-      current = this.previewElementAtPath(path, previewDocument)
+      current = previewElementAtPath(path, previewDocument)
     }
     if(current && isRecord(snapshot.state)) {
       Object.entries(snapshot.state).forEach(([key, value]) => {
@@ -1541,10 +1251,12 @@ export class DomEditor extends LitElement {
     if(!previewDocument) return
     previewDocument.designMode = "off"
     previewDocument.body?.removeAttribute("contenteditable")
-    this.cleanupLivePreview()
+    this.livePreview.disconnect()
     if(!this.liveSessionActive) return
-    if(this.liveSessionRole === "learner") this.observeLearnerPreview(frame, previewDocument)
-    else this.bindHostPreview(frame, previewDocument)
+    if(this.liveSessionRole === "learner") {
+      if(this.liveSession?.baseHTML) this.livePreview.observeLearner(frame, previewDocument, step => this.publishLiveLearnerStep(step))
+    }
+    else this.livePreview.observeHost(frame, previewDocument, () => this.updateLiveWidgetAffordances())
   }
 
   private handleEditorFrameLoad = (event: Event) => {
@@ -1915,7 +1627,7 @@ export class DomEditor extends LitElement {
 
   private disposeLiveSession() {
     this.livePreviewSource = null
-    this.cleanupLivePreview()
+    this.livePreview.disconnect()
     this.clearLivePlaybackTimer()
     this.liveSessionUnsubscribe?.()
     this.liveSessionUnsubscribe = null
@@ -1940,8 +1652,6 @@ export class DomEditor extends LitElement {
     this.liveStatesAtStep.clear()
     this.resetLiveStateCache()
     this.liveSelectedWidgetLearners.clear()
-    this.liveBaseWidgetStates.clear()
-    this.liveWidgetPaths = new WeakMap()
   }
 
   private async enterPreview() {
@@ -2028,7 +1738,7 @@ export class DomEditor extends LitElement {
       this.resetLivePlayback()
       this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId, sessionToken))
       const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
-      if(frame?.contentDocument) this.bindHostPreview(frame, frame.contentDocument)
+      if(frame?.contentDocument) this.livePreview.observeHost(frame, frame.contentDocument, () => this.updateLiveWidgetAffordances())
     }
     catch(error) {
       this.disposeLiveSession()
@@ -2905,7 +2615,7 @@ export class DomEditor extends LitElement {
   }
 
   private selectLocalPackage(name: string) {
-    const record = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === name)
+    const record = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === name)
     if(!record) {
       this.localPackageError = `Local package '${name}' is no longer available`
       return
@@ -2915,25 +2625,14 @@ export class DomEditor extends LitElement {
   }
 
   private get selectedLocalPackageRecord() {
-    return [...this.localPackageRecords.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
+    return [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
   }
 
   private async updateLocalPackageManifest(
     record: LocalPackageRecord,
     update: (manifest: Record<string, unknown>) => void,
   ) {
-    const directory = record.directory as FileSystemDirectoryHandle & {getFileHandle(name: string, options?: {create?: boolean}): Promise<any>}
-    const handle = await directory.getFileHandle("package.json")
-    const file = await handle.getFile()
-    const parsed: unknown = JSON.parse(await file.text())
-    if(!isRecord(parsed)) throw new Error("The local package.json must contain a JSON object")
-    const manifest = {...parsed}
-    update(manifest)
-    const writable = await handle.createWritable()
-    await writable.write(JSON.stringify(manifest, null, 2) + "\n")
-    await writable.close()
-    await this.refreshLocalPackage(record.id)
-    const refreshed = this.localPackageRecords.get(record.id)
+    const refreshed = await this.localPackageManager.updateManifest(record, update)
     if(refreshed) this.selectLocalPackage(refreshed.package.name)
   }
 
@@ -2946,7 +2645,7 @@ export class DomEditor extends LitElement {
       const value = detail.value ?? ""
       if(detail.field === "name") {
         if(!/^@[^/\s]+\/[^/\s]+$/.test(value)) throw new Error("Package name must be scoped (for example @scope/name)")
-        const duplicate = [...this.localPackageRecords.values()].find(candidate => (
+        const duplicate = [...this.localPackageManager.records.values()].find(candidate => (
           candidate.id !== record.id && candidate.package.name === value
         ))
         if(duplicate) throw new Error(`A local package named '${value}' is already loaded`)
@@ -3127,7 +2826,7 @@ export class DomEditor extends LitElement {
 
   private handleLocalPackageAutoReloadChange = (event: Event) => {
     const detail = (event as CustomEvent<{enabled?: boolean}>).detail
-    const record = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
+    const record = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
     if(!record || typeof detail?.enabled !== "boolean") return
     record.autoReload = detail.enabled
     this.selectedLocalPackageAutoReload = detail.enabled
@@ -3152,134 +2851,6 @@ export class DomEditor extends LitElement {
     this.updateLiveVisualization()
   }
 
-  private async matchingLocalPackage(directory: FileSystemDirectoryHandle) {
-    const candidate = directory as FileSystemDirectoryHandle & {
-      isSameEntry?: (other: FileSystemHandle) => Promise<boolean>
-    }
-    if(typeof candidate.isSameEntry !== "function") return undefined
-    for(const record of this.localPackageRecords.values()) {
-      try {
-        if(await candidate.isSameEntry(record.directory)) return record
-      }
-      catch {
-        // An expired handle is not a match; loading the newly-picked handle
-        // will surface any current permission problem.
-      }
-    }
-  }
-
-  private updateLocalPackageList() {
-    this.localPackages = [...this.localPackageRecords.values()].map(record => record.package)
-  }
-
-  private replaceLocalPackageName(id: string, name: string) {
-    for(const [otherId, other] of this.localPackageRecords) {
-      if(otherId === id || other.package.name !== name) continue
-      other.monitor?.dispose()
-      this.localPackageRecords.delete(otherId)
-      void this.localPackageWorker.unregister(otherId).catch(() => {
-        // The newly selected folder is already registered; stale worker state
-        // does not prevent it from becoming the active package with this name.
-      })
-    }
-  }
-
-  private localPackageWarning(pkg: WebWriterPackage, warnings: LocalPackageWarning[]) {
-    if(!warnings.length) return ""
-    const missingBundle = warnings.find(warning => warning.code === "missing-bundle")
-    return missingBundle
-      ? `${pkg.label} has no bundle yet. Build the package to make its exports available.`
-      : `${pkg.label}: ${warnings.map(warning => warning.message).join(" ")}`
-  }
-
-  private async watchLocalPackage(record: LocalPackageRecord) {
-    const paths = localPackageWatchPaths(record.package.manifest)
-    if(record.monitor) {
-      await record.monitor.setPaths(paths)
-      return
-    }
-    const monitor = new LocalPackageMonitor(record.directory as unknown as LocalPackageDirectory, {
-      onChange: () => void this.refreshLocalPackage(record.id),
-    })
-    record.monitor = monitor
-    await monitor.start(paths)
-  }
-
-  private async refreshLocalPackage(id: string) {
-    if(this.localPackageReloads.has(id)) {
-      this.localPackageReloadPending.add(id)
-      return
-    }
-    this.localPackageReloads.add(id)
-    try {
-      do {
-        this.localPackageReloadPending.delete(id)
-        await this.performLocalPackageRefresh(id)
-      } while(this.localPackageReloadPending.has(id))
-    }
-    finally {
-      this.localPackageReloadPending.delete(id)
-      this.localPackageReloads.delete(id)
-    }
-  }
-
-  private async performLocalPackageRefresh(id: string) {
-    const previous = this.localPackageRecords.get(id)
-    if(!previous) return
-    try {
-      const revision = previous.revision + 1
-      let result: Awaited<ReturnType<typeof loadLocalPackage>>
-      try {
-        result = await loadLocalPackage(previous.directory as unknown as LocalPackageDirectory, {
-          urlFor: path => localPackageUrl(id, path, revision),
-          locale: document.documentElement.lang || navigator.language || "en",
-        })
-      }
-      catch(error) {
-        previous.error = error instanceof Error ? error.message : String(error)
-        this.localPackageError = `${previous.package.label}: ${previous.error}`
-        await this.watchLocalPackage(previous)
-        this.updateLocalPackageList()
-        return
-      }
-
-      // Build tools often replace the output file rather than updating it in
-      // place. Keep the last working package while that short missing-file
-      // window is visible, but continue polling/observing for the finished build.
-      if(!result.package.members.length && previous.package.members.length) {
-        previous.warnings = result.warnings
-        previous.error = this.localPackageWarning(result.package, result.warnings)
-        this.localPackageError = previous.error
-        await this.watchLocalPackage(previous)
-        return
-      }
-
-      const nextRecord: LocalPackageRecord = {
-        ...previous,
-        package: result.package,
-        warnings: result.warnings,
-        revision,
-        error: undefined,
-      }
-      this.replaceLocalPackageName(id, result.package.name)
-      this.localPackageRecords.set(id, nextRecord)
-      this.updateLocalPackageList()
-      await this.watchLocalPackage(nextRecord)
-      this.localPackageError = this.localPackageWarning(result.package, result.warnings)
-
-      if(nextRecord.enabled && nextRecord.autoReload && result.package.members.length) {
-        const nextPackages = this.installedPackages.filter(candidate => (
-          candidate.name !== previous.package.name && candidate.name !== result.package.name
-        ))
-        nextPackages.push(result.package)
-        await this.reloadEditor(nextPackages)
-      }
-    }
-    catch(error) {
-      this.localPackageError = error instanceof Error ? error.message : String(error)
-    }
-  }
-
   private async addLocalPackage() {
     const picker = (window as FilePickerWindow).showDirectoryPicker
     if(!picker) {
@@ -3293,64 +2864,7 @@ export class DomEditor extends LitElement {
       // The picker is deliberately the first awaited operation: browsers
       // require it to run within the Load button's user activation.
       const directory = await picker.call(window, {id: "webwriter-develop-package", mode: "readwrite"})
-      const previous = await this.matchingLocalPackage(directory)
-      const id = previous?.id ?? localPackageId()
-      await this.localPackageWorker.start()
-      await this.localPackageWorker.register(id, directory as unknown as LocalPackageDirectoryHandle)
-
-      const revision = (previous?.revision ?? -1) + 1
-      let loaded: Awaited<ReturnType<typeof loadLocalPackage>>
-      try {
-        loaded = await loadLocalPackage(directory as unknown as LocalPackageDirectory, {
-          urlFor: path => localPackageUrl(id, path, revision),
-          locale: document.documentElement.lang || navigator.language || "en",
-        })
-      }
-      catch(error) {
-        const pkg = previous?.package ?? localPackagePlaceholder(directory, id)
-        const record: LocalPackageRecord = {
-          id,
-          directory,
-          package: pkg,
-          warnings: previous?.warnings ?? [],
-          revision,
-          enabled: true,
-          monitor: previous?.monitor,
-          error: error instanceof Error ? error.message : String(error),
-          autoReload: previous?.autoReload ?? true,
-        }
-        this.localPackageRecords.set(id, record)
-        this.updateLocalPackageList()
-        await this.watchLocalPackage(record)
-        this.selectLocalPackage(record.package.name)
-        this.localPackageError = `${pkg.label}: ${record.error}`
-        return
-      }
-
-      const record: LocalPackageRecord = {
-        id,
-        directory,
-        package: loaded.package,
-        warnings: loaded.warnings,
-        revision,
-        enabled: true,
-        monitor: previous?.monitor,
-        autoReload: previous?.autoReload ?? true,
-      }
-      this.replaceLocalPackageName(id, loaded.package.name)
-      this.localPackageRecords.set(id, record)
-      this.updateLocalPackageList()
-      await this.watchLocalPackage(record)
-      this.selectLocalPackage(record.package.name)
-      this.localPackageError = this.localPackageWarning(loaded.package, loaded.warnings)
-
-      if(loaded.package.members.length) {
-        const nextPackages = this.installedPackages.filter(candidate => (
-          candidate.name !== previous?.package.name && candidate.name !== loaded.package.name
-        ))
-        nextPackages.push(loaded.package)
-        await this.reloadEditor(nextPackages)
-      }
+      await this.localPackageManager.load(directory)
     }
     catch(error) {
       if(!isAbortError(error)) this.localPackageError = error instanceof Error ? error.message : String(error)
@@ -3388,7 +2902,7 @@ export class DomEditor extends LitElement {
         ? [...this.installedPackages.filter(candidate => candidate.name !== pkg.name), resolvedPackage]
         : this.installedPackages.filter(candidate => candidate.name !== pkg.name)
       await this.reloadEditor(nextPackages)
-      const localRecord = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === pkg.name)
+      const localRecord = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === pkg.name)
       if(localRecord) localRecord.enabled = installed
       this.packages = this.packages.map(candidate => candidate.name === resolvedPackage.name ? resolvedPackage : candidate)
       return installed ? resolvedPackage : undefined
@@ -4713,68 +4227,20 @@ export class DomEditor extends LitElement {
   }
 
   private async restoreLocalPackages() {
-    const worker = this.localPackageWorker as LocalPackageWorkerClient & {
-      storedDirectories?: () => Promise<Array<{id: string, handle: LocalPackageDirectoryHandle}>>
-    }
-    if(!worker.storedDirectories) return
-    try {
-      const stored = await worker.storedDirectories()
-      if(stored.length) await worker.start()
-      const restored = new Map<string, WebWriterPackage>()
-      for(const entry of stored) {
-        if(this.localPackageRecords.has(entry.id)) continue
-        try {
-          if(!await requestLocalPackageDirectoryPermission(entry.handle)) {
-            throw new Error("Permission to read this package folder was denied. Grant access to the saved folder to continue.")
-          }
-          const result = await loadLocalPackage(entry.handle as unknown as LocalPackageDirectory, {
-            urlFor: path => localPackageUrl(entry.id, path, 0),
-            locale: document.documentElement.lang || navigator.language || "en",
-          })
-          const record: LocalPackageRecord = {
-            id: entry.id,
-            directory: entry.handle as unknown as FileSystemDirectoryHandle,
-            package: result.package,
-            warnings: result.warnings,
-            revision: 0,
-            enabled: true,
-            autoReload: true,
-          }
-          this.replaceLocalPackageName(entry.id, result.package.name)
-          this.localPackageRecords.set(entry.id, record)
-          restored.set(result.package.name, result.package)
-          await this.watchLocalPackage(record)
-        }
-        catch(error) {
-          const placeholder = localPackagePlaceholder(entry.handle as unknown as FileSystemDirectoryHandle, entry.id)
-          const record: LocalPackageRecord = {
-            id: entry.id,
-            directory: entry.handle as unknown as FileSystemDirectoryHandle,
-            package: placeholder,
-            warnings: [],
-            revision: 0,
-            enabled: true,
-            autoReload: true,
-            error: error instanceof Error ? error.message : String(error),
-          }
-          this.localPackageRecords.set(entry.id, record)
-          this.localPackageError = `${placeholder.label}: ${record.error}`
-          await this.watchLocalPackage(record)
-        }
-      }
-      this.updateLocalPackageList()
-      const firstRestored = this.localPackageRecords.values().next().value as LocalPackageRecord | undefined
-      if(!this.selectedLocalPackageName && firstRestored) this.selectLocalPackage(firstRestored.package.name)
-      if(restored.size) {
-        const restoredNames = new Set(restored.keys())
+    const restored = await this.localPackageManager.restore()
+    const firstRestored = this.localPackageManager.records.values().next().value
+    if(!this.selectedLocalPackageName && firstRestored) this.selectLocalPackage(firstRestored.package.name)
+    if(restored.length) {
+      const restoredNames = new Set(restored.map(pkg => pkg.name))
+      try {
         await this.reloadEditor([
           ...this.installedPackages.filter(candidate => !restoredNames.has(candidate.name)),
-          ...restored.values(),
+          ...restored,
         ])
       }
-    }
-    catch(error) {
-      this.localPackageError = error instanceof Error ? error.message : String(error)
+      catch(error) {
+        this.localPackageError = error instanceof Error ? error.message : String(error)
+      }
     }
   }
 
@@ -4791,10 +4257,7 @@ export class DomEditor extends LitElement {
     this.restoreInstalledPackages()
     void this.loadPackageCatalog()
     void this.restoreLocalPackages()
-    this.localPackageRecords.forEach(record => {
-      record.monitor = undefined
-      void this.watchLocalPackage(record)
-    })
+    this.localPackageManager.connect()
   }
 
   disconnectedCallback() {
@@ -4805,10 +4268,7 @@ export class DomEditor extends LitElement {
     window.removeEventListener("message", this.handleEditorMessage)
     window.removeEventListener("beforeunload", this.handleBeforeUnload)
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
-    this.localPackageRecords.forEach(record => {
-      record.monitor?.dispose()
-      record.monitor = undefined
-    })
+    this.localPackageManager.disconnect()
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.dirtyTrackingTimer = undefined
     this.dirtyTrackingReady = false
