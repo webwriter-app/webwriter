@@ -3,24 +3,18 @@ import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
 import type {DOMChangePreview} from "../domdoc"
 import {stripActiveContent} from "../active-content"
 import {isMarkElement} from "../marks"
-import {cloneRangeContents, cloneWithoutEditorMarkers, removeEditorMarker, uiMotionDisabled, atomicEditingContainer} from "../utility"
-import {aiPage, type AIReadDocumentOptions, type AIInspectOptions} from "../ai-tools"
+import {cloneRangeContents, cloneWithoutEditorMarkers, removeEditorMarker, uiMotionDisabled, atomicEditingContainer, cloneInert, getInertDocument} from "../utility"
+import {aiPage, type AIReadDocumentOptions, type AIInspectOptions, type AIChangeOperation, type AIInsertPosition} from "../ai-tools"
 import {htmlElementCapabilities} from "../html-element-capabilities"
 import {elementStyleCategories} from "../element-styles"
 import {layoutPresets} from "../layouts"
 
 const maximumAIHTMLLength = 1_000_000
 const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
-
-/** Removes active content from model-authored HTML before it enters the live
- * document. Existing document code remains untouched unless the user approves
- * a full replacement, whose replacement body is sanitized here as well. */
-const sanitizeAIContent = (root: ParentNode) => {
-  return stripActiveContent(root, {
-    unwrapUnsupportedElements: true,
-    removeAttribute: attribute => aiOnlyAttributes.has(attribute.name.toLowerCase()),
-    removeClass: className => className.startsWith("◆"),
-  })
+const aiHTMLInsertion = (tag: string) => {
+  const capability = htmlElementCapabilities[tag as keyof typeof htmlElementCapabilities]
+  return ["dialog", "hgroup", "iframe"].includes(tag) || Boolean(capability && !capability.intentionallyRestricted
+    && capability.insertion !== "none" && !["style", "link", "base", "meta", "title", "object", "embed"].includes(tag))
 }
 
 const checkedAIHTML = (html: unknown) => {
@@ -45,7 +39,7 @@ export class StateFeature extends EditorFeature {
   private activeAIEditId: string | null = null
   private aiEditSequence = 0
   private readonly aiEditMarkers = new Map<string, string>()
-  private readonly aiEditResults = new Map<string, {scope: "document" | "selection", removedUnsafeItems: number}>()
+  private readonly aiEditResults = new Map<string, {scope: "document" | "selection" | "operations", removedUnsafeItems: number}>()
   private reviewToolbar: HTMLElement | null = null
   private aiPreview: DOMChangePreview | null = null
   private htmlEditRange: Range | null = null
@@ -80,10 +74,10 @@ export class StateFeature extends EditorFeature {
     return target.node
   }
 
-  private aiNodeInfo(node: Node) {
+  private aiNodeInfo(node: Node, complete = false) {
     const element = node instanceof Element ? node : null
     return {
-      target: this.aiTarget(node, false),
+      target: this.aiTarget(node, complete),
       nodeType: node.nodeType,
       tagName: element?.localName ?? null,
       namespaceURI: element?.namespaceURI ?? null,
@@ -127,13 +121,190 @@ export class StateFeature extends EditorFeature {
         const html = this.aiHTML(element)
         const clone = cloneWithoutEditorMarkers(element, false, {inert: true})
         return {
-          ...this.aiNodeInfo(element), target: this.aiTarget(element, html.length <= 10000),
+          ...this.aiNodeInfo(element, html.length <= 10000),
           html: html.slice(0, 10000), truncated: html.length > 10000,
           attributes: Object.fromEntries(Array.from(clone.attributes, attr => [attr.name, attr.value])),
           style: this.editor.features.manipulation.getStyleState(properties, element, false),
         }
       }),
       total: elements.length, nextOffset: offset + limit < elements.length ? offset + limit : undefined,
+    }
+  }
+
+  private aiInsertionRange(target: Node, position: AIInsertPosition) {
+    const range = document.createRange()
+    if(position === "before" || position === "after") {
+      if(target === document.body) throw new Error("Cannot insert outside the document body")
+      range.selectNode(target)
+      range.collapse(position === "before")
+    }
+    else if(position === "prepend" || position === "append") {
+      if(!(target instanceof Element) || atomicEditingContainer(target, this.editor.schema) === target) throw new Error("Insert beside an atomic element, not inside it")
+      range.selectNodeContents(target)
+      range.collapse(position === "prepend")
+    }
+    else throw new TypeError("Choose before, after, prepend, or append")
+    return range
+  }
+
+  private aiFragment(html: string, range: Range, availableWidgets: string[]) {
+    const context = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement!
+    const inert = getInertDocument(context)
+    const parsingContext = cloneInert(context)
+    parsingContext.innerHTML = checkedAIHTML(html)
+    const fragment = inert.createDocumentFragment()
+    fragment.append(...Array.from(parsingContext.childNodes))
+    const existing = cloneRangeContents(range)
+    this.editor.clearEditingArtifacts(existing)
+    const retainedElements = Array.from(existing.querySelectorAll("*"))
+    if(stripActiveContent(fragment, {allowIframes: true, removeClass: name => name.startsWith("◆"), removeAttribute: attr => aiOnlyAttributes.has(attr.name.toLowerCase())})) {
+      throw new Error("The proposed HTML contains unsupported active content or editor attributes; remove them and retry")
+    }
+    const visit = (root: ParentNode) => {
+      for(const element of root.querySelectorAll("*")) {
+        if(element.hasAttribute("is")) throw new Error("Customized built-in elements are not available for AI insertion")
+        const existingIndex = retainedElements.findIndex(authored => authored.isEqualNode(element))
+        if(existingIndex >= 0) retainedElements.splice(existingIndex, 1)
+        else if(element.namespaceURI === "http://www.w3.org/1999/xhtml") {
+          if(element.localName.includes("-")) {
+            if(!availableWidgets.includes(element.localName) || !customElements.get(element.localName)) throw new Error(`Widget ${element.localName} is unavailable or undocumented; read list_widgets and its README, or use native HTML`)
+          }
+          else if(!aiHTMLInsertion(element.localName)) throw new Error(`AI insertion of <${element.localName}> is unavailable; read editor capabilities and choose a supported element`)
+        }
+        if(element.localName === "template") visit((element as HTMLTemplateElement).content)
+      }
+    }
+    visit(fragment)
+    return fragment
+  }
+
+  private prepareAIOperations(operations: AIChangeOperation[], availableWidgets: string[]) {
+    if(!Array.isArray(operations) || !operations.length || operations.length > 50) throw new TypeError("Provide between 1 and 50 focused operations")
+    if(JSON.stringify(operations).length > maximumAIHTMLLength) throw new RangeError("The proposed operation batch is too large")
+    if(!Array.isArray(availableWidgets) || availableWidgets.some(tag => typeof tag !== "string")) throw new TypeError("Invalid widget capabilities")
+    const invalidated = new Set<Node>()
+    const targets = new Set<Node>()
+    const resolve = (id: string) => {
+      const node = this.resolveAITarget(id, true)
+      if([...invalidated].some(previous => previous === node || previous.contains(node))) throw new Error("Operations overlap a removed/replaced target; combine the changes into one operation")
+      targets.add(node)
+      return node
+    }
+    const prepared = operations.map(operation => {
+      if(!operation || typeof operation !== "object") throw new TypeError("Invalid document operation")
+      if(operation.type === "replace_selection") {
+        const saved = this.aiRanges.get(operation.selectionId)
+        if(!saved || saved.html.length > 100000 || !saved.range.startContainer.isConnected || !saved.range.endContainer.isConnected
+          || [...saved.identity].some(node => !node.isConnected) || this.serializeHTMLRange(saved.range) !== saved.html) throw new Error("The saved selection changed; read the current selection again")
+        const range = saved.range.cloneRange()
+        for(const endpoint of [range.startContainer, range.endContainer]) {
+          if(atomicEditingContainer(endpoint, this.editor.schema)) throw new Error("Select the whole atomic element before replacing it")
+          if([...invalidated].some(node => node.contains(endpoint))) throw new Error("Operations overlap the saved selection")
+        }
+        const fragment = this.aiFragment(operation.html, range, availableWidgets)
+        saved.identity.forEach(node => invalidated.add(node))
+        const fallback = range.commonAncestorContainer
+        targets.add(fallback)
+        return () => {
+          if(!range.startContainer.isConnected || !range.endContainer.isConnected
+            || [...saved.identity].some(node => !node.isConnected) || this.serializeHTMLRange(range) !== saved.html) throw new Error("An earlier operation changed the saved selection; combine the overlapping changes")
+          const nodes = Array.from(fragment.childNodes)
+          range.deleteContents()
+          range.insertNode(fragment)
+          nodes.forEach(node => targets.add(node))
+        }
+      }
+      const target = resolve(operation.target)
+      if(operation.type === "set_text") {
+        if(typeof operation.text !== "string" || operation.text.length > maximumAIHTMLLength) throw new TypeError("Provide bounded replacement text")
+        if(target === document.body || target instanceof Element && (target.children.length || atomicEditingContainer(target, this.editor.schema))) throw new Error("set_text needs a text node or a text-only native element")
+        return () => { target.textContent = operation.text }
+      }
+      if(operation.type === "set_attributes") {
+        if(!(target instanceof Element) || !operation.attributes || typeof operation.attributes !== "object" || Array.isArray(operation.attributes)) throw new TypeError("Provide an element and authored attributes")
+        const clone = cloneInert(target)
+        if(target.localName.includes("-") && !availableWidgets.includes(target.localName)) throw new Error("Read this widget's README before configuring it")
+        for(const [name, value] of Object.entries(operation.attributes)) {
+          if(value !== null && typeof value !== "string" || name === "style") throw new TypeError("Use strings/null for attributes and set_styles for CSS")
+          this.editor.features.manipulation.setAuthoredElementAttribute(clone, name, value)
+        }
+        return () => Object.entries(operation.attributes).forEach(([name, value]) => this.editor.features.manipulation.setAuthoredElementAttribute(target, name, value))
+      }
+      if(operation.type === "set_styles" || operation.type === "set_layout") {
+        if(!(target instanceof Element)) throw new TypeError("Styles need an element target")
+        if(target.localName.includes("-") && !availableWidgets.includes(target.localName)) throw new Error("Read this widget's README before configuring it")
+        const preset = operation.type === "set_layout" ? layoutPresets.find(preset => preset.id === operation.preset) : undefined
+        if(operation.type === "set_layout" && (!preset || atomicEditingContainer(target, this.editor.schema) === target)) throw new Error("Choose an available layout preset and a native container")
+        const styles = operation.type === "set_styles" ? operation.styles : preset!.styles
+        const entries = this.editor.features.manipulation.validateElementStyles(styles)
+        const fragment = getInertDocument().createDocumentFragment()
+        const probe = getInertDocument().createElement("div")
+        for(const {name, value, priority} of entries) if(value !== null) probe.style.setProperty(name, value, priority)
+        fragment.append(probe)
+        if(stripActiveContent(fragment)) throw new Error("Unsupported active CSS in proposal")
+        return () => {
+          if(!document.body.contains(target)) throw new Error("The style target is unavailable")
+          this.editor.features.manipulation.setElementStyles(target, styles)
+          if(preset) for(const child of target.children) this.editor.features.manipulation.setElementStyles(child, preset.itemStyles)
+        }
+      }
+      if(operation.type === "remove") {
+        if(target === document.body) throw new Error("Cannot remove the document body")
+        invalidated.add(target)
+        targets.add(target.parentNode!)
+        return () => target.parentNode!.removeChild(target)
+      }
+      if(operation.type === "move") {
+        if(target === document.body) throw new Error("Cannot move the document body")
+        const destination = resolve(operation.destination)
+        if(target === destination || target.contains(destination)) throw new Error("Cannot move a node into itself")
+        this.aiInsertionRange(destination, operation.position)
+        invalidated.add(target)
+        return () => this.aiInsertionRange(destination, operation.position).insertNode(target)
+      }
+      if(operation.type === "insert_widget") throw new Error("Resolve the widget package before previewing")
+      if(!["insert_html", "replace_html", "replace_document", "insert_layout"].includes(operation.type)) throw new TypeError("Unsupported document operation")
+      let range: Range
+      let source: string
+      if(operation.type === "insert_html" || operation.type === "insert_layout") {
+        range = this.aiInsertionRange(target, operation.position)
+        if(operation.type === "insert_layout") {
+          const preset = layoutPresets.find(preset => preset.id === operation.preset)
+          if(!preset) throw new Error("Choose an available layout preset")
+          const section = getInertDocument().createElement("section")
+          Object.entries(preset.styles).forEach(([name, value]) => section.style.setProperty(name, value))
+          for(let index = 0; index < preset.items; index++) {
+            const paragraph = getInertDocument().createElement("p")
+            Object.entries(preset.itemStyles).forEach(([name, value]) => paragraph.style.setProperty(name, value))
+            section.append(paragraph)
+          }
+          source = section.outerHTML
+        }
+        else source = operation.html
+      }
+      else {
+        if((operation.type === "replace_document") !== (target === document.body)) throw new Error("Use replace_document only for an explicit whole-body rewrite")
+        range = document.createRange()
+        if(target === document.body) range.selectNodeContents(target)
+        else range.selectNode(target)
+        invalidated.add(target)
+        source = operation.html
+      }
+      const fragment = this.aiFragment(source, range, availableWidgets)
+      return () => {
+        const nodes = Array.from(fragment.childNodes)
+        const current = operation.type === "insert_html" || operation.type === "insert_layout"
+          ? this.aiInsertionRange(target, operation.position) : document.createRange()
+        if(operation.type === "replace_document") current.selectNodeContents(target)
+        else if(operation.type === "replace_html") current.selectNode(target)
+        current.deleteContents()
+        current.insertNode(fragment)
+        nodes.forEach(node => targets.add(node))
+      }
+    })
+    return () => {
+      prepared.forEach(apply => apply())
+      return {scope: "operations" as const, removedUnsafeItems: 0, nodes: [...targets].filter(node => document.body.contains(node))}
     }
   }
 
@@ -455,13 +626,18 @@ export class StateFeature extends EditorFeature {
   }
 
   private previewAIEdit(editId: string, summary: string, scope: "document" | "selection", html: string) {
+    return this.previewAIChange(editId, summary, () => scope === "document" ? this.replaceDocument(html) : this.replaceSelection(html))
+  }
+
+  private previewAIChange(editId: string, summary: string, apply: () => {scope: "document" | "selection" | "operations", removedUnsafeItems: number, nodes: Node[]}) {
     if(this.activeAIEditId) throw new Error("Another AI document change is already awaiting review")
+    if(this.editor.isEditingLocked) throw new Error("The editor is currently locked")
     const before = this.editor.toHTML(true)
     const preview = this.editor.doc.beginDOMPreview()
     try {
-      const replacement = scope === "document" ? this.replaceDocument(html) : this.replaceSelection(html)
+      const replacement = apply()
       if(this.editor.toHTML(true) === before) throw new Error("The proposal does not change the document")
-      this.markAIEdit(editId, replacement.nodes, "fallbackTarget" in replacement ? replacement.fallbackTarget : document.body)
+      this.markAIEdit(editId, replacement.nodes, document.body)
       this.aiPreview = preview
       this.aiEditResults.set(editId, {scope: replacement.scope, removedUnsafeItems: replacement.removedUnsafeItems})
       this.lockForAIReview(editId, summary)
@@ -473,6 +649,7 @@ export class StateFeature extends EditorFeature {
       this.aiPreview = null
       this.clearAIEditMarkers(editId)
       this.aiEditResults.delete(editId)
+      this.unlockAfterAIReview(editId)
       throw error
     }
   }
@@ -489,6 +666,10 @@ export class StateFeature extends EditorFeature {
     return {status: "located"}
   }
   actions = {
+    previewAIOperations: ({editId, summary, operations, availableWidgets = []}: {type: "previewAIOperations", editId: string, summary: string, operations: AIChangeOperation[], availableWidgets?: string[]}) => {
+      const apply = this.prepareAIOperations(operations, availableWidgets)
+      return this.previewAIChange(editId, summary, apply)
+    },
     snapshotState: ({}: {type: "snapshotState"}) => this.editor.doc.snapshot(),
     serializeDocument: ({offline = false}: {type: "serializeDocument", offline?: boolean}) =>
       this.editor.serializeHTML(offline),
@@ -500,14 +681,15 @@ export class StateFeature extends EditorFeature {
         documentModel: "The live authored DOM is authoritative. Preserve unfamiliar valid content and custom elements.",
         ...(topic === "overview" ? {
           topics: ["elements", "styles", "layouts"],
-          operations: ["replace_current_document", "replace_current_selection"],
-          restrictions: ["Read current targets before editing", "Widget internals are atomic", "Head writes are unavailable", "HTML imports currently unwrap dialog/hgroup; inspect element support"],
+          proposalTool: "queue_document_change",
+          restrictions: ["Read complete current targets before editing", "Widget internals are atomic; read README before configuring hosts", "Head writes are unavailable", "Do not add unsupported active content"],
         } : {}),
         ...(topic === "elements" ? {elements: Object.fromEntries(Object.entries(htmlElementCapabilities).map(([tag, capability]) => [tag, {
-          ...capability, aiInsertion: !capability.intentionallyRestricted && capability.insertion !== "none" && !["dialog", "hgroup", "style", "link", "base", "meta", "title"].includes(tag),
-          ...(["dialog", "hgroup"].includes(tag) ? {aiRestriction: "Current HTML import unwraps this element"} : {}),
+          ...capability,
+          aiInsertion: aiHTMLInsertion(tag),
+          ...(["dialog", "hgroup"].includes(tag) ? {aiNote: "The AI proposal path preserves this element without transfer/schema unwrapping"} : {}),
         }]))} : {}),
-        ...(topic === "styles" ? {categories: elementStyleCategories, writes: "Authored HTML styles only; computed CSS is read-only"} : {}),
+        ...(topic === "styles" ? {categories: elementStyleCategories, writes: "Use set_styles on an exact target; computed CSS and document head are read-only"} : {}),
         ...(topic === "layouts" ? {presets: layoutPresets, guidance: "Use an existing layout container when possible; sections are only necessary for grouping layout items"} : {}),
       }
     },

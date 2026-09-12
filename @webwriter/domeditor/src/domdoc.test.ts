@@ -421,6 +421,30 @@ describe("document head synchronization", () => {
 })
 
 describe("Yjs to DOM synchronization", () => {
+  it("preserves existing and inserted node instances across a preview and acceptance", () => {
+    const {root, shared} = createShared('<p>Before</p><!--keep--><test-widget></test-widget>')
+    const paragraph = root.firstChild!, comment = paragraph.nextSibling!, widget = root.lastChild!
+    paragraph.textContent = "Just edited"
+    const preview = shared.beginDOMPreview()
+    expect(root.firstChild).toBe(paragraph)
+    expect(paragraph.textContent).toBe("Just edited")
+    expect(root.lastChild).toBe(widget)
+    const inserted = document.createElement("another-widget")
+    root.append(inserted)
+    paragraph.textContent = "Proposed"
+    preview.accept("identity")
+    expect(root.firstChild).toBe(paragraph)
+    expect(paragraph.nextSibling).toBe(comment)
+    expect(comment.nextSibling).toBe(widget)
+    expect(root.lastChild).toBe(inserted)
+    const rejected = shared.beginDOMPreview()
+    paragraph.textContent = "Rejected"
+    rejected.reject()
+    expect(root.firstChild).toBe(paragraph)
+    expect(paragraph.textContent).toBe("Proposed")
+    expect(root.lastChild).toBe(inserted)
+  })
+
   it("does not reactivate a stopped observer when DOM synchronization resumes", async () => {
     const {root, shared} = createShared("<p>Hello</p>")
     shared.stopObserve()

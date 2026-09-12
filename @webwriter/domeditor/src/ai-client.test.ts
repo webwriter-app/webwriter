@@ -113,9 +113,9 @@ describe("OpenAI-compatible AI client", () => {
       .mockResolvedValueOnce(response({choices: [{message: {content: "What style would you like?"}}]}))
       .mockResolvedValueOnce(response({choices: [{message: {tool_calls: [
         {id: "read", function: {name: "read_current_document", arguments: "{}"}},
-        {id: "edit", function: {name: "replace_current_document", arguments: JSON.stringify({summary: "Add a heading", html: "<h1>Hello</h1>"})}},
+        {id: "edit", function: {name: "queue_document_change", arguments: JSON.stringify({summary: "Add a heading", operations: [{type: "replace_document", target: "body", html: "<h1>Hello</h1>"}]})}},
       ]}}]}))
-    const toolHandler = vi.fn(async call => call.name.startsWith("read_") ? {html: ""} : {status: "queued"})
+    const toolHandler = vi.fn(async call => call.name.startsWith("read_") ? {html: "", target: "body"} : {status: "queued"})
     await expect(completeAIConversation({
       provider: {...createAIProvider("ollama"), customInstructions: ""}, model: "test", effort: "low",
       messages: [{role: "user", content: "Improve this"}], toolHandler, fetch,
@@ -128,7 +128,7 @@ describe("OpenAI-compatible AI client", () => {
 
   it("does not count a failed or unread proposal as success", async () => {
     const fetch = vi.fn().mockImplementation(async () => response({choices: [{message: {tool_calls: [
-      {id: "edit", function: {name: "replace_current_document", arguments: JSON.stringify({summary: "Add a heading", html: "<h1>Hello</h1>"})}},
+      {id: "edit", function: {name: "queue_document_change", arguments: JSON.stringify({summary: "Add a heading", operations: [{type: "replace_document", target: "body", html: "<h1>Hello</h1>"}]})}},
     ]}}]}))
     const toolHandler = vi.fn()
     await expect(completeAIConversation({

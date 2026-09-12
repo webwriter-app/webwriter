@@ -37,7 +37,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {isWidgetShadowInteraction} from "../utility"
+import {isWidgetShadowInteraction, getInertDocument} from "../utility"
 import {stripActiveContent} from "../active-content"
 import {
   imageMapAreaAttributeOptions,
@@ -107,7 +107,7 @@ import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {LocalPackageManager, type LocalPackageRecord} from "../local-package-manager"
 import {defaultDocumentTheme, documentTheme} from "../document-themes"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
-import {aiPage} from "../ai-tools"
+import {aiPage, type AIChangeOperation} from "../ai-tools"
 import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "../table"
 import {
   isGraphicArrangeOperation,
@@ -1826,7 +1826,10 @@ export class DomEditor extends LitElement {
   }
 
   private readonly handleAIDocumentTool: AIDocumentToolHandler = async (call: AIDocumentToolCall, options = {}) => {
-    if(call.name === "read_editor_capabilities") return this.execute({...call.arguments, type: "readAIEditorCapabilities"}, options)
+    if(call.name === "read_editor_capabilities") {
+      if(call.id.endsWith("/context")) this.aiDocumentedPackages.clear()
+      return this.execute({...call.arguments, type: "readAIEditorCapabilities"}, options)
+    }
     if(call.name === "inspect_elements") return this.execute({...call.arguments, type: "inspectAIElements"}, options)
     if(call.name === "list_widgets") return this.listAIWidgets(call.arguments)
     if(call.name === "read_widget_documentation") return this.readAIWidgetDocumentation(call.arguments, options)
@@ -1847,12 +1850,52 @@ export class DomEditor extends LitElement {
     throw new TypeError(`Unsupported document tool: ${String(call.name)}`)
   }
 
-  private readonly handleAIEditReview: AIEditReviewHandler = async (action, call) => {
+  private readonly handleAIEditReview: AIEditReviewHandler = async (action, call, options = {}) => {
     const editId = call.id
     if(action === "accept") return await this.execute({type: "acceptAIEdit", editId})
     if(action === "reject") return await this.execute({type: "rejectAIEdit", editId})
     if(action === "goto") return await this.execute({type: "gotoAIEdit", editId})
     if(action === "undo") return await this.execute({type: "undoAIEdit", editId})
+
+    if(call.name === "queue_document_change") {
+      options.signal?.throwIfAborted()
+      const {summary, operations} = call.arguments
+      if(typeof summary !== "string" || !Array.isArray(operations) || !operations.length || operations.length > 50) throw new TypeError("Provide a summary and 1–50 focused changes")
+      const resolved: AIChangeOperation[] = []
+      for(const operation of operations as AIChangeOperation[]) {
+        if(!operation || typeof operation !== "object") throw new TypeError("Invalid document operation")
+        if(operation.type !== "insert_widget") { resolved.push(operation); continue }
+        const pkg = this.installedPackages.find(pkg => pkg.members.some(member => member.id === operation.memberId))
+        const member = pkg?.members.find(member => member.id === operation.memberId)
+        const local = pkg && [...this.localPackageManager.records.values()].find(record => record.package.name === pkg.name && record.package.version === pkg.version)
+        if(!pkg || !member?.insertable || local?.error) throw new Error("The requested widget/snippet is unavailable; read list_widgets again")
+        if(!this.aiDocumentedPackages.has(`${pkg.name}@${pkg.version}/${local?.revision ?? "published"}`)) throw new Error("Read the widget package README before inserting it")
+        let html: string
+        if(member.kind === "snippet") html = await this.packageRegistry.fetchSnippet(member)
+        else {
+          if(!member.tagName || !this.editorWindow?.customElements.get(member.tagName)) throw new Error("The widget has not registered in the editor")
+          const element = getInertDocument().createElement(member.tagName)
+          if(operation.attributes !== undefined && (!operation.attributes || typeof operation.attributes !== "object" || Array.isArray(operation.attributes))) throw new TypeError("Provide widget attributes by name")
+          for(const [name, value] of Object.entries(operation.attributes ?? {})) {
+            if(value !== null && typeof value !== "string") throw new TypeError("Widget attributes must be strings or null")
+            if(value !== null) element.setAttribute(name, value)
+          }
+          if(operation.html !== undefined && typeof operation.html !== "string") throw new TypeError("Widget light DOM must be HTML text")
+          if(operation.html) element.innerHTML = operation.html
+          html = element.outerHTML
+        }
+        resolved.push({type: "insert_html", target: operation.target, position: operation.position, html})
+      }
+      // Recheck readiness after asynchronous snippet resolution and before the
+      // iframe validates targets. Package reloads cannot authorize stale tags.
+      const availableWidgets = this.installedPackages.flatMap(pkg => {
+        const local = [...this.localPackageManager.records.values()].find(record => record.package.name === pkg.name && record.package.version === pkg.version)
+        return !local?.error && this.aiDocumentedPackages.has(`${pkg.name}@${pkg.version}/${local?.revision ?? "published"}`)
+          ? pkg.members.flatMap(member => member.insertable && member.tagName && this.editorWindow?.customElements.get(member.tagName) ? [member.tagName] : []) : []
+      })
+      options.signal?.throwIfAborted()
+      return this.execute({type: "previewAIOperations", editId, summary, operations: resolved, availableWidgets})
+    }
 
     const html = call.arguments.html
     const summary = call.arguments.summary

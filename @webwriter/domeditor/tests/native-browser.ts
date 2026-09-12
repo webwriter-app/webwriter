@@ -388,6 +388,54 @@ await check("transformed grid geometry withholds misleading resize handles", asy
   finally { removeLayout(section) }
 })
 
+await check("focused AI previews preserve widgets, contextual HTML, and rendered styles", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.id = "ai-native-paragraph"
+  paragraph.textContent = "Before AI"
+  const table = document.createElement("table")
+  table.innerHTML = '<tbody><tr id="ai-native-row"><td>A</td></tr></tbody>'
+  fixture.append(paragraph, table)
+  const widget = fixture.querySelector("native-audit-widget")!
+  const target = (selector: string) => (editor.features.state.actions.inspectAIElements({type: "inspectAIElements", selector})).elements[0].target
+  try {
+    const paragraphTarget = target("#ai-native-paragraph")
+    editor.features.state.actions.previewAIOperations({type: "previewAIOperations", editId: "native-ai", summary: "Improve the exercise.", availableWidgets: ["native-audit-widget"], operations: [
+      {type: "set_text", target: paragraphTarget, text: "Proposed AI"},
+      {type: "set_styles", target: paragraphTarget, styles: {color: "rgb(255, 0, 0)"}},
+      {type: "insert_html", target: target("#ai-native-row"), position: "append", html: "<td>B</td>"},
+      {type: "insert_html", target: paragraphTarget, position: "after", html: '<native-audit-widget id="ai-native-widget"></native-audit-widget>'},
+    ]})
+    await layoutFrame()
+    const inserted = fixture.querySelector("#ai-native-widget")!
+    assert(paragraph.isConnected && widget.isConnected, "preview replaced existing nodes")
+    assert(inserted.shadowRoot?.querySelector("button"), "proposed widget did not upgrade on insertion")
+    assert(table.querySelectorAll("td").length === 2, "table insertion lost its parsing context")
+    assert(getComputedStyle(paragraph).color === "rgb(255, 0, 0)", "proposed styles did not render")
+    assert(!editor.doc.body.toString().includes("Proposed AI"), "preview leaked into collaboration")
+    assert(editor.appendix.querySelector(".◆ai-review-toolbar"), "review controls are missing from the appendix")
+    editor.features.state.actions.acceptAIEdit({type: "acceptAIEdit", editId: "native-ai"})
+    assert(fixture.querySelector("#ai-native-widget") === inserted, "acceptance recreated the inserted widget")
+    assert(paragraph.isConnected && widget.isConnected, "acceptance replaced an existing instance")
+    editor.features.state.actions.previewAIOperations({type: "previewAIOperations", editId: "native-ai-reject", summary: "Revise the paragraph.", operations: [
+      {type: "set_text", target: target("#ai-native-paragraph"), text: "Rejected AI"},
+    ]})
+    editor.features.state.actions.rejectAIEdit({type: "rejectAIEdit", editId: "native-ai-reject"})
+    assert(paragraph.textContent === "Proposed AI", "rejection lost accepted content")
+    editor.features.state.actions.undoAIEdit({type: "undoAIEdit", editId: "native-ai"})
+    assert(paragraph.textContent === "Before AI", "selective undo did not restore the paragraph")
+    assert(!editor.toHTML(true).includes("◆"), "AI markers leaked into serialization")
+  }
+  finally {
+    for(const editId of ["native-ai", "native-ai-reject"]) {
+      try { editor.features.state.actions.rejectAIEdit({type: "rejectAIEdit", editId}) }
+      catch { /* A successful check has already settled both previews. */ }
+    }
+    fixture.querySelector("#ai-native-widget")?.remove()
+    paragraph.remove()
+    table.remove()
+  }
+})
+
 await check("selection markers and appendix layout artifacts tear down cleanly", async () => {
   const section = createLayout(
     "display:grid;width:360px;height:120px;grid-template-columns:1fr 1fr;grid-template-rows:1fr;gap:12px",

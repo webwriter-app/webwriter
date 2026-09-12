@@ -1799,6 +1799,11 @@ export class ManipulationFeature extends EditorFeature {
     if(!(node instanceof Element) || node.localName !== localName || node.namespaceURI !== namespaceURI) {
       throw new Error("The selected element changed before its attribute could be edited")
     }
+    this.setAuthoredElementAttribute(node, name, value, previousName)
+  }
+
+  /** Also supports inert validation before a targeted proposal is previewed. */
+  setAuthoredElementAttribute(node: Element, name: string, value: string | null, previousName?: string) {
     if(!name || name !== name.trim()) throw new TypeError("An attribute name cannot be empty or padded")
     if(!elementAttributeEditability(name, node.localName, node.namespaceURI).editable) {
       throw new TypeError(`The ${name} attribute is not editable here`)
@@ -1870,14 +1875,20 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Targeted CSS commands never normalize surrounding authored structure or
    * substitute BODY for a disconnected selection. */
-  setElementStyles(target: Element, styles: Record<string, ElementStyleMutation>) {
-    if(!target.isConnected || !getDocumentRoot().contains(target) || this.editor.isEditingLocked) return false
+  validateElementStyles(styles: Record<string, ElementStyleMutation>) {
+    if(!styles || typeof styles !== "object" || Array.isArray(styles)) throw new TypeError("Provide CSS declarations by property name")
     const entries = this.validatedStyleEntries(styles)
     for(const {name, value} of entries) {
       if(value !== null && typeof CSS?.supports === "function" && !CSS.supports(name, value)) {
         throw new TypeError(`Invalid value for ${name}`)
       }
     }
+    return entries
+  }
+
+  setElementStyles(target: Element, styles: Record<string, ElementStyleMutation>) {
+    if(!target.isConnected || !getDocumentRoot().contains(target) || this.editor.isEditingLocked) return false
+    const entries = this.validateElementStyles(styles)
     const changed = this.applyStyleEntries(target, entries)
     if(!this.inlineStyleOf(target)?.length) target.removeAttribute("style")
     return changed

@@ -87,7 +87,6 @@ type PendingAIEdit = {
   call: AIDocumentToolCall
   chatId: string
   summary: string
-  html: string
   previewing: boolean
   deciding: boolean
   queuedDecision?: "accept" | "reject"
@@ -103,7 +102,7 @@ type AIEditProtocol = {
 }
 
 export type AIEditReviewAction = "preview" | "accept" | "reject" | "goto" | "undo"
-export type AIEditReviewHandler = (action: AIEditReviewAction, call: AIDocumentToolCall) => Promise<unknown>
+export type AIEditReviewHandler = (action: AIEditReviewAction, call: AIDocumentToolCall, options?: {signal?: AbortSignal}) => Promise<unknown>
 
 
 /** The editor's tabbed, responsive ribbon toolbar. */
@@ -2607,7 +2606,7 @@ export class AppRibbon extends EditingControls {
     }
     const html = call.arguments.html
     const summary = call.arguments.summary
-    if(typeof html !== "string" || typeof summary !== "string") {
+    if((call.name !== "queue_document_change" && typeof html !== "string") || typeof summary !== "string") {
       return Promise.resolve({status: "error", message: "The proposed edit is missing its HTML or summary"})
     }
     if(this.pendingAIEdit) {
@@ -2616,10 +2615,10 @@ export class AppRibbon extends EditingControls {
         : Promise.resolve({status: "error", message: "Another document change is awaiting review"})
     }
     this.pendingAIQueue = new Promise(resolve => {
-      this.pendingAIEdit = {call, chatId, summary, html, previewing: true, deciding: false, resolve}
+      this.pendingAIEdit = {call, chatId, summary, previewing: true, deciding: false, resolve}
       this.activeAIChatId = chatId
       const preview = this.aiEditReviewHandler
-        ? this.aiEditReviewHandler("preview", call)
+        ? this.aiEditReviewHandler("preview", call, {signal: this.aiAbortController?.signal})
         : Promise.reject(new Error("The document editor cannot preview AI changes"))
       void preview.then(
         result => {

@@ -200,7 +200,7 @@ const parseToolArguments = (value: unknown) => {
 }
 
 const isDocumentToolName = (value: unknown): value is AIDocumentToolName =>
-  typeof value === "string" && Object.hasOwn(aiToolDefinitions, value)
+  typeof value === "string" && Object.hasOwn(aiToolDefinitions, value) && !value.startsWith("replace_current_")
 
 const toolOutput = (value: unknown) => {
   try {
@@ -256,8 +256,8 @@ export async function completeAIConversation(options: AICompletionOptions) {
   ]
   const compatibility = {reasoningEffort: true}
   const requestId = crypto.randomUUID()
-  let readDocument = false
-  let readSelection = false
+  const readTargets = new Set<string>()
+  const readRanges = new Set<string>()
   const contextId = `${requestId}/context`
   options.signal?.throwIfAborted()
   const context = await options.toolHandler({id: contextId, name: "read_editor_capabilities", arguments: {}}, {signal: options.signal})
@@ -309,9 +309,15 @@ export async function completeAIConversation(options: AICompletionOptions) {
           const editing = !isAIReadTool(name)
           if(editing) {
             if(options.readOnly) throw new Error("This turn is read-only")
-            if(name === "replace_current_document" ? !readDocument : !readSelection) throw new Error("Read the current edit target before proposing a change")
             args.summary = aiProposalSummary(args.summary)
-            if(typeof args.html !== "string") throw new TypeError("Provide replacement HTML")
+            if(name === "queue_document_change") {
+              if(!Array.isArray(args.operations) || !args.operations.length || args.operations.length > 50) throw new TypeError("Provide 1–50 focused operations")
+              for(const operation of args.operations) {
+                if(!operation || typeof operation !== "object") throw new TypeError("Invalid operation")
+                if(operation.type === "replace_selection" ? !readRanges.has(operation.selectionId) : !readTargets.has(operation.target)) throw new Error("Read the complete current target before proposing a change")
+                if(operation.type === "move" && !readTargets.has(operation.destination)) throw new Error("Read the move destination first")
+              }
+            }
           }
           result = await options.toolHandler({
             id: editing ? `${requestId}/${id}` : id,
@@ -321,9 +327,10 @@ export async function completeAIConversation(options: AICompletionOptions) {
           options.signal?.throwIfAborted()
           const status = result && typeof result === "object" ? (result as {status?: unknown}).status : undefined
           if(!status || status === "ok") {
-            const read = result as {truncated?: boolean, kind?: string} | undefined
-            if(name === "read_current_document") readDocument = !args.target && args.mode !== "outline" && !read?.truncated
-            if(name === "read_current_selection") readSelection = !read?.truncated && read?.kind !== "none"
+            const read = result as {target?: string, selectionId?: string, elements?: {target?: string, truncated?: boolean}[], truncated?: boolean, kind?: string} | undefined
+            if(name === "read_current_document" && args.mode !== "outline" && !read?.truncated && read?.target) readTargets.add(read.target)
+            if(name === "read_current_selection" && !read?.truncated && read?.kind !== "none" && read?.selectionId) readRanges.add(read.selectionId)
+            if(name === "inspect_elements") for(const element of read?.elements ?? []) if(!element.truncated && element.target) readTargets.add(element.target)
           }
           if(editing && status === "queued") {
             const summary = aiProposalSummary(args.summary)

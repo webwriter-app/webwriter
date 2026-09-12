@@ -5,10 +5,123 @@ import type {EditorStateSnapshot} from "../editor-state"
 import {restoreOriginalResourceURLs} from "../serialization"
 import {aiEditReviewEvent, executeFailureEvent} from "../editor-bridge"
 import {markNames} from "../marks"
+import * as Y from "yjs"
 
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+})
+
+const withAIEditor = async (html: string, run: (editor: DOMEditor) => void | Promise<void>) => {
+  document.body.innerHTML = html
+  const editor = new DOMEditor()
+  try { await run(editor) }
+  finally { editor.destroy() }
+}
+
+const aiElementTarget = (editor: DOMEditor, selector: string) => (
+  editor.getActionHandler("inspectAIElements")({type: "inspectAIElements", selector}) as {elements: {target: string}[]}
+).elements[0].target
+
+describe("Focused AI proposals", () => {
+  it("previews targeted changes privately, preserves node identity, merges remote edits, and selectively undoes", async () => {
+    await withAIEditor('<p class="authored">Before</p><!--keep--><unknown-widget answer="7"></unknown-widget>', async editor => {
+      const paragraph = document.querySelector("p")!, widget = document.querySelector("unknown-widget")!, comment = paragraph.nextSibling
+      const target = aiElementTarget(editor, "p")
+      editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: "focused", summary: "Update the paragraph", operations: [
+        {type: "set_text", target, text: "After"}, {type: "set_styles", target, styles: {color: "red"}},
+      ]})
+      expect(paragraph.textContent).toBe("After")
+      expect(editor.doc.body.toString()).toContain("Before")
+      expect(document.querySelector("unknown-widget")).toBe(widget)
+      expect(paragraph.nextSibling).toBe(comment)
+      const remote = new Y.XmlElement("aside")
+      remote.insert(0, [new Y.XmlText("Remote")])
+      editor.doc.doc.transact(() => editor.doc.body.insert(editor.doc.body.length, [remote]), "remote-client")
+      editor.getActionHandler("acceptAIEdit")({type: "acceptAIEdit", editId: "focused"})
+      expect(document.querySelector("p")).toBe(paragraph)
+      expect(document.querySelector("unknown-widget")).toBe(widget)
+      expect(editor.toHTML(true)).toContain("Remote")
+      editor.getActionHandler("undoAIEdit")({type: "undoAIEdit", editId: "focused"})
+      expect(paragraph.textContent).toBe("Before")
+      expect(editor.toHTML(true)).toContain("Remote")
+      expect(editor.toHTML(true)).not.toContain("◆")
+    })
+  })
+
+  it("keeps a saved range attached to its original content when the user moves the caret", async () => {
+    await withAIEditor('<p>Hello world</p><aside>Elsewhere</aside>', editor => {
+      const text = document.querySelector("p")!.firstChild!, aside = document.querySelector("aside")!.firstChild!
+      document.getSelection()!.setBaseAndExtent(text, 6, text, 11)
+      const {selectionId} = editor.getActionHandler("readAISelection")({type: "readAISelection"}) as {selectionId: string}
+      document.getSelection()!.setPosition(aside, 3)
+      editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: "range", summary: "Emphasize the greeting", operations: [
+        {type: "replace_selection", selectionId, html: "<strong>WebWriter</strong>"},
+      ]})
+      expect(editor.toHTML(true)).toBe("<p>Hello <strong>WebWriter</strong></p><aside>Elsewhere</aside>")
+      editor.getActionHandler("rejectAIEdit")({type: "rejectAIEdit", editId: "range"})
+      expect(editor.toHTML(true)).toBe("<p>Hello world</p><aside>Elsewhere</aside>")
+    })
+  })
+
+  it("rejects replaced targets, incomplete reads, and invalid batches before changing content", async () => {
+    await withAIEditor("<p>Before</p><aside>Keep</aside>", editor => {
+      const target = aiElementTarget(editor, "p")
+      const preview = editor.getActionHandler("previewAIOperations")
+      expect(() => preview({type: "previewAIOperations", editId: "invalid", summary: "Edit", operations: [
+        {type: "set_text", target, text: "After"}, {type: "set_attributes", target, attributes: {onclick: "unsafe()"}},
+      ]})).toThrow()
+      expect(editor.toHTML(true)).toBe("<p>Before</p><aside>Keep</aside>")
+      const incomplete = editor.getActionHandler("readAIDocument")({type: "readAIDocument", limit: 2}) as {target: string}
+      expect(() => preview({type: "previewAIOperations", editId: "incomplete", summary: "Edit", operations: [{type: "replace_document", target: incomplete.target, html: "<p>After</p>"}]})).toThrow("incomplete")
+      document.querySelector("p")!.outerHTML = "<p>Replacement</p>"
+      expect(() => preview({type: "previewAIOperations", editId: "stale", summary: "Edit", operations: [{type: "set_text", target, text: "After"}]})).toThrow("target changed")
+      expect(editor.toHTML(true)).toContain("Replacement")
+    })
+  })
+
+  it("rolls back an entire batch when applying a later operation fails", async () => {
+    await withAIEditor("<p>Before</p>", editor => {
+      const target = aiElementTarget(editor, "p")
+      vi.spyOn(editor.features.manipulation, "setElementStyles").mockImplementation(() => { throw new Error("Concurrent change") })
+      expect(() => editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: "rollback", summary: "Edit", operations: [
+        {type: "set_text", target, text: "After"}, {type: "set_styles", target, styles: {color: "red"}},
+      ]})).toThrow("Concurrent change")
+      expect(editor.toHTML(true)).toBe("<p>Before</p>")
+      expect(editor.isEditingLocked).toBe(false)
+      expect(editor.appendix.querySelector(".◆ai-review-toolbar")).toBeNull()
+    })
+  })
+
+  it("inserts ordered siblings and contextual table content without unwrapping supported elements", async () => {
+    await withAIEditor('<table><tbody><tr><td>A</td></tr></tbody></table><p>End</p>', editor => {
+      const row = aiElementTarget(editor, "tr"), paragraph = aiElementTarget(editor, "p")
+      editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: "insert", summary: "Add content", operations: [
+        {type: "insert_html", target: row, position: "append", html: "<td>B</td>"},
+        {type: "insert_html", target: row, position: "append", html: "<td>C</td>"},
+        {type: "insert_html", target: paragraph, position: "before", html: "<hgroup><h2>Heading</h2><p>Subtitle</p></hgroup><dialog open><p>Dialog</p></dialog>"},
+        {type: "replace_html", target: paragraph, html: '<svg xmlns="http://www.w3.org/2000/svg"><circle r="5" /></svg>'},
+      ]})
+      expect(Array.from(document.querySelectorAll("td"), node => node.textContent)).toEqual(["A", "B", "C"])
+      expect(document.querySelector("hgroup h2")?.textContent).toBe("Heading")
+      expect(document.querySelector("dialog p")?.textContent).toBe("Dialog")
+      expect(document.querySelector("circle")?.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    })
+  })
+
+  it("rejects unknown widgets and no-op proposals and creates layouts with direct children", async () => {
+    await withAIEditor("<p>Before</p>", editor => {
+      let target = aiElementTarget(editor, "p")
+      const preview = editor.getActionHandler("previewAIOperations")
+      expect(() => preview({type: "previewAIOperations", editId: "widget", summary: "Add widget", operations: [{type: "insert_html", target, position: "after", html: "<invented-widget></invented-widget>"}]})).toThrow("unavailable or undocumented")
+      expect(() => preview({type: "previewAIOperations", editId: "noop", summary: "Edit", operations: [{type: "set_text", target, text: "Before"}]})).toThrow("does not change")
+      target = aiElementTarget(editor, "p")
+      preview({type: "previewAIOperations", editId: "layout", summary: "Add two columns", operations: [{type: "insert_layout", target, position: "after", preset: "two-columns"}]})
+      expect(document.querySelector("section")?.style.display).toBe("grid")
+      expect(document.querySelectorAll("section > p")).toHaveLength(2)
+      expect(document.querySelector("section section")).toBeNull()
+    })
+  })
 })
 
 describe("StateFeature", () => {
@@ -49,7 +162,7 @@ describe("StateFeature", () => {
     const editor = new DOMEditor()
     const capabilities = editor.getActionHandler("readAIEditorCapabilities")({type: "readAIEditorCapabilities", topic: "elements"}) as any
     expect(capabilities.elements.script.intentionallyRestricted).toBe(true)
-    expect(capabilities.elements.dialog.aiInsertion).toBe(false)
+    expect(capabilities.elements.dialog.aiInsertion).toBe(true)
     vi.spyOn(document, "getSelection").mockReturnValueOnce(null)
     expect(editor.getActionHandler("readAISelection")({type: "readAISelection"})).toMatchObject({kind: "none"})
     document.getSelection()!.setPosition(document.querySelector("p")!.firstChild!, 2)

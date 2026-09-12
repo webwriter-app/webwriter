@@ -18,7 +18,7 @@ const mountRibbon = async () => {
 }
 
 const configureProvider = async (ribbon: AppRibbon) => {
-  ribbon.aiDocumentToolHandler = async () => ({html: "", text: ""})
+  ribbon.aiDocumentToolHandler = async () => ({html: "", text: "", target: "body"})
   const store = (ribbon as unknown as {aiProviderStore: AIProviderStore}).aiProviderStore
   const provider = store.upsert({
     ...createAIProvider("ollama"),
@@ -378,8 +378,8 @@ describe("AI prompt ribbon", () => {
           id: "edit-1",
           type: "function",
           function: {
-            name: "replace_current_document",
-            arguments: JSON.stringify({summary: "Add a heading", html: "<h1>New heading</h1>"}),
+            name: "queue_document_change",
+            arguments: JSON.stringify({summary: "Add a heading", operations: [{type: "replace_document", target: "body", html: "<h1>New heading</h1>"}]}),
           },
         }],
       }}]}), {headers: {"content-type": "application/json"}}))
@@ -392,7 +392,7 @@ describe("AI prompt ribbon", () => {
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-send")!.click()
 
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector(".ai-edit-approval")).not.toBeNull())
-    expect(review).toHaveBeenCalledWith("preview", expect.objectContaining({name: "replace_current_document"}))
+    expect(review).toHaveBeenCalledWith("preview", expect.objectContaining({name: "queue_document_change"}), {signal: expect.any(AbortSignal)})
     await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Queued: Add a heading."))
     expect((ribbon as any).aiBusy).toBe(false)
     expect(fetch).toHaveBeenCalledTimes(1)
@@ -425,8 +425,8 @@ describe("AI prompt ribbon", () => {
           id: "edit-reject",
           type: "function",
           function: {
-            name: "replace_current_document",
-            arguments: JSON.stringify({summary: "Remove the introduction", html: "<main></main>"}),
+            name: "queue_document_change",
+            arguments: JSON.stringify({summary: "Remove the introduction", operations: [{type: "replace_document", target: "body", html: "<main></main>"}]}),
           },
         }],
       }}]}), {headers: {"content-type": "application/json"}}))

@@ -23,6 +23,7 @@ const expectedChecks = [
   "removing a track preserves independent important grid placement longhands",
   "flex wrapping produces a second rendered line",
   "transformed grid geometry withholds misleading resize handles",
+  "focused AI previews preserve widgets, contextual HTML, and rendered styles",
   "selection markers and appendix layout artifacts tear down cleanly",
   "iframe lifecycle reaches load and cleans up",
 ]

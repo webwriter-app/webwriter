@@ -165,6 +165,8 @@ export class SharedDOMDoc {
     readonly ignoreAttrs: string[] = [],
     readonly ignoreClasses: string[] = [],
     options: SharedDOMDocOptions = {},
+    // Only private preview branches reuse another document's live node pairs.
+    previewSource?: SharedDOMDoc,
   ) {
     this.root = options.root ?? document.body
     this.#document = this.root.ownerDocument
@@ -220,6 +222,10 @@ export class SharedDOMDoc {
         this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes, ["lang"])
       }
     }, this.#initialOrigin)
+    if(previewSource) {
+      this.#reuseDOMNodePairs(previewSource)
+      this.#relativeSelection = previewSource.#relativeSelection
+    }
     if(hasSharedDOM || hasSharedHead || hasSharedLanguage || hasSharedAttributes) this.#writeYToDOM()
 
     this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
@@ -639,6 +645,7 @@ export class SharedDOMDoc {
       throw new Error("Another temporary DOM rendering is already active")
     }
 
+    this.syncFromDOM()
     const wasObserving = this.#isObserving
     const sourceStateVector = Y.encodeStateVector(this.doc)
     const previewYDoc = new Y.Doc()
@@ -652,7 +659,7 @@ export class SharedDOMDoc {
         root: this.root,
         ydoc: previewYDoc,
         ...(user && typeof user === "object" ? {user: user as CollaborationUser} : {}),
-      })
+      }, this)
     }
     catch(error) {
       previewYDoc.destroy()
@@ -682,14 +689,36 @@ export class SharedDOMDoc {
         }
         previewDoc.syncFromDOM()
         const update = Y.encodeStateAsUpdate(previewDoc.doc, sourceStateVector)
-        finish()
         this.#applyCapturedUpdate(changeId, update)
+        this.#reuseDOMNodePairs(previewDoc)
+        finish()
         return true
       },
       reject: finish,
     }
     this.#activeDOMPreview = preview
     return preview
+  }
+
+  /** Pair matching CRDT types across a branch without reconstructing live
+   * elements. Relative positions identify types even after insertions or moves. */
+  #reuseDOMNodePairs(source: SharedDOMDoc) {
+    if(source.root !== this.root) throw new Error("DOM branches must share their root")
+    const visit = (sourceType: YXmlNode) => {
+      const node = source.#nodes.get(sourceType)
+      const position = Y.createRelativePositionFromTypeIndex(sourceType, 0)
+      const targetType = Y.createAbsolutePositionFromRelativePosition(position, this.doc)?.type
+      if(node && (targetType instanceof Y.XmlElement || targetType instanceof Y.XmlText || targetType instanceof Y.XmlFragment)) {
+        this.#addNodePair(node, targetType)
+      }
+      if(sourceType instanceof Y.XmlElement || sourceType instanceof Y.XmlFragment) {
+        for(const child of sourceType.toArray()) {
+          if(child instanceof Y.XmlElement || child instanceof Y.XmlText) visit(child)
+        }
+      }
+    }
+    visit(source.#body)
+    if(source.#documentHead) visit(source.#documentHead)
   }
 
   #applyCapturedUpdate(changeId: string, update: Uint8Array) {

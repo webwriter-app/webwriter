@@ -214,6 +214,31 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("resolves only ready documented widgets into one focused proposal", async () => {
+    const editor = new DomEditor()
+    const state = editor as any
+    state.installedPackages = [{...demoPackage, members: [{...demoPackage.members[0], tagName: "ai-ready-widget"}]}]
+    state.editorWindow = window
+    customElements.define("ai-ready-widget", class extends HTMLElement {})
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({status: "previewing"})
+    const call = {id: "widget-proposal", name: "queue_document_change", arguments: {summary: "Add an interactive exercise.", operations: [
+      {type: "insert_widget", target: "read-target", position: "after", memberId: demoPackage.members[0].id, attributes: {answer: "7"}},
+    ]}}
+    await expect(state.handleAIEditReview("preview", call)).rejects.toThrow("README")
+    state.aiDocumentedPackages.add(`${demoPackage.name}@${demoPackage.version}/published`)
+    await state.handleAIEditReview("preview", call)
+    expect(execute).toHaveBeenLastCalledWith({type: "previewAIOperations", editId: call.id, summary: call.arguments.summary,
+      operations: [{type: "insert_html", target: "read-target", position: "after", html: '<ai-ready-widget answer="7"></ai-ready-widget>'}], availableWidgets: ["ai-ready-widget"],
+    })
+    execute.mockClear()
+    const controller = new AbortController()
+    controller.abort()
+    await expect(state.handleAIEditReview("preview", call, {signal: controller.signal})).rejects.toThrow()
+    expect(execute).not.toHaveBeenCalled()
+    state.installedPackages = []
+    await expect(state.handleAIEditReview("preview", call)).rejects.toThrow("unavailable")
+  })
+
   it("reads AI widget documentation only for known exact package versions", async () => {
     const editor = new DomEditor()
     const state = editor as any
