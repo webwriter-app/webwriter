@@ -82,6 +82,28 @@ describe("element style controls", () => {
     })
   })
 
+  it("selects an authored length unit on first render and preserves its number when changing units", async () => {
+    const editor = await mount(elementStyleCategories[0].basic.slice(3, 4), state({
+      width: {value: "1rem", priority: ""},
+    }))
+    const width = editor.shadowRoot!.querySelector<HTMLElement>('[data-property="width"]')!
+    const input = width.querySelector<HTMLInputElement>('input[type="number"]')!
+    const unit = width.querySelector<HTMLSelectElement>("select")!
+    const changes: ElementStyleChangeDetail[] = []
+    editor.addEventListener("element-style-change", event => {
+      changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail)
+    })
+
+    expect(input.value).toBe("1")
+    expect(unit.value).toBe("rem")
+    unit.value = "px"
+    unit.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(changes.at(-1)).toEqual({
+      property: "width",
+      mutation: {value: "1px", priority: ""},
+    })
+  })
+
   it("presents computed values as placeholders for every control kind", async () => {
     const definitions = [
       {name: "display", label: "Display", section: "Test", control: "select", values: ["block", "grid"]},

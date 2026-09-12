@@ -22,7 +22,7 @@ describe("list ribbon drawer", () => {
     )).map(button => button.getAttribute("label"))).toEqual([
       "Paragraph", "Section", "Heading", "Details",
       "List", "Table",
-      "Image", "Graphic", "Audio", "Website", "Video", "Formula",
+      "Image", "Graphic", "Audio", "Website", "Video", "Formula", "Layouts",
     ])
   })
 
@@ -35,7 +35,7 @@ describe("list ribbon drawer", () => {
     const elements = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
     elements.compact = true
     await elements.updateComplete
-    const controls = elements.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const primaryControls = elements.shadowRoot!.querySelector<HTMLElement>(".elements-primary-controls")!
     const defaultSlot = elements.shadowRoot!.querySelector<HTMLSlotElement>('slot:not([name])')!
     const compactSlot = elements.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="compact"]')!
     const buttons = Array.from(elements.querySelectorAll<RibbonButton>('ribbon-button[slot="compact"]'))
@@ -45,7 +45,7 @@ describe("list ribbon drawer", () => {
     expect(defaultSlot.hidden).toBe(true)
     expect(compactSlot.hidden).toBe(false)
     expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Details"])
-    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect(getComputedStyle(primaryControls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
     expect(button("Text").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual(["Paragraph", "Section", "Heading", "List"])
     expect(button("Media").submenu.map(item => typeof item === "string" ? item : item.label))
@@ -134,7 +134,8 @@ describe("list ribbon drawer", () => {
     await Promise.all([elements.updateComplete, ...buttons.map(button => button.updateComplete)])
 
     expect(elements.layoutWidths.expanded).toBe(356)
-    expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridAutoColumns).toBe("3.5rem")
+    expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".elements-primary-controls")!).gridTemplateColumns)
+      .toBe("repeat(7, minmax(0, 1fr))")
     for(const button of buttons.filter(button => button.label === "Heading")) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
     }

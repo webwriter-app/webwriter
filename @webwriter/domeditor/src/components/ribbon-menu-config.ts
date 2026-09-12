@@ -205,6 +205,8 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Media", buttons: []},
     {label: "Dialog", buttons: []},
     {label: "Layout", buttons: []},
+    {label: "Grid layout", buttons: []},
+    {label: "Flex layout", buttons: []},
     {label: "Graphic", buttons: []},
     {label: "Comments", buttons: []},
     {
@@ -235,6 +237,8 @@ export type ContextDrawerPolicy = {
   documentSelected?: boolean
   paragraphSelected?: boolean
   sectionSelected?: boolean
+  layout?: "grid" | "flex"
+  layoutItem?: boolean
   headingGroup?: boolean
   orderedList?: boolean
   media?: boolean
@@ -281,6 +285,10 @@ export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGro
   if(context.menu !== "Edit") {
     const groups = menuGroups[context.menu]
     return context.menu === "Start" && context.startPackages ? [...groups, context.startPackages] : groups
+  }
+  if(context.layout && (!context.layoutItem || ![context.media, context.dialog, context.graphic, context.table, context.disclosure].some(Boolean))) {
+    return menuGroups.Edit.filter(group => group.label === (context.layout === "grid" ? "Grid layout" : "Flex layout")
+      || context.attributes && group.label === "Attributes")
   }
   const priority = context.surface === "ribbon" ? ribbonContextPriority : toolboxContextPriority
   const selected = priority.find(key => context[key])

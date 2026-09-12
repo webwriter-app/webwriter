@@ -23,6 +23,8 @@ export type EditingUIProperties = Pick<EditingControls,
   | "media"
   | "dialog"
   | "graphic"
+  | "layout"
+  | "layoutError"
   | "elementAttributes"
   | "elementStyle"
   | "historyState"

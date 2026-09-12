@@ -13,6 +13,8 @@ import {
   type VersionHistoryState,
 } from "../editor-bridge"
 import type {ElementAttributeState} from "../element-attributes"
+import type {LayoutSelectionState} from "../layouts"
+import "./layout-editor"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {
   graphicShapeOptions,
@@ -138,6 +140,8 @@ export abstract class EditingControls extends LitElement {
     dialog: {attribute: false},
     table: {attribute: false},
     graphic: {attribute: false},
+    layout: {attribute: false},
+    layoutError: {type: String},
     elementStyle: {attribute: false},
     elementAttributes: {attribute: false},
     linkAttributeMenuOpen: {type: Boolean, state: true},
@@ -207,6 +211,8 @@ export abstract class EditingControls extends LitElement {
   table: TableSelectionState | null = null
 
   graphic: GraphicSelectionState | null = null
+  layout: LayoutSelectionState | null = null
+  layoutError = ""
 
   elementAttributes: ElementAttributeState | null = null
 
@@ -2600,6 +2606,13 @@ export abstract class EditingControls extends LitElement {
       ? elementStyleCategories.find(category => category.label === drawer.label)
       : undefined
     if(styleCategory) return this.renderElementStyleDrawer(styleCategory)
+    if(drawer.label === "Grid layout" || drawer.label === "Flex layout") return html`
+      <ribbon-drawer label=${drawer.label} icon="Layout" layout="element-style" expandable>
+        ${this.sectionSelected ? this.renderSectionTypeSelect() : nothing}
+        ${this.layoutError ? html`<p role="alert">${this.layoutError}</p>` : nothing}
+        ${this.layout ? html`<layout-editor .state=${this.layout} .styleState=${this.layout.style}></layout-editor>` : nothing}
+      </ribbon-drawer>
+    `
     if(drawer.label === "Versions") return this.renderHistoryVersionsDrawer()
     if(drawer.label === "Marks") return this.renderMarkDrawer()
     if(drawer.label === "Section") return this.renderSectionDrawer()

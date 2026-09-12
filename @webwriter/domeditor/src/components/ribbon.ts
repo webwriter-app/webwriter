@@ -12,6 +12,7 @@ import {persistAppSettings, type AppSettings} from "../app-settings"
 import type {BackendClient} from "../backend-client"
 import {type PresenceUser} from "../editor-bridge"
 import {mediaCaptureOptions, type MediaType} from "../media"
+import {layoutPresets} from "../layouts"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
@@ -28,7 +29,7 @@ import "./ribbon-button"
 import {type RibbonButton, type RibbonButtonDetails} from "./ribbon-button"
 import "./ribbon-combobox"
 import "./ribbon-drawer"
-import {type RibbonDrawer} from "./ribbon-drawer"
+import {RibbonDrawer} from "./ribbon-drawer"
 import "./ribbon-menu"
 import {type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {
@@ -120,6 +121,7 @@ export class AppRibbon extends EditingControls {
     packageSearchQuery: {type: String, state: true},
     packageDrawerOpen: {type: Boolean, reflect: true, attribute: "package-drawer-open"},
     packageVisibleCount: {type: Number, state: true},
+    layoutInsertionError: {type: String, attribute: "layout-insertion-error"},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
     previewActive: {type: Boolean, attribute: "preview-active"},
@@ -1766,6 +1768,116 @@ export class AppRibbon extends EditingControls {
       --ribbon-drawer-inline-end: 0;
     }
 
+    .layout-gallery {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+      gap: 0.45rem;
+      width: 100%;
+      min-width: 0;
+      padding: 0.35rem 0.1rem 0.45rem;
+    }
+
+    .layout-preset {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.3rem;
+      min-width: 0;
+      min-height: 7rem;
+      padding: 0.35rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.35rem;
+      color: #2f3742;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.66rem;
+      text-align: start;
+      cursor: pointer;
+      transition: var(--ww-ui-transition, border-color 120ms ease, background-color 120ms ease);
+    }
+
+    .layout-preset:hover {
+      border-color: #8eb6df;
+      background: #f6faff;
+    }
+
+    .layout-preset:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 1px;
+    }
+
+    .layout-preset-preview {
+      box-sizing: border-box;
+      display: grid;
+      flex: 1 1 auto;
+      align-items: stretch;
+      min-height: 4.6rem;
+      padding: 0.25rem;
+      border: 1px solid #d8dee6;
+      border-radius: 0.2rem;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+
+    .layout-preset-item {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      min-width: 0;
+      min-height: 0;
+      padding: 0.18rem;
+      border: 1px solid #b8c8d9;
+      border-radius: 0.15rem;
+      background: #e5eef7;
+    }
+
+    .layout-preset-line {
+      display: block;
+      width: 72%;
+      height: 0.18rem;
+      margin-top: 0.18rem;
+      border-radius: 999px;
+      background: #9db4ca;
+    }
+
+    .layout-preset-line.short {
+      width: 46%;
+    }
+
+    .layout-preset-name {
+      display: block;
+      overflow: hidden;
+      font-weight: 650;
+      line-height: 0.85rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+  .layout-preset-kind {
+      display: block;
+      color: #64748b;
+      font-size: 0.58rem;
+      line-height: 0.75rem;
+    }
+
+    .layout-insertion-error {
+      grid-column: 1 / -1;
+      padding: 0.3rem 0.45rem;
+      border: 1px solid #e8b4b4;
+      border-radius: 0.25rem;
+      color: #8f2020;
+      background: #fff5f5;
+      font-size: 0.64rem;
+      line-height: 0.85rem;
+    }
+
+    /* Keep the opener in the Elements two-row grid. */
+    ribbon-button.layout-opener {
+      grid-row: 1 / 3;
+    }
+
     .file-name-row {
       box-sizing: border-box;
       display: flex;
@@ -1891,6 +2003,8 @@ export class AppRibbon extends EditingControls {
   busyPackageNames: string[] = []
 
   packageError = ""
+
+  layoutInsertionError = ""
 
   private tableGridRows = 2
 
@@ -2836,6 +2950,15 @@ export class AppRibbon extends EditingControls {
     if(detail?.label === "Packages") this.packageDrawerOpen = false
   }
 
+  private handleRibbonDrawerState = (event: Event) => {
+    const detail = (event as CustomEvent<{open?: boolean}>).detail
+    if(!detail?.open) return
+    const source = event.composedPath().find(target => target instanceof RibbonDrawer)
+    this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => {
+      if(drawer !== source) drawer.closeDrawer()
+    })
+  }
+
   private handlePackageSearchFocus = () => {
     this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')?.openDrawer(true)
   }
@@ -2997,14 +3120,77 @@ export class AppRibbon extends EditingControls {
         ></ribbon-button>
       `
     }
+    const renderLayoutOpener = () => html`
+      <ribbon-button
+        class="layout-opener"
+        variant="insertion"
+        label="Layouts"
+        icon="Layout"
+        action="Layouts"
+        open-drawer
+        keep-drawer-open
+      ></ribbon-button>
+    `
+    const layoutStyle = (styles: Record<string, string>) => Object.entries(styles)
+      .map(([property, value]) => `${property}:${value}`)
+      .join(";")
+    const renderLayoutPreset = (preset: typeof layoutPresets[number]) => {
+      const previewStyles = {
+        ...preset.styles,
+        gap: "0.4rem",
+        padding: "0.3rem",
+        "box-sizing": "border-box",
+      }
+      const previewItemStyles = preset.id === "wrapping-cards"
+        ? {...preset.itemStyles, flex: "1 1 3rem"}
+        : preset.itemStyles
+      return html`
+        <button
+          class="layout-preset"
+          type="button"
+          data-layout-id=${preset.id}
+          aria-label=${`Insert ${preset.name} layout`}
+          @click=${(event: Event) => (event.currentTarget as HTMLElement).dispatchEvent(
+            new CustomEvent<{label: string, keepDrawerOpen: boolean}>("ribbon-button-click", {
+              detail: {label: `layout-insert:${preset.id}`, keepDrawerOpen: true},
+              bubbles: true,
+              composed: true,
+            }),
+          )}
+        >
+          <span
+            class="layout-preset-preview"
+            style=${layoutStyle(previewStyles)}
+            aria-hidden="true"
+          >
+            ${Array.from({length: preset.items}, (_, index) => html`
+              <span class="layout-preset-item" style=${layoutStyle(previewItemStyles)}>
+                <span class="layout-preset-line"></span>
+                ${index % 2 === 0 ? html`<span class="layout-preset-line short"></span>` : ""}
+              </span>
+            `)}
+          </span>
+          <span class="layout-preset-name">${preset.name}</span>
+          <span class="layout-preset-kind">${preset.kind === "grid" ? "Grid" : "Flex"}</span>
+        </button>
+      `
+    }
     return html`
       <ribbon-drawer
         label=${drawer.label}
         icon="Paragraph"
         layout="elements"
+        expandable
       >
         ${drawer.buttons.map(button => renderButton(button))}
         ${compactButtons.map(button => renderButton(button, "compact"))}
+        ${renderLayoutOpener()}
+        <div class="layout-gallery" slot="more" aria-label="Layout presets">
+          ${this.layoutInsertionError ? html`
+            <div class="layout-insertion-error" role="alert">${this.layoutInsertionError}</div>
+          ` : ""}
+          ${layoutPresets.map(renderLayoutPreset)}
+        </div>
       </ribbon-drawer>
     `
   }
@@ -3586,6 +3772,9 @@ export class AppRibbon extends EditingControls {
         menu: this.activeMenu,
         surface: "ribbon",
         paragraphSelected: this.paragraphSelected,
+        sectionSelected: this.sectionSelected,
+        layout: this.layout?.kind,
+        layoutItem: this.layout?.item,
         headingGroup: Boolean(this.headingGroup),
         orderedList: this.listType === "ol",
         media: Boolean(this.media),
@@ -3666,6 +3855,7 @@ export class AppRibbon extends EditingControls {
         @keydown=${this.handleRibbonInputKeydown}
         @ribbon-tab-select=${this.selectMenu}
         @ribbon-button-click=${this.selectLocalPackage}
+        @ribbon-drawer-state-change=${this.handleRibbonDrawerState}
       >
         <div class="ribbon-top">
           <button

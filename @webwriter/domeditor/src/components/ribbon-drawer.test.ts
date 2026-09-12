@@ -392,6 +392,72 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(controls).visibility).toBe("hidden")
     expect(getComputedStyle(controls).transition).toBe("none")
   })
+
+  it("detects overflow in the Elements gallery region while compact", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "elements"
+    drawer.compact = true
+    drawer.expandable = true
+    const gallery = document.createElement("div")
+    gallery.slot = "more"
+    gallery.className = "layout-gallery"
+    drawer.append(gallery)
+    document.body.append(drawer)
+    await drawer.updateComplete
+
+    drawer.openDrawer(true)
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const galleryRegion = drawer.shadowRoot!.querySelector<HTMLElement>(".elements-gallery-controls")!
+    Object.defineProperties(galleryRegion, {
+      scrollHeight: {value: 240, configurable: true},
+      clientHeight: {value: 120, configurable: true},
+    })
+    Object.defineProperties(controls, {
+      scrollHeight: {value: 120, configurable: true},
+      clientHeight: {value: 240, configurable: true},
+    })
+
+    ;(drawer as unknown as {finishDrawerSettle(): void}).finishDrawerSettle()
+    await drawer.updateComplete
+
+    expect(drawer.hasAttribute("drawer-settled")).toBe(true)
+    expect(drawer.hasAttribute("drawer-scrollable")).toBe(true)
+  })
+
+  it("sizes a collapsed Elements pullout to the viewport before scrolling its gallery", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "elements"
+    drawer.collapsed = true
+    drawer.expandable = true
+    const gallery = document.createElement("div")
+    gallery.slot = "more"
+    gallery.className = "layout-gallery"
+    drawer.append(gallery)
+    document.body.append(drawer)
+    await drawer.updateComplete
+
+    const shell = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    vi.spyOn(drawer, "getBoundingClientRect").mockReturnValue({top: 137, height: 90} as DOMRect)
+    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({top: 137, height: 90} as DOMRect)
+    vi.spyOn(controls, "getBoundingClientRect").mockReturnValue({top: 137, height: 0} as DOMRect)
+    Object.defineProperty(gallery, "scrollHeight", {value: 800, configurable: true})
+    const previousInnerHeight = window.innerHeight
+    Object.defineProperty(window, "innerHeight", {value: 600, configurable: true})
+    try {
+      ;(drawer as unknown as {updatePackageDrawerSize(): boolean}).updatePackageDrawerSize()
+      drawer.openDrawer(true)
+      await drawer.updateComplete
+
+      expect(shell.style.getPropertyValue("--layout-expanded-height")).toBe("455px")
+      expect(getComputedStyle(controls).height).toBe("455px")
+    }
+    finally {
+      Object.defineProperty(window, "innerHeight", {value: previousInnerHeight, configurable: true})
+    }
+  })
 })
 
 describe("responsive ribbon layout", () => {

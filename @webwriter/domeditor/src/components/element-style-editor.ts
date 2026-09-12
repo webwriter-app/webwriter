@@ -1,4 +1,5 @@
 import {LitElement, css, html, nothing} from "lit"
+import {ref} from "lit/directives/ref.js"
 import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
 import {
   cssWideKeywords,
@@ -48,6 +49,8 @@ const sectionGroups = (definitions: readonly ElementStylePropertyDefinition[]) =
 export class ElementStyleEditor extends LitElement {
   static properties = {
     definitions: {attribute: false},
+    /** Optional narrow view over the supplied definitions for composed editors. */
+    propertyNames: {attribute: false},
     state: {attribute: false},
     mode: {type: String, reflect: true},
     orientation: {type: String, reflect: true},
@@ -575,6 +578,7 @@ export class ElementStyleEditor extends LitElement {
   `
 
   definitions: readonly ElementStylePropertyDefinition[] = []
+  propertyNames: readonly string[] | null = null
   state: ElementStyleState = emptyStyleState()
   mode: "basic" | "advanced" = "basic"
   orientation: "horizontal" | "vertical" = "horizontal"
@@ -585,6 +589,12 @@ export class ElementStyleEditor extends LitElement {
 
   private declaration(name: string) {
     return this.state.inline[name]
+  }
+
+  private get visibleDefinitions() {
+    if(!this.propertyNames) return this.definitions
+    const names = new Set(this.propertyNames)
+    return this.definitions.filter(definition => names.has(definition.name))
   }
 
   private editableValue(name: string) {
@@ -712,6 +722,12 @@ export class ElementStyleEditor extends LitElement {
           }}
         />
         <select
+          ${ref(element => {
+            if(!(element instanceof HTMLSelectElement)) return
+            queueMicrotask(() => {
+              if(element.isConnected) element.value = unit
+            })
+          })}
           aria-label=${`${definition.label} unit`}
           data-computed=${!parsed && computed ? "" : nothing}
           .value=${unit}
@@ -721,7 +737,7 @@ export class ElementStyleEditor extends LitElement {
             const numeric = input?.value || input?.placeholder || ""
             if(numeric) this.commitValue(definition.name, `${numeric}${select.value}`, declaration)
           }}
-        >${units.map(option => html`<option value=${option}>${option}</option>`)}</select>
+        >${units.map(option => html`<option value=${option} ?selected=${option === unit}>${option}</option>`)}</select>
       </span>
     `
   }
@@ -947,7 +963,7 @@ export class ElementStyleEditor extends LitElement {
           @mouseenter=${() => this.dispatchTargetHover(true)}
           @mouseleave=${() => this.dispatchTargetHover(false)}
         >
-          <div class="basic-grid">${this.definitions.map(definition => this.renderProperty(definition))}</div>
+          <div class="basic-grid">${this.visibleDefinitions.map(definition => this.renderProperty(definition))}</div>
         </fieldset>
       `
     }
@@ -959,7 +975,7 @@ export class ElementStyleEditor extends LitElement {
         @mouseleave=${() => this.dispatchTargetHover(false)}
       >
         <div class="advanced">
-          ${sectionGroups(this.definitions).map(([, definitions]) => html`
+          ${sectionGroups(this.visibleDefinitions).map(([, definitions]) => html`
             <div class="style-section">
               <div class="section-controls">${definitions.map(definition => this.renderProperty(definition))}</div>
             </div>

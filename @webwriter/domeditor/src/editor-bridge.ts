@@ -17,6 +17,7 @@ import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
 import type {ElementAttributeState} from "./element-attributes"
+import type {LayoutSelectionState} from "./layouts"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -270,6 +271,7 @@ export type SelectionChangeDetail = {
   dialog?: DialogSelectionState
   table?: TableSelectionState
   graphic?: GraphicSelectionState
+  layout?: LayoutSelectionState
   /** Authored attributes for the exact element-like selection, when any. */
   element?: ElementAttributeState
   /** Present only when a section was explicitly selected from the breadcrumb. */
@@ -615,6 +617,19 @@ const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
     && value.zoom >= 25
     && value.zoom <= 400)
 
+const isLayoutStyle = (value: unknown): boolean => isRecord(value)
+  && (value.target === null || isRecord(value.target) && isString(value.target.localName) && (value.target.namespaceURI === null || isString(value.target.namespaceURI)))
+  && isStringRecord(value.computed)
+  && isRecord(value.context) && isString(value.context.display) && isString(value.context.parentDisplay)
+  && isRecord(value.inline) && Object.values(value.inline).every(item => isRecord(item) && isString(item.value) && (item.priority === "" || item.priority === "important"))
+
+const isLayoutSelection = (value: UnknownRecord) => (value.kind === "grid" || value.kind === "flex")
+  && isBoolean(value.item) && isLayoutStyle(value.style)
+  && isOptional(value.itemStyle, isLayoutStyle)
+  && [value.columns, value.rows].every(axis => isRecord(axis)
+    && (axis.tracks === null || Array.isArray(axis.tracks) && axis.tracks.length <= 100 && axis.tracks.every(isString))
+    && isNonnegativeInteger(axis.automatic) && (axis.reason === null || isString(axis.reason)))
+
 export function isSelectionChangeMessage(value: unknown): value is SelectionChangeMessage {
   if(!isRecord(value) || value.type !== selectionChangeEvent || !isRecord(value.detail)) return false
   const detail = value.detail
@@ -630,6 +645,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.dialog, isDialogSelection)
     && isOptionalFeature(detail.table, isTableSelection)
     && isOptionalFeature(detail.graphic, isGraphicSelection)
+    && isOptionalFeature(detail.layout, isLayoutSelection)
 }
 
 export function isMarkStateChangeMessage(value: unknown): value is MarkStateChangeMessage {

@@ -515,7 +515,7 @@ export class ManipulationFeature extends EditorFeature {
       && this.editor.schema.isContentValid(parent, proposed)
   }
 
-  private wrapTargetsInSection(targets: Element[], type: SectionName) {
+  wrapTargetsInSection(targets: Element[], type: SectionName) {
     const context = this.sectionNodes(targets)
     if(!context) return null
     const section = getInertDocument(context.parent).createElement(type)
@@ -831,8 +831,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
-  getStyleState(properties: string[] = []): ElementStyleState {
-    const target = this.styleTarget
+  getStyleState(properties: string[] = [], target = this.styleTarget): ElementStyleState {
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
       return {
@@ -897,12 +896,14 @@ export class ManipulationFeature extends EditorFeature {
   private withNormalization<T>(command: () => T) {
     const selection = document.getSelection()
     const originalNodes = [selection?.anchorNode, selection?.focusNode]
-    try {
-      return command()
-    }
-    finally {
-      this.editor.normalizeSurroundingElements(...originalNodes)
-    }
+    return this.editor.features.layout.preserveItemLayout(() => {
+      try {
+        return command()
+      }
+      finally {
+        this.editor.normalizeSurroundingElements(...originalNodes)
+      }
+    })
   }
 
   /** Inserts a new element at an empty-document or gap selection, choosing
@@ -1865,6 +1866,21 @@ export class ManipulationFeature extends EditorFeature {
   setStyle(styles: Record<string, ElementStyleMutation>) {
     const entries = this.validatedStyleEntries(styles)
     return this.withNormalization(() => this.applyStyleEntries(this.styleTarget, entries))
+  }
+
+  /** Targeted CSS commands never normalize surrounding authored structure or
+   * substitute BODY for a disconnected selection. */
+  setElementStyles(target: Element, styles: Record<string, ElementStyleMutation>) {
+    if(!target.isConnected || !getDocumentRoot().contains(target) || this.editor.isEditingLocked) return false
+    const entries = this.validatedStyleEntries(styles)
+    for(const {name, value} of entries) {
+      if(value !== null && typeof CSS?.supports === "function" && !CSS.supports(name, value)) {
+        throw new TypeError(`Invalid value for ${name}`)
+      }
+    }
+    const changed = this.applyStyleEntries(target, entries)
+    if(!this.inlineStyleOf(target)?.length) target.removeAttribute("style")
+    return changed
   }
 
   /** Applies paragraph declarations independently to every selected text

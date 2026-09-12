@@ -1345,6 +1345,9 @@ describe("document listeners", () => {
     expect($.anchor).toBe(paragraph.firstChild)
 
     document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.selectedSectionElement).toBe(document.querySelector("section"))
+    $.move(paragraph.firstChild!, 3)
+    document.dispatchEvent(new Event("selectionchange"))
     expect(feature.selectedSectionElement).toBeNull()
     expect(document.querySelector("section")).not.toHaveClass("◆element-selected")
     expect(paragraph).toHaveClass("◆text-selected")

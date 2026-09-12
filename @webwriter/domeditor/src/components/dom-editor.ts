@@ -4,6 +4,9 @@ import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
+import type {RibbonDrawer} from "./ribbon-drawer"
+import type {LayoutSelectionState} from "../layouts"
+import type {LayoutEditorAction} from "./layout-editor"
 import type { EditingAction } from "../domeditor"
 import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
@@ -369,6 +372,8 @@ export class DomEditor extends LitElement {
     sectionType: {attribute: false, state: true},
     sectionActive: {attribute: false, state: true},
     sectionSelected: {attribute: false, state: true},
+    layoutSelection: {attribute: false, state: true},
+    layoutError: {attribute: false, state: true},
     selectedSectionPath: {attribute: false, state: true},
     marks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
@@ -456,6 +461,8 @@ export class DomEditor extends LitElement {
   private sectionType: SectionName = "section"
   private sectionActive = false
   private sectionSelected = false
+  private layoutSelection: LayoutSelectionState | null = null
+  private layoutError = ""
   private selectedSectionPath: number[] | null = null
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
@@ -2311,6 +2318,19 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label?.startsWith("layout-insert:")) {
+      const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+      if(ribbon) ribbon.layoutInsertionError = ""
+      this.restoreEditorSelection()
+      void this.execute({type: "insertLayout", preset: label.slice("layout-insert:".length)}).then(inserted => {
+        if(!inserted) throw new Error("Select a valid insertion point or complete blocks for this layout.")
+        ribbon?.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[layout="elements"]')?.closeDrawer()
+        this.focusEditor()
+      }).catch(error => {
+        if(ribbon) ribbon.layoutInsertionError = error instanceof Error ? error.message : String(error)
+      })
+      return
+    }
     if(label === "Preview") {
       if(this.previewActive) void this.exitPreview()
       else void this.enterPreview()
@@ -3409,6 +3429,15 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleLayoutAction = (event: Event) => {
+    const action = (event as CustomEvent<LayoutEditorAction>).detail
+    if(!action || !["setLayoutStyles", "insertLayoutTrack", "removeLayoutTrack", "setLayoutTrackSize"].includes(action.type)) return
+    this.layoutError = ""
+    void this.execute(action).then(changed => {
+      if(changed === false) this.layoutError = "The layout changed or this operation is unavailable. Select the layout again."
+    }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
+  }
+
   private openEditToolbox() {
     this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit")
   }
@@ -4006,6 +4035,7 @@ export class DomEditor extends LitElement {
       const selectedSection = event.data.detail.section
       const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
       this.sectionSelected = selectedSection !== undefined
+      this.layoutSelection = event.data.detail.layout ?? null
       this.selectedSectionPath = selectedSection ? [...selectedSection.path] : null
       this.sectionActive = selectedSection !== undefined || activeSection !== undefined
       this.sectionType = selectedSection?.type ?? activeSection?.type ?? "section"
@@ -4053,6 +4083,7 @@ export class DomEditor extends LitElement {
         attributes: {...event.data.detail.element.attributes},
       } : null
       const hasContextualEditOptions = this.tableSelection?.active === true
+        || this.layoutSelection !== null
         || this.graphicSelection?.active === true
         || this.mediaSelection !== null
         || this.dialogSelection !== null
@@ -4082,6 +4113,7 @@ export class DomEditor extends LitElement {
           ...(this.dialogSelection ? {dialog: this.dialogSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
           ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
+          ...(this.layoutSelection ? {layout: this.layoutSelection} : {}),
           ...(this.elementAttributes ? {element: this.elementAttributes} : {}),
           ...(selectedSection ? {section: {
             path: [...selectedSection.path],
@@ -4305,6 +4337,8 @@ export class DomEditor extends LitElement {
     this.sectionType = "section"
     this.sectionActive = false
     this.sectionSelected = false
+    this.layoutSelection = null
+    this.layoutError = ""
     this.selectedSectionPath = null
     this.marks = []
     this.markStyles = {}
@@ -4365,6 +4399,8 @@ export class DomEditor extends LitElement {
       sectionType: this.sectionType,
       sectionActive: this.sectionActive,
       sectionSelected: this.sectionSelected,
+      layout: this.layoutSelection,
+      layoutError: this.layoutError,
       marks: this.marks,
       markStyles: this.markStyles,
       markAttributes: this.markAttributes,
@@ -4406,6 +4442,7 @@ export class DomEditor extends LitElement {
       "media-type-change": this.handleMediaTypeChange.bind(this),
       "dialog-attribute-change": this.handleDialogAttributeChange.bind(this),
       "table-insert": this.handleTableInsert.bind(this),
+      "layout-action": this.handleLayoutAction.bind(this),
       "table-style-change": this.handleTableStyleChange.bind(this),
       "table-semantic-action": this.handleTableSemanticAction.bind(this),
       "graphic-parameter-change": this.handleGraphicParameterChange.bind(this),

@@ -150,15 +150,30 @@ export class SelectionFeature extends EditorFeature {
       : null
   }
 
+  #selectedSectionRange: Range | null = null
+
   clearSelectedSection(expected?: Element) {
     if(expected && this.#selectedSection !== expected) return
     this.#selectedSection = null
+    this.#selectedSectionRange = null
   }
 
   replaceSelectedSection(previous: Element, replacement: Element) {
     if(this.#selectedSection === previous && isSectionElement(replacement)) {
       this.#selectedSection = replacement
     }
+  }
+
+  selectSectionElement(section: Element) {
+    if(!section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section)) return false
+    this.#releaseCaptureSelection()
+    this.#selectedSection = section
+    this.processSelection()
+    const selection = document.getSelection()
+    this.#selectedSectionRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    this.editor.postMarkState()
+    this.editor.postSelectionPath()
+    return true
   }
 
   /** Capture-selects an authored element while keeping its internal pointer
@@ -770,11 +785,7 @@ export class SelectionFeature extends EditorFeature {
     selectSection: ({path}: {type: "selectSection", path: number[]}) => {
       const section = this.#rawElementAtPath(path)
       if(!isSectionElement(section)) throw new TypeError("A section path must resolve to a section element")
-      this.#releaseCaptureSelection()
-      this.#selectedSection = section
-      this.processSelection()
-      this.editor.postMarkState()
-      this.editor.postSelectionPath()
+      this.selectSectionElement(section)
     },
     hoverNode: ({path}: {type: "hoverNode", path: number[] | null}) => {
       this.#clearElementHover()
@@ -1205,6 +1216,7 @@ export class SelectionFeature extends EditorFeature {
       : kind === "section" ? this.selectedSectionElement
         : kind === "element" ? $.selectedElement ?? null : null)
     this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
+    this.editor.features.layout.refresh()
     if(scrollIntoView && !isContentfulWidget(focusedWidget, this.editor.schema)) {
       this.#scrollSelectionIntoView(kind, sel, capturedElement)
     }
@@ -1292,7 +1304,13 @@ export class SelectionFeature extends EditorFeature {
     "pointermove": event => this.#extendDrag(event),
     "selectionchange": () => {
       if(this.editor.features.media.isPlaceholderInteraction) return
-      this.clearSelectedSection()
+      const selection = document.getSelection()
+      const current = selection?.rangeCount ? selection.getRangeAt(0) : null
+      const previous = this.#selectedSectionRange
+      // Programmatic selection queues a native event. Keep the explicit
+      // wrapper until the actual range changes, including after insertion.
+      if(!current || !previous || current.startContainer !== previous.startContainer || current.startOffset !== previous.startOffset
+        || current.endContainer !== previous.endContainer || current.endOffset !== previous.endOffset) this.clearSelectedSection()
       this.processSelection(this.isInDragSelection, {scrollIntoView: false})
     },
 

@@ -14,6 +14,7 @@ import { TransformationFeature } from "./features/transformation"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
+import { LayoutFeature } from "./features/layout"
 import { GraphicFeature } from "./features/graphic"
 import { HeadFeature } from "./features/head"
 import {isFormElementType} from "./form"
@@ -382,6 +383,7 @@ export class DOMEditor {
     "history": new HistoryFeature(this),
     "list": new ListFeature(this),
     "table": new TableFeature(this),
+    "layout": new LayoutFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "graphic": new GraphicFeature(this),
@@ -990,6 +992,7 @@ export class DOMEditor {
     const dialog = this.features.dialog.getState()
     const table = this.features.table.getState()
     const graphic = this.features.graphic.getState()
+    const layout = this.features.layout.getState()
     const selectedSection = this.features.selection.selectedSectionElement
     const attributeElement = this.selectedAttributeElement()
     const elementState = attributeElement
@@ -1017,6 +1020,7 @@ export class DOMEditor {
       ...(dialog ? {dialog} : {}),
       ...(table ? {table} : {}),
       ...(graphic ? {graphic} : {}),
+      ...(layout ? {layout} : {}),
       ...(elementState ? {element: elementState} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)

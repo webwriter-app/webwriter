@@ -77,6 +77,20 @@ export class RibbonButton extends LitElement {
       border-radius: 0.35rem;
     }
 
+    :host(.layout-opener) {
+      align-self: stretch;
+    }
+
+    :host(.layout-opener) .button-row {
+      height: 100%;
+      min-height: 100%;
+    }
+
+    :host(.layout-opener) .main-button {
+      min-height: 100%;
+      padding-block: 0.35rem;
+    }
+
     .button-row:hover {
       border-color: #c8d2df;
       background: #eef4fb;

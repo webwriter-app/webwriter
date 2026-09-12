@@ -387,7 +387,7 @@ describe("mark ribbon controls", () => {
       .map(drawer => drawer.getAttribute("label")))
       .toEqual([
         "Marks", "Document", "Section", "Layout", "Borders", "Background", "Semantics",
-        "Comments", "Review", "View",
+        "Grid layout", "Flex layout", "Comments", "Review", "View",
       ])
 
     const review = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Review"]')!

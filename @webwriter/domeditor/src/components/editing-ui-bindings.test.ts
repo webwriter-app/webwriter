@@ -35,6 +35,8 @@ const properties = (): EditingUIProperties => ({
   media: null,
   dialog: null,
   graphic: null,
+  layout: null,
+  layoutError: "",
   elementAttributes: null,
   elementStyle: {target: null, inline: {}, computed: {}, context: {display: "", parentDisplay: ""}},
   historyState: emptyVersionHistoryState(),

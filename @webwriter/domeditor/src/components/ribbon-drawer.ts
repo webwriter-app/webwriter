@@ -73,6 +73,9 @@ export class RibbonDrawer extends LitElement {
     :host([layout="elements"]) {
       --ribbon-drawer-expanded-width: 22.25rem;
       --ribbon-drawer-compact-width: 8rem;
+      /* The gallery is a second tier below the two-row Elements controls. */
+      --ribbon-drawer-height: 9rem;
+      --ribbon-drawer-more-height: min(28rem, calc(100vh - 4.5rem));
     }
 
     :host([layout="media"]) {
@@ -124,15 +127,63 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="elements"]) .controls {
-      grid-template-rows: repeat(2, minmax(0, 1fr));
-      grid-auto-columns: 3.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      padding-bottom: 0.25rem;
+      overflow: hidden;
     }
 
     :host([layout="elements"][compact]) .controls {
+      padding-bottom: 0.25rem;
+    }
+
+    .elements-primary-controls {
+      box-sizing: border-box;
+      display: grid;
+      flex: 0 0 var(--elements-header-height, 5.625rem);
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      align-content: stretch;
+      align-items: center;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    :host([layout="elements"][compact]) .elements-primary-controls {
+      flex-basis: var(--elements-header-height, 5.625rem);
       grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: row;
       grid-auto-columns: minmax(0, 1fr);
+    }
+
+    :host([layout="elements"][collapsed]) .elements-primary-controls {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    :host([layout="elements"][collapsed]) ::slotted(ribbon-button.layout-opener) {
+      display: none;
+    }
+
+    .elements-gallery-controls {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    :host([layout="elements"][drawer-open][drawer-settled][drawer-scrollable]) .elements-gallery-controls {
+      overflow-y: auto;
+    }
+
+    /* The primary region owns the two insertion rows; the gallery begins
+     * after it instead of participating in the header's auto-placement. */
+    :host([layout="elements"]) ::slotted(.layout-gallery) {
+      min-width: 0;
     }
 
     :host([layout="file"]) {
@@ -503,6 +554,15 @@ export class RibbonDrawer extends LitElement {
       max-height: var(--drawer-collapsed-height, 100%);
     }
 
+    :host([layout="elements"]) .drawer.expanded {
+      height: var(--layout-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
+      max-height: var(--layout-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
+    }
+
+    :host([layout="elements"]) .drawer.expanded.closing {
+      max-height: var(--drawer-collapsed-height, 100%);
+    }
+
     :host([layout="packages"][drawer-visible]) .controls {
       grid-template-rows: repeat(3, var(--package-row-height, 2.45rem));
       grid-auto-rows: var(--package-row-height, 2.45rem);
@@ -753,6 +813,14 @@ export class RibbonDrawer extends LitElement {
       transition-delay: 0s;
     }
 
+    :host([layout="elements"][collapsed]) .controls {
+      height: var(--layout-expanded-height, var(--ribbon-drawer-height));
+    }
+
+    :host([layout="elements"][collapsed][drawer-open]) .controls {
+      max-height: var(--layout-expanded-height, var(--ribbon-drawer-height));
+    }
+
     :host([layout="settings"][collapsed]) .controls,
     :host([layout="settings"][collapsed][drawer-open]) .controls {
       padding: 0;
@@ -764,6 +832,10 @@ export class RibbonDrawer extends LitElement {
 
     :host([collapsed][drawer-open]) .drawer-toggle {
       bottom: calc(0px - var(--ribbon-drawer-height) + 1px - 0.5625rem);
+    }
+
+    :host([layout="elements"][collapsed][drawer-open]) .drawer-toggle {
+      bottom: calc(0px - var(--layout-expanded-height, var(--ribbon-drawer-height)) + 1px - 0.5625rem);
     }
 
     .size-probe {
@@ -1181,7 +1253,8 @@ export class RibbonDrawer extends LitElement {
   }
 
   private updatePackageDrawerSize() {
-    if(this.layout !== "packages" || this.collapsed) return false
+    if(this.layout !== "packages" && this.layout !== "elements") return false
+    if(this.layout === "packages" && this.collapsed) return false
     const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
     const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
     if(!drawer || !controls) return false
@@ -1192,6 +1265,34 @@ export class RibbonDrawer extends LitElement {
     const rowGap = Number.parseFloat(controlsStyle.rowGap) || 0
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
+    if(this.layout === "elements") {
+      const moreHeight = this.lengthInPixels(
+        getComputedStyle(this).getPropertyValue("--ribbon-drawer-more-height").trim(),
+        448,
+      )
+      const viewportBottomMargin = this.lengthInPixels(
+        getComputedStyle(this).getPropertyValue("--ribbon-drawer-viewport-bottom-margin").trim(),
+        8,
+      )
+      const available = Math.max(
+        bounds.height,
+        window.innerHeight - Math.max(
+          0,
+          (this.collapsed ? controlsBounds.top : drawerBounds.top),
+        ) - viewportBottomMargin,
+      )
+      const collapsedHeight = Number.parseFloat(drawer.style.getPropertyValue("--drawer-collapsed-height"))
+        || this.lengthInPixels("5.625rem", 90)
+      const gallery = this.querySelector<HTMLElement>(".layout-gallery")
+      const galleryHeight = gallery?.scrollHeight || gallery?.getBoundingClientRect().height || moreHeight
+      const naturalHeight = collapsedHeight + Math.max(moreHeight, galleryHeight)
+      const preferredHeight = Math.max(collapsedHeight, Math.min(naturalHeight, available))
+      const currentTarget = Number.parseFloat(drawer.style.getPropertyValue("--layout-expanded-height")) || 0
+      const changed = currentTarget <= 0 || Math.abs(preferredHeight - currentTarget) > 0.5
+      if(changed) drawer.style.setProperty("--layout-expanded-height", `${preferredHeight}px`)
+      this.style.setProperty("--ribbon-drawer-available-height", `${available}px`)
+      return changed
+    }
     const storedRowHeight = Number.parseFloat(controlsStyle.getPropertyValue("--package-row-height")) || 0
     const collapsedRowCount = 3
     const rowHeight = storedRowHeight || Math.max(
@@ -1240,10 +1341,14 @@ export class RibbonDrawer extends LitElement {
     this.cancelDrawerClose()
     if(!this.drawerContentOpen) {
       const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
-      const collapsedHeight = drawer?.getBoundingClientRect().height ?? 0
+      const measuredHeight = drawer?.getBoundingClientRect().height ?? 0
+      const collapsedHeight = this.layout === "elements"
+        ? Math.max(measuredHeight, this.lengthInPixels("5.625rem", 90))
+        : measuredHeight
       if(collapsedHeight > 0) {
         drawer?.style.setProperty("--collapsed-drawer-height", `${collapsedHeight}px`)
         drawer?.style.setProperty("--drawer-collapsed-height", `${collapsedHeight}px`)
+        if(this.layout === "elements") drawer?.style.setProperty("--elements-header-height", `${collapsedHeight}px`)
       }
     }
     this.updatePackageDrawerSize()
@@ -1253,6 +1358,13 @@ export class RibbonDrawer extends LitElement {
     this.drawerOpen = true
     this.dispatchDrawerState()
     this.scheduleDrawerSettle()
+    if(this.layout === "elements") {
+      void this.updateComplete.then(() => {
+        if(!this.drawerOpen) return
+        this.updatePackageDrawerSize()
+        this.scheduleDrawerSettle()
+      })
+    }
   }
 
   private toggleDrawer() {
@@ -1289,11 +1401,14 @@ export class RibbonDrawer extends LitElement {
     if(!this.drawerOpen) return
     this.drawerSettled = true
     const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
+    const scrollContainer = this.layout === "elements"
+      ? this.renderRoot.querySelector<HTMLElement>(".elements-gallery-controls")
+      : controls
     // Fractional grid sizing can round scrollHeight just above clientHeight
     // while the drawer is settling. Do not briefly show a scrollbar for that
     // non-overflow.
-    this.drawerScrollable = this.layout === "packages" && !!controls &&
-      controls.scrollHeight > controls.clientHeight + 1
+    this.drawerScrollable = (this.layout === "packages" || this.layout === "elements") && !!controls &&
+      !!scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight + 1
   }
 
   private scheduleDrawerSettle() {
@@ -1309,6 +1424,7 @@ export class RibbonDrawer extends LitElement {
     this.drawerContentOpen = false
     const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
     controls?.style.removeProperty("--package-row-height")
+    this.renderRoot.querySelector<HTMLElement>(".drawer")?.style.removeProperty("--layout-expanded-height")
     this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-drawer-close-complete", {
       detail: {label: this.label},
       bubbles: true,
@@ -1361,13 +1477,23 @@ export class RibbonDrawer extends LitElement {
           <span class="summary-icon" aria-hidden="true">${ribbonIcon(this.icon || this.label)}</span>
           <span class="summary-label">${this.label}</span>
         </div>
-        <span class="pane-label">${this.label}</span>
-        <div id="drawer-controls" class="controls">
-          <slot ?hidden=${this.compact}></slot>
-          <slot name="compact" ?hidden=${!this.compact}></slot>
-          ${stylePaneToggle ? toggle : ""}
-          <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
-          <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
+       <span class="pane-label">${this.label}</span>
+       <div id="drawer-controls" class="controls">
+          ${this.layout === "elements" ? html`
+            <div class="elements-primary-controls">
+              <slot ?hidden=${this.compact}></slot>
+              <slot name="compact" ?hidden=${!this.compact}></slot>
+            </div>
+            <div class="elements-gallery-controls">
+              <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
+            </div>
+          ` : html`
+            <slot ?hidden=${this.compact}></slot>
+            <slot name="compact" ?hidden=${!this.compact}></slot>
+            ${stylePaneToggle ? toggle : ""}
+            <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
+            <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
+          `}
         </div>
         ${stylePaneToggle ? "" : toggle}
       </section>
