@@ -161,6 +161,79 @@ export type WebWriterPackage = {
   manifest?: WebWriterPackageManifest
 }
 
+export const PACKAGE_DOCUMENTATION_MAX_BYTES = 1_000_000
+export const PACKAGE_DOCUMENTATION_MAX_LINES = 200
+export const PACKAGE_DOCUMENTATION_MAX_CHARS = 20_000
+
+export class PackageDocumentationTooLargeError extends RangeError {
+  constructor(message: string) {
+    super(message)
+    this.name = "PackageDocumentationTooLargeError"
+  }
+}
+
+export type PackageDocumentationReadOptions = {
+  /** One-based line number at which the returned excerpt starts. */
+  startLine?: number
+  /** Number of lines to return, capped by PACKAGE_DOCUMENTATION_MAX_LINES. */
+  lineCount?: number
+  signal?: AbortSignal
+}
+
+export type PackageDocumentationUnavailableReason =
+  | "not-found"
+  | "too-large"
+  | "fetch-failed"
+  | "read-failed"
+
+export type PackageDocumentationResult = {
+  source: "published" | "local"
+  packageName: string
+  version: string
+  localRevision?: number
+  status: "available"
+  path: string
+  markdown: string
+  startLine: number
+  endLine: number
+  totalLines: number
+  nextStartLine?: number
+} | {
+  source: "published" | "local"
+  packageName: string
+  version: string
+  localRevision?: number
+  status: "unavailable"
+  reason: PackageDocumentationUnavailableReason
+  message: string
+  path?: string
+}
+
+/** Validates pagination and returns a bounded, one-based line excerpt. */
+export function packageDocumentationExcerpt(markdown: string, options: PackageDocumentationReadOptions = {}) {
+  const lines = markdown.split(/\r\n?|\n/)
+  const startLine = options.startLine === undefined ? 1 : options.startLine
+  const lineCount = options.lineCount === undefined ? PACKAGE_DOCUMENTATION_MAX_LINES : options.lineCount
+  if(!Number.isSafeInteger(startLine) || startLine < 1) throw new TypeError("Documentation startLine must be a positive integer")
+  if(!Number.isSafeInteger(lineCount) || lineCount < 1) throw new TypeError("Documentation lineCount must be a positive integer")
+  if(startLine > lines.length) throw new RangeError(`Documentation startLine must be at most ${lines.length}`)
+  const boundedLineCount = Math.min(lineCount, PACKAGE_DOCUMENTATION_MAX_LINES)
+  const endLine = Math.min(lines.length, startLine + boundedLineCount - 1)
+  const excerpt = lines.slice(startLine - 1, endLine).join("\n")
+  if(excerpt.length > PACKAGE_DOCUMENTATION_MAX_CHARS) {
+    throw new PackageDocumentationTooLargeError(
+      `The requested documentation excerpt exceeds the ${PACKAGE_DOCUMENTATION_MAX_CHARS}-character limit. Request a smaller line range.`,
+    )
+  }
+  return {
+    markdown: excerpt,
+    startLine,
+    endLine,
+    totalLines: lines.length,
+    ...(endLine < lines.length ? {nextStartLine: endLine + 1} : {}),
+  }
+}
+
 export const packageMemberAction = (member: Pick<PackageMember, "id">) => `package-member:${member.id}`
 export const packageAction = (pkg: Pick<WebWriterPackage, "name">) => `package:${pkg.name}`
 export const packageToggleAction = (pkg: Pick<WebWriterPackage, "name">) => `package-toggle:${pkg.name}`
@@ -256,6 +329,74 @@ export function resolvePackageExport(target: PackageExportTarget | undefined): s
 export function packageCdnUrl(name: string, version: string, path: string) {
   const safePath = packagePath(path).map(encodeURIComponent).join("/")
   return `${JSDELIVR_NPM_ENDPOINT}/${name}@${encodeURIComponent(version)}/${safePath}`
+}
+
+const packageManifestUrl = (name: string, version: string) =>
+  `${NPM_REGISTRY_ENDPOINT}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`
+
+const readmePathCandidates = (files?: Set<string>) => {
+  const listed = [...(files ?? [])]
+    .map(packageListingPath)
+    .filter(path => path.split("/").length === 1 && /^readme(?:\.md|\.markdown|\.txt)$/i.test(path))
+    .sort((left, right) => {
+      const rank = (path: string) => path.toLowerCase() === "readme.md" ? 0 : 1
+      return rank(left) - rank(right) || left.localeCompare(right)
+    })
+  return [...new Set([...listed, "README.md", "readme.md", "README.markdown", "readme.markdown", "README.txt"])]
+}
+
+const abortReason = (signal: AbortSignal | undefined) => signal?.reason
+  ?? new DOMException("The operation was aborted", "AbortError")
+
+const throwIfAborted = (signal: AbortSignal | undefined) => {
+  if(signal?.aborted) throw abortReason(signal)
+}
+
+const textByteLength = (value: string) => new TextEncoder().encode(value).byteLength
+
+async function boundedResponseText(response: Response, maximumBytes: number, signal?: AbortSignal) {
+  throwIfAborted(signal)
+  if(!response.body) {
+    const text = await response.text()
+    throwIfAborted(signal)
+    if(textByteLength(text) > maximumBytes) throw new PackageDocumentationTooLargeError(`Package documentation exceeds the ${maximumBytes}-byte limit.`)
+    return text
+  }
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  const onAbort = () => { void reader.cancel(abortReason(signal)) }
+  signal?.addEventListener("abort", onAbort, {once: true})
+  try {
+    while(true) {
+      throwIfAborted(signal)
+      const next = await reader.read()
+      if(next.done) break
+      size += next.value.byteLength
+      if(size > maximumBytes) throw new PackageDocumentationTooLargeError(`Package documentation exceeds the ${maximumBytes}-byte limit.`)
+      chunks.push(next.value)
+    }
+  }
+  catch(error) {
+    try { await reader.cancel(error) }
+    catch {
+      // The response may already be cancelled by the abort handler.
+    }
+    throw error
+  }
+  finally {
+    signal?.removeEventListener("abort", onAbort)
+    reader.releaseLock()
+  }
+  throwIfAborted(signal)
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  chunks.forEach(chunk => {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  })
+  return new TextDecoder().decode(bytes)
 }
 
 /** Removes active content before a package-provided snippet enters authored DOM. */
@@ -381,6 +522,7 @@ function summaryPackage(summary: NpmSearchPackage): WebWriterPackage {
 export class WebWriterPackageRegistry {
   private readonly packageCache = new Map<string, Promise<WebWriterPackage>>()
   private readonly snippetCache = new Map<string, Promise<string>>()
+  private readonly documentationCache = new Map<string, {path: string, markdown: string}>()
 
   constructor(
     private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
@@ -421,6 +563,58 @@ export class WebWriterPackageRegistry {
     return request
   }
 
+  /** Reads a bounded excerpt from the exact published package version. */
+  async readPackageReadme(
+    summary: Pick<WebWriterPackage, "name" | "version">,
+    options: PackageDocumentationReadOptions = {},
+  ): Promise<PackageDocumentationResult> {
+    const packageName = summary.name
+    const version = summary.version
+    if(typeof packageName !== "string" || !packageName || typeof version !== "string" || !version) {
+      throw new TypeError("A package name and exact version are required")
+    }
+    throwIfAborted(options.signal)
+    const key = `${packageName}@${version}`
+    let documentation = this.documentationCache.get(key)
+    try {
+      if(!documentation) {
+        documentation = await this.fetchPackageReadme(packageName, version, options.signal) ?? undefined
+        if(documentation) this.documentationCache.set(key, documentation)
+      }
+      if(!documentation) return {
+        source: "published",
+        packageName,
+        version,
+        status: "unavailable",
+        reason: "not-found",
+        message: "This published package does not contain a README file.",
+      }
+      return {
+        source: "published",
+        packageName,
+        version,
+        status: "available",
+        path: documentation.path,
+        ...packageDocumentationExcerpt(documentation.markdown, options),
+      }
+    }
+    catch(error) {
+      if(options.signal?.aborted || error instanceof DOMException && error.name === "AbortError") throw error
+      if(error instanceof TypeError || error instanceof RangeError && !(error instanceof PackageDocumentationTooLargeError)) throw error
+      const tooLarge = error instanceof PackageDocumentationTooLargeError
+      return {
+        source: "published",
+        packageName,
+        version,
+        status: "unavailable",
+        reason: tooLarge ? "too-large" : "fetch-failed",
+        message: tooLarge
+          ? error.message
+          : `Package documentation could not be fetched: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
+  }
+
   async fetchSnippet(member: PackageMember) {
     if(member.kind !== "snippet" || !member.htmlUrl) throw new TypeError("The package member is not a snippet")
     let request = this.snippetCache.get(member.htmlUrl)
@@ -435,21 +629,56 @@ export class WebWriterPackageRegistry {
     return request
   }
 
-  private async fetchPackageFiles(name: string, version: string) {
+  private async fetchPackageFiles(name: string, version: string, signal?: AbortSignal) {
     const packageName = name.split("/").map((segment, index) => index === 0 ? segment : encodeURIComponent(segment)).join("/")
     try {
       const url = JSDELIVR_PACKAGE_FILES_ENDPOINT + "/npm/" + packageName + "@" + encodeURIComponent(version) + "/flat"
-      const response = await this.fetcher(url)
+      const response = signal ? await this.fetcher(url, {signal}) : await this.fetcher(url)
       if(!response.ok) return
-      const result = await response.json() as unknown
+      const result = JSON.parse(await boundedResponseText(response, PACKAGE_DOCUMENTATION_MAX_BYTES, signal)) as unknown
       if(!isRecord(result) || !Array.isArray(result.files) || !result.files.every(file => (
         isRecord(file) && typeof file.name === "string"
       ))) return
       return new Set(result.files.map(file => packageListingPath((file as {name: string}).name)))
     }
-    catch {
+    catch(error) {
+      if(signal?.aborted || error instanceof DOMException && error.name === "AbortError") throw error
       // The listing is advisory. Keep inferred assets when it is unavailable.
     }
+  }
+
+  private async fetchPackageReadme(name: string, version: string, signal?: AbortSignal) {
+    const response = signal
+      ? await this.fetcher(packageManifestUrl(name, version), {signal})
+      : await this.fetcher(packageManifestUrl(name, version))
+    if(response.status === 404) return null
+    if(!response.ok) throw new Error(`Package metadata failed (${response.status})`)
+    const manifest = JSON.parse(await boundedResponseText(response, PACKAGE_DOCUMENTATION_MAX_BYTES, signal)) as WebWriterPackageManifest & {
+      readme?: unknown
+      readmeFilename?: unknown
+    }
+    if(typeof manifest.readme === "string" && manifest.readme) {
+      const metadataPath = typeof manifest.readmeFilename === "string"
+        ? packageListingPath(manifest.readmeFilename).trim()
+        : ""
+      const path = /^(?:readme(?:\.md|\.markdown|\.txt))$/i.test(metadataPath) ? metadataPath : "README.md"
+      return {
+        path,
+        markdown: manifest.readme,
+      }
+    }
+
+    const files = await this.fetchPackageFiles(name, version, signal)
+    for(const path of readmePathCandidates(files)) {
+      throwIfAborted(signal)
+      const readmeResponse = signal
+        ? await this.fetcher(packageCdnUrl(name, version, path), {signal})
+        : await this.fetcher(packageCdnUrl(name, version, path))
+      if(readmeResponse.status === 404) continue
+      if(!readmeResponse.ok) throw new Error(`Package documentation failed (${readmeResponse.status})`)
+      return {path, markdown: await boundedResponseText(readmeResponse, PACKAGE_DOCUMENTATION_MAX_BYTES, signal)}
+    }
+    return null
   }
 
   private async fetchPackage(summary: Pick<WebWriterPackage, "name" | "version"> & Partial<WebWriterPackage>) {

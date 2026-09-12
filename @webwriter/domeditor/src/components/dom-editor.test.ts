@@ -214,6 +214,21 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("reads AI widget documentation only for known exact package versions", async () => {
+    const editor = new DomEditor()
+    const state = editor as any
+    state.installedPackages = [demoPackage]
+    const read = vi.spyOn(state.packageRegistry, "readPackageReadme").mockResolvedValue({
+      status: "available", source: "published", packageName: demoPackage.name, version: "1.0.0", path: "README.md", markdown: "# Demo",
+    })
+    const signal = new AbortController().signal
+    const result = await state.handleAIDocumentTool({id: "docs", name: "read_widget_documentation", arguments: {packageName: demoPackage.name, version: "1.0.0", startLine: 1}}, {signal})
+    expect(result).toMatchObject({markdown: "# Demo", members: expect.arrayContaining([expect.objectContaining({id: demoPackage.members[0].id})])})
+    expect(read).toHaveBeenCalledWith(demoPackage, {signal, startLine: 1, lineCount: undefined})
+    expect(await state.handleAIDocumentTool({id: "unknown", name: "read_widget_documentation", arguments: {packageName: demoPackage.name, version: "latest"}})).toMatchObject({status: "unavailable"})
+    expect(await state.handleAIDocumentTool({id: "path", name: "read_widget_documentation", arguments: {packageName: "file:///secret", version: "1.0.0"}})).toMatchObject({status: "unavailable"})
+    expect(read).toHaveBeenCalledOnce()
+  })
   it("reports dynamic AI widget readiness and keeps read tools on their fixed bridge actions", async () => {
     const editor = new DomEditor()
     const state = editor as any

@@ -1,13 +1,18 @@
 import {
   mergeEditingConfig,
+  PACKAGE_DOCUMENTATION_MAX_BYTES,
+  PackageDocumentationTooLargeError,
+  packageDocumentationExcerpt,
   resolvePackageExport,
   type PackageEditingConfig,
+  type PackageDocumentationReadOptions,
+  type PackageDocumentationResult,
   type PackageMember,
   type WebWriterPackage,
   type WebWriterPackageManifest,
 } from "./packages"
 
-export type LocalPackageFile = {text(): Promise<string>}
+export type LocalPackageFile = {text(): Promise<string>, size?: number}
 export type LocalPackageDirectory = {
   getFileHandle(name: string): Promise<{getFile(): Promise<LocalPackageFile>}>
   getDirectoryHandle?: (name: string) => Promise<LocalPackageDirectory>
@@ -32,6 +37,12 @@ export type LocalPackageLoadResult = {
   warnings: LocalPackageWarning[]
 }
 
+export type LocalPackageDocumentationReadOptions = PackageDocumentationReadOptions & {
+  packageName: string
+  version: string
+  localRevision?: number
+}
+
 export class LocalPackageError extends Error {
   constructor(public readonly code: "missing-manifest" | "invalid-manifest" | "manifest-read-failed", message: string, options?: ErrorOptions) {
     super(message, options)
@@ -41,6 +52,10 @@ export class LocalPackageError extends Error {
 
 const isPermissionError = (error: unknown) => Boolean(error && typeof error === "object" && "name" in error
   && ((error as {name?: unknown}).name === "NotAllowedError" || (error as {name?: unknown}).name === "SecurityError"))
+
+const isMissingFileError = (error: unknown) => Boolean(error && typeof error === "object" && "name" in error
+  && (error as {name?: unknown}).name === "NotFoundError")
+  || error instanceof Error && /^Missing\s/.test(error.message)
 
 /** Files whose metadata is sufficient for the polling fallback to notice a
  * manifest update, a first build, or a rebuilt package member. */
@@ -104,6 +119,15 @@ const personLabel = (person: WebWriterPackageManifest["author"]) => {
   return person?.name?.trim() || person?.username?.trim() || person?.email?.trim()
 }
 
+const localReadmeCandidates = ["README.md", "readme.md", "README.markdown", "readme.markdown", "README.txt"]
+
+const localAbortReason = (signal: AbortSignal | undefined) => signal?.reason
+  ?? new DOMException("The operation was aborted", "AbortError")
+
+const localThrowIfAborted = (signal: AbortSignal | undefined) => {
+  if(signal?.aborted) throw localAbortReason(signal)
+}
+
 const isManifest = (value: unknown): value is WebWriterPackageManifest => {
   if(!value || typeof value !== "object") return false
   const manifest = value as Partial<WebWriterPackageManifest>
@@ -140,6 +164,84 @@ async function readFile(directory: LocalPackageDirectory, path: string) {
     else current = await current.getFileHandle(part) as unknown as LocalPackageDirectory
   }
   return (await current.getFileHandle(parts.at(-1)!)).getFile()
+}
+
+/** Reads only conventional root README filenames from an already-granted
+ * package directory. The filename is intentionally not caller-controlled. */
+export async function readLocalPackageReadme(
+  directory: LocalPackageDirectory,
+  options: LocalPackageDocumentationReadOptions,
+): Promise<PackageDocumentationResult> {
+  localThrowIfAborted(options.signal)
+  let lastError: unknown
+  for(const path of localReadmeCandidates) {
+    try {
+      const file = await readFile(directory, path)
+      if(typeof file.size === "number" && file.size > PACKAGE_DOCUMENTATION_MAX_BYTES) {
+        return {
+          source: "local",
+          packageName: options.packageName,
+          version: options.version,
+          ...(options.localRevision === undefined ? {} : {localRevision: options.localRevision}),
+          status: "unavailable",
+          reason: "too-large",
+          message: `Package documentation exceeds the ${PACKAGE_DOCUMENTATION_MAX_BYTES}-byte limit.`,
+          path,
+        }
+      }
+      const markdown = await file.text()
+      localThrowIfAborted(options.signal)
+      return {
+        source: "local",
+        packageName: options.packageName,
+        version: options.version,
+        ...(options.localRevision === undefined ? {} : {localRevision: options.localRevision}),
+        status: "available",
+        path,
+        ...packageDocumentationExcerpt(markdown, options),
+      }
+    }
+    catch(error) {
+      if(options.signal?.aborted || error instanceof DOMException && error.name === "AbortError") throw error
+      if(error instanceof PackageDocumentationTooLargeError) {
+        return {
+          source: "local",
+          packageName: options.packageName,
+          version: options.version,
+          ...(options.localRevision === undefined ? {} : {localRevision: options.localRevision}),
+          status: "unavailable",
+          reason: "too-large",
+          message: error.message,
+          path,
+        }
+      }
+      if(error instanceof TypeError || error instanceof RangeError) throw error
+      if(isPermissionError(error)) {
+        return {
+          source: "local",
+          packageName: options.packageName,
+          version: options.version,
+          ...(options.localRevision === undefined ? {} : {localRevision: options.localRevision}),
+          status: "unavailable",
+          reason: "read-failed",
+          message: `Package documentation could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          path,
+        }
+      }
+      if(!isMissingFileError(error)) lastError = error
+    }
+  }
+  return {
+    source: "local",
+    packageName: options.packageName,
+    version: options.version,
+    ...(options.localRevision === undefined ? {} : {localRevision: options.localRevision}),
+    status: "unavailable",
+    reason: lastError ? "read-failed" : "not-found",
+    message: lastError
+      ? `Package documentation could not be read: ${lastError instanceof Error ? lastError.message : String(lastError)}`
+      : "This local package does not contain a conventional README file.",
+  }
 }
 
 async function fileExists(directory: LocalPackageDirectory, path: string) {

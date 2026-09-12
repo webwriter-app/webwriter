@@ -1807,10 +1807,29 @@ export class DomEditor extends LitElement {
       scope: "Installed, local, and previously discovered catalog packages", catalogLoading: this.packagesLoading}
   }
 
+  private readonly aiDocumentedPackages = new Set<string>()
+
+  private async readAIWidgetDocumentation(args: Record<string, unknown>, options: {signal?: AbortSignal}) {
+    if(typeof args.packageName !== "string" || typeof args.version !== "string") throw new TypeError("Choose a package name and exact version from list_widgets")
+    const pkg = [...this.installedPackages, ...this.localPackages, ...this.packages].find(pkg => pkg.name === args.packageName && pkg.version === args.version)
+    if(!pkg) return {status: "unavailable", message: "This package/version is not in the current widget inventory; read list_widgets again"}
+    const local = [...this.localPackageManager.records.values()].find(record => record.package.name === pkg.name && record.package.version === pkg.version)
+    if(args.localRevision !== undefined && args.localRevision !== local?.revision) return {status: "unavailable", message: "The local package revision changed; read list_widgets again"}
+    for(const field of ["startLine", "lineCount"] as const) {
+      const value = args[field]
+      if(value !== undefined && (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || field === "lineCount" && value > 200)) throw new TypeError(`Invalid documentation ${field}`)
+    }
+    const readOptions = {startLine: args.startLine as number | undefined, lineCount: args.lineCount as number | undefined, signal: options.signal}
+    const result = local ? await this.localPackageManager.readPackageReadme(pkg, readOptions) : await this.packageRegistry.readPackageReadme(pkg, readOptions)
+    if(result.status === "available" || result.reason === "not-found") this.aiDocumentedPackages.add(`${pkg.name}@${pkg.version}/${local?.revision ?? "published"}`)
+    return {...result, members: pkg.members.map(member => ({id: member.id, tagName: member.tagName, editingConfig: member.editingConfig ?? {}, publicAPI: "Only use APIs explicitly documented in the README or editing metadata"}))}
+  }
+
   private readonly handleAIDocumentTool: AIDocumentToolHandler = async (call: AIDocumentToolCall, options = {}) => {
     if(call.name === "read_editor_capabilities") return this.execute({...call.arguments, type: "readAIEditorCapabilities"}, options)
     if(call.name === "inspect_elements") return this.execute({...call.arguments, type: "inspectAIElements"}, options)
     if(call.name === "list_widgets") return this.listAIWidgets(call.arguments)
+    if(call.name === "read_widget_documentation") return this.readAIWidgetDocumentation(call.arguments, options)
     if(call.name === "read_current_document") {
       return await this.execute({...call.arguments, type: "readAIDocument"}, options)
     }
@@ -1989,6 +2008,7 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string) {
+    this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
     stripExcludedMarks(parsed.body)
@@ -2983,6 +3003,7 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadEditor(nextPackages: WebWriterPackage[]) {
+    this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const snapshot = await this.execute({type: "snapshotState"}) as EditorStateSnapshot
     if(!snapshot || !Array.isArray(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")

@@ -1,18 +1,19 @@
 import {describe, expect, it} from "vitest"
-import {loadLocalPackage, localPackageWatchPaths, type LocalPackageDirectory} from "./local-package"
+import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS} from "./packages"
+import {loadLocalPackage, localPackageWatchPaths, readLocalPackageReadme, type LocalPackageDirectory} from "./local-package"
 
 type Node = {files?: Record<string, string>, directories?: Record<string, Node>}
 const directory = (node: Node): LocalPackageDirectory => ({
   getFileHandle: async (name: string) => {
     const text = node.files?.[name]
     if(text === undefined) throw new Error(`Missing ${name}`)
-    return {getFile: async () => ({text: async () => text})}
+    return {getFile: async () => ({size: new TextEncoder().encode(text).byteLength, text: async () => text})}
   },
 })
 
 const nestedDirectory = (root: Node): LocalPackageDirectory => ({
   getFileHandle: async (name: string) => {
-    if(root.files?.[name] !== undefined) return {getFile: async () => ({text: async () => root.files![name]})}
+    if(root.files?.[name] !== undefined) return {getFile: async () => ({size: new TextEncoder().encode(root.files![name]).byteLength, text: async () => root.files![name]})}
     const child = root.directories?.[name]
     if(child) return nestedDirectory(child) as never
     throw new Error(`Missing ${name}`)
@@ -109,5 +110,60 @@ describe("loadLocalPackage", () => {
       code: "manifest-read-failed",
       message: expect.stringContaining("Select the folder again"),
     })
+  })
+})
+
+describe("readLocalPackageReadme", () => {
+  it("reads the current README and reflects edits without caching", async () => {
+    const files = {"README.md": "one\ntwo\nthree"}
+    const root = directory({files})
+    const options = {packageName: "@local/demo", version: "0.1.0", startLine: 2, lineCount: 1}
+
+    await expect(readLocalPackageReadme(root, options)).resolves.toMatchObject({
+      source: "local",
+      packageName: "@local/demo",
+      version: "0.1.0",
+      status: "available",
+      path: "README.md",
+      markdown: "two",
+      startLine: 2,
+      endLine: 2,
+      totalLines: 3,
+    })
+    files["README.md"] = "updated"
+    await expect(readLocalPackageReadme(root, {...options, startLine: 1})).resolves.toMatchObject({markdown: "updated", startLine: 1, endLine: 1})
+  })
+
+  it("reports missing documentation explicitly and honors cancellation", async () => {
+    await expect(readLocalPackageReadme(directory({files: {}}), {
+      packageName: "@local/demo", version: "0.1.0",
+    })).resolves.toMatchObject({source: "local", status: "unavailable", reason: "not-found"})
+    const controller = new AbortController()
+    controller.abort()
+    await expect(readLocalPackageReadme(directory({files: {"README.md": "text"}}), {
+      packageName: "@local/demo", version: "0.1.0", signal: controller.signal,
+    })).rejects.toMatchObject({name: "AbortError"})
+  })
+
+  it("rejects an oversized local README before reading its body", async () => {
+    let read = false
+    const root: LocalPackageDirectory = {
+      getFileHandle: async (name: string) => {
+        if(name !== "README.md") throw new Error(`Missing ${name}`)
+        return {getFile: async () => ({
+          size: PACKAGE_DOCUMENTATION_MAX_BYTES + 1,
+          text: async () => { read = true; return "unavailable" },
+        })}
+      },
+    }
+    await expect(readLocalPackageReadme(root, {packageName: "@local/demo", version: "0.1.0"}))
+      .resolves.toMatchObject({status: "unavailable", reason: "too-large"})
+    expect(read).toBe(false)
+  })
+
+  it("rejects an excessively long local README excerpt", async () => {
+    await expect(readLocalPackageReadme(directory({files: {"README.md": "x".repeat(PACKAGE_DOCUMENTATION_MAX_CHARS + 1)}}), {
+      packageName: "@local/demo", version: "0.1.0",
+    })).resolves.toMatchObject({status: "unavailable", reason: "too-large"})
   })
 })

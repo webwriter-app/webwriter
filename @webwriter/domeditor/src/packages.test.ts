@@ -3,6 +3,9 @@ import {describe, expect, it, vi} from "vitest"
 import {
   JSDELIVR_PACKAGE_FILES_ENDPOINT,
   NPM_SEARCH_ENDPOINT,
+  PACKAGE_DOCUMENTATION_MAX_BYTES,
+  PACKAGE_DOCUMENTATION_MAX_CHARS,
+  PACKAGE_DOCUMENTATION_MAX_LINES,
   WebWriterPackageRegistry,
   describePackageExport,
   packageCdnUrl,
@@ -14,6 +17,114 @@ import {
 } from "./packages"
 
 describe("WebWriterPackageRegistry", () => {
+  it("reads and paginates an exact-version registry README through the cache", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe("https://registry.npmjs.org/%40webwriter%2Fdocs/1.0.0")
+      return Response.json({name: "@webwriter/docs", version: "1.0.0", readme: "one\ntwo\nthree", readmeFilename: "README.md"})
+    })
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch)
+
+    await expect(registry.readPackageReadme({name: "@webwriter/docs", version: "1.0.0"}, {startLine: 2, lineCount: 1}))
+      .resolves.toEqual(expect.objectContaining({
+        source: "published",
+        packageName: "@webwriter/docs",
+        version: "1.0.0",
+        status: "available",
+        path: "README.md",
+        markdown: "two",
+        startLine: 2,
+        endLine: 2,
+        totalLines: 3,
+      }))
+    await expect(registry.readPackageReadme({name: "@webwriter/docs", version: "1.0.0"}, {startLine: 3}))
+      .resolves.toMatchObject({markdown: "three", startLine: 3, endLine: 3})
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it("finds case variants from the pinned package file listing", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fdocs/1.0.1") {
+        return Response.json({name: "@webwriter/docs", version: "1.0.1"})
+      }
+      if(url === "https://data.jsdelivr.com/v1/package/npm/@webwriter/docs@1.0.1/flat") {
+        return Response.json({files: [{name: "/readme.md"}]})
+      }
+      if(url === "https://cdn.jsdelivr.net/npm/@webwriter/docs@1.0.1/readme.md") return new Response("# Docs\ncontent")
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    await expect(new WebWriterPackageRegistry(fetcher as typeof fetch).readPackageReadme({name: "@webwriter/docs", version: "1.0.1"}))
+      .resolves.toMatchObject({status: "available", path: "readme.md", markdown: "# Docs\ncontent"})
+  })
+
+  it("returns an explicit unavailable result and retries transient failures", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response("busy", {status: 503}))
+      .mockResolvedValueOnce(Response.json({readme: "ready"}))
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch)
+    const reference = {name: "@webwriter/retry", version: "1.0.0"}
+
+    await expect(registry.readPackageReadme(reference)).resolves.toMatchObject({status: "unavailable", reason: "fetch-failed"})
+    await expect(registry.readPackageReadme(reference)).resolves.toMatchObject({status: "available", markdown: "ready"})
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it("caps README excerpts at the documented line limit", async () => {
+    const lines = Array.from({length: PACKAGE_DOCUMENTATION_MAX_LINES + 1}, (_, index) => String(index + 1)).join("\n")
+    const fetcher = vi.fn(async () => Response.json({readme: lines}))
+    const result = await new WebWriterPackageRegistry(fetcher as typeof fetch)
+      .readPackageReadme({name: "@webwriter/lines", version: "1.0.0"})
+    expect(result).toMatchObject({status: "available", startLine: 1, endLine: PACKAGE_DOCUMENTATION_MAX_LINES, nextStartLine: PACKAGE_DOCUMENTATION_MAX_LINES + 1})
+    if(result.status === "available") expect(result.markdown.split("\n")).toHaveLength(PACKAGE_DOCUMENTATION_MAX_LINES)
+  })
+
+  it("rejects oversized documentation with an explicit result", async () => {
+    const fetcher = vi.fn(async () => Response.json({readme: "x".repeat(PACKAGE_DOCUMENTATION_MAX_BYTES)}))
+    await expect(new WebWriterPackageRegistry(fetcher as typeof fetch)
+      .readPackageReadme({name: "@webwriter/large", version: "1.0.0"}))
+      .resolves.toMatchObject({status: "unavailable", reason: "too-large"})
+  })
+
+  it("passes cancellation to published documentation fetches", async () => {
+    const controller = new AbortController()
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBe(controller.signal)
+      await new Promise<void>(resolve => controller.signal.addEventListener("abort", () => resolve(), {once: true}))
+      throw controller.signal.reason
+    })
+    const request = new WebWriterPackageRegistry(fetcher as typeof fetch)
+      .readPackageReadme({name: "@webwriter/abort", version: "1.0.0"}, {signal: controller.signal})
+    controller.abort()
+    await expect(request).rejects.toMatchObject({name: "AbortError"})
+  })
+
+  it("checks cancellation even when an exact-version README is cached", async () => {
+    const fetcher = vi.fn(async () => Response.json({readme: "cached"}))
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch)
+    const reference = {name: "@webwriter/cached", version: "1.0.0"}
+    await expect(registry.readPackageReadme(reference)).resolves.toMatchObject({status: "available"})
+    const controller = new AbortController()
+    controller.abort()
+    await expect(registry.readPackageReadme(reference, {signal: controller.signal})).rejects.toMatchObject({name: "AbortError"})
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects an excerpt containing one excessively long line", async () => {
+    const fetcher = vi.fn(async () => Response.json({readme: "x".repeat(PACKAGE_DOCUMENTATION_MAX_CHARS + 1)}))
+    await expect(new WebWriterPackageRegistry(fetcher as typeof fetch)
+      .readPackageReadme({name: "@webwriter/long-line", version: "1.0.0"}))
+      .resolves.toMatchObject({status: "unavailable", reason: "too-large", message: expect.stringContaining("character")})
+  })
+
+  it("validates pagination values", async () => {
+    const fetcher = vi.fn(async () => Response.json({readme: "one\ntwo"}))
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch)
+    const reference = {name: "@webwriter/range", version: "1.0.0"}
+    await expect(registry.readPackageReadme(reference, {lineCount: 0})).rejects.toThrow("lineCount")
+    await expect(registry.readPackageReadme(reference, {startLine: 3})).rejects.toThrow("startLine")
+  })
+
   it("omits inferred CSS only when the jsDelivr listing confirms it is absent", async () => {
     const manifest = {
       name: "@webwriter/chemdraw",

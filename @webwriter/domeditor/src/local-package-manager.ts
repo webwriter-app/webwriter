@@ -1,8 +1,8 @@
-import {loadLocalPackage, localPackageWatchPaths, type LocalPackageDirectory, type LocalPackageWarning} from "./local-package"
+import {loadLocalPackage, localPackageWatchPaths, readLocalPackageReadme, type LocalPackageDirectory, type LocalPackageWarning} from "./local-package"
 import {LocalPackageMonitor} from "./local-package-monitor"
 import {localPackageUrl, type LocalPackageDirectoryHandle} from "./local-package-worker"
 import {LocalPackageWorkerClient, requestLocalPackageDirectoryPermission} from "./local-package-worker-client"
-import type {WebWriterPackage} from "./packages"
+import type {PackageDocumentationReadOptions, PackageDocumentationResult, WebWriterPackage} from "./packages"
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -136,6 +136,32 @@ export class LocalPackageManager {
       this.reloadPending.delete(id)
       this.reloads.delete(id)
     }
+  }
+
+  /** Reads the current README from an already-granted local package directory.
+   * This intentionally has no cache so README-only edits are visible without a
+   * package rebuild or permission prompt. */
+  async readPackageReadme(
+    summary: Pick<WebWriterPackage, "name" | "version">,
+    options: PackageDocumentationReadOptions = {},
+  ): Promise<PackageDocumentationResult> {
+    const record = [...this.records.values()].find(candidate => (
+      candidate.package.name === summary.name && candidate.package.version === summary.version
+    ))
+    if(!record) return {
+      source: "local",
+      packageName: summary.name,
+      version: summary.version,
+      status: "unavailable",
+      reason: "not-found",
+      message: "This local package is not currently available.",
+    }
+    return readLocalPackageReadme(record.directory as unknown as LocalPackageDirectory, {
+      ...options,
+      packageName: record.package.name,
+      version: record.package.version,
+      localRevision: record.revision,
+    })
   }
 
   private async performRefresh(id: string) {
