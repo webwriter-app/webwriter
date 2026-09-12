@@ -226,3 +226,71 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Versions", buttons: []},
   ],
 }
+
+export type ContextDrawerPolicy = {
+  menu: RibbonMenuName
+  surface: "ribbon" | "toolbox"
+  activeTool?: "Edit" | "Style" | "Review"
+  developMode?: boolean
+  documentSelected?: boolean
+  paragraphSelected?: boolean
+  sectionSelected?: boolean
+  headingGroup?: boolean
+  orderedList?: boolean
+  media?: boolean
+  dialog?: boolean
+  table?: boolean
+  graphic?: boolean
+  disclosure?: boolean
+  figure?: boolean
+  attributes?: boolean
+  startPackages?: RibbonMenuGroup
+}
+
+const contextDrawerLabels = {
+  documentSelected: "Document",
+  paragraphSelected: "Paragraph",
+  sectionSelected: "Section",
+  headingGroup: "Heading group",
+  orderedList: "List",
+  disclosure: "Disclosure",
+  graphic: "Graphic",
+  table: "Layout",
+  media: "Media",
+  dialog: "Dialog",
+  figure: "Section",
+} as const
+
+// The ribbon and toolbox intentionally prioritize overlapping selections differently.
+const ribbonContextPriority = [
+  "paragraphSelected", "media", "dialog", "graphic", "headingGroup", "orderedList", "disclosure", "figure",
+] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
+const toolboxContextPriority = [
+  "documentSelected", "paragraphSelected", "sectionSelected", "headingGroup", "orderedList", "disclosure",
+  "graphic", "table", "media", "dialog", "figure",
+] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
+
+/** Selects specialized edit drawers in their established priority order. */
+export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGroup[] {
+  if(context.surface === "toolbox" && context.activeTool === "Style") return menuGroups.Style
+  if(context.surface === "toolbox" && context.activeTool === "Review") {
+    return [...menuGroups.Edit.filter(group => group.label === "Comments" || group.label === "Review"), ...menuGroups.History]
+  }
+  if(context.surface === "toolbox" && context.activeTool !== "Edit") return []
+  if(context.surface === "toolbox" && context.developMode) return menuGroups.Develop
+  if(context.menu !== "Edit") {
+    const groups = menuGroups[context.menu]
+    return context.menu === "Start" && context.startPackages ? [...groups, context.startPackages] : groups
+  }
+  const priority = context.surface === "ribbon" ? ribbonContextPriority : toolboxContextPriority
+  const selected = priority.find(key => context[key])
+  if(selected) {
+    const label = contextDrawerLabels[selected]
+    const includeAttributes = context.attributes || selected === "paragraphSelected" || selected === "disclosure"
+    return menuGroups.Edit.filter(group => group.label === label || includeAttributes && group.label === "Attributes")
+  }
+  if(context.attributes) return menuGroups.Edit.filter(group => group.label === "Attributes")
+  return context.surface === "toolbox"
+    ? menuGroups.Edit.filter(group => group.label === "Attributes")
+    : menuGroups.Edit
+}

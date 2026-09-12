@@ -4,7 +4,7 @@ import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
 import {ribbonIcon} from "../ribbon-icons"
 import {AppRibbon} from "./ribbon"
-import {menuGroups} from "./ribbon-menu-config"
+import {contextDrawerPolicy, menuGroups} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 
@@ -491,42 +491,24 @@ export class DomEditorToolbox extends AppRibbon {
   }
 
   protected get currentMenuGroups(): RibbonMenuGroup[] {
-    if(this.activeTool === "Style") return menuGroups.Style
-    if(this.activeTool === "Review") {
-      return [...menuGroups.Edit.filter(group => group.label === "Comments" || group.label === "Review"), ...menuGroups.History]
-    }
-    if(this.activeTool === "Edit") {
-      if(this.developMode) return menuGroups.Develop
-      if(this.documentSelected) return menuGroups.Edit.filter(group => group.label === "Document"
-        || Boolean(this.elementAttributes) && group.label === "Attributes")
-      if(this.paragraphSelected) return menuGroups.Edit.filter(group => group.label === "Paragraph" || group.label === "Attributes")
-      const groups = menuGroups.Edit.filter(group => ![
-        "Marks", "Document", "Section", "Comments", "Review", "View",
-      ].includes(group.label))
-      return this.sectionSelected
-        ? menuGroups.Edit.filter(group => group.label === "Section"
-          || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.headingGroup
-          ? groups.filter(group => group.label === "Heading group" || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.listType === "ol"
-          ? groups.filter(group => group.label === "List" || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.elementAttributes?.localName === "details"
-          ? groups.filter(group => group.label === "Disclosure" || group.label === "Attributes")
-        : this.graphic?.active
-        ? groups.filter(group => group.label === "Graphic" || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.table?.active
-          ? groups.filter(group => group.label === "Layout" || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.media
-          ? groups.filter(group => group.label === "Media" || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.dialog
-          ? groups.filter(group => group.label === "Dialog"
-            || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.figure
-          ? menuGroups.Edit.filter(group => group.label === "Section"
-            || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : groups.filter(group => group.label === "Attributes")
-    }
-    return []
+    return contextDrawerPolicy({
+      menu: "Edit",
+      surface: "toolbox",
+      activeTool: this.activeTool ?? undefined,
+      developMode: this.developMode,
+      documentSelected: this.documentSelected,
+      paragraphSelected: this.paragraphSelected,
+      sectionSelected: this.sectionSelected,
+      headingGroup: Boolean(this.headingGroup),
+      orderedList: this.listType === "ol",
+      media: Boolean(this.media),
+      dialog: Boolean(this.dialog),
+      table: Boolean(this.table?.active),
+      graphic: Boolean(this.graphic?.active),
+      disclosure: this.elementAttributes?.localName === "details",
+      figure: Boolean(this.figure),
+      attributes: Boolean(this.elementAttributes),
+    })
   }
 
   protected renderDrawers() {

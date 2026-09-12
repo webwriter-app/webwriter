@@ -95,6 +95,7 @@ import {
   graphicOrderButtons,
   listInsertionOptions,
   menuGroups,
+  contextDrawerPolicy,
   menuTabs,
   orderedListStyles,
   placeholderSharingLink,
@@ -7469,38 +7470,21 @@ export class AppRibbon extends LitElement {
   }
 
   protected get currentMenuGroups() {
-    if(this.activeMenu === "Edit" && this.paragraphSelected) {
-      return menuGroups.Edit.filter(group => group.label === "Paragraph" || group.label === "Attributes")
+    if(this.activeMenu !== "Start") {
+      return contextDrawerPolicy({
+        menu: this.activeMenu,
+        surface: "ribbon",
+        paragraphSelected: this.paragraphSelected,
+        headingGroup: Boolean(this.headingGroup),
+        orderedList: this.listType === "ol",
+        media: Boolean(this.media),
+        dialog: Boolean(this.dialog),
+        graphic: Boolean(this.graphic?.active),
+        disclosure: this.elementAttributes?.localName === "details",
+        figure: Boolean(this.figure),
+        attributes: Boolean(this.elementAttributes),
+      })
     }
-    if(this.activeMenu === "Edit" && this.media) {
-      return menuGroups.Edit.filter(group => group.label === "Media" || Boolean(this.elementAttributes) && group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.dialog) {
-      return menuGroups.Edit.filter(group => group.label === "Dialog"
-        || Boolean(this.elementAttributes) && group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.graphic?.active) {
-      return menuGroups.Edit.filter(group => group.label === "Graphic" || Boolean(this.elementAttributes) && group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.headingGroup) {
-      return menuGroups.Edit.filter(group => group.label === "Heading group"
-        || Boolean(this.elementAttributes) && group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.listType === "ol") {
-      return menuGroups.Edit.filter(group => group.label === "List"
-        || Boolean(this.elementAttributes) && group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.elementAttributes?.localName === "details") {
-      return menuGroups.Edit.filter(group => group.label === "Disclosure" || group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.figure) {
-      return menuGroups.Edit.filter(group => group.label === "Section"
-        || Boolean(this.elementAttributes) && group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.elementAttributes) {
-      return menuGroups.Edit.filter(group => group.label === "Attributes")
-    }
-    if(this.activeMenu !== "Start") return menuGroups[this.activeMenu]
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
       const members = pkg.members.filter(member => member.insertable)
       return {
@@ -7509,10 +7493,12 @@ export class AppRibbon extends LitElement {
         submenu: members.slice(1).map(member => ({label: member.label, action: packageMemberAction(member)})),
       }
     })
-    return [
-      ...menuGroups[this.activeMenu],
-      {label: "Packages", buttons: packageButtons},
-    ]
+    return contextDrawerPolicy({
+      menu: this.activeMenu,
+      surface: "ribbon",
+      attributes: Boolean(this.elementAttributes),
+      startPackages: {label: "Packages", buttons: packageButtons},
+    })
   }
 
   private renderPresence() {
