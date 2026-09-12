@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, cloneWithoutEditorMarkers, getInertDocument, modifierKeyDown, removeEditorMarker} from "../utility"
+import {$, cloneWithoutEditorMarkers, getInertDocument, modifierKeyDown, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
   cellForNode,
@@ -63,24 +63,6 @@ function equalAttributes(element: Element, expected: Record<string, string>) {
   const current = stateAttributes(element)
   const names = Object.keys(current)
   return names.length === Object.keys(expected).length && names.every(name => current[name] === expected[name])
-}
-
-function pathFrom(root: Node, node: Node) {
-  const path: number[] = []
-  let current: Node | null = node
-  while(current && current !== root) {
-    const parent: ParentNode | null = current.parentNode
-    if(!parent) return null
-    const index = Array.from(parent.childNodes).indexOf(current as ChildNode)
-    if(index < 0) return null
-    path.unshift(index)
-    current = parent as Node
-  }
-  return current === root ? path : null
-}
-
-function nodeAtPath(root: Node, path: number[]) {
-  return path.reduce<Node | null>((node, index) => node?.childNodes.item(index) ?? null, root)
 }
 
 function sharedCellAttribute(cells: HTMLTableCellElement[], name: string) {
@@ -317,14 +299,14 @@ export class TableFeature extends EditorFeature {
   private columnGroupState(table: HTMLTableElement): TableColumnGroupState[] {
     return Array.from(table.children).flatMap(group => {
       if(group.localName !== "colgroup") return []
-      const groupPath = pathFrom(table, group)
+      const groupPath = pathFromNode(table, group)
       if(!groupPath) return []
       return [{
         path: groupPath,
         attributes: stateAttributes(group),
         columns: Array.from(group.children).flatMap(column => {
           if(column.localName !== "col") return []
-          const path = pathFrom(table, column)
+          const path = pathFromNode(table, column)
           return path ? [{path, attributes: stateAttributes(column)}] : []
         }),
       }]

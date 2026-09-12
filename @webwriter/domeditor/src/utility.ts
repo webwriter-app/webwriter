@@ -1159,25 +1159,11 @@ export function cloneInert<T extends Node>(node: T, deep=false): T {
 /** Maps a range into an inert copy for structural validation or serialization.
  * The copy is temporary; the live DOM remains the document state. */
 export function cloneRangeIn<T extends Node>(root: T, range: Range) {
-  const pathFromRoot = (node: Node) => {
-    const path: number[] = []
-    while(node !== root) {
-      const parent = node.parentNode
-      if(!parent) return null
-      const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
-      if(index < 0) return null
-      path.push(index)
-      node = parent
-    }
-    return path.reverse()
-  }
-  const startPath = pathFromRoot(range.startContainer)
-  const endPath = pathFromRoot(range.endContainer)
+  const startPath = pathFromNode(root, range.startContainer)
+  const endPath = pathFromNode(root, range.endContainer)
   if(!startPath || !endPath) return null
   const clonedRoot = cloneInert(root, true)
-  const resolve = (path: number[]) => path.reduce<Node | null>(
-    (node, index) => node?.childNodes.item(index) ?? null, clonedRoot,
-  )
+  const resolve = (path: number[]) => nodeAtPath(clonedRoot, path)
   const start = resolve(startPath)
   const end = resolve(endPath)
   if(!start || !end) return null
@@ -1192,6 +1178,55 @@ export function cloneRangeIn<T extends Node>(root: T, range: Range) {
 export function cloneRangeContents(range: Range) {
   if(range.collapsed) return getInertDocument(range.startContainer).createDocumentFragment()
   return cloneRangeIn(range.commonAncestorContainer, range)!.range.cloneContents()
+}
+
+/** Returns the child-node path from root to node, or null when disconnected. */
+export function pathFromNode(root: Node, node: Node): number[] | null {
+  const path: number[] = []
+  let current: Node | null = node
+  while(current && current !== root) {
+    const parent: ParentNode | null = current.parentNode
+    if(!parent) return null
+    const index = Array.from(parent.childNodes).indexOf(current as ChildNode)
+    if(index < 0) return null
+    path.unshift(index)
+    current = parent
+  }
+  return current === root ? path : null
+}
+
+/** Resolves a child-node path, returning null for stale or invalid paths. */
+export function nodeAtPath(root: Node, path: number[]): Node | null {
+  if(path.some(index => !Number.isInteger(index) || index < 0 || !Number.isFinite(index))) return null
+  return path.reduce<Node | null>((node, index) => node?.childNodes.item(index) ?? null, root)
+}
+
+/** Returns the plain-text offset of a DOM point within root, or null if stale. */
+export function textOffsetIn(root: Element, node: Node, offset: number): number | null {
+  if(!root.contains(node)) return null
+  try {
+    const range = root.ownerDocument.createRange()
+    range.selectNodeContents(root)
+    range.setEnd(node, offset)
+    return range.toString().length
+  }
+  catch {
+    return null
+  }
+}
+
+/** Resolves a plain-text offset within root, falling back to its final text point. */
+export function textPointAtOffset(root: Element, offset: number, fallback?: [Node, number]): [Node, number] {
+  let remaining = offset
+  let lastText: Text | null = null
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  while(walker.nextNode()) {
+    const text = walker.currentNode as Text
+    lastText = text
+    if(remaining <= text.length) return [text, remaining]
+    remaining -= text.length
+  }
+  return fallback ?? (lastText ? [lastText, lastText.length] : [root, 0])
 }
 
 /** Removes transient editor marker classes from a node and all descendants,

@@ -9,7 +9,8 @@ import {
   distanceBetweenPoints, midpoint, intersectionPoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getZPos, getStaticCoords,
-  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker
+  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker,
+  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset
 } from "./utility"
 import { Schema } from "./schema"
 
@@ -1570,5 +1571,30 @@ describe("removeEditorMarker()", () => {
     element.className = "◆ ◆first ◆second"
     removeEditorMarker(element, "◆first", "◆second")
     expect(element.hasAttribute("class")).toBe(false)
+  })
+})
+
+describe("DOM path and text point helpers", () => {
+  it("round trips child-node paths including text and comments", () => {
+    setBody("<div><!--comment-->text<span>tail</span></div>")
+    const root = document.body
+    const text = root.firstElementChild!.firstChild!.nextSibling!
+    const path = pathFromNode(root, text)
+    expect(path).toEqual([0, 1])
+    expect(nodeAtPath(root, path!)).toBe(text)
+    expect(pathFromNode(root, document.createElement("p"))).toBeNull()
+    expect(nodeAtPath(root, [-1])).toBeNull()
+    expect(nodeAtPath(root, [0.5])).toBeNull()
+    expect(nodeAtPath(root, [0, 99])).toBeNull()
+  })
+
+  it("maps text offsets across descendants and falls back to the final text point", () => {
+    setBody("<div>one<span>two</span></div>")
+    const root = document.body.firstElementChild!
+    const text = root.firstChild!
+    expect(textOffsetIn(root, text, 2)).toBe(2)
+    expect(textOffsetIn(root, document.createTextNode("outside"), 2)).toBeNull()
+    expect(textPointAtOffset(root, 4)).toEqual([root.lastElementChild!.firstChild, 1])
+    expect(textPointAtOffset(root, 99)).toEqual([root.lastElementChild!.firstChild, 3])
   })
 })

@@ -20,7 +20,7 @@ import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM, removeEditorMarker } from "./utility"
+import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   executeCompleteEvent,
@@ -515,35 +515,14 @@ export class DOMEditor {
     if(!(node instanceof Text) || !node.parentElement) {
       return {node, offset}
     }
-    const range = document.createRange()
     const element = getContainer(node)
-    range.selectNodeContents(element)
-    range.setEnd(node, offset)
-    return {element, textOffset: range.toString().length}
+    return {element, textOffset: textOffsetIn(element, node, offset)!}
   }
 
   private restoreTextPoint(point: {node: Node, offset: number} | {element: Element, textOffset: number}): [Node, number] | null {
     if("element" in point) {
       if(!point.element.isConnected) return null
-      let remaining = point.textOffset
-      let lastText: Text | null = null
-      const find = (node: Node): [Node, number] | null => {
-        if(node instanceof Text) {
-          lastText = node
-          if(remaining <= node.length) return [node, remaining]
-          remaining -= node.length
-          return null
-        }
-        for(const child of Array.from(node.childNodes)) {
-          const found = find(child)
-          if(found) return found
-        }
-        return null
-      }
-      const found = find(point.element)
-      if(found) return found
-      const fallback = lastText as Text | null
-      return fallback === null? [point.element, 0]: [fallback, fallback.length]
+      return textPointAtOffset(point.element, point.textOffset)
     }
     if(!point.node.isConnected) return null
     const maxOffset = point.node instanceof Text? point.node.length: point.node.childNodes.length
@@ -908,18 +887,7 @@ export class DOMEditor {
   }
 
   private pathToElement(element: Element) {
-    const body = document.body
-    if(element === body) return []
-
-    const path: number[] = []
-    let current: Element | null = element
-    while(current && current !== body) {
-      const parent: Element | null = current.parentElement
-      if(!parent) return []
-      path.unshift(Array.from(parent.childNodes).indexOf(current))
-      current = parent
-    }
-    return current === body? path: []
+    return pathFromNode(document.body, element) ?? []
   }
 
   /** Returns an exact, explicitly selected authored element. Text selections

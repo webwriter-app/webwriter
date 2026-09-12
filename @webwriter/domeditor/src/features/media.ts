@@ -6,7 +6,7 @@ import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
-import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getContainer, getInertDocument, isElement, removeEditorMarker} from "../utility"
+import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getContainer, getInertDocument, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -935,7 +935,7 @@ export class MediaFeature extends EditorFeature {
     }
     this.shieldReleasePending.clear()
     this.shieldReleasePending.add(target)
-    const path = this.pathFrom(document.body, target)
+    const path = pathFromNode(document.body, target)
     if(path) this.editor.features.selection.actions.selectNode({type: "selectNode", path})
     this.editor.postSelectionPath()
     this.refresh()
@@ -1047,7 +1047,7 @@ export class MediaFeature extends EditorFeature {
       if(!target || !isEmptyMedia(target)) return
       event.preventDefault()
       event.stopImmediatePropagation()
-      const path = this.pathFrom(document.body, target)
+      const path = pathFromNode(document.body, target)
       if(path) this.editor.features.selection.actions.selectNode({type: "selectNode", path})
       this.editor.postSelectionPath()
       this.refresh()
@@ -1352,28 +1352,10 @@ export class MediaFeature extends EditorFeature {
     return name
   }
 
-  private pathFrom(root: Node, node: Node) {
-    const path: number[] = []
-    let current: Node | null = node
-    while(current && current !== root) {
-      const parent: ParentNode | null = current.parentNode
-      if(!parent) return null
-      const index = Array.from(parent.childNodes).indexOf(current as ChildNode)
-      if(index < 0) return null
-      path.unshift(index)
-      current = parent as Node
-    }
-    return current === root ? path : null
-  }
-
-  private nodeAtPath(root: Node, path: number[]) {
-    return path.reduce<Node | null>((node, index) => node?.childNodes.item(index) ?? null, root)
-  }
-
   private imageMapAreaState(map: HTMLMapElement): ImageMapAreaState[] {
     return Array.from(map.querySelectorAll("area")).flatMap(area => {
       if(area.namespaceURI !== htmlNamespace) return []
-      const path = this.pathFrom(map, area)
+      const path = pathFromNode(map, area)
       return path ? [{path, attributes: stateAttributes(area)}] : []
     })
   }
@@ -1384,7 +1366,7 @@ export class MediaFeature extends EditorFeature {
       || Object.entries(expected).some(([name, value]) => !name || typeof value !== "string")) return null
     const image = this.selectedImage(false)
     const map = image ? this.associatedImageMap(image) : null
-    const area = map ? this.nodeAtPath(map, path) : null
+    const area = map ? nodeAtPath(map, path) : null
     return area instanceof Element
       && area.namespaceURI === htmlNamespace
       && area.localName === "area"

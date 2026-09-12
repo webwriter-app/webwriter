@@ -19,7 +19,7 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$, cloneWithoutEditorMarkers, modifierKeyDown} from "../utility"
+import {$, cloneWithoutEditorMarkers, modifierKeyDown, textOffsetIn, textPointAtOffset} from "../utility"
 import {isSectionElement} from "../sections"
 
 export type MarkState = {
@@ -1306,28 +1306,11 @@ export class MarkFeature extends EditorFeature {
   }
 
   private textOffset(block: Element, node: Node, offset: number) {
-    try {
-      const prefix = document.createRange()
-      prefix.selectNodeContents(block)
-      prefix.setEnd(node, offset)
-      return prefix.toString().length
-    }
-    catch {
-      return null
-    }
+    return textOffsetIn(block, node, offset)
   }
 
   private textPoint(block: Element, offset: number): [Node, number] {
-    let remaining = offset
-    let lastText: Text | null = null
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
-    while(walker.nextNode()) {
-      const text = walker.currentNode as Text
-      lastText = text
-      if(remaining <= text.length) return [text, remaining]
-      remaining -= text.length
-    }
-    return lastText? [lastText, lastText.length]: [block, 0]
+    return textPointAtOffset(block, offset)
   }
 
   private restoreSelection(context: MarkSelection) {

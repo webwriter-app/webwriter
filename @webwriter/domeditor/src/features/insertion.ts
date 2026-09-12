@@ -1,6 +1,6 @@
 import { EditorFeature } from "."
 import {emptyElementHTML, InsertionMenu, type InsertionMenuItem} from "../components/insertion-menu"
-import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
+import { $, getContainer, isElement, isText, modifierKeyDown, textPointAtOffset } from "../utility"
 import {isMediaType, mediaDefaultHTML} from "../media"
 import {createTable} from "../table"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
@@ -569,19 +569,6 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private pointAtTextOffset(block: Element, offset: number): [Node, number] | null {
-    let remaining = offset
-    const find = (node: Node): [Node, number] | null => {
-      if(isText(node)) {
-        if(remaining <= node.length) return [node, remaining]
-        remaining -= node.length
-        return null
-      }
-      for(const child of Array.from(node.childNodes)) {
-        const point = find(child)
-        if(point) return point
-      }
-      return null
-    }
-    return find(block) ?? [block, block.childNodes.length]
+    return textPointAtOffset(block, offset, [block, block.childNodes.length])
   }
 }
