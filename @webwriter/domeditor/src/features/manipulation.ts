@@ -1576,7 +1576,7 @@ export class ManipulationFeature extends EditorFeature {
    * following element's content into the preceding element, forward the
    * reverse. At the document boundaries, Backspace/Delete move the caret to
    * the end/start of the adjacent block. */
-  delete(direction?: "forward" | "backward", granularity:Granularity="character", strict=false) {
+  delete(direction?: "forward" | "backward", granularity:Granularity="character") {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
     return this.withNormalization(() => {
       if($.isGapSelection && direction === "backward" && !$.elementAfter && $.elementBefore) {
@@ -1664,7 +1664,7 @@ export class ManipulationFeature extends EditorFeature {
    * anchor's container element is moved into the adjacent element (preferring
    * the previous one), which is returned — or undefined if there is none.
    * No schema validation is performed. */
-  wrap(wrapping?: DocumentFragment | Element, strict=false) {
+  wrap(wrapping?: DocumentFragment | Element) {
     return this.withNormalization(() => {
       if(wrapping) {
         const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild: wrapping
@@ -1688,7 +1688,7 @@ export class ManipulationFeature extends EditorFeature {
    * its container, `depth` levels up, splitting the container around it when
    * it has siblings. Schema-validated: does nothing when no valid lift target
    * exists (see Schema.getLiftTarget). */
-  lift(depth=1, strict=false) {
+  lift(depth=1) {
     return this.withNormalization(() => {
       const node = $.selectedElement ?? $.anchorContainer
       if(!node) {
