@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit"
+import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
@@ -4364,32 +4365,81 @@ export class DomEditor extends LitElement {
     super.disconnectedCallback()
   }
 
+  private get editingUIProperties(): EditingUIProperties {
+    return {
+      canMark: this.canMark,
+      canSection: this.canSection,
+      sectionType: this.sectionType,
+      sectionActive: this.sectionActive,
+      sectionSelected: this.sectionSelected,
+      marks: this.marks,
+      markStyles: this.markStyles,
+      markAttributes: this.markAttributes,
+      ruby: this.ruby,
+      commentState: this.commentState,
+      listType: this.listType,
+      listStyle: this.listStyle,
+      orderedList: this.orderedList,
+      headingGroup: this.headingGroup,
+      figure: this.figure,
+      media: this.mediaSelection,
+      dialog: this.dialogSelection,
+      graphic: this.graphicSelection,
+      elementAttributes: this.elementAttributes,
+      elementStyle: this.elementStyle,
+      historyState: this.historyState,
+      historyLoading: this.historyLoading,
+      historyError: this.historyError,
+    }
+  }
+
+  private boundEditingUIListeners: EditingUIListeners | undefined
+
+  private get editingUIListeners(): EditingUIListeners {
+    return this.boundEditingUIListeners ??= {
+      "ribbon-button-click": this.handleRibbonButtonClick.bind(this),
+      "ribbon-combobox-change": this.handleRibbonComboboxChange.bind(this),
+      "section-type-change": this.handleSectionTypeChange.bind(this),
+      "mark-attribute-change": this.handleMarkAttributeChange.bind(this),
+      "ruby-action": this.handleRubyAction.bind(this),
+      "list-attribute-change": this.handleListAttributeChange.bind(this),
+      "heading-group-level-change": this.handleHeadingGroupLevelChange.bind(this),
+      "paragraph-format-change": this.handleParagraphFormatChange.bind(this),
+      "comment-action": this.handleCommentAction.bind(this),
+      "media-attribute-change": this.handleMediaAttributeChange.bind(this),
+      "media-resource-action": this.handleMediaResourceAction.bind(this),
+      "image-map-action": this.handleImageMapAction.bind(this),
+      "element-attribute-change": this.handleElementAttributeChange.bind(this),
+      "media-type-change": this.handleMediaTypeChange.bind(this),
+      "dialog-attribute-change": this.handleDialogAttributeChange.bind(this),
+      "table-insert": this.handleTableInsert.bind(this),
+      "table-style-change": this.handleTableStyleChange.bind(this),
+      "table-semantic-action": this.handleTableSemanticAction.bind(this),
+      "graphic-parameter-change": this.handleGraphicParameterChange.bind(this),
+      "graphic-layer-action": this.handleGraphicLayerAction.bind(this),
+      "graphic-viewport-action": this.handleGraphicViewportAction.bind(this),
+      "element-style-change": this.handleElementStyleChange.bind(this),
+      "element-style-target-hover": this.handleElementStyleTargetHover.bind(this),
+      "element-style-state-request": this.queueElementStyleRefresh.bind(this),
+      "history-state-request": this.requestHistoryState.bind(this),
+      "history-checkpoint-select": this.handleHistoryCheckpointSelect.bind(this),
+      "history-revert": this.handleHistoryRevert.bind(this),
+      "history-preview-clear": this.clearHistoryPreview.bind(this),
+      "ribbon-input-pointerdown": this.handleRibbonInputPointerDown.bind(this),
+      "ribbon-input-focus": this.handleRibbonInputFocus.bind(this),
+      "ribbon-input-blur": this.handleRibbonInputBlur.bind(this),
+      "ribbon-input-commit": this.finishRibbonInput.bind(this),
+      "ribbon-input-cancel": this.finishRibbonInput.bind(this),
+    }
+  }
+
   render() {
     return html`
       <header class="app-bar">
         <app-ribbon
+          ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
           ?inert=${this.htmlPending}
           logo-url=${appIconUrl}
-          .canMark=${this.canMark}
-          .canSection=${this.canSection}
-          .sectionType=${this.sectionType}
-          .sectionActive=${this.sectionActive}
-          .sectionSelected=${this.sectionSelected}
-          .marks=${this.marks}
-          .markStyles=${this.markStyles}
-          .markAttributes=${this.markAttributes}
-          .ruby=${this.ruby}
-          .commentState=${this.commentState}
-          .listType=${this.listType}
-          .listStyle=${this.listStyle}
-          .orderedList=${this.orderedList}
-          .headingGroup=${this.headingGroup}
-          .figure=${this.figure}
-          .media=${this.mediaSelection}
-          .dialog=${this.dialogSelection}
-          .graphic=${this.graphicSelection}
-          .elementAttributes=${this.elementAttributes}
-          .elementStyle=${this.elementStyle}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
           .installedPackages=${this.installedPackages}
@@ -4404,15 +4454,11 @@ export class DomEditor extends LitElement {
           .liveSessionLink=${this.liveSessionLink}
           .liveLearners=${this.liveLearners}
           .storageLocation=${this.storageLocation}
-          .historyState=${this.historyState}
-          .historyLoading=${this.historyLoading}
-          .historyError=${this.historyError}
           .settings=${this.settings}
           .backendClient=${this.backendClient}
           .backendState=${this.backendState}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}
           .aiEditReviewHandler=${this.handleAIEditReview}
-          @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @live-session-toggle=${this.toggleLiveSession}
           @live-learner-toggle=${this.handleLiveLearnerToggle}
@@ -4420,39 +4466,7 @@ export class DomEditor extends LitElement {
           @storage-location-change=${this.handleStorageLocationChange}
           @backend-login-request=${this.loginToBackend}
           @backend-admin-request=${this.openBackendAdmin}
-          @ribbon-combobox-change=${this.handleRibbonComboboxChange}
-          @section-type-change=${this.handleSectionTypeChange}
-          @mark-attribute-change=${this.handleMarkAttributeChange}
-          @ruby-action=${this.handleRubyAction}
-          @list-attribute-change=${this.handleListAttributeChange}
-          @heading-group-level-change=${this.handleHeadingGroupLevelChange}
-          @paragraph-format-change=${this.handleParagraphFormatChange}
-          @comment-action=${this.handleCommentAction}
-          @media-attribute-change=${this.handleMediaAttributeChange}
-          @media-resource-action=${this.handleMediaResourceAction}
-          @image-map-action=${this.handleImageMapAction}
-          @element-attribute-change=${this.handleElementAttributeChange}
-          @media-type-change=${this.handleMediaTypeChange}
-          @dialog-attribute-change=${this.handleDialogAttributeChange}
-          @table-insert=${this.handleTableInsert}
-          @table-style-change=${this.handleTableStyleChange}
-          @table-semantic-action=${this.handleTableSemanticAction}
-          @graphic-parameter-change=${this.handleGraphicParameterChange}
-          @graphic-layer-action=${this.handleGraphicLayerAction}
-          @graphic-viewport-action=${this.handleGraphicViewportAction}
-          @element-style-change=${this.handleElementStyleChange}
-          @element-style-target-hover=${this.handleElementStyleTargetHover}
-          @element-style-state-request=${this.queueElementStyleRefresh}
-          @history-state-request=${this.requestHistoryState}
-          @history-checkpoint-select=${this.handleHistoryCheckpointSelect}
-          @history-revert=${this.handleHistoryRevert}
-          @history-preview-clear=${this.clearHistoryPreview}
           @ribbon-collapse=${this.handleRibbonCollapse}
-          @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
-          @ribbon-input-focus=${this.handleRibbonInputFocus}
-          @ribbon-input-blur=${this.handleRibbonInputBlur}
-          @ribbon-input-commit=${this.finishRibbonInput}
-          @ribbon-input-cancel=${this.finishRibbonInput}
           @package-catalog-request=${this.loadPackageCatalog}
           @app-settings-change=${this.handleAppSettingsChange}
         ></app-ribbon>
@@ -4530,21 +4544,7 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
-        .canMark=${this.canMark}
-        .canSection=${this.canSection}
-        .sectionType=${this.sectionType}
-        .sectionActive=${this.sectionActive}
-        .sectionSelected=${this.sectionSelected}
-        .marks=${this.marks}
-        .markStyles=${this.markStyles}
-        .markAttributes=${this.markAttributes}
-        .ruby=${this.ruby}
-        .commentState=${this.commentState}
-        .listType=${this.listType}
-        .listStyle=${this.listStyle}
-        .orderedList=${this.orderedList}
-        .headingGroup=${this.headingGroup}
-        .figure=${this.figure}
+        ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
         .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
         .documentHead=${this.documentHead}
@@ -4553,49 +4553,13 @@ export class DomEditor extends LitElement {
         .htmlSource=${this.htmlSource}
         .htmlPending=${this.htmlPending}
         .htmlSourceError=${this.htmlSourceError}
-        .media=${this.mediaSelection}
-        .dialog=${this.dialogSelection}
         .table=${this.tableSelection}
-        .graphic=${this.graphicSelection}
-        .elementAttributes=${this.elementAttributes}
-        .elementStyle=${this.elementStyle}
-        .historyState=${this.historyState}
-        .historyLoading=${this.historyLoading}
-        .historyError=${this.historyError}
-        @history-state-request=${this.requestHistoryState}
-        @history-checkpoint-select=${this.handleHistoryCheckpointSelect}
-        @history-revert=${this.handleHistoryRevert}
-        @history-preview-clear=${this.clearHistoryPreview}
         .localPackages=${this.localPackages}
         .localPackagesLoading=${this.localPackagesLoading}
         .localPackageError=${this.localPackageError}
         .selectedLocalPackageName=${this.selectedLocalPackageName}
         .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
         ?hidden=${this.previewActive || this.liveSessionActive}
-        @ribbon-button-click=${this.handleRibbonButtonClick}
-        @ribbon-combobox-change=${this.handleRibbonComboboxChange}
-        @section-type-change=${this.handleSectionTypeChange}
-        @mark-attribute-change=${this.handleMarkAttributeChange}
-        @ruby-action=${this.handleRubyAction}
-        @list-attribute-change=${this.handleListAttributeChange}
-        @heading-group-level-change=${this.handleHeadingGroupLevelChange}
-        @paragraph-format-change=${this.handleParagraphFormatChange}
-        @comment-action=${this.handleCommentAction}
-        @media-attribute-change=${this.handleMediaAttributeChange}
-        @media-resource-action=${this.handleMediaResourceAction}
-        @image-map-action=${this.handleImageMapAction}
-        @element-attribute-change=${this.handleElementAttributeChange}
-        @media-type-change=${this.handleMediaTypeChange}
-        @dialog-attribute-change=${this.handleDialogAttributeChange}
-        @table-insert=${this.handleTableInsert}
-        @table-style-change=${this.handleTableStyleChange}
-        @table-semantic-action=${this.handleTableSemanticAction}
-        @graphic-parameter-change=${this.handleGraphicParameterChange}
-        @graphic-layer-action=${this.handleGraphicLayerAction}
-        @graphic-viewport-action=${this.handleGraphicViewportAction}
-        @element-style-change=${this.handleElementStyleChange}
-        @element-style-target-hover=${this.handleElementStyleTargetHover}
-        @element-style-state-request=${this.queueElementStyleRefresh}
         @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
         @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
         @local-package-contributor-change=${this.handleLocalPackageContributorChange}
@@ -4605,11 +4569,6 @@ export class DomEditor extends LitElement {
         @local-package-export-add=${this.handleLocalPackageExportAdd}
         @local-package-export-delete=${this.handleLocalPackageExportDelete}
         @local-package-export-file-pick=${this.handleLocalPackageExportFilePick}
-        @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
-        @ribbon-input-focus=${this.handleRibbonInputFocus}
-        @ribbon-input-blur=${this.handleRibbonInputBlur}
-        @ribbon-input-commit=${this.finishRibbonInput}
-        @ribbon-input-cancel=${this.finishRibbonInput}
         @toolbox-change=${this.handleToolboxChange}
         @html-mode-change=${this.handleHTMLModeChange}
         @html-source-change=${this.handleHTMLSourceChange}
