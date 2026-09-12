@@ -6,26 +6,63 @@ const pagination = {
   limit: {type: "integer", minimum: 1, maximum: 50},
 } as const
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({type: "object", properties, required, additionalProperties: false})
-const position = {type: "string", enum: ["before", "after", "prepend", "append"]}
+const position = {type: "string", enum: ["before", "after", "prepend", "append"], description: "Required for insertion and move operations. before/after are siblings; prepend/append are children of the target."}
 const attributes = {type: "object", additionalProperties: {type: ["string", "null"]}}
 const styleDeclarations = {type: "object", additionalProperties: {anyOf: [
   {type: ["string", "null"]}, object({value: string, priority: {enum: ["", "important"]}}, ["value", "priority"]),
 ]}}
-const operation = (type: string, properties: Record<string, unknown>, required = Object.keys(properties)) => object({type: {const: type}, ...properties}, ["type", ...required])
-const operations = {type: "array", minItems: 1, maxItems: 50, items: {anyOf: [
-  operation("insert_html", {target: string, position, html: string}),
-  operation("replace_html", {target: string, html: string}),
-  operation("replace_document", {target: string, html: string}),
-  operation("replace_selection", {selectionId: string, html: string}),
-  operation("set_text", {target: string, text: string}),
-  operation("remove", {target: string}),
-  operation("move", {target: string, destination: string, position}),
-  operation("set_attributes", {target: string, attributes}),
-  operation("set_styles", {target: string, styles: styleDeclarations}),
-  operation("set_layout", {target: string, preset: string}),
-  operation("insert_layout", {target: string, position, preset: string}),
-  operation("insert_widget", {target: string, position, memberId: string, attributes, html: string}, ["target", "position", "memberId"]),
-]}}
+const operationFields = {
+  insert_html: ["target", "position", "html"],
+  replace_html: ["target", "html"],
+  replace_document: ["target", "html"],
+  replace_selection: ["selectionId", "html"],
+  set_text: ["target", "text"],
+  remove: ["target"],
+  move: ["target", "destination", "position"],
+  set_attributes: ["target", "attributes"],
+  set_styles: ["target", "styles"],
+  set_layout: ["target", "preset"],
+  insert_layout: ["target", "position", "preset"],
+  insert_widget: ["target", "position", "memberId"],
+} as const satisfies Record<AIChangeOperation["type"], readonly string[]>
+
+const operationSignatures = Object.entries(operationFields).map(([name, fields]) => `${name}(${fields.join(", ")})`).join("; ")
+
+// Some compatible providers omit nested anyOf/const branches from the tool
+// description seen by the model. Keep the discriminator and fields directly
+// visible, and enforce each operation's required fields at execution time.
+const operations = {type: "array", minItems: 1, maxItems: 50, items: object({
+  type: {type: "string", enum: Object.keys(operationFields), description: "Exact operation name; use only a listed value."},
+  target: {...string, description: "Copy a target ID from a complete document read or element inspection. A document read without arguments returns the BODY target."},
+  position,
+  html: {...string, description: "HTML markup for insert_html, replace_html, replace_document, or replace_selection; optional documented light DOM for insert_widget. The field is named html, not content."},
+  text: {...string, description: "Replacement plain text for set_text."},
+  selectionId: {...string, description: "Saved selection ID from read_current_selection; required by replace_selection."},
+  destination: {...string, description: "Previously read destination target ID for move."},
+  attributes: {...attributes, description: "Authored attribute names mapped to strings, or null to remove. Required by set_attributes; optional for insert_widget."},
+  styles: {...styleDeclarations, description: "CSS property names mapped to authored values, null to remove, or {value, priority}. Required by set_styles."},
+  preset: {...string, description: "Layout preset ID from read_editor_capabilities(topic=layouts)."},
+  memberId: {...string, description: "Exact available member ID from list_widgets; read its README before insert_widget."},
+}, ["type"])}
+
+export function validateAIChangeOperations(value: unknown): asserts value is AIChangeOperation[] {
+  if(!Array.isArray(value) || !value.length || value.length > 50) throw new TypeError("Provide between 1 and 50 focused operations")
+  for(const operation of value) {
+    if(!operation || typeof operation !== "object" || Array.isArray(operation)) throw new TypeError("Each operation must be an object with a type and its required fields")
+    if(typeof operation.type !== "string" || !Object.hasOwn(operationFields, operation.type)) {
+      throw new TypeError(`Unsupported operation type ${JSON.stringify(operation.type)}. Supported operations and required fields: ${operationSignatures}`)
+    }
+    const required = operationFields[operation.type as AIChangeOperation["type"]]
+    for(const field of required) {
+      const fieldValue = operation[field]
+      const valid = field === "attributes" || field === "styles"
+        ? fieldValue !== null && typeof fieldValue === "object" && !Array.isArray(fieldValue)
+        : typeof fieldValue === "string"
+      if(!valid) throw new TypeError(`${operation.type} requires ${required.join(", ")}. Provide ${field} as ${field === "attributes" || field === "styles" ? "an object" : "a string"}.`)
+    }
+    if("position" in operation && !position.enum.includes(operation.position)) throw new TypeError("position must be before, after, prepend, or append")
+  }
+}
 
 /** One source for the advertised tool names, schemas and read/write routing. */
 export const aiToolDefinitions = {
@@ -34,7 +71,7 @@ export const aiToolDefinitions = {
     parameters: object({topic: {type: "string", enum: ["overview", "elements", "styles", "layouts"]}}),
   },
   read_current_document: {
-    kind: "read", description: "Read authored DOM, an outline, or a target region. Results include transient target IDs for focused edits. Follow pagination; truncated HTML is not a complete document.",
+    kind: "read", description: "Read authored DOM, an outline, or a target region. With no target, returns BODY contents and a BODY target ID, not an ID for the first child. To add content to that body, use insert_html with its target ID, position append/prepend, and html. Follow pagination; truncated HTML is not a complete document.",
     parameters: object({target: string, mode: {type: "string", enum: ["html", "outline"]}, includeHead: {type: "boolean"}, ...pagination, limit: {type: "integer", minimum: 1, maximum: 200000, description: "Characters for HTML (default 200000); nodes for outline (maximum 50)."}}),
   },
   read_current_selection: {
@@ -42,7 +79,7 @@ export const aiToolDefinitions = {
     parameters: object({}),
   },
   inspect_elements: {
-    kind: "read", description: "Inspect bounded authored elements by selector or target IDs, including attributes and requested computed CSS. Widget internals are atomic. Never write computed values back as authored styles.",
+    kind: "read", description: "Inspect bounded authored elements by selector or target IDs, including tagName, attributes, and HTML. properties accepts only requested CSS property names, such as color or font-size; tagName and target are always returned. Widget internals are atomic. Never write computed values back as authored styles.",
     parameters: object({selector: string, targets: {type: "array", items: string, maxItems: 50}, properties: {type: "array", items: string, maxItems: 50}, ...pagination}),
   },
   list_widgets: {
@@ -54,7 +91,7 @@ export const aiToolDefinitions = {
     parameters: object({packageName: string, version: string, localRevision: {type: "integer", minimum: 0}, startLine: {type: "integer", minimum: 1}, lineCount: {type: "integer", minimum: 1, maximum: 200}}, ["packageName", "version"]),
   },
   queue_document_change: {
-    kind: "edit", description: "Queue one atomic batch of effective changes for review. Use target/selection IDs from current complete reads; re-read stale targets. Prefer focused operations. replace_document requires a complete BODY read and an explicit whole-document rewrite. set_text only changes a text node or an element without child elements. Widgets require list_widgets and README inspection. Layout presets style an existing container or insert one necessary section with direct content. Never pass arbitrary editor actions or scripts.",
+    kind: "edit", description: `Queue one atomic batch of effective changes for review. Each operation is an object with type and the required fields listed here: ${operationSignatures}. Use these exact names; HTML goes in html, not content. Example: {"summary":"Add a heading and introduction.","operations":[{"type":"insert_html","target":"COPY_THE_READ_TARGET_ID","position":"append","html":"<h2>Topic</h2><p>Introduction</p>"}]}. Use target/selection IDs from current complete reads; re-read stale targets. Prefer focused operations. replace_html replaces one node, never BODY. replace_document replaces BODY contents and requires a complete BODY read and an explicit whole-document rewrite or empty document. set_text only changes a text node or an element without child elements. Widgets require list_widgets and README inspection. Layout presets style an existing container or insert one necessary section with direct content. Never pass arbitrary editor actions or scripts.`,
     parameters: object({summary: string, operations}, ["summary", "operations"]),
   },
   replace_current_document: {

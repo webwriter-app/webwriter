@@ -4,7 +4,7 @@ import type {DOMChangePreview} from "../domdoc"
 import {stripActiveContent} from "../active-content"
 import {isMarkElement} from "../marks"
 import {cloneRangeContents, cloneWithoutEditorMarkers, removeEditorMarker, uiMotionDisabled, atomicEditingContainer, cloneInert, getInertDocument} from "../utility"
-import {aiPage, type AIReadDocumentOptions, type AIInspectOptions, type AIChangeOperation, type AIInsertPosition} from "../ai-tools"
+import {aiPage, validateAIChangeOperations, type AIReadDocumentOptions, type AIInspectOptions, type AIChangeOperation, type AIInsertPosition} from "../ai-tools"
 import {htmlElementCapabilities} from "../html-element-capabilities"
 import {elementStyleCategories} from "../element-styles"
 import {layoutPresets} from "../layouts"
@@ -100,6 +100,8 @@ export class StateFeature extends EditorFeature {
     const nextOffset = offset + limit < total ? offset + limit : undefined
     return {
       target: this.aiTarget(node, !outline && offset === 0 && nextOffset === undefined),
+      nodeType: node.nodeType, tagName: node instanceof Element ? node.localName : null,
+      htmlScope: node === document.body ? "contents" : "node",
       ...(outline ? {nodes: children.slice(offset, offset + limit).map(child => this.aiNodeInfo(child))}
         : {html: html.slice(offset, offset + limit), text: (node.textContent ?? "").slice(offset, offset + limit)}),
       offset, total, nextOffset, truncated: offset > 0 || nextOffset !== undefined,
@@ -183,7 +185,7 @@ export class StateFeature extends EditorFeature {
   }
 
   private prepareAIOperations(operations: AIChangeOperation[], availableWidgets: string[]) {
-    if(!Array.isArray(operations) || !operations.length || operations.length > 50) throw new TypeError("Provide between 1 and 50 focused operations")
+    validateAIChangeOperations(operations)
     if(JSON.stringify(operations).length > maximumAIHTMLLength) throw new RangeError("The proposed operation batch is too large")
     if(!Array.isArray(availableWidgets) || availableWidgets.some(tag => typeof tag !== "string")) throw new TypeError("Invalid widget capabilities")
     const invalidated = new Set<Node>()

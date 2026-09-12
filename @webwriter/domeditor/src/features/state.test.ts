@@ -202,10 +202,11 @@ describe("StateFeature", () => {
     const first = read({type: "readAIDocument", limit: 12}) as any
     const second = read({type: "readAIDocument", offset: first.nextOffset}) as any
     expect(first.truncated).toBe(true)
+    expect(first).toMatchObject({nodeType: Node.ELEMENT_NODE, tagName: "body", htmlScope: "contents"})
     expect(first.html + second.html).toBe(editor.toHTML(true))
     const outline = read({type: "readAIDocument", mode: "outline", limit: 1}) as any
     expect(outline.nodes[0].tagName).toBe("hgroup")
-    expect(read({type: "readAIDocument", target: outline.nodes[0].target})).toMatchObject({html: "<hgroup><h1>Title</h1></hgroup>", truncated: false})
+    expect(read({type: "readAIDocument", target: outline.nodes[0].target})).toMatchObject({html: "<hgroup><h1>Title</h1></hgroup>", truncated: false, tagName: "hgroup", htmlScope: "node"})
     expect(() => read({type: "readAIDocument", offset: -1})).toThrow()
     editor.destroy()
   })

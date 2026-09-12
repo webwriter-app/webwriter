@@ -1,5 +1,5 @@
 import type {AIProviderConfig} from "./ai-provider"
-import {aiTools, aiToolDefinitions, isAIReadTool, type AIDocumentToolName} from "./ai-tools"
+import {aiTools, aiToolDefinitions, isAIReadTool, validateAIChangeOperations, type AIDocumentToolName} from "./ai-tools"
 export type {AIDocumentToolName} from "./ai-tools"
 
 export type AIEffort = "low" | "medium" | "high"
@@ -261,6 +261,7 @@ export async function completeAIConversation(options: AICompletionOptions) {
   const requestId = crypto.randomUUID()
   const readTargets = new Set<string>()
   const readRanges = new Set<string>()
+  let lastToolError = ""
   const contextId = `${requestId}/context`
   options.signal?.throwIfAborted()
   const context = await options.toolHandler({id: contextId, name: "read_editor_capabilities", arguments: {}}, {signal: options.signal})
@@ -314,9 +315,8 @@ export async function completeAIConversation(options: AICompletionOptions) {
             if(options.readOnly) throw new Error("This turn is read-only")
             args.summary = aiProposalSummary(args.summary)
             if(name === "queue_document_change") {
-              if(!Array.isArray(args.operations) || !args.operations.length || args.operations.length > 50) throw new TypeError("Provide 1–50 focused operations")
+              validateAIChangeOperations(args.operations)
               for(const operation of args.operations) {
-                if(!operation || typeof operation !== "object") throw new TypeError("Invalid operation")
                 if(operation.type === "replace_selection" ? !readRanges.has(operation.selectionId) : !readTargets.has(operation.target)) throw new Error("Read the complete current target before proposing a change")
                 if(operation.type === "move" && !readTargets.has(operation.destination)) throw new Error("Read the move destination first")
               }
@@ -348,9 +348,11 @@ export async function completeAIConversation(options: AICompletionOptions) {
           }
         }
       }
+      if(result && typeof result === "object" && "status" in result && (result.status === "error" || result.status === "unavailable")
+        && "message" in result && typeof result.message === "string") lastToolError = `${String(name)}: ${result.message}`
       messages.push({role: "tool", tool_call_id: id, content: toolOutput(result)})
     }
   }
 
-  throw new Error("The assistant could not queue a document change within the tool-call limit. Try the request again.")
+  throw new Error(`The assistant could not queue a document change within the tool-call limit.${lastToolError ? ` Last tool error: ${lastToolError}` : " The model did not submit a valid proposal."}`)
 }

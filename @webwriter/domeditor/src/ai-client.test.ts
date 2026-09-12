@@ -126,6 +126,51 @@ describe("OpenAI-compatible AI client", () => {
     }))
   })
 
+  it("exposes operation names and fields to providers that render basic object schemas", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({choices: [{message: {content: "Plan only."}}]}))
+    await completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler: vi.fn()}).catch(() => {})
+    const tools = JSON.parse(fetch.mock.calls[0][1].body).tools
+    const proposal = tools.find((tool: any) => tool.function.name === "queue_document_change").function
+    const item = proposal.parameters.properties.operations.items
+    expect(item.type).toBe("object")
+    expect(item.properties.type.enum).toContain("insert_html")
+    expect(item.properties.type.enum).toContain("replace_document")
+    expect(item.properties).toHaveProperty("target")
+    expect(item.properties).toHaveProperty("html")
+    expect(proposal.description).toContain("insert_html(target, position, html)")
+  })
+
+  it.each([
+    {type: "replace", target: "body", html: "<h2>Mitosis</h2>"},
+    {type: "replace_node", target: "body", content: "<h2>Mitosis</h2>"},
+    {type: "prepend_child", target: "body", content: "<h2>Mitosis</h2>"},
+    {type: "replace_document", content: "<h2>Mitosis</h2>"},
+  ])("repairs the invalid $type operation emitted by the live model", async operation => {
+    const tool = (name: string, args: unknown) => response({choices: [{message: {tool_calls: [{id: name, function: {name, arguments: JSON.stringify(args)}}]}}]})
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(tool("read_current_document", {}))
+      .mockResolvedValueOnce(tool("queue_document_change", {summary: "Add a mitosis introduction.", operations: [operation]}))
+      .mockImplementationOnce(async (_url, init) => {
+        const error = JSON.parse(JSON.parse(init.body).messages.at(-1).content)
+        expect(error).toMatchObject({status: "error", message: expect.stringContaining(operation.type === "replace_document" ? "target, html" : "insert_html")})
+        return tool("queue_document_change", {summary: "Add a mitosis introduction.", operations: [{type: "insert_html", target: "body", position: "append", html: "<h2>Mitosis</h2>"}]})
+      })
+    const handler = vi.fn(async call => call.name === "queue_document_change" ? {status: "queued"} : {target: "body", tagName: "body", html: "<p></p>", truncated: false})
+    const result = await completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler: handler})
+    expect(result).toBe("Queued: Add a mitosis introduction.")
+    expect(handler.mock.calls.filter(([call]) => call.name === "queue_document_change")).toHaveLength(1)
+  })
+
+  it("reports the underlying tool error when proposal repair is exhausted", async () => {
+    const fetch = vi.fn().mockImplementation(async () => response({choices: [{message: {tool_calls: [
+      {id: "read", function: {name: "read_current_document", arguments: "{}"}},
+      {id: "edit", function: {name: "queue_document_change", arguments: JSON.stringify({summary: "Add an introduction.", operations: [{type: "replace", target: "body", html: "<h2>Mitosis</h2>"}]})}},
+    ]}}]}))
+    const handler = vi.fn(async call => call.name === "queue_document_change" ? {status: "error", message: "Unsupported document operation"} : {target: "body", html: "", truncated: false})
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler: handler}))
+      .rejects.toThrow(/Unsupported operation type.*replace/)
+  })
+
   it("does not count a failed or unread proposal as success", async () => {
     const fetch = vi.fn().mockImplementation(async () => response({choices: [{message: {tool_calls: [
       {id: "edit", function: {name: "queue_document_change", arguments: JSON.stringify({summary: "Add a heading", operations: [{type: "replace_document", target: "body", html: "<h1>Hello</h1>"}]})}},
