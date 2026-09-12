@@ -35,9 +35,9 @@ WHATWG HTML Living Standard element index, including MathML, SVG, and autonomous
 an editor schema. Each entry records its overall support, visual insertion path, content/attribute/structure support,
 intentional restrictions, owning feature, and a short user-facing explanation.
 
-The current reviewed snapshot contains 116 entries: 103 with full support, 11 with partial support, and 2 deliberately
-unsupported active-content elements. [`src/html-element-capabilities.test.ts`](src/html-element-capabilities.test.ts)
-requires complete coverage and keeps the manifest aligned with built-in insertion and intentional-limitation policies.
+The support totals and remaining gaps are recorded in
+[`src/html-element-capabilities.test.ts`](src/html-element-capabilities.test.ts).
+Those checks require complete coverage and keep the manifest aligned with built-in insertion and intentional-limitation policies.
 
 ## Offline HTML
 
