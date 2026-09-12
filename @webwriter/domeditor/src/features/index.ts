@@ -44,8 +44,7 @@ export class EditorFeature {
   activeListeners: DocumentListenerMap = {}
   constraints: ConstraintMap = {}
   actions?: Record<string, FeatureActionHandler>
-  /** FormFeature opts in so all other editor features leave captured native
-   * control events to the browser and the form-state synchronizer. */
+  /** Native form controls remain browser-managed while captured. */
   protected handlesFormControlInteractions = false
   /** Interactive authored elements own editing input while capture-selected,
    * just as widget shadow trees own their native keyboard and text events. */

@@ -80,12 +80,6 @@ import {
   type TimedMediaResourceType,
 } from "../media"
 import {isTableRowGroupType, type TableCellRole, type TableColumnGroupState, type TableRowGroupState, type TableRowGroupType, type TableSelectionState} from "../table"
-import {
-  formAttributeOptions,
-  type FormAttributeOption,
-  type FormElementType,
-  type FormSelectionState,
-} from "../form"
 import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
 import {
   graphicShapeOptions,
@@ -238,7 +232,6 @@ export class AppRibbon extends LitElement {
     headingGroup: {attribute: false},
     figure: {attribute: false},
     media: {attribute: false},
-    form: {attribute: false},
     dialog: {attribute: false},
     table: {attribute: false},
     graphic: {attribute: false},
@@ -3464,7 +3457,6 @@ export class AppRibbon extends LitElement {
   headingGroup: HeadingGroupSelectionState | null = null
   figure: FigureSelectionState | null = null
   media: MediaSelectionState | null = null
-  form: FormSelectionState | null = null
   dialog: DialogSelectionState | null = null
   table: TableSelectionState | null = null
   graphic: GraphicSelectionState | null = null
@@ -5425,156 +5417,6 @@ export class AppRibbon extends LitElement {
     return this.media?.type === type
   }
 
-  private dispatchFormAttribute(type: FormElementType, option: FormAttributeOption, event: Event) {
-    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
-    const value = option.kind === "boolean"
-      ? (input as HTMLInputElement).checked ? "" : null
-      : input.value || null
-    this.dispatchEvent(new CustomEvent("form-attribute-change", {
-      detail: {type, attribute: option.name, value},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  private renderFormAttribute(type: FormElementType, option: FormAttributeOption) {
-    const attributes = this.form?.attributes ?? {}
-    if(option.kind === "boolean") {
-      return html`
-        <label class="mark-attribute form-attribute form-attribute-boolean">
-          <span>${option.label}</span>
-          <input
-            type="checkbox"
-            data-ribbon-input-persistent
-            aria-label=${`${this.form?.type ?? type}: ${option.label}`}
-            .checked=${Object.hasOwn(attributes, option.name)}
-            @change=${(event: Event) => this.dispatchFormAttribute(type, option, event)}
-          />
-        </label>
-      `
-    }
-    if(option.kind === "select") {
-      return html`
-        <label class="mark-attribute form-attribute">
-          <span>${option.label}</span>
-          <select
-            ${ref(element => {
-              if(!(element instanceof HTMLSelectElement)) return
-              const value = attributes[option.name] ?? ""
-              queueMicrotask(() => {
-                if(element.isConnected) element.value = value
-              })
-            })}
-            data-ribbon-input-persistent
-            aria-label=${`${this.form?.type ?? type}: ${option.label}`}
-            @change=${(event: Event) => this.dispatchFormAttribute(type, option, event)}
-          >
-            ${option.options?.map(item => html`
-              <option value=${item.value} ?selected=${item.value === (attributes[option.name] ?? "")}>${item.label}</option>
-            `)}
-          </select>
-        </label>
-      `
-    }
-    return html`
-      <label class="mark-attribute form-attribute">
-        <span>${option.label}</span>
-        <input
-          data-ribbon-input-persistent
-          type=${option.kind === "url" ? "url" : option.kind === "number" ? "number" : "text"}
-          aria-label=${`${this.form?.type ?? type}: ${option.label}`}
-          placeholder=${option.placeholder ?? ""}
-          .value=${attributes[option.name] ?? ""}
-          @change=${(event: Event) => this.dispatchFormAttribute(type, option, event)}
-        />
-      </label>
-    `
-  }
-
-  private dispatchFormText(event: Event) {
-    this.dispatchEvent(new CustomEvent("form-text-change", {
-      detail: {type: this.form?.type, value: (event.currentTarget as HTMLInputElement).value},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  private submitCustomFormAttribute(event: SubmitEvent) {
-    event.preventDefault()
-    if(!this.form) return
-    const form = event.currentTarget as HTMLFormElement
-    const name = form.elements.namedItem("attribute") as HTMLInputElement | null
-    const value = form.elements.namedItem("value") as HTMLInputElement | null
-    if(!name?.value.trim() || !value) return
-    this.dispatchEvent(new CustomEvent("form-attribute-change", {
-      detail: {type: this.form.type, attribute: name.value.trim(), value: value.value},
-      bubbles: true,
-      composed: true,
-    }))
-    name.value = ""
-    value.value = ""
-  }
-
-  private renderFormEditor() {
-    const state = this.form
-    if(!state) return nothing
-    const options = formAttributeOptions[state.type]
-    const knownNames = new Set(options.map(option => option.name))
-    const otherAttributes = Object.entries(state.attributes).filter(([name]) => !knownNames.has(name))
-    return html`
-      <div class="button-dropdown-form form-dropdown-form" role="group" aria-label=${`${state.type} options`}>
-        ${state.text !== undefined ? html`
-          <label class="mark-attribute form-attribute">
-            <span>${state.type === "textarea" ? "Default text" : "Text"}</span>
-            <input
-              data-ribbon-input-persistent
-              type="text"
-              aria-label=${`${state.type}: Text`}
-              .value=${state.text}
-              @change=${this.dispatchFormText}
-            />
-          </label>
-        ` : ""}
-        ${options.map(option => this.renderFormAttribute(state.type, option))}
-        ${otherAttributes.length ? html`
-          <div class="button-dropdown-advanced" role="group" aria-label="Other attributes">
-            ${otherAttributes.map(([name, value]) => html`
-              <label class="mark-attribute form-attribute">
-                <span>${name}</span>
-                <input
-                  data-ribbon-input-persistent
-                  type="text"
-                  aria-label=${`${state.type}: ${name}`}
-                  .value=${value}
-                  @change=${(event: Event) => this.dispatchEvent(new CustomEvent("form-attribute-change", {
-                    detail: {
-                      type: state.type,
-                      attribute: name,
-                      value: (event.currentTarget as HTMLInputElement).value || null,
-                    },
-                    bubbles: true,
-                    composed: true,
-                  }))}
-                />
-              </label>
-            `)}
-          </div>
-        ` : ""}
-        <form class="button-dropdown-advanced" aria-label="Add attribute" @submit=${this.submitCustomFormAttribute}>
-          <label class="mark-attribute form-attribute">
-            <span>Attribute</span>
-            <input data-ribbon-input-persistent name="attribute" type="text" placeholder="data-name" />
-          </label>
-          <label class="mark-attribute form-attribute">
-            <span>Value</span>
-            <input data-ribbon-input-persistent name="value" type="text" placeholder="Value" />
-          </label>
-          <button class="button-dropdown-more" type="submit">Add attribute</button>
-        </form>
-      </div>
-    `
-  }
-
   private mediaLabel(type: MediaType) {
     if(type === "picture" || type === "img") return "Image"
     if(type === "audio") return "Audio"
@@ -6732,21 +6574,6 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderFormDrawer() {
-    if(!this.form) return nothing
-    const state = this.form
-    return html`
-      <ribbon-drawer label=${state.type === "input" ? "Input" : state.type === "textarea" ? "Text area" : "Form"} icon="Form" layout="form">
-        <ribbon-button label="Attributes" icon="Settings" .dropdown=${this.renderFormEditor()}></ribbon-button>
-        <ribbon-button label="Add field" action="form-add-field" icon="Plus" ?disabled=${!state.canAddField}></ribbon-button>
-        <ribbon-button label="Add legend" action="form-add-legend" icon="Plus" ?disabled=${!state.canAddLegend}></ribbon-button>
-        <ribbon-button label="Add option" action="form-add-option" icon="Plus" ?disabled=${!state.canAddOption}></ribbon-button>
-        <ribbon-button label="Add group" action="form-add-option-group" icon="Plus" ?disabled=${!state.canAddOptionGroup}></ribbon-button>
-        <ribbon-button label="Custom select" action="form-customize-select" icon="Dropdown" ?disabled=${!state.canCustomizeSelect}></ribbon-button>
-      </ribbon-drawer>
-    `
-  }
-
   private dispatchDialogAttribute(attribute: string, value: string | null) {
     this.dispatchEvent(new CustomEvent("dialog-attribute-change", {
       detail: {attribute, value},
@@ -7644,7 +7471,6 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Media") return this.renderMediaDrawer()
       if(drawer.label === "Dialog") return this.renderDialogDrawer()
       if(drawer.label === "Comments") return this.renderCommentDrawer()
-      if(drawer.label === "Form") return this.renderFormDrawer()
       if(drawer.label === "Layout") return this.renderTableDrawers()
       if(drawer.label === "Graphic") return this.renderGraphicDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
@@ -7685,11 +7511,7 @@ export class AppRibbon extends LitElement {
     }
     if(this.activeMenu === "Edit" && this.dialog) {
       return menuGroups.Edit.filter(group => group.label === "Dialog"
-        || Boolean(this.form) && group.label === "Form"
         || Boolean(this.elementAttributes) && group.label === "Attributes")
-    }
-    if(this.activeMenu === "Edit" && this.form) {
-      return menuGroups.Edit.filter(group => group.label === "Form" || Boolean(this.elementAttributes) && group.label === "Attributes")
     }
     if(this.activeMenu === "Edit" && this.graphic?.active) {
       return menuGroups.Edit.filter(group => group.label === "Graphic" || Boolean(this.elementAttributes) && group.label === "Attributes")

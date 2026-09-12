@@ -46,9 +46,6 @@ import {
   timedMediaResourceAttributeOptions,
   type MediaSelectionState,
 } from "../media"
-import {
-  type FormSelectionState,
-} from "../form"
 import type {DialogSelectionState} from "../dialog"
 import type {ElementAttributeState} from "../element-attributes"
 import {
@@ -431,7 +428,6 @@ export class DomEditor extends LitElement {
     headingGroup: {attribute: false, state: true},
     figure: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
-    formSelection: {attribute: false, state: true},
     dialogSelection: {attribute: false, state: true},
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
@@ -514,7 +510,6 @@ export class DomEditor extends LitElement {
   private headingGroup: HeadingGroupSelectionState | null = null
   private figure: FigureSelectionState | null = null
   private mediaSelection: MediaSelectionState | null = null
-  private formSelection: FormSelectionState | null = null
   private dialogSelection: DialogSelectionState | null = null
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
@@ -4529,10 +4524,6 @@ export class DomEditor extends LitElement {
       this.mediaSelection = event.data.detail.media
         ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
         : null
-      this.formSelection = event.data.detail.form ? {
-        ...event.data.detail.form,
-        attributes: {...event.data.detail.form.attributes},
-      } : null
       this.dialogSelection = event.data.detail.dialog ? {
         ...event.data.detail.dialog,
         attributes: {...event.data.detail.dialog.attributes},
@@ -4555,7 +4546,6 @@ export class DomEditor extends LitElement {
       const hasContextualEditOptions = this.tableSelection?.active === true
         || this.graphicSelection?.active === true
         || this.mediaSelection !== null
-        || this.formSelection !== null
         || this.dialogSelection !== null
         || this.sectionSelected
         || this.headingGroup !== null
@@ -4580,7 +4570,6 @@ export class DomEditor extends LitElement {
           ...(this.headingGroup ? {headingGroup: {...this.headingGroup}} : {}),
           ...(this.figure ? {figure: {...this.figure}} : {}),
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
-          ...(this.formSelection ? {form: this.formSelection} : {}),
           ...(this.dialogSelection ? {dialog: this.dialogSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
           ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
@@ -4881,7 +4870,6 @@ export class DomEditor extends LitElement {
       highlighting: true,
     }
     this.mediaSelection = null
-    this.formSelection = null
     this.dialogSelection = null
     this.tableSelection = null
     this.graphicSelection = null
@@ -4938,7 +4926,6 @@ export class DomEditor extends LitElement {
           .headingGroup=${this.headingGroup}
           .figure=${this.figure}
           .media=${this.mediaSelection}
-          .form=${this.formSelection}
           .dialog=${this.dialogSelection}
           .graphic=${this.graphicSelection}
           .elementAttributes=${this.elementAttributes}
@@ -5107,7 +5094,6 @@ export class DomEditor extends LitElement {
         .htmlPending=${this.htmlPending}
         .htmlSourceError=${this.htmlSourceError}
         .media=${this.mediaSelection}
-        .form=${this.formSelection}
         .dialog=${this.dialogSelection}
         .table=${this.tableSelection}
         .graphic=${this.graphicSelection}

@@ -284,11 +284,6 @@ describe("editor bridge message guards", () => {
           tracks: [{index: 1, attributes: {src: "captions.vtt", kind: "captions"}}],
           fallbackHTML: "<p>Download the movie.</p>",
         },
-        form: {
-          type: "input",
-          attributes: {type: "email", required: ""},
-          canAddOption: false,
-        },
         dialog: {
           attributes: {id: "notice", closedby: "any"},
           initiallyOpen: false,
@@ -377,10 +372,6 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, media: {type: "img", attributes: {}, imageMap: {name: "plan", shared: "no", areas: []}}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {}, imageMap: {name: "plan", shared: false, areas: [{path: [-1], attributes: {}}]}}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {}, imageMap: {name: "plan", shared: false, areas: [{path: [0], attributes: {coords: 4}}]}}}},
-      {...message, detail: {...message.detail, form: {type: "unknown", attributes: {}}}},
-      {...message, detail: {...message.detail, form: {type: "input", attributes: []}}},
-      {...message, detail: {...message.detail, form: {type: "input", attributes: {required: true}}}},
-      {...message, detail: {...message.detail, form: {type: "input", attributes: {}, canAddField: "yes"}}},
       {...message, detail: {...message.detail, dialog: {...message.detail.dialog, closedBy: "outside"}}},
       {...message, detail: {...message.detail, dialog: {...message.detail.dialog, initiallyOpen: "false"}}},
       {...message, detail: {...message.detail, dialog: {...message.detail.dialog, openerCount: -1}}},

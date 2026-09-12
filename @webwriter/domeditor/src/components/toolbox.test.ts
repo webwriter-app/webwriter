@@ -279,14 +279,7 @@ describe("toolbox", () => {
     toolbox.graphic = {active: true, capture: false}
     await toolbox.updateComplete
     expect(label.textContent).toBe("Graphic")
-
     toolbox.graphic = null
-    toolbox.form = {type: "input", attributes: {placeholder: "Name"}}
-    await toolbox.updateComplete
-    expect(label.textContent).toBe("Input")
-    expect(edit.getAttribute("aria-label")).toBe("Edit Input")
-
-    toolbox.form = null
     toolbox.selectionPath = [
       {path: [], name: "Document"},
       {path: [0], name: "Demo widget", icon: "Packages"},

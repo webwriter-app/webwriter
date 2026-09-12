@@ -14,7 +14,6 @@ import type {WebWriterPackage} from "./packages"
 import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
 import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
-import {isFormElementType, type FormSelectionState} from "./form"
 import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
 import type {ElementAttributeState} from "./element-attributes"
@@ -268,7 +267,6 @@ export type SelectionChangeDetail = {
   headingGroup?: HeadingGroupSelectionState
   figure?: FigureSelectionState
   media?: MediaSelectionState
-  form?: FormSelectionState
   dialog?: DialogSelectionState
   table?: TableSelectionState
   graphic?: GraphicSelectionState
@@ -559,11 +557,6 @@ const isMediaSelection = (media: UnknownRecord) => {
     && (media.type === "picture" || media.type === "img" || media.imageMap === undefined)
 }
 
-const isFormSelection = (form: UnknownRecord) => isFormElementType(form.type)
-  && isStringRecord(form.attributes)
-  && isOptional(form.text, isString)
-  && [form.canAddField, form.canAddLegend, form.canAddOption, form.canAddOptionGroup, form.canCustomizeSelect].every(isOptionalBoolean)
-
 const isDialogSelection = (dialog: UnknownRecord) => isStringRecord(dialog.attributes)
   && isBoolean(dialog.initiallyOpen)
   && (dialog.closedBy === "" || isDialogClosedBy(dialog.closedBy))
@@ -634,7 +627,6 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.figure, isFigure)
     && isOptionalFeature(detail.element, isElementSelection)
     && isOptionalFeature(detail.media, isMediaSelection)
-    && isOptionalFeature(detail.form, isFormSelection)
     && isOptionalFeature(detail.dialog, isDialogSelection)
     && isOptionalFeature(detail.table, isTableSelection)
     && isOptionalFeature(detail.graphic, isGraphicSelection)

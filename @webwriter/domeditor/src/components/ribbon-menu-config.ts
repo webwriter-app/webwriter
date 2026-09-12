@@ -27,7 +27,7 @@ export type StorageLocation = typeof storageLocations[number]["value"]
 
 export const placeholderSharingLink = "https://webwriter.app/share/placeholder"
 
-type InsertionSection = "Text" | "Lists" | "Media" | "Forms"
+type InsertionSection = "Text" | "Lists" | "Media"
 
 const insertGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
   label: option.label,
@@ -144,7 +144,7 @@ const groupedInsertionMenuGroup = (
   label: string,
   buttonLabels: readonly string[],
 ): RibbonMenuGroup => {
-  const buttons = insertionMenuButtons(["Text", "Lists", "Media", "Forms"])
+  const buttons = insertionMenuButtons(["Text", "Lists", "Media"])
   return {
     label,
     buttons: buttonLabels.map(buttonLabel => {
@@ -204,7 +204,6 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Disclosure", buttons: []},
     {label: "Media", buttons: []},
     {label: "Dialog", buttons: []},
-    {label: "Form", buttons: []},
     {label: "Layout", buttons: []},
     {label: "Graphic", buttons: []},
     {label: "Comments", buttons: []},
