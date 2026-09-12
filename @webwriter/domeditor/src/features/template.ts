@@ -1,6 +1,6 @@
 import {EditorFeature} from "."
 import {getDocumentTemplate} from "../document-template"
-import {$} from "../utility"
+import {$, removeEditorMarker} from "../utility"
 
 /** Body-equivalent document templates. The live role=document element is the
  * complete state; this feature mirrors its presence to a temporary BODY class
@@ -58,11 +58,7 @@ export class TemplateFeature extends EditorFeature {
 
   private clearMarker(body: HTMLElement | null) {
     if(!body) return
-    body.classList.remove(this.#marker)
-    if(!Array.from(body.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
-      body.classList.remove("◆")
-    }
-    if(!body.classList.length) body.removeAttribute("class")
+    removeEditorMarker(body, this.#marker)
   }
 
   private refresh() {

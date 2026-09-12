@@ -6,7 +6,7 @@ import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
-import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getContainer, getInertDocument, isElement} from "../utility"
+import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getContainer, getInertDocument, isElement, removeEditorMarker} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -1503,12 +1503,8 @@ export class MediaFeature extends EditorFeature {
   }
 
   private setEmptyMarker(element: Element, empty: boolean) {
-    element.classList.toggle("◆media-empty", empty)
-    if(empty) element.classList.add("◆")
-    else if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
-      element.classList.remove("◆")
-      if(!element.classList.length) element.removeAttribute("class")
-    }
+    if(empty) element.classList.add("◆", "◆media-empty")
+    else removeEditorMarker(element, "◆media-empty")
   }
 
   private scheduleRefresh = () => {

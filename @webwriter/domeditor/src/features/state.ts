@@ -3,7 +3,7 @@ import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
 import type {DOMChangePreview} from "../domdoc"
 import {stripActiveContent} from "../active-content"
 import {isMarkElement} from "../marks"
-import {cloneRangeContents, uiMotionDisabled} from "../utility"
+import {cloneRangeContents, removeEditorMarker, uiMotionDisabled} from "../utility"
 
 const maximumAIHTMLLength = 1_000_000
 const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
@@ -160,11 +160,7 @@ export class StateFeature extends EditorFeature {
 
   private clearHTMLSelectionPending() {
     this.htmlEditTargets.forEach(target => {
-      target.classList.remove("◆html-source-pending")
-      if(!Array.from(target.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
-        target.classList.remove("◆")
-      }
-      if(!target.classList.length) target.removeAttribute("class")
+      removeEditorMarker(target, "◆html-source-pending")
     })
     this.htmlEditTargets.clear()
     document.documentElement.classList.remove("◆html-source-review-active")

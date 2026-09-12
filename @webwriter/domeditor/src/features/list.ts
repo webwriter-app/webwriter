@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isElement, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
 
 const listSelector = "ul, ol, dl, menu"
@@ -189,11 +189,7 @@ export class ListFeature extends EditorFeature {
 
   private clearVirtualMarker() {
     document.querySelectorAll(`.${this.markerClass}, .${this.selectedListClass}`).forEach(element => {
-      element.classList.remove(this.markerClass, this.selectedListClass)
-      if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
-        element.classList.remove("◆")
-      }
-      if(!element.classList.length) element.removeAttribute("class")
+      removeEditorMarker(element, this.markerClass, this.selectedListClass)
     })
     const marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
     if(marker) {

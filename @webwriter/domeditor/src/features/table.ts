@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, cloneWithoutEditorMarkers, getInertDocument, modifierKeyDown} from "../utility"
+import {$, cloneWithoutEditorMarkers, getInertDocument, modifierKeyDown, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
   cellForNode,
@@ -45,12 +45,6 @@ function newCellForRow(row: HTMLTableRowElement, source?: HTMLTableCellElement |
     if(authoredClasses.length) cell.classList.add(...authoredClasses)
   }
   return cell as HTMLTableCellElement
-}
-
-function removeMarker(element: Element, marker: string) {
-  element.classList.remove(marker)
-  if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
-  if(!element.classList.length) element.removeAttribute("class")
 }
 
 function authoredClassValue(value: string | null) {
@@ -254,17 +248,15 @@ export class TableFeature extends EditorFeature {
   }
 
   private clearCellMarkers() {
-    document.querySelectorAll(".◆table-cell-selected").forEach(cell => removeMarker(cell, "◆table-cell-selected"))
-    document.body.classList.remove("◆table-cell-selection")
-    if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) document.body.classList.remove("◆")
-    if(!document.body.classList.length) document.body.removeAttribute("class")
+    document.querySelectorAll(".◆table-cell-selected").forEach(cell => removeEditorMarker(cell, "◆table-cell-selected"))
+    removeEditorMarker(document.body, "◆table-cell-selection")
   }
 
   private applyCellMarkers() {
     const cells = this.selectedCells
     const selected = new Set(cells)
     document.querySelectorAll(".◆table-cell-selected").forEach(cell => {
-      if(!selected.has(cell as HTMLTableCellElement)) removeMarker(cell, "◆table-cell-selected")
+      if(!selected.has(cell as HTMLTableCellElement)) removeEditorMarker(cell, "◆table-cell-selected")
     })
     cells.forEach(cell => {
       if(!cell.classList.contains("◆table-cell-selected")) cell.classList.add("◆", "◆table-cell-selected")
@@ -274,7 +266,7 @@ export class TableFeature extends EditorFeature {
       document.body.classList.toggle("◆table-cell-selection", active)
     }
     if(active && !document.body.classList.contains("◆")) document.body.classList.add("◆")
-    else if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) document.body.classList.remove("◆")
+    else removeEditorMarker(document.body)
   }
 
   clearCellSelection(post = true) {
@@ -1049,7 +1041,7 @@ export class TableFeature extends EditorFeature {
     this.resizeHover = edge
     document.body.classList.toggle("◆table-column-edge", Boolean(edge))
     if(edge) document.body.classList.add("◆")
-    else if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) document.body.classList.remove("◆")
+    else removeEditorMarker(document.body)
   }
 
   private startResize(edge: TableResizeEdge, startX: number) {
@@ -1150,9 +1142,7 @@ export class TableFeature extends EditorFeature {
     if(!this.resize) return
     const {endUndoGroup} = this.resize
     this.resize = null
-    document.body.classList.remove("◆table-column-resize")
-    if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) document.body.classList.remove("◆")
-    if(!document.body.classList.length) document.body.removeAttribute("class")
+    removeEditorMarker(document.body, "◆table-column-resize")
     endUndoGroup()
     this.editor.postSelectionPath()
   }

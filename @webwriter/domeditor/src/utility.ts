@@ -1213,6 +1213,15 @@ export function clearEditorMarkerClasses(root: Node) {
   return root
 }
 
+/** Removes selected transient marker classes while retaining authored classes.
+ * The umbrella marker is removed when no other editor marker remains. */
+export function removeEditorMarker(element: Element, ...markers: string[]) {
+  element.classList.remove(...markers)
+  if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
+  if(!element.classList.length) element.removeAttribute("class")
+  return element
+}
+
 /** Clones a node without copying transient editor marker classes. */
 export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {inert = false} = {}) {
   return clearEditorMarkerClasses(inert ? cloneInert(node, deep) : node.cloneNode(deep)) as T

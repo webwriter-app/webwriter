@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -491,11 +491,7 @@ export class SelectionFeature extends EditorFeature {
     this.hoverCaret?.remove()
     this.emptyDocumentCaret?.remove()
     ;[document.documentElement, document.body].forEach(element => {
-      element.classList.remove("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
-      if(!Array.from(element.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
-        element.classList.remove("◆")
-      }
-      if(!element.classList.length) element.removeAttribute("class")
+      removeEditorMarker(element, "◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
     })
     super.disable()
   }
@@ -643,12 +639,8 @@ export class SelectionFeature extends EditorFeature {
     ;[document.documentElement, document.body].forEach(element => {
       states.forEach(([marker, active]) => element.classList.toggle(marker, active))
       if(states.some(([, active]) => active)) element.classList.add("◆")
-      else if(!Array.from(element.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
-        element.classList.remove("◆")
-      }
-      if(!element.classList.length) element.removeAttribute("class")
+      else removeEditorMarker(element)
     })
-    if(!document.body.classList.length) document.body.removeAttribute("class")
   }
 
   /** Cancels native modifier-click actions (navigation, activation, focus)
@@ -982,13 +974,7 @@ export class SelectionFeature extends EditorFeature {
       hoveredElements.unshift(document.body)
     }
     hoveredElements.forEach(el => {
-      el.classList.remove(marker)
-      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
-        el.classList.remove("◆")
-      }
-      if(el.classList.length === 0) {
-        el.removeAttribute("class")
-      }
+      removeEditorMarker(el, marker)
     })
   }
 
@@ -1026,11 +1012,7 @@ export class SelectionFeature extends EditorFeature {
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
     elements.forEach(element => {
-      element.classList.remove(...markers)
-      if(!Array.from(element.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
-        element.classList.remove("◆")
-      }
-      if(!element.classList.length) element.removeAttribute("class")
+      removeEditorMarker(element, ...markers)
     })
     this.#selectionMarkers.clear()
     this.#hideSelectionCaret()

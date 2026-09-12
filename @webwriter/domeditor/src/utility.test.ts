@@ -9,7 +9,7 @@ import {
   distanceBetweenPoints, midpoint, intersectionPoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getZPos, getStaticCoords,
-  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer
+  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker
 } from "./utility"
 import { Schema } from "./schema"
 
@@ -1552,5 +1552,23 @@ describe("getStaticCoords()", () => {
 
     expect(document.body.innerHTML).toBe('<p>hello</p><p class="authored">world</p>')
     expect(mutations.some(mutation => mutation.type === "childList" || mutation.type === "characterData")).toBe(false)
+  })
+})
+
+describe("removeEditorMarker()", () => {
+  it("removes selected and umbrella markers while preserving authored classes", () => {
+    const element = document.createElement("p")
+    element.className = "authored ◆ ◆first ◆second"
+    removeEditorMarker(element, "◆first")
+    expect(element.className).toBe("authored ◆ ◆second")
+    removeEditorMarker(element, "◆second")
+    expect(element.className).toBe("authored")
+  })
+
+  it("handles multiple markers and disconnected elements", () => {
+    const element = document.createElement("p")
+    element.className = "◆ ◆first ◆second"
+    removeEditorMarker(element, "◆first", "◆second")
+    expect(element.hasAttribute("class")).toBe(false)
   })
 })

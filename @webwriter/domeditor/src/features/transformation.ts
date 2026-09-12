@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, roundByDPR, roundTo, setPart } from "../utility"
+import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 type TransformElement = HTMLElement | SVGSVGElement
@@ -474,7 +474,7 @@ export class TransformationFeature extends EditorFeature {
       ? findContainingBlock(target as HTMLElement, position as "absolute" | "relative" | "sticky") : null
     const scroller = target && this.#gesture && position === "sticky" ? findScrollingAncestor(target.parentElement as HTMLElement) : null
     for(const [marker, current] of [["◆transform-containing-block", block], ["◆transform-scrolling-ancestor", scroller]] as const) {
-      document.querySelectorAll(`.${marker}`).forEach(element => { if(element !== current) this.#removeMarkerClass(element, marker) })
+      document.querySelectorAll(`.${marker}`).forEach(element => { if(element !== current) removeEditorMarker(element, marker) })
       if(current instanceof Element && !current.classList.contains(marker)) current.classList.add(marker)
     }
   }
@@ -691,7 +691,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #clearDrop() {
-    if(this.#drop) this.#removeMarkerClass(this.#drop.element, `◆drop-caret-${this.#drop.placement}`)
+    if(this.#drop) removeEditorMarker(this.#drop.element, `◆drop-caret-${this.#drop.placement}`)
     this.#drop = null
     this.editor.features.selection.clearDropCaret()
   }
@@ -781,15 +781,9 @@ export class TransformationFeature extends EditorFeature {
     return this.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
   }
 
-  #removeMarkerClass(element: Element, marker: string) {
-    element.classList.remove(marker)
-    if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
-    if(!element.classList.length) element.removeAttribute("class")
-  }
-
   clearTransform() {
     this.#finish(true)
-    if(this.#target) this.#removeMarkerClass(this.#target, "◆transform-target")
+    if(this.#target) removeEditorMarker(this.#target, "◆transform-target")
     this.#target = null
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)
     this.#frame = null

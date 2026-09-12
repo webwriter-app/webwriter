@@ -20,7 +20,7 @@ import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
+import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM, removeEditorMarker } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   executeCompleteEvent,
@@ -462,11 +462,7 @@ export class DOMEditor {
     this.defaultAppendixSlot.inert = state.slotInert
     document.body.inert = state.bodyInert
     document.designMode = state.designMode
-    document.body.classList.remove("◆editing-locked")
-    if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
-      document.body.classList.remove("◆")
-    }
-    if(!document.body.classList.length) document.body.removeAttribute("class")
+    removeEditorMarker(document.body, "◆editing-locked")
   }
 
 

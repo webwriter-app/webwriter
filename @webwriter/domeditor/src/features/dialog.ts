@@ -3,7 +3,7 @@ import {
   isDialogClosedBy,
   type DialogSelectionState,
 } from "../dialog"
-import {$, getContainer, isElement} from "../utility"
+import {$, getContainer, isElement, removeEditorMarker} from "../utility"
 
 const editingMarker = "◆dialog-editing"
 const dialogCommands = new Set(["show-modal", "close", "request-close"])
@@ -144,10 +144,6 @@ export class DialogFeature extends EditorFeature {
   }
 
   private removeEditingMarker(dialog: HTMLDialogElement) {
-    dialog.classList.remove(editingMarker)
-    if(!Array.from(dialog.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
-      dialog.classList.remove("◆")
-    }
-    if(!dialog.classList.length) dialog.removeAttribute("class")
+    removeEditorMarker(dialog, editingMarker)
   }
 }

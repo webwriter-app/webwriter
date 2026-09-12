@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, modifierKeyDown} from "../utility"
+import {$, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker} from "../utility"
 import {
   SVG_NAMESPACE,
   graphicContainerForNode,
@@ -839,12 +839,12 @@ export class GraphicFeature extends EditorFeature {
     event.preventDefault()
     event.stopImmediatePropagation()
     this.#spaceDown = false
-    this.#removeMarkerClass(document.body, "◆graphic-pan-ready")
+    removeEditorMarker(document.body, "◆graphic-pan-ready")
   }
 
   #handleWindowBlur = () => {
     this.#spaceDown = false
-    this.#removeMarkerClass(document.body, "◆graphic-pan-ready")
+    removeEditorMarker(document.body, "◆graphic-pan-ready")
     this.#cancelPan()
   }
 
@@ -1249,7 +1249,7 @@ export class GraphicFeature extends EditorFeature {
     event.stopImmediatePropagation()
     this.#releasePointer(pan.captureTarget, pan.pointerId)
     this.#pan = null
-    this.#removeMarkerClass(document.body, "◆graphic-panning")
+    removeEditorMarker(document.body, "◆graphic-panning")
     this.#refresh()
     this.editor.postSelectionPath()
   }
@@ -1261,7 +1261,7 @@ export class GraphicFeature extends EditorFeature {
     event?.stopImmediatePropagation()
     this.#releasePointer(pan.captureTarget, pan.pointerId)
     this.#pan = null
-    this.#removeMarkerClass(document.body, "◆graphic-panning")
+    removeEditorMarker(document.body, "◆graphic-panning")
     this.#refresh()
   }
 
@@ -1503,7 +1503,7 @@ export class GraphicFeature extends EditorFeature {
   #cleanupConnector(interaction: ConnectorDrawInteraction) {
     this.#releasePointer(interaction.captureTarget, interaction.pointerId)
     interaction.previewRoot?.remove()
-    this.#removeMarkerClass(document.body, "◆graphic-manipulating")
+    removeEditorMarker(document.body, "◆graphic-manipulating")
     this.#setPortTarget(null)
   }
 
@@ -1627,9 +1627,9 @@ export class GraphicFeature extends EditorFeature {
   #cleanupInteraction(interaction: Interaction) {
     this.#releasePointer(interaction.captureTarget, interaction.pointerId)
     interaction.previewRoot?.remove()
-    interaction.items.forEach(item => this.#removeMarkerClass(item.source, "◆graphic-preview-source"))
-    interaction.attachedConnectors.forEach(item => this.#removeMarkerClass(item.source, "◆graphic-preview-source"))
-    this.#removeMarkerClass(document.body, "◆graphic-manipulating")
+    interaction.items.forEach(item => removeEditorMarker(item.source, "◆graphic-preview-source"))
+    interaction.attachedConnectors.forEach(item => removeEditorMarker(item.source, "◆graphic-preview-source"))
+    removeEditorMarker(document.body, "◆graphic-manipulating")
     this.#setGuides({})
     this.#setPortTarget(null)
   }
@@ -2142,7 +2142,7 @@ export class GraphicFeature extends EditorFeature {
     else {
       this.#viewportState.delete(graphic)
       this.#navigatedGraphics.delete(graphic)
-      this.#removeMarkerClass(graphic, "◆graphic-viewport-active")
+      removeEditorMarker(graphic, "◆graphic-viewport-active")
     }
   }
 
@@ -2235,8 +2235,8 @@ export class GraphicFeature extends EditorFeature {
     this.#navigatedGraphics.clear()
     this.#viewportState = new WeakMap()
     this.#spaceDown = false
-    this.#removeMarkerClass(document.body, "◆graphic-pan-ready")
-    this.#removeMarkerClass(document.body, "◆graphic-panning")
+    removeEditorMarker(document.body, "◆graphic-pan-ready")
+    removeEditorMarker(document.body, "◆graphic-panning")
   }
 
   #screenMatrix(graphic: SVGSVGElement): Matrix {
@@ -2360,7 +2360,7 @@ export class GraphicFeature extends EditorFeature {
     }
     else if(operation === "toggle-lock") {
       if(this.#isLocked(shape)) {
-        this.#removeMarkerClass(shape, "◆graphic-shape-locked")
+        removeEditorMarker(shape, "◆graphic-shape-locked")
         this.#lockedShapes.delete(shape)
       }
       else {
@@ -2437,7 +2437,7 @@ export class GraphicFeature extends EditorFeature {
     if(this.#isLocked(shape) || shape.getAttribute("visibility") === "hidden") return
     const current = this.selectedShapes
     if(this.#selectedShapes.has(shape)) {
-      this.#removeMarkerClass(shape, "◆graphic-shape-selected")
+      removeEditorMarker(shape, "◆graphic-shape-selected")
       this.#selectedShapes.delete(shape)
       if(this.#primaryShape === shape) this.#primaryShape = this.selectedShapes.at(-1) ?? null
       return
@@ -2456,7 +2456,7 @@ export class GraphicFeature extends EditorFeature {
       && !this.#isLocked(shape)
       && shape.getAttribute("visibility") !== "hidden"))
     this.#selectedShapes.forEach(shape => {
-      if(!next.has(shape)) this.#removeMarkerClass(shape, "◆graphic-shape-selected")
+      if(!next.has(shape)) removeEditorMarker(shape, "◆graphic-shape-selected")
     })
     next.forEach(shape => shape.classList.add("◆", "◆graphic-shape-selected"))
     this.#selectedShapes = next
@@ -2476,7 +2476,7 @@ export class GraphicFeature extends EditorFeature {
       this.#interaction = null
     }
     document.querySelectorAll(".◆graphic-shape-selected").forEach(element => {
-      this.#removeMarkerClass(element, "◆graphic-shape-selected")
+      removeEditorMarker(element, "◆graphic-shape-selected")
     })
     this.#selectedShapes.clear()
     this.#primaryShape = null
@@ -2490,16 +2490,16 @@ export class GraphicFeature extends EditorFeature {
   #pruneLocks() {
     this.#lockedShapes.forEach(shape => {
       if(!shape.isConnected) {
-        this.#removeMarkerClass(shape, "◆graphic-shape-locked")
+        removeEditorMarker(shape, "◆graphic-shape-locked")
         this.#lockedShapes.delete(shape)
       }
     })
   }
 
   #clearLocks() {
-    this.#lockedShapes.forEach(shape => this.#removeMarkerClass(shape, "◆graphic-shape-locked"))
+    this.#lockedShapes.forEach(shape => removeEditorMarker(shape, "◆graphic-shape-locked"))
     document.querySelectorAll(".◆graphic-shape-locked").forEach(shape => {
-      this.#removeMarkerClass(shape, "◆graphic-shape-locked")
+      removeEditorMarker(shape, "◆graphic-shape-locked")
     })
     this.#lockedShapes.clear()
   }
@@ -2848,26 +2848,17 @@ export class GraphicFeature extends EditorFeature {
     if(!captured) return
     this.#presentedGraphic = captured
     if(this.#options.grid) captured.classList.add("◆", "◆graphic-grid-visible")
-    else this.#removeMarkerClass(captured, "◆graphic-grid-visible")
+    else removeEditorMarker(captured, "◆graphic-grid-visible")
   }
 
   #clearCanvasPresentation() {
-    if(this.#presentedGraphic) this.#removeMarkerClass(this.#presentedGraphic, "◆graphic-grid-visible")
+    if(this.#presentedGraphic) removeEditorMarker(this.#presentedGraphic, "◆graphic-grid-visible")
     this.#presentedGraphic = null
   }
 
-  #removeMarkerClass(element: Element, marker: string) {
-    element.classList.remove(marker)
-    if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
-    if(!element.classList.length) element.removeAttribute("class")
-  }
-
   #removeMarkerClasses(element: Element, descendants = false) {
-    const elements = descendants ? [element, ...Array.from(element.querySelectorAll("*"))] : [element]
-    elements.forEach(current => {
-      Array.from(current.classList).filter(name => name.startsWith("◆")).forEach(name => current.classList.remove(name))
-      if(!current.classList.length) current.removeAttribute("class")
-    })
+    if(descendants) clearEditorMarkerClasses(element)
+    else removeEditorMarker(element, ...Array.from(element.classList).filter(name => name.startsWith("◆")))
   }
 
   #setLabel(shape: SVGGraphicsElement, value: string) {
@@ -2889,7 +2880,7 @@ export class GraphicFeature extends EditorFeature {
       }
       shape.parentNode.insertBefore(group, shape)
       group.append(shape)
-      this.#removeMarkerClass(shape, "◆graphic-shape-selected")
+      removeEditorMarker(shape, "◆graphic-shape-selected")
       root = group
     }
     let text = shapeText(root)
