@@ -652,3 +652,53 @@ describe("bridge origin binding", () => {
     postMessage.mockRestore()
   })
 })
+
+describe("command normalization boundaries", () => {
+  it.each([undefined, [17]])("preserves authored node identity for a style read with properties %s", async properties => {
+    document.body.innerHTML = '<p><b>one</b><b>two</b></p><test-widget></test-widget>'
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const editor = new DOMEditor()
+    try {
+      const paragraph = document.querySelector("p")!
+      const marks = Array.from(paragraph.children)
+      const widget = document.querySelector("test-widget")!
+      const texts = [document.createTextNode("x"), document.createTextNode("y")]
+      widget.append(...texts)
+      document.getSelection()!.setBaseAndExtent(document.body, 0, document.body, 1)
+      window.dispatchEvent(new MessageEvent("message", {data: {
+        type: "getStyleState", properties, requestId: "read-style", bridgeNonce: editor.trustedScriptNonce,
+      }}))
+      await vi.waitFor(() => expect(postMessage.mock.calls.some(([message]) => message.detail?.requestId === "read-style")).toBe(true))
+      expect(Array.from(paragraph.children)).toEqual(marks)
+      expect(Array.from(widget.childNodes)).toEqual(texts)
+      expect(paragraph.innerHTML).toBe("<b>one</b><b>two</b>")
+    }
+    finally {
+      editor.destroy()
+      postMessage.mockRestore()
+    }
+  })
+
+  it("normalizes only the edited block and leaves widget-owned content intact", () => {
+    document.body.innerHTML = '<p id="edited"><b>one</b><b>two</b><test-widget></test-widget></p><p id="other"><b>x</b><b>y</b></p>'
+    const editor = new DOMEditor()
+    try {
+      const edited = document.querySelector("#edited")!
+      const widget = document.querySelector("test-widget")!
+      const texts = [document.createTextNode("x"), document.createTextNode("y")]
+      widget.append(...texts)
+      const selection = document.getSelection()!
+      selection.setBaseAndExtent(edited.firstChild!.firstChild!, 1, edited.firstChild!.firstChild!, 1)
+      editor.normalizeSurroundingElements(edited)
+      expect(edited.querySelectorAll("b")).toHaveLength(1)
+      expect(Array.from(widget.childNodes)).toEqual(texts)
+      expect(document.querySelector("#other")!.innerHTML).toBe("<b>x</b><b>y</b>")
+      expect(selection.anchorNode?.textContent).toBe("onetwo")
+      expect(selection.anchorOffset).toBe(1)
+      selection.setBaseAndExtent(document.body, 0, document.body, 1)
+      editor.normalizeSurroundingElements(document.body)
+      expect(document.querySelector("#other")!.innerHTML).toBe("<b>x</b><b>y</b>")
+    }
+    finally { editor.destroy() }
+  })
+})

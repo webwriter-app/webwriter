@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
-import {markNames, normalizeMarkElements, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
+import {markNames, normalizeEditingContent, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
 import {$} from "../utility"
 
 const editor = new DOMEditor()
@@ -247,7 +247,7 @@ describe("MarkFeature toggles", () => {
   it("keeps adjacent ruby sequences independent during generic mark normalization", () => {
     const paragraph = setContent("<p><ruby>漢<rt>かん</rt></ruby><ruby>字<rt>じ</rt></ruby></p>")
 
-    normalizeMarkElements(paragraph)
+    normalizeEditingContent(paragraph)
 
     expect(paragraph.querySelectorAll("ruby")).toHaveLength(2)
     expect(cleanHTML()).toBe("<p><ruby>漢<rt>かん</rt></ruby><ruby>字<rt>じ</rt></ruby></p>")
@@ -256,7 +256,7 @@ describe("MarkFeature toggles", () => {
   it("treats custom elements and customized built-ins as atomic during mark normalization", () => {
     const paragraph = setContent('<p><demo-widget><b>one</b><b>two</b></demo-widget><b>three</b><b>four</b><b is="demo-widget"><i>five</i><i>six</i></b></p>')
 
-    normalizeMarkElements(paragraph)
+    normalizeEditingContent(paragraph)
 
     expect(paragraph.innerHTML).toBe('<demo-widget><b>one</b><b>two</b></demo-widget><b>threefour</b><b is="demo-widget"><i>five</i><i>six</i></b>')
   })

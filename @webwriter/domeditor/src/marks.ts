@@ -382,22 +382,30 @@ function isWidgetElement(element: Element) {
   return element.localName.includes("-") || element.hasAttribute("is")
 }
 
-/** Recursively joins adjacent equivalent mark runs, like `Node.normalize()`
- * joins adjacent text nodes. */
-export function normalizeMarkElements(root: Element) {
+/** Joins adjacent text and equivalent marks in a command's affected content.
+ * Unlike Node.normalize(), this leaves widget-owned descendants untouched. */
+export function normalizeEditingContent(root: Element) {
   if(isWidgetElement(root)) return
   for(const child of Array.from(root.children)) {
-    if(!isWidgetElement(child)) normalizeMarkElements(child)
+    if(!isWidgetElement(child)) normalizeEditingContent(child)
   }
   let current: ChildNode | null = root.firstChild
   while(current) {
     const next: ChildNode | null = current.nextSibling
+    if(current instanceof Text) {
+      if(next instanceof Text) {
+        current.appendData(next.data)
+        next.remove()
+        continue
+      }
+      if(!current.length) current.remove()
+    }
     if(current instanceof Element && next instanceof Element
       && !isWidgetElement(current) && !isWidgetElement(next)
       && areEquivalentMarkElements(current, next)) {
       current.append(...Array.from(next.childNodes))
       next.remove()
-      current.normalize()
+      normalizeEditingContent(current)
       continue
     }
     current = next

@@ -20,7 +20,7 @@ import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
-import {canonicalMarkName, isMarkElement, normalizeMarkElements, stripExcludedMarks} from "./marks"
+import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -490,13 +490,10 @@ export class DOMEditor {
     ]) {
       if(!node) continue
       const element = getContainer(node)
-      isElement(element) && elements.add(element)
+      if(isElement(element) && element !== document.body && element !== document.documentElement
+        && element !== getDocumentRoot() && element.isConnected) elements.add(element)
     }
-    elements.forEach(element => {
-      element.normalize()
-      normalizeMarkElements(element)
-      element.normalize()
-    })
+    elements.forEach(element => normalizeEditingContent(element))
     if(this.#ensureDocumentContent()) return
     if(selection && savedSelection) {
       const anchor = this.restoreTextPoint(savedSelection.anchor)
@@ -819,7 +816,6 @@ export class DOMEditor {
       result = handle(ev.data)
     }
     catch(error) {
-      this.normalizeSurroundingElements()
       if(requestId) {
         this.postExecutionEvent(executeFailureEvent, {
           requestId,
@@ -834,7 +830,6 @@ export class DOMEditor {
 
     Promise.resolve(result).then(
       value => {
-        this.normalizeSurroundingElements()
         // Reading the HTML selection does not change it. Reposting the same
         // selection here makes the host start another HTML-source read before
         // this response arrives, so every valid response becomes stale.
@@ -844,7 +839,6 @@ export class DOMEditor {
         }
       },
       error => {
-        this.normalizeSurroundingElements()
         if(requestId) {
           this.postExecutionEvent(executeFailureEvent, {
             requestId,
