@@ -118,8 +118,9 @@ describe("development server", () => {
     expect(created.value.provider).toEqual(expect.objectContaining({
       managed: "backend",
       credentialStatus: "available",
-      customInstructions: expect.stringContaining("propose a document change"),
     }))
+    // Editing behavior is application-owned; providers store only extra preferences.
+    expect(created.value.provider.customInstructions ?? "").toBe("")
 
     const listed = await request("/api/providers")
     expect(JSON.stringify(listed.value)).not.toContain("secret-value")

@@ -6,6 +6,9 @@ import {restoreOriginalResourceURLs} from "../serialization"
 import {aiEditReviewEvent, executeFailureEvent} from "../editor-bridge"
 import {markNames} from "../marks"
 import * as Y from "yjs"
+import {completeAIConversation} from "../ai-client"
+import {createAIProvider} from "../ai-provider"
+import type {AIChangeOperation} from "../ai-tools"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -24,6 +27,73 @@ const aiElementTarget = (editor: DOMEditor, selector: string) => (
 ).elements[0].target
 
 describe("Focused AI proposals", () => {
+  it.each([
+    {prompt: "Can you improve this?", invalid: "<section><h2>Practice</h2><p>Try it</p></section>", diagnostic: "unnecessary", html: "<h2>Practice</h2><p>Try it</p>", summary: "Add a short practice activity."},
+    {prompt: "Add a hologram widget", invalid: "<invented-hologram></invented-hologram>", diagnostic: "unavailable", html: "<details><summary>Explore the idea</summary><p>Compare what you observe.</p></details>", summary: "Add a native interactive activity because the requested widget is unavailable."},
+  ])("repairs a proposal for '$prompt' privately and queues a real document change", async ({prompt, invalid, diagnostic, html, summary}) => {
+    await withAIEditor("<p>Existing introduction</p><!--preserve-->", async editor => {
+      let round = 0, target = "", proposalId = ""
+      const state = editor.features.state.actions
+      const message = (value: unknown) => new Response(JSON.stringify({choices: [{message: value}]}), {headers: {"content-type": "application/json"}})
+      const toolCall = (id: string, name: string, args: unknown) => ({id, type: "function", function: {name, arguments: JSON.stringify(args)}})
+      const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(init!.body as string)
+        switch(++round) {
+          case 1: return message({content: "Which approach would you like?"})
+          case 2: return message({tool_calls: [toolCall("read", "inspect_elements", {selector: "p"}), toolCall("catalog", "list_widgets", {})]})
+          case 3:
+            target = JSON.parse(body.messages.find((item: any) => item.role === "tool" && item.tool_call_id === "read").content).elements[0].target
+            return message({tool_calls: [toolCall("invalid", "queue_document_change", {summary, operations: [{type: "insert_html", target, position: "after", html: invalid}]})]})
+          default:
+            expect(JSON.parse(body.messages.at(-1).content)).toMatchObject({status: "error", message: expect.stringContaining(diagnostic)})
+            expect(editor.toHTML(true)).toBe("<p>Existing introduction</p><!--preserve-->")
+            return message({tool_calls: [toolCall("repaired", "queue_document_change", {summary, operations: [{type: "insert_html", target, position: "after", html}]})]})
+        }
+      })
+      const result = await completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [{role: "user", content: prompt}], fetch,
+        toolHandler: async call => {
+          if(call.name === "read_editor_capabilities") return state.readAIEditorCapabilities({type: "readAIEditorCapabilities"})
+          if(call.name === "inspect_elements") return state.inspectAIElements({...call.arguments, type: "inspectAIElements"})
+          if(call.name === "list_widgets") return {members: [], total: 0}
+          if(call.name !== "queue_document_change") throw new Error("Unexpected tool")
+          const result = state.previewAIOperations({type: "previewAIOperations", editId: call.id, summary: call.arguments.summary as string, operations: call.arguments.operations as AIChangeOperation[]})
+          expect(result.status).toBe("previewing")
+          proposalId = call.id
+          return {status: "queued", proposalId}
+        },
+      })
+      expect(result).toBe(`Queued: ${summary}`)
+      expect(fetch).toHaveBeenCalledTimes(4)
+      expect(editor.toHTML(true)).toBe(`<p>Existing introduction</p>${html}<!--preserve-->`)
+      expect(editor.doc.body.toString()).not.toContain(html)
+      state.acceptAIEdit({type: "acceptAIEdit", editId: proposalId})
+      expect(editor.toHTML(true)).toContain(html)
+    })
+  })
+
+  it("preserves existing wrappers and unfamiliar widgets while validating newly proposed structure", async () => {
+    await withAIEditor('<section><p>Before</p><authored-widget answer="7"></authored-widget></section>', editor => {
+      const target = aiElementTarget(editor, "section")
+      editor.features.state.actions.previewAIOperations({type: "previewAIOperations", editId: "authored", summary: "Revise the paragraph.", operations: [
+        {type: "replace_html", target, html: '<section><p>After</p><authored-widget answer="7"></authored-widget></section>'},
+      ]})
+      expect(document.querySelectorAll("section")).toHaveLength(1)
+      expect(document.querySelector("authored-widget")?.getAttribute("answer")).toBe("7")
+    })
+  })
+
+  it("preserves documented widget light-DOM structure without exposing its internals as edit targets", async () => {
+    customElements.define("ai-public-content-widget", class extends HTMLElement {})
+    await withAIEditor("<p>Introduction</p>", editor => {
+      const target = aiElementTarget(editor, "p")
+      editor.features.state.actions.previewAIOperations({type: "previewAIOperations", editId: "widget-light-dom", summary: "Add an exercise.", availableWidgets: ["ai-public-content-widget"], operations: [
+        {type: "insert_html", target, position: "after", html: '<ai-public-content-widget><section slot="question"><label>Answer<input type="text"></label></section></ai-public-content-widget>'},
+      ]})
+      expect(document.querySelector("ai-public-content-widget > section[slot=question] input")).not.toBeNull()
+      expect(editor.features.state.actions.inspectAIElements({type: "inspectAIElements", selector: "input"}).elements).toHaveLength(0)
+    })
+  })
+
   it("previews targeted changes privately, preserves node identity, merges remote edits, and selectively undoes", async () => {
     await withAIEditor('<p class="authored">Before</p><!--keep--><unknown-widget answer="7"></unknown-widget>', async editor => {
       const paragraph = document.querySelector("p")!, widget = document.querySelector("unknown-widget")!, comment = paragraph.nextSibling

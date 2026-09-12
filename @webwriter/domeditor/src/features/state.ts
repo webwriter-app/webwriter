@@ -8,6 +8,7 @@ import {aiPage, type AIReadDocumentOptions, type AIInspectOptions, type AIChange
 import {htmlElementCapabilities} from "../html-element-capabilities"
 import {elementStyleCategories} from "../element-styles"
 import {layoutPresets} from "../layouts"
+import {validateAIFragmentStructure} from "../ai-content"
 
 const maximumAIHTMLLength = 1_000_000
 const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
@@ -160,21 +161,24 @@ export class StateFeature extends EditorFeature {
     if(stripActiveContent(fragment, {allowIframes: true, removeClass: name => name.startsWith("◆"), removeAttribute: attr => aiOnlyAttributes.has(attr.name.toLowerCase())})) {
       throw new Error("The proposed HTML contains unsupported active content or editor attributes; remove them and retry")
     }
-    const visit = (root: ParentNode) => {
-      for(const element of root.querySelectorAll("*")) {
-        if(element.hasAttribute("is")) throw new Error("Customized built-in elements are not available for AI insertion")
+    const visit = (root: ParentNode, widgetContract = false) => {
+      for(const element of Array.from(root.children)) {
         const existingIndex = retainedElements.findIndex(authored => authored.isEqualNode(element))
         if(existingIndex >= 0) retainedElements.splice(existingIndex, 1)
         else if(element.namespaceURI === "http://www.w3.org/1999/xhtml") {
+          if(element.hasAttribute("is")) throw new Error("Customized built-in elements are not available for AI insertion")
           if(element.localName.includes("-")) {
             if(!availableWidgets.includes(element.localName) || !customElements.get(element.localName)) throw new Error(`Widget ${element.localName} is unavailable or undocumented; read list_widgets and its README, or use native HTML`)
           }
-          else if(!aiHTMLInsertion(element.localName)) throw new Error(`AI insertion of <${element.localName}> is unavailable; read editor capabilities and choose a supported element`)
+          else if(!widgetContract && !aiHTMLInsertion(element.localName)) throw new Error(`AI insertion of <${element.localName}> is unavailable; read editor capabilities and choose a supported element`)
         }
-        if(element.localName === "template") visit((element as HTMLTemplateElement).content)
+        const publicContent = widgetContract || availableWidgets.includes(element.localName)
+        if(element.localName === "template") visit((element as HTMLTemplateElement).content, publicContent)
+        else visit(element, publicContent)
       }
     }
     visit(fragment)
+    validateAIFragmentStructure(fragment, existing)
     return fragment
   }
 

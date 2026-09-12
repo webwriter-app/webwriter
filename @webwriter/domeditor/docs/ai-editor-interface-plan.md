@@ -1,6 +1,12 @@
 # AI editor interface improvement plan
 
-Status: proposed; implementation has not started.
+Status: implemented in six separate commits.
+
+The implementation follows six delivery steps: enforce default proposal completion; finish chat when the preview is queued; expose live editor capabilities and inspection tools; resolve exact-version and local widget READMEs; queue focused DOM operation batches; enforce flat generated structure and verify the integrated flow. The existing DOM, collaboration, review controls, and provider configuration remain the foundations.
+
+Successful editing turns return one effective queued proposal and a validated one- or two-sentence summary. Explicit read-only requests remain an override. Model errors and invalid proposals are repaired within eight completion rounds; an exhausted or cancelled turn reports failure without claiming a change was queued. Tests use mocked provider responses; no live provider credentials are required.
+
+Flatness checks reject clearly unnecessary new wrappers and preserve existing wrappers, required HTML structure, and widget light-DOM contracts. Class-based or otherwise ambiguous layout intent is left to the generation instructions and review. Widget availability is projected from the current installed/local/discovered inventory and actual runtime registration. README and existing editing metadata describe the public API; undocumented attributes, slots, methods, and CSS parts remain unknown. Document head/style context is readable; head writes remain unavailable.
 
 ## Product contract
 
@@ -12,7 +18,7 @@ Provider failures, cancellation, an unavailable editor, or exhausted recovery at
 
 Example: “Make this exercise more interactive” queues an improved exercise using an available widget or native HTML. Chat says: “Queued an interactive version of the exercise with answer feedback. The existing introduction is preserved.”
 
-## Existing foundations and gaps
+## Baseline before implementation
 
 - `src/ai-client.ts` exposes four tools: read document, read selection, replace document, and replace selection. Its completion loop accepts any nonempty text response, even when no edit was proposed.
 - `src/ai-provider.ts` seeds editable provider instructions with a proposal/flatness preference. Equivalent defaults also appear in `dev-server/server.mjs` and `dev-server/admin.html`. These defaults do not enforce behavior for every existing provider.
@@ -114,4 +120,4 @@ Acceptance cases:
 - Generated ordinary content is flat. Layouts contain only necessary grouping; lists, tables, and widget contracts retain required nesting; existing wrappers remain intact.
 - Previews stay private until acceptance; rejection restores the current shared document, acceptance preserves queued remote edits, and undo/redo obey existing semantics. Markers/UI are excluded from shared and serialized HTML.
 
-Run focused Vitest files during implementation, then `npx vitest run` and `npm run typecheck`. Use the existing loopback-only native browser harness for actual widget registration, focus/selection, rendered layout, and review interactions. No runtime tests are required for this planning-only document.
+Run focused Vitest files during implementation, then `npx vitest run` and `npm run typecheck`. Use `npm run test:native-browser`, the existing loopback-only browser harness, for actual widget registration, focus/selection, rendered layout, and review interactions. Its AI regression check covers contextual table insertion, widget instance preservation through preview and acceptance, rendered styles, rejection, selective undo, and marker exclusion.

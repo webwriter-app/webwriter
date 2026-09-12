@@ -70,7 +70,7 @@ describe("OpenAI-compatible AI client", () => {
       fetch,
     })).resolves.toBe("The document has one heading.")
 
-    expect(toolHandler).toHaveBeenCalledWith(expect.objectContaining({name: "read_current_document"}))
+    expect(toolHandler).toHaveBeenCalledWith(expect.objectContaining({name: "read_current_document"}), {signal: undefined})
     const secondBody = JSON.parse((fetch.mock.calls[1][1] as RequestInit).body as string)
     expect(secondBody.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({role: "tool", tool_call_id: "call-1", content: JSON.stringify({html: "<h1>Hello</h1>"})}),
@@ -145,5 +145,8 @@ describe("OpenAI-compatible AI client", () => {
     expect(aiProposalSummary("Add a title. Preserve the introduction.")).toBe("Add a title. Preserve the introduction.")
     expect(requestsReadOnlyAI("What would improve this?")).toBe(false)
     expect(requestsReadOnlyAI("Explain the selection without editing")).toBe(true)
+    expect(requestsReadOnlyAI("Do not change the document. Explain the options.")).toBe(true)
+    expect(requestsReadOnlyAI("Improve the introduction but don't change the title.")).toBe(false)
+    expect(requestsReadOnlyAI("Restyle this without changing the content.")).toBe(false)
   })
 })
