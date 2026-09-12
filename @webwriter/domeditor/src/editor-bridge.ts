@@ -481,284 +481,163 @@ export function isExecuteResponse(value: unknown): value is ExecuteResponse {
   return true
 }
 
-function isSelectionPosition(value: Pick<SelectionPathItem, "position" | "positionAnchor">) {
-  return (value.position === undefined || ["absolute", "fixed", "relative", "sticky"].includes(value.position))
-    && (value.positionAnchor === undefined || typeof value.positionAnchor === "boolean")
+type UnknownRecord = Record<string, unknown>
+const isRecord = (value: unknown): value is UnknownRecord => !!value && typeof value === "object" && !Array.isArray(value)
+const isString = (value: unknown): value is string => typeof value === "string"
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean"
+const isNonnegativeInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0
+const isPath = (value: unknown): value is number[] => Array.isArray(value) && value.every(isNonnegativeInteger)
+const isStringRecord = (value: unknown): value is Record<string, string> => isRecord(value) && Object.values(value).every(isString)
+const isOptional = (value: unknown, predicate: (value: unknown) => boolean) => value === undefined || predicate(value)
+const isOptionalBoolean = (value: unknown) => value === undefined || isBoolean(value)
+const isSelectionPosition = (value: UnknownRecord) => isOptional(value.position, position => ["absolute", "fixed", "relative", "sticky"].includes(position as string))
+  && isOptional(value.positionAnchor, isBoolean)
+
+const isSelectionPathItem = (value: unknown) => {
+  if(!isRecord(value)) return false
+  const isSection = (section: unknown) => isRecord(section)
+    && isPath(section.path)
+    && isSectionName(section.type)
+    && isString(section.name)
+    && isSelectionPosition(section)
+    && isOptional(section.icon, isString)
+  return isPath(value.path)
+    && isString(value.name)
+    && isOptional(value.icon, isString)
+    && isOptional(value.iconUrl, isString)
+    && isSelectionPosition(value)
+    && isOptional(value.sections, sections => Array.isArray(sections) && sections.every(isSection))
 }
 
-export function isSelectionChangeMessage(value: unknown): value is SelectionChangeMessage {
-  if(!value || typeof value !== "object") return false
-  const message = value as Partial<SelectionChangeMessage>
-  if(message.type !== selectionChangeEvent || !message.detail || typeof message.detail !== "object") return false
-  if(!Array.isArray(message.detail.path)) return false
-  if(!message.detail.path.every(item => {
-    if(!item || typeof item !== "object") return false
-    const pathItem = item as Partial<SelectionPathItem>
-    return Array.isArray(pathItem.path)
-      && pathItem.path.every(index => Number.isInteger(index) && index >= 0)
-      && typeof pathItem.name === "string"
-      && (pathItem.icon === undefined || typeof pathItem.icon === "string")
-      && (pathItem.iconUrl === undefined || typeof pathItem.iconUrl === "string")
-      && isSelectionPosition(pathItem)
-      && (pathItem.sections === undefined || Array.isArray(pathItem.sections)
-        && pathItem.sections.every(section => !!section
-          && typeof section === "object"
-          && Array.isArray(section.path)
-          && section.path.every(index => Number.isInteger(index) && index >= 0)
-          && isSectionName(section.type)
-          && typeof section.name === "string"
-          && isSelectionPosition(section)
-          && (section.icon === undefined || typeof section.icon === "string")))
-  })) return false
+const isOptionalFeature = (value: unknown, predicate: (value: UnknownRecord) => boolean) => value === undefined || isRecord(value) && predicate(value)
+const isSelectionGap = (value: UnknownRecord) => isPath(value.parentPath) && isNonnegativeInteger(value.offset)
+const isSectionSelection = (value: UnknownRecord) => isPath(value.path) && isSectionName(value.type)
 
-  if(message.detail.nodeSelected !== undefined && typeof message.detail.nodeSelected !== "boolean") return false
-  if(message.detail.capture !== undefined && typeof message.detail.capture !== "boolean") return false
-  if(message.detail.inserted !== undefined && typeof message.detail.inserted !== "boolean") return false
-  if(message.detail.canSection !== undefined && typeof message.detail.canSection !== "boolean") return false
+const isListSelection = (list: UnknownRecord) => {
+  const isOrdered = (ordered: unknown) => isRecord(ordered)
+    && isString(ordered.start)
+    && (ordered.start === "" || /^-?\d+$/.test(ordered.start))
+    && isBoolean(ordered.reversed)
+    && ["", "1", "a", "A", "i", "I"].includes(ordered.numbering as string)
+    && isOptional(ordered.itemValue, value => isString(value) && (value === "" || /^-?\d+$/.test(value)))
+  return (list.type === null || ["ul", "ol", "dl", "menu"].includes(list.type as string))
+    && isString(list.style)
+    && isOptional(list.ordered, isOrdered)
+}
 
-  const section = message.detail.section as Partial<SectionSelectionState> | null | undefined
-  const sectionIsValid = section === undefined || (
-    !!section
-    && typeof section === "object"
-    && Array.isArray(section.path)
-    && section.path.every(index => Number.isInteger(index) && index >= 0)
-    && isSectionName(section.type)
-  )
-  if(!sectionIsValid) return false
+const isHeadingGroup = (value: UnknownRecord) => (value.heading === null || ["h1", "h2", "h3", "h4", "h5", "h6"].includes(value.heading as string))
+  && isNonnegativeInteger(value.beforeCount)
+  && isNonnegativeInteger(value.afterCount)
 
-  const gap = message.detail.gap as Partial<SelectionGap> | null | undefined
-  const gapIsValid = gap === undefined || (
-    !!gap
-    && typeof gap === "object"
-    && Array.isArray(gap.parentPath)
-    && gap.parentPath.every(index => Number.isInteger(index) && index >= 0)
-    && typeof gap.offset === "number"
-    && Number.isInteger(gap.offset)
-    && gap.offset >= 0
-  )
-  if(!gapIsValid) return false
+const isFigure = (value: UnknownRecord) => isBoolean(value.hasCaption)
 
-  const list = message.detail.list as Partial<ListSelectionState> | null | undefined
-  const listIsValid = list === undefined || (
-    !!list
-    && typeof list === "object"
-    && (list.type === null || list.type === "ul" || list.type === "ol" || list.type === "dl" || list.type === "menu")
-    && typeof list.style === "string"
-    && (list.ordered === undefined || (
-      !!list.ordered
-      && typeof list.ordered === "object"
-      && typeof list.ordered.start === "string"
-      && (list.ordered.start === "" || /^-?\d+$/.test(list.ordered.start))
-      && typeof list.ordered.reversed === "boolean"
-      && typeof list.ordered.numbering === "string"
-      && ["", "1", "a", "A", "i", "I"].includes(list.ordered.numbering)
-      && (list.ordered.itemValue === undefined || typeof list.ordered.itemValue === "string"
-        && (list.ordered.itemValue === "" || /^-?\d+$/.test(list.ordered.itemValue)))
-    ))
-  )
-  if(!listIsValid) return false
+const isElementSelection = (value: UnknownRecord) => (value.path === null || isPath(value.path))
+  && isString(value.localName)
+  && (value.namespaceURI === null || isString(value.namespaceURI))
+  && isString(value.name)
+  && isOptional(value.icon, isString)
+  && isStringRecord(value.attributes)
 
-  const headingGroup = message.detail.headingGroup as Partial<HeadingGroupSelectionState> | null | undefined
-  const headingGroupIsValid = headingGroup === undefined || (
-    !!headingGroup
-    && typeof headingGroup === "object"
-    && (headingGroup.heading === null || ["h1", "h2", "h3", "h4", "h5", "h6"].includes(headingGroup.heading ?? ""))
-    && Number.isInteger(headingGroup.beforeCount) && (headingGroup.beforeCount ?? -1) >= 0
-    && Number.isInteger(headingGroup.afterCount) && (headingGroup.afterCount ?? -1) >= 0
-  )
-  if(!headingGroupIsValid) return false
+const isMediaResource = (value: unknown) => isRecord(value)
+  && isNonnegativeInteger(value.index)
+  && isStringRecord(value.attributes)
 
-  const figure = message.detail.figure as Partial<FigureSelectionState> | null | undefined
-  const figureIsValid = figure === undefined || (
-    !!figure
-    && typeof figure === "object"
-    && typeof figure.hasCaption === "boolean"
-  )
-  if(!figureIsValid) return false
-
-  const element = message.detail.element as Partial<ElementAttributeState> | null | undefined
-  const elementIsValid = element === undefined || (
-    !!element
-    && typeof element === "object"
-    && (element.path === null || Array.isArray(element.path)
-      && element.path.every(index => Number.isInteger(index) && index >= 0))
-    && typeof element.localName === "string"
-    && (element.namespaceURI === null || typeof element.namespaceURI === "string")
-    && typeof element.name === "string"
-    && (element.icon === undefined || typeof element.icon === "string")
-    && !!element.attributes
-    && typeof element.attributes === "object"
-    && !Array.isArray(element.attributes)
-    && Object.entries(element.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
-  )
-  if(!elementIsValid) return false
-
-  const media = message.detail.media as Partial<MediaSelectionState> | null | undefined
-  const mediaAttributesAreValid = (attributes: unknown) => !!attributes
-    && typeof attributes === "object"
-    && !Array.isArray(attributes)
-    && Object.entries(attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
-  const mediaResourcesAreValid = (resources: unknown) => resources === undefined || Array.isArray(resources)
-    && resources.every(resource => !!resource
-      && typeof resource === "object"
-      && Number.isInteger(resource.index)
-      && resource.index >= 0
-      && mediaAttributesAreValid(resource.attributes))
-  const imageMap = media?.imageMap
-  const imageMapIsValid = imageMap === undefined || imageMap === null || (
-    !!imageMap
-    && typeof imageMap === "object"
-    && typeof imageMap.name === "string"
-    && imageMap.name.length > 0
-    && typeof imageMap.shared === "boolean"
-    && Array.isArray(imageMap.areas)
-    && imageMap.areas.every(area => !!area
-      && typeof area === "object"
-      && Array.isArray(area.path)
-      && area.path.every(index => Number.isInteger(index) && index >= 0)
-      && mediaAttributesAreValid(area.attributes))
-  )
-  const mediaIsValid = media === undefined || (
-    !!media
-    && typeof media === "object"
-    && isMediaType(media.type)
-    && mediaAttributesAreValid(media.attributes)
-    && mediaResourcesAreValid(media.sources)
-    && mediaResourcesAreValid(media.tracks)
-    && (media.fallbackHTML === undefined || typeof media.fallbackHTML === "string")
-    && imageMapIsValid
-    && (media.type === "audio" || media.type === "video"
-      || media.sources === undefined && media.tracks === undefined && media.fallbackHTML === undefined)
+const isMediaSelection = (media: UnknownRecord) => {
+  const isImageMap = (value: unknown) => value === null || isRecord(value)
+    && isString(value.name)
+    && value.name.length > 0
+    && isBoolean(value.shared)
+    && Array.isArray(value.areas)
+    && value.areas.every(area => isRecord(area) && isPath(area.path) && isStringRecord(area.attributes))
+  return isMediaType(media.type)
+    && isStringRecord(media.attributes)
+    && isOptional(media.sources, value => Array.isArray(value) && value.every(isMediaResource))
+    && isOptional(media.tracks, value => Array.isArray(value) && value.every(isMediaResource))
+    && isOptional(media.fallbackHTML, isString)
+    && isOptional(media.imageMap, isImageMap)
+    && (media.type === "audio" || media.type === "video" || (media.sources === undefined && media.tracks === undefined && media.fallbackHTML === undefined))
     && (media.type === "picture" || media.type === "img" || media.imageMap === undefined)
-  )
-  if(!mediaIsValid) return false
+}
 
-  const form = message.detail.form as Partial<FormSelectionState> | null | undefined
-  const formIsValid = form === undefined || (
-    !!form
-    && typeof form === "object"
-    && isFormElementType(form.type)
-    && !!form.attributes
-    && typeof form.attributes === "object"
-    && !Array.isArray(form.attributes)
-    && Object.entries(form.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
-    && (form.text === undefined || typeof form.text === "string")
-    && [form.canAddField, form.canAddLegend, form.canAddOption, form.canAddOptionGroup, form.canCustomizeSelect]
-      .every(value => value === undefined || typeof value === "boolean")
-  )
-  if(!formIsValid) return false
+const isFormSelection = (form: UnknownRecord) => isFormElementType(form.type)
+  && isStringRecord(form.attributes)
+  && isOptional(form.text, isString)
+  && [form.canAddField, form.canAddLegend, form.canAddOption, form.canAddOptionGroup, form.canCustomizeSelect].every(isOptionalBoolean)
 
-  const dialog = message.detail.dialog as Partial<DialogSelectionState> | null | undefined
-  const dialogIsValid = dialog === undefined || (
-    !!dialog
-    && typeof dialog === "object"
-    && !!dialog.attributes
-    && typeof dialog.attributes === "object"
-    && !Array.isArray(dialog.attributes)
-    && Object.entries(dialog.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
-    && typeof dialog.initiallyOpen === "boolean"
-    && (dialog.closedBy === "" || isDialogClosedBy(dialog.closedBy))
-    && typeof dialog.openerCount === "number" && Number.isInteger(dialog.openerCount) && dialog.openerCount >= 0
-    && typeof dialog.closeControlCount === "number" && Number.isInteger(dialog.closeControlCount) && dialog.closeControlCount >= 0
-    && typeof dialog.hasDialogForm === "boolean"
-  )
-  if(!dialogIsValid) return false
+const isDialogSelection = (dialog: UnknownRecord) => isStringRecord(dialog.attributes)
+  && isBoolean(dialog.initiallyOpen)
+  && (dialog.closedBy === "" || isDialogClosedBy(dialog.closedBy))
+  && isNonnegativeInteger(dialog.openerCount)
+  && isNonnegativeInteger(dialog.closeControlCount)
+  && isBoolean(dialog.hasDialogForm)
 
-  const table = message.detail.table as Partial<TableSelectionState> | null | undefined
-  const tableAttributesAreValid = (attributes: unknown) => !!attributes
-    && typeof attributes === "object"
-    && !Array.isArray(attributes)
-    && Object.entries(attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
-  const tablePathIsValid = (path: unknown) => Array.isArray(path)
-    && path.every(index => Number.isInteger(index) && index >= 0)
-  const tableIsValid = table === undefined || (
-    !!table
-    && typeof table === "object"
-    && typeof table.active === "boolean"
-    && typeof table.cellSelection === "boolean"
-    && typeof table.rows === "number" && Number.isInteger(table.rows) && table.rows >= 0
-    && typeof table.columns === "number" && Number.isInteger(table.columns) && table.columns >= 0
-    && typeof table.selectedCells === "number" && Number.isInteger(table.selectedCells) && table.selectedCells >= 0
-    && typeof table.canMerge === "boolean"
-    && typeof table.canSplit === "boolean"
-    && typeof table.hasCaption === "boolean"
-    && (table.selectedRowGroup === "direct" || table.selectedRowGroup === "mixed" || isTableRowGroupType(table.selectedRowGroup))
-    && Array.isArray(table.rowGroups)
-    && table.rowGroups.every(group => !!group
-      && typeof group === "object"
-      && Number.isInteger(group.index) && group.index >= 0
-      && isTableRowGroupType(group.type)
-      && Number.isInteger(group.rows) && group.rows >= 0
-      && tableAttributesAreValid(group.attributes))
-    && typeof table.canAddHeaderGroup === "boolean"
-    && typeof table.canAddFooterGroup === "boolean"
-    && Array.isArray(table.columnGroups)
-    && table.columnGroups.every(group => !!group
-      && typeof group === "object"
-      && tablePathIsValid(group.path)
-      && tableAttributesAreValid(group.attributes)
-      && Array.isArray(group.columns)
-      && group.columns.every(column => !!column
-        && typeof column === "object"
-        && tablePathIsValid(column.path)
-        && tableAttributesAreValid(column.attributes)))
-    && !!table.cellSemantics
-    && typeof table.cellSemantics === "object"
-    && (table.cellSemantics.role === "mixed" || isTableCellRole(table.cellSemantics.role))
-    && (table.cellSemantics.headers === null || typeof table.cellSemantics.headers === "string")
-    && (table.cellSemantics.abbr === null || typeof table.cellSemantics.abbr === "string")
-  )
-  if(!tableIsValid) return false
+const isTableSelection = (table: UnknownRecord) => isBoolean(table.active)
+  && isBoolean(table.cellSelection)
+  && isNonnegativeInteger(table.rows)
+  && isNonnegativeInteger(table.columns)
+  && isNonnegativeInteger(table.selectedCells)
+  && isBoolean(table.canMerge)
+  && isBoolean(table.canSplit)
+  && isBoolean(table.hasCaption)
+  && (table.selectedRowGroup === "direct" || table.selectedRowGroup === "mixed" || isTableRowGroupType(table.selectedRowGroup))
+  && Array.isArray(table.rowGroups)
+  && table.rowGroups.every(group => isRecord(group)
+    && isNonnegativeInteger(group.index)
+    && isTableRowGroupType(group.type)
+    && isNonnegativeInteger(group.rows)
+    && isStringRecord(group.attributes))
+  && isBoolean(table.canAddHeaderGroup)
+  && isBoolean(table.canAddFooterGroup)
+  && Array.isArray(table.columnGroups)
+  && table.columnGroups.every(group => isRecord(group)
+    && isPath(group.path)
+    && isStringRecord(group.attributes)
+    && Array.isArray(group.columns)
+    && group.columns.every(column => isRecord(column) && isPath(column.path) && isStringRecord(column.attributes)))
+  && isRecord(table.cellSemantics)
+  && (table.cellSemantics.role === "mixed" || isTableCellRole(table.cellSemantics.role))
+  && (table.cellSemantics.headers === null || isString(table.cellSemantics.headers))
+  && (table.cellSemantics.abbr === null || isString(table.cellSemantics.abbr))
 
-  const graphic = message.detail.graphic as Partial<GraphicSelectionState> | null | undefined
-  const graphicIsValid = graphic === undefined || (
-    !!graphic
-    && typeof graphic === "object"
-    && graphic.active === true
-    && typeof graphic.capture === "boolean"
-    && (graphic.selectionCount === undefined || (
-      typeof graphic.selectionCount === "number"
-      && Number.isInteger(graphic.selectionCount)
-      && graphic.selectionCount >= 0
-    ))
-    && (graphic.shape === undefined || isGraphicShapeType(graphic.shape))
-    && (graphic.parameters === undefined || (
-      !!graphic.parameters
-      && typeof graphic.parameters === "object"
-      && !Array.isArray(graphic.parameters)
-      && Object.entries(graphic.parameters).every(([name, value]) => typeof name === "string" && typeof value === "string")
-    ))
-    && (graphic.options === undefined || (
-      !!graphic.options
-      && typeof graphic.options === "object"
-      && typeof graphic.options.grid === "boolean"
-      && typeof graphic.options.snap === "boolean"
-      && typeof graphic.options.guides === "boolean"
-    ))
-    && (graphic.layers === undefined || (
-      Array.isArray(graphic.layers)
-      && graphic.layers.every(layer => !!layer
-        && typeof layer === "object"
-        && typeof layer.index === "number" && Number.isInteger(layer.index) && layer.index >= 0
-        && typeof layer.label === "string"
-        && isGraphicShapeType(layer.type)
-        && typeof layer.selected === "boolean"
-        && typeof layer.primary === "boolean"
-        && typeof layer.visible === "boolean"
-        && typeof layer.locked === "boolean")
-    ))
-    && (graphic.viewport === undefined || (
-      !!graphic.viewport
-      && typeof graphic.viewport === "object"
-      && typeof graphic.viewport.zoom === "number"
-      && Number.isFinite(graphic.viewport.zoom)
-      && graphic.viewport.zoom >= 25
-      && graphic.viewport.zoom <= 400
-    ))
-  )
-  if(!graphicIsValid) return false
+const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
+  && isBoolean(graphic.capture)
+  && isOptional(graphic.selectionCount, isNonnegativeInteger)
+  && isOptional(graphic.shape, isGraphicShapeType)
+  && isOptional(graphic.parameters, isStringRecord)
+  && isOptional(graphic.options, value => isRecord(value)
+    && isBoolean(value.grid)
+    && isBoolean(value.snap)
+    && isBoolean(value.guides))
+  && isOptional(graphic.layers, value => Array.isArray(value) && value.every(layer => isRecord(layer)
+    && isNonnegativeInteger(layer.index)
+    && isString(layer.label)
+    && isGraphicShapeType(layer.type)
+    && isBoolean(layer.selected)
+    && isBoolean(layer.primary)
+    && isBoolean(layer.visible)
+    && isBoolean(layer.locked)))
+  && isOptional(graphic.viewport, value => isRecord(value)
+    && typeof value.zoom === "number"
+    && Number.isFinite(value.zoom)
+    && value.zoom >= 25
+    && value.zoom <= 400)
 
-  return true
+export function isSelectionChangeMessage(value: unknown): value is SelectionChangeMessage {
+  if(!isRecord(value) || value.type !== selectionChangeEvent || !isRecord(value.detail)) return false
+  const detail = value.detail
+  return Array.isArray(detail.path) && detail.path.every(isSelectionPathItem)
+    && [detail.nodeSelected, detail.capture, detail.inserted, detail.canSection].every(isOptionalBoolean)
+    && isOptionalFeature(detail.section, isSectionSelection)
+    && isOptionalFeature(detail.gap, isSelectionGap)
+    && isOptionalFeature(detail.list, isListSelection)
+    && isOptionalFeature(detail.headingGroup, isHeadingGroup)
+    && isOptionalFeature(detail.figure, isFigure)
+    && isOptionalFeature(detail.element, isElementSelection)
+    && isOptionalFeature(detail.media, isMediaSelection)
+    && isOptionalFeature(detail.form, isFormSelection)
+    && isOptionalFeature(detail.dialog, isDialogSelection)
+    && isOptionalFeature(detail.table, isTableSelection)
+    && isOptionalFeature(detail.graphic, isGraphicSelection)
 }
 
 export function isMarkStateChangeMessage(value: unknown): value is MarkStateChangeMessage {
