@@ -2,6 +2,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
+import {isSlide} from "../document-layout"
 
 type TransformElement = HTMLElement | SVGSVGElement
 type Mode = "move" | "scale" | "rotate" | "anchor"
@@ -269,6 +270,12 @@ export class TransformationFeature extends EditorFeature {
     overlay.append(
       ...["up", "right", "down", "left"].map(dir => this.#createScaler(dir, true)),
       ...["up-left", "up-right", "down-left", "down-right"].map(dir => this.#createScaler(dir)),
+      ...["up", "right", "down", "left"].map(dir => {
+        const point = this.#createScaler(`${dir}-${dir}`)
+        point.classList.add("◆transform-overlay-midpoint")
+        point.title = `Resize ${dir}`
+        return point
+      }),
       mover, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
     )
     overlay.querySelectorAll("button").forEach(button => {
@@ -309,11 +316,12 @@ export class TransformationFeature extends EditorFeature {
 
   /** Called at the selection feature's invariant boundary, including capture
    * changes that do not dispatch a native selectionchange. */
-  syncSelection(element: Element | null) {
+  syncSelection(element: Element | null, within = false) {
     if(!this.isEnabled) return
     if(this.#gesture) return
     if(element && this.#canTransform(element)) this.startTransform(element)
     else this.clearTransform()
+    setPart(this.overlay, "transform-overlay-content-selected", Boolean(this.target && within))
   }
 
   startTransform(element: Element) {
@@ -331,6 +339,18 @@ export class TransformationFeature extends EditorFeature {
   #syncControlParts() {
     const overlay = this.overlay
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
+    const moveEdges = Boolean(this.target && (this.editor.features.canvas.active && this.target.parentElement === document.body
+      || this.editor.features.slides.active && isSlide(this.target.parentElement)))
+    setPart(overlay, "transform-overlay-freeform", moveEdges)
+    for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
+      midpoint.hidden = !moveEdges
+      setPart(midpoint, "transform-overlay-scale-hidden", !moveEdges)
+    }
+    for(const edge of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
+      edge.dataset.transformMode = moveEdges ? "move" : "scale"
+      edge.title = moveEdges ? "Move" : `Resize ${edge.id.replace("◆transform-overlay-scale-", "")}`
+      setPart(edge, "transform-overlay-edge-move", moveEdges)
+    }
     setPart(overlay, "transform-overlay-hidden", overlay.hasAttribute("visibility"))
     setPart(overlay, "transform-overlay-narrow", this.isNarrow)
     const hidden = (name: string, hide: boolean) => {
@@ -339,7 +359,8 @@ export class TransformationFeature extends EditorFeature {
       control.hidden = hide
     }
     hidden("rotator", position !== "absolute")
-    hidden("orderer", position !== "absolute")
+    hidden("orderer", moveEdges || position !== "absolute")
+    hidden("mover", moveEdges)
     hidden("arranger", true)
     hidden("anchor", true)
     hidden("anchor-sticky", true)
@@ -550,8 +571,9 @@ export class TransformationFeature extends EditorFeature {
     const delta = this.#vector(this.#matrix(renderedParentElement(target)).inverse(), dx, dy)
     if(getComputedStyle(target).position === "static") this.#write("position", "relative")
     const style = getComputedStyle(target)
-    const left = parseFloat(style.left) || -(parseFloat(style.right) || 0)
-    const top = parseFloat(style.top) || -(parseFloat(style.bottom) || 0)
+    const x = parseFloat(style.left), y = parseFloat(style.top)
+    const left = Number.isFinite(x) ? x : -(parseFloat(style.right) || 0)
+    const top = Number.isFinite(y) ? y : -(parseFloat(style.bottom) || 0)
     this.#write("right", "auto")
     this.#write("bottom", "auto")
     this.#write("left", `${left + delta.x}px`)
@@ -771,7 +793,7 @@ export class TransformationFeature extends EditorFeature {
     gesture.endUndoGroup()
     if(valid) {
       if(gesture.captured) this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
-      else { $.selectElement(target); this.editor.features.selection.processSelection() }
+      else this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     }
     this.updateInfo()
   }
@@ -835,6 +857,7 @@ export class TransformationFeature extends EditorFeature {
     const overlay = document.body.shadowRoot?.querySelector<HTMLElement>("#◆transform-overlay")
     if(overlay) {
       overlay.setAttribute("visibility", "hidden")
+      setPart(overlay, "transform-overlay-content-selected", false)
       overlay.querySelectorAll("[data-open]").forEach(control => control.removeAttribute("data-open"))
       this.#syncControlParts()
     }

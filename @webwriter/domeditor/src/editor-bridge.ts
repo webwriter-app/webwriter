@@ -648,8 +648,9 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.table, isTableSelection)
     && isOptionalFeature(detail.graphic, isGraphicSelection)
     && isOptionalFeature(detail.layout, isLayoutSelection)
-    && isOptionalFeature(detail.documentLayout, state => (state.mode === "document" || state.mode === "canvas")
-      && isBoolean(state.canConvert) && typeof state.zoom === "number" && Number.isFinite(state.zoom) && state.zoom > 0)
+    && isOptionalFeature(detail.documentLayout, state => (state.mode === "document" || state.mode === "canvas" || state.mode === "slides")
+      && isBoolean(state.canConvert) && typeof state.zoom === "number" && Number.isFinite(state.zoom) && state.zoom > 0
+      && (state.conversions === undefined || isRecord(state.conversions) && Object.entries(state.conversions).every(([mode, reason]) => ["document", "canvas", "slides"].includes(mode) && (reason === null || typeof reason === "string"))))
 }
 
 export function isMarkStateChangeMessage(value: unknown): value is MarkStateChangeMessage {

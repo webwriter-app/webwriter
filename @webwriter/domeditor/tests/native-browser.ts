@@ -12,6 +12,40 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+const dragTextInside = (editor: DOMEditor, element: HTMLElement) => {
+  const doc = element.ownerDocument, text = element.firstChild!, range = doc.createRange()
+  editor.features.selection.selectElement(element)
+  assert(!editor.appendix.querySelector('[part="node-drag-surface"]'), "item interior is covered by a node drag surface")
+  range.setStart(text, 1); range.collapse(true)
+  const start = range.getBoundingClientRect()
+  range.setStart(text, 7)
+  const end = range.getBoundingClientRect(), y = start.top + start.height / 2
+  const hit = doc.elementFromPoint(start.left, y)!
+  assert(element === hit || element.contains(hit), "item interior is covered by an overlay")
+  const style = element.getAttribute("style")
+  hit.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 19, clientX: start.left, clientY: y}))
+  doc.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 19, clientX: end.left, clientY: y}))
+  doc.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 19, clientX: end.left, clientY: y}))
+  assert(!doc.getSelection()?.isCollapsed && element.contains(doc.getSelection()!.anchorNode) && element.contains(doc.getSelection()!.focusNode), "dragging inside an item did not select text")
+  assert(element.getAttribute("style") === style, "dragging text moved or resized the item")
+  const edge = editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
+  assert(edge.dataset.transformMode === "move" && getComputedStyle(edge).cursor === "move", "item borders do not offer moving")
+  const overlay = editor.features.transformation.overlay, box = element.getBoundingClientRect()
+  for(const name of ["mover", "orderer"]) assert(getComputedStyle(overlay.querySelector(`#◆transform-overlay-${name}`)!).display === "none", "obsolete move/layers affordance is visible")
+  for(const direction of ["up", "down", "left", "right"]) {
+    const handle = overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}-${direction}`)!, rect = handle.getBoundingClientRect()
+    assert(!handle.hidden && handle.dataset.transformMode === "scale", "edge-center resize affordance is missing")
+    assert(direction === "up" || direction === "down" ? Math.abs(rect.left + rect.width / 2 - (box.left + box.width / 2)) < 1
+      : Math.abs(rect.top + rect.height / 2 - (box.top + box.height / 2)) < 1, "resize affordance is not centered on its edge")
+  }
+  const rotator = overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!, topHandle = overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-up-up")!
+  const rotateRect = rotator.getBoundingClientRect(), topRect = topHandle.getBoundingClientRect(), stem = getComputedStyle(rotator, "::after")
+  const scale = rotateRect.height / parseFloat(getComputedStyle(rotator).height)
+  const ends = [parseFloat(stem.top), parseFloat(stem.top) + parseFloat(stem.height)].map(y => rotateRect.top + y * scale)
+  assert(Math.abs(rotateRect.left + rotateRect.width / 2 - (topRect.left + topRect.width / 2)) < 1
+    && ends.some(y => y >= topRect.top - 1 && y <= topRect.bottom + 1), "rotation stem does not connect to the top resize handle")
+}
+
 const createLayout = (cssText: string, children: Array<{text?: string, style?: string}> = []) => {
   const section = document.createElement("section")
   section.style.cssText = cssText
@@ -572,12 +606,17 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     $.move(paragraph.firstChild!, 3)
     editor.features.selection.processSelection()
     assert(getSelection()?.anchorNode === paragraph.firstChild, "canvas text lost its native selection")
-    editor.features.selection.selectElement(paragraph)
-    const mover = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+    assert(editor.features.transformation.target === paragraph && !paragraph.classList.contains("◆element-selected"), "canvas caret does not show item controls independently of node selection")
+    assert(getComputedStyle(editor.features.transformation.overlay).outlineStyle === "dotted", "canvas text selection lacks the dotted item outline")
+    assert(getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "canvas item controls hide the text caret")
+    dragTextInside(editor, paragraph)
+    const selectedText = getSelection()!.toString()
+    const mover = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
     mover.addEventListener("mousedown", event => editor.features.transformation.handleMoveStart(event), {once: true})
     mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))
     editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 320, clientY: 200}))
     editor.features.transformation.handleMoveEnd()
+    assert(getSelection()!.toString() === selectedText && !getSelection()!.isCollapsed, "moving an item replaced its inner text selection")
     assert(Math.abs(parseFloat(paragraph.style.left) - (-300 + 120 / editor.features.canvas.zoom)) < 1, `zoomed move used screen instead of document units: ${paragraph.style.left}`)
     mover.addEventListener("mousedown", event => editor.features.transformation.handleMoveStart(event), {once: true})
     mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: window.innerWidth - 20, clientY: 200}))
@@ -619,6 +658,261 @@ await check("canvas paragraphs split into separate positioned items and conversi
     editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})
     paragraph.remove(); next?.remove()
   }
+})
+
+
+await check("a clean canvas retains its initial item when moving and typing without inserting links", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  // No script or other in-flow metadata in BODY to mask the empty-flow check.
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  document.body.append(frame)
+  let canvasEditor: DOMEditor | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `canvas editor did not initialize: ${view.editorError}`)
+    canvasEditor = view.editor!
+    const doc = frame.contentDocument!, paragraph = doc.querySelector("p")!
+    assert(canvasEditor.features.canvas.actions.startCanvas({type: "startCanvas"}), "empty canvas could not start")
+    await layoutFrame()
+    const before = paragraph.getBoundingClientRect()
+    const edge = canvasEditor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+    edge.addEventListener("mousedown", event => canvasEditor!.features.transformation.handleMoveStart(event), {once: true})
+    edge.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))
+    canvasEditor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 224, clientY: 216}))
+    canvasEditor.features.transformation.handleMoveEnd()
+    await layoutFrame()
+    const moved = paragraph.getBoundingClientRect()
+    assert(paragraph.isConnected && moved.height > 0 && Math.abs(moved.left - before.left - 24) < 1
+      && Math.abs(moved.top - before.top - 16) < 1, `moving the initial canvas item loses its visible box: before=${JSON.stringify(before.toJSON())}, after=${JSON.stringify(moved.toJSON())}, connected=${paragraph.isConnected}, style=${paragraph.getAttribute("style")}, content=${paragraph.innerHTML}, target=${canvasEditor.features.transformation.target?.localName}`)
+    assert(doc.getSelection()?.anchorNode === paragraph && canvasEditor.features.transformation.target === paragraph, "moving the initial item loses its editing selection")
+    const type = async (target: HTMLElement, value: string) => {
+      const anchor = target.lastChild ?? target
+      doc.getSelection()!.setBaseAndExtent(anchor, anchor.textContent?.length ?? 0, anchor, anchor.textContent?.length ?? 0)
+      const event = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: value})
+      target.dispatchEvent(event)
+      assert(!event.defaultPrevented, "canvas typing entered the virtual-document insertion path")
+      assert(doc.execCommand("insertText", false, value), "native canvas text insertion failed")
+      await layoutFrame()
+      assert(target.isConnected && target.getBoundingClientRect().height > 0 && target.contains(doc.getSelection()!.anchorNode), "typing loses the canvas item or caret")
+      assert(!doc.body.querySelector("link"), "typing inserted a link into canvas content")
+    }
+    await type(paragraph, "Hello")
+    await type(paragraph, " world")
+    canvasEditor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
+    const second = doc.querySelectorAll("p")[1]
+    await type(second, "Second")
+    assert(paragraph.textContent === "Hello world" && second.textContent === "Second", "canvas text is missing")
+    assert(Math.abs(paragraph.getBoundingClientRect().left - moved.left) < 1 && Math.abs(paragraph.getBoundingClientRect().top - moved.top) < 1, "typing displaced the initial canvas item")
+  }
+  finally { canvasEditor?.destroy(); frame.remove() }
+})
+
+let savedSlidesHTML = ""
+await check("CSS Slides use native fragment links while editing", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  frame.srcdoc = `<!doctype html><body><h1>First slide</h1><p>FirstSecond</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `slide editor did not initialize: ${view.editorError}`)
+    const slideEditor = view.editor!, doc = frame.contentDocument!
+    const documentGutter = getComputedStyle(doc.body).paddingLeft
+    assert(slideEditor.setDocumentLayout("slides", "document"), "slide conversion failed")
+    const first = doc.querySelector<HTMLElement>("section.ww-slide")!, text = first.querySelector("p")!.firstChild!
+    doc.getSelection()!.setBaseAndExtent(text, 5, text, 5)
+    slideEditor.features.manipulation.insert(undefined, 5)
+    assert(first.querySelectorAll("p").length === 2 && doc.querySelectorAll("section.ww-slide").length === 1, "Enter split slide boundary")
+    slideEditor.features.slides.actions.addSlide({type: "addSlide"})
+    const second = doc.querySelectorAll<HTMLElement>("section.ww-slide")[1]
+    second.firstElementChild!.textContent = "Second slide"
+    const viewport = doc.querySelector<HTMLElement>(".ww-slides-viewport")!
+    viewport.style.scrollBehavior = "auto"
+    viewport.scrollLeft = 0
+    await layoutFrame()
+    const link = doc.querySelectorAll<HTMLAnchorElement>("nav.ww-slides-navigation a")[1]
+    link.click()
+    await layoutFrame()
+    assert(frame.contentDocument === doc, `fragment link replaced the editor document: ${link.href}`)
+    assert(viewport.scrollLeft > viewport.clientWidth / 2, `native editor link did not scroll: ${link.href}, scrollLeft=${viewport.scrollLeft}`)
+    assert(doc.getSelection()?.isCollapsed && doc.getSelection()?.anchorNode === second.firstElementChild
+      && doc.getSelection()?.anchorOffset === 0, "slide navigation did not place a caret at the first text block")
+    assert(slideEditor.features.transformation.target === second.firstElementChild && !second.firstElementChild!.classList.contains("◆element-selected"), "slide caret does not show item controls independently of node selection")
+    assert(getComputedStyle(slideEditor.features.transformation.overlay).outlineStyle === "dotted", "slide text selection lacks the dotted item outline")
+    assert(getComputedStyle(second.firstElementChild!).caretColor !== "rgba(0, 0, 0, 0)", "slide item controls hide the text caret")
+    dragTextInside(slideEditor, second.firstElementChild as HTMLElement)
+    viewport.scrollLeft = 0
+    await layoutFrame()
+    link.click()
+    await layoutFrame()
+    assert(viewport.scrollLeft > viewport.clientWidth / 2, "repeated fragment activation did not return to its slide")
+    const slideRect = second.getBoundingClientRect(), nav = doc.querySelector<HTMLElement>("nav.ww-slides-navigation")!
+    assert(Math.abs(slideRect.width - frame.clientWidth) < 1 && Math.abs(slideRect.width / slideRect.height - 16 / 9) < .01,
+      `slide does not fit at 16:9: ${slideRect.width} × ${slideRect.height}`)
+    assert(Math.abs(slideRect.top - (frame.clientHeight - slideRect.height) / 2) < 1 && Math.abs(slideRect.left) < 1, "slide is not vertically centered")
+    const headingRect = second.querySelector("h1")!.getBoundingClientRect(), paragraphRect = second.querySelector("p")!.getBoundingClientRect()
+    for(const item of [second.querySelector("h1")!, second.querySelector("p")!]) {
+      assert(getComputedStyle(item).position === "absolute" && (item as HTMLElement).offsetParent === second, "slide box is not positioned relative to the slide")
+    }
+    assert(Math.abs(headingRect.left - paragraphRect.left) < 1 && Math.abs(headingRect.width - paragraphRect.width) < 1
+      && paragraphRect.top > headingRect.bottom && Math.abs(paragraphRect.bottom - (slideRect.bottom - 20)) < 1, "slide preset boxes are not aligned or do not fill the slide")
+    assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= frame.clientHeight, "navigation is not overlaid at the bottom")
+    assert(Math.abs(nav.getBoundingClientRect().left - 16) < 1, "slides pagination is not left aligned")
+    assert(getComputedStyle(second).paddingTop === "20px" && getComputedStyle(second).paddingBottom === "20px"
+      && getComputedStyle(second).paddingLeft === documentGutter, "slides do not use normal document spacing")
+    doc.documentElement.style.setProperty("--ww-page-gutter", "24px")
+    assert(getComputedStyle(second).paddingLeft === "24px" && getComputedStyle(second).paddingRight === "24px", "slides do not follow the document gutter")
+    doc.documentElement.style.removeProperty("--ww-page-gutter")
+    const actions = slideEditor.appendix.querySelector<HTMLElement>("[part=slide-navigation-actions]")!
+    assert(!slideEditor.appendix.querySelector("[part=slide-editing-controls]"), "old editing bar remains")
+    const add = actions.querySelector<HTMLButtonElement>('[name="add"]')!
+    const close = actions.querySelector<HTMLButtonElement>('[aria-label="Remove slide 2"]')!
+    for(const control of [link, second.querySelector<HTMLAnchorElement>(".ww-slide-previous")!, add, close]) {
+      assert(getComputedStyle(control).cursor === "pointer", "slide control lacks a pointer cursor")
+      assert(getComputedStyle(control).color === "rgb(47, 55, 66)" && getComputedStyle(control).borderTopColor === "rgb(47, 55, 66)", "slide control does not use the ribbon's dark grey")
+      assert(!control.draggable, "slide control is draggable")
+    }
+    await new Promise(resolve => setTimeout(resolve, 250))
+    assert(getComputedStyle(link).backgroundColor === "rgb(226, 229, 233)", `active slide bubble is not highlighted: ${getComputedStyle(link).backgroundColor}; ${link.className}; scroll=${viewport.scrollLeft}; native=${CSS.supports("scroll-target-group", "auto")}; animation=${getComputedStyle(link).animationName}; transition=${getComputedStyle(link).transitionDuration}`)
+    assert(getComputedStyle(close).visibility === "visible", "active slide remove button is hidden")
+    assert(getComputedStyle(actions.querySelector('[aria-label="Remove slide 1"]')!).visibility === "hidden", "inactive slide remove button is visible without hover")
+    second.focus({preventScroll: true})
+    assert(getComputedStyle(second).outlineStyle === "none", "focused slide still has a focus ring")
+    const bubble = link.getBoundingClientRect(), closeRect = close.getBoundingClientRect()
+    assert(actions.children.length === 3 && add.getBoundingClientRect().left >= nav.getBoundingClientRect().right, "appendix add affordance is not beside navigation")
+    assert(bubble.width === 32 && add.getBoundingClientRect().width === 32 && closeRect.width === 16, "slide control circles are not compact")
+    assert(Math.abs(closeRect.left + closeRect.width / 2 - (bubble.right - 4)) < 1 && Math.abs(closeRect.top + closeRect.height / 2 - (bubble.top + 4)) < 1, "remove affordance is not inset into bubble's top right")
+    assert(slideEditor.appendix.elementFromPoint(closeRect.left + closeRect.width / 2, closeRect.top + closeRect.height / 2) === close, "bubble remove affordance is not clickable")
+    slideEditor.features.selection.actions.selectNode({type: "selectNode", path: [0, 1]})
+    viewport.dispatchEvent(new Event("scrollend"))
+    await layoutFrame()
+    const slideSelection = doc.getSelection()!
+    assert(!slideSelection.isCollapsed && slideSelection.anchorNode === viewport && slideSelection.anchorOffset === 1
+      && slideSelection.focusNode === viewport && slideSelection.focusOffset === 2, "slide breadcrumb did not retain whole-slide selection")
+    second.querySelector<HTMLAnchorElement>(".ww-slide-previous")!.click()
+    await layoutFrame()
+    assert(viewport.scrollLeft < 1, "previous side arrow did not navigate")
+    assert(doc.getSelection()?.anchorNode === first.firstElementChild, "previous arrow left selection in the other slide")
+    first.querySelector<HTMLAnchorElement>(".ww-slide-next")!.click()
+    await layoutFrame()
+    assert(viewport.scrollLeft > viewport.clientWidth / 2, "next side arrow did not navigate")
+    const firstContent = second.firstElementChild!, widget = doc.createElement("native-slide-widget")
+    second.insertBefore(widget, firstContent)
+    slideEditor.features.slides.selectStart(second)
+    assert(doc.getSelection()?.anchorNode === second && doc.getSelection()?.anchorOffset === 0,
+      "a slide starting with a widget did not receive a gap before the widget")
+    widget.remove()
+    slideEditor.features.slides.selectStart(second)
+    actions.querySelector<HTMLButtonElement>('[name="add"]')!.click()
+    await layoutFrame()
+    assert(doc.querySelectorAll("section.ww-slide").length === 3, "navigation add affordance failed")
+    const third = doc.querySelectorAll<HTMLElement>("section.ww-slide")[2], presetText = third.querySelector("p")!
+    const presetHeading = third.querySelector("h1")!, beforeMove = presetHeading.getBoundingClientRect()
+    slideEditor.features.selection.selectElement(presetHeading)
+    const mover = slideEditor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+    mover.addEventListener("mousedown", event => slideEditor.features.transformation.handleMoveStart(event), {once: true})
+    mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))
+    slideEditor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 212, clientY: 208}))
+    slideEditor.features.transformation.handleMoveEnd()
+    const afterMove = presetHeading.getBoundingClientRect()
+    assert(Math.abs(afterMove.left - beforeMove.left - 12) < 1 && Math.abs(afterMove.top - beforeMove.top - 8) < 1
+      && Math.abs(afterMove.width - beforeMove.width) < 1 && Math.abs(afterMove.height - beforeMove.height) < 1, "moving a slide text box changes its size or uses the wrong origin")
+    presetText.textContent = "BeforeAfter"
+    doc.getSelection()!.setBaseAndExtent(presetText.firstChild!, 6, presetText.firstChild!, 6)
+    slideEditor.features.manipulation.insert()
+    const continuation = presetText.nextElementSibling as HTMLElement
+    assert(continuation.matches("p") && continuation.textContent === "After", "preset paragraph cannot be split")
+    assert(continuation.offsetParent === third && continuation.getBoundingClientRect().top >= presetText.getBoundingClientRect().bottom
+      && continuation.getBoundingClientRect().bottom <= third.getBoundingClientRect().bottom, "split text boxes overlap or leave the slide")
+    actions.querySelector<HTMLButtonElement>('[name="remove"]')!.click()
+    await layoutFrame()
+    assert(doc.querySelectorAll("section.ww-slide").length === 2, "navigation remove affordance failed")
+    frame.style.width = "900px"; frame.style.height = "350px"
+    await layoutFrame()
+    assert(Math.abs(third.getBoundingClientRect().height - 350) < 1 && Math.abs(third.getBoundingClientRect().width - 350 * 16 / 9) < 1,
+      "slides do not fit a wide viewport at 16:9")
+    assert(Math.abs(third.getBoundingClientRect().left - (frame.clientWidth - 350 * 16 / 9) / 2) < 1, "wide viewport margins are unequal")
+    const outside = doc.createElement("aside")
+    outside.textContent = "Outside"
+    outside.style.cssText = "position:absolute;left:-40px;top:80px;width:30px;height:30px;background:blue"
+    third.append(outside)
+    let outsideRect = outside.getBoundingClientRect()
+    assert(doc.elementFromPoint(outsideRect.left + 5, outsideRect.top + 5) === outside, "slide content is cropped in the side margin")
+    frame.style.width = "360px"; frame.style.height = "480px"
+    await layoutFrame()
+    assert(Math.abs(third.getBoundingClientRect().width - 360) < 1 && Math.abs(third.getBoundingClientRect().height - 360 * 9 / 16) < 1, "slides did not retain 16:9 on viewport resize")
+    assert(actions.querySelector<HTMLButtonElement>('[name="add"]')!.getBoundingClientRect().right <= 360 && nav.getBoundingClientRect().left >= 0, "compact navigation does not fit narrow viewport")
+    outside.style.left = "80px"; outside.style.top = "-40px"
+    outsideRect = outside.getBoundingClientRect()
+    assert(outsideRect.bottom < third.getBoundingClientRect().top && doc.elementFromPoint(outsideRect.left + 5, outsideRect.top + 5) === outside, "slide content is cropped in the top margin")
+    const lock = {}
+    slideEditor.lockEditing(lock)
+    assert(getComputedStyle(third).overflowX === "clip" && getComputedStyle(third).overflowY === "clip", "non-editing slides expose overflow")
+    slideEditor.unlockEditing(lock)
+    assert(getComputedStyle(third).overflow === "visible", "resuming editing does not expose slide overflow")
+    viewport.style.removeProperty("scroll-behavior")
+    savedSlidesHTML = await slideEditor.serializeHTML(true)
+    slideEditor.destroy()
+    assert(getComputedStyle(third).overflow === "clip", "destroying the editor leaves slide overflow exposed")
+  }
+  finally { frame.remove() }
+})
+
+await check("saved Slides navigate with HTML and CSS and scripting disabled", async () => {
+  assert(savedSlidesHTML, "slide fixture did not export")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  frame.sandbox.add("allow-same-origin")
+  const url = URL.createObjectURL(new Blob([savedSlidesHTML], {type: "text/html"}))
+  frame.src = url
+  const loaded = new Promise(resolve => frame.addEventListener("load", resolve, {once:true}))
+  document.body.append(frame)
+  try {
+    await loaded
+    const doc = frame.contentDocument!, viewport = doc.querySelector<HTMLElement>(".ww-slides-viewport")!
+    assert(!doc.querySelector("script"), "saved carousel contains a runtime")
+    assert(!doc.body.shadowRoot, "saved carousel depends on a shadow appendix")
+    const readerSlide = viewport.querySelector<HTMLElement>("section.ww-slide")!
+    assert(Math.abs(readerSlide.getBoundingClientRect().width - frame.clientWidth) < 1 && Math.abs(readerSlide.getBoundingClientRect().height - frame.clientWidth * 9 / 16) < 1, "exported slides do not fit the reader viewport at 16:9")
+    const readerNav = doc.querySelector<HTMLElement>("nav.ww-slides-navigation")!
+    assert(getComputedStyle(readerNav).position === "absolute" && readerNav.getBoundingClientRect().bottom <= frame.clientHeight, "reader navigation is not overlaid at the bottom")
+    assert(Math.abs(readerNav.getBoundingClientRect().left - 16) < 1, "saved slides pagination is not left aligned")
+    viewport.style.scrollBehavior = "auto"
+    doc.querySelectorAll<HTMLAnchorElement>("nav.ww-slides-navigation a")[1].click()
+    await layoutFrame()
+    assert(frame.contentDocument === doc, "fragment navigation replaced the reader document")
+    assert(viewport.scrollLeft > viewport.clientWidth / 2, "reader link did not scroll with scripts disabled")
+    const outside = doc.querySelector<HTMLElement>("aside")!, outsideRect = outside.getBoundingClientRect()
+    assert(doc.elementFromPoint(outsideRect.left + 5, outsideRect.top + 5) !== outside, "saved slide content is visible outside the slide")
+    assert(getComputedStyle(outside.parentElement!).overflow === "clip", "saved slides do not clip overflow")
+    const readerLinks = readerNav.querySelectorAll<HTMLAnchorElement>("a")
+    assert(getComputedStyle(readerLinks[1]).backgroundColor === "rgb(226, 229, 233)" && getComputedStyle(readerLinks[0]).backgroundColor !== "rgb(226, 229, 233)", "saved active highlight does not follow navigation")
+    assert(Array.from(doc.querySelectorAll<HTMLAnchorElement>("nav a")).every(link => !link.draggable), "saved controls can be dragged")
+    const focusedSlide = doc.querySelectorAll<HTMLElement>("section.ww-slide")[1]
+    focusedSlide.focus({preventScroll: true})
+    assert(getComputedStyle(focusedSlide).outlineStyle === "none", "saved slide still has a focus ring")
+    assert(getComputedStyle(readerNav.querySelector("a")!).cursor === "pointer", "saved navigation lacks a pointer cursor")
+    doc.querySelectorAll<HTMLElement>("section.ww-slide")[1].querySelector<HTMLAnchorElement>(".ww-slide-previous")!.click()
+    await layoutFrame()
+    assert(viewport.scrollLeft < 1, "reader previous arrow requires scripting")
+    doc.querySelector<HTMLAnchorElement>(".ww-slide-next")!.click()
+    await layoutFrame()
+    assert(viewport.scrollLeft > viewport.clientWidth / 2, "reader next arrow requires scripting")
+    const preview = new DOMParser().parseFromString(savedSlidesHTML, "text/html")
+    preview.querySelectorAll('nav.ww-slides-navigation a[href], nav.ww-slide-directions a[href]').forEach(link => link.setAttribute("href", `about:srcdoc${link.getAttribute("href")}`))
+    const previewLoaded = new Promise(resolve => frame.addEventListener("load", resolve, {once:true}))
+    frame.srcdoc = preview.documentElement.outerHTML
+    await previewLoaded
+    const previewDoc = frame.contentDocument!, previewViewport = previewDoc.querySelector<HTMLElement>(".ww-slides-viewport")!
+    previewViewport.style.scrollBehavior = "auto"
+    previewDoc.querySelectorAll<HTMLAnchorElement>("nav.ww-slides-navigation a")[1].click()
+    await layoutFrame()
+    assert(frame.contentDocument === previewDoc && previewViewport.scrollLeft > previewViewport.clientWidth / 2, "native preview links did not stay inside srcdoc")
+  }
+  finally { frame.remove(); URL.revokeObjectURL(url) }
 })
 
 editor.destroy()

@@ -351,8 +351,9 @@ describe("toolbox", () => {
     expect(drawer).not.toBeNull()
     expect(drawer.textContent).toContain("Current mode: Document")
     expect(drawer.textContent).toContain("Zoom: 100%")
-    const change = drawer.querySelector<HTMLButtonElement>(".document-layout-change")!
-    expect(change.textContent).toContain("Convert to canvas")
+    const choices = Array.from(drawer.querySelectorAll<HTMLButtonElement>(".document-layout-change"))
+    expect(choices.map(button => button.dataset.mode)).toEqual(["document", "canvas", "slides"])
+    const change = drawer.querySelector<HTMLButtonElement>('[data-mode="canvas"]')!
     const request = vi.fn()
     toolbox.addEventListener("document-layout-change", request)
     change.click()
@@ -362,11 +363,19 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(drawer.textContent).toContain("Current mode: Canvas")
     expect(drawer.textContent).toContain("Zoom: 125%")
-    expect(change.textContent).toContain("Convert to document")
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="canvas"]')!.disabled).toBe(true)
 
     toolbox.documentLayout = {mode: "canvas", canConvert: false, zoom: 125}
     await toolbox.updateComplete
-    expect(change.disabled).toBe(true)
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="document"]')!.disabled).toBe(true)
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!.disabled).toBe(true)
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!.title).toContain("Convert to Document first")
+
+    toolbox.documentLayout = {mode: "document", canConvert: true, zoom: 100, conversions: {slides: "Slides require sectioned content"}}
+    await toolbox.updateComplete
+    const slides = drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!
+    expect(slides.disabled).toBe(true)
+    expect(slides.title).toBe("Slides require sectioned content")
   })
 
   it("offers universal attributes alongside specialized tools and for uncommon elements", async () => {

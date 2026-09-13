@@ -1,3 +1,5 @@
+import {isSlide, slideLayoutRole} from "./document-layout"
+
 export type ElementPresentation = {
   name: string
   icon: string
@@ -111,6 +113,14 @@ const fallbackPresentation = {name: "Content", icon: "Section"}
 
 /** Returns a user-facing name and icon key for an HTML element. */
 export function getElementPresentation(elementOrTagName: Element | string): ElementPresentation {
+  if(typeof elementOrTagName !== "string") {
+    const role = slideLayoutRole(elementOrTagName)
+    if(role === "root") return {name: "Slides", icon: "KeywordPresentation"}
+    if(role === "slide") {
+      const slides = Array.from(elementOrTagName.parentElement!.children).filter(isSlide)
+      return {name: `Slide ${slides.indexOf(elementOrTagName as HTMLElement) + 1}`, icon: "Rectangle"}
+    }
+  }
   const tagName = typeof elementOrTagName === "string"
     ? elementOrTagName
     : elementOrTagName.tagName

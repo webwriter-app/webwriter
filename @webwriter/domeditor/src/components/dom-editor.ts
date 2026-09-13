@@ -149,7 +149,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import type {DocumentLayoutState} from "../document-layout"
+import {slideLayoutRole, type DocumentLayoutState} from "../document-layout"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -756,6 +756,13 @@ export class DomEditor extends LitElement {
 
   private preparePreviewDocument(source: Document) {
     const nonce = crypto.randomUUID()
+    // srcdoc inherits the host URL for relative links; explicitly retain
+    // native carousel navigation inside the preview frame.
+    if(source.body.classList.contains("ww-slides")) {
+      source.querySelectorAll<HTMLAnchorElement>('body > nav.ww-slides-navigation a[href^="#"], body.ww-slides .ww-slide-directions a[href^="#"]').forEach(link => {
+        link.setAttribute("href", `about:srcdoc${link.getAttribute("href")}`)
+      })
+    }
     source.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
 
     // Preview is a same-origin sandbox because the live-preview bridge still
@@ -3615,11 +3622,15 @@ export class DomEditor extends LitElement {
 
   private handleDocumentLayoutChange = (event: Event) => {
     const mode = (event as CustomEvent<{mode?: unknown}>).detail?.mode
-    if((mode !== "canvas" && mode !== "document") || mode === this.documentLayout.mode) return
-    const currentMode = this.documentLayout.mode
+    if((mode !== "canvas" && mode !== "document" && mode !== "slides") || mode === this.documentLayout.mode) return
+    const currentMode = this.documentLayout.mode as "document" | "canvas" | "slides"
     const confirmation = mode === "canvas"
       ? "Convert this document to canvas layout? Current positions will be preserved and top-level items will become independently positioned. You can undo this change."
-      : "Return to document layout? Items will flow in document order. Canvas positions, sizes, and rotation will be removed. You can undo this change."
+      : mode === "slides"
+        ? "Convert this document to Slides layout? Content will be grouped into one slide and may reflow or overflow. You can undo this change."
+        : currentMode === "slides"
+          ? "Return to document layout? Slide sections and their internal layout will be preserved. You can undo this change."
+          : "Return to document layout? Items will flow in document order. Canvas positions, sizes, and rotation will be removed. You can undo this change."
     if(!window.confirm(confirmation)) return
     this.documentLayoutError = ""
     void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).then(changed => {
@@ -3905,15 +3916,17 @@ export class DomEditor extends LitElement {
         Array.from(container.childNodes).forEach((child, index) => {
           if(child.nodeType !== Node.ELEMENT_NODE) return
           const childElement = child as Element
+          const slideRole = slideLayoutRole(childElement)
+          if(slideRole === "navigation") return
           if(childElement.matches("source")
             || childElement.matches("img") && childElement.closest("picture")
             || isLineBreakElement(childElement)) return
           const childPath = [...containerPath, index]
-          if(isMarkElement(childElement)) {
+          if(slideRole === "viewport" || isMarkElement(childElement)) {
             appendChildren(childElement, childPath, inherited)
             return
           }
-          if(isSectionElement(childElement)) {
+          if(slideRole !== "slide" && isSectionElement(childElement)) {
             const currentSection = sectionItem(childElement, childPath)
             const nextSections = [...inherited, currentSection]
             const childCount = item.children.length
@@ -4644,6 +4657,7 @@ export class DomEditor extends LitElement {
           <dom-editor-breadcrumb
             ?inert=${this.htmlPending}
             .path=${this.selectionPath}
+            .showPositionIcons=${this.documentLayout.mode === "document"}
             .nodeSelected=${this.nodeSelection}
             .capture=${this.captureSelection}
             .gap=${this.selectionGap}

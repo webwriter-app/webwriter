@@ -3,6 +3,7 @@ import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContaine
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
+import {slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
@@ -146,7 +147,7 @@ export class SelectionFeature extends EditorFeature {
    * state is deliberately separate from the native Selection so ordinary
    * editing never acquires a section wrapper as its target. */
   get selectedSectionElement() {
-    return this.#selectedSection?.isConnected && isSectionElement(this.#selectedSection)
+    return this.#selectedSection?.isConnected && isSectionElement(this.#selectedSection) && !slideLayoutRole(this.#selectedSection)
       ? this.#selectedSection
       : null
   }
@@ -166,7 +167,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   selectSectionElement(section: Element) {
-    if(!section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section)) return false
+    if(!section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section) || slideLayoutRole(section)) return false
     this.#releaseCaptureSelection()
     this.#selectedSection = section
     this.processSelection()
@@ -788,6 +789,9 @@ export class SelectionFeature extends EditorFeature {
       const node = this.#elementAtPath(path)
       this.#releaseCaptureSelection()
       this.clearSelectedSection()
+      if(slideLayoutRole(node) === "slide") {
+        this.editor.features.slides.cancelNavigation()
+      }
       $.selectElement(node)
       this.processSelection()
     },
@@ -931,8 +935,8 @@ export class SelectionFeature extends EditorFeature {
     return caret
   }
 
-  /** Drag hover owns a collapsed document selection, even if a widget or a
-   * table previously owned editing focus. Existing caret rendering follows it. */
+  /** Places a collapsed document selection, even if a widget or a table
+   * previously owned editing focus. Existing caret rendering follows it. */
   selectDropRange(range: Range) {
     if(focusedWidgetHost() && document.activeElement instanceof HTMLElement) document.activeElement.blur()
     this.#releaseCaptureSelection()
@@ -1091,6 +1095,26 @@ export class SelectionFeature extends EditorFeature {
     return "text"
   }
 
+  /** A slide/canvas item's controls also frame selections inside its content.
+   * Resolve both endpoints against the live DOM without changing their kind. */
+  #layoutSelectionItem(anchor: Node | null, focus: Node | null) {
+    const canvas = this.editor.features.canvas.active, slides = this.editor.features.slides.active
+    if(!canvas && !slides) return null
+    const itemFor = (node: Node | null) => {
+      let element = isElement(node) ? node : node?.parentElement
+      while(element && element !== document.body) {
+        const parent = element.parentElement
+        if(canvas && parent === document.body || slides && parent && slideLayoutRole(parent) === "slide") {
+          return !slideLayoutRole(element) && !element.matches("style,script,link,meta,template") ? element : null
+        }
+        element = parent
+      }
+      return null
+    }
+    const item = itemFor(anchor)
+    return item?.isConnected && item === itemFor(focus) ? item : null
+  }
+
   /** Reveals a changed logical selection once. Live range snapshots follow DOM
    * mutations so refreshes and edits around an unchanged caret do not scroll.
    * Node and capture selections of the same element share one scroll target. */
@@ -1233,9 +1257,12 @@ export class SelectionFeature extends EditorFeature {
     if(sel?.rangeCount && !sel.isCollapsed) {
       $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
     }
-    this.editor.features.transformation.syncSelection(kind === "capture" ? capturedElement
+    const selectedElement = kind === "capture" ? capturedElement
       : kind === "section" ? this.selectedSectionElement
-        : kind === "element" ? $.selectedElement ?? null : null)
+        : kind === "element" ? $.selectedElement ?? null : null
+    const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
+    const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
+    this.editor.features.transformation.syncSelection(layoutItem ?? selectedElement, Boolean(layoutItem && layoutItem !== selectedElement))
     this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
     this.editor.features.graphic.refresh()
     this.editor.features.layout.refresh()

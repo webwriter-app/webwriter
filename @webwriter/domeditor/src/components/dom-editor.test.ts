@@ -2648,6 +2648,20 @@ describe("DomEditor.execute()", () => {
     expect(previewHTML).not.toContain("window.evil")
   })
 
+  it("rewrites authored carousel fragments only in the preview copy", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.className = "ww-slides"
+    iframe.contentDocument!.body.innerHTML = '<nav class="ww-slides-navigation"><a href="#slide-one">Slide one</a></nav><section id="slide-one" class="ww-slide">One</section><script>window.untrusted = true</script>'
+
+    const source = iframe.contentDocument!
+    expect(source.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("#slide-one")
+    const previewHTML = (editor as unknown as {currentPreviewHTML(): string}).currentPreviewHTML()
+    const preview = new DOMParser().parseFromString(previewHTML, "text/html")
+    expect(preview.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("about:srcdoc#slide-one")
+    expect(preview.querySelectorAll("script")).toHaveLength(0)
+    expect(source.querySelector("script")).not.toBeNull()
+  })
+
   it("includes the scoped registry before widget modules in preview", async () => {
     const {editor, iframe} = await mountEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
@@ -2953,14 +2967,14 @@ describe("DomEditor.execute()", () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><p>Text</p></section>"
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    const sendPosition = async (position?: "absolute" | "fixed" | "relative" | "sticky") => {
+    const sendPosition = async (position?: "absolute" | "fixed" | "relative" | "sticky", mode: "document" | "canvas" | "slides" = "document") => {
       window.dispatchEvent(new MessageEvent("message", {
         data: {type: selectionChangeEvent, detail: {path: [
           {path: [], name: "Document", positionAnchor: position === "absolute" || position === "fixed"},
           {path: [0, 0], name: "Paragraph", position,
             positionAnchor: position === "relative" || position === "sticky",
             sections: [{path: [0], type: "section", name: "Section", positionAnchor: position === "absolute"}]},
-        ]}},
+        ], documentLayout: {mode, canConvert: true, zoom: 100}}},
         source: editorWindow,
       }))
       await editor.updateComplete
@@ -2985,6 +2999,14 @@ describe("DomEditor.execute()", () => {
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
     expect(breadcrumb.shadowRoot!.querySelector('.tree-item[data-path="0,0"] sup .icons-tabler-filled')).not.toBeNull()
+    for(const mode of ["slides", "canvas"] as const) {
+      await sendPosition("absolute", mode)
+      expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
+      expect(breadcrumb.shadowRoot!.querySelector(".item-icon")).not.toBeNull()
+    }
+    await sendPosition("absolute", "document")
+    expect(breadcrumb.shadowRoot!.querySelector(".position-anchor")).not.toBeNull()
+    expect(breadcrumb.shadowRoot!.querySelector(".position-balloon")).not.toBeNull()
     await sendPosition()
     expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
   })
@@ -3043,7 +3065,7 @@ describe("DomEditor.execute()", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    const change = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".document-layout-change")!
+    const change = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-mode="canvas"]')!
     const confirm = vi.fn().mockReturnValue(false)
     vi.stubGlobal("confirm", confirm)
 
@@ -3204,6 +3226,37 @@ describe("DomEditor.execute()", () => {
     paragraph.click()
 
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
+  })
+
+  it("shows slides as numbered tree items without merging carousel sections into the breadcrumb", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    body.className = "ww-slides"
+    body.innerHTML = '<div class="ww-slides-viewport"><!--keep--><section class="ww-slide"><p>One</p><nav class="ww-slide-directions"><a>Next</a></nav></section><section class="ww-slide"><article><p>Two</p></article><nav class="ww-slide-directions"><a>Previous</a></nav></section><section class="ww-slide"></section></div><nav class="ww-slides-navigation"><a>1</a><a>2</a><a>3</a></nav>'
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree).toEqual({path: [], name: "Slides", icon: "KeywordPresentation", children: [
+      {path: [0, 1], name: "Slide 1", icon: "Rectangle", children: [
+        {path: [0, 1, 0], name: "Paragraph", icon: "Paragraph", children: []},
+      ]},
+      {path: [0, 2], name: "Slide 2", icon: "Rectangle", children: [
+        {path: [0, 2, 0, 0], name: "Paragraph", icon: "Paragraph", children: [], sections: [
+          {path: [0, 2, 0], type: "article", name: "Article", icon: "Article"},
+        ]},
+      ]},
+      {path: [0, 3], name: "Slide 3", icon: "Rectangle", children: []},
+    ]})
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[1], tree.children[1].children[0]]}},
+      source: iframe.contentWindow!,
+    }))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    await vi.waitFor(() => expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Slides", "Slide 2", "Paragraph"]))
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .section-item"), item => item.textContent)).toEqual(["Article"])
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0,2"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2]})
   })
 
   it("omits mark wrappers from the document tree while retaining real descendants", async () => {

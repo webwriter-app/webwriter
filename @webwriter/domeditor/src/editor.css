@@ -4,6 +4,24 @@ body {
   overscroll-behavior: contain;
 }
 
+/* Reserve room beside the authored slide links for appendix-only actions. */
+body.ww-slides > nav.ww-slides-navigation.◆slide-navigation-editing {
+  max-width: calc(100% - 5rem);
+}
+
+/* The reader clips at the slide boundary; only editing exposes the margins. */
+@media screen {
+  body.ww-slides:not(.◆editing-locked) > .ww-slides-viewport > section.ww-slide:not([is]) {
+    overflow: visible;
+  }
+}
+
+/* Local scroll state also highlights the current bubble without native scroll-target support. */
+body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
+  background: #e2e5e9;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
 /* The viewport is finite; the appendix slot supplies an unbounded camera. */
 html.◆canvas-active {
   overflow: clip;
@@ -1423,6 +1441,10 @@ body::part(transform-overlay) {
 body::part(transform-overlay-hidden) {
   display: none !important;
 }
+body::part(transform-overlay-content-selected) {
+  outline: 2px dotted var(--sl-color-primary-400);
+  outline-offset: 2px;
+}
 body::part(transform-overlay-anchor) {
   position: absolute;
   left: 0;
@@ -1495,6 +1517,7 @@ body::part(transform-overlay-edge-up) { top: -7px; }
 body::part(transform-overlay-edge-down) { bottom: -7px; }
 body::part(transform-overlay-edge-left) { left: -7px; }
 body::part(transform-overlay-edge-right) { right: -7px; }
+body::part(transform-overlay-edge-move) { cursor: move; }
 /* Center 8px handles on the existing 2px selection outline, offset by 2px. */
 body::part(transform-overlay-scale-up-left) {
   top: -7px;
@@ -1516,6 +1539,10 @@ body::part(transform-overlay-scale-down-right) {
   right: -7px;
   cursor: nwse-resize;
 }
+body::part(transform-overlay-scale-up-up) { top: -7px; left: calc(50% - 4px); cursor: ns-resize; }
+body::part(transform-overlay-scale-down-down) { bottom: -7px; left: calc(50% - 4px); cursor: ns-resize; }
+body::part(transform-overlay-scale-left-left) { left: -7px; top: calc(50% - 4px); cursor: ew-resize; }
+body::part(transform-overlay-scale-right-right) { right: -7px; top: calc(50% - 4px); cursor: ew-resize; }
 body::part(transform-overlay-scale) {
   position: absolute;
   pointer-events: auto;
@@ -1803,10 +1830,23 @@ body::part(transform-overlay-at-top) {
   --transform-orderer-stem-bottom: auto;
 }
 body::part(transform-overlay-rotator-hidden),
+body::part(transform-overlay-scale-hidden),
+body::part(transform-overlay-mover-hidden),
+body::part(transform-overlay-orderer-hidden),
 body::part(transform-overlay-anchor-sticky-hidden),
 body::part(transform-overlay-arranger-menu-hidden),
 body::part(transform-overlay-orderer-menu-hidden) {
   display: none !important;
+}
+body::part(transform-overlay-freeform) {
+  --transform-rotate-top: -42px;
+  --transform-rotate-stem-top: 14px;
+  --transform-rotate-stem-height: 21px;
+}
+body::part(transform-overlay-freeform transform-overlay-at-top) {
+  --transform-rotate-top: 14px;
+  --transform-rotate-stem-top: -17px;
+  --transform-rotate-stem-height: 17px;
 }
 /* AI edits are staged in a private Yjs branch and remain a visually distinct,
  * read-only proposal until the user accepts or rejects them. All marker

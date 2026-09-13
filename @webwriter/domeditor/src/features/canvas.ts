@@ -1,7 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {canvasClass, canvasStyles, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasClass, canvasStyles, documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type Item = HTMLElement | SVGSVGElement
 type Point = {x: number, y: number}
@@ -30,7 +30,7 @@ export class CanvasFeature extends EditorFeature {
   }
   private readonly release = () => { this.spaceHand = false; this.stopPan(); this.schedule() }
 
-  get active() { return document.body.classList.contains(canvasClass) && getDocumentRoot() === document.body }
+  get active() { return documentLayoutMode() === "canvas" }
   get zoom() { return this.active ? this.camera.zoom : 1 }
 
   private items(): Item[] {
@@ -46,8 +46,8 @@ export class CanvasFeature extends EditorFeature {
         || node instanceof Element && !items.includes(node as Item) && !node.matches("style, script, link, meta, template")))}
   }
 
-  private emptyParagraph() {
-    if(this.active || !this.getState().canConvert || document.body.children.length !== 1) return null
+  emptyParagraph() {
+    if(documentLayoutMode() !== "document" || !this.getState().canConvert || document.body.children.length !== 1) return null
     const paragraph = document.body.firstElementChild!
     return paragraph.localName === "p" && !paragraph.hasAttribute("is")
       && !paragraph.textContent?.trim() && Array.from(paragraph.children).every(el => el.localName === "br")
@@ -56,9 +56,7 @@ export class CanvasFeature extends EditorFeature {
 
   actions = {
     setDocumentLayout: ({mode, expectedMode}: {type: "setDocumentLayout", mode: DocumentLayoutMode, expectedMode: DocumentLayoutMode}) => {
-      if(mode !== "canvas" && mode !== "document") throw new TypeError("Unknown document layout")
-      if(this.editor.isEditingLocked || this.getState().mode !== expectedMode) return false
-      return this.convert(mode)
+      return this.editor.setDocumentLayout(mode, expectedMode)
     },
     startCanvas: ({}: {type: "startCanvas"}) => Boolean(this.emptyParagraph()) && this.convert("canvas"),
     navigateCanvas: ({operation}: {type: "navigateCanvas", operation: "zoom-in" | "zoom-out" | "actual-size" | "fit-content"}) => {
@@ -70,7 +68,7 @@ export class CanvasFeature extends EditorFeature {
     },
   }
 
-  private convert(mode: DocumentLayoutMode) {
+  convert(mode: "canvas" | "document") {
     if(this.editor.isEditingLocked || !this.getState().canConvert || this.getState().mode === mode) return false
     const items = this.items()
     const empty = this.emptyParagraph()
@@ -140,11 +138,15 @@ export class CanvasFeature extends EditorFeature {
   /** Apply placement only to items created by this local command. Never run
    * this from a MutationObserver: widgets and remote edits own their changes. */
   preservePlacement<T>(command: () => T): T {
-    if(!this.active || this.placing) return command()
-    const body = document.body, nodes = Array.from(body.childNodes)
+    if((!this.active && !this.editor.features.slides.active) || this.placing) return command()
     const selection = document.getSelection()
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const body = this.active ? document.body : this.editor.features.slides.containingSlide(range?.startContainer ?? null)
+    if(!body) return command()
+    const nodes = Array.from(body.childNodes)
     if(!range || !body.contains(range.startContainer) || !body.contains(range.endContainer)) return command()
+    const items = () => Array.from(body.children).filter((item): item is Item =>
+      (item instanceof HTMLElement || item instanceof SVGSVGElement) && !item.matches("style,script,link,meta,template") && slideLayoutRole(item) !== "navigation")
     const itemIndex = (node: Node) => {
       while(node.parentNode && node.parentNode !== body) node = node.parentNode
       return nodes.indexOf(node as ChildNode)
@@ -153,29 +155,40 @@ export class CanvasFeature extends EditorFeature {
     const end = range.endContainer === body ? range.endOffset : itemIndex(range.endContainer) + 1
     if(start < 0 || end < start) return command()
     const prefix = nodes.slice(0, start), suffix = nodes.slice(end)
-    const before = this.items()
+    const before = items()
     const selected = document.getSelection()?.anchorNode
     const anchor = before.find(item => selected && (item === selected || item.contains(selected)))
     const rect = anchor?.getBoundingClientRect()
-    const origin = rect ? this.clientPoint(rect.left, rect.top) : this.clientPoint(window.innerWidth / 2 - 160, window.innerHeight / 2)
+    const bodyRect = body.getBoundingClientRect()
+    const origin = this.active
+      ? rect ? this.clientPoint(rect.left, rect.top) : this.clientPoint(window.innerWidth / 2 - 160, window.innerHeight / 2)
+      : rect ? {x: rect.left - bodyRect.left + body.scrollLeft, y: rect.top - bodyRect.top + body.scrollTop} : {x: 20, y: 20}
     const height = rect ? rect.height / this.zoom : 0
     this.placing = true
     let completed = false
     try { const result = command(); completed = true; return result }
     finally {
       const current = Array.from(body.childNodes)
-      const valid = completed && this.active && document.body === body && current.length >= prefix.length + suffix.length
+      const valid = completed && body.isConnected && (this.active && document.body === body || this.editor.features.slides.active && slideLayoutRole(body) === "slide") && current.length >= prefix.length + suffix.length
         && prefix.every((node, i) => current[i] === node)
         && suffix.every((node, i) => current[current.length - suffix.length + i] === node)
       if(valid) {
         let offset = anchor?.parentElement === body ? height + 24 : 0
-        for(const item of this.items().filter(item => !before.includes(item))) {
+        const added = items().filter(item => !before.includes(item))
+        // A split of a slide text box shares its available space with its
+        // continuations, so the new caret stays on the finite slide.
+        const sharedHeight = !this.active && anchor?.parentElement === body && added.length && height > 48
+          ? Math.max(1, (height - 24 * added.length) / (added.length + 1)) : null
+        if(sharedHeight !== null) { anchor!.style.height = `${sharedHeight}px`; anchor!.style.bottom = "auto"; offset = sharedHeight + 24 }
+        for(const item of added) {
           if(item.parentElement !== body) continue
           item.style.position = "absolute"
           item.style.left = `${origin.x}px`
           item.style.top = `${origin.y + offset}px`
           item.style.right = item.style.bottom = "auto"
           if(!item.style.width) item.style.width = anchor?.style.width || "320px"
+          if(!this.active && rect) item.style.width = `${rect.width}px`
+          if(sharedHeight !== null) item.style.height = `${sharedHeight}px`
           offset += item.getBoundingClientRect().height / this.zoom + 24
         }
       }
@@ -307,7 +320,8 @@ export class CanvasFeature extends EditorFeature {
     click: event => {
       const target = event.composedPath()[0]
       if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target)) return
-      if(target.name === "start") this.actions.startCanvas({type: "startCanvas"})
+      if(target.name === "start-slides") this.editor.features.slides.actions.startSlides({type: "startSlides"})
+      else if(target.name === "start") this.actions.startCanvas({type: "startCanvas"})
       else if(target.name === "hand") { this.hand = !this.hand; this.schedule() }
       else if(target.name === "text") this.insertText({x: window.innerWidth / 2 - 160 * this.zoom, y: window.innerHeight / 2})
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
@@ -369,7 +383,10 @@ export class CanvasFeature extends EditorFeature {
       button("actual-size", "100%", "Actual size")
       button("fit-content", "Fit", "Fit content")
     }
-    else if(this.emptyParagraph() && !this.editor.isEditingLocked) button("start", "Use canvas layout")
+    else if(this.emptyParagraph() && !this.editor.isEditingLocked) {
+      button("start", "Use canvas layout")
+      button("start-slides", "Use slides layout")
+    }
     this.controls!.hidden = !this.controls!.childElementCount
     this.editor.postSelectionPath()
   }

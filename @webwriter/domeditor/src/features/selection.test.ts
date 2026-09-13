@@ -1129,7 +1129,7 @@ describe("document listeners", () => {
         type: selectionChangeEvent,
         bridgeNonce: editor.trustedScriptNonce,
         detail: {
-          documentLayout: {mode: "document", canConvert: true, zoom: 100},
+          documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
           path: [
             {path: [], name: "Document", icon: "Document"},
             {path: [0], name: "Paragraph", icon: "Paragraph"},
@@ -1151,7 +1151,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
-        documentLayout: {mode: "document", canConvert: true, zoom: 100},
+        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
           {
@@ -1178,7 +1178,11 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
-        documentLayout: {mode: "document", canConvert: false, zoom: 100},
+        documentLayout: {mode: "document", canConvert: false, zoom: 100, conversions: {
+          document: "A custom document template owns this document's layout.",
+          canvas: "A custom document template owns this document's layout.",
+          slides: "A custom document template owns this document's layout.",
+        }},
         path: [{path: [0], name: "Content", icon: "Section"}],
         nodeSelected: true,
         element: {
@@ -1296,7 +1300,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
-        documentLayout: {mode: "document", canConvert: true, zoom: 100},
+        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
           {
@@ -1368,7 +1372,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
-        documentLayout: {mode: "document", canConvert: true, zoom: 100},
+        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
         path: [{path: [], name: "Document", icon: "Document"}],
         gap: {parentPath: [], offset: 1},
       },

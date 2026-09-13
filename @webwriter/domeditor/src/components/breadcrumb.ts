@@ -19,6 +19,7 @@ type BreadcrumbEntry = {
 export class DomEditorBreadcrumb extends LitElement {
   static properties = {
     path: {attribute: false},
+    showPositionIcons: {attribute: false},
     nodeSelected: {type: Boolean, attribute: "node-selected", reflect: true},
     capture: {type: Boolean, reflect: true},
     gap: {attribute: false},
@@ -468,6 +469,7 @@ export class DomEditorBreadcrumb extends LitElement {
   `
 
   path: SelectionPathItem[] = []
+  showPositionIcons = true
   nodeSelected = false
   capture = false
   gap: SelectionGap | null = null
@@ -893,6 +895,7 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   private renderPositionIcons(item: SelectionPathItem | SelectionPathSection) {
+    if(!this.showPositionIcons) return ""
     // Tree items share the current path's positioning context.
     const current = this.path.find(candidate => this.pathsEqual(candidate.path, item.path))
       ?? this.path.flatMap(candidate => candidate.sections ?? []).find(section => this.pathsEqual(section.path, item.path))

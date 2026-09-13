@@ -681,6 +681,15 @@ describe("isCrossNodeSelection", () => {
 })
 
 describe("isEmptyDocumentSelection", () => {
+  it.each(["absolute", "fixed"])("does not treat a caret inside %s content as an empty document", position => {
+    setBody(`<article style="position:${position}"><p></p><p><em>Text</em></p></article>`)
+    $.move(document.querySelector("p")!)
+    expect($.isEmptyDocumentSelection).toBe(false)
+    $.move(document.querySelector("em")!.firstChild!, 1)
+    expect($.isEmptyDocumentSelection).toBe(false)
+    $.selectDocumentStart()
+    expect($.isEmptyDocumentSelection).toBe(true)
+  })
   it("is true for a collapsed selection in an empty body", () => {
     $.selectDocumentStart()
     expect($.isEmptyDocumentSelection).toBe(true)

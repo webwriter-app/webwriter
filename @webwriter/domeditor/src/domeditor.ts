@@ -12,6 +12,8 @@ import { InsertionFeature } from "./features/insertion"
 import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
 import {CanvasFeature} from "./features/canvas"
+import {SlidesFeature} from "./features/slides"
+import {documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
@@ -386,6 +388,7 @@ export class DOMEditor {
     "table": new TableFeature(this),
     "layout": new LayoutFeature(this),
     "canvas": new CanvasFeature(this),
+    "slides": new SlidesFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "graphic": new GraphicFeature(this),
@@ -696,6 +699,7 @@ export class DOMEditor {
    * authored node is removed. A selection left at BODY or in removed content
    * becomes a normal collapsed selection in the new paragraph. */
   #ensureDocumentContent() {
+    if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
     if(document.body.childNodes.length || this.schema.isContentValid(document.body)) return null
     const selection = document.getSelection()
     const moveSelection = !selection?.anchorNode || !selection.focusNode
@@ -920,7 +924,9 @@ export class DOMEditor {
     const elements: Element[] = []
     let current: Element | null = element
     while(current && current !== root) {
-      elements.unshift(current)
+      const role = slideLayoutRole(current)
+      if(role === "navigation") elements.length = 0
+      else if(role !== "viewport") elements.unshift(current)
       current = current.parentElement
     }
     elements.unshift(root)
@@ -928,6 +934,7 @@ export class DOMEditor {
     const positions = new Map<Element, NonNullable<SelectionPathItem["position"]>>()
     const anchors = new Set<Element>()
     for(const currentElement of elements) {
+      if(slideLayoutRole(currentElement)) continue
       const style = getComputedStyle(currentElement)
       const position = style.position
       if(position !== "absolute" && position !== "fixed" && position !== "relative" && position !== "sticky") continue
@@ -956,7 +963,7 @@ export class DOMEditor {
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
-      if(currentElement !== root && isSectionElement(currentElement)) {
+      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }
@@ -1006,7 +1013,7 @@ export class DOMEditor {
     const canSection = this.features.manipulation.canSectionSelection()
     const detail: SelectionChangeDetail = {
       path,
-      documentLayout: this.features.canvas.getState(),
+      documentLayout: this.getDocumentLayoutState(),
       ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
       ...($.isElementSelection && !selectedSection ? {nodeSelected: true} : {}),
@@ -1111,6 +1118,28 @@ export class DOMEditor {
       const currentIndex = Array.from(editorStylesheet.cssRules).indexOf(rule)
       if(currentIndex >= 0) editorStylesheet.deleteRule(currentIndex)
     }
+  }
+
+  getDocumentLayoutState(): DocumentLayoutState {
+    const mode = documentLayoutMode()
+    const canvas = this.features.canvas.getState()
+    const rootReason = getDocumentRoot() !== document.body ? "A custom document template owns this document's layout." : null
+    const conversions = {
+      document: rootReason,
+      canvas: rootReason ?? (mode === "slides" ? "Convert to Document before switching between Canvas and Slides."
+        : canvas.canConvert ? null : "This document's structure cannot be converted to Canvas automatically."),
+      slides: rootReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
+    }
+    return {mode, zoom: canvas.zoom, conversions,
+      canConvert: Object.entries(conversions).some(([target, reason]) => target !== mode && reason === null)}
+  }
+
+  setDocumentLayout(mode: DocumentLayoutMode, expectedMode: DocumentLayoutMode) {
+    if(!["document", "canvas", "slides"].includes(mode)) throw new TypeError("Unknown document layout")
+    const state = this.getDocumentLayoutState()
+    if(this.isEditingLocked || state.mode !== expectedMode || mode === state.mode || state.conversions?.[mode]) return false
+    if(mode === "slides" || state.mode === "slides") return this.features.slides.convert(mode as "slides" | "document")
+    return this.features.canvas.convert(mode)
   }
 
   private cleanDocumentClone() {

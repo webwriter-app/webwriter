@@ -4,6 +4,7 @@ import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
 import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
+import {slideLayoutRole} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
 
 export function createStylesheet(content: string) {
@@ -603,7 +604,8 @@ export class EditingSelection {
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
     if(this.detailsGap || this.dividerGap) return true
-    const root = getDocumentRoot()
+    const inSlide = isElement(this.anchor) && slideLayoutRole(this.anchor) === "slide"
+    const root = inSlide ? this.anchor as Element : getDocumentRoot()
     const firstRootElement = Array.from(root.children).find(element => !isOutOfFlow(element)) ?? null
     const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
     const isRootBoundaryBeforeFirstElement = this.anchor === root &&
@@ -614,7 +616,7 @@ export class EditingSelection {
       [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
     const isInsideTable = isElement(this.anchor) && Boolean(this.anchor.closest("table"))
-    return isElement(this.anchor) && !isSectionElement(this.anchor) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
+    return isElement(this.anchor) && (!isSectionElement(this.anchor) || inSlide) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
       (!Array.from(this.anchor.childNodes).filter(node => !isOutOfFlow(node)).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
         || isRootBoundaryBeforeFirstElement
         || isNestedListBoundary)
@@ -647,7 +649,7 @@ export class EditingSelection {
     if(this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
-    return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot()
+    return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide"
       || !isMarkElement(selected) && !isSectionElement(selected))
   }
 
@@ -692,12 +694,12 @@ export class EditingSelection {
     return this.anchor !== this.focus
   }
 
-  /** Whether the selection is collapsed in an empty body-equivalent root
-   * (contenteditable=false elements are ignored). */
+  /** Whether the caret belongs to an empty body-equivalent flow. Positioned
+   * subtrees own separate editing flows; non-editable root children are ignored. */
   static get isEmptyDocumentSelection() {
     const root = getDocumentRoot()
     const anchor = this.anchor
-    const inRoot = anchor === root || Boolean(anchor && root.contains(anchor))
+    const inRoot = anchor === root || Boolean(anchor && root.contains(anchor) && editingFlowRoot(anchor) === root)
     return this.isEmpty && inRoot
       && !Array.from(root.children).some(element => !isOutOfFlow(element) && element.getAttribute("contenteditable") !== "false")
   }
@@ -1017,7 +1019,7 @@ export const $ = EditingSelection
  * and semantic section wrappers are transparent to ordinary selection. */
 export function getContainer(node: Node) {
   let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
-  while(element && !isOutOfFlow(element) && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
+  while(element && !isOutOfFlow(element) && slideLayoutRole(element) !== "slide" && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
   return element!
 }
 

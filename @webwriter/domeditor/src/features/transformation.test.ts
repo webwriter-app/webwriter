@@ -89,6 +89,118 @@ async function mutationsDelivered() {
 }
 
 describe("selection-owned transformation", () => {
+  describe.each(["canvas", "slides"] as const)("selections inside %s items", mode => {
+    function item() {
+      document.body.innerHTML = "<article><p>Hello <em>world</em></p><p></p><hr><table><tr><td>A</td><td>B</td></tr></table><ul></ul><demo-widget></demo-widget></article>"
+      const article = document.querySelector("article")!
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      return article
+    }
+
+    it("keeps the interior free of drag surfaces and uses borders for moving and corners for resizing", () => {
+      const article = item()
+      selectNode(article)
+      expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+      selectNode(article.querySelector("p")!)
+      expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+      for(const edge of feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
+        expect(edge.dataset.transformMode).toBe("move")
+        expect(edge.title).toBe("Move")
+      }
+      for(const corner of feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale")) expect(corner.dataset.transformMode).toBe("scale")
+      expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!.hidden).toBe(true)
+      expect(feature.orderer.hidden).toBe(true)
+      expect(feature.overlay.querySelectorAll(".◆transform-overlay-midpoint:not([hidden])")).toHaveLength(4)
+    })
+
+    it.each(["scale-right", "scale-up-up", "scale-down-down", "scale-left-left", "scale-right-right", "scale-down-right", "rotator"])("retains the inner text range after dragging %s", control => {
+      const article = item(), text = article.querySelector("em")!.firstChild!
+      Object.assign(article.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
+      mockRect(article)
+      document.getSelection()!.setBaseAndExtent(text, 4, text, 1)
+      editor.features.selection.processSelection()
+      const before = article.style.cssText
+      const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${control}`)!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, altKey: true, clientX: 220, clientY: 180}))
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 180}))
+      expect(article.style.cssText).not.toBe(before)
+      expect($.anchor).toBe(text); expect($.anchorOffset).toBe(4)
+      expect($.focus).toBe(text); expect($.focusOffset).toBe(1)
+      expect($.isTextSelection).toBe(true)
+      expect(feature.target).toBe(article)
+      if(control === "scale-right") {
+        expect(article.style.width).toBe("100px"); expect(article.style.height).toBe("50px")
+        expect(article.style.left).toBe("20px"); expect(article.style.top).toBe("30px")
+      }
+    })
+
+    it("shows controls for text, empty, gap, virtual-list and cell selections without selecting the item", () => {
+      const article = item(), text = article.querySelector("em")!.firstChild!
+      const check = () => {
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        expect(feature.target).toBe(article)
+        expect(article).toHaveClass("◆transform-target")
+        expect(article).not.toHaveClass("◆element-selected")
+        expect(feature.overlay).not.toHaveAttribute("visibility", "hidden")
+        expect(feature.overlay.getAttribute("part")?.split(/\s+/)).toContain("transform-overlay-content-selected")
+      }
+      $.selectRange(text, 1, text, 4); check()
+      expect(document.getSelection()?.toString()).toBe("orl")
+      expect($.isTextSelection).toBe(true)
+      $.move(article.querySelector("p:empty")!); check()
+      expect($.isEmptySelection).toBe(true)
+      $.selectGap(article.querySelector("hr")!, "before"); check()
+      expect($.isGapSelection).toBe(true)
+      $.move(article.querySelector("ul")!); check()
+      expect(editor.features.list.isVirtualSelection).toBe(true)
+      const cells = article.querySelectorAll("td")
+      editor.features.table.selectCells(cells[0], cells[1]); check()
+      expect(editor.features.table.hasCellSelection).toBe(true)
+      editor.features.table.clearCellSelection()
+      editor.features.selection.selectElement(article)
+      expect(feature.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-content-selected")
+    })
+
+    it("frames the direct item for nested node and capture selections, then follows another item", () => {
+      const article = item(), paragraph = article.querySelector("p")!, widget = article.querySelector("demo-widget")!
+      selectNode(paragraph)
+      expect($.selectedElement).toBe(paragraph)
+      expect(feature.target).toBe(article)
+      captureNode(widget)
+      expect(editor.features.selection.captureSelectedElement).toBe(widget)
+      expect(feature.target).toBe(article)
+      const next = document.createElement("p"); next.textContent = "Next"
+      article.after(next)
+      editor.features.selection.selectDropRange((() => { const range = document.createRange(); range.setStart(next.firstChild!, 1); range.collapse(true); return range })())
+      expect(feature.target).toBe(next)
+      expect(article).not.toHaveClass("◆transform-target")
+    })
+
+    it("cleans up disconnected targets and excludes controls from saved and shared content", async () => {
+      const article = item()
+      $.move(article.querySelector("em")!.firstChild!, 1)
+      editor.features.selection.processSelection()
+      expect(feature.target).toBe(article)
+      expect(editor.toHTML(true)).not.toContain("◆transform-target")
+      editor.doc.syncFromDOM()
+      expect(editor.doc.body.toString()).not.toContain("◆transform-target")
+      article.remove()
+      await mutationsDelivered()
+      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+      expect(feature.target).not.toBe(article)
+      expect(article).not.toHaveClass("◆transform-target")
+    })
+  })
+
+  it("keeps controls hidden for text inside ordinary document content", () => {
+    const paragraph = targetElement()
+    $.move(paragraph.firstChild!, 2)
+    editor.features.selection.processSelection()
+    expect(feature.target).toBeNull()
+    expect(paragraph).not.toHaveClass("◆element-selected")
+  })
+
   it("starts from ordinary element selection", () => {
     const target = targetElement()
     selectNode(target)
@@ -122,13 +234,13 @@ describe("selection-owned transformation", () => {
     selectNode(target)
 
     expect(document.body.querySelector("#◆transform-overlay")).toBeNull()
-    expect(editor.appendix.querySelectorAll(".◆transform-overlay-scale")).toHaveLength(4)
+    expect(editor.appendix.querySelectorAll(".◆transform-overlay-scale:not([hidden])")).toHaveLength(4)
     for(const direction of ["up-left", "up-right", "down-left", "down-right"]) {
       expect(editor.appendix.querySelector(`#◆transform-overlay-scale-${direction}`)).not.toBeNull()
     }
     expect(editor.appendix.querySelectorAll(".◆transform-overlay-edge")).toHaveLength(4)
     for(const direction of ["up-up", "left-left", "right-right", "down-down"]) {
-      expect(editor.appendix.querySelector(`#◆transform-overlay-scale-${direction}`)).toBeNull()
+      expect(editor.appendix.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!.hidden).toBe(true)
     }
     expect(editor.appendix.querySelector("#◆transform-overlay-mover")).not.toBeNull()
     expect(editor.appendix.querySelector("#◆transform-overlay-restorer")).toBeNull()
@@ -403,6 +515,20 @@ describe("transform controls and geometry", () => {
     feature.handleMoveEnd()
 
     expect(target.style.position).toBe(position)
+  })
+
+  it("retains zero offsets instead of falling back to resolved right and bottom offsets", () => {
+    const target = targetElement()
+    Object.assign(target.style, {position: "absolute", left: "0px", top: "0px", right: "960px", bottom: "696px", width: "320px", height: "24px"})
+    mockRect(target)
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 124, clientY: 116}))
+    feature.handleMoveEnd()
+    expect(target.style.left).toBe("24px")
+    expect(target.style.top).toBe("16px")
+    expect(target.style.width).toBe("320px")
+    expect(target.style.height).toBe("24px")
   })
 
   it("handles scale through composed appendix pointer events", () => {

@@ -393,6 +393,12 @@ export class DomEditorToolbox extends EditingControls {
       cursor: pointer;
     }
 
+    .document-layout-choices {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
     .document-layout-change:hover:not(:disabled) {
       background: #c8dced;
     }
@@ -588,20 +594,31 @@ export class DomEditorToolbox extends EditingControls {
       drawers.push(html`
         <ribbon-drawer label="Layout" icon="Layout" layout="document-layout">
           <div class="document-layout-controls">
-            <p class="document-layout-mode">Current mode: <strong>${this.documentLayout.mode === "canvas" ? "Canvas" : "Document"}</strong></p>
+            <p class="document-layout-mode">Current mode: <strong>${this.documentLayout.mode[0].toUpperCase() + this.documentLayout.mode.slice(1)}</strong></p>
             <p class="document-layout-zoom">Zoom: <strong>${this.documentLayout.zoom}%</strong></p>
             ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
             ${!this.documentLayout.canConvert ? html`<p>This document’s structure cannot be converted automatically.</p>` : ""}
-            <button
-              class="document-layout-change"
-              type="button"
-              ?disabled=${!this.documentLayout.canConvert || this.historyState.preview !== null || this.htmlPending}
-              @click=${() => this.dispatchEvent(new CustomEvent<{mode: "canvas" | "document"}>("document-layout-change", {
-                detail: {mode: this.documentLayout.mode === "canvas" ? "document" : "canvas"},
-                bubbles: true,
-                composed: true,
-              }))}
-            >Convert to ${this.documentLayout.mode === "canvas" ? "document" : "canvas"}</button>
+            <div class="document-layout-choices" role="group" aria-label="Document layout">
+              ${(["document", "canvas", "slides"] as const).map(mode => {
+                const reason = this.layoutConversionReason(mode)
+                const selected = this.documentLayout.mode === mode
+                const disabled = selected || Boolean(reason) || this.historyState.preview !== null || this.htmlPending
+                return html`<button
+                  class="document-layout-change"
+                  data-mode=${mode}
+                  type="button"
+                  aria-pressed=${selected ? "true" : "false"}
+                  title=${reason ?? (selected ? `Current layout: ${this.layoutModeLabel(mode)}` : "")}
+                  aria-label=${reason ? `${this.layoutModeLabel(mode)}: ${reason}` : this.layoutModeLabel(mode)}
+                  ?disabled=${disabled}
+                  @click=${() => this.dispatchEvent(new CustomEvent<{mode: "canvas" | "document" | "slides"}>("document-layout-change", {
+                    detail: {mode},
+                    bubbles: true,
+                    composed: true,
+                  }))}
+                >${this.layoutModeLabel(mode)}${selected ? " (current)" : ""}</button>`
+              })}
+            </div>
           </div>
         </ribbon-drawer>
       `)
@@ -626,6 +643,24 @@ export class DomEditorToolbox extends EditingControls {
       `)
     }
     return drawers
+  }
+
+  private layoutModeLabel(mode: "document" | "canvas" | "slides") {
+    return mode[0].toUpperCase() + mode.slice(1)
+  }
+
+  private layoutConversionReason(mode: "document" | "canvas" | "slides") {
+    if(mode === this.documentLayout.mode) return null
+    const conversions = (this.documentLayout as DocumentLayoutState & {
+      conversions?: Partial<Record<"document" | "canvas" | "slides", string | null>>
+    }).conversions
+    if(typeof conversions?.[mode] === "string") return conversions[mode]
+    if((this.documentLayout.mode === "canvas" || this.documentLayout.mode === "slides")
+      && (mode === "canvas" || mode === "slides")) {
+      return "Convert to Document first to change between Canvas and Slides."
+    }
+    if(conversions?.[mode] === null) return null
+    return this.documentLayout.canConvert ? null : "This document’s structure cannot be converted automatically."
   }
 
   selectTool(tool: ToolboxTool | null) {

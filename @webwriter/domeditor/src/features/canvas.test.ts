@@ -44,6 +44,31 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it("keeps native text input inside positioned paragraphs without materializing a new element", () => {
+    editor.features.canvas.actions.startCanvas({type: "startCanvas"})
+    const paragraph = document.body.firstElementChild as HTMLElement
+    for(const value of ["", "Existing text"]) {
+      paragraph.textContent = value
+      $.move(paragraph.firstChild ?? paragraph, 0)
+      const input = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "x"})
+      paragraph.dispatchEvent(input)
+      expect(input.defaultPrevented).toBe(false)
+      expect(document.body.firstElementChild).toBe(paragraph)
+      expect(paragraph.querySelector("link")).toBeNull()
+      expect(paragraph.textContent).toBe(value)
+      expect(editor.features.manipulation.ensureTextBlock()).toBeNull()
+    }
+  })
+
+  it("does not use metadata elements as a text-block fallback at an inline gap", () => {
+    document.body.innerHTML = '<p><img alt="Keep"></p>'
+    editor.features.canvas.convert("canvas")
+    const paragraph = document.body.firstElementChild!, image = paragraph.firstElementChild!
+    $.selectGap(image, "before")
+    expect(editor.features.manipulation.ensureTextBlock()).toBeNull()
+    expect(paragraph.firstElementChild).toBe(image)
+    expect(paragraph.childNodes.length).toBe(1)
+  })
   it("starts in document mode with an empty paragraph shortcut in the appendix", () => {
     const canvas = editor.features.canvas
 
