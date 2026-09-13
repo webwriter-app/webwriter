@@ -27,6 +27,8 @@ const expectedChecks = [
   "selection markers and appendix layout artifacts tear down cleanly",
   "standalone SVG affordances refit rotated elements and resize beyond their original size",
   "iframe lifecycle reaches load and cleans up",
+  "canvas slot preserves hit testing and document coordinates at different zoom levels",
+  "canvas paragraphs split into separate positioned items and conversion returns normal flow",
 ]
 const chrome = process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 let reportResult

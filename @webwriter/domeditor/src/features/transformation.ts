@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, roundByDPR, roundTo, setPart } from "../utility"
+import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
 
@@ -58,6 +58,8 @@ export class TransformationFeature extends EditorFeature {
   #floatValues = ["none", "left", "right"] as const
   #observer: MutationObserver | null = null
   #frame: number | null = null
+  #panFrame: number | null = null
+  #panEvent: MouseEvent | null = null
   #drop: {element: Element, placement: "before" | "after", parent: Node} | null = null
   #suppressClick = false
   readonly #cancelGesture = () => this.#finish(true)
@@ -367,7 +369,7 @@ export class TransformationFeature extends EditorFeature {
     const own = new DOMMatrix().rotate(angle).scale(scale[0], scale[1])
       .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
     own.e = own.f = 0
-    return this.#matrix(element.parentElement).multiply(own)
+    return this.#matrix(renderedParentElement(element)).multiply(own)
   }
 
   #angle(value: string) {
@@ -500,7 +502,7 @@ export class TransformationFeature extends EditorFeature {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: target.getBoundingClientRect(), ...this.#size(target),
-      matrix, parentMatrix: this.#matrix(target.parentElement), rotate: this.#angle(style.rotate), scale: this.#scale(style.scale),
+      matrix, parentMatrix: this.#matrix(renderedParentElement(target)), rotate: this.#angle(style.rotate), scale: this.#scale(style.scale),
       initial, written: new Map(), moved: false,
       captured: this.editor.features.selection.captureSelectedElement === target,
       endUndoGroup: this.editor.doc.beginUndoGroup(),
@@ -545,7 +547,7 @@ export class TransformationFeature extends EditorFeature {
   #offsetBy(dx: number, dy: number) {
     const target = this.target!
     if(Math.abs(dx) < .01 && Math.abs(dy) < .01) return
-    const delta = this.#vector(this.#matrix(target.parentElement).inverse(), dx, dy)
+    const delta = this.#vector(this.#matrix(renderedParentElement(target)).inverse(), dx, dy)
     if(getComputedStyle(target).position === "static") this.#write("position", "relative")
     const style = getComputedStyle(target)
     const left = parseFloat(style.left) || -(parseFloat(style.right) || 0)
@@ -611,6 +613,9 @@ export class TransformationFeature extends EditorFeature {
     gesture.moved = true
     document.body.classList.add("◆transform-moving")
     if(gesture.mode === "anchor" || modifierKeyDown(event)) {
+      if(this.#panFrame !== null) cancelAnimationFrame(this.#panFrame)
+      this.#panFrame = null
+      this.#panEvent = null
       this.#resetWritten()
       this.#previewDrop(event)
       this.updateInfo()
@@ -630,6 +635,14 @@ export class TransformationFeature extends EditorFeature {
     const current = this.targetRect
     this.#offsetBy(gesture.rect.left + viewportDelta.x - current.left, gesture.rect.top + viewportDelta.y - current.top)
     this.updateInfo()
+    this.#panEvent = event
+    if(this.editor.features.canvas.active && this.#panFrame === null) {
+      this.#panFrame = requestAnimationFrame(() => {
+        this.#panFrame = null
+        const pointer = this.#panEvent
+        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
+      })
+    }
   }
 
   handleScaleDrag(event: MouseEvent) {
@@ -724,6 +737,9 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #finish(cancel: boolean) {
+    if(this.#panFrame !== null) cancelAnimationFrame(this.#panFrame)
+    this.#panFrame = null
+    this.#panEvent = null
     const gesture = this.#gesture
     if(!gesture) return
     const valid = gesture.target === this.target && gesture.parent === gesture.target.parentElement

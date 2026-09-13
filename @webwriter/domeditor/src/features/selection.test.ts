@@ -1129,6 +1129,7 @@ describe("document listeners", () => {
         type: selectionChangeEvent,
         bridgeNonce: editor.trustedScriptNonce,
         detail: {
+          documentLayout: {mode: "document", canConvert: true, zoom: 100},
           path: [
             {path: [], name: "Document", icon: "Document"},
             {path: [0], name: "Paragraph", icon: "Paragraph"},
@@ -1150,6 +1151,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+        documentLayout: {mode: "document", canConvert: true, zoom: 100},
         path: [
           {path: [], name: "Document", icon: "Document"},
           {
@@ -1176,6 +1178,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+        documentLayout: {mode: "document", canConvert: false, zoom: 100},
         path: [{path: [0], name: "Content", icon: "Section"}],
         nodeSelected: true,
         element: {
@@ -1293,6 +1296,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+        documentLayout: {mode: "document", canConvert: true, zoom: 100},
         path: [
           {path: [], name: "Document", icon: "Document"},
           {
@@ -1364,6 +1368,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+        documentLayout: {mode: "document", canConvert: true, zoom: 100},
         path: [{path: [], name: "Document", icon: "Document"}],
         gap: {parentPath: [], offset: 1},
       },

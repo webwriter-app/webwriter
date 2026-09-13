@@ -896,14 +896,14 @@ export class ManipulationFeature extends EditorFeature {
   private withNormalization<T>(command: () => T) {
     const selection = document.getSelection()
     const originalNodes = [selection?.anchorNode, selection?.focusNode]
-    return this.editor.features.layout.preserveItemLayout(() => {
+    return this.editor.features.canvas.preservePlacement(() => this.editor.features.layout.preserveItemLayout(() => {
       try {
         return command()
       }
       finally {
         this.editor.normalizeSurroundingElements(...originalNodes)
       }
-    })
+    }))
   }
 
   /** Inserts a new element at an empty-document or gap selection, choosing
@@ -1126,7 +1126,8 @@ export class ManipulationFeature extends EditorFeature {
     if(splittingSummary) splitDepth = 0
 
     for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || isOutOfFlow(container) || container.nodeName === "HTML") break
+      if(isDocumentRoot(container) || isOutOfFlow(container) && !(this.editor.features.canvas.active
+        && container.parentElement?.matches("body.ww-canvas")) || container.nodeName === "HTML") break
       const parent = container.parentElement
       if(!parent) break
       const schema = this.editor.schema.get(container)

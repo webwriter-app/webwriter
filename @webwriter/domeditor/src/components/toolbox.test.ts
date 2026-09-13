@@ -341,6 +341,34 @@ describe("toolbox", () => {
     expect(buttons.map(button => button.action)).toEqual(["set-document-template:body"])
   })
 
+  it("shows document layout mode and emits conversion requests", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.documentSelected = true
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Layout"]')!
+    expect(drawer).not.toBeNull()
+    expect(drawer.textContent).toContain("Current mode: Document")
+    expect(drawer.textContent).toContain("Zoom: 100%")
+    const change = drawer.querySelector<HTMLButtonElement>(".document-layout-change")!
+    expect(change.textContent).toContain("Convert to canvas")
+    const request = vi.fn()
+    toolbox.addEventListener("document-layout-change", request)
+    change.click()
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({detail: {mode: "canvas"}}))
+
+    toolbox.documentLayout = {mode: "canvas", canConvert: true, zoom: 125}
+    await toolbox.updateComplete
+    expect(drawer.textContent).toContain("Current mode: Canvas")
+    expect(drawer.textContent).toContain("Zoom: 125%")
+    expect(change.textContent).toContain("Convert to document")
+
+    toolbox.documentLayout = {mode: "canvas", canConvert: false, zoom: 125}
+    await toolbox.updateComplete
+    expect(change.disabled).toBe(true)
+  })
+
   it("offers universal attributes alongside specialized tools and for uncommon elements", async () => {
     const toolbox = await mountToolbox()
     toolbox.activeTool = "Edit"

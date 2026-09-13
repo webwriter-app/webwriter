@@ -18,6 +18,7 @@ import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
 import type {ElementAttributeState} from "./element-attributes"
 import type {LayoutSelectionState} from "./layouts"
+import type {DocumentLayoutState} from "./document-layout"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -272,6 +273,7 @@ export type SelectionChangeDetail = {
   table?: TableSelectionState
   graphic?: GraphicSelectionState
   layout?: LayoutSelectionState
+  documentLayout?: DocumentLayoutState
   /** Authored attributes for the exact element-like selection, when any. */
   element?: ElementAttributeState
   /** Present only when a section was explicitly selected from the breadcrumb. */
@@ -646,6 +648,8 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.table, isTableSelection)
     && isOptionalFeature(detail.graphic, isGraphicSelection)
     && isOptionalFeature(detail.layout, isLayoutSelection)
+    && isOptionalFeature(detail.documentLayout, state => (state.mode === "document" || state.mode === "canvas")
+      && isBoolean(state.canConvert) && typeof state.zoom === "number" && Number.isFinite(state.zoom) && state.zoom > 0)
 }
 
 export function isMarkStateChangeMessage(value: unknown): value is MarkStateChangeMessage {

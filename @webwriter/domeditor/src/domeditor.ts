@@ -11,6 +11,7 @@ import { SelectionFeature } from "./features/selection"
 import { InsertionFeature } from "./features/insertion"
 import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
+import {CanvasFeature} from "./features/canvas"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
@@ -384,6 +385,7 @@ export class DOMEditor {
     "list": new ListFeature(this),
     "table": new TableFeature(this),
     "layout": new LayoutFeature(this),
+    "canvas": new CanvasFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "graphic": new GraphicFeature(this),
@@ -1004,6 +1006,7 @@ export class DOMEditor {
     const canSection = this.features.manipulation.canSectionSelection()
     const detail: SelectionChangeDetail = {
       path,
+      documentLayout: this.features.canvas.getState(),
       ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
       ...($.isElementSelection && !selectedSection ? {nodeSelected: true} : {}),

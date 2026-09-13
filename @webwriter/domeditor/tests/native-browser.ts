@@ -528,6 +528,99 @@ await check("iframe lifecycle reaches load and cleans up", async () => {
   assert(!frame.isConnected && !document.querySelector("#lifecycle"), "iframe was not removed")
 })
 
+await check("canvas slot preserves hit testing and document coordinates at different zoom levels", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "Canvas text"
+  paragraph.style.cssText = "width:240px;margin:0"
+  document.body.append(paragraph)
+  const rotated = document.createElement("aside")
+  rotated.textContent = "Rotated"
+  rotated.style.cssText = "width:180px;height:60px;rotate:20deg;margin:12px"
+  document.body.append(rotated)
+  const originalDifference = {x: rotated.getBoundingClientRect().left - paragraph.getBoundingClientRect().left,
+    y: rotated.getBoundingClientRect().top - paragraph.getBoundingClientRect().top}
+  const originalChildren = Array.from(document.body.childNodes)
+  try {
+    assert(editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"}), "canvas conversion failed")
+    assert(originalChildren.every((node, i) => document.body.childNodes[i] === node), "conversion rebuilt content")
+    const difference = {x: rotated.getBoundingClientRect().left - paragraph.getBoundingClientRect().left,
+      y: rotated.getBoundingClientRect().top - paragraph.getBoundingClientRect().top}
+    assert(Math.abs(difference.x / editor.features.canvas.zoom - originalDifference.x) < 1
+      && Math.abs(difference.y / editor.features.canvas.zoom - originalDifference.y) < 1, "conversion displaced an authored transform")
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    paragraph.style.left = "-300px"
+    paragraph.style.top = "-200px"
+    const slot = editor.appendix.querySelector<HTMLSlotElement>("slot")!
+    // Pan to a negative authored position without changing it.
+    slot.dispatchEvent(new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: -500, deltaY: -400}))
+    await layoutFrame()
+    const before = paragraph.getBoundingClientRect()
+    assert(before.width > 200 && before.height > 0, "slotted paragraph has no usable box")
+    const point = editor.features.canvas.clientPoint(before.left, before.top)
+    assert(Math.abs(point.x + 300) < 1 && Math.abs(point.y + 200) < 1, `negative canvas coordinate is wrong: ${JSON.stringify(point)}`)
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    await layoutFrame()
+    const zoomed = paragraph.getBoundingClientRect()
+    assert(Math.abs(zoomed.width / before.width - 1.2) < .01, "camera did not scale slotted content")
+    const zoomPoint = editor.features.canvas.clientPoint(zoomed.left, zoomed.top)
+    assert(Math.abs(zoomPoint.x + 300) < 1 && Math.abs(zoomPoint.y + 200) < 1, "zoom changed authored coordinates")
+    editor.features.canvas.reveal(zoomed)
+    await layoutFrame()
+    const rect = paragraph.getBoundingClientRect()
+    const hit = document.elementFromPoint(rect.left + 10, rect.top + rect.height / 2)
+    assert(hit === paragraph || paragraph.contains(hit), `hit testing missed canvas text: ${hit?.outerHTML}`)
+    $.move(paragraph.firstChild!, 3)
+    editor.features.selection.processSelection()
+    assert(getSelection()?.anchorNode === paragraph.firstChild, "canvas text lost its native selection")
+    editor.features.selection.selectElement(paragraph)
+    const mover = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+    mover.addEventListener("mousedown", event => editor.features.transformation.handleMoveStart(event), {once: true})
+    mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))
+    editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 320, clientY: 200}))
+    editor.features.transformation.handleMoveEnd()
+    assert(Math.abs(parseFloat(paragraph.style.left) - (-300 + 120 / editor.features.canvas.zoom)) < 1, `zoomed move used screen instead of document units: ${paragraph.style.left}`)
+    mover.addEventListener("mousedown", event => editor.features.transformation.handleMoveStart(event), {once: true})
+    mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: window.innerWidth - 20, clientY: 200}))
+    const cameraBeforeEdge = slot.style.transform
+    editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, clientX: window.innerWidth - 1, clientY: 200}))
+    await layoutFrame()
+    assert(slot.style.transform !== cameraBeforeEdge, "dragging at the edge did not pan the canvas")
+    editor.features.transformation.handleMoveEnd()
+    const cameraAfterDrag = slot.style.transform
+    await layoutFrame()
+    assert(slot.style.transform === cameraAfterDrag, "edge panning continued after release")
+    assert(editor.toHTML().includes("ww-canvas") && !editor.toHTML().includes("canvas-controls"), "serialization mixed camera and authored layout")
+  }
+  finally {
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})
+    paragraph.remove(); rotated.remove()
+  }
+})
+
+await check("canvas paragraphs split into separate positioned items and conversion returns normal flow", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "FirstSecond"
+  document.body.append(paragraph)
+  let next: Element | null = null
+  try {
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
+    paragraph.style.left = "120px"; paragraph.style.top = "100px"; paragraph.style.margin = "0px"
+    $.move(paragraph.firstChild!, 5)
+    editor.features.manipulation.insert()
+    next = paragraph.nextElementSibling
+    assert(paragraph.textContent === "First" && next?.textContent === "Second", "canvas Enter did not split text")
+    assert(getComputedStyle(next!).position === "absolute", "continuation is not a canvas item")
+    assert(next!.getBoundingClientRect().top >= paragraph.getBoundingClientRect().bottom, "canvas continuation overlaps its source")
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})
+    assert(getComputedStyle(paragraph).position === "static" && getComputedStyle(next!).position === "static", "document conversion retained absolute placement")
+    assert(!document.documentElement.classList.contains("◆canvas-active"), "document conversion retained camera marker")
+  }
+  finally {
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})
+    paragraph.remove(); next?.remove()
+  }
+})
+
 editor.destroy()
 
 const failed = checks.filter(item => item.error)

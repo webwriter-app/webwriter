@@ -1362,30 +1362,27 @@ function elEstablishesFormattingContext(el: HTMLElement) {
   return formattingContextDisplayValues.some(v => style.display.trim().split(/\s+/).includes(v))
 }
 
+/** A box-generating slot participates in layout even though it is absent
+ * from the authored parentElement chain. Default display:contents slots do not. */
+export function renderedParentElement(element: Element): Element | null {
+  if(element.assignedSlot && getComputedStyle(element.assignedSlot).display !== "contents") return element.assignedSlot
+  if(element.parentElement) return element.parentElement
+  const root = element.getRootNode()
+  return root instanceof ShadowRoot ? root.host : null
+}
+
 /** The element's containing block for the given position mode, per CSS: the nearest formatting context for static/relative/sticky, the nearest positioned (or transform-like) ancestor for absolute, the nearest transform-like ancestor for fixed — falling back to `window`. Throws for invalid modes. */
 export function findContainingBlock(el: HTMLElement, position: "static" | "relative" | "absolute" | "fixed" | "sticky" = "static"): HTMLElement | Window {
-  if(!el.parentElement) {
-    return window
+  if(!["static", "relative", "sticky", "absolute", "fixed"].includes(position)) throw TypeError(`Invalid mode '${position}'`)
+  for(let node = renderedParentElement(el); node; node = renderedParentElement(node)) {
+    if(!(node instanceof HTMLElement)) continue
+    if(["static", "relative", "sticky"].includes(position)) {
+      if(elEstablishesFormattingContext(node)) return node
+    }
+    else if(elEstablishesAbsoluteOrFixedContainingBlock(node)
+      || position === "absolute" && ["relative", "absolute", "fixed", "sticky"].includes(getComputedStyle(node).position)) return node
   }
-  if(["static", "relative", "sticky"].includes(position)) {
-    return findClosest(el.parentElement, node => {
-      return elEstablishesFormattingContext(node)
-    }) ?? window
-  }
-  else if(position === "absolute") {
-    return findClosest(el.parentElement, node => {
-      const style = getComputedStyle(node)
-      const isMiscContainer =  elEstablishesAbsoluteOrFixedContainingBlock(node)
-      const isPositioned = ["relative", "absolute", "fixed", "sticky"].includes(style.position)
-      return isMiscContainer || isPositioned
-    }) ?? window
-  }
-  else if(position === "fixed") {
-    return findClosest(el.parentElement, node => {
-      return elEstablishesAbsoluteOrFixedContainingBlock(node)
-    }) ?? window
-  }
-  else throw TypeError(`Invalid mode '${position}'`)
+  return window
 }
 
 /** The closest ancestor-or-self with scrollable overflow (hidden, scroll, auto or overlay), or undefined. */

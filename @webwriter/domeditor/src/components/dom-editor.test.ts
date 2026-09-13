@@ -3025,6 +3025,42 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("confirms document layout conversion before executing it", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: selectionChangeEvent,
+        detail: {
+          path: [{path: [], name: "Document", icon: "Document"}],
+          nodeSelected: true,
+          documentLayout: {mode: "document", canConvert: true, zoom: 100},
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const change = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".document-layout-change")!
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal("confirm", confirm)
+
+    change.click()
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "setDocumentLayout"}))
+
+    confirm.mockReturnValue(true)
+    change.click()
+    await Promise.resolve()
+    expect(execute).toHaveBeenCalledWith({
+      type: "setDocumentLayout",
+      mode: "canvas",
+      expectedMode: "document",
+    })
+  })
+
   it("uses a document template as the breadcrumb tree root and exposes the Document toolbox", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = '<demo-widget role="document"><p>Slide</p></demo-widget>'

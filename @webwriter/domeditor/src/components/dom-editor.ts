@@ -149,6 +149,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
+import type {DocumentLayoutState} from "../document-layout"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -353,6 +354,8 @@ const hashString = (value: string) => Array.from(value).reduce(
 
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
 
+const defaultDocumentLayoutState = (): DocumentLayoutState => ({mode: "document", canConvert: true, zoom: 100})
+
 type LiveSessionIdentity = {
   id: string
   name: string
@@ -436,6 +439,8 @@ export class DomEditor extends LitElement {
     htmlSource: {attribute: false, state: true},
     htmlPending: {attribute: false, state: true},
     htmlSourceError: {attribute: false, state: true},
+    documentLayout: {attribute: false, state: true},
+    documentLayoutError: {attribute: false, state: true},
     settings: {attribute: false, state: true},
   }
 
@@ -500,6 +505,8 @@ export class DomEditor extends LitElement {
   private htmlOriginalSource = ""
   private htmlPending = false
   private htmlSourceError = ""
+  private documentLayout: DocumentLayoutState = defaultDocumentLayoutState()
+  private documentLayoutError = ""
   private htmlSourceRefreshSequence = 0
   private htmlSourceRefreshQueued = false
   private presenceUsers: PresenceUser[] = []
@@ -2077,6 +2084,8 @@ export class DomEditor extends LitElement {
     this.historyOperationCount = 0
     this.historyDocumentTransitionCount = 0
     this.historyError = ""
+    this.documentLayout = defaultDocumentLayoutState()
+    this.documentLayoutError = ""
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
@@ -3604,6 +3613,26 @@ export class DomEditor extends LitElement {
     if(tool !== "Edit" && this.htmlMode && !this.htmlPending) void this.setHTMLMode(false)
   }
 
+  private handleDocumentLayoutChange = (event: Event) => {
+    const mode = (event as CustomEvent<{mode?: unknown}>).detail?.mode
+    if((mode !== "canvas" && mode !== "document") || mode === this.documentLayout.mode) return
+    const currentMode = this.documentLayout.mode
+    const confirmation = mode === "canvas"
+      ? "Convert this document to canvas layout? Current positions will be preserved and top-level items will become independently positioned. You can undo this change."
+      : "Return to document layout? Items will flow in document order. Canvas positions, sizes, and rotation will be removed. You can undo this change."
+    if(!window.confirm(confirmation)) return
+    this.documentLayoutError = ""
+    void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).then(changed => {
+      if(changed === false) {
+        this.documentLayoutError = "The document layout changed before conversion could be applied. Try again."
+        return
+      }
+      this.fileDirty = true
+    }).catch(error => {
+      this.documentLayoutError = error instanceof Error ? error.message : String(error)
+    })
+  }
+
   private handleHTMLSourceChange = (event: Event) => {
     const value = (event as CustomEvent<{value?: unknown}>).detail?.value
     if(typeof value !== "string" || !this.htmlMode) return
@@ -4132,6 +4161,8 @@ export class DomEditor extends LitElement {
       const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
       this.sectionSelected = selectedSection !== undefined
       this.layoutSelection = event.data.detail.layout ?? null
+      this.documentLayout = {...(event.data.detail.documentLayout ?? defaultDocumentLayoutState())}
+      this.documentLayoutError = ""
       this.selectedSectionPath = selectedSection ? [...selectedSection.path] : null
       this.sectionActive = selectedSection !== undefined || activeSection !== undefined
       this.sectionType = selectedSection?.type ?? activeSection?.type ?? "section"
@@ -4210,6 +4241,7 @@ export class DomEditor extends LitElement {
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
           ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
           ...(this.layoutSelection ? {layout: this.layoutSelection} : {}),
+          documentLayout: {...this.documentLayout},
           ...(this.elementAttributes ? {element: this.elementAttributes} : {}),
           ...(selectedSection ? {section: {
             path: [...selectedSection.path],
@@ -4466,6 +4498,8 @@ export class DomEditor extends LitElement {
     this.htmlOriginalSource = ""
     this.htmlPending = false
     this.htmlSourceError = ""
+    this.documentLayout = defaultDocumentLayoutState()
+    this.documentLayoutError = ""
     this.elementStyle = {
       target: null,
       inline: {},
@@ -4673,6 +4707,8 @@ export class DomEditor extends LitElement {
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
         .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
+        .documentLayout=${this.documentLayout}
+        .documentLayoutError=${this.documentLayoutError}
         .documentHead=${this.documentHead}
         @document-head-action=${this.handleDocumentHeadAction}
         .htmlMode=${this.htmlMode}
@@ -4696,6 +4732,7 @@ export class DomEditor extends LitElement {
         @local-package-export-delete=${this.handleLocalPackageExportDelete}
         @local-package-export-file-pick=${this.handleLocalPackageExportFilePick}
         @toolbox-change=${this.handleToolboxChange}
+        @document-layout-change=${this.handleDocumentLayoutChange}
         @html-mode-change=${this.handleHTMLModeChange}
         @html-source-change=${this.handleHTMLSourceChange}
         @html-source-apply=${this.handleHTMLSourceApply}

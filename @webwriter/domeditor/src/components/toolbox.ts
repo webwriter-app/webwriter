@@ -7,6 +7,7 @@ import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
+import type {DocumentLayoutState} from "../document-layout"
 
 export type ToolboxTool = "Edit" | "Style" | "Review"
 
@@ -33,6 +34,8 @@ export class DomEditorToolbox extends EditingControls {
     htmlSource: {type: String, attribute: false},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     htmlSourceError: {type: String, attribute: false},
+    documentLayout: {attribute: false},
+    documentLayoutError: {attribute: false},
   }
 
   static styles = css`
@@ -355,6 +358,61 @@ export class DomEditorToolbox extends EditingControls {
       font-size: 0.7rem;
     }
 
+    .document-layout-controls {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.45rem;
+      padding: 0.65rem;
+      color: #52606d;
+      font-size: 0.75rem;
+    }
+
+    .document-layout-mode,
+    .document-layout-zoom {
+      margin: 0;
+    }
+
+    .document-layout-mode strong,
+    .document-layout-zoom strong {
+      color: #2f3742;
+      font-weight: 650;
+    }
+
+    .document-layout-change {
+      box-sizing: border-box;
+      min-height: 28px;
+      margin: 0;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid #8ba5be;
+      border-radius: 0.25rem;
+      color: #153b5c;
+      background: #dbe7f2;
+      font: 600 0.72rem/1 system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .document-layout-change:hover:not(:disabled) {
+      background: #c8dced;
+    }
+
+    .document-layout-change:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 1px;
+    }
+
+    .document-layout-change:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .document-layout-error {
+      margin: 0;
+      color: #b42318;
+      font-size: 0.7rem;
+    }
+
     .edit-mode-footer {
       box-sizing: border-box;
       display: flex;
@@ -463,6 +521,8 @@ export class DomEditorToolbox extends EditingControls {
   htmlSource = ""
   htmlPending = false
   htmlSourceError = ""
+  documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
+  documentLayoutError = ""
 
   protected get elementStyleEditorOrientation(): "vertical" {
     return "vertical"
@@ -525,6 +585,26 @@ export class DomEditorToolbox extends EditingControls {
     }
     const drawers = super.renderDrawers()
     if(this.activeTool === "Edit" && !this.developMode && this.documentSelected) {
+      drawers.push(html`
+        <ribbon-drawer label="Layout" icon="Layout" layout="document-layout">
+          <div class="document-layout-controls">
+            <p class="document-layout-mode">Current mode: <strong>${this.documentLayout.mode === "canvas" ? "Canvas" : "Document"}</strong></p>
+            <p class="document-layout-zoom">Zoom: <strong>${this.documentLayout.zoom}%</strong></p>
+            ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
+            ${!this.documentLayout.canConvert ? html`<p>This document’s structure cannot be converted automatically.</p>` : ""}
+            <button
+              class="document-layout-change"
+              type="button"
+              ?disabled=${!this.documentLayout.canConvert || this.historyState.preview !== null || this.htmlPending}
+              @click=${() => this.dispatchEvent(new CustomEvent<{mode: "canvas" | "document"}>("document-layout-change", {
+                detail: {mode: this.documentLayout.mode === "canvas" ? "document" : "canvas"},
+                bubbles: true,
+                composed: true,
+              }))}
+            >Convert to ${this.documentLayout.mode === "canvas" ? "document" : "canvas"}</button>
+          </div>
+        </ribbon-drawer>
+      `)
       drawers.push(html`
         <ribbon-drawer label="Metadata" icon="Properties" layout="document-head"
           @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {

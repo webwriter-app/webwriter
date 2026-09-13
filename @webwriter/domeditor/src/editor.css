@@ -4,6 +4,32 @@ body {
   overscroll-behavior: contain;
 }
 
+/* The viewport is finite; the appendix slot supplies an unbounded camera. */
+html.◆canvas-active {
+  overflow: clip;
+  background: #f8fafc;
+}
+
+html.◆canvas-active body {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  overflow: visible;
+  background: transparent;
+}
+
+body.◆canvas-hand, body.◆canvas-hand * {
+  cursor: grab !important;
+}
+
+body.◆canvas-panning, body.◆canvas-panning * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 html {
   background: white;
   overflow-y: scroll;

@@ -1110,6 +1110,10 @@ export class SelectionFeature extends EditorFeature {
     this.#lastScrollSelection = selectedElement ? {element: selectedElement}
       : range ? {range: range.cloneRange(), backwards} : null
     if(selectedElement) {
+      if(this.editor.features.canvas.active) {
+        this.editor.features.canvas.reveal(selectedElement.getBoundingClientRect())
+        return
+      }
       selectedElement.scrollIntoView({behavior: uiMotionDisabled(selectedElement) ? "instant" : "smooth", block: "nearest", inline: "nearest"})
       return
     }
@@ -1180,7 +1184,8 @@ export class SelectionFeature extends EditorFeature {
 
     const left = nearestDelta(predicted.left, predicted.right, 0, window.innerWidth)
     const top = nearestDelta(predicted.top, predicted.bottom, 0, window.innerHeight)
-    if(left || top) window.scrollBy({left, top, behavior})
+    if(this.editor.features.canvas.active) this.editor.features.canvas.reveal(predicted)
+    else if(left || top) window.scrollBy({left, top, behavior})
   }
 
   /** Normalizes and re-applies exactly one selection kind for the current
