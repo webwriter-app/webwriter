@@ -1,3 +1,9 @@
+/* Keep the document's native bounce local to its iframe. */
+html,
+body {
+  overscroll-behavior: contain;
+}
+
 html {
   background: white;
   overflow-y: scroll;
