@@ -1,6 +1,7 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
+import {standaloneGraphicShape} from "../graphic"
 
 type TransformElement = HTMLElement | SVGSVGElement
 type Mode = "move" | "scale" | "rotate" | "anchor"
@@ -463,6 +464,7 @@ export class TransformationFeature extends EditorFeature {
       this.#frame = null
       if(this.#gesture && !this.#validGesture()) return
       this.updateInfo()
+      this.editor.features.graphic.refresh()
       this.#scheduleFrame()
     })
   }
@@ -572,6 +574,27 @@ export class TransformationFeature extends EditorFeature {
     this.updateInfo()
   }
 
+  /** Fits a shape's viewport without moving its geometry on screen. Measuring
+   * the new screen matrix also accounts for CSS rotation and transform origins. */
+  fitGraphicBounds(graphic: SVGSVGElement, bounds: {x: number, y: number, width: number, height: number}, screen: DOMMatrixInit) {
+    if(this.target !== graphic || this.#gesture || this.editor.isEditingLocked) return
+    const before = DOMMatrix.fromMatrix(screen)
+    const local = this.#matrix(graphic).inverse().multiply(before)
+    const width = bounds.width * Math.hypot(local.a, local.b)
+    const height = bounds.height * Math.hypot(local.c, local.d)
+    if(![width, height].every(value => Number.isFinite(value) && value > 0)) return
+    const values = [bounds.x, bounds.y, bounds.width, bounds.height].map(value => String(Math.round(value * 100) / 100))
+    if(graphic.getAttribute("viewBox") === values.join(" ")) return
+    graphic.setAttribute("viewBox", values.join(" "))
+    this.#write("width", `${width}px`)
+    this.#write("height", `${height}px`)
+    this.#write("max-inline-size", "none")
+    this.#write("max-block-size", "none")
+    const after = graphic.getScreenCTM?.()
+    if(after) this.#offsetBy(before.e - after.e, before.f - after.f)
+    this.updateInfo()
+  }
+
   handleMoveStart(event: MouseEvent) { this.#begin(event, "move", this.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!) }
   handleScaleStart(event: MouseEvent) {
     const handle = event.composedPath()[0] ?? event.target
@@ -633,6 +656,10 @@ export class TransformationFeature extends EditorFeature {
     }
     else {
       const vertical = /^(?:vertical|sideways)-/.test(style.writingMode)
+      if(standaloneGraphicShape(target)) {
+        if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
+        if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
+      }
       if(x) this.#write(vertical ? "max-block-size" : "max-inline-size", `${Math.max(0, gesture.cssWidth + dw)}px`)
       if(y) this.#write(vertical ? "max-inline-size" : "max-block-size", `${Math.max(0, gesture.cssHeight + dh)}px`)
       // Maximums may not change the used size (for example, an image's natural

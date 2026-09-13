@@ -460,6 +460,52 @@ await check("selection markers and appendix layout artifacts tear down cleanly",
   section.remove()
 })
 
+await check("standalone SVG affordances refit rotated elements and resize beyond their original size", async () => {
+  $.selectRange(fixture, fixture.childNodes.length)
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "ellipse"})
+  const graphic = fixture.querySelector<SVGSVGElement>("svg")!
+  assert(graphic, "standalone SVG was not inserted")
+  Object.assign(graphic.style, {left: "200px", top: "200px", rotate: "30deg"})
+  editor.features.selection.selectElement(graphic)
+  await layoutFrame()
+  assert($.selectedElement === graphic && !editor.features.selection.isCaptureSelection, "shape did not retain ordinary element selection")
+  assert(!editor.appendix.querySelector('[part~="atomic-selection-overlay"]'), "standalone selection has a blue fill")
+  const originalWidth = parseFloat(getComputedStyle(graphic).width)
+  const original = graphic.getScreenCTM()!
+  const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="radius-x"]')!
+  const box = handle.getBoundingClientRect()
+  const start = {x: box.left + box.width / 2, y: box.top + box.height / 2}
+  const end = {x: start.x + original.a * 180, y: start.y + original.b * 180}
+  handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 91, clientX: start.x, clientY: start.y}))
+  document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 91, clientX: end.x, clientY: end.y}))
+  await layoutFrame()
+  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 91}))
+  await layoutFrame()
+  const current = graphic.getScreenCTM()!
+  for(const key of ["a", "b", "c", "d", "e", "f"] as const) {
+    assert(Math.abs(current[key] - original[key]) < .1, `refitting moved the shape's ${key} transform`)
+  }
+  assert(parseFloat(getComputedStyle(graphic).width) > originalWidth + 300, "radius edit did not grow the element")
+  const ellipse = graphic.querySelector("ellipse")!
+  assert(Number(ellipse.getAttribute("rx")) > 290, "radius remained constrained to the original viewport")
+  const resizer = editor.features.transformation.overlay.querySelector<HTMLElement>('#◆transform-overlay-scale-down-right')!
+  const resizeBox = resizer.getBoundingClientRect()
+  const x = resizeBox.left + resizeBox.width / 2, y = resizeBox.top + resizeBox.height / 2
+  const beforeResize = parseFloat(getComputedStyle(graphic).width)
+  // Synthetic pointers cannot acquire native capture; exercise the same
+  // transformation methods with a mouse gesture and real rendered geometry.
+  resizer.addEventListener("mousedown", event => editor.features.transformation.handleScaleStart(event), {once: true})
+  resizer.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: x, clientY: y}))
+  editor.features.transformation.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: x + 180, clientY: y + 180}))
+  editor.features.transformation.handleScaleEnd()
+  await layoutFrame()
+  assert(parseFloat(getComputedStyle(graphic).width) > beforeResize + 100, "standard resizing could not enlarge the shape")
+  assert($.selectedElement === graphic, "resizing lost the element selection")
+  graphic.remove()
+  $.selectDocumentStart()
+  editor.features.selection.processSelection()
+})
+
 await check("iframe lifecycle reaches load and cleans up", async () => {
   const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")!
   await new Promise<void>((resolve, reject) => {

@@ -145,3 +145,12 @@ export function graphicShapeRoots(graphic: SVGSVGElement) {
   visit(graphic)
   return shapes
 }
+
+/** An unclipped, single-shape viewport is edited as one document element.
+ * Inspect the live children so added content and unfamiliar groups stay canvases. */
+export function standaloneGraphicShape(graphic: Element | null) {
+  if(graphic?.namespaceURI !== SVG_NAMESPACE || graphic.localName !== "svg"
+    || graphic.getAttribute("overflow") !== "visible") return null
+  const content = Array.from(graphic.children).filter(child => !["defs", "title", "desc", "metadata"].includes(child.localName))
+  return content.length === 1 && graphicShapeType(content[0]) ? content[0] as SVGGraphicsElement : null
+}

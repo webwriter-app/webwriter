@@ -603,6 +603,21 @@ describe("transform controls and geometry", () => {
     expect(target.firstElementChild).toBe(child)
   })
 
+  it("resizes a standalone shape beyond its initial SVG dimensions", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const target = document.querySelector("svg")!
+    mockRect(target, {width: 244, height: 244})
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 344, clientY: 344}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 464, clientY: 424}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.width).toBe("364px")
+    expect(target.style.height).toBe("324px")
+    expect(target).toHaveAttribute("preserveAspectRatio", "none")
+    expect(target.querySelector("rect")).toHaveAttribute("width", "240")
+    expect($.selectedElement).toBe(target)
+  })
+
   it("rotates only an absolute target", () => {
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})

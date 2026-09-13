@@ -1,7 +1,7 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
-import {graphicContainerForNode} from "../graphic"
+import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
@@ -100,6 +100,7 @@ export class SelectionFeature extends EditorFeature {
         // instead of highlighting their atomic descendants twice.
         if(range.comparePoint(parent, index) === 0 && range.comparePoint(parent, index + 1) === 0) {
           this.#markSelection(element, "◆atomic-range-selected")
+          if($.selectedElement === element && standaloneGraphicShape(element)) return
           const overlay = document.createElement("div")
           overlay.classList.add("◆", "◆editor-only")
           overlay.setAttribute("part", "atomic-selection-overlay")
@@ -199,6 +200,14 @@ export class SelectionFeature extends EditorFeature {
       }
       else $.selectElement(element, false)
     }
+    this.processSelection()
+  }
+
+  selectElement(element: Element) {
+    if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    this.#releaseCaptureSelection()
+    this.clearSelectedSection()
+    $.selectElement(element)
     this.processSelection()
   }
 
@@ -1179,6 +1188,13 @@ export class SelectionFeature extends EditorFeature {
    * selectionchange events and every editor-driven refresh. Passive refreshes
    * preserve the last interaction's scroll target without revealing it again. */
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
+    // Chromium can clear its native range when focusing an SVG-only document.
+    // Preserve the ordinary node selection only while no new endpoints exist.
+    if(!document.getSelection()?.rangeCount) {
+      const standalone = Array.from(this.#selectionMarkers).find(element => element.isConnected
+        && element.classList.contains("◆element-selected") && standaloneGraphicShape(element))
+      if(standalone) $.selectElement(standalone, false)
+    }
     const focusedWidget = focusedWidgetHost()
     if(focusedWidget && !this.isInDragSelection) {
       this.#capturedElement = isContentfulWidget(focusedWidget, this.editor.schema) ? null : focusedWidget
@@ -1216,6 +1232,7 @@ export class SelectionFeature extends EditorFeature {
       : kind === "section" ? this.selectedSectionElement
         : kind === "element" ? $.selectedElement ?? null : null)
     this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
+    this.editor.features.graphic.refresh()
     this.editor.features.layout.refresh()
     if(scrollIntoView && !isContentfulWidget(focusedWidget, this.editor.schema)) {
       this.#scrollSelectionIntoView(kind, sel, capturedElement)

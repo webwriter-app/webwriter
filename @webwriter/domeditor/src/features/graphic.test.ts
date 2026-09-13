@@ -9,6 +9,7 @@ import {
   graphicShapeOptions,
   graphicShapeRoots,
   graphicShapeType,
+  standaloneGraphicShape,
 } from "../graphic"
 
 let editor: DOMEditor
@@ -72,14 +73,28 @@ describe("graphic editing", () => {
 
     const graphic = document.querySelector("svg")!
     const shape = graphic.firstElementChild!
-    expect(graphic).toHaveAttribute("width", "320")
+    expect(Number(graphic.getAttribute("width"))).toBeGreaterThan(0)
+    expect(graphic).toHaveStyle({position: "absolute"})
+    expect(graphic).toHaveAttribute("overflow", "visible")
     expect(graphic.getAttribute("viewBox")).not.toBe("0 0 1600 900")
     expect(shape.namespaceURI).toBe(SVG_NAMESPACE)
     const polygonal = ["triangle", "diamond", "hexagon", "star", "arrow", "polygon"].includes(option.type)
     expect(shape.localName).toBe(option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type)
     expect(shape).toHaveAttribute("stroke")
     expect($.selectedElement).toBe(graphic)
-    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(graphic).toHaveClass("◆element-selected")
+    expect(graphic).not.toHaveClass("◆element-capture-selected", "◆graphic-grid-visible")
+    expect(editor.features.transformation.target).toBe(graphic)
+    expect(editor.features.graphic.selectedShape).toBe(shape)
+    expect(editor.features.graphic.getState()).toMatchObject({capture: false, selectionCount: 1})
+    expect(editor.appendix.querySelector('[part~="selection-caret-node"]')).not.toBeNull()
+    expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
+    expect(editor.appendix.querySelector('.◆graphic-selection-outline')).toHaveAttribute("display", "none")
+    expect(editor.appendix.querySelectorAll('.◆graphic-specific-handles button').length).toBeGreaterThan(0)
+    expect(editor.appendix.querySelector('.◆graphic-ports')?.children).toHaveLength(0)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(document.body.querySelector('[data-graphic-handle]')).toBeNull()
   })
 
   it("capture-selects a drawing-area click and adds a shape to that live SVG", () => {
@@ -106,6 +121,141 @@ describe("graphic editing", () => {
       shape: "rectangle",
       parameters: {x: "680", y: "330", width: "240", height: "240"},
     })
+  })
+
+  it("fits a standalone rectangle to its stroke and reselects it through the element path", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    expect(graphic).toHaveAttribute("viewBox", "678 328 244 244")
+    expect(graphic).toHaveAttribute("width", "244")
+    expect(graphic).toHaveAttribute("height", "244")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Other content"
+    document.body.append(paragraph)
+    $.move(paragraph.firstChild!)
+    editor.features.selection.processSelection()
+    expect(editor.appendix.querySelector('.◆graphic-overlay')).toHaveAttribute("hidden")
+
+    clickShape(graphic.firstElementChild!)
+    document.dispatchEvent(new Event("selectionchange"))
+
+    expect($.selectedElement).toBe(graphic)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(editor.features.transformation.target).toBe(graphic)
+    expect(editor.appendix.querySelector('.◆graphic-overlay')).not.toHaveAttribute("hidden")
+    expect(graphic).not.toHaveClass("◆graphic-grid-visible")
+  })
+
+  it.each(["Delete", "Backspace"])("deletes the whole standalone shape with %s and supports undo", async key => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key}))
+    await mutationsDelivered()
+    expect(document.querySelector("svg")).toBeNull()
+    expect(editor.appendix.querySelector('.◆graphic-overlay')).toHaveAttribute("hidden")
+    editor.features.history.actions.undo({type: "undo"})
+    const graphic = document.querySelector("svg")!
+    expect(graphic.querySelector("rect")).not.toBeNull()
+    clickShape(graphic)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(editor.features.graphic.selectedShape).toBe(graphic.querySelector("rect"))
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["commit", "cancel", "replace"])("edits standalone yellow affordances safely on %s", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const shape = graphic.querySelector("rect")!
+    Object.defineProperty(graphic, "getScreenCTM", {
+      configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: -678, f: -328}),
+    })
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const handle = editor.appendix.querySelector('[data-graphic-handle="roundness"]')!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: 14, clientY: 2}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 62, clientY: 2}))
+    expect(editor.appendix.querySelector('.◆graphic-preview')).not.toBeNull()
+    if(outcome === "cancel") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+    if(outcome === "replace") {
+      const replacement = shape.cloneNode(true) as Element
+      replacement.removeAttribute("class")
+      shape.replaceWith(replacement)
+    }
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    await mutationsDelivered()
+    expect(shape).toHaveAttribute("rx", outcome === "commit" ? "60" : "12")
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(editor.appendix.querySelector('.◆graphic-preview')).toBeNull()
+    expect(document.querySelector('.◆graphic-preview-source')).toBeNull()
+    if(outcome === "commit") {
+      editor.features.history.actions.undo({type: "undo"})
+      expect(shape).toHaveAttribute("rx", "12")
+      editor.features.history.actions.redo({type: "redo"})
+      expect(shape).toHaveAttribute("rx", "60")
+    }
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("recognizes serialized standalone shapes while preserving unfamiliar or expanded SVG content", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const copy = graphic.cloneNode(true) as SVGSVGElement
+    copy.insertAdjacentHTML("afterbegin", '<title>Shape</title><!--keep--><defs><marker id="tip"/></defs>')
+    document.body.append(copy)
+    clickShape(copy.querySelector("rect")!)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(standaloneGraphicShape(copy)).toBe(copy.querySelector("rect"))
+    copy.insertAdjacentHTML("beforeend", '<g transform="translate(3 4)"><path d="M0 0 L10 10"/></g>')
+    const content = copy.innerHTML
+    clickShape(copy)
+    expect(standaloneGraphicShape(copy)).toBeNull()
+    expect(editor.features.selection.captureSelectedElement).toBe(copy)
+    expect(copy.innerHTML).toBe(content)
+    editor.features.graphic.disable()
+    expect(copy).not.toHaveClass("◆graphic-grid-visible")
+    expect(editor.appendix.querySelector('.◆graphic-overlay')).toBeNull()
+  })
+
+  it("restores a standalone node selection after native focus clears its range", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    document.getSelection()!.removeAllRanges()
+    editor.features.selection.processSelection()
+    expect($.selectedElement).toBe(graphic)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    $.move(document.body, 0)
+    editor.features.selection.processSelection()
+    expect($.selectedElement).toBeUndefined()
+    expect(graphic).not.toHaveClass("◆element-selected")
+  })
+
+  it("expands the element to fit an edited radius beyond the original viewport in one undo step", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "ellipse"})
+    const graphic = document.querySelector("svg")!
+    const ellipse = graphic.querySelector("ellipse")!
+    Object.defineProperty(graphic, "getScreenCTM", {
+      configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0}),
+    })
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const handle = editor.appendix.querySelector('[data-graphic-handle="radius-x"]')!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: 920, clientY: 450}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 1100, clientY: 450}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    await mutationsDelivered()
+    expect(ellipse).toHaveAttribute("rx", "300")
+    expect(graphic).toHaveAttribute("viewBox", "498 328 604 244")
+    expect(graphic.style.width).toBe("604px")
+    expect(graphic.style.height).toBe("244px")
+    expect($.selectedElement).toBe(graphic)
+    editor.features.history.actions.undo({type: "undo"})
+    expect(ellipse).toHaveAttribute("rx", "120")
+    expect(graphic).toHaveAttribute("viewBox", "678 328 244 244")
+    expect(graphic.style.width).toBe("")
+    editor.features.history.actions.redo({type: "redo"})
+    expect(ellipse).toHaveAttribute("rx", "300")
+    expect(graphic.getAttribute("style")).toContain("width: 604px")
   })
 
   it.each(graphicShapeOptions)("preserves the rendered form and size of an added $label", option => {
@@ -214,7 +364,8 @@ describe("graphic editing", () => {
   })
 
   it("moves shapes directly and exposes shape-specific appendix affordances", () => {
-    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
     const rectangle = graphic.querySelector("rect")!
     Object.defineProperty(graphic, "getBoundingClientRect", {
@@ -343,7 +494,8 @@ describe("graphic editing", () => {
   })
 
   it("opens the selected shape label editor with Enter and retains graphic capture on Escape", () => {
-    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
     const rectangle = graphic.querySelector("rect")!
     clickShape(rectangle)
@@ -753,7 +905,8 @@ describe("graphic editing", () => {
   })
 
   it("moves a horizontal line without changing its endpoints' axis", () => {
-    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "line"})
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "line"})
     const graphic = document.querySelector("svg")!
     const line = graphic.querySelector("line")!
     Object.defineProperty(graphic, "getBoundingClientRect", {

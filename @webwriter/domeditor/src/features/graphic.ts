@@ -8,6 +8,7 @@ import {
   graphicShapeOptions,
   graphicShapeRoots,
   graphicShapeType,
+  standaloneGraphicShape,
   isGraphicArrangeOperation,
   isGraphicLayerOperation,
   isGraphicShapeType,
@@ -584,7 +585,8 @@ export class GraphicFeature extends EditorFeature {
       }
       this.editor.features.manipulation.insert(graphic)
       if(graphic.isConnected) {
-        this.editor.features.selection.captureElement(graphic)
+        if(shape) this.editor.features.selection.selectElement(graphic)
+        else this.editor.features.selection.captureElement(graphic)
         this.#refresh()
         this.editor.postSelectionPath(true)
       }
@@ -617,6 +619,7 @@ export class GraphicFeature extends EditorFeature {
         const primary = this.selectedShape
         this.#setShapeSelection(nextShapes, primary ? replacements.get(primary) as SVGGraphicsElement ?? primary : null)
       }
+      this.#fitSelectedStandaloneGraphic()
       this.editor.doc.stopCapturing()
       this.#refresh()
       this.editor.postSelectionPath()
@@ -652,11 +655,15 @@ export class GraphicFeature extends EditorFeature {
   } as const
 
   get selectedShapes() {
+    const standalone = this.#standaloneShape()
+    if(standalone) return [standalone]
     const graphic = this.#capturedGraphic()
     return Array.from(this.#selectedShapes).filter(shape => shape.isConnected && graphic?.contains(shape))
   }
 
   get selectedShape() {
+    const standalone = this.#standaloneShape()
+    if(standalone) return standalone
     return this.#primaryShape && this.selectedShapes.includes(this.#primaryShape) ? this.#primaryShape : null
   }
 
@@ -718,6 +725,12 @@ export class GraphicFeature extends EditorFeature {
     compositionstart: event => this.#blockCapturedEditingEvent(event),
     paste: event => this.#blockCapturedEditingEvent(event),
     keydown: event => {
+      if(event.key === "Escape" && this.#standaloneShape() && (this.#interaction || this.#labelEditor)) {
+        this.#claimKeyboardEvent(event)
+        this.#cancelPointer()
+        this.#closeLabelEditor(false)
+        return
+      }
       const graphic = this.#capturedGraphic()
       if(!graphic) return
       if(this.#handleSpaceDown(event)) return
@@ -816,7 +829,7 @@ export class GraphicFeature extends EditorFeature {
 
   passiveListeners: DocumentListenerMap = {
     selectionchange: () => {
-      if(!this.#capturedGraphic()) this.#clearShapeSelection()
+      if(!this.#activeGraphic()) this.#clearShapeSelection()
       this.#syncCanvasPresentation()
       this.#scheduleRefresh()
     },
@@ -869,6 +882,16 @@ export class GraphicFeature extends EditorFeature {
     return captured?.localName === "svg" && captured.namespaceURI === SVG_NAMESPACE
       ? captured as SVGSVGElement
       : null
+  }
+
+  #standaloneShape() {
+    if(this.editor.features.selection.captureSelectedElement) return null
+    const selected = $.selectedElement
+    return selected?.isConnected ? standaloneGraphicShape(selected) : null
+  }
+
+  #activeGraphic() {
+    return this.#capturedGraphic() ?? (this.#standaloneShape() ? $.selectedElement as SVGSVGElement : null)
   }
 
   #createGraphic() {
@@ -969,7 +992,7 @@ export class GraphicFeature extends EditorFeature {
 
   #fitStandaloneGraphic(graphic: SVGSVGElement, shape: SVGGraphicsElement) {
     const bounds = shapeBounds(shape)
-    const padding = Math.max(32, attributeNumber(shapeGeometry(shape), "stroke-width") * 3)
+    const padding = attributeNumber(shapeGeometry(shape), "stroke-width") / 2
     const width = Math.max(1, bounds.width)
     const height = Math.max(1, bounds.height)
     graphic.setAttribute("viewBox", [
@@ -978,7 +1001,28 @@ export class GraphicFeature extends EditorFeature {
       cleanNumber(width + padding * 2),
       cleanNumber(height + padding * 2),
     ].join(" "))
-    graphic.setAttribute("width", "320")
+    graphic.setAttribute("width", cleanNumber(width + padding * 2))
+    graphic.setAttribute("height", cleanNumber(height + padding * 2))
+    graphic.setAttribute("overflow", "visible")
+    graphic.setAttribute("preserveAspectRatio", "none")
+    graphic.style.position = "absolute"
+  }
+
+  #fitSelectedStandaloneGraphic() {
+    const shape = this.#standaloneShape()
+    const graphic = shape ? this.#activeGraphic() : null
+    if(!shape || !graphic) return
+    const bounds = visualBounds(shape)
+    const matrix = this.#screenMatrix(graphic)
+    const stroke = attributeNumber(shapeGeometry(shape), "stroke-width") / 2
+    // Non-scaling strokes occupy screen pixels, even after element resizing.
+    const paddingX = stroke / Math.max(.0001, Math.hypot(matrix.a, matrix.b))
+    const paddingY = stroke / Math.max(.0001, Math.hypot(matrix.c, matrix.d))
+    this.editor.features.transformation.fitGraphicBounds(graphic, {
+      x: bounds.x - paddingX, y: bounds.y - paddingY,
+      width: Math.max(1, bounds.width) + paddingX * 2,
+      height: Math.max(1, bounds.height) + paddingY * 2,
+    }, matrix)
   }
 
   #handleDoubleClick(event: MouseEvent) {
@@ -989,7 +1033,8 @@ export class GraphicFeature extends EditorFeature {
     if(!graphic || !shape || this.#isLocked(shape) || !type || type === "line" || type === "connector") return
     event.preventDefault()
     event.stopImmediatePropagation()
-    if(this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
+    if(standaloneGraphicShape(graphic)) this.editor.features.selection.selectElement(graphic)
+    else if(this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
     this.#selectShape(shape)
     this.#openLabelEditor(shape)
     this.#refresh()
@@ -1081,6 +1126,16 @@ export class GraphicFeature extends EditorFeature {
 
   #handlePointerDown(event: PointerEvent) {
     const pointerGraphic = event.target instanceof Node ? graphicContainerForNode(event.target) : null
+    // Ordinary selection owns movement, resizing, rotation and document editing.
+    if(pointerGraphic && standaloneGraphicShape(pointerGraphic)) {
+      if(event.button === 0) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        this.editor.features.selection.selectElement(pointerGraphic)
+        this.editor.postSelectionPath()
+      }
+      return
+    }
     if((event.button === 1 || event.button === 0 && this.#spaceDown) && pointerGraphic) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -1107,6 +1162,7 @@ export class GraphicFeature extends EditorFeature {
 
     const graphic = pointerGraphic
     if(!graphic) {
+      if(event.composedPath().includes(this.editor.appendix)) return
       this.#clearShapeSelection()
       return
     }
@@ -1130,7 +1186,7 @@ export class GraphicFeature extends EditorFeature {
   #startInteraction(handle: string, event: PointerEvent) {
     const shapes = this.selectedShapes
     const shape = this.selectedShape ?? shapes[0]
-    const graphic = this.#capturedGraphic()
+    const graphic = this.#activeGraphic()
     if(!shape || !graphic || !shapes.length) return
     const point = this.#clientPoint(graphic, event.clientX, event.clientY)
     const captureTarget = event.composedPath().find(target => target instanceof Element) as Element | undefined
@@ -1290,7 +1346,7 @@ export class GraphicFeature extends EditorFeature {
       return
     }
     const interaction = this.#interaction
-    const graphic = this.#capturedGraphic()
+    const graphic = this.#activeGraphic()
     if(!interaction || !graphic || event.pointerId !== interaction.pointerId) return
     event.preventDefault()
     event.stopImmediatePropagation()
@@ -1515,6 +1571,7 @@ export class GraphicFeature extends EditorFeature {
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)
     this.#frame = null
     const sourcesAreCurrent = interaction.items.every(item => item.source.isConnected
+      && this.selectedShapes.includes(item.source)
       && this.#geometrySignature(item.source) === item.signature)
       && interaction.attachedConnectors.every(item => item.source.isConnected
         && this.#geometrySignature(item.source) === item.signature)
@@ -1523,6 +1580,7 @@ export class GraphicFeature extends EditorFeature {
       try {
         this.#applyInteractionSet(interaction.items.map(item => item.source), interaction)
         this.#applyAttachedConnectors(interaction.attachedConnectors)
+        this.#fitSelectedStandaloneGraphic()
       }
       finally {
         endUndoGroup()
@@ -1547,7 +1605,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #beginInteractionPreview(interaction: Interaction) {
-    const graphic = this.#capturedGraphic()
+    const graphic = this.#activeGraphic()
     if(!interaction.items.length || !graphic) return
     interaction.active = true
     const previewRoot = document.createElementNS(SVG_NAMESPACE, "svg")
@@ -1586,7 +1644,7 @@ export class GraphicFeature extends EditorFeature {
         return
       }
       const interaction = this.#interaction
-      const graphic = this.#capturedGraphic()
+      const graphic = this.#activeGraphic()
       const previews = interaction?.items.flatMap(item => item.preview ? [item.preview] : []) ?? []
       if(!interaction?.active || previews.length !== interaction.items.length || !graphic) return
       interaction.matrix = this.#screenMatrix(graphic)
@@ -1603,6 +1661,17 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #positionPreviewRoot(preview: SVGSVGElement, graphic: SVGSVGElement) {
+    if(standaloneGraphicShape(graphic)) {
+      const box = graphicViewBox(graphic)
+      const matrix = this.#screenMatrix(graphic)
+      const origin = applyMatrix(matrix, {x: box.x, y: box.y})
+      Object.assign(preview.style, {
+        left: "0", top: "0", width: `${box.width}px`, height: `${box.height}px`,
+        overflow: "visible", transformOrigin: "0 0",
+        transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${origin.x}, ${origin.y})`,
+      })
+      return
+    }
     const rect = graphic.getBoundingClientRect()
     Object.assign(preview.style, {
       left: `${rect.left}px`,
@@ -1930,7 +1999,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #snapPoint(point: Point, interaction: Interaction) {
-    if(!this.#options.snap || interaction.latest.altKey) return {point, guides: {}}
+    if(this.#standaloneShape() || !this.#options.snap || interaction.latest.altKey) return {point, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
     const x = this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x)
     const y = this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y)
@@ -2514,12 +2583,14 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #refresh() {
+    if(!this.isEnabled) return
+    if(!this.#activeGraphic()) this.#clearShapeSelection()
     this.#syncCanvasPresentation()
     this.#positionLabelEditor()
     if(this.#connector?.active) this.#updateConnectorPreview(this.#connector)
     const interaction = this.#interaction
     const marquee = this.#marquee
-    const graphic = this.#capturedGraphic()
+    const graphic = this.#activeGraphic()
     const shapes = interaction?.active
       ? interaction.items.flatMap(item => item.preview ? [item.preview] : [])
       : this.selectedShapes
@@ -2630,6 +2701,10 @@ export class GraphicFeature extends EditorFeature {
     const stem = overlay.querySelector<SVGLineElement>(".◆graphic-rotation-stem")!
     const individualOutlines = overlay.querySelector<SVGGElement>(".◆graphic-individual-outlines")!
     const multi = shapes.length > 1
+    const standalone = Boolean(this.#standaloneShape())
+    outline.toggleAttribute("hidden", standalone)
+    if(standalone) outline.setAttribute("display", "none")
+    else outline.removeAttribute("display")
     const shape = shapes[0]
     const bounds = multi
       ? interaction?.frameBounds ?? unionBounds(shapes.map(current => visualBounds(current)))
@@ -2687,21 +2762,23 @@ export class GraphicFeature extends EditorFeature {
     const endpointShape = type === "line" || type === "connector"
     overlay.dataset.shape = multi ? "multiple" : type ?? ""
     overlay.querySelectorAll<HTMLButtonElement>('[data-graphic-handle^="resize-"]').forEach(handle => {
-      handle.hidden = !multi && endpointShape
+      handle.hidden = standalone || !multi && endpointShape
       const direction = handle.dataset.graphicHandle!.slice("resize-".length)
       this.#positionHandle(handle, positions[direction])
     })
     const rotateHandle = overlay.querySelector<HTMLButtonElement>('[data-graphic-handle="rotate"]')!
-    rotateHandle.hidden = !multi && endpointShape
+    rotateHandle.hidden = standalone || !multi && endpointShape
     this.#positionHandle(rotateHandle, rotate)
-    stem.toggleAttribute("hidden", !multi && endpointShape)
+    stem.toggleAttribute("hidden", standalone || !multi && endpointShape)
+    if(standalone || !multi && endpointShape) stem.setAttribute("display", "none")
+    else stem.removeAttribute("display")
     stem.setAttribute("x1", cleanNumber(top.x))
     stem.setAttribute("y1", cleanNumber(top.y))
     stem.setAttribute("x2", cleanNumber(rotate.x))
     stem.setAttribute("y2", cleanNumber(rotate.y))
     this.#ensureSpecificHandles(overlay, multi ? null : shape)
     if(!multi) this.#positionSpecificHandles(overlay, shape, toClient)
-    this.#updatePorts(overlay, multi ? null : shape, matrix)
+    this.#updatePorts(overlay, standalone || multi ? null : shape, matrix)
     overlay.hidden = false
     void graphic
   }

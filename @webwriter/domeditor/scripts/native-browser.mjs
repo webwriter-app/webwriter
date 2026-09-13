@@ -25,6 +25,7 @@ const expectedChecks = [
   "transformed grid geometry withholds misleading resize handles",
   "focused AI previews preserve widgets, contextual HTML, and rendered styles",
   "selection markers and appendix layout artifacts tear down cleanly",
+  "standalone SVG affordances refit rotated elements and resize beyond their original size",
   "iframe lifecycle reaches load and cleans up",
 ]
 const chrome = process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
