@@ -13,7 +13,8 @@
 <h1>Widget catalog smoke test</h1>
 <p>Runs the editor's package loader and insertion command against the public catalog in disposable frames. Optional URL filters: <code>?package=quiz</code> and <code>&member=choice</code>.</p>
 <p>Add <code>&isolated</code> for a fresh frame per member, <code>&default</code> for package-button defaults, and <code>&preview</code> or <code>&export</code> to check standalone rendering.</p>
-<p><code>&fixture</code> exercises nested components; <code>&also=quiz,slides</code> loads additional package dependencies.</p>
+<p><code>&fixture</code> exercises configured widgets and nested components; <code>&also=quiz,slides</code> loads additional package dependencies.</p>
+<p><code>&ai</code> inserts through an AI proposal; <code>?package=automaton&fixture&ai</code> checks configured automaton initialization.</p>
 <button id="run">Run catalog smoke test</button>
 <p id="status" role="status">Ready</p>
 <div id="stage"></div>

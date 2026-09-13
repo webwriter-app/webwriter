@@ -75,6 +75,7 @@ describe("OpenAI-compatible AI client", () => {
     expect(secondBody.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({role: "tool", tool_call_id: "call-1", content: JSON.stringify({html: "<h1>Hello</h1>"})}),
     ]))
+    expect(secondBody.messages.find((message: any) => message.role === "assistant")).not.toHaveProperty("reasoning_content")
   })
 
   it("sends image, text, and binary attachments as compatible content parts", async () => {
@@ -106,6 +107,53 @@ describe("OpenAI-compatible AI client", () => {
       expect.objectContaining({type: "text", text: expect.stringContaining("notes.txt")}),
       {type: "file", file: {filename: "paper.pdf", file_data: "data:application/pdf;base64,AQID"}},
     ]))
+  })
+
+  it("sends prefetched capabilities without fabricating an assistant tool call", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({choices: [{message: {content: "Ready."}}]}))
+    const context = {selection: {kind: "none"}, tools: ["read_current_document"]}
+    const toolHandler = vi.fn().mockResolvedValue(context)
+    await completeAIConversation({
+      provider: createAIProvider("ollama"), model: "deepseek-flash", effort: "medium",
+      messages: [{role: "user", content: "Explain only."}], readOnly: true, toolHandler, fetch,
+    })
+
+    const body = JSON.parse(fetch.mock.calls[0][1].body)
+    expect(body.messages.some((message: any) => message.role === "assistant" || message.role === "tool")).toBe(false)
+    expect(body.messages).toContainEqual({
+      role: "system", content: expect.stringContaining(JSON.stringify(context)),
+    })
+    expect(toolHandler).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({name: "read_editor_capabilities"}), {signal: undefined})
+  })
+
+  it.each(["Inspect the document first.\nThen choose a change.", ""])("preserves reasoning content %j across tool and repair requests", async reasoning => {
+    const read = {
+      content: null, reasoning_content: reasoning,
+      tool_calls: [{id: "read", type: "function", function: {name: "read_current_document", arguments: "{}"}}],
+    }
+    const repair = {content: "I can add a poem.", reasoning_content: "Use the empty document."}
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({choices: [{message: read}]}))
+      .mockResolvedValueOnce(response({choices: [{message: repair}]}))
+      .mockResolvedValueOnce(response({choices: [{message: {tool_calls: [{
+        id: "edit", type: "function", function: {name: "queue_document_change", arguments: JSON.stringify({
+          summary: "Add a poem.", operations: [{type: "replace_document", target: "body", html: "<p>A little poem.</p>"}],
+        })},
+      }]}}]}))
+    const toolHandler = vi.fn(async call => call.name === "queue_document_change"
+      ? {status: "queued"} : {target: "body", html: "", truncated: false})
+
+    await expect(completeAIConversation({
+      provider: createAIProvider("ollama"), model: "deepseek-flash", effort: "medium",
+      messages: [{role: "user", content: "Add a poem."}], toolHandler, fetch,
+    })).resolves.toBe("Queued: Add a poem.")
+
+    const secondBody = JSON.parse(fetch.mock.calls[1][1].body)
+    expect(secondBody.messages).toContainEqual({role: "assistant", ...read})
+    const thirdBody = JSON.parse(fetch.mock.calls[2][1].body)
+    expect(thirdBody.messages.filter((message: any) => message.role === "assistant")).toEqual([
+      {role: "assistant", ...read}, {role: "assistant", ...repair},
+    ])
   })
 
   it("recovers privately from questions and finishes only after an effective proposal", async () => {

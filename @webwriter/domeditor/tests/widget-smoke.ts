@@ -12,8 +12,9 @@ const params = new URLSearchParams(location.search)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const records: object[] = []
 let availablePackages: WebWriterPackage[] = []
-// Components marked uninsertable need their documented parent context.
+// Exercise configured widgets and components that need documented parent context.
 const fixtures: Record<string, string> = {
+  "@webwriter/automaton": '<webwriter-automaton nodes="#0(-220|0);%1(0|0);2(220|0)" testlanguage="ab*" transitions="0-1[a];0-2[b];1-1[b];1-2[a];2-2[a,b]" type="dfa"></webwriter-automaton>',
   "@webwriter/quiz": `<webwriter-quiz>
     <webwriter-task><webwriter-task-prompt slot="prompt"><p>Complete the sentence.</p></webwriter-task-prompt>
       <webwriter-task-hint slot="hint"><p>A primary color.</p></webwriter-task-hint>
@@ -104,7 +105,7 @@ async function run() {
       name: member.exportName,
       html: () => member.kind === "snippet" ? registry.fetchSnippet(member) : `<${member.tagName}></${member.tagName}>`,
     }))
-    if(params.has("fixture")) cases.splice(0, cases.length, ...(fixtures[pkg.name] ? [{name: "nested components fixture", html: () => fixtures[pkg.name]}] : []))
+    if(params.has("fixture")) cases.splice(0, cases.length, ...(fixtures[pkg.name] ? [{name: "configured fixture", html: () => fixtures[pkg.name]}] : []))
     for(const member of cases) {
       // Some published widgets retain timers after removal. An isolated mode
       // distinguishes their teardown errors from the next member's startup.
@@ -119,8 +120,21 @@ async function run() {
         let doc = win.document
         doc.body.replaceChildren(doc.createElement("p"))
         doc.getSelection()!.setPosition(doc.body.firstChild, 0)
-        win.editor.getActionHandler("insert")({type: "insert", html})
+        if(params.has("ai")) {
+          const state = win.editor.features.state.actions
+          const {target} = state.readAIDocument({type: "readAIDocument"})
+          state.previewAIOperations({type: "previewAIOperations", editId: "widget-smoke", summary: "Add a widget.",
+            availableWidgets: pkg.members.flatMap(member => member.tagName ? [member.tagName] : []),
+            operations: [{type: "insert_html", target, position: "append", html}],
+          })
+        }
+        else win.editor.getActionHandler("insert")({type: "insert", html})
         await delay(500)
+        if(params.has("fixture") && pkg.name === "@webwriter/automaton"
+          && !doc.querySelector("webwriter-automaton")?.shadowRoot?.querySelector("#graphCanvas canvas")) {
+          throw new Error("The configured automaton did not render its graph")
+        }
+        if(params.has("ai")) win.editor.features.state.actions.acceptAIEdit({type: "acceptAIEdit", editId: "widget-smoke"})
         if(params.has("preview") || params.has("export")) {
           const preview = document.createElement("iframe")
           preview.title = `${pkg.label} ${params.has("export") ? "export" : "preview"}`
@@ -136,7 +150,7 @@ async function run() {
         const widgets = Array.from(doc.body.querySelectorAll<HTMLElement>("*")).filter(element => element.localName.includes("-"))
         const bounds = widgets.map(element => {
           const rect = element.getBoundingClientRect()
-          return {tag: element.localName, defined: Boolean(doc.defaultView!.customElements.get(element.localName)), shadow: Boolean(element.shadowRoot), width: Math.round(rect.width), height: Math.round(rect.height)}
+          return {tag: element.localName, defined: Boolean(doc.defaultView!.customElements.get(element.localName)), shadow: Boolean(element.shadowRoot), shadowChildren: element.shadowRoot?.childElementCount ?? 0, width: Math.round(rect.width), height: Math.round(rect.height)}
         })
         const embeds = Array.from(doc.body.querySelectorAll("iframe")).map(frame => ({src: frame.src, sandbox: frame.getAttribute("sandbox"), height: Math.round(frame.getBoundingClientRect().height)}))
         record(`${pkg.name}: ${member.name}`, {inputLength: html.length, html: doc.body.innerHTML.slice(0, 1200), bounds, embeds, errors: [...new Set(errors.splice(0))]})
