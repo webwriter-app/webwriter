@@ -66,6 +66,7 @@ describe("layout preset ribbon", () => {
     const presets = Array.from(gallery.querySelectorAll<HTMLButtonElement>(".layout-preset"))
 
     expect(presets).toHaveLength(8)
+    expect(gallery.querySelector(".layout-preset-kind")).toBeNull()
     expect(presets.every(button => button.type === "button")).toBe(true)
     expect(presets.map(button => button.querySelector(".layout-preset-name")?.textContent?.trim())).toEqual([
       "Two columns",
@@ -96,7 +97,7 @@ describe("layout preset ribbon", () => {
     expect(gallery).not.toBeNull()
     expect(primary!.querySelector("slot[name=more]")).toBeNull()
     expect(gallery!.querySelector("slot[name=more]")).not.toBeNull()
-    expect(getComputedStyle(primary!).flexBasis).toContain("px")
+    expect(getComputedStyle(primary!).flexBasis).toBe("5.625rem")
   })
 
   it("emits the existing insertion action while leaving the pullout open", async () => {

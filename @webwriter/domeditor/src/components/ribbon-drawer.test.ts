@@ -393,6 +393,35 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(controls).transition).toBe("none")
   })
 
+  it.each([false, true])("preserves the Elements header on first opening (compact: %s)", async compact => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "elements"
+    drawer.compact = compact
+    drawer.expandable = true
+    const gallery = document.createElement("div")
+    gallery.slot = "more"
+    gallery.className = "layout-gallery"
+    drawer.append(gallery)
+    document.body.append(drawer)
+    await drawer.updateComplete
+
+    const shell = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const primary = drawer.shadowRoot!.querySelector<HTMLElement>(".elements-primary-controls")!
+    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({top: 0, height: 96} as DOMRect)
+    vi.spyOn(primary, "getBoundingClientRect").mockReturnValue({top: 1, height: 90} as DOMRect)
+    Object.defineProperty(gallery, "scrollHeight", {value: 300, configurable: true})
+
+    drawer.openDrawer(true)
+    await drawer.updateComplete
+
+    expect(shell.style.getPropertyValue("--elements-header-height")).toBe("90px")
+    expect(getComputedStyle(primary).flexBasis).toBe("90px")
+    // Two border pixels and four pixels of control padding fit the whole gallery.
+    expect(shell.style.getPropertyValue("--layout-expanded-height")).toBe("396px")
+    const galleryRegion = drawer.shadowRoot!.querySelector<HTMLElement>(".elements-gallery-controls")!
+    expect(getComputedStyle(galleryRegion).getPropertyValue("scrollbar-width")).toBe("thin")
+  })
+
   it("detects overflow in the Elements gallery region while compact", async () => {
     const drawer = new RibbonDrawer()
     drawer.layout = "elements"

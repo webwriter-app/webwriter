@@ -3114,7 +3114,6 @@ export class AppRibbon extends EditingControls {
             `)}
           </span>
           <span class="layout-preset-name">${preset.name}</span>
-          <span class="layout-preset-kind">${preset.kind === "grid" ? "Grid" : "Flex"}</span>
         </button>
       `
     }

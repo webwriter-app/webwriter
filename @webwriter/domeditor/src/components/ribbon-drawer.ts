@@ -174,6 +174,7 @@ export class RibbonDrawer extends LitElement {
       flex: 1 1 auto;
       min-height: 0;
       overflow: hidden;
+      scrollbar-width: thin;
     }
 
     :host([layout="elements"][drawer-open][drawer-settled][drawer-scrollable]) .elements-gallery-controls {
@@ -555,6 +556,9 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="elements"]) .drawer.expanded {
+      /* Share the preceding separator without moving the controls. */
+      margin-left: -1px;
+      padding-left: calc(0.5rem + 1px);
       height: var(--layout-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
       max-height: var(--layout-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
     }
@@ -1285,7 +1289,13 @@ export class RibbonDrawer extends LitElement {
         || this.lengthInPixels("5.625rem", 90)
       const gallery = this.querySelector<HTMLElement>(".layout-gallery")
       const galleryHeight = gallery?.scrollHeight || gallery?.getBoundingClientRect().height || moreHeight
-      const naturalHeight = collapsedHeight + Math.max(moreHeight, galleryHeight)
+      const primary = this.renderRoot.querySelector<HTMLElement>(".elements-primary-controls")
+      const headerHeight = primary?.getBoundingClientRect().height || this.lengthInPixels("5.625rem", 90)
+      const panelStyle = getComputedStyle(this.collapsed ? controls : drawer)
+      const chromeHeight = (Number.parseFloat(panelStyle.borderTopWidth) || 0)
+        + (Number.parseFloat(panelStyle.borderBottomWidth) || 0)
+        + paddingTop + paddingBottom
+      const naturalHeight = Math.ceil(headerHeight + galleryHeight + chromeHeight)
       const preferredHeight = Math.max(collapsedHeight, Math.min(naturalHeight, available))
       const currentTarget = Number.parseFloat(drawer.style.getPropertyValue("--layout-expanded-height")) || 0
       const changed = currentTarget <= 0 || Math.abs(preferredHeight - currentTarget) > 0.5
@@ -1348,7 +1358,11 @@ export class RibbonDrawer extends LitElement {
       if(collapsedHeight > 0) {
         drawer?.style.setProperty("--collapsed-drawer-height", `${collapsedHeight}px`)
         drawer?.style.setProperty("--drawer-collapsed-height", `${collapsedHeight}px`)
-        if(this.layout === "elements") drawer?.style.setProperty("--elements-header-height", `${collapsedHeight}px`)
+        if(this.layout === "elements" && !this.collapsed) {
+          const primary = this.renderRoot.querySelector<HTMLElement>(".elements-primary-controls")
+          const headerHeight = primary?.getBoundingClientRect().height ?? 0
+          if(headerHeight > 0) drawer?.style.setProperty("--elements-header-height", `${headerHeight}px`)
+        }
       }
     }
     this.updatePackageDrawerSize()

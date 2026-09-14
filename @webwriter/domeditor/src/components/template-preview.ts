@@ -83,13 +83,6 @@ export const layoutPreviewStyles = css`
       white-space: nowrap;
     }
 
-    .layout-preset-kind {
-      display: block;
-      color: #64748b;
-      font-size: 0.58rem;
-      line-height: 0.75rem;
-    }
-
     .layout-preset[aria-pressed="true"] {
       border-color: #3977c7;
       background: #edf5fd;
