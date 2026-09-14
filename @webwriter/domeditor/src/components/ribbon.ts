@@ -1,3 +1,4 @@
+import {layoutPreviewStyles} from "./template-preview"
 import {css, html} from "lit"
 import {
   requestsReadOnlyAI,
@@ -1779,89 +1780,7 @@ export class AppRibbon extends EditingControls {
       padding: 0.35rem 0.1rem 0.45rem;
     }
 
-    .layout-preset {
-      box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 0.3rem;
-      min-width: 0;
-      min-height: 7rem;
-      padding: 0.35rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.35rem;
-      color: #2f3742;
-      background: #ffffff;
-      font: inherit;
-      font-size: 0.66rem;
-      text-align: start;
-      cursor: pointer;
-      transition: var(--ww-ui-transition, border-color 120ms ease, background-color 120ms ease);
-    }
-
-    .layout-preset:hover {
-      border-color: #8eb6df;
-      background: #f6faff;
-    }
-
-    .layout-preset:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 1px;
-    }
-
-    .layout-preset-preview {
-      box-sizing: border-box;
-      display: grid;
-      flex: 1 1 auto;
-      align-items: stretch;
-      min-height: 4.6rem;
-      padding: 0.25rem;
-      border: 1px solid #d8dee6;
-      border-radius: 0.2rem;
-      background: #f8fafc;
-      overflow: hidden;
-    }
-
-    .layout-preset-item {
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-      min-width: 0;
-      min-height: 0;
-      padding: 0.18rem;
-      border: 1px solid #b8c8d9;
-      border-radius: 0.15rem;
-      background: #e5eef7;
-    }
-
-    .layout-preset-line {
-      display: block;
-      width: 72%;
-      height: 0.18rem;
-      margin-top: 0.18rem;
-      border-radius: 999px;
-      background: #9db4ca;
-    }
-
-    .layout-preset-line.short {
-      width: 46%;
-    }
-
-    .layout-preset-name {
-      display: block;
-      overflow: hidden;
-      font-weight: 650;
-      line-height: 0.85rem;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-  .layout-preset-kind {
-      display: block;
-      color: #64748b;
-      font-size: 0.58rem;
-      line-height: 0.75rem;
-    }
+    ${layoutPreviewStyles}
 
     .layout-insertion-error {
       grid-column: 1 / -1;

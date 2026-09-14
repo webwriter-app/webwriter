@@ -1,3 +1,4 @@
+import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
 import { LitElement, css, html } from "lit"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
@@ -409,6 +410,7 @@ export class DomEditor extends LitElement {
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
+    templatesDismissed: {attribute: false, state: true},
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     savedDocuments: {attribute: false, state: true},
@@ -536,6 +538,8 @@ export class DomEditor extends LitElement {
   private frameDocumentHTML: string | null = null
   private fileName = ""
   private fileDirty = false
+  private templatesDismissed = false
+  private templateConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
   private savedDocuments: BackendDocumentSummary[] = []
@@ -606,7 +610,7 @@ export class DomEditor extends LitElement {
       box-sizing: border-box;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
       width: 100%;
       height: 100%;
       border: 0.5px solid #a8a8a8;
@@ -692,6 +696,37 @@ export class DomEditor extends LitElement {
     .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage {
       grid-column: 1 / -1;
     }
+
+    ${layoutPreviewStyles}
+
+    .templates-panel {
+      grid-row: 4;
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: var(--ww-ui-transition, grid-template-rows 180ms ease);
+    }
+    .templates-panel[inert] { grid-template-rows: 0fr; }
+    .templates-clip { min-height: 0; overflow: hidden; }
+    .templates-panel[inert] .templates-bar { transform: translateY(100%); }
+    .templates-bar {
+      box-sizing: border-box;
+      transition: var(--ww-ui-transition, transform 180ms ease);
+      min-width: 0;
+      padding: 0.55rem 0.8rem 0.65rem;
+      border-top: 1px solid #c8c8c8;
+      background: #f2f2f2;
+      color: #2f3742;
+      font: 0.75rem/1.25 system-ui, sans-serif;
+    }
+    .templates-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; }
+    .templates-close { border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
+    .templates-close:hover { background: #e2e5e9; }
+    .templates-close:focus-visible { outline: 2px solid #5e91bf; outline-offset: 2px; }
+    .templates-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
+    .templates-bar .template-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 10rem)); gap: 0.45rem; }
+    .templates-bar .layout-preset { min-height: 0; }
+    .templates-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
 
     iframe {
       display: block;
@@ -1342,6 +1377,8 @@ export class DomEditor extends LitElement {
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
+            if(this.templateConversionCount === 0 && (this.dirtyTrackingReady && this.fileDirty
+              || mutations.some(mutation => mutation.type === "attributes" && this.isAuthoredMutation(mutation)))) this.templatesDismissed = true
           }
           if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
@@ -1352,6 +1389,7 @@ export class DomEditor extends LitElement {
           attributes: true,
           attributeOldValue: true,
           characterData: true,
+          characterDataOldValue: true,
           childList: true,
           subtree: true,
         })
@@ -1421,6 +1459,7 @@ export class DomEditor extends LitElement {
         if(this.dirtyTrackingMutationPending) {
           this.dirtyTrackingMutationPending = false
           this.fileDirty = !this.isFreshDocumentUnchanged()
+          if(this.fileDirty && this.templateConversionCount === 0) this.templatesDismissed = true
         }
         this.dirtyTrackingTimer = undefined
       }, 0)
@@ -1484,20 +1523,27 @@ export class DomEditor extends LitElement {
   }
 
   private isAuthoredMutation(mutation: MutationRecord) {
-    if(mutation.type === "characterData") return true
+    const element = mutation.target.nodeType === Node.ELEMENT_NODE
+      ? mutation.target as Element : mutation.target.parentElement
+    // Resource loaders update their own attributes and text after startup.
+    // Those changes, like appendix UI, do not edit the authored document.
+    if(element?.closest(".◆editor-only, [data-webwriter-editor-only]")) return false
+    if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
     if(mutation.type === "attributes") {
       if(mutation.attributeName === "contenteditable" || mutation.attributeName === "spellcheck") return false
+      const current = mutation.attributeNamespace
+        ? element?.getAttributeNS(mutation.attributeNamespace, mutation.attributeName!) ?? null
+        : element?.getAttribute(mutation.attributeName!) ?? null
       if(mutation.attributeName === "class") {
-        const current = mutation.target.nodeType === Node.ELEMENT_NODE
-          ? (mutation.target as Element).getAttribute("class")
-          : null
         return this.authoredClasses(mutation.oldValue) !== this.authoredClasses(current)
       }
-      return true
+      // DOM synchronization can set an attribute to the value it already has.
+      return mutation.oldValue !== current
     }
     const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
     return nodes.some(node => !(
-      node.nodeType === Node.ELEMENT_NODE && (node as Element).classList.contains("◆editor-only")
+      node.nodeType === Node.ELEMENT_NODE && ((node as Element).classList.contains("◆editor-only")
+        || (node as Element).hasAttribute("data-webwriter-editor-only"))
     ))
   }
 
@@ -2093,6 +2139,7 @@ export class DomEditor extends LitElement {
     this.historyError = ""
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
+    this.templatesDismissed = false
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
@@ -3624,21 +3671,22 @@ export class DomEditor extends LitElement {
     const mode = (event as CustomEvent<{mode?: unknown}>).detail?.mode
     if((mode !== "canvas" && mode !== "document" && mode !== "slides") || mode === this.documentLayout.mode) return
     const currentMode = this.documentLayout.mode as "document" | "canvas" | "slides"
-    const confirmation = mode === "canvas"
-      ? "Convert this document to canvas layout? Current positions will be preserved and top-level items will become independently positioned. You can undo this change."
-      : mode === "slides"
-        ? "Convert this document to Slides layout? Content will be grouped into one slide and may reflow or overflow. You can undo this change."
-        : currentMode === "slides"
-          ? "Return to document layout? Slide sections and their internal layout will be preserved. You can undo this change."
-          : "Return to document layout? Items will flow in document order. Canvas positions, sizes, and rotation will be removed. You can undo this change."
-    if(!window.confirm(confirmation)) return
     this.documentLayoutError = ""
-    void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).then(changed => {
+    this.templateConversionCount++
+    void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).finally(() => {
+      this.templateConversionCount--
+    }).then(async changed => {
       if(changed === false) {
         this.documentLayoutError = "The document layout changed before conversion could be applied. Try again."
         return
       }
       this.fileDirty = true
+      // Finish disabling the selected card and updating the toolbox before
+      // handing keyboard focus back to the editing surface.
+      await this.updateComplete
+      await this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.updateComplete
+      if(!this.isConnected) return
+      this.focusEditor()
     }).catch(error => {
       this.documentLayoutError = error instanceof Error ? error.message : String(error)
     })
@@ -4752,6 +4800,34 @@ export class DomEditor extends LitElement {
         @html-source-apply=${this.handleHTMLSourceApply}
         @html-source-discard=${this.handleHTMLSourceDiscard}
       ></dom-editor-toolbox>
+      ${this.previewActive || this.liveSessionActive ? "" : html`
+        <div class="templates-panel" ?inert=${this.templatesDismissed} aria-hidden=${String(this.templatesDismissed)}>
+          <div class="templates-clip">
+            <section class="templates-bar" aria-labelledby="templates-title">
+              <div class="templates-heading">
+                <h2 id="templates-title">Templates</h2>
+                <button class="templates-close" type="button" aria-label="Hide templates" title="Hide templates"
+                  @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+                  @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
+                  @click=${async () => {
+                    this.templatesDismissed = true
+                    await this.updateComplete
+                    this.focusEditor()
+                  }}
+                >×</button>
+              </div>
+              <div class="template-cards" role="group" aria-label="Templates">
+                ${templateModes.map(mode => renderTemplateCard(mode, this.documentLayout,
+                  this.historyState.preview !== null || this.htmlPending,
+                  selected => this.handleDocumentLayoutChange(new CustomEvent("document-layout-change", {detail: {mode: selected}})),
+                ))}
+              </div>
+              ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
+            </section>
+          </div>
+        </div>
+      `}
+
     `
   }
 }

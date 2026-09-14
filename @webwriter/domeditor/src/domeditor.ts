@@ -1127,8 +1127,7 @@ export class DOMEditor {
     const rootReason = getDocumentRoot() !== document.body ? "A custom document template owns this document's layout." : null
     const conversions = {
       document: rootReason,
-      canvas: rootReason ?? (mode === "slides" ? "Convert to Document before switching between Canvas and Slides."
-        : canvas.canConvert ? null : "This document's structure cannot be converted to Canvas automatically."),
+      canvas: rootReason ?? ((mode === "slides" ? this.features.canvas.canConvertContent(this.features.slides.documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
       slides: rootReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
     }
     return {mode, zoom: canvas.zoom, conversions,
@@ -1139,8 +1138,47 @@ export class DOMEditor {
     if(!["document", "canvas", "slides"].includes(mode)) throw new TypeError("Unknown document layout")
     const state = this.getDocumentLayoutState()
     if(this.isEditingLocked || state.mode !== expectedMode || mode === state.mode || state.conversions?.[mode]) return false
-    if(mode === "slides" || state.mode === "slides") return this.features.slides.convert(mode as "slides" | "document")
-    return this.features.canvas.convert(mode)
+    // DOM moves retarget live Ranges to the old parent. Keep the actual
+    // endpoints and their neighboring nodes so text, node and gap selections
+    // follow authored content when slide wrappers are added or removed.
+    const selection = document.getSelection()
+    const bookmark = (node: Node | null, offset: number) => {
+      if(!node || !document.body.contains(node)) return () => null
+      const next = node.childNodes[offset], previous = node.childNodes[offset - 1]
+      return (): [Node, number] | null => {
+        if(next?.parentNode && document.body.contains(next)) return [next.parentNode, Array.from(next.parentNode.childNodes).indexOf(next)]
+        if(previous?.parentNode && document.body.contains(previous)) return [previous.parentNode, Array.from(previous.parentNode.childNodes).indexOf(previous) + 1]
+        if(!document.body.contains(node)) return null
+        return [node, Math.min(offset, node instanceof CharacterData ? node.length : node.childNodes.length)]
+      }
+    }
+    const anchor = bookmark(selection?.anchorNode ?? null, selection?.anchorOffset ?? 0)
+    const focus = bookmark(selection?.focusNode ?? null, selection?.focusOffset ?? 0)
+    const documentSelected = $.selectedElement === document.body
+    const selectedSection = this.features.selection.selectedSectionElement
+    const capturedElement = this.features.selection.captureSelectedElement
+    const end = this.doc.beginUndoGroup()
+    try {
+      if(mode !== "document" && state.mode !== "document") {
+        const source = state.mode === "canvas" ? this.features.canvas : this.features.slides
+        if(!source.convert("document", false)) return false
+      }
+      const changed = mode === "slides" || state.mode === "slides" && mode === "document"
+        ? this.features.slides.convert(mode as "slides" | "document", false)
+        : this.features.canvas.convert(mode as "canvas" | "document", false)
+      if(!changed) return false
+      const restoredAnchor = anchor(), restoredFocus = focus()
+      if(documentSelected || restoredAnchor && restoredFocus) {
+        if(documentSelected) $.selectElement(document.body)
+        else $.selectRange(...restoredAnchor!, ...restoredFocus!)
+        if(capturedElement?.isConnected) this.features.selection.captureElement(capturedElement)
+        else if(selectedSection?.isConnected) this.features.selection.selectSectionElement(selectedSection)
+        else this.features.selection.processSelection()
+        this.postSelectionPath()
+      }
+      return true
+    }
+    finally { end() }
   }
 
   private cleanDocumentClone() {

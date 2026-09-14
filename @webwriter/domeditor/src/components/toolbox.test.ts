@@ -341,41 +341,55 @@ describe("toolbox", () => {
     expect(buttons.map(button => button.action)).toEqual(["set-document-template:body"])
   })
 
-  it("shows document layout mode and emits conversion requests", async () => {
+  it("shows the active template as a dropdown card and emits conversion requests", async () => {
     const toolbox = await mountToolbox()
     toolbox.documentSelected = true
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
 
-    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Layout"]')!
-    expect(drawer).not.toBeNull()
-    expect(drawer.textContent).toContain("Current mode: Document")
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[layout="document-layout"]')!
+    const picker = drawer.querySelector<HTMLDetailsElement>("details")!
+    const summary = picker.querySelector("summary")!
+    expect(drawer.label).toBe("Templates")
+    expect(picker.open).toBe(false)
+    expect(summary.textContent).toContain("Document")
+    expect(summary.querySelector(".template-preview.document")).not.toBeNull()
     expect(drawer.textContent).toContain("Zoom: 100%")
     const choices = Array.from(drawer.querySelectorAll<HTMLButtonElement>(".document-layout-change"))
-    expect(choices.map(button => button.dataset.mode)).toEqual(["document", "canvas", "slides"])
-    const change = drawer.querySelector<HTMLButtonElement>('[data-mode="canvas"]')!
+    expect(choices.map(button => button.dataset.mode)).toEqual(["canvas", "slides"])
+    expect(choices.every(button => button.querySelector('.template-preview[aria-hidden="true"]'))).toBe(true)
+    summary.click()
+    expect(picker.open).toBe(true)
     const request = vi.fn()
     toolbox.addEventListener("document-layout-change", request)
-    change.click()
+    choices[0].click()
     expect(request).toHaveBeenCalledWith(expect.objectContaining({detail: {mode: "canvas"}}))
+    expect(picker.open).toBe(false)
 
     toolbox.documentLayout = {mode: "canvas", canConvert: true, zoom: 125}
     await toolbox.updateComplete
-    expect(drawer.textContent).toContain("Current mode: Canvas")
+    expect(summary.textContent).toContain("Canvas")
     expect(drawer.textContent).toContain("Zoom: 125%")
-    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="canvas"]')!.disabled).toBe(true)
+    expect(drawer.querySelector('[data-mode="canvas"]')).toBeNull()
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!.disabled).toBe(false)
+    summary.click()
+    summary.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    expect(picker.open).toBe(false)
 
     toolbox.documentLayout = {mode: "canvas", canConvert: false, zoom: 125}
     await toolbox.updateComplete
     expect(drawer.querySelector<HTMLButtonElement>('[data-mode="document"]')!.disabled).toBe(true)
     expect(drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!.disabled).toBe(true)
-    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!.title).toContain("Convert to Document first")
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!.title).toContain("cannot be converted automatically")
 
     toolbox.documentLayout = {mode: "document", canConvert: true, zoom: 100, conversions: {slides: "Slides require sectioned content"}}
     await toolbox.updateComplete
     const slides = drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!
     expect(slides.disabled).toBe(true)
     expect(slides.title).toBe("Slides require sectioned content")
+    toolbox.htmlPending = true
+    await toolbox.updateComplete
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="canvas"]')!.disabled).toBe(true)
   })
 
   it("offers universal attributes alongside specialized tools and for uncommon elements", async () => {

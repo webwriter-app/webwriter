@@ -1,7 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {canvasClass, canvasStyles, documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasClass, canvasStyles, documentLayoutMode, resetEmptyTemplateContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type Item = HTMLElement | SVGSVGElement
 type Point = {x: number, y: number}
@@ -39,12 +39,15 @@ export class CanvasFeature extends EditorFeature {
       (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template"))
   }
 
+  canConvertContent(nodes: Iterable<Node>) {
+    return !Array.from(nodes).some(node => node instanceof Text && Boolean(node.textContent?.trim())
+      || node instanceof Element && !(node instanceof HTMLElement || node instanceof SVGSVGElement)
+        && !node.matches("style, script, link, meta, template"))
+  }
+
   getState(): DocumentLayoutState {
-    const items = this.items()
     return {mode: this.active ? "canvas" : "document", zoom: Math.round(this.zoom * 100),
-      canConvert: getDocumentRoot() === document.body && (this.active || !Array.from(document.body.childNodes).some(node =>
-        node instanceof Text && Boolean(node.textContent?.trim())
-        || node instanceof Element && !items.includes(node as Item) && !node.matches("style, script, link, meta, template")))}
+      canConvert: getDocumentRoot() === document.body && (this.active || this.canConvertContent(document.body.childNodes))}
   }
 
   private isEmptyParagraph(element: Element): element is HTMLParagraphElement {
@@ -92,7 +95,7 @@ export class CanvasFeature extends EditorFeature {
     },
   }
 
-  convert(mode: "canvas" | "document") {
+  convert(mode: "canvas" | "document", captureUndo = true) {
     if(this.editor.isEditingLocked || !this.getState().canConvert || this.getState().mode === mode) return false
     const items = this.items()
     const empty = this.emptyParagraph()
@@ -105,7 +108,7 @@ export class CanvasFeature extends EditorFeature {
       return {item, rect, width: Number.isFinite(width) ? width : rect.width,
         marginLeft: parseFloat(style.marginLeft) || 0, marginTop: parseFloat(style.marginTop) || 0}
     })
-    const end = this.editor.doc.beginUndoGroup()
+    const end = captureUndo ? this.editor.doc.beginUndoGroup() : () => {}
     try {
       if(mode === "canvas") {
         if(!Array.from(document.head.querySelectorAll("style")).some(style => style.textContent === canvasStyles)) {
@@ -144,12 +147,21 @@ export class CanvasFeature extends EditorFeature {
           clearInlinePlacement(item)
           if(["absolute", "fixed"].includes(getComputedStyle(item).position)) item.style.position = "static"
         }
+        const paragraph = resetEmptyTemplateContent()
+        if(paragraph) {
+          $.move(paragraph)
+          this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})
+        }
       }
     }
     finally { end() }
     this.refresh()
     if(this.active) this.fit()
-    this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    if(this.active && empty?.parentElement === document.body) {
+      $.move(empty)
+      this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})
+    }
+    else this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     this.editor.postSelectionPath()
     return true
   }
@@ -374,9 +386,7 @@ export class CanvasFeature extends EditorFeature {
     click: event => {
       const target = event.composedPath()[0]
       if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target)) return
-      if(target.name === "start-slides") this.editor.features.slides.actions.startSlides({type: "startSlides"})
-      else if(target.name === "start") this.actions.startCanvas({type: "startCanvas"})
-      else if(target.name === "hand") { this.hand = !this.hand; this.schedule() }
+      if(target.name === "hand") { this.hand = !this.hand; this.schedule() }
       else if(target.name === "text") this.insertText({x: window.innerWidth / 2 - 160 * this.zoom, y: window.innerHeight / 2})
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
     },
@@ -436,10 +446,6 @@ export class CanvasFeature extends EditorFeature {
       button("zoom-in", "+", "Zoom in")
       button("actual-size", "100%", "Actual size")
       button("fit-content", "Fit", "Fit content")
-    }
-    else if(this.emptyParagraph() && !this.editor.isEditingLocked) {
-      button("start", "Use canvas layout")
-      button("start-slides", "Use slides layout")
     }
     this.controls!.hidden = !this.controls!.childElementCount
     this.editor.postSelectionPath()

@@ -153,7 +153,7 @@ describe("CSS-only Slides layout", () => {
     convert("document")
     const documentPath = detail().path
     expect(documentPath[0].name).toBe("Document")
-    expect(documentPath.flatMap(item => item.sections ?? []).map(section => section.type)).toEqual(["div", "section", "article"])
+    expect(documentPath.flatMap(item => item.sections ?? []).map(section => section.type)).toEqual(["article"])
   })
 
   it("selects and hovers the whole slide from its breadcrumb without entering its text", async () => {
@@ -323,16 +323,12 @@ describe("CSS-only Slides layout", () => {
     ])
   })
 
-  it("offers Slides beside Canvas for empty documents and rechecks stale requests", async () => {
-    const start = editor.appendix.querySelector<HTMLButtonElement>('button[name="start-slides"]')!
-    expect(start.textContent).toBe("Use slides layout")
-    expect(editor.appendix.querySelector('button[name="start"]')).not.toBeNull()
+  it("rechecks empty-document Slides requests against the current DOM", () => {
     document.body.firstElementChild!.textContent = "new content"
-    start.click()
+    expect(editor.features.slides.actions.startSlides({type: "startSlides"})).toBe(false)
     expect(editor.getDocumentLayoutState().mode).toBe("document")
     document.body.firstElementChild!.textContent = ""
-    await settle()
-    editor.appendix.querySelector<HTMLButtonElement>('button[name="start-slides"]')!.click()
+    expect(editor.features.slides.actions.startSlides({type: "startSlides"})).toBe(true)
     expect(slides()).toHaveLength(1)
     expect(links()).toHaveLength(1)
   })
@@ -346,23 +342,279 @@ describe("CSS-only Slides layout", () => {
     expect(document.body.contains(nodes.at(-1)!)).toBe(true)
     expect(document.querySelector("custom-card")).toBe(widget)
     expect(links()[0].getAttribute("href")).toBe(`#${slides()[0].id}`)
-    const slide = slides()[0], nav = document.querySelector("nav")
     expect(convert("document")).toBe(true)
+    expect(document.querySelector(".ww-slides-viewport, .ww-slide, .ww-slides-navigation, .ww-slide-directions")).toBeNull()
+    expect(Array.from(document.body.childNodes).filter(node => nodes.includes(node))).toEqual(nodes)
     expect(convert("slides")).toBe(true)
-    expect(slides()).toEqual([slide]); expect(document.querySelector("nav")).toBe(nav)
+    expect(slides()).toHaveLength(1); expect(links()).toHaveLength(1)
   })
 
-  it("withholds custom roots, malformed existing carousels, locks and direct Canvas conversion", () => {
+  it("withholds custom roots, malformed existing carousels, locks and stale requests", () => {
     for(const html of ['<custom-document role="document"><p>x</p></custom-document>', '<div class="ww-slides-viewport"><section>One</section></div>']) {
       document.body.innerHTML = html; expect(convert("slides")).toBe(false); expect(document.body.innerHTML).toBe(html)
     }
     document.body.innerHTML = "<p>x</p>"
-    expect(convert("canvas")).toBe(true); expect(convert("slides")).toBe(false)
-    expect(convert("document")).toBe(true); expect(convert("slides")).toBe(true); expect(convert("canvas")).toBe(false)
+    expect(convert("slides")).toBe(true)
     const owner = {}; editor.lockEditing(owner)
     expect(editor.features.slides.actions.addSlide({type: "addSlide"})).toBe(false)
     expect(convert("document")).toBe(false); editor.unlockEditing(owner)
     expect(editor.setDocumentLayout("document", "canvas")).toBe(false)
+  })
+
+  it("switches directly between Canvas and Slides in a single undo step, preserving irregular content", async () => {
+    document.body.innerHTML = '<p id="intro">Hello</p><!--keep--><custom-card data-authored="yes"><em>Widget</em></custom-card><svg><circle r="5"/></svg><section id="nested"><div>Nested</div></section>'
+    await settle()
+    expect(convert("canvas")).toBe(true)
+    const content = Array.from(document.body.childNodes)
+    const originalHTML = editor.toHTML(true)
+    expect(editor.getDocumentLayoutState().conversions?.slides).toBeNull()
+    expect(convert("slides")).toBe(true)
+    expect(content.every(node => slides()[0].contains(node))).toBe(true)
+    expect(document.querySelector("custom-card")!.getAttribute("data-authored")).toBe("yes")
+    await settle()
+    editor.doc.undo(); await settle()
+    expect(editor.getDocumentLayoutState().mode).toBe("canvas")
+    expect(editor.toHTML(true)).toBe(originalHTML)
+    editor.doc.redo(); await settle()
+    expect(editor.getDocumentLayoutState().mode).toBe("slides")
+    const deckHTML = editor.toHTML(true)
+    const deckContent = Array.from(slides()[0].childNodes).filter(node => !(node instanceof Element && node.matches(".ww-slide-directions")))
+    expect(editor.getDocumentLayoutState().conversions?.canvas).toBeNull()
+    expect(convert("canvas")).toBe(true)
+    expect(Array.from(document.body.childNodes)).toEqual(deckContent)
+    expect(document.querySelector(".ww-slides-viewport, .ww-slide")).toBeNull()
+    expect(document.querySelectorAll("custom-card, svg, #nested")).toHaveLength(3)
+    await settle()
+    editor.doc.undo(); await settle()
+    expect(editor.getDocumentLayoutState().mode).toBe("slides")
+    expect(editor.toHTML(true)).toBe(deckHTML)
+    editor.doc.redo(); await settle()
+    expect(editor.getDocumentLayoutState().mode).toBe("canvas")
+    expect(convert("slides")).toBe(true)
+    expect(document.querySelector<HTMLElement>(".ww-slides-viewport")!.style.position).not.toBe("absolute")
+    expect(document.querySelectorAll("custom-card, svg, #nested")).toHaveLength(3)
+  })
+
+  it("removes slide navigation from shared and exported content on exit, with undo and redo", async () => {
+    seed()
+    const authoredNav = document.createElement("nav")
+    authoredNav.innerHTML = '<a href="https://example.com">Authored link</a>'
+    slides()[0].append(authoredNav)
+    await settle()
+    const remote = new Y.Doc()
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+    expect(convert("document")).toBe(true)
+    await settle()
+    expect(document.querySelector(".ww-slides-navigation, .ww-slide-directions")).toBeNull()
+    expect(document.body.contains(authoredNav)).toBe(true)
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
+    expect(saved.body.querySelector(".ww-slides-viewport, .ww-slide, .ww-slides-navigation, .ww-slide-directions")).toBeNull()
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+    expect(remote.getXmlElement("body").toString()).not.toContain("ww-slides-navigation")
+    expect(remote.getXmlElement("body").toString()).not.toContain("ww-slide-directions")
+    expect(remote.getXmlElement("body").toString()).not.toContain("ww-slides-viewport")
+    expect(remote.getXmlElement("body").toString()).not.toContain('class="ww-slide"')
+    editor.doc.undo(); await settle()
+    expect(editor.getDocumentLayoutState().mode).toBe("slides")
+    expect(links()).toHaveLength(2)
+    editor.doc.redo(); await settle()
+    expect(editor.getDocumentLayoutState().mode).toBe("document")
+    expect(document.querySelector(".ww-slides-navigation, .ww-slide-directions")).toBeNull()
+    remote.destroy()
+  })
+
+  it("unwraps multiple slides in order and preserves authored nesting when converting to Canvas", () => {
+    const originalSlides = seed()
+    const nested = document.createElement("section")
+    nested.innerHTML = '<div><p>Nested content</p></div>'
+    originalSlides[0].append(nested)
+    const content = originalSlides.flatMap(slide => Array.from(slide.childNodes)
+      .filter(node => !(node instanceof Element && node.matches(".ww-slide-directions"))))
+    expect(convert("canvas")).toBe(true)
+    expect(Array.from(document.body.childNodes)).toEqual(content)
+    expect(nested.innerHTML).toBe('<div><p>Nested content</p></div>')
+    expect(document.querySelector(".ww-slide, .ww-slides-viewport, .ww-slide-directions")).toBeNull()
+    expect(links()).toHaveLength(0)
+    expect(convert("slides")).toBe(true)
+    expect(slides()).toHaveLength(1)
+    expect(content.every(node => slides()[0].contains(node))).toBe(true)
+    expect(links()).toHaveLength(1)
+  })
+
+  describe.each([
+    ["document", "canvas"], ["document", "slides"], ["canvas", "document"],
+    ["canvas", "slides"], ["slides", "document"], ["slides", "canvas"],
+  ] as const)("selection retention from %s to %s", (source, target) => {
+    beforeEach(() => {
+      document.body.innerHTML = '<p>First</p><section><p id="selected">Before <strong>selected</strong> after</p></section><img alt="Authored image">'
+      if(source !== "document") expect(convert(source)).toBe(true)
+    })
+
+    it.each(["caret", "forward", "backward"])("preserves a %s text selection in nested content", async kind => {
+      const paragraph = document.querySelector("#selected")!
+      const start = paragraph.firstChild!, end = paragraph.querySelector("strong")!.firstChild!
+      const anchor = kind === "backward" ? end : start, focus = kind === "caret" ? start : kind === "backward" ? start : end
+      $.selectRange(anchor, 2, focus, kind === "caret" ? 2 : 5)
+      const text = document.getSelection()!.toString()
+      expect(convert(target)).toBe(true)
+      await settle()
+      const selection = document.getSelection()!
+      expect(selection.anchorNode).toBe(anchor)
+      expect(selection.anchorOffset).toBe(2)
+      expect(selection.focusNode).toBe(focus)
+      expect(selection.focusOffset).toBe(kind === "caret" ? 2 : 5)
+      expect(selection.toString()).toBe(text)
+    })
+
+    it("retains a selected authored element", async () => {
+      const element = document.querySelector("img")!
+      $.selectElement(element)
+      editor.features.selection.processSelection()
+      expect(convert(target)).toBe(true)
+      await settle()
+      expect($.selectedElement).toBe(element)
+    })
+
+    it("retains an explicit document selection", async () => {
+      $.selectElement(document.body)
+      expect(convert(target)).toBe(true)
+      await settle()
+      expect($.selectedElement).toBe(document.body)
+    })
+
+    it("retains an explicit authored section selection", async () => {
+      const section = document.querySelector("section:not(.ww-slide)")!
+      editor.features.selection.selectSectionElement(section)
+      expect(convert(target)).toBe(true)
+      await settle()
+      expect(editor.features.selection.selectedSectionElement).toBe(section)
+    })
+
+    it("retains a gap adjacent to moved top-level content", async () => {
+      const element = document.body.querySelector("p")!
+      $.selectGap(element, "before")
+      expect(convert(target)).toBe(true)
+      await settle()
+      expect($.anchor).toBe(element.parentNode)
+      expect($.anchorOffset).toBe(Array.from(element.parentNode!.childNodes).indexOf(element))
+    })
+  })
+
+  it("restores retained text selections through conversion undo and redo", async () => {
+    document.body.innerHTML = '<p>First</p><p id="selected">Second</p>'
+    expect(convert("canvas")).toBe(true)
+    const text = document.querySelector("#selected")!.firstChild!
+    $.selectRange(text, 5, text, 2)
+    await settle()
+    expect(convert("slides")).toBe(true)
+    await settle()
+    for(const undo of [true, false]) {
+      if(undo) editor.doc.undo()
+      else editor.doc.redo()
+      await settle()
+      expect(editor.getDocumentLayoutState().mode).toBe(undo ? "canvas" : "slides")
+      expect(document.getSelection()!.toString()).toBe("con")
+      expect($.anchorOffset).toBe(5)
+      expect($.focusOffset).toBe(2)
+    }
+  })
+
+  it("preserves the selected empty paragraph when it survives entering Slides", async () => {
+    const paragraph = document.body.querySelector("p")!
+    $.move(paragraph)
+    expect(convert("slides")).toBe(true)
+    await settle()
+    expect($.anchor).toBe(paragraph)
+    expect($.anchorOffset).toBe(0)
+    expect(slides()[0].contains(paragraph)).toBe(true)
+  })
+
+  it.each([
+    ["document", "canvas"], ["document", "slides"], ["canvas", "document"],
+    ["canvas", "slides"], ["slides", "document"], ["slides", "canvas"],
+  ] as const)("keeps an editable caret when switching an empty %s to %s", async (source, target) => {
+    if(source !== "document") expect(convert(source)).toBe(true)
+    const previous = document.body.querySelector("h1, p")!
+    $.move(previous)
+    expect(convert(target)).toBe(true)
+    await settle()
+    const initial = previous.isConnected ? previous : target === "slides" ? slides()[0].querySelector("h1")! : document.body.querySelector("p")!
+    expect(initial).not.toBeNull()
+    expect($.anchor).toBe(initial)
+    expect($.anchorOffset).toBe(0)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect(editor.features.selection.selectedSectionElement).toBeNull()
+    expect(initial.classList.contains("◆text-selected")).toBe(false)
+    expect(initial.classList.contains("◆empty-selected")).toBe(true)
+    expect(initial.classList.contains("◆element-selected")).toBe(false)
+    expect(document.body.classList.contains("◆node-selection-active")).toBe(false)
+    expect($.isElementSelection).toBe(false)
+    expect(initial.childNodes).toHaveLength(0)
+    if(target !== "document") expect(editor.features.transformation.target).toBe(initial)
+  })
+
+  it("starts clean when switching between empty templates, including an empty Canvas", async () => {
+    for(const mode of ["slides", "document", "slides", "canvas", "slides", "document", "canvas", "document", "slides"] as const) {
+      expect(convert(mode)).toBe(true)
+      await settle()
+      if(mode === "slides") {
+        expect(slides()).toHaveLength(1)
+        expect(Array.from(slides()[0].children, child => child.localName)).toEqual(["h1", "p", "nav"])
+        expect(slides()[0].querySelector("h1")!.textContent).toBe("")
+      }
+      else {
+        expect(Array.from(document.body.children, child => child.localName)).toEqual(["p"])
+        expect(document.body.textContent).toBe("")
+        expect(document.querySelector(".ww-slides-viewport, .ww-slide, nav")).toBeNull()
+      }
+    }
+    expect(convert("canvas")).toBe(true)
+    document.body.replaceChildren()
+    expect(convert("slides")).toBe(true)
+    expect(Array.from(slides()[0].children, child => child.localName)).toEqual(["h1", "p", "nav"])
+    editor.features.slides.actions.addSlide({type: "addSlide"})
+    expect(convert("document")).toBe(true)
+    expect(editor.toHTML(true)).toBe("<p></p>")
+  })
+
+  it("resets empty slide text blocks with selection markers on native line breaks", () => {
+    expect(convert("slides")).toBe(true)
+    for(const item of slides()[0].querySelectorAll("h1, p")) {
+      item.innerHTML = '<br class="◆ ◆empty-selected">'
+    }
+    expect(convert("document")).toBe(true)
+    expect(editor.toHTML(true)).toBe("<p></p>")
+    expect($.anchor).toBe(document.body.firstElementChild)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it.each(['<custom-card></custom-card>', '<img alt="">', '<svg><circle r="5"/></svg>', '<!--keep-->', '<section><div></div></section>', '<p id="anchor"></p>', '<p><br class="authored"></p>', '<p style="border: 1px solid red"></p>'])("preserves textless authored content on exit: %s", async html => {
+    expect(convert("slides")).toBe(true)
+    const template = document.createElement("template")
+    template.innerHTML = html
+    const node = template.content.firstChild!
+    slides()[0].append(node)
+    await settle()
+    expect(convert("document")).toBe(true)
+    expect(node.parentNode).toBe(document.body)
+    expect(document.querySelector(".ww-slides-viewport, .ww-slide")).toBeNull()
+  })
+
+  it("rechecks current slide content before conversion and rejects unsupported Canvas content without a partial switch", () => {
+    expect(convert("slides")).toBe(true)
+    const viewport = document.querySelector(".ww-slides-viewport")!
+    const comment = document.createComment("between slides")
+    viewport.prepend(comment)
+    const text = document.createTextNode("Added externally")
+    slides()[0].append(text)
+    const before = editor.toHTML(true)
+    expect(editor.getDocumentLayoutState().conversions?.canvas).not.toBeNull()
+    expect(convert("canvas")).toBe(false)
+    expect(editor.getDocumentLayoutState().mode).toBe("slides")
+    expect(editor.toHTML(true)).toBe(before)
+    expect(convert("document")).toBe(true)
+    expect(text.parentNode).toBe(document.body)
+    expect(document.body.firstChild).toBe(comment)
   })
 
   it("updates authored links with local add, move and delete, with undo/redo", async () => {

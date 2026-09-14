@@ -1,7 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {documentLayoutMode, isSlide, slideLayoutRole, slidesClass, slidesStyles} from "../document-layout"
+import {documentLayoutMode, resetEmptyTemplateContent, isSlide, slideLayoutRole, slidesClass, slidesStyles} from "../document-layout"
 
 /** A CSS carousel with authored fragment links. Authoring and caret placement
  * belong to the editor; navigating and reading the saved deck need no script. */
@@ -24,6 +24,15 @@ export class SlidesFeature extends EditorFeature {
   private content(slide: HTMLElement) {
     return Array.from(slide.childNodes).filter(node => node instanceof Text ? Boolean(node.data.trim())
       : node instanceof Element && slideLayoutRole(node) !== "navigation" && !node.matches("style,script,link,meta,template,br,wbr"))
+  }
+
+  /** Project only the carousel wrappers away, leaving authored nesting intact. */
+  documentContent() {
+    const viewport = this.viewport(), navigation = this.navigation()
+    return Array.from(document.body.childNodes).flatMap(node => node === navigation ? []
+      : node === viewport ? Array.from(viewport.childNodes).flatMap(child => isSlide(child)
+        ? Array.from(child.childNodes).filter(item => !(item instanceof Element && item.matches("nav.ww-slide-directions:not([is])")))
+        : [child]) : [node])
   }
 
   private createSlide(paragraph = document.createElement("p")) {
@@ -114,9 +123,9 @@ export class SlidesFeature extends EditorFeature {
 
   conversionReason() {
     if(getDocumentRoot() !== document.body) return "A custom document template owns this document's layout."
-    if(document.body.classList.contains("ww-canvas")) return "Convert to Document before switching between Canvas and Slides."
     if(document.body.querySelectorAll(":scope > .ww-slides-viewport").length > 1
-      || Boolean(this.viewport()) !== Boolean(this.navigation())) return "The existing carousel structure is incomplete."
+      || this.viewport() && !this.slides().length
+      || !this.viewport() && this.navigation()) return "The existing carousel structure is incomplete."
     return null
   }
 
@@ -174,9 +183,9 @@ export class SlidesFeature extends EditorFeature {
     }
   }
 
-  convert(mode: "slides" | "document") {
-    if(this.editor.isEditingLocked || mode === "slides" && (this.active || this.conversionReason()) || mode === "document" && !this.active) return false
-    const end = this.editor.doc.beginUndoGroup()
+  convert(mode: "slides" | "document", captureUndo = true) {
+    if(this.editor.isEditingLocked || mode === "slides" && (documentLayoutMode() !== "document" || this.conversionReason()) || mode === "document" && !this.active) return false
+    const end = captureUndo ? this.editor.doc.beginUndoGroup() : () => {}
     try {
       if(mode === "slides") {
         const empty = this.editor.features.canvas.emptyParagraph()
@@ -198,6 +207,7 @@ export class SlidesFeature extends EditorFeature {
           if(!slide.childNodes.length) slide.append(document.createElement("p"))
           viewport.after(nav)
         }
+        for(const container of [this.viewport(), this.navigation()]) if(container) clearInlinePlacement(container)
         document.body.classList.add(slidesClass)
         for(const {item, rect} of geometry) {
           if(!isSlide(item.parentNode)) continue
@@ -210,7 +220,19 @@ export class SlidesFeature extends EditorFeature {
       else {
         document.body.classList.remove(slidesClass)
         if(!document.body.classList.length) document.body.removeAttribute("class")
-        for(const slide of this.slides()) for(const item of this.content(slide)) if(item instanceof Element) clearInlinePlacement(item)
+        this.navigation()?.remove()
+        for(const slide of this.slides()) {
+          for(const directions of slide.querySelectorAll(":scope > nav.ww-slide-directions:not([is])")) directions.remove()
+          for(const item of this.content(slide)) if(item instanceof Element) clearInlinePlacement(item)
+          slide.replaceWith(...slide.childNodes)
+        }
+        const viewport = this.viewport()
+        if(viewport) viewport.replaceWith(...viewport.childNodes)
+        const paragraph = resetEmptyTemplateContent()
+        if(paragraph) {
+          $.move(paragraph)
+          this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})
+        }
       }
     }
     finally { end() }

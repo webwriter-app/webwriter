@@ -7,7 +7,8 @@ import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
-import type {DocumentLayoutState} from "../document-layout"
+import {layoutPreviewStyles, renderTemplateCard, renderTemplatePreview, templateLabel, templateModes} from "./template-preview"
+import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 
 export type ToolboxTool = "Edit" | "Style" | "Review"
 
@@ -359,6 +360,7 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     .document-layout-controls {
+      grid-column: 1 / -1;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
@@ -369,48 +371,29 @@ export class DomEditorToolbox extends EditingControls {
       font-size: 0.75rem;
     }
 
-    .document-layout-mode,
-    .document-layout-zoom {
-      margin: 0;
-    }
+    ${layoutPreviewStyles}
 
-    .document-layout-mode strong,
-    .document-layout-zoom strong {
-      color: #2f3742;
-      font-weight: 650;
+    .document-layout-zoom { margin: 0; }
+    .template-picker { position: relative; }
+    .template-picker summary { position: relative; list-style: none; }
+    .template-picker summary::-webkit-details-marker { display: none; }
+    .template-picker summary::after {
+      content: "⌄";
+      position: absolute;
+      right: 0.5rem;
+      bottom: 0.3rem;
+      font-size: 1rem;
     }
-
-    .document-layout-change {
-      box-sizing: border-box;
-      min-height: 28px;
-      margin: 0;
-      padding: 0.35rem 0.55rem;
-      border: 1px solid #8ba5be;
-      border-radius: 0.25rem;
-      color: #153b5c;
-      background: #dbe7f2;
-      font: 600 0.72rem/1 system-ui, sans-serif;
-      cursor: pointer;
-    }
-
+    .template-picker[open] summary::after { content: "⌃"; }
     .document-layout-choices {
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-    }
-
-    .document-layout-change:hover:not(:disabled) {
-      background: #c8dced;
-    }
-
-    .document-layout-change:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 1px;
-    }
-
-    .document-layout-change:disabled {
-      opacity: 0.6;
-      cursor: default;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.35rem;
+      margin-top: 0.35rem;
+      padding: 0.35rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.35rem;
+      background: #f8fafc;
     }
 
     .document-layout-error {
@@ -592,33 +575,26 @@ export class DomEditorToolbox extends EditingControls {
     const drawers = super.renderDrawers()
     if(this.activeTool === "Edit" && !this.developMode && this.documentSelected) {
       drawers.push(html`
-        <ribbon-drawer label="Layout" icon="Layout" layout="document-layout">
+        <ribbon-drawer label="Templates" icon="Layout" layout="document-layout">
           <div class="document-layout-controls">
-            <p class="document-layout-mode">Current mode: <strong>${this.documentLayout.mode[0].toUpperCase() + this.documentLayout.mode.slice(1)}</strong></p>
+            <details class="template-picker" @keydown=${(event: KeyboardEvent) => {
+              if(event.key !== "Escape") return
+              const picker = event.currentTarget as HTMLDetailsElement
+              picker.open = false
+              picker.querySelector("summary")?.focus()
+            }}>
+              <summary class="layout-preset" aria-label=${`Current template: ${templateLabel(this.documentLayout.mode)}. Choose template`}>
+                ${renderTemplatePreview(this.documentLayout.mode)}
+              </summary>
+              <div class="document-layout-choices" role="group" aria-label="Templates">
+                ${templateModes.filter(mode => mode !== this.documentLayout.mode).map(mode => renderTemplateCard(
+                  mode, this.documentLayout, this.historyState.preview !== null || this.htmlPending,
+                  selected => this.selectDocumentTemplate(selected),
+                ))}
+              </div>
+            </details>
             <p class="document-layout-zoom">Zoom: <strong>${this.documentLayout.zoom}%</strong></p>
             ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
-            ${!this.documentLayout.canConvert ? html`<p>This document’s structure cannot be converted automatically.</p>` : ""}
-            <div class="document-layout-choices" role="group" aria-label="Document layout">
-              ${(["document", "canvas", "slides"] as const).map(mode => {
-                const reason = this.layoutConversionReason(mode)
-                const selected = this.documentLayout.mode === mode
-                const disabled = selected || Boolean(reason) || this.historyState.preview !== null || this.htmlPending
-                return html`<button
-                  class="document-layout-change"
-                  data-mode=${mode}
-                  type="button"
-                  aria-pressed=${selected ? "true" : "false"}
-                  title=${reason ?? (selected ? `Current layout: ${this.layoutModeLabel(mode)}` : "")}
-                  aria-label=${reason ? `${this.layoutModeLabel(mode)}: ${reason}` : this.layoutModeLabel(mode)}
-                  ?disabled=${disabled}
-                  @click=${() => this.dispatchEvent(new CustomEvent<{mode: "canvas" | "document" | "slides"}>("document-layout-change", {
-                    detail: {mode},
-                    bubbles: true,
-                    composed: true,
-                  }))}
-                >${this.layoutModeLabel(mode)}${selected ? " (current)" : ""}</button>`
-              })}
-            </div>
           </div>
         </ribbon-drawer>
       `)
@@ -645,22 +621,13 @@ export class DomEditorToolbox extends EditingControls {
     return drawers
   }
 
-  private layoutModeLabel(mode: "document" | "canvas" | "slides") {
-    return mode[0].toUpperCase() + mode.slice(1)
-  }
-
-  private layoutConversionReason(mode: "document" | "canvas" | "slides") {
-    if(mode === this.documentLayout.mode) return null
-    const conversions = (this.documentLayout as DocumentLayoutState & {
-      conversions?: Partial<Record<"document" | "canvas" | "slides", string | null>>
-    }).conversions
-    if(typeof conversions?.[mode] === "string") return conversions[mode]
-    if((this.documentLayout.mode === "canvas" || this.documentLayout.mode === "slides")
-      && (mode === "canvas" || mode === "slides")) {
-      return "Convert to Document first to change between Canvas and Slides."
+  private selectDocumentTemplate(mode: DocumentLayoutMode) {
+    const picker = this.renderRoot.querySelector<HTMLDetailsElement>(".template-picker")
+    if(picker) {
+      picker.open = false
+      picker.querySelector("summary")?.focus()
     }
-    if(conversions?.[mode] === null) return null
-    return this.documentLayout.canConvert ? null : "This document’s structure cannot be converted automatically."
+    this.dispatchEvent(new CustomEvent("document-layout-change", {detail: {mode}, bubbles: true, composed: true}))
   }
 
   selectTool(tool: ToolboxTool | null) {

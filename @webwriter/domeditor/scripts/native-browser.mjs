@@ -6,6 +6,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "bottom template cards retain native editing focus after rendering",
   "editor command preserves a live selection",
   "selection feature treats custom element as atomic",
   "layout based hit testing returns the rendered target",

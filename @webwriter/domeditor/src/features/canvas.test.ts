@@ -86,18 +86,18 @@ describe("canvas document layout", () => {
     expect(paragraph.firstElementChild).toBe(image)
     expect(paragraph.childNodes.length).toBe(1)
   })
-  it("starts in document mode with an empty paragraph shortcut in the appendix", () => {
+  it("starts in document mode without the old appendix template shortcuts", () => {
     const canvas = editor.features.canvas
 
     expect(canvas.getState()).toEqual({mode: "document", canConvert: true, zoom: 100})
     const start = editor.appendix.querySelector<HTMLButtonElement>('button[name="start"]')
-    expect(start).not.toBeNull()
-    expect(start?.textContent).toBe("Use canvas layout")
+    expect(start).toBeNull()
+    expect(editor.appendix.querySelector<HTMLElement>("[part=canvas-controls]")!.hidden).toBe(true)
     expect(document.body.querySelector(".◆canvas-controls")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("canvas-controls")
   })
 
-  it("only offers the empty paragraph shortcut for a truly empty document", async () => {
+  it("only accepts the empty paragraph shortcut for a truly empty document", async () => {
     const canvas = editor.features.canvas
     const cases = [
       "<p></p>",
@@ -110,20 +110,17 @@ describe("canvas document layout", () => {
     for(const html of cases) {
       document.body.innerHTML = html
       await settle()
-      const start = editor.appendix.querySelector<HTMLButtonElement>('button[name="start"]')
-      if(html === "<p></p>" || html === "<p><br></p>") expect(start).not.toBeNull()
-      else expect(start).toBeNull()
+      if(html === "<p></p>" || html === "<p><br></p>") expect(canvas.emptyParagraph()).not.toBeNull()
+      else expect(canvas.emptyParagraph()).toBeNull()
       expect(canvas.getState().mode).toBe("document")
     }
   })
 
   it("rechecks a stale startCanvas request against current DOM", () => {
     const canvas = editor.features.canvas
-    const start = editor.appendix.querySelector<HTMLButtonElement>('button[name="start"]')!
     document.body.firstElementChild!.textContent = "content added after the button was rendered"
 
     expect(canvas.actions.startCanvas({type: "startCanvas"})).toBe(false)
-    expect(start.isConnected).toBe(true)
     expect(canvas.getState().mode).toBe("document")
     expect(document.body.classList.contains(canvasClass)).toBe(false)
   })
@@ -284,7 +281,7 @@ describe("canvas document layout", () => {
     document.body.classList.remove(canvasClass)
     await settle()
     expect(canvas.getState().mode).toBe("document")
-    expect(editor.appendix.querySelector('button[name="start"]')).not.toBeNull()
+    expect(editor.appendix.querySelector<HTMLElement>("[part=canvas-controls]")!.hidden).toBe(true)
 
     const remote = new Y.Doc()
     Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")

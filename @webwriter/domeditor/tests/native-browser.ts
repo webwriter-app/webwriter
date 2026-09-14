@@ -1,5 +1,6 @@
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
+import type {DomEditor} from "../src/components/dom-editor"
 import {$} from "../src/utility"
 
 const checks: Check[] = []
@@ -991,6 +992,86 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
 })
 
 editor.destroy()
+
+await check("bottom template cards retain native editing focus after rendering", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
+  frame.src = "/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    let editingFrame: HTMLIFrameElement | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      editingFrame = app?.shadowRoot?.querySelector<HTMLIFrameElement>(".editor-frame") ?? null
+      if(editingFrame?.contentDocument?.designMode === "on") break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && editingFrame?.contentDocument?.designMode === "on", "app editor did not initialize")
+    const root = app!.shadowRoot!, doc = editingFrame!.contentDocument!
+    await new Promise(resolve => setTimeout(resolve, 750))
+    doc.documentElement.setAttribute("lang", doc.documentElement.getAttribute("lang")!)
+    const resource = doc.createElement("style")
+    resource.className = "◆ ◆editor-only"
+    doc.head.append(resource)
+    await layoutFrame()
+    resource.textContent = "/* initialized editor resource */"
+    resource.setAttribute("media", "screen")
+    await new Promise(resolve => setTimeout(resolve, 750))
+    assert(root.querySelector(".templates-panel:not([inert])"), "automatic startup changes dismissed Templates")
+    resource.remove()
+    editingFrame!.focus()
+    for(const mode of ["canvas", "slides", "document", "slides", "canvas", "document"]) {
+      await app!.updateComplete
+      const card = root.querySelector<HTMLButtonElement>(`.templates-bar [data-mode="${mode}"]`)!
+      assert(card && !card.disabled, `${mode} card is unavailable`)
+      // Model the native pointer focus default explicitly: HTMLElement.click()
+      // alone omits pointerdown/mousedown and would miss a toolbar focus loss.
+      for(const type of ["pointerdown", "mousedown"]) {
+        const event = new MouseEvent(type, {button: 0, bubbles: true, composed: true, cancelable: true})
+        card.dispatchEvent(event)
+        if(!event.defaultPrevented) card.focus()
+        assert(root.activeElement === editingFrame, `${mode} card took pointer focus from the editor`)
+      }
+      const previousAnchor = doc.getSelection()?.anchorNode
+      card.click()
+      for(let attempt = 0; !card.disabled && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+      assert(card.disabled, `${mode} conversion did not finish`)
+      // Check after asynchronous selection messages and rendering, without
+      // using automation that might refocus the page before typing.
+      await new Promise(resolve => setTimeout(resolve, 300))
+      assert(root.activeElement === editingFrame && doc.hasFocus(), `${mode} lost editing focus after rendering`)
+      const previousBlock = previousAnchor?.nodeType === Node.ELEMENT_NODE ? previousAnchor as Element : previousAnchor?.parentElement
+      const retained = previousBlock?.isConnected && doc.body.contains(previousBlock) && previousBlock.matches("p, h1")
+      const first = retained ? previousBlock! : doc.querySelector(mode === "slides" ? ".ww-slide > h1" : "body > p")!
+      const selection = doc.getSelection()!
+      assert(first && selection.isCollapsed && first.contains(selection.anchorNode), `${mode} lost its initial native caret: ${selection.anchorNode?.nodeName}:${selection.anchorOffset}; ${doc.body.innerHTML}`)
+      if(!retained) assert(!first.childNodes.length, `${mode} inserted content to imitate a caret`)
+      assert(root.querySelector(".templates-panel:not([inert])"), `${mode} conversion dismissed Templates`)
+    }
+    assert(doc.execCommand("insertText", false, "x"), "editor was not ready for typing")
+    await new Promise(resolve => setTimeout(resolve, 250))
+    const panel = root.querySelector<HTMLElement>(".templates-panel")!
+    assert(panel.inert && panel.getBoundingClientRect().height < 1, "first edit did not slide Templates out of view")
+    assert(doc.hasFocus(), "dismissing Templates interrupted typing focus")
+    doc.body.innerHTML = '<p>First</p><p id="retained-selection">Second</p>'
+    let previousMode: "document" | "canvas" | "slides" = "document"
+    for(const mode of ["canvas", "slides", "document", "slides", "canvas", "document"] as const) {
+      const text = doc.querySelector("#retained-selection")!.firstChild!
+      doc.getSelection()!.setBaseAndExtent(text, 5, text, 2)
+      await layoutFrame()
+      await app!.execute({type: "setDocumentLayout", mode, expectedMode: previousMode})
+      previousMode = mode
+      await new Promise(resolve => setTimeout(resolve, 300))
+      const selection = doc.getSelection()!
+      assert(doc.hasFocus() && selection.anchorNode === text && selection.anchorOffset === 5
+        && selection.focusNode === text && selection.focusOffset === 2, `${mode} did not retain the backward text selection`)
+      assert(doc.execCommand("insertText", false, "x") && text.textContent === "Sexd", `${mode} typing did not replace the retained selection`)
+      text.textContent = "Second"
+    }
+  }
+  finally { frame.remove() }
+})
 
 const failed = checks.filter(item => item.error)
 document.querySelector("#status")!.textContent = `${checks.length - failed.length} passed, ${failed.length} failed`

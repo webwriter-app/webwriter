@@ -3047,7 +3047,153 @@ describe("DomEditor.execute()", () => {
     }
   })
 
-  it("confirms document layout conversion before executing it", async () => {
+  it("keeps the full-width Templates bar in every template and reflects live conversion availability", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    for(const mode of ["document", "canvas", "slides"] as const) {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {
+          path: [{path: [], name: mode}], nodeSelected: true,
+          documentLayout: {mode, canConvert: true, zoom: 100},
+        }}, source: editorWindow,
+      }))
+      await editor.updateComplete
+      const bar = editor.shadowRoot!.querySelector<HTMLElement>(".templates-bar")!
+      expect(bar.querySelector("h2")!.textContent).toBe("Templates")
+      const cards = Array.from(bar.querySelectorAll<HTMLButtonElement>("button[data-mode]"))
+      expect(cards.map(card => card.dataset.mode)).toEqual(["document", "canvas", "slides"])
+      expect(cards.filter(card => card.getAttribute("aria-pressed") === "true").map(card => card.dataset.mode)).toEqual([mode])
+      expect(cards.find(card => card.dataset.mode === mode)!.disabled).toBe(true)
+      const next = mode === "document" ? "canvas" : "document"
+      cards.find(card => card.dataset.mode === next)!.click()
+      expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode: next, expectedMode: mode})
+      if(mode !== "document") {
+        expect(cards.find(card => card.dataset.mode === (mode === "canvas" ? "slides" : "canvas"))!.disabled).toBe(false)
+      }
+    }
+    expect(editor.shadowRoot!.querySelector(".templates-bar")).not.toBeNull()
+    expect(editor.querySelector(".templates-bar")).toBeNull()
+  })
+
+  it("keeps Templates visible when synchronization reapplies the document language", async () => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    const root = iframe.contentDocument!.documentElement
+    const revision = (editor as any).documentChangeSequence
+    root.setAttribute("lang", root.getAttribute("lang")!)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+    expect((editor as any).documentChangeSequence).toBe(revision)
+  })
+
+  it("ignores editor resource initialization when deciding whether to dismiss Templates", async () => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    const style = iframe.contentDocument!.createElement("style")
+    style.className = "◆ ◆editor-only"
+    iframe.contentDocument!.head.append(style)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    style.textContent = "p { min-height: 1em; }"
+    style.setAttribute("media", "screen")
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+    expect((editor as any).fileDirty).toBe(false)
+  })
+
+  it("hides Templates on the first authored edit and keeps it hidden after undoing that edit", async () => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    const body = iframe.contentDocument!.body
+    body.innerHTML = '<p class="◆ ◆empty-selected"></p>'
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).not.toBeNull()
+    body.firstElementChild!.textContent = "First edit"
+    await vi.waitFor(() => {
+      expect((editor as any).fileDirty).toBe(true)
+      expect((editor as any).templatesDismissed).toBe(true)
+      expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull()
+    })
+    body.firstElementChild!.textContent = ""
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull()
+  })
+
+  it("keeps Templates visible for conversion mutations, then hides it on the next edit", async () => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    let complete!: (result: boolean) => void
+    vi.spyOn(editor, "execute").mockImplementation(() => new Promise(resolve => { complete = resolve }))
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!.click()
+    iframe.contentDocument!.body.classList.add("ww-canvas")
+    iframe.contentDocument!.body.innerHTML = '<p style="position:absolute"></p>'
+    await new Promise(resolve => setTimeout(resolve, 0))
+    complete(true)
+    await vi.waitFor(() => expect((editor as any).templateConversionCount).toBe(0))
+    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).not.toBeNull()
+    iframe.contentDocument!.body.firstElementChild!.textContent = "Edit"
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull())
+  })
+
+  it("hides Templates when formatting empty content", async () => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    const paragraph = iframe.contentDocument!.createElement("p")
+    iframe.contentDocument!.body.append(paragraph)
+    paragraph.style.color = "red"
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull())
+  })
+
+  it("dismisses Templates with its close button and restores editor focus", async () => {
+    const {editor, iframe} = await mountEditor()
+    const focus = vi.spyOn(iframe, "focus")
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-close[aria-label="Hide templates"]')!.click()
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull())
+    expect(focus).toHaveBeenCalledWith({preventScroll: true})
+    expect(editor.shadowRoot!.querySelector(".templates-bar")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".templates-panel")!.getAttribute("aria-hidden")).toBe("true")
+    expect(editor.shadowRoot!.querySelector("dom-editor-toolbox")).not.toBeNull()
+  })
+
+  it("keeps native pointer focus in the editor when pressing a bottom template card", async () => {
+    const {editor, iframe} = await mountEditor()
+    const button = editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    iframe.focus()
+    for(const type of ["pointerdown", "mousedown"]) {
+      const event = new MouseEvent(type, {button: 0, bubbles: true, composed: true, cancelable: true})
+      button.querySelector("span")!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(editor.shadowRoot!.activeElement).toBe(iframe)
+      const secondary = new MouseEvent(type, {button: 2, bubbles: true, composed: true, cancelable: true})
+      button.dispatchEvent(secondary)
+      expect(secondary.defaultPrevented).toBe(false)
+    }
+    button.click()
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
+  })
+
+  it.each([true, false])("focuses the editor only after a successful template switch: %s", async changed => {
+    const {editor, iframe} = await mountEditor()
+    let complete!: (value: boolean) => void
+    vi.spyOn(editor, "execute").mockImplementation(() => new Promise(resolve => { complete = resolve }))
+    const focus = vi.spyOn(iframe, "focus")
+    const button = editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!
+    button.focus()
+    button.click()
+    expect(focus).not.toHaveBeenCalled()
+    complete(changed)
+    await editor.updateComplete
+    await editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!.updateComplete
+    await Promise.resolve()
+    if(changed) await vi.waitFor(() => expect(focus).toHaveBeenCalledWith({preventScroll: true}))
+    else expect(focus).not.toHaveBeenCalled()
+  })
+
+  it("switches templates immediately without confirmation", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     window.dispatchEvent(new MessageEvent("message", {
@@ -3070,11 +3216,7 @@ describe("DomEditor.execute()", () => {
     vi.stubGlobal("confirm", confirm)
 
     change.click()
-    expect(confirm).toHaveBeenCalledTimes(1)
-    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "setDocumentLayout"}))
-
-    confirm.mockReturnValue(true)
-    change.click()
+    expect(confirm).not.toHaveBeenCalled()
     await Promise.resolve()
     expect(execute).toHaveBeenCalledWith({
       type: "setDocumentLayout",
