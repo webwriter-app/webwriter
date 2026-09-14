@@ -397,6 +397,7 @@ export class DomEditor extends LitElement {
     selectedLocalPackageName: {attribute: false, state: true},
     selectedLocalPackageAutoReload: {attribute: false, state: true},
     frameRevision: {attribute: false, state: true},
+    frameStarted: {attribute: false, state: true},
     listType: {attribute: false, state: true},
     listStyle: {attribute: false, state: true},
     orderedList: {attribute: false, state: true},
@@ -535,6 +536,8 @@ export class DomEditor extends LitElement {
   })
   private frameState: EditorStateSnapshot | undefined
   private frameRevision = 0
+  private frameStarted = false
+  private frameStartTimer: ReturnType<typeof setTimeout> | undefined
   private frameDocumentHTML: string | null = null
   private fileName = ""
   private fileDirty = false
@@ -1451,7 +1454,14 @@ export class DomEditor extends LitElement {
         else this.packageError = message
       })
       void packageLoad.then(
-        () => editorReadyResolve?.(editorWindow),
+        () => {
+          // Activate the initial selection after the delayed frame and its
+          // widget resources are ready. Window focus refreshes its markers.
+          if(this.isConnected && this.editorWindow === editorWindow && this.frameRevision === 0 && !this.previewActive) {
+            this.focusEditor()
+          }
+          editorReadyResolve?.(editorWindow)
+        },
         error => editorReadyReject?.(error),
       )
       this.dirtyTrackingTimer = setTimeout(() => {
@@ -1609,7 +1619,7 @@ export class DomEditor extends LitElement {
 
   private isEditorFocused() {
     const iframe = this.editorIframe()
-    return iframe !== null && document.activeElement === iframe
+    return iframe !== null && this.shadowRoot?.activeElement === iframe
   }
 
   private saveEditorSelection() {
@@ -1660,6 +1670,8 @@ export class DomEditor extends LitElement {
     const iframe = this.editorIframe()
     iframe?.focus({preventScroll: true})
     this.editorWindow?.focus()
+    // Focusing the frame alone does not activate native designMode typing.
+    this.editorDocument?.body.focus({preventScroll: true})
     if(restoreSelection) this.restoreEditorSelection()
     else this.savedEditorSelection = null
   }
@@ -3109,6 +3121,11 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadEditor(nextPackages: WebWriterPackage[]) {
+    if(!this.frameStarted) {
+      this.installedPackages = nextPackages
+      this.persistInstalledPackages()
+      return
+    }
     this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const snapshot = await this.execute({type: "snapshotState"}) as EditorStateSnapshot
@@ -4472,11 +4489,25 @@ export class DomEditor extends LitElement {
     else if(import.meta.env.MODE !== "test") void this.loginToBackend()
     this.restoreInstalledPackages()
     void this.loadPackageCatalog()
-    void this.restoreLocalPackages()
+    const restoration = this.restoreLocalPackages()
+    const timer = this.frameStarted ? undefined : setTimeout(() => startFrame(), 100)
+    this.frameStartTimer = timer
+    const startFrame = () => {
+      if(!this.isConnected || this.frameStartTimer !== timer) return
+      clearTimeout(timer)
+      this.frameStartTimer = undefined
+      this.frameStarted = true
+    }
+    void restoration.then(startFrame, error => {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+      startFrame()
+    })
     this.localPackageManager.connect()
   }
 
   disconnectedCallback() {
+    clearTimeout(this.frameStartTimer)
+    this.frameStartTimer = undefined
     this.clearMotionStylesheet()
     this.disposeLiveSession()
     this.backendProbeController?.abort()
@@ -4746,7 +4777,7 @@ export class DomEditor extends LitElement {
             @load=${this.handlePreviewFrameLoad}
           ></iframe>
         ` : ""}
-        <iframe
+        ${this.frameStarted ? html`<iframe
           class="editor-frame"
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin"
@@ -4756,7 +4787,7 @@ export class DomEditor extends LitElement {
           ?inert=${this.previewActive}
           @load=${this.handleEditorFrameLoad}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
-        ></iframe>
+        ></iframe>` : ""}
         ${this.liveSessionActive && this.liveSessionRole === "host" ? html`
           <live-session-overlay
             .learners=${this.liveOverlayLearners}

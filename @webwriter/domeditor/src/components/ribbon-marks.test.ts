@@ -31,6 +31,7 @@ async function mountRibbon() {
 
 async function mountEditor() {
   const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true})
   document.body.append(editor)
   await editor.updateComplete
   const iframe = editor.shadowRoot!.querySelector("iframe")!

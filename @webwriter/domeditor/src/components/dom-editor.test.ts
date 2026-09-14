@@ -166,11 +166,13 @@ function completePendingPackageLoad(editor: DomEditor) {
 
 async function mountEditor() {
   const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true})
   document.body.append(editor)
   await editor.updateComplete
   const iframe = editor.shadowRoot!.querySelector("iframe")!
   wirePackageLoadCompletion(iframe.contentWindow!)
   iframe.dispatchEvent(new Event("load"))
+  await (editor as any).packageLoadPromise
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
@@ -214,6 +216,146 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("restores iframe focus after a package reload from inside the shadow root", async () => {
+    const {editor, iframe} = await mountEditor()
+    const state = editor as any
+    iframe.focus()
+    expect(document.activeElement).toBe(editor)
+    expect(editor.shadowRoot!.activeElement).toBe(iframe)
+    state.savedEditorSelection = null
+    vi.spyOn(editor, "execute").mockResolvedValue({update: []})
+    let finishLoading!: () => void
+    vi.spyOn(state, "waitForEditorWindow").mockImplementation(() => new Promise<void>(resolve => { finishLoading = resolve }))
+    const focus = vi.spyOn(state, "focusEditor")
+    const reload = state.reloadEditor([])
+    await vi.waitFor(() => expect(finishLoading).toBeDefined())
+    iframe.blur()
+    expect(focus).not.toHaveBeenCalled()
+    finishLoading()
+    await reload
+    expect(focus).toHaveBeenCalledOnce()
+    expect(editor.shadowRoot!.activeElement).toBe(iframe)
+  })
+
+  it.each(["initial", "preview", "reload", "disconnected"])("focuses the initial selection after loading: %s", async mode => {
+    const editor = new DomEditor()
+    Object.assign(editor, {frameStarted: true})
+    document.body.append(editor)
+    await editor.updateComplete
+    const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
+    const focus = vi.spyOn(editor as any, "focusEditor")
+    iframe.dispatchEvent(new Event("load"))
+    const paragraph = iframe.contentDocument!.createElement("p")
+    iframe.contentDocument!.body.append(paragraph)
+    const selection = iframe.contentWindow!.getSelection()!
+    selection.setPosition(paragraph, 0)
+    expect(focus).not.toHaveBeenCalled()
+    if(mode === "preview") Object.assign(editor, {previewActive: true})
+    if(mode === "reload") Object.assign(editor, {frameRevision: 1})
+    const loaded = (editor as any).packageLoadPromise
+    completePendingPackageLoad(editor)
+    if(mode === "disconnected") editor.remove()
+    await loaded
+    if(mode === "initial") {
+      expect(focus).toHaveBeenCalledOnce()
+      expect(editor.shadowRoot!.activeElement).toBe(iframe)
+      expect(selection.anchorNode).toBe(paragraph)
+      expect(selection.anchorOffset).toBe(0)
+    }
+    else expect(focus).not.toHaveBeenCalled()
+  })
+
+  it("starts as soon as packages restore within the 100 ms startup window", async () => {
+    vi.useFakeTimers()
+    try {
+      const editor = new DomEditor()
+      const state = editor as any
+      let restore!: (packages: WebWriterPackage[]) => void
+      vi.spyOn(state.localPackageManager, "restore").mockImplementation(() => new Promise(resolve => { restore = resolve }))
+      const execute = vi.spyOn(editor, "execute")
+      document.body.append(editor)
+      await editor.updateComplete
+      await vi.advanceTimersByTimeAsync(25)
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+      restore([demoPackage])
+      await vi.advanceTimersByTimeAsync(0)
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBeNull()
+      expect(state.installedPackages).toEqual([demoPackage])
+      expect(state.frameRevision).toBe(0)
+      expect(execute).not.toHaveBeenCalled()
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("starts after 100 ms and reloads normally when packages restore later", async () => {
+    vi.useFakeTimers()
+    try {
+      const editor = new DomEditor()
+      const state = editor as any
+      let restore!: (packages: WebWriterPackage[]) => void
+      vi.spyOn(state.localPackageManager, "restore").mockImplementation(() => new Promise(resolve => { restore = resolve }))
+      document.body.append(editor)
+      await editor.updateComplete
+      await vi.advanceTimersByTimeAsync(99)
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+      await vi.advanceTimersByTimeAsync(1)
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBeNull()
+      const execute = vi.spyOn(editor, "execute").mockResolvedValue({update: []})
+      vi.spyOn(state, "waitForEditorWindow").mockResolvedValue(window)
+      restore([demoPackage])
+      await vi.advanceTimersByTimeAsync(0)
+      await editor.updateComplete
+      expect(execute).toHaveBeenCalledWith({type: "snapshotState"})
+      expect(state.installedPackages).toEqual([demoPackage])
+      expect(state.frameRevision).toBe(1)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("starts immediately if package restoration fails", async () => {
+    vi.useFakeTimers()
+    try {
+      const editor = new DomEditor()
+      const state = editor as any
+      vi.spyOn(state.localPackageManager, "restore").mockRejectedValue(new Error("Restoration failed"))
+      document.body.append(editor)
+      await vi.advanceTimersByTimeAsync(0)
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBeNull()
+      expect(state.localPackageError).toBe("Restoration failed")
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("ignores a disconnected startup when reconnected", async () => {
+    vi.useFakeTimers()
+    try {
+      const editor = new DomEditor()
+      const state = editor as any
+      let restore!: (packages: WebWriterPackage[]) => void
+      vi.spyOn(state.localPackageManager, "restore")
+        .mockImplementationOnce(() => new Promise(resolve => { restore = resolve }))
+        .mockImplementationOnce(() => new Promise(() => {}))
+      document.body.append(editor)
+      await editor.updateComplete
+      await vi.advanceTimersByTimeAsync(25)
+      editor.remove()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(state.frameStarted).toBe(false)
+      document.body.append(editor)
+      restore([])
+      await vi.advanceTimersByTimeAsync(99)
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+      await vi.advanceTimersByTimeAsync(1)
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBeNull()
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("resolves only ready documented widgets into one focused proposal", async () => {
     const editor = new DomEditor()
     const state = editor as any
@@ -595,6 +737,7 @@ describe("DomEditor iframe setup", () => {
     localStorage.setItem(INSTALLED_PACKAGES_STORAGE_KEY, JSON.stringify([demoPackage]))
     const search = vi.mocked(WebWriterPackageRegistry.prototype.search)
     const editor = new DomEditor()
+    Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector("iframe")!
@@ -664,6 +807,7 @@ describe("DomEditor iframe setup", () => {
 
     try {
       const editor = new DomEditor()
+      Object.assign(editor, {frameStarted: true})
       document.body.append(editor)
       await editor.updateComplete
       const iframe = editor.shadowRoot!.querySelector("iframe")!
@@ -686,6 +830,7 @@ describe("DomEditor iframe setup", () => {
   it("loads the scoped custom element registry polyfill before widgets", async () => {
     const editor = new DomEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
+    Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector("iframe")!
@@ -1566,6 +1711,7 @@ describe("DomEditor.execute()", () => {
 
   it("waits for package resources before posting an action", async () => {
     const editor = new DomEditor()
+    Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
@@ -1607,6 +1753,7 @@ describe("DomEditor.execute()", () => {
 
   it("propagates package loading failures to actions waiting for the frame", async () => {
     const editor = new DomEditor()
+    Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
@@ -1638,6 +1785,7 @@ describe("DomEditor.execute()", () => {
 
   it("does not post an action aborted while the editor frame is initializing", async () => {
     const editor = new DomEditor()
+    Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
     await editor.updateComplete
     const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
@@ -2614,6 +2762,7 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await ribbon.updateComplete
     editor.remove()
+    Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
     finish()
     await new Promise(resolve => setTimeout(resolve, 0))

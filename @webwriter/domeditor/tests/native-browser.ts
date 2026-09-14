@@ -1008,6 +1008,17 @@ await check("bottom template cards retain native editing focus after rendering",
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     assert(app && editingFrame?.contentDocument?.designMode === "on", "app editor did not initialize")
+    await (app as any).waitForEditorWindow()
+    assert(app!.shadowRoot!.activeElement === editingFrame, "initial editor frame was not focused")
+    assert(editingFrame!.contentDocument!.body.matches(":focus"), "initial editable body did not receive native focus")
+    assert(frame.contentDocument!.activeElement === app, "iframe focus was not retargeted to the shadow host")
+    ;(app as any).savedEditorSelection = null
+    const previousDocument = editingFrame!.contentDocument
+    await (app as any).reloadEditor([])
+    assert(editingFrame!.contentDocument !== previousDocument, "package reload did not replace the document")
+    assert(app!.shadowRoot!.activeElement === editingFrame && editingFrame!.contentDocument!.hasFocus(), "package reload did not restore iframe focus")
+    assert(editingFrame!.contentDocument!.body.matches(":focus"), "package reload did not focus the native editable body")
+    assert(editingFrame!.contentDocument!.getSelection()?.rangeCount, "package reload lost the initial selection")
     const root = app!.shadowRoot!, doc = editingFrame!.contentDocument!
     await new Promise(resolve => setTimeout(resolve, 750))
     doc.documentElement.setAttribute("lang", doc.documentElement.getAttribute("lang")!)

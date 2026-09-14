@@ -63,6 +63,7 @@ const completePackageLoad = (editorWindow: Window) => {
 
 const mountEditor = async () => {
   const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true})
   document.body.append(editor)
   await editor.updateComplete
   const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
