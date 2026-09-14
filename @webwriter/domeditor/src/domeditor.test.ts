@@ -159,8 +159,6 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body\.◆element-selected::part\(selection-caret-node\)\s*\{[\s\S]*?inset:\s*0;[\s\S]*?outline:\s*none;[\s\S]*?background:\s*rgb\(56 189 248 \/ 6%\);/)
     expect(editorStyleString).not.toContain("body.◆element-selected::after")
     expect(editorStyleString).toContain("body::part(hover-caret)")
-    expect(editorStyleString).toMatch(/body::part\(insertion-add\)[\s\S]*?position-anchor:\s*--empty-selected;[\s\S]*?left:\s*anchor\(left\);[\s\S]*?top:\s*anchor\(top\);[\s\S]*?font:\s*inherit;/)
-    expect(editorStyleString).toMatch(/body\.◆empty-selected::part\(insertion-add\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
     expect(editorStyleString).toMatch(/summary\s*\{\s*cursor:\s*text;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)

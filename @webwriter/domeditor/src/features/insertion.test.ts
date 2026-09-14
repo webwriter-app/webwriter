@@ -30,46 +30,21 @@ beforeEach(() => {
 })
 
 describe("insertion menu", () => {
-  it("shows a ++ trigger in the initial paragraph and opens it like typed ++", async () => {
+  it.each(["<p></p>", "<p></p><p>Text</p>", "<h1></h1>"])("keeps empty blocks free of the ++ placeholder in %s while allowing typed commands", async html => {
+    document.body.innerHTML = html
+    $.move(document.body.firstElementChild!)
     editor.features.selection.processSelection()
     await Promise.resolve()
 
-    const button = editor.appendix.querySelector<HTMLButtonElement>(".◆insertion-add")
-    expect(button).not.toBeNull()
-    expect(button!.textContent).toBe("++")
-    expect(document.body.firstElementChild?.classList.contains("◆empty-selected")).toBe(true)
+    expect(editor.appendix.querySelector(".◆insertion-add")).toBeNull()
+    expect(editor.features.insertion.menu.open).toBe(false)
+    expect(editorHTML()).toBe(html)
 
-    const activation = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
-    expect(button!.dispatchEvent(activation)).toBe(false)
+    typeCommand()
     await editor.features.insertion.menu.updateComplete
 
     expect(editor.features.insertion.menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p>++</p>")
-    expect(document.body.classList.contains("◆insertion-trigger")).toBe(true)
-
-    editor.features.insertion.menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
-  })
-
-  it("shows a ++ trigger inside empty text blocks which opens like typed ++", async () => {
-    document.body.innerHTML = "<p></p><p>Text</p>"
-    const block = document.querySelector("p")!
-    $.move(block)
-    editor.features.selection.processSelection()
-    await Promise.resolve()
-
-    const button = editor.appendix.querySelector<HTMLButtonElement>(".◆insertion-add")
-    expect(button).not.toBeNull()
-    expect(editor.appendix.querySelectorAll(".◆insertion-add")).toHaveLength(1)
-    expect(block.classList.contains("◆empty-selected")).toBe(true)
-    expect(block.hasAttribute("style")).toBe(false)
-    expect(button!.hasAttribute("style")).toBe(false)
-
-    button!.click()
-    await editor.features.insertion.menu.updateComplete
-
-    expect(editor.features.insertion.menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p>++</p><p>Text</p>")
-    expect(document.body.classList.contains("◆insertion-trigger")).toBe(true)
+    expect(document.body.firstElementChild?.textContent).toBe("++")
   })
 
   it("opens after ++ at the end of a text block and exposes every requested section", async () => {
@@ -233,20 +208,6 @@ describe("insertion menu", () => {
 
     expect(editor.features.insertion.menu.open).toBe(true)
     expect(editorHTML()).toBe("<h1>Heading++</h1>")
-  })
-
-  it("does not activate the empty-block trigger in non-paragraph blocks", async () => {
-    document.body.innerHTML = "<h1></h1>"
-    const heading = document.querySelector("h1")!
-    $.move(heading)
-    editor.features.selection.processSelection()
-    await Promise.resolve()
-
-    const button = editor.appendix.querySelector<HTMLButtonElement>(".◆insertion-add")!
-    button.click()
-
-    expect(editor.features.insertion.menu.open).toBe(false)
-    expect(editorHTML()).toBe("<h1></h1>")
   })
 
   it("inserts the selected item when it is activated by a pointer", async () => {

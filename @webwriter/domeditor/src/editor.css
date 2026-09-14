@@ -1170,10 +1170,6 @@ details > summary:first-child + p:last-child:has(> br:only-child) > br {
   display: none;
 }
 
-body:has(details > summary:first-child + p:last-child:is(:empty, :has(> br:only-child)).◆empty-selected)::part(insertion-add) {
-  display: none;
-}
-
 /* Generated labels follow rather than precede the editable position, so an
  * empty DT/DD retains a native caret while either half of its pair is absent. */
 dl > dt:is(:empty, :has(br:only-child))::after,
@@ -1391,36 +1387,6 @@ body::part(presence-gap-caret-label) {
     left: calc(-0.05 * var(--presence-gap-caret-size));
     bottom: calc(100% + 0.27 * var(--presence-gap-caret-size));
     transform: translateX(-100%);
-}
-body::part(insertion-add) {
-  position: fixed;
-  position-anchor: --empty-selected;
-  left: anchor(left);
-  top: anchor(top);
-  z-index: 2147483647;
-  padding: 0;
-  border: 0;
-  color: darkgray;
-  background: transparent;
-  font: inherit;
-  line-height: inherit;
-  letter-spacing: inherit;
-  cursor: pointer;
-  pointer-events: all;
-  user-select: none;
-  -webkit-user-select: none;
-  outline: none;
-  display: none;
-}
-body.◆empty-selected::part(insertion-add),
-body:has(p.◆empty-selected)::part(insertion-add) {
-  display: inline-grid;
-}
-body.◆empty-selected::part(insertion-add) {
-  left: calc(anchor(left) + var(--body-padding));
-}
-body.◆insertion-trigger::part(insertion-add) {
-  display: none;
 }
 ::highlight(insertion-trigger) {
   color: #5279a2;

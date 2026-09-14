@@ -207,16 +207,6 @@ describe("media editing", () => {
     expect(editor.features.media.placeholder.element).toHaveAttribute("data-media", "video")
   })
 
-  it("does not replace the empty-document insertion control", () => {
-    const insertionButton = editor.appendix.querySelector<HTMLButtonElement>(".◆insertion-add")
-
-    void editor.features.media.placeholder
-
-    expect(insertionButton).not.toBeNull()
-    expect(insertionButton?.textContent).toBe("++")
-    expect(editor.appendix.querySelector(".◆insertion-add")).toBe(insertionButton)
-  })
-
   it("keeps the inactive media placeholder hidden under the editing CSP", () => {
     const placeholder = editor.features.media.placeholder
 

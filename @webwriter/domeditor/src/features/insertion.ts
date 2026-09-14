@@ -34,7 +34,6 @@ export class InsertionFeature extends EditorFeature {
     this.menu.addEventListener("insertion-menu-select", this.handleMenuSelect)
     this.menu.addEventListener("insertion-menu-close", this.handleMenuClose)
     super.enable()
-    this.createEmptyTextBlockButton()
   }
 
   disable() {
@@ -394,48 +393,6 @@ export class InsertionFeature extends EditorFeature {
       if(isElement(node) && node.matches(".◆editor-only")) return false
       return !isText(node) || Boolean(node.data)
     })
-  }
-
-  private isInsertionMenuBlock(block: Element) {
-    return block.matches("p") || this.isEmptyTextBlock(block) && isDocumentRoot(block)
-  }
-
-  private createEmptyTextBlockButton() {
-    if(this.editor.appendix.querySelector(".◆insertion-add")) return
-
-    const button = document.createElement("button")
-    button.classList.add("◆", "◆editor-only", "◆insertion-add")
-    button.type = "button"
-    button.contentEditable = "false"
-    button.setAttribute("aria-label", "Insert element")
-    button.title = "Insert element"
-    button.setAttribute("part", "insertion-add")
-    button.textContent = "++"
-    button.addEventListener("pointerdown", ev => {
-      ev.preventDefault()
-      ev.stopPropagation()
-    })
-    const activate = (ev: Event) => {
-      ev.preventDefault()
-      ev.stopPropagation()
-      const block = document.querySelector(".◆empty-selected")
-      if(!block || !this.isEmptyTextBlock(block) || !this.isInsertionMenuBlock(block)) return
-      $.move(block)
-      const target = this.editor.features.manipulation.ensureTextBlock() ?? block
-      $.move(target)
-      const selection = document.getSelection()
-      if(!selection?.rangeCount) return
-      const range = selection.getRangeAt(0)
-      const trigger = document.createTextNode("++")
-      range.insertNode(trigger)
-      $.move(trigger, trigger.length)
-      this.openTypedTrigger(2)
-    }
-    button.addEventListener("keydown", ev => {
-      if(ev.key === "Enter" || ev.key === " ") activate(ev)
-    })
-    button.addEventListener("click", activate)
-    this.editor.addAppendix(button)
   }
 
   private async insert(item: InsertionMenuItem) {
