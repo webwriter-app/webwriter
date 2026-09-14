@@ -1,4 +1,4 @@
-import {isSlide, slideLayoutRole} from "./document-layout"
+import {documentLayoutMode, isSlide, slideLayoutRole} from "./document-layout"
 
 export type ElementPresentation = {
   name: string
@@ -114,6 +114,9 @@ const fallbackPresentation = {name: "Content", icon: "Section"}
 /** Returns a user-facing name and icon key for an HTML element. */
 export function getElementPresentation(elementOrTagName: Element | string): ElementPresentation {
   if(typeof elementOrTagName !== "string") {
+    if(elementOrTagName === elementOrTagName.ownerDocument.body && documentLayoutMode(elementOrTagName as HTMLElement) === "canvas") {
+      return {name: "Canvas", icon: "Canvas"}
+    }
     const role = slideLayoutRole(elementOrTagName)
     if(role === "root") return {name: "Slides", icon: "KeywordPresentation"}
     if(role === "slide") {

@@ -453,6 +453,47 @@ describe("transform controls and geometry", () => {
     expect(editor.toHTML(true)).toBe(finalHTML)
   })
 
+  it.each(["release", "Escape", "pointercancel", "removed", "replaced", "disable"])("stops canvas edge scrolling on %s", async ending => {
+    const target = targetElement("demo-widget")
+    document.body.replaceChildren(target)
+    editor.features.canvas.convert("canvas")
+    mockRect(target)
+    selectNode(target)
+    const frames = new Map<number, FrameRequestCallback>()
+    let nextFrame = 0
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
+      frames.set(++nextFrame, callback)
+      return nextFrame
+    })
+    vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(id => { frames.delete(id) })
+    const tick = () => {
+      for(const [id, callback] of [...frames]) {
+        if(!frames.delete(id)) continue
+        callback(0)
+      }
+    }
+    const pan = vi.spyOn(editor.features.canvas, "panAtEdge").mockReturnValue(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 19, clientX: 150, clientY: 125}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 19, buttons: 1, clientX: 170, clientY: 125}))
+    const rect = target.getBoundingClientRect()
+    tick()
+    expect(pan).toHaveBeenLastCalledWith({x: 170, y: 125}, expect.objectContaining({left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom}))
+    tick()
+    expect(pan).toHaveBeenCalledTimes(2)
+
+    if(ending === "release") document.dispatchEvent(pointer("pointerup", {pointerId: 19}))
+    else if(ending === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+    else if(ending === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 19}))
+    else if(ending === "removed") target.remove()
+    else if(ending === "replaced") target.replaceWith(target.cloneNode(true))
+    else feature.disable()
+    await mutationsDelivered()
+    tick()
+    expect(pan).toHaveBeenCalledTimes(2)
+    expect(document.body).not.toHaveClass("◆transform-moving")
+  })
+
   it.each(["resize", "rotate"] as const)("groups a paused %s gesture into one exact undo item", async mode => {
     const target = targetElement("demo-widget")
     const sibling = targetElement("aside")

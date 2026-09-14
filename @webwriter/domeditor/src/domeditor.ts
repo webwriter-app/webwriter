@@ -700,6 +700,7 @@ export class DOMEditor {
    * becomes a normal collapsed selection in the new paragraph. */
   #ensureDocumentContent() {
     if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
+    if(documentLayoutMode() === "canvas") return null
     if(document.body.childNodes.length || this.schema.isContentValid(document.body)) return null
     const selection = document.getSelection()
     const moveSelection = !selection?.anchorNode || !selection.focusNode

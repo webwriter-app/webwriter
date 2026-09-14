@@ -25,7 +25,7 @@ body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
 /* The viewport is finite; the appendix slot supplies an unbounded camera. */
 html.◆canvas-active {
   overflow: clip;
-  background: #f8fafc;
+  background: white;
 }
 
 html.◆canvas-active body {

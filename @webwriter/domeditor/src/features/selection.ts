@@ -937,14 +937,14 @@ export class SelectionFeature extends EditorFeature {
 
   /** Places a collapsed document selection, even if a widget or a table
    * previously owned editing focus. Existing caret rendering follows it. */
-  selectDropRange(range: Range) {
+  selectDropRange(range: Range, {scrollIntoView = true} = {}) {
     if(focusedWidgetHost() && document.activeElement instanceof HTMLElement) document.activeElement.blur()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
     this.#endDrag()
     this.editor.features.table.clearCellSelection(false)
     $.move(range.startContainer, range.startOffset)
-    this.processSelection()
+    this.processSelection(undefined, {scrollIntoView})
   }
 
   /** Reuses the shared caret to preview a transformation drop gap. */
@@ -1262,6 +1262,7 @@ export class SelectionFeature extends EditorFeature {
         : kind === "element" ? $.selectedElement ?? null : null
     const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
+    if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)
     this.editor.features.transformation.syncSelection(layoutItem ?? selectedElement, Boolean(layoutItem && layoutItem !== selectedElement))
     this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
     this.editor.features.graphic.refresh()

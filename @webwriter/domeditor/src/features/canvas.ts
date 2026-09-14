@@ -22,6 +22,7 @@ export class CanvasFeature extends EditorFeature {
   private hand = false
   private spaceHand = false
   private placing = false
+  private focusedParagraph: HTMLParagraphElement | null = null
   private readonly schedule = () => {
     if(this.isEnabled && this.frame === null) this.frame = requestAnimationFrame(() => {
       this.frame = null
@@ -46,12 +47,35 @@ export class CanvasFeature extends EditorFeature {
         || node instanceof Element && !items.includes(node as Item) && !node.matches("style, script, link, meta, template")))}
   }
 
+  private isEmptyParagraph(element: Element): element is HTMLParagraphElement {
+    return element instanceof HTMLParagraphElement && !element.hasAttribute("is")
+      && Array.from(element.childNodes).every(node => node instanceof Text && !node.data.trim()
+        || node instanceof HTMLBRElement && !node.hasAttribute("is"))
+      && element.children.length <= 1
+  }
+
   emptyParagraph() {
     if(documentLayoutMode() !== "document" || !this.getState().canConvert || document.body.children.length !== 1) return null
     const paragraph = document.body.firstElementChild!
-    return paragraph.localName === "p" && !paragraph.hasAttribute("is")
-      && !paragraph.textContent?.trim() && Array.from(paragraph.children).every(el => el.localName === "br")
-      && paragraph.children.length <= 1 ? paragraph : null
+    return this.isEmptyParagraph(paragraph) ? paragraph : null
+  }
+
+  /** In an editable body, the selection owns paragraph focus. Track only the
+   * item being edited; unrelated and remotely inserted empty items stay put. */
+  syncSelection(item: Element | null) {
+    if(!this.isEnabled || !this.active) { this.focusedParagraph = null; return }
+    const previous = this.focusedParagraph
+    const next = item instanceof HTMLParagraphElement && item.parentElement === document.body && !item.hasAttribute("is") ? item : null
+    if(previous === next) return
+    const selection = document.getSelection()
+    if(previous?.parentElement === document.body && selection) {
+      for(let i = 0; i < selection.rangeCount; i++) {
+        if(selection.getRangeAt(i).intersectsNode(previous)) return
+      }
+    }
+    this.focusedParagraph = next
+    if(!previous || previous.parentElement !== document.body || this.editor.isEditingLocked || !this.isEmptyParagraph(previous)) return
+    previous.remove()
   }
 
   actions = {
@@ -226,11 +250,16 @@ export class CanvasFeature extends EditorFeature {
     if(dx || dy) { this.camera.x += dx; this.camera.y += dy; this.applyCamera() }
   }
 
-  panAtEdge(point: Point) {
-    if(!this.active) return false
+  panAtEdge(point: Point, rect?: {left: number, top: number, right: number, bottom: number}) {
+    if(!this.isEnabled || !this.active) return false
+    // Follow the item's visible edges, even when grabbed far from that edge.
+    // For an item spanning both edges, let the pointer choose the direction.
+    const edge = (position: number, start: number, end: number, size: number) =>
+      start < 32 && end > size - 32 ? position : start < 32 ? Math.min(position, start) : end > size - 32 ? Math.max(position, end) : position
     const delta = (position: number, end: number) => position < 32 ? Math.min(16, (32 - position) / 3)
       : position > end - 32 ? -Math.min(16, (position - end + 32) / 3) : 0
-    const x = delta(point.x, window.innerWidth), y = delta(point.y, window.innerHeight)
+    const x = delta(rect ? edge(point.x, rect.left, rect.right, window.innerWidth) : point.x, window.innerWidth)
+    const y = delta(rect ? edge(point.y, rect.top, rect.bottom, window.innerHeight) : point.y, window.innerHeight)
     if(!x && !y) return false
     this.camera.x += x; this.camera.y += y
     this.applyCamera()
@@ -261,15 +290,40 @@ export class CanvasFeature extends EditorFeature {
       && !isFormControlInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
   }
 
+  private backgroundInteraction(event: Event) {
+    const target = event.composedPath()[0]
+    return target === document.body || target === document.documentElement || target === this.slot
+  }
+
+  private readonly preventBackgroundSelection = (event: MouseEvent) => {
+    if(!this.active || event.button !== 0 || !this.backgroundInteraction(event)) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
-      if(!this.active || !this.ownEvent(event) || event.button !== 1 && !(event.button === 0 && (this.hand || this.spaceHand))) return
+      if(!this.active || !this.ownEvent(event)) return
+      if(event.button === 0 && !this.hand && !this.spaceHand && this.backgroundInteraction(event)) {
+        // Native caret lookup snaps blank space to nearby text. Only authored
+        // element hits should enter that path; the camera slot is background.
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        const range = document.createRange()
+        range.setStart(document.body, 0)
+        range.collapse(true)
+        this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
+        return
+      }
+      if(event.button !== 1 && !(event.button === 0 && (this.hand || this.spaceHand))) return
       event.preventDefault()
       event.stopImmediatePropagation()
       this.panning = {id: event.pointerId, start: {x: event.clientX, y: event.clientY}, camera: {...this.camera}}
       document.body.classList.add("◆canvas-panning")
       try { this.slot?.setPointerCapture(event.pointerId) } catch {}
     },
+    mousedown: this.preventBackgroundSelection,
+    click: this.preventBackgroundSelection,
     pointermove: event => {
       const pan = this.panning
       if(!pan || event.pointerId !== pan.id) return
@@ -392,6 +446,7 @@ export class CanvasFeature extends EditorFeature {
   }
 
   private restoreSlot() {
+    this.focusedParagraph = null
     this.stopPan()
     this.hand = this.spaceHand = false
     removeEditorMarker(document.body, "◆canvas-hand")

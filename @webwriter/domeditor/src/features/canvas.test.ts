@@ -3,6 +3,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {canvasClass, canvasStyles} from "../document-layout"
+import editorStyleString from "../editor.css?raw"
+import {selectionChangeEvent} from "../editor-bridge"
 import {$} from "../utility"
 
 let editor: DOMEditor
@@ -44,6 +46,21 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it("posts Canvas as the breadcrumb root and restores Document after conversion", () => {
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+    for(const mode of ["canvas", "document"] as const) {
+      expect(editor.features.canvas.convert(mode)).toBe(true)
+      editor.postSelectionPath()
+      const event = postMessage.mock.calls.at(-1)![0]
+      expect(event.type).toBe(selectionChangeEvent)
+      expect(event.detail.path[0]).toMatchObject({path: [], name: mode === "canvas" ? "Canvas" : "Document", icon: mode === "canvas" ? "Canvas" : "Document"})
+    }
+  })
+
+  it("keeps the canvas background white", () => {
+    expect(editorStyleString).toMatch(/html\.◆canvas-active\s*\{[^}]*background:\s*white;/)
+  })
+
   it("keeps native text input inside positioned paragraphs without materializing a new element", () => {
     editor.features.canvas.actions.startCanvas({type: "startCanvas"})
     const paragraph = document.body.firstElementChild as HTMLElement
@@ -287,9 +304,10 @@ describe("canvas document layout", () => {
     canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
     expect(canvas.getState().zoom).toBe(100)
 
-    const before = document.body.children.length
+    const before = document.body.firstElementChild!
     editor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
-    expect(document.body.children.length).toBe(before + 1)
+    expect(before.isConnected).toBe(false)
+    expect(document.body.children.length).toBe(1)
     const inserted = document.body.lastElementChild as HTMLElement
     expect(inserted.localName).toBe("p")
     expect(inserted.style.position).toBe("absolute")
@@ -310,6 +328,75 @@ describe("canvas document layout", () => {
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, clientX: 400, clientY: 300}))
     expect(slot.style.transform).toBe(cancelled)
     expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
+  })
+
+  it.each([
+    ["BODY", () => document.body],
+    ["HTML", () => document.documentElement],
+    ["the default slot", () => editor.appendix.querySelector("slot")!],
+  ] as const)("treats %s as blank canvas and clears the current target", (_name, target) => {
+    document.body.innerHTML = "<p>content<img></p>"
+    editor.doc.syncFromDOM()
+    expect(editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})).toBe(true)
+    const image = document.querySelector("img")!
+    editor.features.selection.selectElement(image)
+    editor.features.selection.captureElement(image)
+    expect(editor.features.selection.captureSelectedElement).toBe(image)
+    expect(image.classList.contains("◆element-capture-selected")).toBe(true)
+    expect(editor.features.selection.selectionCaret).not.toBeNull()
+
+    const selectCoords = vi.spyOn($, "selectCoords")
+    const event = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0, clientX: 300, clientY: 200})
+    target().dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(selectCoords).not.toHaveBeenCalled()
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(document.getSelection()?.isCollapsed).toBe(true)
+    expect(document.getSelection()?.anchorNode).toBe(document.body)
+    expect(document.getSelection()?.anchorOffset).toBe(0)
+    expect(image.classList.contains("◆element-capture-selected")).toBe(false)
+  })
+
+  it("removes a focused empty canvas paragraph when a blank canvas click clears selection", () => {
+    document.body.innerHTML = "<p></p><p>filled</p>"
+    editor.doc.syncFromDOM()
+    expect(editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})).toBe(true)
+    const empty = document.body.firstElementChild!
+    $.move(empty)
+    editor.features.selection.processSelection()
+
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0, clientX: 500, clientY: 400}))
+
+    expect(empty.isConnected).toBe(false)
+    expect(document.body.textContent).toBe("filled")
+  })
+
+  it("keeps authored descendants on the normal exact-hit selection path", () => {
+    document.body.innerHTML = "<div><span>inside</span></div>"
+    editor.doc.syncFromDOM()
+    expect(editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})).toBe(true)
+    const span = document.querySelector("span")!
+    const selectCoords = vi.spyOn($, "selectCoords").mockReturnValue({node: span.firstChild!, offset: 2})
+    const event = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0, clientX: 20, clientY: 20})
+    span.dispatchEvent(event)
+
+    expect(selectCoords).toHaveBeenCalledWith(20, 20, false, span, editor.schema)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it("keeps centered items still and uses the pointer for items spanning both canvas edges", () => {
+    const canvas = editor.features.canvas
+    canvas.actions.startCanvas({type: "startCanvas"})
+    const slot = editor.appendix.querySelector("slot")!
+    const initial = slot.style.transform
+    const center = {x: window.innerWidth / 2, y: window.innerHeight / 2}
+    expect(canvas.panAtEdge(center, makeRect(center.x - 50, center.y - 50, 100, 100))).toBe(false)
+    const oversized = makeRect(-100, -100, window.innerWidth + 200, window.innerHeight + 200)
+    expect(canvas.panAtEdge(center, oversized)).toBe(false)
+    expect(slot.style.transform).toBe(initial)
+    expect(canvas.panAtEdge({x: window.innerWidth - 1, y: center.y}, oversized)).toBe(true)
+    expect(slot.style.transform).not.toBe(initial)
   })
 
   it("keeps spaces as text input and returns irregular canvas content to document flow", () => {
@@ -340,5 +427,146 @@ describe("canvas document layout", () => {
       document.body.append(independent)
     })
     expect(independent.getAttribute("style")).toBe(initial)
+  })
+
+  it("removes the previously focused empty canvas paragraph when focus leaves it", () => {
+    document.body.innerHTML = "<p></p><p>filled</p>"
+    editor.doc.syncFromDOM()
+    expect(editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})).toBe(true)
+    const empty = document.body.firstElementChild!, filled = document.body.lastElementChild!
+
+    $.move(empty)
+    editor.features.selection.processSelection()
+    expect(empty.isConnected).toBe(true)
+    $.move(document.body, document.body.childNodes.length)
+    editor.features.selection.processSelection()
+
+    expect(empty.isConnected).toBe(false)
+    expect(filled.isConnected).toBe(true)
+  })
+
+  it("retains filled and current empty paragraphs, and keeps paragraphs selected by a drag range", () => {
+    document.body.innerHTML = "<p></p><p>filled</p><p></p>"
+    editor.doc.syncFromDOM()
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
+    const [first, filled, last] = Array.from(document.body.children)
+
+    $.move(first)
+    editor.features.selection.processSelection()
+    editor.features.selection.processSelection()
+    $.move(filled.firstChild!, 2)
+    editor.features.selection.processSelection()
+    expect(filled.isConnected).toBe(true)
+
+    $.move(last)
+    editor.features.selection.processSelection()
+    editor.features.selection.processSelection()
+    expect(last.isConnected).toBe(true)
+
+    const range = document.createRange()
+    range.setStart(filled, 0)
+    range.setEnd(last, last.childNodes.length)
+    const selection = document.getSelection()!
+    editor.features.selection.isInDragSelection = true
+    selection.removeAllRanges()
+    selection.addRange(range)
+    editor.features.selection.processSelection(true)
+    expect(last.isConnected).toBe(true)
+    editor.features.selection.isInDragSelection = false
+    editor.features.selection.processSelection()
+  })
+
+  it("only removes visited direct plain paragraphs and preserves irregular authored content", () => {
+    document.body.innerHTML = "<p></p><section><p></p></section><!--keep--><unknown-widget></unknown-widget><p></p>"
+    editor.doc.syncFromDOM()
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
+    const direct = document.body.firstElementChild!
+    const nested = document.querySelector("section p")!
+    const widget = document.querySelector("unknown-widget")!
+    const unvisited = document.body.lastElementChild!
+
+    $.move(direct)
+    editor.features.selection.processSelection()
+    $.move(document.body, document.body.childNodes.length)
+    editor.features.selection.processSelection()
+
+    expect(direct.isConnected).toBe(false)
+    expect(nested.isConnected).toBe(true)
+    expect(widget.isConnected).toBe(true)
+    expect(Array.from(document.body.childNodes).some(node => node.nodeType === Node.COMMENT_NODE && node.textContent === "keep")).toBe(true)
+    expect(unvisited.isConnected).toBe(true)
+  })
+
+  it.each(["<!--keep-->", "<unknown-widget></unknown-widget>", '<img alt="Keep">', "<br><br>", "<span></span>"])("retains paragraph content %s when focus leaves", content => {
+    document.body.innerHTML = `<p>${content}</p><p>Other</p>`
+    editor.features.canvas.convert("canvas")
+    const paragraph = document.body.firstElementChild!
+    $.move(paragraph)
+    editor.features.selection.processSelection()
+    $.move(document.body.lastElementChild!.firstChild!)
+    editor.features.selection.processSelection()
+    expect(paragraph.isConnected).toBe(true)
+    expect(paragraph.innerHTML).toBe(content)
+  })
+
+  it("leaves an empty paragraph alone when it changes or disconnects before focus leaves", () => {
+    document.body.innerHTML = "<p></p><p></p><p></p>"
+    editor.doc.syncFromDOM()
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
+    const [changed, reparented, disconnected] = Array.from(document.body.children)
+
+    $.move(changed)
+    editor.features.selection.processSelection()
+    changed.textContent = "text added concurrently"
+    $.move(document.body, document.body.childNodes.length)
+    editor.features.selection.processSelection()
+    expect(changed.isConnected).toBe(true)
+
+    $.move(reparented)
+    editor.features.selection.processSelection()
+    const wrapper = document.createElement("div")
+    document.body.append(wrapper)
+    wrapper.append(reparented)
+    $.move(document.body, document.body.childNodes.length)
+    editor.features.selection.processSelection()
+    expect(reparented.isConnected).toBe(true)
+
+    $.move(disconnected)
+    editor.features.selection.processSelection()
+    disconnected.remove()
+    $.move(document.body, document.body.childNodes.length)
+    expect(() => editor.features.selection.processSelection()).not.toThrow()
+  })
+
+  it("leaves the canvas empty when its last paragraph loses focus", async () => {
+    editor.features.canvas.actions.startCanvas({type: "startCanvas"})
+    const paragraph = document.body.firstElementChild!
+    $.move(paragraph)
+    editor.features.selection.processSelection()
+    $.move(document.body, document.body.childNodes.length)
+    editor.features.selection.processSelection()
+    await settle()
+    expect(paragraph.isConnected).toBe(false)
+    expect(document.body.childElementCount).toBe(0)
+  })
+
+  it("undoes and redoes empty paragraph cleanup", async () => {
+    document.body.innerHTML = "<p></p><p>content</p>"
+    editor.doc.syncFromDOM()
+    editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
+    const empty = document.body.firstElementChild!
+    $.move(empty)
+    editor.features.selection.processSelection()
+    $.move(document.body, document.body.childNodes.length)
+    editor.features.selection.processSelection()
+    expect(empty.isConnected).toBe(false)
+    await settle()
+
+    editor.doc.undo()
+    await settle()
+    expect(document.body.querySelectorAll("p").length).toBe(2)
+    editor.doc.redo()
+    await settle()
+    expect(document.body.querySelectorAll("p").length).toBe(1)
   })
 })

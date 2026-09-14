@@ -1,5 +1,6 @@
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
+import artboard from "@tabler/icons/outline/artboard.svg?raw"
 import balloon from "@tabler/icons/outline/balloon.svg?raw"
 import balloonFilled from "@tabler/icons/filled/balloon.svg?raw"
 
@@ -189,6 +190,7 @@ const icons: Record<string, string> = {
   Balloon: balloon,
   BalloonFilled: balloonFilled,
   Document: fileDescription,
+  Canvas: artboard,
   ChevronRight: chevronRight,
   Section: section,
   Article: article,

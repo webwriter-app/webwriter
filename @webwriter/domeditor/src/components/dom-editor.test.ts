@@ -3228,6 +3228,29 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
   })
 
+  it("shows Canvas with an artboard icon in the breadcrumb and document tree", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    body.className = "ww-canvas"
+    body.innerHTML = "<p>Canvas content</p>"
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree).toMatchObject({path: [], name: "Canvas", icon: "Canvas"})
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[0]]}},
+      source: iframe.contentWindow!,
+    }))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    await vi.waitFor(() => expect(breadcrumb.shadowRoot!.querySelector('.item[data-path=""] .item-label')?.textContent).toBe("Canvas"))
+    const root = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path=""]')!
+    expect(root.getAttribute("aria-label")).toBe("Select Canvas")
+    expect(root.querySelector("svg.icon-tabler-artboard")).not.toBeNull()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    root.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: []})
+  })
+
   it("shows slides as numbered tree items without merging carousel sections into the breadcrumb", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body

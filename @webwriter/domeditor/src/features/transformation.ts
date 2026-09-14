@@ -662,7 +662,7 @@ export class TransformationFeature extends EditorFeature {
       this.#panFrame = requestAnimationFrame(() => {
         this.#panFrame = null
         const pointer = this.#panEvent
-        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
+        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY}, this.targetRect)) this.handleMoveDrag(pointer)
       })
     }
   }

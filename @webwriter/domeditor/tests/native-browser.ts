@@ -628,6 +628,38 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     const cameraAfterDrag = slot.style.transform
     await layoutFrame()
     assert(slot.style.transform === cameraAfterDrag, "edge panning continued after release")
+    paragraph.style.height = "120px"
+    for(const direction of ["left", "right", "up", "down", "diagonal"]) {
+      const current = paragraph.getBoundingClientRect()
+      paragraph.style.left = `${parseFloat(paragraph.style.left) + (200 - current.left) / editor.features.canvas.zoom}px`
+      paragraph.style.top = `${parseFloat(paragraph.style.top) + (200 - current.top) / editor.features.canvas.zoom}px`
+      const start = paragraph.getBoundingClientRect()
+      const x = start.left + start.width / 2, y = start.top + start.height / 2
+      const dx = direction === "left" ? 10 - start.left : direction === "right" || direction === "diagonal" ? window.innerWidth - 10 - start.right : 0
+      const dy = direction === "up" ? 10 - start.top : direction === "down" || direction === "diagonal" ? window.innerHeight - 10 - start.bottom : 0
+      assert(x + dx > 32 && x + dx < window.innerWidth - 32 && y + dy > 32 && y + dy < window.innerHeight - 32, "pointer must stay outside the edge zone")
+      editor.features.transformation.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: x, clientY: y}))
+      const camera = editor.features.canvas.clientPoint(0, 0)
+      editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: x + dx, clientY: y + dy}))
+      const atEdge = paragraph.getBoundingClientRect()
+      await layoutFrame()
+      const firstPan = slot.style.transform
+      await layoutFrame()
+      assert(slot.style.transform !== firstPan, `${direction}: panning stopped while holding the item at the edge`)
+      const panned = editor.features.canvas.clientPoint(0, 0)
+      assert(dx ? (panned.x - camera.x) * dx > 0 : Math.abs(panned.x - camera.x) < .01, `${direction}: wrong horizontal pan`)
+      assert(dy ? (panned.y - camera.y) * dy > 0 : Math.abs(panned.y - camera.y) < .01, `${direction}: wrong vertical pan`)
+      const held = paragraph.getBoundingClientRect()
+      assert(Math.abs(held.left - atEdge.left) < 1 && Math.abs(held.top - atEdge.top) < 1, `${direction}: panning displaced the item from the pointer`)
+      editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: x, clientY: y}))
+      const centered = slot.style.transform
+      await layoutFrame()
+      assert(slot.style.transform === centered, `${direction}: panning continued after moving away from the edge`)
+      editor.features.transformation.handleMoveEnd()
+      const released = slot.style.transform
+      await layoutFrame()
+      assert(slot.style.transform === released, `${direction}: panning continued after release`)
+    }
     assert(editor.toHTML().includes("ww-canvas") && !editor.toHTML().includes("canvas-controls"), "serialization mixed camera and authored layout")
   }
   finally {
@@ -705,6 +737,49 @@ await check("a clean canvas retains its initial item when moving and typing with
     await type(second, "Second")
     assert(paragraph.textContent === "Hello world" && second.textContent === "Second", "canvas text is missing")
     assert(Math.abs(paragraph.getBoundingClientRect().left - moved.left) < 1 && Math.abs(paragraph.getBoundingClientRect().top - moved.top) < 1, "typing displaced the initial canvas item")
+    canvasEditor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
+    const empty = doc.body.lastElementChild!
+    empty.append(doc.createElement("br"))
+    await layoutFrame()
+    assert(empty.isConnected && empty.contains(doc.getSelection()!.anchorNode), "the active empty paragraph was removed")
+    doc.getSelection()!.setBaseAndExtent(second.firstChild!, 2, second.firstChild!, 2)
+    await layoutFrame()
+    assert(!empty.isConnected, "the empty canvas paragraph survived losing focus")
+    assert(doc.querySelectorAll("p").length === 2 && doc.getSelection()!.anchorNode === second.firstChild
+      && doc.getSelection()!.anchorOffset === 2, "empty paragraph cleanup changed the new editing position")
+    canvasEditor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
+    const nextEmpty = doc.body.lastElementChild!
+    canvasEditor.features.selection.selectElement(paragraph)
+    await layoutFrame()
+    assert(!nextEmpty.isConnected && canvasEditor.features.transformation.target === paragraph,
+      "cleanup disturbed the newly selected element's move controls")
+    canvasEditor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    for(const x of [10, doc.documentElement.clientWidth - 10]) {
+      canvasEditor.features.selection.selectElement(paragraph)
+      const y = doc.documentElement.clientHeight - 150
+      const hit = canvasEditor.appendix.elementFromPoint(x, y) ?? doc.elementFromPoint(x, y)!
+      const slot = canvasEditor.appendix.querySelector<HTMLSlotElement>("slot")!
+      assert(hit === slot || hit === doc.body || hit === doc.documentElement, "background test point hits authored content")
+      const camera = slot.style.transform
+      const down = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 41, clientX: x, clientY: y})
+      hit.dispatchEvent(down)
+      const mouse = new MouseEvent("mousedown", {bubbles: true, composed: true, cancelable: true, button: 0, clientX: x, clientY: y})
+      hit.dispatchEvent(mouse)
+      hit.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 41, clientX: x, clientY: y}))
+      hit.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true, detail: 2, clientX: x, clientY: y}))
+      await layoutFrame()
+      assert(down.defaultPrevented && mouse.defaultPrevented, "blank canvas permits native nearest-text selection")
+      assert(doc.getSelection()!.isCollapsed && doc.getSelection()!.anchorNode === doc.body
+        && canvasEditor.features.transformation.target === null, "blank canvas selected a nearby item")
+      assert(slot.style.transform === camera, "blank canvas click moved the camera")
+    }
+    const lastEmpty = doc.createElement("p")
+    doc.body.replaceChildren(lastEmpty)
+    doc.getSelection()!.setBaseAndExtent(lastEmpty, 0, lastEmpty, 0)
+    await layoutFrame()
+    doc.getSelection()!.setBaseAndExtent(doc.body, 1, doc.body, 1)
+    await layoutFrame()
+    assert(doc.body.childElementCount === 0, "removing the final empty canvas paragraph inserted a replacement")
   }
   finally { canvasEditor?.destroy(); frame.remove() }
 })
