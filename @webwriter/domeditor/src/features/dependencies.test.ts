@@ -40,7 +40,7 @@ const demoPackage: WebWriterPackage = {
 }
 
 afterEach(() => {
-  document.head.querySelectorAll(".◆editor-only").forEach(element => element.remove())
+  document.head.querySelectorAll(".◆editor-only, script[src], link[rel='stylesheet']").forEach(element => element.remove())
   document.body.replaceChildren()
   globalThis.DOMEDITOR_PACKAGE_ITEMS = []
   vi.restoreAllMocks()
@@ -218,6 +218,7 @@ describe("DependencyFeature", () => {
       queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
     })
     const editor = new DOMEditor()
+    document.body.innerHTML = "<webwriter-demo></webwriter-demo>"
     // Parsing the authored script keeps Happy DOM from trying to fetch its
     // external URL while still exercising its serialization path.
     document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script>`)
@@ -238,6 +239,66 @@ describe("DependencyFeature", () => {
     expect(parsed.head.querySelectorAll(`script[src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"]`)).toHaveLength(1)
     expect(parsed.head.querySelector("script")?.getAttribute("src")).toBe(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
     expect(parsed.head.querySelector("script")?.hasAttribute("type")).toBe(false)
+    editor.destroy()
+  })
+
+  it("serializes only assets of widgets in the current document, including templates", async () => {
+    vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
+    })
+    const unusedScript = "https://example.test/unused.js"
+    const unusedStyle = "https://example.test/unused.css"
+    const pkg: WebWriterPackage = {
+      ...demoPackage,
+      scripts: [...demoPackage.scripts, unusedScript],
+      styles: [...demoPackage.styles, unusedStyle],
+      members: [
+        {...demoPackage.members[0], scriptUrl: demoPackage.scripts[0], styleUrl: demoPackage.styles[0]},
+        {...demoPackage.members[1], scriptUrl: unusedScript, styleUrl: unusedStyle},
+      ],
+    }
+    const editor = new DOMEditor()
+    await editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: pkg.name, version: pkg.version}],
+      packages: [pkg],
+    })
+    document.body.innerHTML = `<section><template><template><webwriter-demo></webwriter-demo></template></template></section>`
+    document.head.insertAdjacentHTML("beforeend", `<script src="${unusedScript}"></script><link rel="stylesheet" href="${unusedStyle}"><script src="https://example.test/authored.js"></script>`)
+
+    for(const output of [editor.toHTML(), await editor.serializeHTML()]) {
+      const parsed = new DOMParser().parseFromString(output, "text/html")
+      expect(parsed.querySelector(`script[src="${demoPackage.scripts[0]}"]`)).not.toBeNull()
+      expect(parsed.querySelector(`link[href="${demoPackage.styles[0]}"]`)).not.toBeNull()
+      expect(parsed.querySelector(`script[src="${unusedScript}"]`)).toBeNull()
+      expect(parsed.querySelector(`link[href="${unusedStyle}"]`)).toBeNull()
+      expect(parsed.querySelector('script[src="https://example.test/authored.js"]')).not.toBeNull()
+    }
+    expect(document.head.querySelector(`script[src="${unusedScript}"]`)).not.toBeNull()
+    // Direct DOM edits must affect the next save without reloading packages.
+    document.body.innerHTML = "<webwriter-demo-item></webwriter-demo-item>"
+    const changed = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(changed.querySelector(`script[src="${unusedScript}"]`)).not.toBeNull()
+    expect(changed.querySelector(`link[href="${unusedStyle}"]`)).not.toBeNull()
+    expect(changed.querySelector(`script[src="${demoPackage.scripts[0]}"]`)).toBeNull()
+    editor.destroy()
+  })
+
+  it("omits all widget assets and the polyfill from an empty offline export", async () => {
+    vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
+    })
+    const editor = new DOMEditor()
+    await editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: demoPackage.name, version: demoPackage.version}],
+      packages: [demoPackage],
+    })
+    document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script><link rel="stylesheet" href="${demoPackage.styles[0]}"><script src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"></script>`)
+    const fetch = vi.spyOn(globalThis, "fetch")
+    const parsed = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
+    expect(parsed.querySelector("script, link[rel='stylesheet']")).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
     editor.destroy()
   })
 

@@ -1,13 +1,14 @@
 import { EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
-import {packageCdnUrl, packageInsertionItems, packageWidgetSchemaDefinitions, resolvePackageExport, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry} from "../packages"
+import {packageCdnUrl, packageInsertionItems, packageWidgetSchemaDefinitions, resolvePackageExport, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
 export class DependencyFeature extends EditorFeature {
   private readonly packageRegistry = new WebWriterPackageRegistry()
   private widgetAssets: HTMLElement[] = []
+  private widgetPackages: WebWriterPackage[] = []
   private widgetLoadSequence = 0
   private readonly pendingAssetCancellations = new Set<() => void>()
 
@@ -19,19 +20,49 @@ export class DependencyFeature extends EditorFeature {
     super(editor)
   }
 
-  /** Copies loaded package resources into a detached authored document. */
+  /** Copies resources for widgets present in a detached authored document. */
   appendSerializedAssets(root: Document) {
     const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
-    const existing = new Set([...root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel='stylesheet'][href]")]
+    const tags = new Set<string>()
+    const collectTags = (node: Document | DocumentFragment) => {
+      node.querySelectorAll("*").forEach(element => {
+        tags.add(element.localName)
+        if(element instanceof HTMLTemplateElement) collectTags(element.content)
+      })
+    }
+    collectTags(root)
+    const known = new Set<string>()
+    const required = new Set<string>()
+    for(const pkg of this.widgetPackages) {
+      const widgets = pkg.members.filter(member => member.kind === "widget" && member.tagName)
+      for(const url of [...pkg.scripts, ...pkg.styles]) {
+        const key = this.resourceKey(url)
+        known.add(key)
+        const owners = widgets.filter(member => [member.scriptUrl, member.styleUrl]
+          .some(value => value && this.resourceKey(value) === key))
+        // Older metadata may only describe assets at the package level.
+        if((owners.length ? owners : widgets).some(member => tags.has(member.tagName!))) required.add(key)
+      }
+    }
+    const assets = this.widgetAssets.filter(asset => required.has(this.resourceKey(
+      asset instanceof HTMLScriptElement ? asset.src : (asset as HTMLLinkElement).href,
+    )))
+    const needsPolyfill = assets.some(asset => asset instanceof HTMLScriptElement)
+    root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]").forEach(element => {
+      const key = this.resourceKey(element instanceof HTMLScriptElement ? element.src : element.href)
+      if(known.has(key) && !required.has(key)
+        || this.widgetPackages.length && key === SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL && !needsPolyfill) element.remove()
+    })
+    const existing = new Set([...root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]")]
       .map(element => this.resourceKey(element instanceof HTMLScriptElement ? element.src : element.href)))
-    if(this.widgetAssets.some(asset => asset instanceof HTMLScriptElement)
+    if(needsPolyfill
       && !existing.has(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)) {
       const polyfill = root.createElement("script")
       polyfill.src = SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL
       head.prepend(polyfill)
       existing.add(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
     }
-    for(const asset of this.widgetAssets) {
+    for(const asset of assets) {
       const isScript = asset instanceof HTMLScriptElement
       const url = isScript ? asset.src : (asset as HTMLLinkElement).href
       const key = this.resourceKey(url)
@@ -105,6 +136,7 @@ export class DependencyFeature extends EditorFeature {
       script.classList.add("◆", "◆editor-only")
       return script
     })
+    this.widgetPackages = packages
     this.widgetAssets = [...styles, ...scripts]
     const assetLoads = this.widgetAssets.map(element => {
       const url = element instanceof HTMLLinkElement ? element.href : (element as HTMLScriptElement).src
@@ -146,6 +178,7 @@ export class DependencyFeature extends EditorFeature {
     this.pendingAssetCancellations.clear()
     this.widgetAssets.forEach(element => element.remove())
     this.widgetAssets = []
+    this.widgetPackages = []
     globalThis.DOMEDITOR_PACKAGE_ITEMS = []
     super.disable()
   }
