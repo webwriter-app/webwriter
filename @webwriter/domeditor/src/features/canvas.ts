@@ -14,6 +14,7 @@ export class CanvasFeature extends EditorFeature {
   private slot: HTMLSlotElement | null = null
   private slotStyle: string | null = null
   private controls: HTMLElement | null = null
+  private background: HTMLElement | null = null
   private stylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
   private frame: number | null = null
@@ -281,6 +282,11 @@ export class CanvasFeature extends EditorFeature {
   private applyCamera() {
     if(!this.slot || !this.active) return
     this.slot.style.transform = `translate(${this.camera.x}px, ${this.camera.y}px) scale(${this.camera.zoom})`
+    if(this.background) {
+      this.background.style.backgroundPosition = `${this.camera.x}px ${this.camera.y}px`
+      this.background.style.backgroundSize = `${20 * this.zoom}px ${20 * this.zoom}px`
+      this.background.style.backgroundImage = `radial-gradient(#ccd7e3 ${this.zoom}px, transparent ${this.zoom}px)`
+    }
     const output = this.controls?.querySelector("output")
     if(output) output.textContent = `${Math.round(this.zoom * 100)}%`
     this.editor.features.transformation.updateInfo()
@@ -415,6 +421,7 @@ export class CanvasFeature extends EditorFeature {
 
   refresh() {
     if(!this.isEnabled) return
+    if(this.background) this.background.hidden = !this.active
     if(this.active && !this.slot) {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
       this.slotStyle = this.slot.getAttribute("style")
@@ -468,6 +475,11 @@ export class CanvasFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    this.background = document.createElement("div")
+    this.background.setAttribute("part", "canvas-background")
+    this.background.setAttribute("aria-hidden", "true")
+    Object.assign(this.background.style, {position: "fixed", inset: "0", zIndex: "-1", pointerEvents: "none"})
+    this.editor.addAppendix(this.background)
     this.controls = document.createElement("div")
     this.controls.className = "◆canvas-controls"
     this.controls.setAttribute("part", "canvas-controls")
@@ -497,6 +509,7 @@ export class CanvasFeature extends EditorFeature {
     this.frame = null
     window.removeEventListener("blur", this.release)
     this.restoreSlot()
+    this.background?.remove(); this.background = null
     this.controls?.remove(); this.controls = null
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     this.stylesheet = null

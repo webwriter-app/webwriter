@@ -57,8 +57,26 @@ describe("canvas document layout", () => {
     }
   })
 
-  it("keeps the canvas background white", () => {
-    expect(editorStyleString).toMatch(/html\.◆canvas-active\s*\{[^}]*background:\s*white;/)
+  it("keeps a dotted canvas background while editing and in the saved layout", () => {
+    editor.features.canvas.convert("canvas")
+    const style = document.createElement("style")
+    style.textContent = editorStyleString
+    document.head.append(style)
+    const dots = editor.appendix.querySelector<HTMLElement>('[part="canvas-background"]')!
+    const background = getComputedStyle(dots)
+    expect(background.backgroundImage).toContain("radial-gradient")
+    expect(background.backgroundSize).toBe("20px 20px")
+    const image = background.backgroundImage
+
+    editor.features.canvas.disable()
+    expect(dots.isConnected).toBe(false)
+    style.remove()
+    expect(getComputedStyle(document.body).backgroundImage).toBe(image)
+    expect(getComputedStyle(document.body).backgroundSize).toBe("20px 20px")
+    expect(editor.toHTML()).toContain("radial-gradient")
+
+    document.body.classList.remove(canvasClass)
+    expect(getComputedStyle(document.body).backgroundImage).not.toContain("radial-gradient")
   })
 
   it("keeps native text input inside positioned paragraphs without materializing a new element", () => {
@@ -298,8 +316,11 @@ describe("canvas document layout", () => {
     expect(canvas.actions.startCanvas({type: "startCanvas"})).toBe(true)
     canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
     expect(canvas.getState().zoom).toBe(120)
+    const dots = editor.appendix.querySelector<HTMLElement>('[part="canvas-background"]')!
+    expect(dots.style.backgroundSize).toBe("24px 24px")
     canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
     expect(canvas.getState().zoom).toBe(100)
+    expect(dots.style.backgroundSize).toBe("20px 20px")
 
     const before = document.body.firstElementChild!
     editor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
@@ -316,14 +337,18 @@ describe("canvas document layout", () => {
     const slot = editor.appendix.querySelector("slot")!
     const authored = editor.toHTML()
     const initial = slot.style.transform
+    const dots = editor.appendix.querySelector<HTMLElement>('[part="canvas-background"]')!
+    const [x, y] = dots.style.backgroundPosition.split(" ").map(parseFloat)
     document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 17, button: 1, clientX: 100, clientY: 100}))
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, clientX: 250, clientY: 180}))
     expect(slot.style.transform).not.toBe(initial)
+    expect(dots.style.backgroundPosition).toBe(`${x + 150}px ${y + 80}px`)
     expect(editor.toHTML()).toBe(authored)
     document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, pointerId: 17}))
     const cancelled = slot.style.transform
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, clientX: 400, clientY: 300}))
     expect(slot.style.transform).toBe(cancelled)
+    expect(dots.style.backgroundPosition).toBe(`${x + 150}px ${y + 80}px`)
     expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
   })
 
