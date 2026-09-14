@@ -90,6 +90,72 @@ async function mutationsDelivered() {
 
 describe("selection-owned transformation", () => {
   describe.each(["canvas", "slides"] as const)("selections inside %s items", mode => {
+    it("restores dimensions on cancellation and supports undo/redo after resizing", async () => {
+      const target = targetElement()
+      target.id = "resized-item"
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      Object.assign(target.style, {width: "100px", height: "50px", left: "0px", top: "0px"})
+      mockRect(target)
+      selectNode(target)
+      captureNode(target)
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const initial = target.getAttribute("style")
+      const drag = () => {
+        feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+          .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+        document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 180}))
+      }
+      drag()
+      expect(target.style.width).toBe("140px")
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+      expect(target.getAttribute("style")).toBe(initial)
+      drag()
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+      await mutationsDelivered()
+      const resized = target.getAttribute("style")
+      expect(resized).toContain("width: 140px")
+      expect(editor.toHTML(true)).not.toContain("transform-overlay")
+      expect(editor.doc.body.toString()).toContain("width: 140px")
+      editor.doc.undo()
+      await mutationsDelivered()
+      expect(document.getElementById("resized-item")!.getAttribute("style")).toBe(initial)
+      editor.doc.redo()
+      await mutationsDelivered()
+      expect(document.getElementById("resized-item")!.getAttribute("style")).toBe(resized)
+    })
+
+    it.each([
+      {direction: "down-right", dx: 40, dy: 30, width: 140, height: 80},
+      {direction: "right-right", dx: 40, dy: 30, width: 140, height: 50},
+      {direction: "down-down", dx: 40, dy: 30, width: 100, height: 80},
+      {direction: "up-left", dx: -40, dy: -30, width: 140, height: 80},
+      {direction: "down-right", dx: -20, dy: -10, width: 80, height: 40},
+    ])("changes rendered dimensions with $direction ($dx, $dy)", ({direction, dx, dy, width, height}) => {
+      const target = targetElement("demo-widget")
+      target.innerHTML = "<span>content</span><!--keep-->"
+      const children = Array.from(target.childNodes)
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      Object.assign(target.style, {width: "100px", height: "50px", left: "0px", top: "0px"})
+      mockRect(target)
+      selectNode(target)
+      captureNode(target)
+      expect(feature.target).toBe(target)
+      const before = target.getBoundingClientRect()
+      const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy}))
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+
+      const after = target.getBoundingClientRect()
+      expect(after.width).toBe(width)
+      expect(after.height).toBe(height)
+      expect(direction.includes("left") ? after.right : after.left).toBe(direction.includes("left") ? before.right : before.left)
+      expect(direction.includes("up") ? after.bottom : after.top).toBe(direction.includes("up") ? before.bottom : before.top)
+      expect(Array.from(target.childNodes)).toEqual(children)
+      expect(document.body.className).not.toContain("◆transform-scaling")
+    })
+
     function item() {
       document.body.innerHTML = "<article><p>Hello <em>world</em></p><p></p><hr><table><tr><td>A</td><td>B</td></tr></table><ul></ul><demo-widget></demo-widget></article>"
       const article = document.querySelector("article")!

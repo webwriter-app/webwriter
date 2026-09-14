@@ -612,6 +612,17 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     assert(getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "canvas item controls hide the text caret")
     dragTextInside(editor, paragraph)
     const selectedText = getSelection()!.toString()
+    const resizeBefore = paragraph.getBoundingClientRect()
+    const resizer = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    resizer.addEventListener("mousedown", event => editor.features.transformation.handleScaleStart(event), {once: true})
+    resizer.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: resizeBefore.right, clientY: resizeBefore.bottom}))
+    editor.features.transformation.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: resizeBefore.right + 120, clientY: resizeBefore.bottom + 60}))
+    editor.features.transformation.handleScaleEnd()
+    const resizeAfter = paragraph.getBoundingClientRect()
+    assert(Math.abs(resizeAfter.width - resizeBefore.width - 120) < 1
+      && Math.abs(resizeAfter.height - resizeBefore.height - 60) < 1, "zoomed canvas resize did not grow the rendered item")
+    assert(Math.abs(resizeAfter.left - resizeBefore.left) < 1 && Math.abs(resizeAfter.top - resizeBefore.top) < 1, "canvas resize moved its opposite corner")
+    assert(getSelection()!.toString() === selectedText, "resizing a canvas item replaced its inner text selection")
     const mover = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
     mover.addEventListener("mousedown", event => editor.features.transformation.handleMoveStart(event), {once: true})
     mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))

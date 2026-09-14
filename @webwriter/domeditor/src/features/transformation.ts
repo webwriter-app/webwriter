@@ -40,6 +40,7 @@ type Gesture = {
  *
  * Resize: corners set max-inline/block-size; edges constrain one logical axis.
  * Existing dimensions and intrinsic content can keep the element smaller.
+ * Canvas and slide items also set dimensions so they can grow with the handles.
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
  * Shift stretches with CSS scale instead of reflowing content; Alt unsnaps.
@@ -336,11 +337,15 @@ export class TransformationFeature extends EditorFeature {
     this.#scheduleFrame()
   }
 
+  #isFreeformItem(target: Element) {
+    return this.editor.features.canvas.active && target.parentElement === document.body
+      || this.editor.features.slides.active && isSlide(target.parentElement)
+  }
+
   #syncControlParts() {
     const overlay = this.overlay
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
-    const moveEdges = Boolean(this.target && (this.editor.features.canvas.active && this.target.parentElement === document.body
-      || this.editor.features.slides.active && isSlide(this.target.parentElement)))
+    const moveEdges = Boolean(this.target && this.#isFreeformItem(this.target))
     setPart(overlay, "transform-overlay-freeform", moveEdges)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
       midpoint.hidden = !moveEdges
@@ -691,7 +696,7 @@ export class TransformationFeature extends EditorFeature {
     }
     else {
       const vertical = /^(?:vertical|sideways)-/.test(style.writingMode)
-      if(standaloneGraphicShape(target)) {
+      if(this.#isFreeformItem(target) || standaloneGraphicShape(target)) {
         if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
