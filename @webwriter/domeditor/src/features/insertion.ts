@@ -480,6 +480,10 @@ export class InsertionFeature extends EditorFeature {
       const cell = last.querySelector<HTMLTableCellElement>("td, th")
       cell ? this.editor.features.table.selectCells(cell) : $.selectElement(last)
     }
+    else if(isElement(last) && last.localName === "math") {
+      $.move(last, 0)
+      this.editor.features.math.refresh()
+    }
     else if(isElement(last) && this.editor.schema.findValidContentTypes(last).includes("#text")) {
       $.move(last)
     }
@@ -489,7 +493,7 @@ export class InsertionFeature extends EditorFeature {
     else if(last.parentNode) {
       $.move(last.parentNode, Array.from(last.parentNode.childNodes).indexOf(last as ChildNode) + 1)
     }
-    if(isElement(last) && last.isConnected && last.matches("table, svg")) {
+    if(isElement(last) && last.isConnected && last.matches("table, svg, math")) {
       this.editor.postSelectionPath(true)
     }
     this.close(false)

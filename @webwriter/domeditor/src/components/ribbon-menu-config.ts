@@ -1,5 +1,6 @@
 import type {AIEffort} from "../ai-client"
 import {graphicShapeOptions} from "../graphic"
+import {mathStructureOptions} from "../math"
 import {
   headingInsertionTags,
   insertionMenuItems,
@@ -33,6 +34,12 @@ const insertGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(op
   label: option.label,
   action: `insert-graphic-shape:${option.type}`,
   icon: option.icon,
+}))
+
+const insertMathStructureButtons: RibbonMenuButton[] = mathStructureOptions.map(option => ({
+  label: option.title,
+  action: `insert-math:${option.command.slice("structure:".length)}`,
+  icon: "Formula",
 }))
 
 export const graphicAlignButtons: RibbonMenuButton[] = [
@@ -134,6 +141,9 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
     if(item.section === "Media" && groupedMediaInsertionTags.has(item.tag)) return []
     if(item.section === "Media" && item.tag === "svg") {
       return [{label: item.name, action: item.name, icon: "Graphic", submenu: insertGraphicShapeButtons}]
+    }
+    if(item.section === "Media" && item.tag === "math") {
+      return [{label: item.name, action: item.name, icon: "Formula", submenu: insertMathStructureButtons}]
     }
     return [item.name]
   })
@@ -247,11 +257,13 @@ export type ContextDrawerPolicy = {
   graphic?: boolean
   disclosure?: boolean
   figure?: boolean
+  math?: boolean
   attributes?: boolean
   startPackages?: RibbonMenuGroup
 }
 
 const contextDrawerLabels = {
+  math: "Formula",
   documentSelected: "Document",
   paragraphSelected: "Paragraph",
   sectionSelected: "Section",
@@ -270,7 +282,7 @@ const ribbonContextPriority = [
   "paragraphSelected", "media", "dialog", "graphic", "headingGroup", "orderedList", "disclosure", "figure",
 ] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
 const toolboxContextPriority = [
-  "documentSelected", "paragraphSelected", "sectionSelected", "headingGroup", "orderedList", "disclosure",
+  "math", "documentSelected", "paragraphSelected", "sectionSelected", "headingGroup", "orderedList", "disclosure",
   "graphic", "table", "media", "dialog", "figure",
 ] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
 
@@ -286,6 +298,7 @@ export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGro
     const groups = menuGroups[context.menu]
     return context.menu === "Start" && context.startPackages ? [...groups, context.startPackages] : groups
   }
+  if(context.surface === "toolbox" && context.math) return [{label: "Formula", buttons: []}]
   if(context.layout && (!context.layoutItem || ![context.media, context.dialog, context.graphic, context.table, context.disclosure].some(Boolean))) {
     return menuGroups.Edit.filter(group => group.label === (context.layout === "grid" ? "Grid layout" : "Flex layout")
       || context.attributes && group.label === "Attributes")

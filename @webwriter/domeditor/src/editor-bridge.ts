@@ -13,6 +13,7 @@ import {isMediaType, type MediaSelectionState} from "./media"
 import type {WebWriterPackage} from "./packages"
 import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
+import type {MathSelectionState} from "./math"
 import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
@@ -272,6 +273,7 @@ export type SelectionChangeDetail = {
   dialog?: DialogSelectionState
   table?: TableSelectionState
   graphic?: GraphicSelectionState
+  math?: MathSelectionState
   layout?: LayoutSelectionState
   documentLayout?: DocumentLayoutState
   /** Authored attributes for the exact element-like selection, when any. */
@@ -647,6 +649,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.dialog, isDialogSelection)
     && isOptionalFeature(detail.table, isTableSelection)
     && isOptionalFeature(detail.graphic, isGraphicSelection)
+    && isOptionalFeature(detail.math, math => math.active === true && (math.display === "inline" || math.display === "block"))
     && isOptionalFeature(detail.layout, isLayoutSelection)
     && isOptionalFeature(detail.documentLayout, state => (state.mode === "document" || state.mode === "canvas" || state.mode === "slides")
       && isBoolean(state.canConvert) && typeof state.zoom === "number" && Number.isFinite(state.zoom) && state.zoom > 0

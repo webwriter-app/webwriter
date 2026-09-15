@@ -118,7 +118,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(selection-caret-capture\)\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);/)
     expect(editorStyleString).toMatch(/\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active,\s*body\.◆node-selection-active\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
+    expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected,\s*body\.◆node-selection-active\s+math\.◆element-capture-selected\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆table-cell-selection,\s*body\.◆table-cell-selection\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆table-cell-selection::selection,\s*body\.◆table-cell-selection\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).toMatch(/body\.◆editing-locked,\s*body\.◆editing-locked\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)

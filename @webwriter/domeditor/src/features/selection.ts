@@ -5,6 +5,7 @@ import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
 import {slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
+import {inlineMathRoot, mathRoot} from "../math"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -316,6 +317,21 @@ export class SelectionFeature extends EditorFeature {
       if(!adjacent || !isAtomicEditingElement(adjacent, this.editor.schema)) return false
       $.selectElement(adjacent)
     }
+    this.processSelection()
+    return true
+  }
+
+  /** Stop outside a formula before entering its own caret navigation. */
+  #navigateMathBoundary(direction: "backward" | "forward") {
+    if(!$.isEmpty || mathRoot($.anchor)) return false
+    const adjacent = this.#adjacentNavigationElement(direction)
+    if(!adjacent || mathRoot(adjacent) !== adjacent) return false
+    const index = Array.from(adjacent.parentNode!.childNodes).indexOf(adjacent)
+    const offset = index + (direction === "backward" ? 1 : 0)
+    if($.anchor === adjacent.parentNode && $.anchorOffset === offset) {
+      $.move(adjacent, direction === "forward" ? 0 : adjacent.childNodes.length)
+    }
+    else $.move(adjacent.parentNode!, offset)
     this.processSelection()
     return true
   }
@@ -806,6 +822,7 @@ export class SelectionFeature extends EditorFeature {
       if(path === null) return
 
       const pathElement = this.#elementAtPath(path)
+      if(inlineMathRoot(pathElement)) return
       const element = pathElement.closest("table") ?? pathElement
       element.classList.add("◆", "◆element-hovered")
     },
@@ -1032,7 +1049,8 @@ export class SelectionFeature extends EditorFeature {
     this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
       "◆element-capture-selected", "◆text-selected", "◆empty-selected",
-      "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded"]
+      "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
+      "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
     elements.forEach(element => {
@@ -1087,6 +1105,7 @@ export class SelectionFeature extends EditorFeature {
     if(!selection?.anchorNode || !selection.focusNode) return "none"
     if(this.editor.features.table.hasCellSelection) return "cell"
     if(this.editor.features.list.isVirtualSelection) return "virtual"
+    if(inlineMathRoot(selection.anchorNode) && inlineMathRoot(selection.anchorNode) === inlineMathRoot(selection.focusNode)) return "text"
     if($.isGapSelection) return "gap"
     if($.isElementSelection && !inDragSelection) return "element"
     const anchorContainer = getContainer(selection.anchorNode)
@@ -1229,6 +1248,10 @@ export class SelectionFeature extends EditorFeature {
       this.#capturedElement = isContentfulWidget(focusedWidget, this.editor.schema) ? null : focusedWidget
     }
     if(isContentfulWidget(this.#capturedElement, this.editor.schema)) this.#releaseCaptureSelection()
+    const formula = this.editor.features.math.activeMath
+    if(this.#capturedElement?.localName === "math" && (this.#capturedElement !== formula || inlineMathRoot(formula))) this.#releaseCaptureSelection()
+    if(formula && inlineMathRoot(formula) && !focusedWidget) this.#releaseCaptureSelection()
+    if(formula && !inlineMathRoot(formula) && !this.captureSelectedElement) this.#capturedElement = formula
     const capturedElement = this.captureSelectedElement
     let sel: Selection | null
     if(capturedElement) {
@@ -1301,7 +1324,7 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const structuralGap = $.detailsGap ?? $.dividerGap
+        const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap
         const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
@@ -1333,6 +1356,20 @@ export class SelectionFeature extends EditorFeature {
       this.#markSelection(element, "◆empty-selected")
       if(element === getDocumentRoot() && !this.emptyDocumentCaret) {
         this.#createEmptyDocumentCaret()
+      }
+    }
+    if(kind === "text" && sel.isCollapsed) {
+      const inside = inlineMathRoot(sel.focusNode)
+      const boundary = $.mathBoundary
+      const outside = boundary && inlineMathRoot(boundary.element)
+      const formula = inside ?? outside
+      const atInnerEdge = inside && sel.focusNode === inside && (sel.focusOffset === 0 || sel.focusOffset === inside.childNodes.length)
+      if(formula && (atInnerEdge || outside)) {
+        const start = inside ? sel.focusOffset === 0 : boundary!.placement === "before"
+        const left = getComputedStyle(formula).direction === "rtl" ? !start : start
+        this.#markSelection(formula, `◆math-caret-${inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
+        this.#markSelection(document.body, "◆math-boundary-caret")
+        this.#showSelectionCaret("text")
       }
     }
     // Native text carets can disappear while another app owns the drag.
@@ -1390,7 +1427,8 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
-        && (this.#navigateDisclosureGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
+        && (this.#navigateMathBoundary(direction)
+          || this.#navigateDisclosureGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
         ev.preventDefault()
       }

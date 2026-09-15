@@ -239,6 +239,7 @@ body
         time,
         u,
         var,
+        math:not([display="block"]),
         mtext,
         annotation,
         annotation-xml,
@@ -333,7 +334,8 @@ body.◆node-selection-active * {
 
 /* Capture keeps the widget's native focus and selection, so do not pass the
  * node-selection caret suppression through its host into the shadow tree. */
-body.◆node-selection-active .◆element-capture-selected {
+body.◆node-selection-active .◆element-capture-selected,
+body.◆node-selection-active math.◆element-capture-selected * {
   caret-color: auto !important;
 }
 
@@ -1837,4 +1839,59 @@ body::part(transform-overlay-freeform transform-overlay-at-top) {
   background: transparent;
   color: inherit;
   text-shadow: none;
+}
+
+math {
+  padding: 2px;
+}
+
+math:not([display="block"]) {
+  margin-inline: 2px;
+}
+
+.◆math-editing {
+  background-color: #eeeeee;
+}
+
+/* Native carets can resolve both sides of MATH to the same token edge.
+ * The shared text caret distinguishes its inner and outer DOM positions. */
+:is(.◆math-caret-inside-left, .◆math-caret-inside-right, .◆math-caret-outside-left, .◆math-caret-outside-right) {
+  anchor-name: --math-caret-anchor;
+}
+
+body.◆math-boundary-caret,
+body.◆math-boundary-caret * {
+  caret-color: transparent !important;
+}
+
+body.◆math-boundary-caret::part(selection-caret-text) {
+  position-anchor: --math-caret-anchor;
+  top: calc(anchor(top) + 2px);
+  height: max(1px, calc(anchor-size(height) - 4px));
+  width: 1px;
+  animation: var(--ww-ui-animation, blink 1s step-end infinite);
+}
+
+body:has(.◆math-caret-inside-left)::part(selection-caret-text) {
+  left: calc(anchor(left) + 2px);
+}
+body:has(.◆math-caret-inside-right)::part(selection-caret-text) {
+  left: calc(anchor(right) - 3px);
+}
+body:has(.◆math-caret-outside-left)::part(selection-caret-text) {
+  left: calc(anchor(left) - 2px);
+}
+body:has(.◆math-caret-outside-right)::part(selection-caret-text) {
+  left: calc(anchor(right) + 1px);
+}
+
+/* Empty arguments reserve hit targets only while editing. Their guides are
+   painted in the shadow appendix; the formula uses the native text caret. */
+.◆math-slot, .◆math-editing:empty {
+  display: inline-block;
+  min-width: 0.7em;
+  min-height: 1em;
+}
+.◆math-editing[display="block"]:empty {
+  display: block;
 }

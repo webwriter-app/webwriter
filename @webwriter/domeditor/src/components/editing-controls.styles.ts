@@ -6,6 +6,102 @@ export const editingControlStyles = css`
       user-select: none;
     }
 
+    .math-controls {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+      gap: 0.3rem;
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      padding: 0.25rem;
+    }
+
+    .math-control-row {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(2.45rem, 1fr));
+      gap: 0.15rem;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .math-tool-groups {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      min-width: 0;
+      min-height: 0;
+      padding-top: 0.25rem;
+    }
+
+    .math-tool-group {
+      min-width: 0;
+    }
+
+    .math-tool-group h3 {
+      margin: 0 0 0.15rem;
+      color: #526b86;
+      font-size: 0.62rem;
+      font-weight: 650;
+      line-height: 1.1;
+    }
+
+    .math-tool-grid {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(2.45rem, 1fr));
+      gap: 0.15rem;
+      min-width: 0;
+    }
+
+    .math-button {
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 1.75rem;
+      padding: 0.18rem 0.22rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      color: #2f3742;
+      background: transparent;
+      font: inherit;
+      font-size: 0.72rem;
+      line-height: 1.05;
+      cursor: pointer;
+    }
+
+    .math-button:hover {
+      border-color: #c8d2df;
+      background: #eef4fb;
+    }
+
+    .math-button[aria-pressed="true"] {
+      border-color: #8eb6df;
+      color: #1e5d9d;
+      background: #dcecff;
+      box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
+    }
+
+    .math-button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .math-button:active {
+      color: #1e4f87;
+      background: #c4dcf4;
+    }
+
+    .math-tool-grid .math-button,
+    .math-control-row .math-button {
+      min-width: 0;
+    }
+
     input, textarea {
       -webkit-user-select: text;
       user-select: text;

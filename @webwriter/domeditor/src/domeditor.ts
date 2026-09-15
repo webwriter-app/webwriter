@@ -19,6 +19,8 @@ import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
 import { LayoutFeature } from "./features/layout"
 import { GraphicFeature } from "./features/graphic"
+import { MathFeature } from "./features/math"
+import {inlineMathRoot} from "./math"
 import { HeadFeature } from "./features/head"
 import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
@@ -382,6 +384,7 @@ export class DOMEditor {
     "state": new StateFeature(this),
     "head": new HeadFeature(this),
     "template": new TemplateFeature(this),
+    "math": new MathFeature(this),
     "insertion": new InsertionFeature(this),
     "history": new HistoryFeature(this),
     "list": new ListFeature(this),
@@ -963,6 +966,7 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
+      if(inlineMathRoot(currentElement)) return
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
       if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
@@ -1002,6 +1006,7 @@ export class DOMEditor {
     const dialog = this.features.dialog.getState()
     const table = this.features.table.getState()
     const graphic = this.features.graphic.getState()
+    const math = this.features.math.getState()
     const layout = this.features.layout.getState()
     const selectedSection = this.features.selection.selectedSectionElement
     const attributeElement = this.selectedAttributeElement()
@@ -1031,6 +1036,7 @@ export class DOMEditor {
       ...(dialog ? {dialog} : {}),
       ...(table ? {table} : {}),
       ...(graphic ? {graphic} : {}),
+      ...(math ? {math} : {}),
       ...(layout ? {layout} : {}),
       ...(elementState ? {element: elementState} : {}),
     }

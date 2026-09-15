@@ -518,6 +518,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private get editTypeLabel() {
+    if(this.math?.active) return "Formula"
     if(this.documentSelected) return "Document"
     if(this.paragraphSelected) return "Paragraph"
     if(this.layout && (!this.layout.item || !this.media && !this.dialog && !this.table?.active && !this.graphic?.active && this.elementAttributes?.localName !== "details")) return this.layout.kind === "grid" ? "Grid layout" : "Flex layout"
@@ -551,6 +552,7 @@ export class DomEditorToolbox extends EditingControls {
       sectionSelected: this.sectionSelected,
       layout: this.layout?.kind,
       layoutItem: this.layout?.item,
+      math: this.math?.active,
       headingGroup: Boolean(this.headingGroup),
       orderedList: this.listType === "ol",
       media: Boolean(this.media),

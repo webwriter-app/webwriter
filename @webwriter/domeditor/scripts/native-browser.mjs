@@ -6,6 +6,10 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "native MathML editing preserves inline rendering and argument hit targets",
+  "inline formula edges use text selections and block formula edges use gaps",
+  "inline formulas retain distinct inner and outer text insertion positions",
+  "leaving an empty inline formula removes it without moving the text caret",
   "bottom template cards retain native editing focus after rendering",
   "editor command preserves a live selection",
   "selection feature treats custom element as atomic",

@@ -74,6 +74,134 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 const editor = new DOMEditor()
 editor.schema.extendWidgets([{tagName: "native-audit-widget"}])
 
+await check("native MathML editing preserves inline rendering and argument hit targets", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.innerHTML = 'Before <math><mi id="math-operand">x</mi></math> after'
+  fixture.append(paragraph)
+  const math = paragraph.querySelector("math")!
+  $.move(math.firstChild!.firstChild!, 1)
+  editor.features.math.execute("structure:frac")
+  editor.features.math.execute("text:12")
+  assert(math.querySelector("mfrac > mrow > #math-operand"), "operand was rebuilt")
+  assert(math.querySelector("mfrac")!.children.length === 2, "fraction arity changed")
+  editor.features.math.execute("move:up")
+  editor.features.math.execute("structure:sup")
+  await layoutFrame()
+  const slot = math.querySelector(".◆math-slot")!
+  assert(slot && slot.getBoundingClientRect().width > 0 && slot.getBoundingClientRect().height > 0, "empty argument has no native hit target")
+  assert(editor.appendix.querySelector(".◆math-overlay"), "formula presentation missing from appendix")
+  assert(!paragraph.querySelector(".◆math-overlay"), "formula UI leaked into content")
+  assert(!editor.features.selection.captureSelectedElement, "inline formula has capture selection")
+  assert(!math.classList.contains("◆element-selected"), "inline formula has a node outline")
+  assert(getComputedStyle(math).backgroundColor === "rgb(238, 238, 238)", "editing formula background is missing")
+  assert(getComputedStyle(slot).caretColor !== "rgba(0, 0, 0, 0)", "native formula caret is hidden")
+  assert(getComputedStyle(math).padding === "2px", "formula padding is not 2px on all sides")
+  assert(!$.isGapSelection, "empty formula argument became a gap")
+  const rect = slot.getBoundingClientRect()
+  slot.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8, clientX: rect.left + 2, clientY: rect.top + rect.height / 2}))
+  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
+  document.dispatchEvent(new KeyboardEvent("keydown", {key: "3", bubbles: true, cancelable: true}))
+  assert(math.querySelector("msup")?.textContent?.includes("3"), "clicking the argument did not place an editing caret")
+  editor.features.math.execute("exit")
+  assert(paragraph.textContent?.startsWith("Before ") && paragraph.textContent?.endsWith(" after"), "inline siblings changed")
+  assert(!editor.appendix.querySelector(".◆math-overlay"), "formula presentation survived exit")
+  assert(!editor.features.selection.captureSelectedElement, "formula retained capture after exit")
+  assert(getComputedStyle(math).backgroundColor === "rgba(0, 0, 0, 0)", "formula kept its editing background after exit")
+  paragraph.remove()
+})
+
+await check("inline formula edges use text selections and block formula edges use gaps", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.innerHTML = '<math><mi>x</mi></math>'
+  fixture.append(paragraph)
+  const math = paragraph.firstElementChild!
+  for(const display of ["inline", "block"]) {
+    math.setAttribute("display", display)
+    await layoutFrame()
+    const rect = math.getBoundingClientRect()
+    for(const after of [false, true]) {
+      const x = display === "block" ? rect.left + rect.width / 2 : after ? rect.right - 1 : rect.left + 1
+      const y = display === "block" ? after ? rect.bottom - 1 : rect.top + 1 : rect.top + rect.height / 2
+      math.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8, clientX: x, clientY: y}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
+      editor.features.selection.processSelection()
+      assert($.anchor === paragraph && $.anchorOffset === (after ? 1 : 0), `pointer did not reach the ${after ? "after" : "before"} ${display} boundary`)
+      assert($.isGapSelection === (display === "block"), `${display} formula boundary has the wrong selection kind`)
+      assert(!editor.features.selection.captureSelectedElement, "formula boundary retained capture")
+      assert(!math.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap marker leaked into formula")
+      if(display === "inline") {
+        const input = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "a"})
+        paragraph.dispatchEvent(input)
+        if(!input.defaultPrevented) document.execCommand("insertText", false, "a")
+        assert(math.textContent === "x", "typing at an inline boundary entered the formula")
+        const inserted = after ? math.nextSibling : math.previousSibling
+        assert(inserted?.textContent === "a", "inline boundary did not accept surrounding text")
+        inserted!.remove()
+      }
+    }
+  }
+  paragraph.remove()
+})
+
+await check("inline formulas retain distinct inner and outer text insertion positions", async () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  for(const placement of ["only", "first", "middle", "last", "marked"]) {
+    for(const position of ["before", "start", "end", "after"]) {
+      paragraph.innerHTML = '<math><mrow><mi>x</mi></mrow></math>'
+      const math = paragraph.firstElementChild!
+      if(["middle", "last", "marked"].includes(placement)) paragraph.prepend("before")
+      if(["first", "middle", "marked"].includes(placement)) paragraph.append("after")
+      if(placement === "marked") {
+        const mark = document.createElement("em")
+        math.replaceWith(mark)
+        mark.append(math)
+      }
+      const parent = math.parentNode!
+      const index = Array.from(parent.childNodes).indexOf(math)
+      const inside = position === "start" || position === "end"
+      const node = inside ? math : parent
+      const offset = inside ? position === "start" ? 0 : math.childNodes.length : index + (position === "after" ? 1 : 0)
+      $.move(node, offset)
+      editor.features.selection.processSelection()
+      editor.features.math.refresh()
+      await layoutFrame()
+      const formulaBounds = math.getBoundingClientRect()
+      const contentBounds = math.firstElementChild!.getBoundingClientRect()
+      const padding = [contentBounds.left - formulaBounds.left, contentBounds.top - formulaBounds.top,
+        formulaBounds.right - contentBounds.right, formulaBounds.bottom - contentBounds.bottom]
+      assert(padding.every(value => value >= 1.9), `filled formula has insufficient inner padding: ${JSON.stringify(padding)}`)
+      assert($.anchor === node && $.anchorOffset === offset, `${placement}/${position} caret moved`)
+      assert($.isTextSelection && !$.isGapSelection && !editor.features.selection.captureSelectedElement, `${placement}/${position} is not text selection`)
+      assert(math.classList.contains("◆math-editing") === inside, `${placement}/${position} has the wrong editing background`)
+      const caret = editor.features.selection.selectionCaret!.getBoundingClientRect()
+      assert(caret.width > 0 && caret.height > 0, `${placement}/${position} caret is invisible`)
+      if(inside) assert(caret.left >= formulaBounds.left + 1.9 && caret.right <= formulaBounds.right - 1.9, `${placement}/${position} caret overlaps the formula padding`)
+      else if(position === "before") assert(caret.right <= formulaBounds.left - 0.9, `${placement}/before caret needs an outside margin`)
+      else assert(caret.left >= formulaBounds.right + 0.9, `${placement}/after caret needs an outside margin`)
+      const input = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "a"})
+      paragraph.dispatchEvent(input)
+      if(!input.defaultPrevented) document.execCommand("insertText", false, "a")
+      assert(math.textContent === (inside ? position === "start" ? "ax" : "xa" : "x"), `${placement}/${position} inserted on the wrong side of the formula boundary`)
+    }
+  }
+  paragraph.remove()
+})
+
+await check("leaving an empty inline formula removes it without moving the text caret", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.innerHTML = 'before<math><mrow></mrow></math>after'
+  fixture.append(paragraph)
+  const math = paragraph.querySelector("math")!
+  $.move(math, 0)
+  editor.features.math.refresh()
+  editor.features.math.execute("exit")
+  await layoutFrame()
+  assert(!math.isConnected && paragraph.textContent === "beforeafter", "empty inline formula was retained or surrounding text changed")
+  assert($.anchor === paragraph && $.anchorOffset === 1, "removing an empty formula moved the surrounding text caret")
+  paragraph.remove()
+})
+
 await check("editor command preserves a live selection", () => {
   const text = document.querySelector("#before")!.firstChild!
   const selection = getSelection()!

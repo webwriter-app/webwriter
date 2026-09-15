@@ -52,6 +52,7 @@ import {
   type MediaSelectionState,
 } from "../media"
 import type {DialogSelectionState} from "../dialog"
+import type {MathSelectionState} from "../math"
 import type {ElementAttributeState} from "../element-attributes"
 import {
   aiEditReviewEvent,
@@ -407,6 +408,7 @@ export class DomEditor extends LitElement {
     dialogSelection: {attribute: false, state: true},
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
+    mathSelection: {attribute: false, state: true},
     elementAttributes: {attribute: false, state: true},
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
@@ -494,6 +496,7 @@ export class DomEditor extends LitElement {
   private dialogSelection: DialogSelectionState | null = null
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
+  private mathSelection: MathSelectionState | null = null
   private elementAttributes: ElementAttributeState | null = null
   private elementStyle: ElementStyleState = {
     target: null,
@@ -2669,6 +2672,14 @@ export class DomEditor extends LitElement {
       void this.execute({type: "editFigureCaption"}).finally(() => this.focusEditor())
       return
     }
+    if(label?.startsWith("math:")) {
+      void this.execute({type: "editMath", command: label.slice(5)}).finally(() => this.focusEditor())
+      return
+    }
+    if(label?.startsWith("insert-math:")) {
+      void this.execute({type: "insertMath", structure: label.slice("insert-math:".length)}).finally(() => this.focusEditor())
+      return
+    }
     if(label?.startsWith("insert-graphic-shape:")) {
       const shape = label.slice("insert-graphic-shape:".length)
       if(isGraphicShapeType(shape)) {
@@ -2757,6 +2768,10 @@ export class DomEditor extends LitElement {
       return
     }
 
+    if(item.tag === "math") {
+      void this.execute({type: "insertMath"}).finally(() => this.focusEditor())
+      return
+    }
     if(item.tag === "svg") {
       void this.execute({type: "insertGraphic"})
         .finally(() => this.focusEditor())
@@ -4252,6 +4267,7 @@ export class DomEditor extends LitElement {
         attributes: {...event.data.detail.dialog.attributes},
       } : null
       this.tableSelection = event.data.detail.table ? {...event.data.detail.table} : null
+      this.mathSelection = event.data.detail.math ? {...event.data.detail.math} : null
       this.graphicSelection = event.data.detail.graphic ? {
         ...event.data.detail.graphic,
         ...(event.data.detail.graphic.parameters ? {parameters: {...event.data.detail.graphic.parameters}} : {}),
@@ -4267,6 +4283,7 @@ export class DomEditor extends LitElement {
         attributes: {...event.data.detail.element.attributes},
       } : null
       const hasContextualEditOptions = this.tableSelection?.active === true
+        || this.mathSelection?.active === true
         || this.layoutSelection !== null
         || this.graphicSelection?.active === true
         || this.mediaSelection !== null
@@ -4297,6 +4314,7 @@ export class DomEditor extends LitElement {
           ...(this.dialogSelection ? {dialog: this.dialogSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
           ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
+          ...(this.mathSelection ? {math: this.mathSelection} : {}),
           ...(this.layoutSelection ? {layout: this.layoutSelection} : {}),
           documentLayout: {...this.documentLayout},
           ...(this.elementAttributes ? {element: this.elementAttributes} : {}),
@@ -4559,6 +4577,7 @@ export class DomEditor extends LitElement {
     this.mediaSelection = null
     this.dialogSelection = null
     this.tableSelection = null
+    this.mathSelection = null
     this.graphicSelection = null
     this.elementStyleRefreshSequence++
     this.elementStyleRefreshQueued = false
@@ -4615,6 +4634,7 @@ export class DomEditor extends LitElement {
       media: this.mediaSelection,
       dialog: this.dialogSelection,
       graphic: this.graphicSelection,
+      math: this.mathSelection,
       elementAttributes: this.elementAttributes,
       elementStyle: this.elementStyle,
       historyState: this.historyState,

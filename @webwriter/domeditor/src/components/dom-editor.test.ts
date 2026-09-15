@@ -28,6 +28,7 @@ import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
 import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings} from "../app-settings"
+import {mathToolGroups} from "../math"
 
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
@@ -4128,6 +4129,48 @@ describe("DomEditor.execute()", () => {
     secondParagraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-open")).toBe(false)
+  })
+
+  it("routes a Formula structure menu item to a prefilled formula insertion", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "insert-math:frac"}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
+  })
+
+  it("opens the Formula toolbox after math insertion and routes math tools", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const math = {active: true as const, display: "inline" as const}
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: selectionChangeEvent,
+        detail: {
+          path: [{path: [], name: "Document"}, {path: [0], name: "Formula"}],
+          math,
+          inserted: true,
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolbox.math).toEqual(math)
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')).not.toBeNull()
+    const option = mathToolGroups[0].options[0]
+    const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(
+      `ribbon-drawer[label="Formula"] button.math-button[data-action="math:${option.command}"]`,
+    )!
+    button.click()
+
+    expect(execute).toHaveBeenCalledWith({type: "editMath", command: option.command})
   })
 
   it("allows ribbon inputs to receive pointer focus", async () => {

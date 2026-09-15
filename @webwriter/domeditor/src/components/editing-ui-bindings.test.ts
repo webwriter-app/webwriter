@@ -35,6 +35,7 @@ const properties = (): EditingUIProperties => ({
   media: null,
   dialog: null,
   graphic: null,
+  math: null,
   layout: null,
   layoutError: "",
   elementAttributes: null,

@@ -41,6 +41,7 @@ export type HTMLElementCapabilityOwner =
   | "media"
   | "table"
   | "graphic"
+  | "math"
   | "packages"
   | "platform"
   | "policy"
@@ -167,7 +168,7 @@ export const htmlElementCapabilities = {
   main: full("manipulation", "menu", "Semantic section insertion and conversion.", {structuralEditing: true}),
   map: full("media", "contextual", "Image-map creation, naming, and hotspot management.", {structuralEditing: true}),
   mark: full("mark", "contextual", "Semantic highlight distinct from background styling."),
-  math: partial("manipulation", "menu", "Native MathML is inserted and preserved without a formula editor.", {contentEditing: false}),
+  math: partial("math", "menu", "Inline formula typing and structure tools edit native MathML; unfamiliar subtrees remain intact.", {contentEditing: true, structuralEditing: true}),
   menu: full("list", "contextual", "List-type conversion and keyboard behavior.", {structuralEditing: true}),
   meta: full("head", "contextual", "Metadata presets and arbitrary safe attributes.", {contentEditing: false}),
   meter: none("policy", "Form authoring is unsupported; transfers preserve content as text."),

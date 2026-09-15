@@ -42,3 +42,7 @@ Those checks require complete coverage and keep the manifest aligned with built-
 ## Offline HTML
 
 Offline export embeds media, stylesheets, imported CSS and its assets, and standalone scripts. It preserves original resource URLs for reopening in the editor. Failed downloads, JavaScript module dependencies and embedded iframe documents produce a visible error; use regular HTML for those documents. Arbitrary network requests made by widget code are outside the resource export.
+
+## Formula editing
+
+Insert **Formula**, then type directly in the formula or use the **Formula** edit toolbox. Existing native MathML formulas can be edited by clicking their contents. See [Formula editing](docs/formula-editing.md) for shortcuts and supported structures.

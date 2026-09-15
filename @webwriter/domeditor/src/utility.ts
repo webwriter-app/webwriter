@@ -6,6 +6,7 @@ import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {slideLayoutRole} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
+import {inlineMathRoot, mathBoundaryPoint, mathRoot} from "./math"
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -359,6 +360,13 @@ export class EditingSelection {
     const pointerElement = hit ?? (pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
     const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
+    const formula = mathRoot(pointerElement) ?? mathRoot(caretElement ?? null)
+    if(formula && editingFlowRoot(formula) === flow) {
+      const boundary = mathBoundaryPoint(formula, x, y)
+      if(boundary) return {...boundary, overrideNative: true}
+      // MathML rows and arguments are text editing positions, never gaps.
+      if(offsetNode && typeof offset === "number" && formula.contains(offsetNode)) return point(offsetNode, offset)
+    }
     // Native hit testing can land on an overlapping positioned subtree while
     // extending the surrounding flow. Resolve against that flow's own boxes.
     if(offsetNode && editingFlowRoot(offsetNode) !== flow) {
@@ -603,6 +611,8 @@ export class EditingSelection {
 
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
+    if(mathRoot(this.anchor)) return false
+    if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
     if(this.detailsGap || this.dividerGap) return true
     const inSlide = isElement(this.anchor) && slideLayoutRole(this.anchor) === "slide"
     const root = inSlide ? this.anchor as Element : getDocumentRoot()
@@ -633,6 +643,13 @@ export class EditingSelection {
     return this.#gapBeside("hr")
   }
 
+  /** Inline formulas have text carets at their edges; block formulas have gaps,
+   * including in otherwise empty parents, sections, and table cells. */
+  static get mathBoundary() {
+    const boundary = this.#gapBeside("math")
+    return boundary && mathRoot(boundary.element) === boundary.element ? boundary : null
+  }
+
   static #gapBeside(selector: string) {
     const parent = this.anchor
     if(!this.isEmpty || !isElement(parent) || !getDocumentRoot().contains(parent) || atomicEditingContainer(parent)) return null
@@ -649,6 +666,7 @@ export class EditingSelection {
     if(this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
+    if(inlineMathRoot(selected)) return false
     return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide"
       || !isMarkElement(selected) && !isSectionElement(selected))
   }
@@ -656,6 +674,9 @@ export class EditingSelection {
   /** Whether the selection consists only of text and mark wrappers within one
    * editing container. Also true for a collapsed caret inside either. */
   static get isTextSelection() {
+    const formulaBoundary = this.mathBoundary
+    if(this.isEmpty && mathRoot(this.anchor)) return true
+    if(formulaBoundary) return formulaBoundary.element.getAttribute("display") !== "block"
     if(this.isEmptySelection || this.isElementSelection) return false
     if(this.isEmpty) {
       if(this.anchor instanceof Text || isMarkElement(this.anchor)) return true
@@ -675,7 +696,7 @@ export class EditingSelection {
       acceptNode: node => this.includesNode(node) && range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
     })
     while(walker.nextNode()) {
-      if(!isMarkElement(walker.currentNode) && !isSectionElement(walker.currentNode)) return false
+      if(!isMarkElement(walker.currentNode) && !isSectionElement(walker.currentNode) && !inlineMathRoot(walker.currentNode)) return false
     }
     return Boolean(range.toString())
   }

@@ -56,6 +56,7 @@ import {
   type TimedMediaResourceState,
   type TimedMediaResourceType,
 } from "../media"
+import {mathToolGroups, type MathSelectionState} from "../math"
 import type {WebWriterPackage} from "../packages"
 import {describePackageExport, webWriterPackageExportTypes} from "../packages"
 import {ribbonIcon} from "../ribbon-icons"
@@ -140,6 +141,7 @@ export abstract class EditingControls extends LitElement {
     dialog: {attribute: false},
     table: {attribute: false},
     graphic: {attribute: false},
+    math: {attribute: false},
     layout: {attribute: false},
     layoutError: {type: String},
     elementStyle: {attribute: false},
@@ -211,6 +213,9 @@ export abstract class EditingControls extends LitElement {
   table: TableSelectionState | null = null
 
   graphic: GraphicSelectionState | null = null
+
+  math: MathSelectionState | null = null
+
   layout: LayoutSelectionState | null = null
   layoutError = ""
 
@@ -2047,6 +2052,64 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
+  protected dispatchMathButton(action: string) {
+    this.dispatchEvent(new CustomEvent<{label: string, keepDrawerOpen: boolean}>("ribbon-button-click", {
+      detail: {label: action, keepDrawerOpen: false},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  protected mathButton(label: string, title: string, action: string, active?: boolean) {
+    return html`
+      <button
+        class="math-button"
+        type="button"
+        data-action=${action}
+        aria-label=${title}
+        title=${title}
+        aria-pressed=${active === undefined ? nothing : String(active)}
+        @click=${() => this.dispatchMathButton(action)}
+      >${label}</button>
+    `
+  }
+
+  protected renderMathDrawer() {
+    if(!this.math?.active) return nothing
+    const displayOptions = [
+      {label: "Inline", title: "Inline formula", action: "math:display:inline"},
+      {label: "Block", title: "Block formula", action: "math:display:block"},
+    ] as const
+    return html`
+      <ribbon-drawer label="Formula" icon="Formula" layout="math">
+        <div class="math-controls" role="group" aria-label="Formula tools">
+          <div class="math-control-row" role="group" aria-label="Formula display">
+            ${displayOptions.map(option => this.mathButton(
+              option.label,
+              option.title,
+              option.action,
+              this.math?.display === option.label.toLowerCase(),
+            ))}
+          </div>
+          <div class="math-tool-groups">
+            ${mathToolGroups.map((group, index) => html`
+              <section class="math-tool-group" aria-labelledby=${`math-tool-group-${index}`}>
+                <h3 id=${`math-tool-group-${index}`}>${group.label}</h3>
+                <div class="math-tool-grid">
+                  ${group.options.map(option => this.mathButton(
+                    option.label,
+                    option.title,
+                    `math:${option.command}`,
+                  ))}
+                </div>
+              </section>
+            `)}
+          </div>
+        </div>
+      </ribbon-drawer>
+    `
+  }
+
   protected dispatchTableSemanticAction(detail: Record<string, unknown>) {
     this.dispatchEvent(new CustomEvent("table-semantic-action", {
       detail,
@@ -2626,6 +2689,7 @@ export abstract class EditingControls extends LitElement {
     if(drawer.label === "Comments") return this.renderCommentDrawer()
     if(drawer.label === "Layout") return this.renderTableDrawers()
     if(drawer.label === "Graphic") return this.renderGraphicDrawer()
+    if(drawer.label === "Formula") return this.renderMathDrawer()
     if(drawer.label === "Local packages") return this.renderDevelopDrawer()
     if(drawer.label === "Metadata") {
       return this.renderMetadataDrawer()

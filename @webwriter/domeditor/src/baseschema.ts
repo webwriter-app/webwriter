@@ -215,7 +215,7 @@ export const baseSchema = {
     ]}
   },
   "math": {
-    group: ["embedded", "flow", "palpable"],
+    group: ["embedded", "phrasing", "flow", "palpable"],
     contentNamespace: "http://www.w3.org/1998/Math/MathML",
     content: {selector: "math|*", min: 0, max: Infinity}
   },
