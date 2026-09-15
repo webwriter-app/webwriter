@@ -47,8 +47,8 @@ describe("DOM MathML editing", () => {
     expect(math.className).toBe("")
     expect(Array.from(parent.childNodes)).toEqual([before, after])
     expect(parent.textContent).toBe("Before  after")
-    expect($.anchor).toBe(parent)
-    expect($.anchorOffset).toBe(1)
+    expect($.anchor).toBe(after)
+    expect($.anchorOffset).toBe(0)
   })
 
   it("removes an emptied inline formula on an external selection change and supports undo", () => {
@@ -101,6 +101,9 @@ describe("DOM MathML editing", () => {
     }
     const parent = math.parentNode!
     const index = Array.from(parent.childNodes).indexOf(math)
+    const outsideBefore: [Node, number] = math.previousSibling instanceof Text ? [math.previousSibling, math.previousSibling.length] : [parent, index]
+    const outsideAfter: [Node, number] = math.nextSibling instanceof Text ? [math.nextSibling, 0] : [parent, index + 1]
+    const end = math.querySelector("mi")!.firstChild!
     const points: [Node, number][] = [[parent, index], [math, 0], [math, math.childNodes.length], [parent, index + 1]]
     for(const [node, offset] of points) {
       $.move(node, offset)
@@ -119,18 +122,18 @@ describe("DOM MathML editing", () => {
     expect($.anchor).toBe(math)
     expect($.anchorOffset).toBe(0)
     key("End")
-    expect($.anchor).toBe(math)
-    expect($.anchorOffset).toBe(math.childNodes.length)
+    expect($.anchor).toBe(end)
+    expect($.anchorOffset).toBe(1)
     key("ArrowRight")
-    expect($.anchor).toBe(parent)
-    expect($.anchorOffset).toBe(index + 1)
+    expect($.anchor).toBe(outsideAfter[0])
+    expect($.anchorOffset).toBe(outsideAfter[1])
     key("ArrowLeft")
-    expect($.anchor).toBe(math)
-    expect($.anchorOffset).toBe(math.childNodes.length)
+    expect($.anchor).toBe(end)
+    expect($.anchorOffset).toBe(1)
     key("Home")
     key("ArrowLeft")
-    expect($.anchor).toBe(parent)
-    expect($.anchorOffset).toBe(index)
+    expect($.anchor).toBe(outsideBefore[0])
+    expect($.anchorOffset).toBe(outsideBefore[1])
   })
 
   it("selects an inline formula as text and omits all its internals from the breadcrumb", () => {
@@ -296,36 +299,36 @@ describe("DOM MathML editing", () => {
     const parent = math.parentNode!
     $.move(parent.firstChild!, parent.firstChild!.textContent!.length)
     expect(key("ArrowRight").defaultPrevented).toBe(true)
-    expect($.anchor).toBe(parent)
-    expect($.anchorOffset).toBe(1)
-    expect($.isGapSelection).toBe(display === "block")
-    key("ArrowRight")
+    expect($.anchor).toBe(display === "block" ? parent : math)
+    expect($.anchorOffset).toBe(display === "block" ? 1 : 0)
+    if(display === "block") key("ArrowRight")
     expect(editor.features.selection.captureSelectedElement).toBe(display === "block" ? math : null)
     key("ArrowLeft")
-    expect($.anchor).toBe(parent)
-    expect($.anchorOffset).toBe(1)
+    expect($.anchor).toBe(display === "block" ? parent : parent.firstChild)
+    expect($.anchorOffset).toBe(display === "block" ? 1 : parent.firstChild!.textContent!.length)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
     $.move(parent.lastChild!, 0)
     key("ArrowLeft")
-    expect($.anchor).toBe(parent)
-    expect($.anchorOffset).toBe(2)
-    key("ArrowLeft")
+    expect($.anchor).toBe(display === "block" ? parent : math.firstChild!.firstChild)
+    expect($.anchorOffset).toBe(display === "block" ? 2 : 1)
+    if(display === "block") key("ArrowLeft")
     expect(editor.features.selection.captureSelectedElement).toBe(display === "block" ? math : null)
     command("exit")
-    expect($.anchorOffset).toBe(2)
+    expect($.anchor).toBe(display === "block" ? parent : parent.lastChild)
+    expect($.anchorOffset).toBe(display === "block" ? 2 : 0)
   })
 
   it("resolves padded formula edges outside, leaving argument interiors editable", () => {
     const math = load("<mi>x</mi>")
     vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 80, 40))
     const parent = math.parentNode!
-    expect(mathBoundaryPoint(math, 21, 50)).toEqual({node: parent, offset: 1})
-    expect(mathBoundaryPoint(math, 99, 50)).toEqual({node: parent, offset: 2})
+    expect(mathBoundaryPoint(math, 21, 50)).toEqual({node: math.previousSibling, offset: 7})
+    expect(mathBoundaryPoint(math, 99, 50)).toEqual({node: math.nextSibling, offset: 0})
     expect(mathBoundaryPoint(math, 50, 50)).toBeNull()
     // Vertical blank space wins even when x is inside or before the formula.
-    expect(mathBoundaryPoint(math, 50, 90)).toEqual({node: parent, offset: 2})
-    expect(mathBoundaryPoint(math, 0, 90)).toEqual({node: parent, offset: 2})
-    expect(mathBoundaryPoint(math, 50, 10)).toEqual({node: parent, offset: 1})
+    expect(mathBoundaryPoint(math, 50, 90)).toEqual({node: math.nextSibling, offset: 0})
+    expect(mathBoundaryPoint(math, 0, 90)).toEqual({node: math.nextSibling, offset: 0})
+    expect(mathBoundaryPoint(math, 50, 10)).toEqual({node: math.previousSibling, offset: 7})
     math.setAttribute("display", "block")
     expect(mathBoundaryPoint(math, 50, 31)).toEqual({node: parent, offset: 1})
     expect(mathBoundaryPoint(math, 50, 69)).toEqual({node: parent, offset: 2})
@@ -635,6 +638,59 @@ describe("DOM MathML editing", () => {
     expect(document.getSelection()!.focusOffset).toBe(1)
     key("ArrowRight")
     expect(document.getSelection()!.focusNode).toBe(math.lastChild!.firstChild)
+  })
+
+  it.each(["<mi>x</mi>", "<mrow><mrow><mi>x</mi></mrow></mrow>", "<mstyle><mi>x</mi></mstyle>"])("reuses prose and the last token without duplicate formula stops: %s", content => {
+    const math = load(content)
+    const before = math.previousSibling as Text, after = math.nextSibling as Text
+    const token = math.querySelector("mi")!.firstChild!
+    const original = clean()
+    $.move(before, before.length)
+    key("ArrowRight")
+    expect($.anchor).toBe(math)
+    expect($.anchorOffset).toBe(0)
+    key("ArrowRight")
+    expect($.anchor).toBe(token)
+    expect($.anchorOffset).toBe(1)
+    key("ArrowRight")
+    expect($.anchor).toBe(after)
+    expect($.anchorOffset).toBe(0)
+    key("ArrowLeft")
+    expect($.anchor).toBe(token)
+    expect($.anchorOffset).toBe(1)
+    key("ArrowLeft")
+    expect($.anchor).toBe(math)
+    expect($.anchorOffset).toBe(0)
+    key("ArrowLeft")
+    expect($.anchor).toBe(before)
+    expect($.anchorOffset).toBe(before.length)
+    expect(clean()).toBe(original)
+  })
+
+  it("uses the current neighboring text after a concurrent replacement", () => {
+    const math = load("<mi>x</mi>")
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    const replacement = document.createTextNode("replacement")
+    math.nextSibling!.replaceWith(replacement)
+    key("ArrowRight")
+    expect($.anchor).toBe(replacement)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("reuses neighboring prose across authored comments", () => {
+    const math = load("<mi>x</mi>")
+    const before = math.previousSibling as Text, after = math.nextSibling!
+    math.before(document.createComment("before formula"))
+    math.after(document.createComment("after formula"))
+    const original = clean()
+    $.move(before, before.length)
+    key("ArrowRight")
+    expect($.anchor).toBe(math)
+    key("End")
+    key("ArrowRight")
+    expect($.anchor).toBe(after)
+    expect($.anchorOffset).toBe(0)
+    expect(clean()).toBe(original)
   })
 
   it("copies MathML without editing artifacts and cuts without breaking arguments", () => {

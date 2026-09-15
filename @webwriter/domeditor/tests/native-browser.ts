@@ -130,6 +130,16 @@ await check("inline formula edges use text selections and block formula edges us
       assert(!editor.features.selection.captureSelectedElement, "formula boundary retained capture")
       assert(!math.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap marker leaked into formula")
       if(display === "inline") {
+        await layoutFrame()
+        const caret = editor.features.selection.selectionCaret!
+        const height = caret.getBoundingClientRect().height
+        assert(height >= parseFloat(getComputedStyle(paragraph).fontSize), `formula-only outside caret is too short: ${height}px, formula ${math.getBoundingClientRect().height}px`)
+        $.move(math, 0)
+        editor.features.selection.processSelection()
+        await layoutFrame()
+        assert(caret.getBoundingClientRect().height >= parseFloat(getComputedStyle(paragraph).fontSize), `formula-only inside start caret is too short: ${caret.getBoundingClientRect().height}px`)
+        $.move(paragraph, after ? 1 : 0)
+        editor.features.selection.processSelection()
         const input = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "a"})
         paragraph.dispatchEvent(input)
         if(!input.defaultPrevented) document.execCommand("insertText", false, "a")
@@ -140,6 +150,42 @@ await check("inline formula edges use text selections and block formula edges us
       }
     }
   }
+  math.setAttribute("display", "inline")
+  for(const fontSize of [16, 32]) {
+    paragraph.style.fontSize = `${fontSize}px`
+    for(const [node, offset] of [[paragraph, 0], [math, 0], [paragraph, 1]] as const) {
+      $.move(node, offset)
+      editor.features.selection.processSelection()
+      await layoutFrame()
+      const caret = editor.features.selection.selectionCaret!.getBoundingClientRect()
+      const formula = math.getBoundingClientRect()
+      assert(caret.height >= fontSize, `formula boundary caret ignored ${fontSize}px paragraph text: ${caret.height}px`)
+      assert(Math.abs(caret.top + caret.height / 2 - formula.top - formula.height / 2) < 1, "formula boundary caret is not vertically centered")
+    }
+  }
+  paragraph.style.removeProperty("font-size")
+  paragraph.prepend("before")
+  paragraph.append("after")
+  await layoutFrame()
+  const before = paragraph.firstChild as Text, after = paragraph.lastChild as Text
+  const token = math.querySelector("mi")!.firstChild!
+  const arrow = (key: string) => document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+  $.move(before, before.length)
+  arrow("ArrowRight")
+  assert($.anchor === math && $.anchorOffset === 0, "entering inline math added an outside parent stop")
+  arrow("End")
+  assert($.anchor === token && $.anchorOffset === 1, "End added a duplicate formula-end stop")
+  assert(!editor.features.selection.selectionCaret!.style.fontSize, "formula boundary font size survived leaving the boundary")
+  arrow("ArrowRight")
+  assert($.anchor === after && $.anchorOffset === 0, "leaving inline math did not reuse following text")
+  arrow("ArrowLeft")
+  assert($.anchor === token && $.anchorOffset === 1, "backward entry added a duplicate formula-end stop")
+  arrow("Home")
+  arrow("ArrowLeft")
+  assert($.anchor === before && $.anchorOffset === before.length, "leaving inline math did not reuse preceding text")
+  const bounds = math.getBoundingClientRect()
+  const outside = $.pointFromCoords(bounds.right - 1, bounds.top + bounds.height / 2, math, editor.schema)
+  assert(outside?.node === after && outside.offset === 0, "pointer boundary did not reuse following text")
   paragraph.remove()
 })
 
@@ -198,7 +244,7 @@ await check("leaving an empty inline formula removes it without moving the text 
   editor.features.math.execute("exit")
   await layoutFrame()
   assert(!math.isConnected && paragraph.textContent === "beforeafter", "empty inline formula was retained or surrounding text changed")
-  assert($.anchor === paragraph && $.anchorOffset === 1, "removing an empty formula moved the surrounding text caret")
+  assert($.anchor === paragraph.lastChild && $.anchorOffset === 0, "removing an empty formula moved the surrounding text caret")
   paragraph.remove()
 })
 

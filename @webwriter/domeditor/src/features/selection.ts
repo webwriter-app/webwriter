@@ -5,7 +5,7 @@ import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
 import {slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
-import {inlineMathRoot, mathRoot} from "../math"
+import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -326,12 +326,13 @@ export class SelectionFeature extends EditorFeature {
     if(!$.isEmpty || mathRoot($.anchor)) return false
     const adjacent = this.#adjacentNavigationElement(direction)
     if(!adjacent || mathRoot(adjacent) !== adjacent) return false
+    const point = mathOutsidePoint(adjacent, direction === "backward")!
     const index = Array.from(adjacent.parentNode!.childNodes).indexOf(adjacent)
-    const offset = index + (direction === "backward" ? 1 : 0)
-    if($.anchor === adjacent.parentNode && $.anchorOffset === offset) {
-      $.move(adjacent, direction === "forward" ? 0 : adjacent.childNodes.length)
+    if($.anchor === point.node && $.anchorOffset === point.offset
+      || $.anchor === adjacent.parentNode && $.anchorOffset === index + (direction === "backward" ? 1 : 0)) {
+      this.editor.features.math.enter(adjacent, direction === "backward")
     }
-    else $.move(adjacent.parentNode!, offset)
+    else $.move(point.node, point.offset)
     this.processSelection()
     return true
   }
@@ -943,6 +944,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("left")
     caret.style.removeProperty("top")
     caret.style.removeProperty("height")
+    caret.style.removeProperty("font-size")
     ;["node", "capture", "gap", "text"].forEach(state => {
       caret.classList.remove(`◆selection-caret-${state}`)
       setPart(caret, `selection-caret-${state}`, false)
@@ -1386,7 +1388,8 @@ export class SelectionFeature extends EditorFeature {
         const left = getComputedStyle(formula).direction === "rtl" ? !start : start
         this.#markSelection(formula, `◆math-caret-${inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
         this.#markSelection(document.body, "◆math-boundary-caret")
-        this.#showSelectionCaret("text")
+        const caret = this.#showSelectionCaret("text")
+        caret.style.fontSize = getComputedStyle(inside ?? formula.parentElement ?? formula).fontSize
       }
     }
     // Native text carets can disappear while another app owns the drag.

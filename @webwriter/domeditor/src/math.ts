@@ -6,6 +6,17 @@ export function inlineMathRoot(node: Node | null) {
   return root && root.getAttribute("display") !== "block" ? root : null
 }
 
+/** Reuse neighboring prose for inline edges instead of adding a parent stop. */
+export function mathOutsidePoint(math: Element, after = false) {
+  if(!math.parentNode) return null
+  let neighbor = after ? math.nextSibling : math.previousSibling
+  while(neighbor?.nodeType === Node.COMMENT_NODE) neighbor = after ? neighbor.nextSibling : neighbor.previousSibling
+  if(math.getAttribute("display") !== "block" && neighbor instanceof Text) {
+    return {node: neighbor as Node, offset: after ? 0 : neighbor.length}
+  }
+  return {node: math.parentNode, offset: Array.from(math.parentNode.childNodes).indexOf(math) + (after ? 1 : 0)}
+}
+
 /** The padding around a formula addresses the surrounding document. */
 export function mathBoundaryPoint(math: Element, x: number, y: number) {
   if(!math.parentNode || mathRoot(math) !== math) return null
@@ -16,7 +27,7 @@ export function mathBoundaryPoint(math: Element, x: number, y: number) {
   const start = block ? y <= rect.top + 2 : y < rect.top || y <= rect.bottom && (rtl ? x >= rect.right - 2 : x <= rect.left + 2)
   const end = block ? y >= rect.bottom - 2 : y > rect.bottom || y >= rect.top && (rtl ? x <= rect.left + 2 : x >= rect.right - 2)
   if(!start && !end) return null
-  return {node: math.parentNode, offset: Array.from(math.parentNode.childNodes).indexOf(math) + (start ? 0 : 1)}
+  return mathOutsidePoint(math, !start)
 }
 export type MathSelectionState = {active: true, display: "inline" | "block"}
 export type MathTool = {label: string, title: string, command: string}

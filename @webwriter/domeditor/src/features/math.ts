@@ -1,6 +1,6 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
-import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, type MathSelectionState} from "../math"
+import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, type MathSelectionState} from "../math"
 
 type Point = [Node, number]
 const indexOf = (node: Node) => Array.from(node.parentNode!.childNodes).indexOf(node as ChildNode)
@@ -184,7 +184,8 @@ export class MathFeature extends EditorFeature {
     this.marked.add(math)
     if(command === "exit") {
       this.dismissCommand()
-      $.move(...after(math))
+      const point = mathOutsidePoint(math, true)!
+      $.move(point.node, point.offset)
       this.changed()
       return true
     }
@@ -503,15 +504,22 @@ export class MathFeature extends EditorFeature {
         if(!element.children.length) points.push([element, 0])
         const children = element.localName === "semantics" ? Array.from(element.children).slice(0, 1) : Array.from(element.children)
         children.forEach((child, index) => {
+          const transparent = isMath(child) && ["mrow", "mstyle"].includes(child.localName)
           if(isMath(child)) visit(child, Boolean(mathArity[element.localName]) || element.localName === "mtr" || enter && index === 0)
-          if(isRow(element) && !plainToken(child)) points.push(after(child))
+          if(isRow(element) && !transparent && !plainToken(child)) points.push(after(child))
         })
       }
     }
     points.push([root, 0])
     visit(root)
-    if(!points.some(([node, offset]) => node === root && offset === root.childNodes.length)) points.push([root, root.childNodes.length])
     return points
+  }
+
+  /** Enter at the same live stop used by Home/End and pointer hit testing. */
+  enter(root: Element, atEnd = false) {
+    if(mathRoot(root) !== root) return
+    const points = this.stops(root)
+    $.move(...(atEnd ? points.at(-1)! : points[0]))
   }
 
   private move(direction: string, extend: boolean): boolean {
@@ -544,7 +552,7 @@ export class MathFeature extends EditorFeature {
     else {
       const points = this.stops(root)
       if(direction === "start") point = [root, 0]
-      else if(direction === "end") point = [root, root.childNodes.length]
+      else if(direction === "end") point = points.at(-1)
       else if(direction === "left" || direction === "right") {
         const index = points.findIndex(([candidate, position]) => candidate === node && position === offset)
         if(index >= 0) point = points[index + (direction === "left" ? -1 : 1)]
@@ -556,7 +564,10 @@ export class MathFeature extends EditorFeature {
             ? points.filter(([candidate, position]) => range.comparePoint(candidate, position) < 0).at(-1)
             : points.find(([candidate, position]) => range.comparePoint(candidate, position) > 0)
         }
-        if(!point) point = direction === "left" ? before(root) : after(root)
+        if(!point) {
+          const outside = mathOutsidePoint(root, direction !== "left")!
+          point = [outside.node, outside.offset]
+        }
       }
     }
     if(!point) return false

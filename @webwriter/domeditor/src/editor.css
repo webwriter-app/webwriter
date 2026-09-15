@@ -1866,8 +1866,8 @@ body.◆math-boundary-caret * {
 
 body.◆math-boundary-caret::part(selection-caret-text) {
   position-anchor: --math-caret-anchor;
-  top: calc(anchor(top) + 2px);
-  height: max(1px, calc(anchor-size(height) - 4px));
+  top: calc(anchor(center) - max(0.5em, calc(anchor-size(height) / 2 - 2px)));
+  height: max(1em, calc(anchor-size(height) - 4px));
   width: 1px;
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
