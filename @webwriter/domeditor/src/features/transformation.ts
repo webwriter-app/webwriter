@@ -802,7 +802,7 @@ export class TransformationFeature extends EditorFeature {
         && (!float || this.editor.features.manipulation.floatContainer(element, target) === element)) {
         if(gesture.mode === "move") clearInlinePlacement(target)
         if(float) {
-          this.editor.features.manipulation.placeFloat(target, element, float)
+          this.editor.features.manipulation.placeFloat(target, element, float, true)
         }
         else element[placement](target)
       }

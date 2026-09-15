@@ -247,13 +247,14 @@ export class ManipulationFeature extends EditorFeature {
         && Array.from(container.childNodes).some(child => child instanceof Text || isElement(child) && isMarkElement(child))) ? container : null
   }
 
-  /** A paragraph float precedes its text and leaves a responsive text column.
-   * These are authored styles, so the layout survives collaboration/export. */
-  placeFloat(element: Element, container: Element, side: "left" | "right") {
+  /** Applies authored float styles and places the element at the requested
+   * container boundary so the layout survives collaboration/export. */
+  placeFloat(element: Element, container: Element, side: "left" | "right", beforeContainer = false) {
     if(this.floatContainer(container, element) !== container) return false
     const style = this.inlineStyleOf(element)!
     Object.assign(style, {float: side, maxWidth: "50%", minWidth: "0", boxSizing: "border-box"})
-    container.prepend(element)
+    if(beforeContainer) container.before(element)
+    else container.prepend(element)
     return true
   }
 
@@ -289,7 +290,7 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false) {
+  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false, beforeContainer = false) {
     const element = node instanceof DocumentFragment && node.childNodes.length === 1 ? node.firstChild : node
     const selection = document.getSelection()
     if(!isElement(element) || !selection?.rangeCount || !selection.isCollapsed
@@ -297,7 +298,7 @@ export class ManipulationFeature extends EditorFeature {
     const range = selection.getRangeAt(0)
     const container = this.floatContainer(range.startContainer, element)
     if(!container || !allowEmpty && container.localName === "p" && !container.textContent?.trim()) return false
-    this.placeFloat(element, container, side)
+    this.placeFloat(element, container, side, beforeContainer)
     if(this.insertedWidget(element)) this.editor.features.selection.captureElement(element)
     else $.selectElement(element)
     this.editor.postSelectionPath(true)
@@ -343,7 +344,7 @@ export class ManipulationFeature extends EditorFeature {
         if(container) {
           const rect = container.getBoundingClientRect()
           clearInlinePlacement(inserted)
-          this.placeFloat(inserted, container, event.clientX < rect.left + rect.width / 2 ? "left" : "right")
+          this.placeFloat(inserted, container, event.clientX < rect.left + rect.width / 2 ? "left" : "right", true)
         }
         else {
           range.insertNode(inserted)
@@ -358,7 +359,7 @@ export class ManipulationFeature extends EditorFeature {
         const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
         const container = isElement(element) ? this.floatContainer(range.startContainer, element) : null
         const rect = container?.getBoundingClientRect()
-        if(!container || !this.insertFloat(fragment, rect && event.clientX < rect.left + rect.width / 2 ? "left" : "right", true)) this.insertClipboardFragment(fragment)
+        if(!container || !this.insertFloat(fragment, rect && event.clientX < rect.left + rect.width / 2 ? "left" : "right", true, true)) this.insertClipboardFragment(fragment)
       }
       dropped = true
     }

@@ -980,7 +980,7 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target).not.toHaveClass("◆transform-target")
   })
 
-  it.each([[310, "left"], [390, "right"]] as const)("floats media into a paragraph at x=%i", (x, side) => {
+  it.each([[310, "left"], [390, "right"]] as const)("floats media before a paragraph at x=%i", (x, side) => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()
     paragraph.textContent = "keep text"
@@ -999,7 +999,8 @@ describe("drop, cancellation, and document ownership", () => {
     expect(preview.style.height).toBe("100px")
     expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
     feature.handleMoveEnd()
-    expect(target.parentElement).toBe(paragraph)
+    expect(target.parentElement).toBe(document.body)
+    expect(paragraph.previousElementSibling).toBe(target)
     expect(target.style.float).toBe(side)
     expect(paragraph.textContent).toBe("keep text")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()

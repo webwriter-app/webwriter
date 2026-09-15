@@ -1989,7 +1989,7 @@ describe("unified content transfer", () => {
     return event
   }
 
-  it.each([false, true])("floats a dragged media element on either side (copy: %s)", copy => {
+  it.each([false, true])("floats a dragged media element before the target paragraph on either side (copy: %s)", copy => {
     for(const [x, side] of [[110, "left"], [190, "right"]] as const) {
       document.body.innerHTML = '<img style="position: absolute; width: 40px"><p>target</p>'
       const source = document.querySelector("img")!
@@ -2007,7 +2007,9 @@ describe("unified content transfer", () => {
       document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50, ctrlKey: copy}))
       expect(editor.appendix.querySelector("#◆float-drop-preview")).toBe(preview)
       document.body.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 50, ctrlKey: copy}))
-      const placed = paragraph.querySelector("img")!
+      const placed = paragraph.previousElementSibling as HTMLImageElement
+      expect(placed).not.toBeNull()
+      expect(paragraph.querySelector("img")).toBeNull()
       expect(placed.style.float).toBe(side)
       expect(placed.style.position).toBe("")
       expect(placed === source).toBe(!copy)
@@ -2015,6 +2017,23 @@ describe("unified content transfer", () => {
       expect(document.body).not.toHaveClass("◆drop-selection-active")
       expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     }
+  })
+
+  it.each([[110, "left"], [190, "right"]] as const)("floats externally dropped media before the target paragraph at x=%i", (x, side) => {
+    document.body.innerHTML = "<p>target</p>"
+    const paragraph = document.querySelector("p")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+    const data = new DataTransfer()
+    data.setData("text/html", '<img alt="external">')
+
+    dropAt(data, paragraph.firstChild!, 3, {clientX: x, clientY: 50})
+
+    const placed = paragraph.previousElementSibling as HTMLElement
+    expect(placed).not.toBeNull()
+    expect(placed.localName).toBe("picture")
+    expect(placed.querySelector('img[alt="external"]')).not.toBeNull()
+    expect(placed.style.float).toBe(side)
+    expect(paragraph.querySelector("img")).toBeNull()
   })
 
   it.each(["webwriter-map", "webwriter-code-javascript"])("capture-selects %s when its node drag surface is clicked", tag => {
