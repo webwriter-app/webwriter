@@ -66,6 +66,19 @@ export class MathFeature extends EditorFeature {
 
   // Capture before generic document commands can split or unwrap MathML.
   captureListeners: DocumentListenerMap = {
+    click: event => {
+      if(event.button !== 0 || event.detail !== 2 || event.ctrlKey || event.metaKey
+        || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema)
+        || !(event.target instanceof Node)) return
+      const root = mathRoot(event.target)
+      if(!root || mathBoundaryPoint(root, event.clientX, event.clientY)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.drag = null
+      this.dismissCommand()
+      $.selectElement(root)
+      this.changed()
+    },
     keydown: event => { if(this.accepts(event)) this.keydown(event) },
     beforeinput: event => {
       if(!this.accepts(event)) return
@@ -646,6 +659,19 @@ export class MathFeature extends EditorFeature {
     let nearest: Point = [root, 0]
     let distance = Infinity
     points.forEach(point => {
+      // Once the pointer passes a script's edge, address the containing row,
+      // rather than the visually nearby final character inside the script.
+      let element = point[0] instanceof Element ? point[0] : point[0].parentElement
+      while(element && element !== root) {
+        const parent = element.parentElement
+        if(parent && ["msub", "msup", "msubsup"].includes(parent.localName)
+          && element !== parent.firstElementChild) {
+          const bounds = element.getBoundingClientRect()
+          const rtl = getComputedStyle(parent).direction === "rtl"
+          if(bounds.width && (rtl ? x < bounds.left - 1 : x > bounds.right + 1)) return
+        }
+        element = parent
+      }
       const rect = this.pointRect(point)
       const value = Math.abs(x - rect.left) + Math.abs(y - (rect.top + rect.height / 2)) * 2
       if(value < distance) { distance = value; nearest = point }
@@ -715,6 +741,7 @@ export class MathFeature extends EditorFeature {
     this.marked.forEach(element => {
       removeEditorMarker(element, "◆math-slot")
       removeEditorMarker(element, "◆math-editing")
+      removeEditorMarker(element, "◆math-structural-caret")
     })
     this.marked.clear()
     this.overlay?.remove()
@@ -722,6 +749,23 @@ export class MathFeature extends EditorFeature {
   }
 
   private pointRect([node, offset]: Point): DOMRect {
+    if(node instanceof Element) {
+      const previous = node.childNodes[offset - 1]
+      const next = node.childNodes[offset]
+      const adjacent = previous instanceof Element && !Boolean(plainToken(previous)) ? previous
+        : next instanceof Element && !Boolean(plainToken(next)) ? next : null
+      if(adjacent) {
+        const bounds = adjacent.getBoundingClientRect()
+        // A row boundary after a script belongs to the base's baseline and
+        // font size. A collapsed native Range can instead resolve into it.
+        let baseline = adjacent
+        while(["msub", "msup", "msubsup"].includes(baseline.localName) && baseline.firstElementChild) baseline = baseline.firstElementChild
+        const vertical = baseline.getBoundingClientRect()
+        const rtl = getComputedStyle(node).direction === "rtl"
+        const end = adjacent === previous
+        return new DOMRect(end !== rtl ? bounds.right : bounds.left, vertical.top, 0, vertical.height || 20)
+      }
+    }
     const range = document.createRange()
     range.setStart(node, offset)
     range.collapse(true)
@@ -734,7 +778,8 @@ export class MathFeature extends EditorFeature {
       const bounds = element.getBoundingClientRect()
       return new DOMRect(next || element === node ? bounds.left : bounds.right, bounds.top, 0, bounds.height || 20)
     }
-    return node.parentElement!.getBoundingClientRect()
+    const bounds = node.parentElement!.getBoundingClientRect()
+    return new DOMRect(offset ? bounds.right : bounds.left, bounds.top, 0, bounds.height)
   }
 
   refresh() {
@@ -779,6 +824,7 @@ export class MathFeature extends EditorFeature {
       if(!markers.has(element)) {
         removeEditorMarker(element, "◆math-slot")
         removeEditorMarker(element, "◆math-editing")
+        removeEditorMarker(element, "◆math-structural-caret")
       }
     })
     markers.forEach((marker, element) => { if(!element.classList.contains(marker)) element.classList.add(marker) })
@@ -791,6 +837,12 @@ export class MathFeature extends EditorFeature {
       this.editor.addAppendix(this.overlay)
     }
     this.overlay.replaceChildren()
+    const caretNode = selection?.isCollapsed ? selection.focusNode : null
+    const previous = caretNode?.childNodes[selection!.focusOffset - 1]
+    const structuralCaret = Boolean(caretNode && isRow(caretNode) && previous instanceof Element && !plainToken(previous)
+      && !(caretNode === root && selection!.focusOffset === root.childNodes.length))
+    if(structuralCaret && !root.classList.contains("◆math-structural-caret")) root.classList.add("◆math-structural-caret")
+    else if(!structuralCaret) removeEditorMarker(root, "◆math-structural-caret")
     const outerRows = new Set<Element>([root])
     let outer = root
     while(outer.children.length === 1 && outer.firstElementChild?.localName === "mrow") {
@@ -806,6 +858,11 @@ export class MathFeature extends EditorFeature {
     })
     if(selection?.isCollapsed && selection.focusNode) {
       const rect = this.pointRect([selection.focusNode, selection.focusOffset])
+      if(structuralCaret) {
+        const caret = document.createElement("span")
+        caret.style.cssText = `position:absolute;background:currentColor;width:1px;left:${rect.left}px;top:${rect.top}px;height:${rect.height}px;animation:var(--ww-ui-animation, blink 1s step-end 0s infinite)`
+        this.overlay.append(caret)
+      }
       if(this.commandText !== null) {
         if(!this.commandRange?.startContainer.isConnected || !root.contains(this.commandRange.startContainer)
           || this.commandRange.comparePoint(selection.focusNode, selection.focusOffset) !== 0) this.dismissCommand()

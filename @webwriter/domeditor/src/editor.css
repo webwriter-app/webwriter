@@ -1845,6 +1845,14 @@ math {
   padding: 2px;
 }
 
+math, math * {
+  cursor: text;
+}
+
+.◆math-structural-caret, .◆math-structural-caret * {
+  caret-color: transparent !important;
+}
+
 math:not([display="block"]) {
   margin-inline: 2px;
 }

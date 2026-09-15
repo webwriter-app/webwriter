@@ -110,6 +110,37 @@ await check("native MathML editing preserves inline rendering and argument hit t
   paragraph.remove()
 })
 
+await check("formula clicks distinguish script endings and select whole formulas", async () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  for(const name of ["msub", "msup", "msubsup"]) {
+    paragraph.innerHTML = `Before <math><mrow><${name}><mi>x</mi><mi>ij</mi>${name === "msubsup" ? "<mi>k</mi>" : ""}</${name}><mo>+</mo><mi>y</mi></mrow></math> after`
+    const math = paragraph.querySelector("math")!
+    const row = math.firstElementChild!, script = row.firstElementChild!, token = script.children[1]
+    await layoutFrame()
+    assert(getComputedStyle(token).cursor === "text", "formula hover does not use the text cursor")
+    const bounds = token.getBoundingClientRect()
+    const click = (x: number, y: number, detail = 1) => {
+      token.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8, clientX: x, clientY: y}))
+      token.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
+      token.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, detail, clientX: x, clientY: y}))
+    }
+    click(bounds.right, bounds.top + bounds.height / 2)
+    assert($.focus === token.firstChild && $.focusOffset === 2, `${name}: did not reach the script's final character`)
+    click(script.getBoundingClientRect().right + 2, bounds.top + bounds.height / 2)
+    assert($.focus === row && $.focusOffset === 1, `${name}: did not reach the row after the script`)
+    assert(math.classList.contains("◆math-structural-caret"), "structural caret is not drawn")
+    const caret = editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!
+    assert(Math.abs(caret.getBoundingClientRect().top - script.firstElementChild!.getBoundingClientRect().top) < 1, "structural caret uses the script baseline")
+    click(bounds.left, bounds.top + bounds.height / 2, 2)
+    const selected = document.getSelection()!.getRangeAt(0)
+    assert(selected.cloneContents().textContent === math.textContent && !selected.collapsed,
+      `double click did not select the whole formula: ${selected.cloneContents().textContent} (${selected.startContainer.nodeName}:${selected.startOffset}–${selected.endContainer.nodeName}:${selected.endOffset})`)
+    assert(!math.classList.contains("◆math-structural-caret"), "structural caret survived range selection")
+  }
+  paragraph.remove()
+})
+
 await check("inline formula edges use text selections and block formula edges use gaps", async () => {
   const paragraph = document.createElement("p")
   paragraph.innerHTML = '<math><mi>x</mi></math>'

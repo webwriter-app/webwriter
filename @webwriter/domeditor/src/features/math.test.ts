@@ -37,6 +37,39 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("DOM MathML editing", () => {
+  it.each(["inline", "block"])("double click selects the whole %s formula", display => {
+    const math = load("<msub><mi>x</mi><mi>ij</mi></msub><mo>+</mo><mi>y</mi>")
+    math.setAttribute("display", display)
+    const token = math.querySelector("msub")!.lastElementChild!
+    token.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0, detail: 2}))
+    expect(document.getSelection()!.toString()).toBe("xij+y")
+    expect(editor.features.math.activeMath).toBe(math)
+    expect(clean()).not.toContain("◆")
+  })
+
+  it("distinguishes the end of a subscript from the row position after it", () => {
+    const math = load("<mrow><msub><mi>x</mi><mi>ij</mi></msub><mo>+</mo><mi>y</mi></mrow>")
+    const row = math.firstElementChild!
+    const script = row.firstElementChild!
+    const base = script.firstElementChild!
+    const sub = script.lastElementChild!
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 150, 60))
+    vi.spyOn(script, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 40, 40))
+    vi.spyOn(base, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 20, 30))
+    vi.spyOn(sub, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 45, 20, 15))
+    const geometry = vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(function(this: Range) {
+      if(this.startContainer === sub.firstChild) return new DOMRect(40 + this.startOffset * 10, 45, 0, 15)
+      return new DOMRect()
+    })
+    for(const [x, node, offset] of [[60, sub.firstChild!, 2], [64, row, 1]] as const) {
+      sub.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, clientX: x, clientY: 53}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+      expect($.focus).toBe(node)
+      expect($.focusOffset).toBe(offset)
+    }
+    geometry.mockRestore()
+  })
+
   it.each(["", "<mrow></mrow>", "<mrow><mi></mi><mtext> </mtext></mrow>"])("removes an empty inline formula after leaving: %s", content => {
     const math = load(content)
     const parent = math.parentNode!

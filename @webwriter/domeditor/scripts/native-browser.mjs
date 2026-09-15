@@ -7,6 +7,7 @@ import {createServer} from "vite"
 
 const expectedChecks = [
   "native MathML editing preserves inline rendering and argument hit targets",
+  "formula clicks distinguish script endings and select whole formulas",
   "inline formula edges use text selections and block formula edges use gaps",
   "inline formulas retain distinct inner and outer text insertion positions",
   "typing after a formula inserted at paragraph end stays outside MathML",
