@@ -13,8 +13,8 @@ export function mathBoundaryPoint(math: Element, x: number, y: number) {
   if(!rect.width || !rect.height) return null
   const block = math.getAttribute("display") === "block"
   const rtl = getComputedStyle(math).direction === "rtl"
-  const start = block ? y <= rect.top + 2 : rtl ? x >= rect.right - 2 : x <= rect.left + 2
-  const end = block ? y >= rect.bottom - 2 : rtl ? x <= rect.left + 2 : x >= rect.right - 2
+  const start = block ? y <= rect.top + 2 : y < rect.top || y <= rect.bottom && (rtl ? x >= rect.right - 2 : x <= rect.left + 2)
+  const end = block ? y >= rect.bottom - 2 : y > rect.bottom || y >= rect.top && (rtl ? x <= rect.left + 2 : x >= rect.right - 2)
   if(!start && !end) return null
   return {node: math.parentNode, offset: Array.from(math.parentNode.childNodes).indexOf(math) + (start ? 0 : 1)}
 }

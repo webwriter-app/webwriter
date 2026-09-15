@@ -623,6 +623,23 @@ export class SelectionFeature extends EditorFeature {
     this.processSelection(true)
   }
 
+  /** Native caret hit testing snaps blank space to nearby text. Require an
+   * actual character box before expanding a repeated click to a word/line. */
+  #hitsText(event: MouseEvent) {
+    const point = document.caretPositionFromPoint?.(event.clientX, event.clientY)
+    if(!(point?.offsetNode instanceof Text) || !getDocumentRoot().contains(point.offsetNode)) return false
+    const range = document.createRange()
+    for(const offset of [point.offset - 1, point.offset]) {
+      if(offset < 0 || offset >= point.offsetNode.length) continue
+      range.setStart(point.offsetNode, offset)
+      range.setEnd(point.offsetNode, offset + 1)
+      if(Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0
+        && event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom)) return true
+    }
+    return false
+  }
+
   captureListeners: DocumentListenerMap = {
     pointerdown: event => this.#handleWidgetShadowInteraction(event),
     pointermove: event => {
@@ -1412,6 +1429,9 @@ export class SelectionFeature extends EditorFeature {
    * double/triple click select the word/line, 
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
+    "mousedown": ev => {
+      if(ev.detail >= 2 && !this.#hitsText(ev)) ev.preventDefault()
+    },
     "keydown": ev => {
       const direction = arrowDirection(ev.key)
       // Captured widgets and interactive authored elements own their keyboard
@@ -1525,6 +1545,7 @@ export class SelectionFeature extends EditorFeature {
     },
     "click": ev => {
       this.hasDoubleClicked = false
+      if(ev.detail >= 2 && !this.#hitsText(ev)) return
       if(this.editor.features.list.isDetailsToggleInteraction(ev) || ev.button === 2 || $.isElementSelection) {
         return
       }

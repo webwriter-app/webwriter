@@ -322,12 +322,43 @@ describe("DOM MathML editing", () => {
     expect(mathBoundaryPoint(math, 21, 50)).toEqual({node: parent, offset: 1})
     expect(mathBoundaryPoint(math, 99, 50)).toEqual({node: parent, offset: 2})
     expect(mathBoundaryPoint(math, 50, 50)).toBeNull()
+    // Vertical blank space wins even when x is inside or before the formula.
+    expect(mathBoundaryPoint(math, 50, 90)).toEqual({node: parent, offset: 2})
+    expect(mathBoundaryPoint(math, 0, 90)).toEqual({node: parent, offset: 2})
+    expect(mathBoundaryPoint(math, 50, 10)).toEqual({node: parent, offset: 1})
     math.setAttribute("display", "block")
     expect(mathBoundaryPoint(math, 50, 31)).toEqual({node: parent, offset: 1})
     expect(mathBoundaryPoint(math, 50, 69)).toEqual({node: parent, offset: 2})
     expect(mathBoundaryPoint(math, 50, 50)).toBeNull()
     math.remove()
     expect(mathBoundaryPoint(math, 50, 31)).toBeNull()
+  })
+
+  it("places a click below a trailing formula in the surrounding paragraph", () => {
+    const math = load("<mfrac><mi>x</mi><mi>y</mi></mfrac>")
+    math.nextSibling!.remove()
+    const parent = math.parentNode!
+    const html = parent.cloneNode(true)
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 80, 40))
+    const original = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: math.querySelectorAll("mi")[1].firstChild, offset: 1})})
+    try {
+      const down = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, clientX: 50, clientY: 100})
+      document.body.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(true)
+      document.body.dispatchEvent(new MouseEvent("pointerup", {bubbles: true, clientX: 50, clientY: 100}))
+      expect($.anchor).toBe(parent)
+      expect($.anchorOffset).toBe(2)
+      expect($.isEmpty).toBe(true)
+      expect($.isGapSelection).toBe(false)
+      expect(parent.textContent).toBe(html.textContent)
+      expect(math.querySelectorAll("mi")).toHaveLength(2)
+    }
+    finally {
+      if(original) Object.defineProperty(document, "caretPositionFromPoint", original)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      vi.restoreAllMocks()
+    }
   })
 
   it.each([0, 1])("inserts prose at inline boundary %s without editing the formula", offset => {

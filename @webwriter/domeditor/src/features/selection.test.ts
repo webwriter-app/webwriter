@@ -2156,6 +2156,45 @@ describe("selection invariants", () => {
     expect(dragStart.defaultPrevented).toBe(true)
   })
 
+  it.each([2, 3])("ignores a repeated click of detail %s in blank space", detail => {
+    const paragraph = textDocument()
+    hitTest()
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(0, 20, 50, 20)] as unknown as DOMRectList)
+    $.move(paragraph.firstChild!, 5)
+    const move = vi.spyOn($, "moveBy")
+    const extend = vi.spyOn($, "extendBy")
+    for(const [x, y] of [[20, 80], [100, 25]]) {
+      expect(pointer(document.body, "mousedown", x, y, {detail}).defaultPrevented).toBe(true)
+      pointer(document.body, "click", x, y, {detail})
+      expect($.anchor).toBe(paragraph.firstChild)
+      expect($.anchorOffset).toBe(5)
+      expect($.isEmpty).toBe(true)
+    }
+    expect(move).not.toHaveBeenCalled()
+    expect(extend).not.toHaveBeenCalled()
+  })
+
+  it("still expands a double click on text", () => {
+    const paragraph = textDocument()
+    hitTest()
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(0, 20, 50, 20)] as unknown as DOMRectList)
+    $.move(paragraph.firstChild!, 2)
+    const move = vi.spyOn($, "moveBy").mockImplementation(() => {})
+    const extend = vi.spyOn($, "extendBy").mockImplementation(() => {})
+    expect(pointer(paragraph, "mousedown", 20, 25, {detail: 2}).defaultPrevented).toBe(false)
+    pointer(paragraph, "click", 20, 25, {detail: 2})
+    expect(move).toHaveBeenCalledWith("word", "backward")
+    expect(extend).toHaveBeenCalledWith("word")
+  })
+
+  it("leaves double clicks in native form controls to the browser", () => {
+    const paragraph = textDocument()
+    const input = document.createElement("input")
+    input.value = "editable text"
+    paragraph.append(input)
+    expect(pointer(input, "mousedown", 100, 25, {detail: 2}).defaultPrevented).toBe(false)
+  })
+
   it("restores the browser's native click point when its hit test has different affinity", async () => {
     const paragraph = textDocument()
     hitTest()
