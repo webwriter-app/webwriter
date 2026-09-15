@@ -12,7 +12,9 @@ Data is stored in the ignored `.webwriter-dev/` directory. Provider files have o
 
 ## Example lessons
 
-[`examples/`](examples/) contains twelve editable HTML documents. Open them in the editor or a browser; widget assets load online.
+[`examples/`](examples/) contains twelve editable HTML lessons. Open them in the editor or a browser; widget assets load online.
+
+The [Mozilla MathML Test](examples/mozilla-mathml-test.html) is also bundled as a preset. Start or restart the dev server, then load **Mozilla MathML Test** from the server document list. It contains all 30 comparisons from [Frédéric Wang's test](https://fred-wang.github.io/MathFonts/mozilla_mathml_test/), with native MathML, a forced `math-style: compact` column, and online TeX reference images. The table extends beyond the normal content width to fit the comparisons. The font selector is omitted so rendering uses the browser's default math font. Saved edits survive restarts; deleting the preset restores the bundled version on the next server start.
 
 ## APIs
 

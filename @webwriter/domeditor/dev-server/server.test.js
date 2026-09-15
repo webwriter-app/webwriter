@@ -82,9 +82,9 @@ describe("development server", () => {
     expect(created.response.status).toBe(201)
     const id = created.value.document.id
 
-    expect((await request("/api/documents")).value.documents).toEqual([
+    expect((await request("/api/documents")).value.documents).toEqual(expect.arrayContaining([
       expect.objectContaining({id, title: "Lesson"}),
-    ])
+    ]))
     expect((await request(`/api/documents/${id}`)).value.document.content).toBe("<p>Hello</p>")
 
     const updated = await request(`/api/documents/${id}`, {
@@ -96,6 +96,42 @@ describe("development server", () => {
 
     expect((await request(`/api/documents/${id}`, {method: "DELETE"})).response.status).toBe(204)
     expect((await request(`/api/documents/${id}`)).response.status).toBe(404)
+  })
+
+  it("seeds the MathML preset and preserves edits across restarts", async () => {
+    const id = "preset-mozilla-mathml-test"
+    const documents = (await request("/api/documents")).value.documents
+    expect(documents).toEqual([expect.objectContaining({id, title: "Mozilla MathML Test", format: "html"})])
+    expect(documents[0]).not.toHaveProperty("content")
+    const {document} = (await request(`/api/documents/${id}`)).value
+    expect(document.content.match(/<math\b/g)).toHaveLength(60)
+    expect(document.content.match(/<img\b/g)).toHaveLength(30)
+    const rows = [...document.content.matchAll(/<tr>([\s\S]*?)<\/tr>/g)]
+    expect(rows).toHaveLength(31)
+    for(const [, row] of rows.slice(1)) {
+      expect(row.match(/<td\b/g)).toHaveLength(4)
+      expect(row).toContain('<td class="compact-math">')
+      const math = row.match(/<math\b[\s\S]*?<\/math>/g)
+      expect(math).toHaveLength(2)
+      expect(math[1]).toBe(math[0])
+    }
+    expect(document.content).toContain("math-style: compact;")
+    expect(document.content).toContain("min-width: max(100%, 90rem);")
+    expect(document.content).toContain('src="https://fred-wang.github.io/MathFonts/mozilla_mathml_test/resources/ex1.png"')
+    expect(document.content).not.toContain("<script")
+
+    await request(`/api/documents/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({title: "Edited MathML", content: "<p>Saved edits</p>"}),
+    })
+    const {dataDirectory} = developmentServer
+    await developmentServer.close()
+    developmentServer = await createDevServer({port: 0, vite: false, dataDirectory})
+    baseUrl = (await developmentServer.listen()).url
+    expect((await request(`/api/documents/${id}`)).value.document).toEqual(expect.objectContaining({
+      id, title: "Edited MathML", content: "<p>Saved edits</p>", createdAt: document.createdAt,
+    }))
+    expect((await request("/api/documents")).value.documents).toHaveLength(1)
   })
 
   it("manages providers without returning stored API keys", async () => {
