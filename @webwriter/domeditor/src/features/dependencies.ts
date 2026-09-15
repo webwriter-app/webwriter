@@ -1,9 +1,8 @@
-import canvasViewerSource from "../canvas-viewer.js?raw"
-import {documentLayoutMode} from "../document-layout"
+import {appendSerializedAssets} from "../serialization"
 import { EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
-import {packageCdnUrl, packageInsertionItems, packageWidgetSchemaDefinitions, resolvePackageExport, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {packageCdnUrl, packageInsertionItems, packageWidgetSchemaDefinitions, resolvePackageExport, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
@@ -24,77 +23,7 @@ export class DependencyFeature extends EditorFeature {
 
   /** Adds runtime resources required by the detached authored document. */
   appendSerializedAssets(root: Document) {
-    const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
-    // Replace an earlier export's runtime, including after a template change.
-    root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
-    if(documentLayoutMode(root.body) === "canvas") {
-      const script = root.createElement("script")
-      script.id = "webwriter-canvas-viewer"
-      script.type = "module"
-      script.textContent = `${canvasViewerSource}\nmountCanvasReader()\n`
-      head.append(script)
-    }
-    const tags = new Set<string>()
-    const collectTags = (node: Document | DocumentFragment) => {
-      node.querySelectorAll("*").forEach(element => {
-        tags.add(element.localName)
-        if(element instanceof HTMLTemplateElement) collectTags(element.content)
-      })
-    }
-    collectTags(root)
-    const known = new Set<string>()
-    const required = new Set<string>()
-    for(const pkg of this.widgetPackages) {
-      const widgets = pkg.members.filter(member => member.kind === "widget" && member.tagName)
-      for(const url of [...pkg.scripts, ...pkg.styles]) {
-        const key = this.resourceKey(url)
-        known.add(key)
-        const owners = widgets.filter(member => [member.scriptUrl, member.styleUrl]
-          .some(value => value && this.resourceKey(value) === key))
-        // Older metadata may only describe assets at the package level.
-        if((owners.length ? owners : widgets).some(member => tags.has(member.tagName!))) required.add(key)
-      }
-    }
-    const assets = this.widgetAssets.filter(asset => required.has(this.resourceKey(
-      asset instanceof HTMLScriptElement ? asset.src : (asset as HTMLLinkElement).href,
-    )))
-    const needsPolyfill = assets.some(asset => asset instanceof HTMLScriptElement)
-    root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]").forEach(element => {
-      const key = this.resourceKey(element instanceof HTMLScriptElement ? element.src : element.href)
-      if(known.has(key) && !required.has(key)
-        || this.widgetPackages.length && key === SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL && !needsPolyfill) element.remove()
-    })
-    const existing = new Set([...root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]")]
-      .map(element => this.resourceKey(element instanceof HTMLScriptElement ? element.src : element.href)))
-    if(needsPolyfill
-      && !existing.has(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)) {
-      const polyfill = root.createElement("script")
-      polyfill.src = SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL
-      head.prepend(polyfill)
-      existing.add(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
-    }
-    for(const asset of assets) {
-      const isScript = asset instanceof HTMLScriptElement
-      const url = isScript ? asset.src : (asset as HTMLLinkElement).href
-      const key = this.resourceKey(url)
-      if(!key || existing.has(key)) continue
-      const clone = root.createElement(isScript ? "script" : "link") as HTMLScriptElement | HTMLLinkElement
-      if(isScript) {
-        clone.type = "module"
-        clone.setAttribute("src", asset.getAttribute("src") || url)
-      }
-      else {
-        ;(clone as HTMLLinkElement).rel = "stylesheet"
-        clone.setAttribute("href", asset.getAttribute("href") || url)
-      }
-      head.append(clone)
-      existing.add(key)
-    }
-  }
-
-  private resourceKey(url: string) {
-    try { return new URL(url, document.baseURI).href }
-    catch { return url }
+    appendSerializedAssets(root, this.widgetPackages)
   }
 
   /** Resolves pinned widget-package assets and mounts them in the iframe. */

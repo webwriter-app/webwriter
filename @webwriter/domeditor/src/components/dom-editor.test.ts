@@ -2814,7 +2814,7 @@ describe("DomEditor.execute()", () => {
   it("includes the scoped registry before widget modules in preview", async () => {
     const {editor, iframe} = await mountEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
-    iframe.contentDocument!.body.innerHTML = '<demo-widget contenteditable="true"></demo-widget>'
+    iframe.contentDocument!.body.innerHTML = '<webwriter-demo contenteditable="true"></webwriter-demo>'
     const previewHTML = (editor as unknown as {currentPreviewHTML(): string}).currentPreviewHTML()
     const parsed = new DOMParser().parseFromString(previewHTML, "text/html")
     const scripts = Array.from(parsed.querySelectorAll("script"))
@@ -2823,8 +2823,55 @@ describe("DomEditor.execute()", () => {
     expect(scripts.every(script => script.getAttribute("nonce") === nonce)).toBe(true)
     expect(scripts[0].src).toContain("@webcomponents/scoped-custom-element-registry@0.0.10/")
     expect(scripts.slice(1).map(script => script.src)).toEqual(demoPackage.scripts)
-    expect(parsed.querySelector("demo-widget")?.getAttribute("contenteditable")).toBe("true")
+    expect(parsed.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
     expect(previewHTML).not.toContain("◆")
+  })
+
+  it("selects only present widgets' assets and refreshes after DOM changes", async () => {
+    const {editor, iframe} = await mountEditor()
+    const usedScript = "https://example.test/used.js"
+    const usedStyle = "https://example.test/used.css"
+    const unusedScript = "https://example.test/unused.js"
+    const unusedStyle = "https://example.test/unused.css"
+    ;(editor as any).installedPackages = [{
+      ...demoPackage,
+      scripts: [usedScript, unusedScript], styles: [usedStyle, unusedStyle],
+      members: [
+        {...demoPackage.members[0], tagName: "used-widget", scriptUrl: usedScript, styleUrl: usedStyle},
+        {...demoPackage.members[0], tagName: "unused-widget", scriptUrl: unusedScript, styleUrl: unusedStyle},
+      ],
+    }]
+    const source = iframe.contentDocument!
+    source.body.innerHTML = '<section><template><used-widget></used-widget></template><used-widget></used-widget></section>'
+    const preview = () => new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
+    const parsed = preview()
+    expect(Array.from(parsed.querySelectorAll("script[src]")).map(script => script.getAttribute("src"))).toEqual([
+      expect.stringContaining("scoped-custom-element-registry"), usedScript,
+    ])
+    expect(Array.from(parsed.querySelectorAll('link[rel="stylesheet"]')).map(link => link.getAttribute("href"))).toEqual([usedStyle])
+    source.body.replaceChildren()
+    const empty = preview()
+    expect(empty.querySelector("script, link[rel='stylesheet']")).toBeNull()
+    expect(empty.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")).not.toContain("unsafe-eval")
+  })
+
+  it("adds the canvas template runtime only when needed and trusts its nonce", async () => {
+    const {editor, iframe} = await mountEditor()
+    const source = iframe.contentDocument!
+    source.body.className = "ww-canvas"
+    source.body.innerHTML = '<p>Canvas content</p><script id="webwriter-canvas-viewer">untrusted()</script>'
+    const preview = () => new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
+    const parsed = preview()
+    const scripts = parsed.querySelectorAll("script")
+    expect(scripts).toHaveLength(1)
+    expect(scripts[0].id).toBe("webwriter-canvas-viewer")
+    expect(scripts[0].textContent).toContain("mountCanvasReader()")
+    expect(scripts[0].textContent).not.toContain("untrusted()")
+    const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
+    expect(scripts[0].getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])
+    expect(source.querySelector("script")!.textContent).toBe("untrusted()")
+    source.body.className = "ww-slides"
+    expect(preview().querySelector("script")).toBeNull()
   })
 
   it("exits preview from the file tab", async () => {

@@ -97,7 +97,7 @@ import type {OpenDocumentMenu} from "./open-document-menu"
 import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
-import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
 import {LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
@@ -821,37 +821,16 @@ export class DomEditor extends LitElement {
       if(!element.classList.length) element.removeAttribute("class")
     })
 
-    // The editor loads installed widget assets as editor-only nodes. Re-add
-    // those assets without editor markers so custom elements render in the
-    // preview copy as they do in the live document.
+    // Use the same dependency selection as saving, after stripping authored code.
+    appendSerializedAssets(source, this.installedPackages)
     if(source.head) {
+      const scripts = Array.from(source.head.querySelectorAll("script"))
       const policy = source.createElement("meta")
       policy.httpEquiv = "Content-Security-Policy"
-      const packageEvaluation = this.installedPackages.some(pkg => pkg.scripts.length) ? " 'unsafe-eval'" : ""
+      const packageEvaluation = scripts.some(script => script.hasAttribute("src")) ? " 'unsafe-eval'" : ""
       policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
       source.head.prepend(policy)
-      const styles = [...new Set(this.installedPackages.flatMap(pkg => pkg.styles))]
-        .map(href => {
-          const link = source.createElement("link")
-          link.rel = "stylesheet"
-          link.href = href
-          return link
-        })
-      const scripts = [...new Set(this.installedPackages.flatMap(pkg => pkg.scripts))]
-        .map(src => {
-          const script = source.createElement("script")
-          script.type = import.meta.env.MODE === "test" ? "application/json" : "module"
-          script.nonce = nonce
-          script.src = src
-          return script
-        })
-      if(scripts.length) {
-        const polyfill = source.createElement("script")
-        polyfill.src = scopedCustomElementRegistryPolyfillUrl
-        if(import.meta.env.MODE === "test") polyfill.type = "application/json"
-        source.head.append(polyfill)
-      }
-      source.head.append(...styles, ...scripts)
+      if(import.meta.env.MODE === "test") scripts.forEach(script => script.type = "application/json")
       // Set the serialized attribute after connecting the nodes to the cloned
       // document; a frame's nonce-hiding machinery can clear it on insertion.
       source.head.querySelectorAll("script").forEach(script => script.setAttribute("nonce", nonce))
