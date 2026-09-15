@@ -1505,7 +1505,8 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => {
-      if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button !== 0) {
+      if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
+        || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) {
         return
       }
       this.#endDrag()

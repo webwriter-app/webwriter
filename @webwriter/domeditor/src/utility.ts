@@ -360,8 +360,31 @@ export class EditingSelection {
     const pointerElement = hit ?? (pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
     const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
-    const formula = mathRoot(pointerElement) ?? mathRoot(caretElement ?? null)
+    let formula = mathRoot(pointerElement) ?? mathRoot(caretElement ?? null)
+    // Blank space below a trailing formula can hit its parent boundary (or
+    // an empty split text node), rather than a MathML token. Native mouse
+    // selection still canonicalizes that position back into the formula.
+    if(!formula && typeof offset === "number") {
+      const emptyText = offsetNode instanceof Text && !offsetNode.length ? offsetNode : null
+      const parent = emptyText ? emptyText.parentElement : offsetNode
+      const index = emptyText && parent ? Array.from(parent.childNodes).indexOf(emptyText) : offset
+      if(parent instanceof Element && !atomicEditingContainer(parent, schema)) {
+        formula = [adjacentElement(parent.childNodes, index, "before"), adjacentElement(parent.childNodes, index, "after")]
+          .find(element => element && mathRoot(element) === element) ?? null
+      }
+    }
     if(formula && editingFlowRoot(formula) === flow) {
+      let container = formula.parentElement
+      while(container && container !== flow && isMarkElement(container)) container = container.parentElement
+      if(inlineMathRoot(formula) && container && container !== flow && !isOutOfFlow(container)) {
+        const rect = container.getBoundingClientRect()
+        if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+          overrideNative = true
+          const details = container.closest("details")
+          return gap(details && !details.open && container.closest("summary")?.parentElement === details ? details : container,
+            y < rect.top ? "before" : "after")
+        }
+      }
       const boundary = mathBoundaryPoint(formula, x, y)
       if(boundary) return {...boundary, overrideNative: true}
       // MathML rows and arguments are text editing positions, never gaps.

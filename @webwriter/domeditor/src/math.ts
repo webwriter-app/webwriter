@@ -11,7 +11,10 @@ export function mathOutsidePoint(math: Element, after = false) {
   if(!math.parentNode) return null
   let neighbor = after ? math.nextSibling : math.previousSibling
   while(neighbor?.nodeType === Node.COMMENT_NODE) neighbor = after ? neighbor.nextSibling : neighbor.previousSibling
-  if(math.getAttribute("display") !== "block" && neighbor instanceof Text) {
+  // Range.insertNode leaves empty split text at paragraph edges. Chromium
+  // paints a caret there but redirects native typing into the formula.
+  // Use the parent boundary so the editor can insert prose outside MathML.
+  if(math.getAttribute("display") !== "block" && neighbor instanceof Text && neighbor.length) {
     return {node: neighbor as Node, offset: after ? 0 : neighbor.length}
   }
   return {node: math.parentNode, offset: Array.from(math.parentNode.childNodes).indexOf(math) + (after ? 1 : 0)}

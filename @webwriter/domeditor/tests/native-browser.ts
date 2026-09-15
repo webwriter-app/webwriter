@@ -234,6 +234,61 @@ await check("inline formulas retain distinct inner and outer text insertion posi
   paragraph.remove()
 })
 
+await check("typing after a formula inserted at paragraph end stays outside MathML", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "Before"
+  fixture.append(paragraph)
+  $.move(paragraph.firstChild!, 6)
+  editor.features.math.insert()
+  editor.features.math.execute("text:x")
+  const math = paragraph.querySelector("math")!
+  assert(math.nextSibling instanceof Text && !math.nextSibling.length, "insertion did not retain the split empty text node")
+  document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true}))
+  await layoutFrame()
+  const input = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "prose"})
+  paragraph.dispatchEvent(input)
+  if(!input.defaultPrevented) document.execCommand("insertText", false, "prose")
+  assert(math.textContent === "x", "typing after exiting appended to the formula")
+  assert(math.nextSibling?.textContent === "prose", "prose was not inserted after the formula")
+  paragraph.remove()
+})
+
+await check("blank space around a formula paragraph selects gaps for every click count", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.innerHTML = 'Before <math><mi>x</mi></math>'
+  paragraph.style.marginBlock = "100px"
+  document.body.append(paragraph)
+  const math = paragraph.querySelector("math")!
+  math.after(document.createTextNode(""))
+  paragraph.scrollIntoView({block: "center"})
+  await layoutFrame()
+  const rect = math.getBoundingClientRect()
+  const x = rect.right + 40
+  for(const y of [paragraph.getBoundingClientRect().top - 4, rect.top + rect.height / 2, paragraph.getBoundingClientRect().bottom + 4]) {
+    const above = y < paragraph.getBoundingClientRect().top
+    const below = y > paragraph.getBoundingClientRect().bottom
+    const node = above || below ? document.body : paragraph
+    const offset = above || below ? Array.from(document.body.childNodes).indexOf(paragraph) + (below ? 1 : 0) : 2
+    for(const detail of [1, 2, 3, 1]) {
+      $.move(math.firstChild!.firstChild!, 1)
+      const point = $.pointFromCoords(x, y, paragraph, editor.schema)
+      assert(point?.node === node && point.offset === offset && (above || below || point.overrideNative),
+        `blank-space hit resolved to ${point?.node.nodeName}/${point?.offset}, override ${point?.overrideNative}`)
+      const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, clientX: x, clientY: y, detail})
+      paragraph.dispatchEvent(down)
+      assert(down.defaultPrevented, `${detail} click allowed native caret placement`)
+      paragraph.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, cancelable: true, clientX: x, clientY: y, detail}))
+      paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: x, clientY: y, detail}))
+      paragraph.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, clientX: x, clientY: y, detail}))
+      await layoutFrame()
+      assert($.anchor === node && $.anchorOffset === offset && $.isEmpty, `${detail} click returned to the formula`)
+      assert($.isGapSelection === (above || below), `${detail} click has the wrong selection kind`)
+    }
+  }
+  paragraph.remove()
+  window.scrollTo(0, 0)
+})
+
 await check("leaving an empty inline formula removes it without moving the text caret", async () => {
   const paragraph = document.createElement("p")
   paragraph.innerHTML = 'before<math><mrow></mrow></math>after'

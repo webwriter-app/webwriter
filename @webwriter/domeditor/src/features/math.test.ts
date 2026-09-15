@@ -337,12 +337,13 @@ describe("DOM MathML editing", () => {
     expect(mathBoundaryPoint(math, 50, 31)).toBeNull()
   })
 
-  it("places a click below a trailing formula in the surrounding paragraph", () => {
+  it("places a click below a trailing formula in the gap after its paragraph", () => {
     const math = load("<mfrac><mi>x</mi><mi>y</mi></mfrac>")
     math.nextSibling!.remove()
     const parent = math.parentNode!
     const html = parent.cloneNode(true)
     vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 80, 40))
+    vi.spyOn(math.parentElement!, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 200, 60))
     const original = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: math.querySelectorAll("mi")[1].firstChild, offset: 1})})
     try {
@@ -350,10 +351,10 @@ describe("DOM MathML editing", () => {
       document.body.dispatchEvent(down)
       expect(down.defaultPrevented).toBe(true)
       document.body.dispatchEvent(new MouseEvent("pointerup", {bubbles: true, clientX: 50, clientY: 100}))
-      expect($.anchor).toBe(parent)
-      expect($.anchorOffset).toBe(2)
+      expect($.anchor).toBe(document.body)
+      expect($.anchorOffset).toBe(1)
       expect($.isEmpty).toBe(true)
-      expect($.isGapSelection).toBe(false)
+      expect($.isGapSelection).toBe(true)
       expect(parent.textContent).toBe(html.textContent)
       expect(math.querySelectorAll("mi")).toHaveLength(2)
     }
@@ -362,6 +363,74 @@ describe("DOM MathML editing", () => {
       else Reflect.deleteProperty(document, "caretPositionFromPoint")
       vi.restoreAllMocks()
     }
+  })
+
+  it.each(["parent", "empty text", "token", "marked token"])("selects paragraph gaps on every click with native %s hit testing", hit => {
+    const math = load("<mi>x</mi>")
+    const parent = math.parentElement!
+    const text = math.nextSibling as Text
+    text.data = ""
+    const token = math.firstChild!.firstChild!
+    if(hit === "marked token") {
+      const mark = document.createElement("em")
+      math.replaceWith(mark)
+      mark.append(math, text)
+    }
+    const original = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({
+      offsetNode: hit === "parent" ? parent : hit === "empty text" ? text : token,
+      offset: hit === "parent" ? 2 : hit === "empty text" ? 0 : 1,
+    })})
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 80, 40))
+    vi.spyOn(parent, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 200, 60))
+    try {
+      for(const [y, offset] of [[10, 0], [100, 1]]) for(const detail of [1, 2, 3, 1]) {
+        $.move(token, 1)
+        // A preceding word selection must not suppress blank-space placement.
+        editor.features.selection.hasDoubleClicked = true
+        const options = {bubbles: true, cancelable: true, clientX: 140, clientY: y, detail}
+        const down = new MouseEvent("pointerdown", options)
+        parent.dispatchEvent(down)
+        expect(down.defaultPrevented).toBe(true)
+        expect($.anchor).toBe(document.body)
+        expect($.anchorOffset).toBe(offset)
+        const mouse = new MouseEvent("mousedown", options)
+        parent.dispatchEvent(mouse)
+        expect(mouse.defaultPrevented).toBe(true)
+        parent.dispatchEvent(new MouseEvent("pointerup", options))
+        parent.dispatchEvent(new MouseEvent("click", options))
+        expect($.anchor).toBe(document.body)
+        expect($.anchorOffset).toBe(offset)
+        expect($.isEmpty).toBe(true)
+        expect($.isGapSelection).toBe(true)
+        expect(editor.features.math.activeMath).toBeNull()
+      }
+    }
+    finally {
+      if(original) Object.defineProperty(document, "caretPositionFromPoint", original)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      vi.restoreAllMocks()
+    }
+  })
+
+  it.each(["only", "last", "marked"])("types prose after a %s formula inserted at the end of text", placement => {
+    document.body.innerHTML = placement === "marked" ? "<p><em>Before</em></p>" : "<p></p>"
+    const parent = document.querySelector(placement === "marked" ? "em" : "p")!
+    parent.textContent = placement === "only" ? "" : "Before"
+    if(!parent.firstChild) parent.append(document.createTextNode(""))
+    $.move(parent.firstChild!, parent.textContent.length)
+    editor.features.math.insert()
+    command("text:x")
+    const math = parent.querySelector("math")!
+    expect(math.nextSibling).toBeInstanceOf(Text)
+    expect(math.nextSibling!.textContent).toBe("")
+    key("ArrowRight")
+    const input = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "prose"})
+    document.dispatchEvent(input)
+    expect(input.defaultPrevented).toBe(true)
+    expect(math.textContent).toBe("x")
+    expect(math.nextSibling!.textContent).toBe("prose")
+    expect($.anchor?.parentNode).toBe(parent)
   })
 
   it.each([0, 1])("inserts prose at inline boundary %s without editing the formula", offset => {
