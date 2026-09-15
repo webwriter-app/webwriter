@@ -78,6 +78,7 @@ export class ManipulationFeature extends EditorFeature {
   private dragFrame: number | null = null
   private nodeDrag: {element: Element, token: string} | null = null
   private originalDropSelection: Range | null = null
+  private floatDropPreviewOwner: "transfer" | "transformation" | null = null
   private readonly dragType = "application/x-webwriter-node"
 
   /** A native draggable surface lives in the appendix, leaving authored
@@ -199,6 +200,16 @@ export class ManipulationFeature extends EditorFeature {
     }
     document.body.classList.add("◆drop-selection-active")
     this.editor.features.selection.selectDropRange(range)
+    const source = this.nodeDrag?.element
+    const floatContainer = source && this.floatContainer(range.startContainer, source)
+    if(floatContainer) {
+      const rect = floatContainer.getBoundingClientRect()
+      this.editor.features.selection.clearDropCaret()
+      this.showFloatDropPreview(
+        floatContainer, event.clientX < rect.left + rect.width / 2 ? "left" : "right", "transfer",
+      )
+    }
+    else this.clearFloatDropPreview("transfer")
     event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
   }
 
@@ -215,6 +226,7 @@ export class ManipulationFeature extends EditorFeature {
     const active = document.body.classList.contains("◆drop-selection-active")
     document.body.classList.remove("◆drop-selection-active")
     if(active) this.editor.features.selection.clearDropCaret()
+    this.clearFloatDropPreview("transfer")
     const range = this.originalDropSelection
     this.originalDropSelection = null
     if(restore && range && getDocumentRoot().contains(range.startContainer)
@@ -243,6 +255,38 @@ export class ManipulationFeature extends EditorFeature {
     Object.assign(style, {float: side, maxWidth: "50%", minWidth: "0", boxSizing: "border-box"})
     container.prepend(element)
     return true
+  }
+
+  /** A fixed appendix overlay shared by native transfer and transformation
+   * drags. Ownership prevents selection cleanup in one path from flickering a
+   * preview currently maintained by the other. */
+  showFloatDropPreview(container: Element, side: "left" | "right", owner: "transfer" | "transformation") {
+    const rect = container.getBoundingClientRect()
+    const existing = this.editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")
+    const overlay = existing ?? document.createElement("div")
+    if(!existing) {
+      overlay.id = "◆float-drop-preview"
+      overlay.setAttribute("aria-hidden", "true")
+      overlay.contentEditable = "false"
+      this.editor.addAppendix(overlay)
+    }
+    this.floatDropPreviewOwner = owner
+    overlay.setAttribute("part", `float-drop-preview float-drop-preview-${side}`)
+    overlay.hidden = false
+    overlay.style.left = `${side === "left" ? rect.left : rect.left + rect.width / 2}px`
+    overlay.style.top = `${rect.top}px`
+    overlay.style.width = `${rect.width / 2}px`
+    overlay.style.height = `${rect.height}px`
+  }
+
+  clearFloatDropPreview(owner: "transfer" | "transformation", keep = false) {
+    if(this.floatDropPreviewOwner !== owner) return
+    const preview = this.editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")
+    if(keep && preview) preview.hidden = true
+    else {
+      preview?.remove()
+      this.floatDropPreviewOwner = null
+    }
   }
 
   private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false) {

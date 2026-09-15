@@ -990,11 +990,42 @@ describe("drop, cancellation, and document ownership", () => {
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 150, ctrlKey: true}))
+    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+    expect(preview).not.toBeNull()
+    expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+    expect(preview.style.left).toBe(side === "left" ? "300px" : "350px")
+    expect(preview.style.top).toBe("100px")
+    expect(preview.style.width).toBe("50px")
+    expect(preview.style.height).toBe("100px")
+    expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
     feature.handleMoveEnd()
     expect(target.parentElement).toBe(paragraph)
     expect(target.style.float).toBe(side)
     expect(paragraph.textContent).toBe("keep text")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("moves the float preview between paragraph halves and removes it on cancellation", () => {
+    const target = append(document.createElement("img"))
+    const paragraph = targetElement()
+    mockRect(target)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 150, ctrlKey: true}))
+    expect(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.left).toBe("300px")
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 150, ctrlKey: true}))
+    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+    expect(editor.appendix.querySelectorAll("#◆float-drop-preview")).toHaveLength(1)
+    expect(preview.style.left).toBe("350px")
+    expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(target.parentElement).toBe(document.body)
   })
 
   it("clears inline size and placement on a Ctrl/Cmd flow drop while preserving unrelated styling, structure, and undo/redo", async () => {

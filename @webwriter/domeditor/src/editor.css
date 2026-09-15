@@ -305,6 +305,17 @@ body::part(node-drag-surface) {
   z-index: 2147483646;
 }
 
+body::part(float-drop-preview) {
+  position: fixed;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+  background-color: var(--editor-selection-background);
+  outline: 2px solid rgb(0 120 215 / 65%);
+  outline-offset: -2px;
+  z-index: 2147483646;
+}
+
 /* Replaced elements can also receive native selection paint. Avoid applying
  * the translucent selection color twice beneath their appendix overlay. */
 .◆atomic-range-selected::selection,

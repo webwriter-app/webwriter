@@ -746,7 +746,7 @@ export class TransformationFeature extends EditorFeature {
   handleRotateEnd(_event?: MouseEvent) { this.#finish(false) }
 
   #previewDrop(event: MouseEvent) {
-    this.#clearDrop()
+    this.#clearDrop(true)
     const target = this.target!
     const hit = document.elementsFromPoint(event.clientX, event.clientY).find(element =>
       getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && !target.contains(element) && !element.contains(target))
@@ -761,15 +761,19 @@ export class TransformationFeature extends EditorFeature {
     if(container) element = container
     const rect = element.getBoundingClientRect()
     const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
-    this.#drop = {element, placement, parent: element.parentNode!,
-      ...(container ? {float: event.clientX < rect.left + rect.width / 2 ? "left" as const : "right" as const} : {})}
-    element.classList.add(`◆drop-caret-${placement}`)
-    this.editor.features.selection.showDropCaret(placement)
+    const float = container ? event.clientX < rect.left + rect.width / 2 ? "left" as const : "right" as const : undefined
+    this.#drop = {element, placement, parent: element.parentNode!, ...(float ? {float} : {})}
+    if(float) this.editor.features.manipulation.showFloatDropPreview(element, float, "transformation")
+    else {
+      element.classList.add(`◆drop-caret-${placement}`)
+      this.editor.features.selection.showDropCaret(placement)
+    }
   }
 
-  #clearDrop() {
+  #clearDrop(keepFloatPreview = false) {
     if(this.#drop) removeEditorMarker(this.#drop.element, `◆drop-caret-${this.#drop.placement}`)
     this.#drop = null
+    this.editor.features.manipulation.clearFloatDropPreview("transformation", keepFloatPreview)
     this.editor.features.selection.clearDropCaret()
   }
 

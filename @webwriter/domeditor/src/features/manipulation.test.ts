@@ -1996,13 +1996,24 @@ describe("unified content transfer", () => {
       const paragraph = document.querySelector("p")!
       vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
       const {data} = beginDrag(source)
-      dropAt(data, paragraph.firstChild!, 3, {clientX: x, ctrlKey: copy})
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 3})
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50, ctrlKey: copy}))
+      const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+      expect(preview).not.toBeNull()
+      expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+      expect(preview.style.left).toBe(side === "left" ? "100px" : "150px")
+      expect(preview.style.width).toBe("50px")
+      expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50, ctrlKey: copy}))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBe(preview)
+      document.body.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 50, ctrlKey: copy}))
       const placed = paragraph.querySelector("img")!
       expect(placed.style.float).toBe(side)
       expect(placed.style.position).toBe("")
       expect(placed === source).toBe(!copy)
       expect(paragraph.textContent).toBe("target")
       expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     }
   })
 
