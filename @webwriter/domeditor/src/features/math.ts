@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, type MathSelectionState} from "../math"
 
 type Point = [Node, number]
@@ -163,12 +163,66 @@ export class MathFeature extends EditorFeature {
     return math ? {active: true, display: math.getAttribute("display") === "block" ? "block" : "inline"} : undefined
   }
 
-  private get selectedMath() {
+  get selectedMath() {
     const selection = document.getSelection()
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null
     if(!range || range.startContainer !== range.endContainer || range.endOffset !== range.startOffset + 1) return null
     const node = range.startContainer.childNodes.item(range.startOffset)
     return node instanceof Element && node === mathRoot(node) ? node : null
+  }
+
+  /** Resolve placement from live HTML ancestors; widget contents remain atomic. */
+  private textBlockAt(node: Node | null): Element | null {
+    let element = node instanceof Element ? node : node?.parentElement
+    let block: Element | null = null
+    while(element && element !== document.body) {
+      if(element.localName.includes("-") || element.hasAttribute("is")) return null
+      if(!block && element.namespaceURI === document.body.namespaceURI
+        && this.editor.features.manipulation.isTextBlock(element)) block = element
+      element = element.parentElement
+    }
+    return block
+  }
+
+  adaptToPlacement(math: Element, container: Node) {
+    math.setAttribute("display", this.textBlockAt(container) ? "inline" : "block")
+  }
+
+  private setDisplay(math: Element, display: "inline" | "block") {
+    const block = this.textBlockAt(math.parentNode)
+    const selection = document.getSelection()!
+    const selected = this.selectedMath === math
+    const anchor = selection.anchorNode, focus = selection.focusNode
+    const anchorOffset = selection.anchorOffset, focusOffset = selection.focusOffset
+    if(display === "block" && block) {
+      // Split only the ancestor path around the formula, moving authored nodes
+      // so comments, custom elements, and their identity survive conversion.
+      const parent = block.parentElement
+      if(!parent || !this.editor.schema.canInsert(parent, math, indexOf(block) + 1)) return false
+      while(math.parentElement !== parent) {
+        const wrapper = math.parentElement!
+        const right = cloneWithoutEditorMarkers(wrapper, false) as Element
+        while(math.nextSibling) right.append(math.nextSibling)
+        wrapper.after(math)
+        for(const node of [...Array.from(wrapper.childNodes), ...Array.from(right.childNodes)]) {
+          if(node instanceof Text && !node.length) node.remove()
+        }
+        if(right.hasChildNodes()) math.after(right)
+        if(!wrapper.hasChildNodes()) wrapper.remove()
+      }
+    }
+    else if(display === "inline" && !block) {
+      const paragraph = document.createElement("p")
+      if(!math.parentElement || !this.editor.schema.canInsert(math.parentElement, paragraph, indexOf(math))) return false
+      math.before(paragraph)
+      paragraph.append(math)
+    }
+    math.setAttribute("display", display)
+    if(selected) $.selectElement(math)
+    else if(anchor && focus && math.contains(anchor) && math.contains(focus)) {
+      selection.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset)
+    }
+    return true
   }
 
   insert(structure?: string) {
@@ -184,6 +238,7 @@ export class MathFeature extends EditorFeature {
       container = container.parentElement
     }
     this.editor.features.manipulation.ensureTextBlock()
+    if(!this.textBlockAt(selection.anchorNode)) return false
     const math = mathElement("math", mathElement("mrow"))
     selection.getRangeAt(0).insertNode(math)
     $.move(math.firstChild!, 0)
@@ -204,7 +259,7 @@ export class MathFeature extends EditorFeature {
       return true
     }
     if(command === "display:inline" || command === "display:block") {
-      math.setAttribute("display", command.slice(8))
+      if(!this.setDisplay(math, command === "display:block" ? "block" : "inline")) return false
       this.changed()
       return true
     }

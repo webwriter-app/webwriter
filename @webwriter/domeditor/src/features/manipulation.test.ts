@@ -2140,6 +2140,56 @@ describe("unified content transfer", () => {
     expect(fragment.childNodes).toHaveLength(1)
   })
 
+  it.each(["inline", "block"])("adapts a %s formula on paste and external drop", display => {
+    for(const method of ["paste", "drop"]) for(const inline of [true, false]) {
+      document.body.innerHTML = "<p>target</p>"
+      const target = inline ? document.querySelector("p")!.firstChild! : document.body
+      const data = new DataTransfer()
+      data.setData("text/html", `<math display="${display}"><mi>x</mi></math>`)
+      // Happy DOM does not switch namespaces when parsing MathML in HTML.
+      const parse = editor.parseHTMLFragment.bind(editor)
+      const parser = vi.spyOn(editor, "parseHTMLFragment").mockImplementation((...args) => {
+        const result = parse(...args)
+        for(const original of Array.from(result.fragment.querySelectorAll("math"))) {
+          const math = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+          math.setAttribute("display", original.getAttribute("display")!)
+          const token = document.createElementNS(math.namespaceURI, "mi")
+          token.textContent = "x"
+          math.append(token)
+          original.replaceWith(math)
+        }
+        return result
+      })
+      $.move(target, 1)
+      if(method === "drop") dropAt(data, target, 1)
+      else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+      parser.mockRestore()
+      const math = document.querySelector("math")!
+      expect(math.getAttribute("display")).toBe(inline ? "inline" : "block")
+      expect(math.parentElement).toBe(inline ? document.querySelector("p") : document.body)
+    }
+  })
+
+  it.each([false, true])("adapts internal formula moves and copies to their destination (copy=%s)", copy => {
+    document.body.innerHTML = "<p>target</p>"
+    const math = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+    const token = document.createElementNS(math.namespaceURI, "mi")
+    token.textContent = "x"
+    math.append(token)
+    math.setAttribute("display", "block")
+    document.body.append(math)
+    const {data} = beginDrag(math)
+    dropAt(data, document.querySelector("p")!.firstChild!, 3, {ctrlKey: copy})
+    const inline = document.querySelector("p math")!
+    expect(inline.getAttribute("display")).toBe("inline")
+    expect(inline === math).toBe(!copy)
+    const next = beginDrag(inline)
+    dropAt(next.data, document.body, 0)
+    expect(document.body.firstElementChild).toBe(inline)
+    expect(inline.getAttribute("display")).toBe("block")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("retains sections in explicit HTML edits and internal node drops", () => {
     const {fragment} = editor.parseHTMLFragment('<div><section><p>authored</p></section></div>')
     expect(fragment.firstElementChild?.outerHTML).toBe('<div><section><p>authored</p></section></div>')

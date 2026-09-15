@@ -37,6 +37,43 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("DOM MathML editing", () => {
+  it("splits nested marks around a block formula and wraps it when converted back", () => {
+    const math = load("<mi>x</mi>")
+    const paragraph = math.parentElement!
+    const strong = document.createElement("strong")
+    paragraph.replaceChildren(strong)
+    strong.append("left", math, document.createComment("keep"), "right")
+    const token = math.firstChild!.firstChild!
+    $.move(token, 1)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(command("display:block")).toBe(true)
+    expect(clean()).toBe('<p><strong>left</strong></p><math display="block"><mi>x</mi></math><p><strong><!--keep-->right</strong></p>')
+    expect($.anchor).toBe(token)
+    expect($.anchorOffset).toBe(1)
+    expect(command("display:inline")).toBe(true)
+    expect(math.parentElement?.localName).toBe("p")
+    expect(document.querySelectorAll("p")).toHaveLength(3)
+    expect($.anchor).toBe(token)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(clean()).toBe('<p><strong>left<math><mi>x</mi></math><!--keep-->right</strong></p>')
+    editor.doc.redo()
+    expect(document.querySelector("math")?.parentElement?.localName).toBe("p")
+    expect(clean()).not.toContain("◆")
+  })
+
+  it("removes empty split wrappers when the paragraph contains only a formula", () => {
+    const math = load("<mi>x</mi>")
+    math.parentElement!.replaceChildren(document.createTextNode(""), math, document.createTextNode(""))
+    $.selectElement(math)
+    expect(command("display:block")).toBe(true)
+    expect(document.body.children).toHaveLength(1)
+    expect(math.parentElement).toBe(document.body)
+    expect(command("display:inline")).toBe(true)
+    expect(clean()).toBe('<p><math display="inline"><mi>x</mi></math></p>')
+  })
+
   it.each(["inline", "block"])("double click selects the whole %s formula", display => {
     const math = load("<msub><mi>x</mi><mi>ij</mi></msub><mo>+</mo><mi>y</mi>")
     math.setAttribute("display", display)

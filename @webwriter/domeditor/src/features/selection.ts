@@ -1306,7 +1306,7 @@ export class SelectionFeature extends EditorFeature {
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
     if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)
     this.editor.features.transformation.syncSelection(layoutItem ?? selectedElement, Boolean(layoutItem && layoutItem !== selectedElement))
-    this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
+    this.editor.features.manipulation.refreshNodeDragTarget(this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
     this.editor.features.graphic.refresh()
     this.editor.features.layout.refresh()
     if(scrollIntoView && !isContentfulWidget(focusedWidget, this.editor.schema)) {

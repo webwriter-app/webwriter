@@ -1,3 +1,4 @@
+import {MATH_NAMESPACE} from "../math"
 import {isSlide} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
@@ -156,7 +157,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private startNodeDrag(event: DragEvent, element: Element) {
-    if(!this.isEnabled || event.defaultPrevented || !event.dataTransfer || element !== $.selectedElement
+    if(!this.isEnabled || event.defaultPrevented || !event.dataTransfer || element !== ($.selectedElement ?? this.editor.features.math.selectedMath)
       || !getDocumentRoot().contains(element) || element === getDocumentRoot()) {
       event.preventDefault()
       return
@@ -230,7 +231,7 @@ export class ManipulationFeature extends EditorFeature {
     const range = document.createRange()
     range.setStart(point.node, point.offset)
     range.collapse(true)
-    if(source && !this.editor.schema.isPhrasing(source)) {
+    if(source && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
       while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
       if(this.isTextBlock(block) && !this.editor.schema.canInsert(block, source, block.childNodes.length)) {
@@ -256,6 +257,7 @@ export class ManipulationFeature extends EditorFeature {
       if(!range) return
       if(source) {
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
+        if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
         range.insertNode(inserted)
         if(getDocumentRoot().contains(inserted)) {
           clearInlinePlacement(inserted)
@@ -956,6 +958,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private isInlineClipboardNode(node: Node) {
+    if(node instanceof Element && node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
     return node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE
       || isElement(node) && this.editor.schema.isPhrasing(node)
   }
@@ -1030,6 +1033,19 @@ export class ManipulationFeature extends EditorFeature {
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment) {
     if(!this.editor.features.slides.allowsSelection()) return
+    for(const math of Array.from(fragment.querySelectorAll("math"))) {
+      if(math.namespaceURI !== MATH_NAMESPACE) continue
+      let ancestor = math.parentElement
+      while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
+      if(ancestor) continue
+      let top: Element = math
+      while(top.parentElement) top = top.parentElement
+      if(top !== math && this.isInlineClipboardNode(top)) {
+        // An inline clipboard run will be inserted into a text block below.
+        math.setAttribute("display", "inline")
+      }
+      else this.editor.features.math.adaptToPlacement(math, math.parentNode === fragment ? $.range.startContainer : math.parentNode!)
+    }
     const nodes = this.normalizeClipboardTopLevel(Array.from(fragment.childNodes))
     if(!nodes.length) return
     const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
@@ -1525,6 +1541,11 @@ export class ManipulationFeature extends EditorFeature {
         $.delete()
         this.splitAtSelection(allowedDepth, strict)
       })
+    }
+    if(node instanceof Element && node.namespaceURI === MATH_NAMESPACE && node.localName === "math") {
+      const fragment = document.createDocumentFragment()
+      fragment.append(node)
+      return this.insertClipboardFragment(fragment)
     }
     const insertedWidget = this.insertedWidget(node)
     const insertedElement = isElement(node)
