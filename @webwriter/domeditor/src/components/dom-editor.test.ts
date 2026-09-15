@@ -3538,6 +3538,25 @@ describe("DomEditor.execute()", () => {
     }))
   })
 
+  it("omits inline and block formula subtrees from the expanded outline", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<p>Before <math><mrow><mi>x</mi></mrow></math> after</p><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math><p>End</p>'
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+
+    expect(breadcrumb.treeOpen).toBe(true)
+    expect(breadcrumb.tree!.children.map(item => ({path: item.path, name: item.name, children: item.children}))).toEqual([
+      {path: [0], name: "Paragraph", children: []},
+      {path: [2], name: "Paragraph", children: []},
+    ])
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
+      "Paragraph", "Paragraph",
+    ])
+  })
+
   it("flattens sections in the document tree and shows their types beside structural items", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<div><p>hello</p><section></section></div>"

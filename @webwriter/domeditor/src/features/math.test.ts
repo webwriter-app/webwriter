@@ -136,6 +136,23 @@ describe("DOM MathML editing", () => {
     expect($.anchorOffset).toBe(outsideBefore[1])
   })
 
+  it.each(["inline", "block"])("omits a %s formula and its internals from the breadcrumb", display => {
+    const math = load("<mrow><mi>x</mi></mrow>")
+    math.setAttribute("display", display)
+    const messages: SelectionChangeDetail[] = []
+    const listener = (event: Event) => messages.push((event as CustomEvent<SelectionChangeDetail>).detail)
+    window.addEventListener(selectionChangeEvent, listener)
+    try {
+      for(const node of [math, math.querySelector("mi")!.firstChild!]) {
+        $.move(node, 0)
+        editor.features.selection.processSelection()
+        editor.postSelectionPath()
+        expect(messages.at(-1)!.path.map(item => item.path)).toEqual([[], [0]])
+      }
+    }
+    finally { window.removeEventListener(selectionChangeEvent, listener) }
+  })
+
   it("selects an inline formula as text and omits all its internals from the breadcrumb", () => {
     const math = load("<mrow><mi>x</mi></mrow>")
     const messages: SelectionChangeDetail[] = []

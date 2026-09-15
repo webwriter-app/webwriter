@@ -20,7 +20,7 @@ import { TableFeature } from "./features/table"
 import { LayoutFeature } from "./features/layout"
 import { GraphicFeature } from "./features/graphic"
 import { MathFeature } from "./features/math"
-import {inlineMathRoot} from "./math"
+import {mathRoot} from "./math"
 import { HeadFeature } from "./features/head"
 import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
@@ -966,7 +966,7 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
-      if(inlineMathRoot(currentElement)) return
+      if(mathRoot(currentElement)) return
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
       if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
