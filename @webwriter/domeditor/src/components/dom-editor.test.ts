@@ -4214,16 +4214,14 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Form"]')).toBeNull()
-    const section = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Section"]')!
+    const section = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Custom layout"]')!
     ribbon.canSection = true
     await ribbon.updateComplete
     await section.updateComplete
     section.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     expect(execute).toHaveBeenCalledWith({type: "toggleSection", section: "section"})
 
-    section.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await section.updateComplete
-    const sectionType = section.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Type"]')!
+    const sectionType = ribbon.shadowRoot!.querySelector<HTMLSelectElement>('.custom-layout select')!
     sectionType.value = "address"
     sectionType.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(execute).toHaveBeenLastCalledWith({type: "setSectionType", section: "address"})

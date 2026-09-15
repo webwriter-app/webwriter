@@ -16,47 +16,45 @@ async function mountRibbon() {
 }
 
 describe("layout preset ribbon", () => {
-  it("keeps the Elements opener across the full two-row control grid", async () => {
+  it("replaces Section with Layouts and opens the drawer from its expansion button", async () => {
     const ribbon = await mountRibbon()
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
-    const opener = drawer.querySelector<HTMLElement>(".layout-opener")!
-
-    expect(drawer.expandable).toBe(true)
-    expect(opener.getAttribute("label")).toBe("Layouts")
-    expect(AppRibbon.styles.toString()).toMatch(
-      /ribbon-button\.layout-opener\s*\{[\s\S]*?grid-row:\s*1 \/ 3;/,
-    )
-    expect(RibbonButton.styles.toString()).toMatch(
-      /:host\(\.layout-opener\) \.button-row\s*\{[\s\S]*?height:\s*100%;/,
-    )
+    const opener = drawer.querySelector<RibbonButton>('ribbon-button.layout-opener:not([slot="compact"])')!
+    await Promise.all([drawer.updateComplete, opener.updateComplete])
+    expect(drawer.querySelector('ribbon-button[label="Section"]')).toBeNull()
+    expect(drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden).toBe(true)
+    opener.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(opener.shadowRoot!.querySelector("ribbon-menu")).toBeNull()
+    expect(drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden).toBe(false)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
+    await drawer.updateComplete
+    expect(drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden).toBe(true)
+    expect(opener.shadowRoot!.activeElement).toBe(opener.shadowRoot!.querySelector(".submenu-trigger"))
   })
 
-  it("keeps Layouts behind the compact drawer chevron", async () => {
+  it("offers Layouts in compact mode and preserves the responsive collapsed opener", async () => {
     const ribbon = await mountRibbon()
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
     drawer.compact = true
     await drawer.updateComplete
-
-    expect(drawer.querySelector('ribbon-button[label="Layouts"][slot="compact"]')).toBeNull()
-    const primary = drawer.shadowRoot!.querySelector<HTMLElement>(".elements-primary-controls")!
-    expect(getComputedStyle(primary).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
-  })
-
-  it("hides the redundant Layouts opener in a collapsed Elements drawer", async () => {
-    const ribbon = await mountRibbon()
-    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
+    const opener = drawer.querySelector<RibbonButton>('ribbon-button.layout-opener[slot="compact"]')!
+    await opener.updateComplete
+    opener.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    drawer.closeDrawer()
     drawer.collapsed = true
     await drawer.updateComplete
+    expect(drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden).toBe(false)
+  })
 
-    const opener = drawer.querySelector<HTMLElement>("ribbon-button.layout-opener")!
-    expect(opener).not.toBeNull()
-    expect(drawer.shadowRoot!.querySelector<HTMLSlotElement>("slot:not([name])")!.hidden).toBe(false)
-    expect(RibbonDrawer.styles.toString()).toMatch(
-      /:host\(\[layout="elements"\]\[collapsed\]\) \.elements-primary-controls\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\);/,
-    )
-    expect(RibbonDrawer.styles.toString()).toMatch(
-      /:host\(\[layout="elements"\]\[collapsed\]\) ::slotted\(ribbon-button\.layout-opener\)\s*\{[\s\S]*?display:\s*none;/,
-    )
+  it("places custom layout controls after all presets", async () => {
+    const ribbon = await mountRibbon()
+    const gallery = ribbon.shadowRoot!.querySelector('.layout-gallery')!
+    expect(gallery.lastElementChild!.getAttribute("aria-label")).toBe("Custom layout")
+    expect(gallery.lastElementChild!.querySelector('select[aria-label="Section type"]')).not.toBeNull()
   })
 
   it("renders eight named, keyboard-activatable layout presets", async () => {

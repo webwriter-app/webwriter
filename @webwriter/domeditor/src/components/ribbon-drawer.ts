@@ -72,7 +72,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"]) {
       --ribbon-drawer-expanded-width: 22.25rem;
-      --ribbon-drawer-compact-width: 8rem;
+      --ribbon-drawer-compact-width: 12rem;
       /* The gallery is a second tier below the two-row Elements controls. */
       --ribbon-drawer-height: 9rem;
       --ribbon-drawer-more-height: min(28rem, calc(100vh - 4.5rem));
@@ -143,7 +143,7 @@ export class RibbonDrawer extends LitElement {
       box-sizing: border-box;
       display: grid;
       flex: 0 0 var(--elements-header-height, 5.625rem);
-      grid-template-columns: repeat(7, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: column;
       grid-auto-columns: minmax(0, 1fr);
@@ -155,7 +155,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"][compact]) .elements-primary-controls {
       flex-basis: var(--elements-header-height, 5.625rem);
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: row;
       grid-auto-columns: minmax(0, 1fr);
@@ -163,10 +163,6 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"][collapsed]) .elements-primary-controls {
       grid-template-columns: repeat(6, minmax(0, 1fr));
-    }
-
-    :host([layout="elements"][collapsed]) ::slotted(ribbon-button.layout-opener) {
-      display: none;
     }
 
     .elements-gallery-controls {
@@ -1106,7 +1102,11 @@ export class RibbonDrawer extends LitElement {
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
     if(!this.drawerOpen || event.key !== "Escape") return
     this.closeDrawer()
-    this.renderRoot.querySelector<HTMLButtonElement>(".drawer-toggle")?.focus()
+    const opener = this.layout === "elements" && !this.collapsed
+      ? this.querySelector(this.compact ? '.layout-opener[slot="compact"]' : '.layout-opener:not([slot="compact"])')
+        ?.shadowRoot?.querySelector<HTMLButtonElement>(".submenu-trigger")
+      : this.renderRoot.querySelector<HTMLButtonElement>(".drawer-toggle")
+    opener?.focus()
   }
 
   private readonly handleRibbonAction = (event: Event) => {
@@ -1458,7 +1458,8 @@ export class RibbonDrawer extends LitElement {
   }
 
   render() {
-    const toggleUnavailable = !this.collapsed && !this.expandable
+    const toggleUnavailable = (!this.collapsed && !this.expandable)
+      || (this.layout === "elements" && !this.collapsed && !this.drawerOpen)
     const toggleLabel = this.collapsed
       ? `${this.drawerOpen ? "Hide" : "Show"} ${this.label} controls`
       : this.layout === "element-style"

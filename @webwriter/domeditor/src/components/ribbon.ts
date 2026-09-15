@@ -1793,9 +1793,13 @@ export class AppRibbon extends EditingControls {
       line-height: 0.85rem;
     }
 
-    /* Keep the opener in the Elements two-row grid. */
-    ribbon-button.layout-opener {
-      grid-row: 1 / 3;
+    .custom-layout {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-top: 1px solid #d8dee6;
+      padding-top: 0.5rem;
     }
 
     .file-name-row {
@@ -2805,14 +2809,6 @@ export class AppRibbon extends EditingControls {
     ) this.scheduleResponsiveLayout()
   }
 
-  private renderSectionDropdown() {
-    return html`
-      <div class="button-dropdown-form" role="group" aria-label="Section options">
-        ${this.renderSectionTypeSelect("Type")}
-      </div>
-    `
-  }
-
   private get availablePackages() {
     const installed = new Map(this.installedPackages.map(pkg => [pkg.name, pkg]))
     const catalogNames = new Set(this.packages.map(pkg => pkg.name))
@@ -3016,7 +3012,7 @@ export class AppRibbon extends EditingControls {
       icon: button.icon,
     }))
     const compactButtons: RibbonMenuButton[] = [
-      groupedButton("Text", "Text", ["Paragraph", "Section", "Heading", "List"]),
+      groupedButton("Text", "Text", ["Paragraph", "Heading", "List"]),
       {
         ...groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
         submenu: [
@@ -3047,7 +3043,7 @@ export class AppRibbon extends EditingControls {
         ? this.mediaSelectionMatches(type)
         : item.label === "List" && this.listType !== null
       const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
-      const sectionDropdown = item.label === "Section" ? this.renderSectionDropdown() : null
+      if(item.label === "Section") return renderLayoutOpener(slot)
       return html`
         <ribbon-button
           slot=${slot}
@@ -3055,16 +3051,16 @@ export class AppRibbon extends EditingControls {
           label=${item.label}
           .action=${item.action ?? item.label}
           .icon=${item.icon ?? item.label}
-          .submenu=${type ? sourceSubmenu : tableDropdown || sectionDropdown ? [] : submenu}
-          .dropdown=${tableDropdown ?? sectionDropdown}
-          ?toggle=${item.label === "List" || item.label === "Section"}
-          ?active=${item.label === "Section" ? this.sectionActive : active}
-          ?disabled=${item.label === "Section" && !this.canSection}
+          .submenu=${type ? sourceSubmenu : tableDropdown ? [] : submenu}
+          .dropdown=${tableDropdown}
+          ?toggle=${item.label === "List"}
+          ?active=${active}
         ></ribbon-button>
       `
     }
-    const renderLayoutOpener = () => html`
+    const renderLayoutOpener = (slot = "") => html`
       <ribbon-button
+        slot=${slot}
         class="layout-opener"
         variant="insertion"
         label="Layouts"
@@ -3126,12 +3122,17 @@ export class AppRibbon extends EditingControls {
       >
         ${drawer.buttons.map(button => renderButton(button))}
         ${compactButtons.map(button => renderButton(button, "compact"))}
-        ${renderLayoutOpener()}
+        ${renderLayoutOpener("compact")}
         <div class="layout-gallery" slot="more" aria-label="Layout presets">
           ${this.layoutInsertionError ? html`
             <div class="layout-insertion-error" role="alert">${this.layoutInsertionError}</div>
           ` : ""}
           ${layoutPresets.map(renderLayoutPreset)}
+          <div class="custom-layout" role="group" aria-label="Custom layout">
+            <ribbon-button label="Custom layout" icon="Section" action="toggle-section"
+              ?disabled=${!this.canSection} ?active=${this.sectionActive} toggle></ribbon-button>
+            ${this.renderSectionTypeSelect("Section type")}
+          </div>
         </div>
       </ribbon-drawer>
     `

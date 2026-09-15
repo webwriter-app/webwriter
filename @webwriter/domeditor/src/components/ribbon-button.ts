@@ -77,20 +77,6 @@ export class RibbonButton extends LitElement {
       border-radius: 0.35rem;
     }
 
-    :host(.layout-opener) {
-      align-self: stretch;
-    }
-
-    :host(.layout-opener) .button-row {
-      height: 100%;
-      min-height: 100%;
-    }
-
-    :host(.layout-opener) .main-button {
-      min-height: 100%;
-      padding-block: 0.35rem;
-    }
-
     .button-row:hover {
       border-color: #c8d2df;
       background: #eef4fb;
@@ -1323,7 +1309,7 @@ export class RibbonButton extends LitElement {
     const hasDropdown = this.submenu.length > 0 || this.dropdown !== null
     const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${hasDropdown ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
+      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
         <button
           class="main-button"
           type="button"
@@ -1354,16 +1340,16 @@ export class RibbonButton extends LitElement {
           >
             <span class="button-icon corner-icon" aria-hidden="true">${ribbonIcon("Reject")}</span>
           </button>
-        ` : hasDropdown && !this.dropdownOnClick ? html`
+        ` : (hasDropdown || this.openDrawer) && !this.dropdownOnClick ? html`
           <button
             class="submenu-toggle submenu-trigger"
             type="button"
             aria-label=${`Show more ${this.label} options`}
             title=${`Show more ${this.label} options`}
-            aria-haspopup=${this.dropdown !== null ? "dialog" : "menu"}
-            aria-expanded=${this.submenuOpen}
+            aria-haspopup=${this.openDrawer ? nothing : this.dropdown !== null ? "dialog" : "menu"}
+            aria-expanded=${this.openDrawer ? nothing : this.submenuOpen}
             ?disabled=${this.disabled}
-            @click=${this.toggleSubmenu}
+            @click=${this.openDrawer ? this.handleClick : this.toggleSubmenu}
           >
             <span class="submenu-chevron" aria-hidden="true"></span>
           </button>
