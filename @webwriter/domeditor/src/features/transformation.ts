@@ -470,7 +470,7 @@ export class TransformationFeature extends EditorFeature {
     const rotateTop = centerY + matrix.d * (-height / 2 - 34) - controlRadius
     const ordererTop = centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 22) - controlRadius
     setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop) < 0)
-    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-inline-size", "max-block-size", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
+    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
     const style = getComputedStyle(target)
     const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
     const block = findContainingBlock(target as HTMLElement, position)
@@ -625,8 +625,8 @@ export class TransformationFeature extends EditorFeature {
     graphic.setAttribute("viewBox", values.join(" "))
     this.#write("width", `${width}px`)
     this.#write("height", `${height}px`)
-    this.#write("max-inline-size", "none")
-    this.#write("max-block-size", "none")
+    this.#write("max-width", "none")
+    this.#write("max-height", "none")
     const after = graphic.getScreenCTM?.()
     if(after) this.#offsetBy(before.e - after.e, before.f - after.f)
     this.updateInfo()
@@ -703,13 +703,12 @@ export class TransformationFeature extends EditorFeature {
       this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
     }
     else {
-      const vertical = /^(?:vertical|sideways)-/.test(style.writingMode)
       if(this.#isFreeformItem(target) || standaloneGraphicShape(target)) {
         if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
-      if(x) this.#write(vertical ? "max-block-size" : "max-inline-size", `${Math.max(0, gesture.cssWidth + dw)}px`)
-      if(y) this.#write(vertical ? "max-inline-size" : "max-block-size", `${Math.max(0, gesture.cssHeight + dh)}px`)
+      if(x) this.#write("max-width", `${Math.max(0, gesture.cssWidth + dw)}px`)
+      if(y) this.#write("max-height", `${Math.max(0, gesture.cssHeight + dh)}px`)
       // Maximums may not change the used size (for example, an image's natural
       // size can be smaller). Keep the anchor tied to the actual rendered box.
       const size = this.#size(target)
