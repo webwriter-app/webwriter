@@ -2,6 +2,7 @@ type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
 import {$} from "../src/utility"
+import {defaultDocumentTheme} from "../src/document-themes"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -740,10 +741,24 @@ await check("a clean canvas retains its initial item when moving and typing with
       assert(doc.execCommand("insertText", false, value), "native canvas text insertion failed")
       await layoutFrame()
       assert(target.isConnected && target.getBoundingClientRect().height > 0 && target.contains(doc.getSelection()!.anchorNode), "typing loses the canvas item or caret")
+      const emptyCaret = canvasEditor!.features.selection.emptyDocumentCaret
+      assert(!emptyCaret || view.getComputedStyle(emptyCaret).display === "none", "canvas text retains the empty-document caret")
       assert(!doc.body.querySelector("link"), "typing inserted a link into canvas content")
     }
     await type(paragraph, "Hello")
     await type(paragraph, " world")
+    doc.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    await layoutFrame()
+    const backgroundCaret = canvasEditor.features.selection.emptyDocumentCaret
+    assert(view.getComputedStyle(doc.body).cursor === "default", "canvas background does not use the arrow cursor")
+    assert(view.getComputedStyle(canvasEditor.appendix.querySelector("slot")!).cursor === "default", "canvas camera does not use the arrow cursor")
+    assert(view.getComputedStyle(paragraph).cursor === "auto", "canvas text lost its native cursor")
+    assert(backgroundCaret && view.getComputedStyle(backgroundCaret).display === "none", "blank canvas shows a background caret")
+    assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)", "blank canvas selection paints a caret in positioned text")
+    doc.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 2, paragraph.firstChild!, 2)
+    await layoutFrame()
+    assert(view.getComputedStyle(backgroundCaret!).display === "none", "text selection retains the background caret")
+    assert(view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "text selection did not restore its native caret")
     canvasEditor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
     const second = doc.querySelectorAll("p")[1]
     await type(second, "Second")
@@ -792,6 +807,46 @@ await check("a clean canvas retains its initial item when moving and typing with
     doc.getSelection()!.setBaseAndExtent(doc.body, 1, doc.body, 1)
     await layoutFrame()
     assert(doc.body.childElementCount === 0, "removing the final empty canvas paragraph inserted a replacement")
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const saved = document.createElement("iframe")
+    saved.setAttribute("sandbox", "allow-same-origin")
+    saved.srcdoc = canvasEditor.toHTML()
+    const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
+    document.body.append(saved)
+    try {
+      await loaded
+      const savedDoc = saved.contentDocument!, savedView = saved.contentWindow!
+      const background = savedView.getComputedStyle(savedDoc.documentElement)
+      assert(background.backgroundImage.includes("radial-gradient"), "saved canvas lost its dots")
+      assert(background.backgroundSize === "20px 20px" && background.backgroundRepeat === "repeat", "saved canvas does not tile its dotted background")
+      assert(!saved.contentDocument!.body.shadowRoot, "saved canvas background depends on editor UI")
+      assert(savedView.getComputedStyle(savedDoc.body).backgroundColor === "rgba(0, 0, 0, 0)", "canvas body obscures the viewport dots")
+      const item = savedDoc.createElement("p")
+      item.textContent = "Canvas content"
+      item.style.cssText = "position:absolute;left:20px;top:20px;width:120px;margin:0"
+      savedDoc.body.append(item)
+      for(const [width, height] of [[400, 300], [1500, 900]]) {
+        saved.style.cssText = `width:${width}px;height:${height}px;border:0`
+        await layoutFrame()
+        const root = savedDoc.documentElement
+        assert(root.scrollWidth === root.clientWidth && root.scrollHeight === root.clientHeight, "fitting canvas content creates unnecessary scrolling")
+        const body = savedDoc.body.getBoundingClientRect()
+        assert(body.left === 0 && body.top === 0 && body.width === root.clientWidth && body.height >= root.clientHeight, "canvas retains page margins or fixed dimensions")
+        item.style.left = `${width + 100}px`
+        item.style.top = `${height + 100}px`
+        await layoutFrame()
+        assert(root.scrollWidth >= width + 220 && root.scrollHeight > height + 100, "canvas clips overflowing content")
+        savedView.scrollTo(root.scrollWidth, root.scrollHeight)
+        assert(savedView.scrollX > 0 && savedView.scrollY > 0, "overflowing canvas content is not scrollable")
+        item.style.left = item.style.top = "20px"
+        savedView.scrollTo(0, 0)
+      }
+      savedDoc.body.classList.remove("ww-canvas")
+      assert(!savedView.getComputedStyle(savedDoc.documentElement).backgroundImage.includes("radial-gradient"), "document mode retains canvas dots")
+    }
+    finally { saved.remove() }
   }
   finally { canvasEditor?.destroy(); frame.remove() }
 })

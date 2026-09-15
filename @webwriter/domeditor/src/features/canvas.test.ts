@@ -58,6 +58,9 @@ describe("canvas document layout", () => {
   })
 
   it("keeps a dotted canvas background while editing and in the saved layout", () => {
+    const theme = document.createElement("style")
+    theme.textContent = "* { background-repeat: no-repeat; }"
+    document.head.append(theme)
     editor.features.canvas.convert("canvas")
     const style = document.createElement("style")
     style.textContent = editorStyleString
@@ -71,12 +74,11 @@ describe("canvas document layout", () => {
     editor.features.canvas.disable()
     expect(dots.isConnected).toBe(false)
     style.remove()
-    expect(getComputedStyle(document.body).backgroundImage).toBe(image)
-    expect(getComputedStyle(document.body).backgroundSize).toBe("20px 20px")
+    expect(getComputedStyle(document.documentElement).backgroundImage).toBe(image)
+    expect(getComputedStyle(document.documentElement).backgroundSize).toBe("20px 20px")
+    expect(getComputedStyle(document.documentElement).backgroundRepeat).toBe("repeat")
     expect(editor.toHTML()).toContain("radial-gradient")
 
-    document.body.classList.remove(canvasClass)
-    expect(getComputedStyle(document.body).backgroundImage).not.toContain("radial-gradient")
   })
 
   it("keeps native text input inside positioned paragraphs without materializing a new element", () => {
@@ -93,6 +95,46 @@ describe("canvas document layout", () => {
       expect(paragraph.textContent).toBe(value)
       expect(editor.features.manipulation.ensureTextBlock()).toBeNull()
     }
+  })
+
+  it("uses an arrow on the canvas background and native cursors on its items", () => {
+    document.body.innerHTML = '<p>Canvas text</p><div style="cursor: crosshair">Custom cursor</div>'
+    const style = document.createElement("style")
+    style.textContent = editorStyleString
+    document.head.append(style)
+    editor.features.canvas.convert("canvas")
+
+    expect(getComputedStyle(document.body).cursor).toBe("default")
+    // Native-browser coverage checks the low-specificity item reset; Happy
+    // DOM incorrectly lets the inherited BODY cursor override :where().
+    expect(getComputedStyle(document.querySelector("div")!).cursor).toBe("crosshair")
+    document.body.classList.add("◆canvas-hand")
+    expect(getComputedStyle(document.body).cursor).toBe("grab")
+    expect(getComputedStyle(document.querySelector("p")!).cursor).toBe("grab")
+    document.body.classList.add("◆canvas-panning")
+    expect(getComputedStyle(document.body).cursor).toBe("grabbing")
+    editor.features.canvas.convert("document")
+    expect(getComputedStyle(document.body).cursor).not.toBe("default")
+  })
+
+  it("suppresses the native item caret only while the canvas background is selected", () => {
+    document.body.innerHTML = '<p>Canvas text</p>'
+    editor.features.canvas.convert("canvas")
+    const style = document.createElement("style")
+    style.textContent = editorStyleString
+    document.head.append(style)
+    const paragraph = document.querySelector("p")!
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+
+    expect(document.body.classList.contains("◆empty-selected")).toBe(true)
+    expect(editor.features.selection.emptyDocumentCaret).not.toBeNull()
+    expect(getComputedStyle(document.body).caretColor).toBe("transparent")
+    expect(getComputedStyle(paragraph).caretColor).toBe("transparent")
+
+    $.move(paragraph.firstChild!, 2)
+    editor.features.selection.processSelection()
+    expect(document.body.classList.contains("◆empty-selected")).toBe(false)
+    expect(getComputedStyle(paragraph).caretColor).not.toBe("transparent")
   })
 
   it("does not use metadata elements as a text-block fallback at an inline gap", () => {

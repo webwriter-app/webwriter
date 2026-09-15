@@ -40,9 +40,13 @@ export function documentLayoutMode(body: HTMLElement = document.body): DocumentL
 /** Authored layout, retained in shared and exported HTML. Navigation is local. */
 export const canvasClass = "ww-canvas"
 export const canvasStyles = `
+html:has(> body.ww-canvas) {
+  min-height: 100%; overflow: auto;
+  background-image: radial-gradient(#ccd7e3 1px, transparent 1px); background-size: 20px 20px; background-repeat: repeat;
+}
 body.ww-canvas {
-  position: relative; width: 1280px; min-height: 720px;
-  background-image: radial-gradient(#ccd7e3 1px, transparent 1px); background-size: 20px 20px;
+  position: relative; box-sizing: border-box; width: auto; inline-size: auto;
+  max-width: none; max-inline-size: none; min-height: 100vh; margin: 0; padding: 0; background: transparent;
 }
 body.ww-canvas > :not(style, script, link, meta, template) { position: absolute; }
 `

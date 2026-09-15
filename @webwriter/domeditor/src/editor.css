@@ -23,9 +23,10 @@ body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
 }
 
 /* The viewport is finite; the appendix slot supplies an unbounded camera. */
-html.◆canvas-active {
+html.◆canvas-active:has(> body.ww-canvas) {
   overflow: clip;
   background: white;
+  cursor: default;
 }
 
 html.◆canvas-active body {
@@ -37,6 +38,13 @@ html.◆canvas-active body {
   max-width: none !important;
   overflow: visible;
   background: transparent;
+  cursor: default;
+}
+
+/* The camera slot inherits the background cursor; authored items retain
+ * native text/link cursors and any cursor supplied by their own styles. */
+:where(html.◆canvas-active body > *) {
+  cursor: auto;
 }
 
 body.◆canvas-hand, body.◆canvas-hand * {
@@ -1266,7 +1274,14 @@ body::part(empty-document-caret) {
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
-body.◆empty-selected::part(empty-document-caret) {
+/* A BODY boundary selection can paint a native caret inside a positioned
+ * child. Use the appendix caret for document flow and no caret for canvas. */
+body.◆empty-selected,
+body.◆empty-selected * {
+  caret-color: transparent !important;
+}
+
+html:not(.◆canvas-active) body.◆empty-selected::part(empty-document-caret) {
   display: block;
 }
 
