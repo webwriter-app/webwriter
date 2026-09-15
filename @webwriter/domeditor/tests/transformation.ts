@@ -1,4 +1,12 @@
 import {DOMEditor} from "../src/domeditor"
+import {$} from "../src/utility"
+
+customElements.define("float-layout-widget", class extends HTMLElement {
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = '<style>:host { display: block; width: 100%; min-width: 900px; height: 120px; border: 2px solid teal; background: #e7f4f4; }</style>Widget with full-width defaults'
+  }
+})
 
 // Real layout complements the focused Happy DOM transformation tests.
 const editor = new DOMEditor()
@@ -47,6 +55,34 @@ button.onclick = async () => {
     catch(error) { failed++; results.push(`FAIL ${name}: ${error}`) }
   }
   try {
+    for(const tag of ["float-layout-widget", "picture"]) for(const atEnd of [false, true]) for(const side of ["left", "right"] as const) {
+      check(`float wrapping: ${tag}, ${side}, caret at ${atEnd ? "end" : "start"}`, () => {
+        feature.clearTransform()
+        const paragraph = document.createElement("p")
+        paragraph.style.cssText = "width: 600px; max-width: 100%; line-height: 24px"
+        const text = document.createTextNode("Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(8))
+        paragraph.append(text)
+        document.body.replaceChildren(paragraph)
+        $.move(text, atEnd ? text.length : 0)
+        const target = document.createElement(tag)
+        if(tag === "picture") target.append(document.createElement("img"))
+        editor.features.manipulation.insert(target)
+        if(side === "left") {
+          feature.startTransform(target)
+          feature.overlay.querySelector<HTMLButtonElement>('[id="◆transform-overlay-float-left"]')!.click()
+        }
+        const rect = target.getBoundingClientRect()
+        const firstLetter = document.createRange()
+        firstLetter.setStart(text, 0)
+        firstLetter.setEnd(text, Math.min(1, text.length))
+        const letter = firstLetter.getBoundingClientRect()
+        assert(rect.width > 0 && rect.width <= paragraph.clientWidth / 2 + 1, "Float leaves space for text")
+        assert(letter.top >= rect.top && letter.top < rect.bottom, "First line wraps beside float")
+        assert(side === "right" ? letter.right <= rect.left : letter.left >= rect.right, "Text stays beside float")
+        paragraph.style.width = "280px"
+        assert(target.getBoundingClientRect().width <= paragraph.clientWidth / 2 + 1, "Float adapts to a narrower container")
+      })
+    }
     for(const writingMode of ["horizontal-tb", "vertical-rl", "vertical-lr", "sideways-rl"]) {
       for(const edge of ["left", "right", "up", "down"]) {
         check(`${writingMode}, ${edge} edge`, () => {

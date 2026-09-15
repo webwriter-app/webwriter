@@ -977,6 +977,25 @@ describe("elementBefore/elementAfter", () => {
     expect($.elementBefore).toBe(paragraphs[0])
     expect($.elementAfter).toBe(paragraphs[1])
   })
+  it("uses live stylesheet floats when resolving flow siblings", () => {
+    const style = document.createElement("style")
+    style.textContent = ".floated { float: left }"
+    document.head.append(style)
+    try {
+      setBody('<p>before</p><img class="floated"><p>after</p>')
+      const image = document.querySelector("img")!
+      $.move(document.body, 2)
+      expect($.elementBefore).toBe(document.body.firstElementChild)
+      image.classList.remove("floated")
+      expect($.elementBefore).toBe(image)
+      image.style.float = "right"
+      $.selectElement(image)
+      expect($.selectedElement).toBe(image)
+      $.delete()
+      expect(image.isConnected).toBe(false)
+    }
+    finally { style.remove() }
+  })
   it("keeps relative and sticky siblings in the flow", () => {
     setBody(`<p>before</p><p style="position: relative">relative</p><p style="position: sticky">sticky</p><p>after</p>`)
     const relative = document.body.children[1]

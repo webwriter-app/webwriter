@@ -292,7 +292,21 @@ describe("insertion menu", () => {
     expect(menu.open).toBe(false)
   })
 
-  it("places a block widget after a paragraph instead of inside it", async () => {
+  it.each(["", "before"])("inserts media from the menu with paragraph text %s", async text => {
+    document.body.innerHTML = `<p>${text}</p>`
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, -1)
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {kind: "element", tag: "picture"}}))
+    const picture = document.querySelector("picture")!
+    expect(picture).not.toBeNull()
+    expect(picture.style.float).toBe(text ? "right" : "")
+    expect(picture.parentElement).toBe(text ? paragraph : document.body)
+  })
+
+  it("floats an atomic widget inside its paragraph", async () => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
       section: "Packages",
@@ -310,9 +324,9 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe("<p>before</p><webwriter-demo></webwriter-demo>")
+    expect(editorHTML()).toBe('<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before</p>')
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.parentElement).toBe(document.body)
+    expect(widget.parentElement).toBe(document.querySelector("p"))
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
     expect(document.getSelection()!.isCollapsed).toBe(true)

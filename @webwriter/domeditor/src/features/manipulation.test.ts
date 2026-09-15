@@ -33,6 +33,68 @@ beforeEach(async () => {
 
 afterEach(() => editor.destroy())
 
+describe("floating insertion", () => {
+  it.each(["p", "h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
+    document.body.innerHTML = `<${tag}>before<b>after</b><!--keep--></${tag}>`
+    const block = document.body.firstElementChild!
+    const bold = block.querySelector("b")!
+    $.move(bold.firstChild!, 2)
+    const image = document.createElement("img")
+    editor.features.manipulation.insert(image)
+    expect(image.closest(tag)).toBe(block)
+    expect(image.style.float).toBe("right")
+    expect(block.textContent).toBe("beforeafter")
+    expect(block.querySelector("b")).toBe(bold)
+    expect(document.body.children).toHaveLength(1)
+    expect(image.style.maxWidth).toBe("50%")
+    expect(image.parentElement).toBe(block)
+    expect(block.firstChild).toBe(image)
+    expect(bold.innerHTML).toBe("after")
+  })
+
+  it.each(["", "text*"])("respects widget content declaration %s", content => {
+    editor.schema.extendWidgets([{tagName: "float-widget", editingConfig: {content}}])
+    const block = document.querySelector("p")!
+    block.textContent = "text"
+    $.move(block.firstChild!, 2)
+    const widget = document.createElement("float-widget")
+    editor.features.manipulation.insert(widget)
+    expect(widget.style.float).toBe(content ? "" : "right")
+    if(!content) expect(widget.parentElement).toBe(block)
+  })
+
+  it.each(["", " ", "<br>", "<b></b>"])("does not float insertion at a caret in an empty paragraph: %s", html => {
+    document.body.innerHTML = `<p>${html}</p>`
+    $.move(document.querySelector("p")!)
+    const image = document.createElement("img")
+    editor.features.manipulation.insert(image)
+    expect(image.style.float).toBe("")
+  })
+
+  it("does not apply automatic floating when replacing selected text", () => {
+    document.body.innerHTML = "<p>text</p>"
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 1, text, 3)
+    const image = document.createElement("img")
+    editor.features.manipulation.insert(image)
+    expect(image.style.float).toBe("")
+  })
+
+  it("undoes and redoes a floated insertion", () => {
+    document.querySelector("p")!.textContent = "text"
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.manipulation.insert(document.createElement("img"))
+    editor.doc.syncFromDOM()
+    const inserted = editor.toHTML(true)
+    editor.doc.undo()
+    expect(document.querySelector("img")).toBeNull()
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(inserted)
+  })
+})
+
 describe("widget-safe validation and transfer", () => {
   const constructed = vi.fn()
   const adopted = vi.fn()
@@ -516,13 +578,13 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const widget = document.querySelector("webwriter-demo")!
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expectBodyToBe("<p>before<webwriter-demo></webwriter-demo> after</p>")
+    expectBodyToBe('<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>')
   })
   it.each([
-    [0, '<webwriter-demo></webwriter-demo><p>before after</p>'],
-    [6, '<p>before</p><webwriter-demo></webwriter-demo><p> after</p>'],
-    [12, '<p>before after</p><webwriter-demo></webwriter-demo>'],
-  ] as const)("places a block widget outside a paragraph at text offset %i", (offset, expected) => {
+    [0, '<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>'],
+    [6, '<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>'],
+    [12, '<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>'],
+  ] as const)("floats an atomic widget inside a paragraph at text offset %i", (offset, expected) => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
     document.body.innerHTML = "<p>before after</p>"
     const text = document.querySelector("p")!.firstChild!
@@ -535,7 +597,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expectBodyToBe(expected)
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.parentElement).toBe(document.body)
+    expect(widget.parentElement).toBe(document.querySelector("p"))
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
   })
@@ -1395,7 +1457,7 @@ describe("paste()", () => {
 
     expectBodyToBe("<p>he</p><h1>Title</h1><p>llo</p>")
   })
-  it("preserves a pasted custom element as an atomic block widget", async () => {
+  it("preserves a pasted custom element as an atomic float", async () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "Widget",
       "text/html": "<demo-widget>Widget</demo-widget>",
@@ -1405,7 +1467,7 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expectBodyToBe("<p>he</p><demo-widget>Widget</demo-widget><p>llo</p>")
+    expectBodyToBe('<p><demo-widget style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;">Widget</demo-widget>hello</p>')
     expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector("demo-widget"))
@@ -1926,6 +1988,23 @@ describe("unified content transfer", () => {
     document.body.dispatchEvent(event)
     return event
   }
+
+  it.each([false, true])("floats a dragged media element on either side (copy: %s)", copy => {
+    for(const [x, side] of [[110, "left"], [190, "right"]] as const) {
+      document.body.innerHTML = '<img style="position: absolute; width: 40px"><p>target</p>'
+      const source = document.querySelector("img")!
+      const paragraph = document.querySelector("p")!
+      vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+      const {data} = beginDrag(source)
+      dropAt(data, paragraph.firstChild!, 3, {clientX: x, ctrlKey: copy})
+      const placed = paragraph.querySelector("img")!
+      expect(placed.style.float).toBe(side)
+      expect(placed.style.position).toBe("")
+      expect(placed === source).toBe(!copy)
+      expect(paragraph.textContent).toBe("target")
+      expect(document.body).not.toHaveClass("◆drop-selection-active")
+    }
+  })
 
   it.each(["webwriter-map", "webwriter-code-javascript"])("capture-selects %s when its node drag surface is clicked", tag => {
     document.body.innerHTML = `<${tag}></${tag}><p>end</p>`
@@ -2508,8 +2587,8 @@ describe("unified content transfer", () => {
 
 
 describe("independent positioned flows", () => {
-  it.each(["absolute", "fixed"])("deletes across %s widgets without changing them", position => {
-    document.body.innerHTML = `<p>before</p><flow-probe style="position: ${position}"><p>private</p></flow-probe><p>after</p>`
+  it.each(["position: absolute", "position: fixed", "float: left", "float: right"])("deletes across %s widgets without changing them", style => {
+    document.body.innerHTML = `<p>before</p><flow-probe style="${style}"><p>private</p></flow-probe><p>after</p>`
     const widget = document.querySelector("flow-probe")!
     const html = widget.outerHTML
     $.selectRange(document.body, 0, document.body, 3)
@@ -2529,8 +2608,8 @@ describe("independent positioned flows", () => {
     expect(document.querySelectorAll("p")).toHaveLength(1)
   })
 
-  it("keeps nested positioned nodes in the original block on Enter", () => {
-    document.body.innerHTML = '<p>before<span style="position: absolute">floating</span>after</p>'
+  it.each(["position: absolute", "float: left", "float: right"])("keeps nested %s nodes in the original block on Enter", style => {
+    document.body.innerHTML = `<p>before<span style="${style}">floating</span>after</p>`
     const block = document.querySelector("p")!
     const floating = document.querySelector("span")!
     $.move(block.firstChild!, 3)

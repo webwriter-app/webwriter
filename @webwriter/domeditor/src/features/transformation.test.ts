@@ -871,6 +871,21 @@ describe("transform controls and geometry", () => {
 })
 
 describe("drop, cancellation, and document ownership", () => {
+  it.each(["img", "demo-widget"])("repairs an existing paragraph float and retains %s selection", tag => {
+    const paragraph = targetElement()
+    const text = paragraph.firstChild!
+    const target = paragraph.appendChild(document.createElement(tag))
+    target.style.float = "right"
+    if(tag === "demo-widget") captureNode(target)
+    else selectNode(target)
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-float-right")!.click()
+    expect(paragraph.firstChild).toBe(target)
+    expect(paragraph.lastChild).toBe(text)
+    expect(target.style.maxWidth).toBe("50%")
+    if(tag === "demo-widget") expect(editor.features.selection.captureSelectedElement).toBe(target)
+    else expect($.selectedElement).toBe(target)
+  })
+
   it("sets float through the appendix buttons", () => {
     const target = targetElement()
     selectNode(target)
@@ -965,6 +980,23 @@ describe("drop, cancellation, and document ownership", () => {
     expect(editor.appendix.querySelector("#◆transform-overlay")).toBeNull()
     expect(document.body).not.toHaveClass("◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew", "◆transform-scaling-ns")
     expect(target).not.toHaveClass("◆transform-target")
+  })
+
+  it.each([[310, "left"], [390, "right"]] as const)("floats media into a paragraph at x=%i", (x, side) => {
+    const target = append(document.createElement("img"))
+    const paragraph = targetElement()
+    paragraph.textContent = "keep text"
+    mockRect(target)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 150, ctrlKey: true}))
+    feature.handleMoveEnd()
+    expect(target.parentElement).toBe(paragraph)
+    expect(target.style.float).toBe(side)
+    expect(paragraph.textContent).toBe("keep text")
+    expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it("clears inline size and placement on a Ctrl/Cmd flow drop while preserving unrelated styling, structure, and undo/redo", async () => {

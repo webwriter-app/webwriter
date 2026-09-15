@@ -62,7 +62,7 @@ export class TransformationFeature extends EditorFeature {
   #frame: number | null = null
   #panFrame: number | null = null
   #panEvent: MouseEvent | null = null
-  #drop: {element: Element, placement: "before" | "after", parent: Node} | null = null
+  #drop: {element: Element, placement: "before" | "after", parent: Node, float?: "left" | "right"} | null = null
   #suppressClick = false
   readonly #cancelGesture = () => this.#finish(true)
 
@@ -111,8 +111,16 @@ export class TransformationFeature extends EditorFeature {
   /** The target's float value, mirrored on the arranger's data-float
    * attribute. */
   set #float(value: "none" | "left" | "right") {
-    if(!this.target || this.editor.isEditingLocked) return
-    this.target.style.float = value === "none"? "": value
+    const target = this.target
+    if(!target || this.editor.isEditingLocked) return
+    const container = target.parentElement && this.editor.features.manipulation.floatContainer(target.parentElement, target)
+    if(value !== "none" && container) {
+      const captured = this.editor.features.selection.isCaptureSelection
+      this.editor.features.manipulation.placeFloat(target, container, value)
+      if(captured) this.editor.features.selection.captureElement(target)
+      else $.selectElement(target)
+    }
+    else target.style.float = value === "none"? "": value
     this.arranger?.setAttribute("data-float", value)
     this.arranger?.toggleAttribute("data-open", false)
     this.updateInfo()
@@ -750,9 +758,12 @@ export class TransformationFeature extends EditorFeature {
       if(parent.localName.includes("-") || parent.hasAttribute("is")) element = parent
     }
     if(isDocumentRoot(element) || !element.parentNode || element.contains(target)) return
+    const container = this.editor.features.manipulation.floatContainer(element, target)
+    if(container) element = container
     const rect = element.getBoundingClientRect()
     const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
-    this.#drop = {element, placement, parent: element.parentNode}
+    this.#drop = {element, placement, parent: element.parentNode!,
+      ...(container ? {float: event.clientX < rect.left + rect.width / 2 ? "left" as const : "right" as const} : {})}
     element.classList.add(`◆drop-caret-${placement}`)
     this.editor.features.selection.showDropCaret(placement)
   }
@@ -783,10 +794,14 @@ export class TransformationFeature extends EditorFeature {
       }
     }
     else if(gesture.moved && this.#drop) {
-      const {element, placement, parent} = this.#drop
-      if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)) {
+      const {element, placement, parent, float} = this.#drop
+      if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
+        && (!float || this.editor.features.manipulation.floatContainer(element, target) === element)) {
         if(gesture.mode === "move") clearInlinePlacement(target)
-        element[placement](target)
+        if(float) {
+          this.editor.features.manipulation.placeFloat(target, element, float)
+        }
+        else element[placement](target)
       }
     }
     this.#gesture = null

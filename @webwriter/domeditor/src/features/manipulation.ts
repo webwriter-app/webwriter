@@ -1,7 +1,8 @@
+import {mediaElementSelector} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {isSlide} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -223,6 +224,42 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
+  /** Text containers accept atomic media/widgets as authored floats. */
+  floatContainer(node: Node, element: Element): Element | null {
+    if(atomicEditingContainer(node, this.editor.schema) || !this.inlineStyleOf(element) || !(element.matches(mediaElementSelector)
+      || this.insertedWidget(element) && !isContentfulWidget(element, this.editor.schema))) return null
+    let container = node instanceof Element ? node : node.parentElement
+    while(container && isMarkElement(container)) container = container.parentElement
+    return container && getDocumentRoot().contains(container) && !element.contains(container)
+      && (this.isTextBlock(container) || isSectionElement(container) && this.editor.schema.isBlock(container)
+        && Array.from(container.childNodes).some(child => child instanceof Text || isElement(child) && isMarkElement(child))) ? container : null
+  }
+
+  /** A paragraph float precedes its text and leaves a responsive text column.
+   * These are authored styles, so the layout survives collaboration/export. */
+  placeFloat(element: Element, container: Element, side: "left" | "right") {
+    if(this.floatContainer(container, element) !== container) return false
+    const style = this.inlineStyleOf(element)!
+    Object.assign(style, {float: side, maxWidth: "50%", minWidth: "0", boxSizing: "border-box"})
+    container.prepend(element)
+    return true
+  }
+
+  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false) {
+    const element = node instanceof DocumentFragment && node.childNodes.length === 1 ? node.firstChild : node
+    const selection = document.getSelection()
+    if(!isElement(element) || !selection?.rangeCount || !selection.isCollapsed
+      || this.editor.features.canvas.active || this.editor.features.slides.active) return false
+    const range = selection.getRangeAt(0)
+    const container = this.floatContainer(range.startContainer, element)
+    if(!container || !allowEmpty && container.localName === "p" && !container.textContent?.trim()) return false
+    this.placeFloat(element, container, side)
+    if(this.insertedWidget(element)) this.editor.features.selection.captureElement(element)
+    else $.selectElement(element)
+    this.editor.postSelectionPath(true)
+    return true
+  }
+
   /** Hover and drop resolve the same text or structural insertion point. */
   private dropRange(event: DragEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
@@ -231,7 +268,7 @@ export class ManipulationFeature extends EditorFeature {
     const range = document.createRange()
     range.setStart(point.node, point.offset)
     range.collapse(true)
-    if(source && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
+    if(source && !this.floatContainer(point.node, source) && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
       while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
       if(this.isTextBlock(block) && !this.editor.schema.canInsert(block, source, block.childNodes.length)) {
@@ -258,17 +295,26 @@ export class ManipulationFeature extends EditorFeature {
       if(source) {
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
         if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
-        range.insertNode(inserted)
-        if(getDocumentRoot().contains(inserted)) {
+        const container = this.floatContainer(range.startContainer, inserted)
+        if(container) {
+          const rect = container.getBoundingClientRect()
           clearInlinePlacement(inserted)
-          $.selectElement(inserted)
+          this.placeFloat(inserted, container, event.clientX < rect.left + rect.width / 2 ? "left" : "right")
         }
+        else {
+          range.insertNode(inserted)
+          if(getDocumentRoot().contains(inserted)) clearInlinePlacement(inserted)
+        }
+        if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
       }
       else {
         const fragment = this.#dataTransferToFragment(data)
         if(!fragment?.childNodes.length) return
         $.move(range.startContainer, range.startOffset)
-        this.insertClipboardFragment(fragment)
+        const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
+        const container = isElement(element) ? this.floatContainer(range.startContainer, element) : null
+        const rect = container?.getBoundingClientRect()
+        if(!container || !this.insertFloat(fragment, rect && event.clientX < rect.left + rect.width / 2 ? "left" : "right", true)) this.insertClipboardFragment(fragment)
       }
       dropped = true
     }
@@ -1033,6 +1079,7 @@ export class ManipulationFeature extends EditorFeature {
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment) {
     if(!this.editor.features.slides.allowsSelection()) return
+    if(this.insertFloat(fragment)) return
     for(const math of Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
       let ancestor = math.parentElement
@@ -1531,6 +1578,7 @@ export class ManipulationFeature extends EditorFeature {
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false) {
     if(!this.editor.features.slides.allowsSelection()) return
+    if(node && this.insertFloat(node)) return
     if(!node && this.ensureTextBlock()) {
       return
     }

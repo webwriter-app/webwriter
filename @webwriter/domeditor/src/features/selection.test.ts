@@ -542,8 +542,8 @@ describe("processSelection()", () => {
       expect($.selectedElement).toBe(widget)
     }
   })
-  it("skips positioned atomic widgets and dividers during keyboard navigation", () => {
-    document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute"></interactive-widget><hr style="position: fixed"><interactive-widget></interactive-widget><p>after</p>'
+  it.each(["position: absolute", "float: left", "float: right"])("skips %s atomic widgets and dividers during keyboard navigation", style => {
+    document.body.innerHTML = `<p>before</p><interactive-widget style="${style}"></interactive-widget><hr style="position: fixed"><interactive-widget></interactive-widget><p>after</p>`
     const widgets = document.querySelectorAll("interactive-widget")
     const text = document.querySelector("p")!.firstChild!
     $.move(text, -1)

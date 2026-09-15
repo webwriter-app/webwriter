@@ -82,12 +82,13 @@ export function atomicEditingContainer(node: Node | null, schema?: Schema) {
   return node ? atomic : null
 }
 
-/** Positioned content owns an editing flow independent of its DOM siblings.
+/** Positioned and floated content own an editing flow independent of their DOM siblings.
  * Read computed style each time: authored styles and remote edits are live. */
 export function isOutOfFlow(node: Node | null): boolean {
   if(!isElement(node)) return false
-  const position = node.ownerDocument.defaultView?.getComputedStyle(node).position
-  return position === "absolute" || position === "fixed"
+  const style = node.ownerDocument.defaultView?.getComputedStyle(node)
+  return style?.position === "absolute" || style?.position === "fixed"
+    || Boolean(style?.float && style.float !== "none")
 }
 
 export function editingFlowRoot(node: Node | null): Element {
