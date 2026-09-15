@@ -11,6 +11,13 @@ afterEach(() => document.body.replaceChildren())
 const mathState = {active: true as const, display: "inline" as const}
 
 describe("formula toolbox controls", () => {
+  it("offers one root structure with an optional index", () => {
+    const roots = mathStructureOptions.filter(option => /root/i.test(option.title))
+    expect(roots).toEqual([{
+      command: "structure:root", label: "ⁿ√□", title: "Root (leave index empty for square root)",
+    }])
+  })
+
   it("offers every structure through the Formula button's normal dropdown", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"

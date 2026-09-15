@@ -172,6 +172,7 @@ export class MathFeature extends EditorFeature {
   }
 
   insert(structure?: string) {
+    if(structure === "sqrt") structure = "root"
     if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return false
     if(this.activeMath) return false
     const selection = document.getSelection()
@@ -384,6 +385,7 @@ export class MathFeature extends EditorFeature {
   }
 
   private insertStructure(range: Range, name: string): boolean {
+    if(name === "sqrt") name = "root"
     if(!mathStructureOptions.some(option => option.command === `structure:${name}`)) return false
     // Preserve selected nodes by moving them, retaining identity and attributes.
     let operand: Node[] = []
@@ -427,7 +429,6 @@ export class MathFeature extends EditorFeature {
       if(name === "square") second.append(mathElement("mn", "2"))
     }
     else if(name === "root") node = mathElement("mroot", first, second)
-    else if(name === "sqrt") node = mathElement("msqrt", first)
     else if(name === "abs" || name === "paren") node = mathElement("mrow", mathElement("mo", name === "abs" ? "|" : "("), first, mathElement("mo", name === "abs" ? "|" : ")"))
     else if(name === "matrix") {
       const table = mathElement("mtable",

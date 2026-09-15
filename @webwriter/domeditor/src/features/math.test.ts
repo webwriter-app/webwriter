@@ -505,7 +505,7 @@ describe("DOM MathML editing", () => {
     expect(editor.features.math.actions.insertMath({type: "insertMath", structure})).toBe(true)
     const math = document.querySelector("math")!
     const expectedTags: Record<string, string> = {
-      frac: "mfrac", square: "msup", sup: "msup", sub: "msub", sqrt: "msqrt", root: "mroot",
+      frac: "mfrac", square: "msup", sup: "msup", sub: "msub", sqrt: "mroot", root: "mroot",
       abs: "mo", paren: "mo", binom: "mfrac", matrix: "mtable", sum: "munderover", prod: "munderover",
       int: "msubsup", bigcup: "munderover", bigcap: "munderover",
     }
@@ -521,6 +521,24 @@ describe("DOM MathML editing", () => {
     expect(math.querySelector("mi")?.textContent).toBe("x")
     expect(document.querySelector("p")!.firstChild!.textContent).toBe("before")
     expect(document.querySelector("p")!.lastChild!.textContent).toBe("after")
+  })
+
+  it.each(["root", "sqrt"])("inserts %s with an optional editable index", structure => {
+    const math = load("")
+    expect(command(`structure:${structure}`)).toBe(true)
+    const root = math.querySelector("mroot")!
+    const [base, index] = Array.from(root.children)
+    expect(command("text:x")).toBe(true)
+    expect(base.textContent).toBe("x")
+    expect(index.childNodes).toHaveLength(0)
+    expect(clean()).toContain("<mroot><mrow><mi>x</mi></mrow><mrow></mrow></mroot>")
+    $.move(index, 0)
+    expect(command("text:3")).toBe(true)
+    expect(index.textContent).toBe("3")
+    expect(command("delete:backward")).toBe(true)
+    expect(index.childNodes).toHaveLength(0)
+    expect(root.firstElementChild).toBe(base)
+    expect(clean()).not.toContain("◆")
   })
 
   it("rejects unknown insertion structures before changing the document", () => {
@@ -582,8 +600,8 @@ describe("DOM MathML editing", () => {
     const nodes = Array.from(math.childNodes).slice(0, 4)
     document.getSelection()!.setBaseAndExtent(math, 0, math, 4)
     expect(command("structure:sqrt")).toBe(true)
-    expect(Array.from(math.querySelector("msqrt > mrow")!.childNodes)).toEqual(nodes)
-    expect(math.querySelector("msqrt")?.nextElementSibling?.textContent).toBe("=")
+    expect(Array.from(math.querySelector("mroot > mrow")!.childNodes)).toEqual(nodes)
+    expect(math.querySelector("mroot")?.nextElementSibling?.textContent).toBe("=")
   })
 
   it.each(mathToolGroups.flatMap(group => group.options))("executes toolbox option $title ($command) as MathML", option => {
@@ -613,7 +631,7 @@ describe("DOM MathML editing", () => {
     expect(math.textContent).toBe("")
     expect(editor.appendix.querySelector(".◆math-overlay")?.textContent).toContain("sqrt")
     key(" ")
-    expect(math.querySelector("msqrt")).not.toBeNull()
+    expect(math.querySelector("mroot")).not.toBeNull()
     expect(clean()).not.toContain("Space to insert")
   })
 

@@ -40,7 +40,7 @@ const structure = (name: string, label: string, title: string): MathTool => ({la
 export const mathStructureOptions: MathTool[] = [
   structure("frac", "□/□", "Fraction"), structure("square", "x²", "Square"),
   structure("sup", "xⁿ", "Power"), structure("sub", "xₙ", "Subscript"),
-  structure("sqrt", "√□", "Square root"), structure("root", "ⁿ√□", "Nth root"),
+  structure("root", "ⁿ√□", "Root (leave index empty for square root)"),
   structure("abs", "|□|", "Absolute value"), structure("paren", "(□)", "Parentheses"),
   structure("binom", "(ⁿₖ)", "Binomial coefficient"), structure("matrix", "[▦]", "Matrix"),
   ...[["sum", "∑"], ["prod", "∏"], ["int", "∫"], ["bigcup", "⋃"], ["bigcap", "⋂"]]
@@ -56,7 +56,7 @@ export const mathToolGroups: {label: string, options: MathTool[]}[] = [
 ]
 
 export const mathCommandAliases: Record<string, string> = {
-  frac: "structure:frac", sqrt: "structure:sqrt", root: "structure:root", binom: "structure:binom",
+  frac: "structure:frac", sqrt: "structure:root", root: "structure:root", binom: "structure:binom",
   sum: "structure:sum", prod: "structure:prod", int: "structure:int", bigcup: "structure:bigcup", bigcap: "structure:bigcap",
   abs: "structure:abs", matrix: "structure:matrix",
   ...Object.fromEntries(["sin", "cos", "tan", "ln", "log"].map(name => [name, `function:${name}`])),
