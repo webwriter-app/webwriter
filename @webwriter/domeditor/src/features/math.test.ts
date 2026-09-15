@@ -767,6 +767,97 @@ describe("DOM MathML editing", () => {
     expect(math.querySelector("msup > mn")!.contains(document.getSelection()!.focusNode)).toBe(true)
   })
 
+  it.each(["mfrac", "mover", "munder", "munderover"])("leaves stacked %s arguments horizontally without visiting another level", tag => {
+    const math = load(`<mi>a</mi><${tag}><mrow><mi>x</mi></mrow><!-- authored --><mrow><mi>y</mi></mrow>${tag === "munderover" ? "<mrow><mi>z</mi></mrow>" : ""}</${tag}><mi>b</mi>`)
+    const structure = math.children[1]
+    const original = clean()
+    for(const argument of Array.from(structure.children)) {
+      $.move(argument.querySelector("mi")!.firstChild!, 1)
+      key("ArrowRight")
+      expect($.focus).toBe(math)
+      expect($.focusOffset).toBe(2)
+      key("ArrowRight")
+      expect($.focus).toBe(math.lastChild!.firstChild)
+      $.move(argument.querySelector("mi")!.firstChild!, 0)
+      key("ArrowLeft")
+      expect($.focus).toBe(math.firstChild!.firstChild)
+    }
+    expect(clean()).toBe(original)
+  })
+
+  it("moves directly between paired scripts vertically and returns to the base horizontally", () => {
+    const math = load('<msubsup><mi>x</mi><mi>i</mi><mi>n</mi></msubsup>')
+    const [base, sub, sup] = Array.from(math.firstElementChild!.children)
+    $.move(sub.firstChild!, 1)
+    key("ArrowUp")
+    expect(sup.contains($.focus)).toBe(true)
+    key("ArrowDown")
+    expect(sub.contains($.focus)).toBe(true)
+    key("ArrowLeft")
+    expect($.focus).toBe(base.firstChild)
+    $.move(sub.firstChild!, 1)
+    key("ArrowRight")
+    expect($.focus).toBe(math)
+    expect($.focusOffset).toBe(1)
+  })
+
+  it("navigates empty fraction slots without changing authored content", () => {
+    const math = load('<mi>a</mi><mfrac><mrow></mrow><mrow></mrow></mfrac><mi>b</mi>')
+    const [numerator, denominator] = Array.from(math.children[1].children)
+    $.move(numerator, 0)
+    const original = clean()
+    key("ArrowDown")
+    expect($.focus).toBe(denominator)
+    key("ArrowUp")
+    expect($.focus).toBe(numerator)
+    key("ArrowRight")
+    expect($.focus).toBe(math)
+    expect($.focusOffset).toBe(2)
+    expect(clean()).toBe(original)
+  })
+
+  it("moves through matrix columns horizontally and rows vertically", () => {
+    const math = load('<mtable><mtr><mtd><mi>a</mi></mtd><mtd><mi>b</mi></mtd></mtr><mtr><mtd><mi>c</mi></mtd><mtd><mi>d</mi></mtd></mtr></mtable>')
+    const cells = math.querySelectorAll("mtd")
+    $.move(cells[0].firstChild!.firstChild!, 1)
+    key("ArrowRight")
+    expect(cells[1].contains($.focus)).toBe(true)
+    key("ArrowDown")
+    expect(cells[3].contains($.focus)).toBe(true)
+    key("ArrowUp")
+    expect(cells[1].contains($.focus)).toBe(true)
+    $.move(cells[1].firstChild!.firstChild!, 1)
+    key("ArrowRight")
+    expect($.focus).toBe(math)
+    expect($.focusOffset).toBe(1)
+  })
+
+  it("visits a root index before its radicand horizontally", () => {
+    const math = load('<mroot><mi>x</mi><mn>3</mn></mroot>')
+    const root = math.firstElementChild!
+    $.move(root.lastChild!.firstChild!, 1)
+    key("ArrowRight")
+    expect(root.firstChild!.contains($.focus)).toBe(true)
+  })
+
+  it("uses live nested arguments after a DOM replacement", () => {
+    const math = load('<mfrac><mrow><msup><mi>x</mi><mi>n</mi></msup></mrow><mrow><mi>d</mi></mrow></mfrac><mi>z</mi>')
+    const fraction = math.firstElementChild!
+    const replacement = fraction.lastElementChild!.cloneNode(true) as Element
+    replacement.firstChild!.textContent = "q"
+    fraction.lastElementChild!.replaceWith(replacement)
+    $.move(math.querySelector("msup > mi:last-child")!.firstChild!, 1)
+    key("ArrowDown")
+    key("ArrowDown")
+    expect(replacement.contains($.focus)).toBe(true)
+    $.move(replacement.firstChild!.firstChild!, 1)
+    const original = clean()
+    key("ArrowRight", {shiftKey: true})
+    expect($.focus).toBe(math)
+    expect($.focusOffset).toBe(1)
+    expect(clean()).toBe(original)
+  })
+
   it("moves across adjacent tokens without invisible duplicate caret stops", () => {
     const math = load('<mi>x</mi><mo>+</mo><mi>y</mi>')
     $.move(math.firstChild!.firstChild!, 1)

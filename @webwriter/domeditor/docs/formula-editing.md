@@ -19,7 +19,8 @@ Empty and filled formulas have 2px of padding inside their background. Text care
 | Letters, numbers, symbols | Insert MathML tokens |
 | `^`, `_` | Add a superscript or subscript to the preceding operand |
 | `/` | Use the preceding operand as a fraction numerator |
-| Arrow keys | Move through tokens and between arguments |
+| Left / Right | Move through tokens and horizontally adjacent arguments; leave stacked parts without visiting another level |
+| Up / Down | Move between stacked arguments, paired scripts, and matrix rows |
 | Shift + arrow, Shift + click, drag | Extend the selection |
 | Tab / Shift + Tab | Move between arguments |
 | Home / End | Move to the start or end of the formula |

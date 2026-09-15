@@ -505,7 +505,7 @@ export class MathFeature extends EditorFeature {
 
   /** Derive visual caret stops afresh, traversing known containers and treating
    * everything else as one opaque expression. */
-  private stops(root: Element): Point[] {
+  private stops(root: Element, horizontalFocus?: Node): Point[] {
     const points: Point[] = []
     const visit = (element: Element, enter = false) => {
       if(plainToken(element) && element.childNodes.length === 1 && element.firstChild instanceof Text) {
@@ -516,7 +516,19 @@ export class MathFeature extends EditorFeature {
       else if(isMath(element) && (mathRowNames.has(element.localName) || mathArity[element.localName]
         || ["mtable", "mtr", "semantics"].includes(element.localName))) {
         if(!element.children.length) points.push([element, 0])
-        const children = element.localName === "semantics" ? Array.from(element.children).slice(0, 1) : Array.from(element.children)
+        let children = element.localName === "semantics" ? Array.from(element.children).slice(0, 1) : Array.from(element.children)
+        if(horizontalFocus) {
+          // Follow the current visual lane. Stacked arguments remain reachable
+          // with Up/Down and Tab, but are not horizontal neighbors.
+          const active = children.find(child => child.contains(horizontalFocus))
+          if(["mfrac", "mover", "munder", "munderover", "mtable"].includes(element.localName)) {
+            children = children.length ? [active ?? children[0]] : []
+          }
+          else if(element.localName === "msubsup" && children.length === 3) {
+            children = [children[0], active && active !== children[0] ? active : children[2]]
+          }
+          else if(element.localName === "mroot" && children.length === 2) children.reverse()
+        }
         children.forEach((child, index) => {
           const transparent = isMath(child) && ["mrow", "mstyle"].includes(child.localName)
           if(isMath(child)) visit(child, Boolean(mathArity[element.localName]) || element.localName === "mtr" || enter && index === 0)
@@ -550,7 +562,9 @@ export class MathFeature extends EditorFeature {
         if(parent && isMath(parent) && mathArity[parent.localName]) {
           const children = Array.from(parent.children)
           const index = children.indexOf(element)
+          if(children.length !== mathArity[parent.localName]) return false
           const order = ["msup", "mover", "mroot"].includes(parent.localName) ? [1, 0]
+            : parent.localName === "msubsup" && index !== 0 ? [2, 1]
             : ["msubsup", "munderover"].includes(parent.localName) ? [2, 0, 1] : [0, 1]
           const target = children[order[order.indexOf(index) + (direction === "up" ? -1 : 1)]]
           if(target) { point = this.stops(target)[0]; break }
@@ -564,11 +578,14 @@ export class MathFeature extends EditorFeature {
       }
     }
     else {
-      const points = this.stops(root)
+      const points = this.stops(root, direction === "left" || direction === "right" ? node : undefined)
       if(direction === "start") point = [root, 0]
       else if(direction === "end") point = points.at(-1)
       else if(direction === "left" || direction === "right") {
-        const index = points.findIndex(([candidate, position]) => candidate === node && position === offset)
+        let index = points.findIndex(([candidate, position]) => candidate === node && position === offset)
+        if(index < 0 && node instanceof Element && offset === 0) {
+          index = points.findIndex(([candidate, position]) => node.contains(candidate) && position === 0)
+        }
         if(index >= 0) point = points[index + (direction === "left" ? -1 : 1)]
         else {
           const range = document.createRange()
