@@ -1845,18 +1845,21 @@ math {
   padding: 2px;
 }
 
+/* Resolve lh on the radical before its contents inherit the length. */
+@property --ww-radical-clearance {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+mroot, msqrt {
+  --ww-radical-clearance: 0.2lh;
+}
+
 /* Extend the radicand's ink bounds to reserve clearance below the root bar. */
 mroot > :first-child,
 msqrt > mrow:only-child {
-  border-top: 0.12em solid transparent;
-}
-
-/* Give short radicands a minimum height with bottom-aligned contents. */
-mroot > mrow:first-child,
-msqrt > mrow:only-child {
-  display: inline-flex;
-  min-height: 1em;
-  align-items: flex-end;
+  border-top: var(--ww-radical-clearance) solid transparent;
 }
 
 math, math * {
