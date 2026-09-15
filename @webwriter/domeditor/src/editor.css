@@ -1845,6 +1845,20 @@ math {
   padding: 2px;
 }
 
+/* Extend the radicand's ink bounds to reserve clearance below the root bar. */
+mroot > :first-child,
+msqrt > mrow:only-child {
+  border-top: 0.12em solid transparent;
+}
+
+/* Give short radicands a minimum height with bottom-aligned contents. */
+mroot > mrow:first-child,
+msqrt > mrow:only-child {
+  display: inline-flex;
+  min-height: 1em;
+  align-items: flex-end;
+}
+
 math, math * {
   cursor: text;
 }
