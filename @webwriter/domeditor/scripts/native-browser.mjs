@@ -32,6 +32,7 @@ const expectedChecks = [
   "canvas paragraphs split into separate positioned items and conversion returns normal flow",
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
+  "exported canvas runs its standalone viewer without editor dependencies",
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
 const chrome = process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"

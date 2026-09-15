@@ -1,3 +1,5 @@
+import canvasViewerSource from "../canvas-viewer.js?raw"
+import {documentLayoutMode} from "../document-layout"
 import { EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
@@ -20,9 +22,18 @@ export class DependencyFeature extends EditorFeature {
     super(editor)
   }
 
-  /** Copies resources for widgets present in a detached authored document. */
+  /** Adds runtime resources required by the detached authored document. */
   appendSerializedAssets(root: Document) {
     const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
+    // Replace an earlier export's runtime, including after a template change.
+    root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
+    if(documentLayoutMode(root.body) === "canvas") {
+      const script = root.createElement("script")
+      script.id = "webwriter-canvas-viewer"
+      script.type = "module"
+      script.textContent = `${canvasViewerSource}\nmountCanvasReader()\n`
+      head.append(script)
+    }
     const tags = new Set<string>()
     const collectTags = (node: Document | DocumentFragment) => {
       node.querySelectorAll("*").forEach(element => {

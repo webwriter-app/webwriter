@@ -22,40 +22,6 @@ body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
   box-shadow: inset 0 0 0 1px currentColor;
 }
 
-/* The viewport is finite; the appendix slot supplies an unbounded camera. */
-html.◆canvas-active:has(> body.ww-canvas) {
-  overflow: clip;
-  background: white;
-  cursor: default;
-}
-
-html.◆canvas-active body {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  min-height: 0 !important;
-  max-width: none !important;
-  overflow: visible;
-  background: transparent;
-  cursor: default;
-}
-
-/* The camera slot inherits the background cursor; authored items retain
- * native text/link cursors and any cursor supplied by their own styles. */
-:where(html.◆canvas-active body > *) {
-  cursor: auto;
-}
-
-body.◆canvas-hand, body.◆canvas-hand * {
-  cursor: grab !important;
-}
-
-body.◆canvas-panning, body.◆canvas-panning * {
-  cursor: grabbing !important;
-  user-select: none !important;
-}
-
 html {
   background: white;
   overflow-y: scroll;

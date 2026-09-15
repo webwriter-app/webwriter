@@ -308,8 +308,11 @@ describe("canvas document layout", () => {
     expect(html).toContain(`class="authored-body ${canvasClass}"`)
     expect(html).toContain("position: absolute")
     expect(html).toContain("color: red")
-    expect(html).not.toContain("◆canvas")
-    expect(html).not.toContain("canvas-controls")
+    const parsed = new DOMParser().parseFromString(html, "text/html")
+    expect(parsed.body.outerHTML).not.toContain("◆canvas")
+    expect(parsed.body.outerHTML).not.toContain("canvas-controls")
+    expect(parsed.documentElement.classList.contains("◆canvas-active")).toBe(false)
+    expect(parsed.querySelector("#webwriter-canvas-viewer")).not.toBeNull()
   })
 
   it("removes local canvas controls, styles, and markers on disable while retaining authored mode", () => {

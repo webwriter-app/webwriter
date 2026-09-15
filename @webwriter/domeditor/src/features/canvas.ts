@@ -1,3 +1,4 @@
+import {CanvasViewer, canvasControlsStyles} from "../canvas-viewer.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
@@ -10,16 +11,14 @@ type Point = {x: number, y: number}
  * and appendix controls; remote changes are never normalized into a schema. */
 export class CanvasFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
-  private camera = {x: 32, y: 32, zoom: 1}
+  private viewer: CanvasViewer | null = null
   private slot: HTMLSlotElement | null = null
-  private slotStyle: string | null = null
   private controls: HTMLElement | null = null
   private background: HTMLElement | null = null
   private stylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
   private frame: number | null = null
   private signature = ""
-  private panning: {id: number, start: Point, camera: Point} | null = null
   private hand = false
   private spaceHand = false
   private placing = false
@@ -33,7 +32,7 @@ export class CanvasFeature extends EditorFeature {
   private readonly release = () => { this.spaceHand = false; this.stopPan(); this.schedule() }
 
   get active() { return documentLayoutMode() === "canvas" }
-  get zoom() { return this.active ? this.camera.zoom : 1 }
+  get zoom() { return this.active ? this.viewer?.zoom ?? 1 : 1 }
 
   private items(): Item[] {
     return Array.from(document.body.children).filter((el): el is Item =>
@@ -89,10 +88,7 @@ export class CanvasFeature extends EditorFeature {
     startCanvas: ({}: {type: "startCanvas"}) => Boolean(this.emptyParagraph()) && this.convert("canvas"),
     navigateCanvas: ({operation}: {type: "navigateCanvas", operation: "zoom-in" | "zoom-out" | "actual-size" | "fit-content"}) => {
       if(!this.active) return
-      if(operation === "fit-content") this.fit()
-      else if(operation === "actual-size") this.zoomAt(1)
-      else if(operation === "zoom-in") this.zoomAt(this.zoom * 1.2)
-      else if(operation === "zoom-out") this.zoomAt(this.zoom / 1.2)
+      this.viewer?.navigate(operation)
     },
   }
 
@@ -168,8 +164,7 @@ export class CanvasFeature extends EditorFeature {
   }
 
   clientPoint(x: number, y: number): Point {
-    const rect = this.slot?.getBoundingClientRect()
-    return {x: (x - (rect?.left ?? this.camera.x)) / this.zoom, y: (y - (rect?.top ?? this.camera.y)) / this.zoom}
+    return this.viewer?.clientPoint(x, y) ?? {x, y}
   }
 
   /** Apply placement only to items created by this local command. Never run
@@ -233,62 +228,17 @@ export class CanvasFeature extends EditorFeature {
     }
   }
 
-  private zoomAt(zoom: number, point = {x: window.innerWidth / 2, y: window.innerHeight / 2}) {
-    if(!Number.isFinite(zoom)) return
-    const next = Math.max(.1, Math.min(4, zoom)), ratio = next / this.zoom
-    const rect = this.slot?.getBoundingClientRect()
-    this.camera.x += (point.x - (rect?.left ?? this.camera.x)) * (1 - ratio)
-    this.camera.y += (point.y - (rect?.top ?? this.camera.y)) * (1 - ratio)
-    this.camera.zoom = next
-    this.applyCamera()
-  }
+  private fit() { this.viewer?.fit() }
 
-  private fit() {
-    const rects = this.items().filter(item => getComputedStyle(item).display !== "none").map(item => item.getBoundingClientRect())
-    if(!rects.length) { this.camera = {x: 32, y: 32, zoom: 1}; this.applyCamera(); return }
-    const left = Math.min(...rects.map(rect => rect.left)), top = Math.min(...rects.map(rect => rect.top))
-    const width = Math.max(...rects.map(rect => rect.right)) - left
-    const height = Math.max(...rects.map(rect => rect.bottom)) - top
-    const zoom = Math.min(1, Math.max(.1, Math.min((window.innerWidth - 96) / Math.max(1, width / this.zoom), (window.innerHeight - 128) / Math.max(1, height / this.zoom))))
-    const point = this.clientPoint(left, top)
-    this.camera = {x: 48 - point.x * zoom, y: 48 - point.y * zoom, zoom}
-    this.applyCamera()
-  }
-
-  /** Reveal local editing without asking the browser to scroll a finite page. */
   reveal(rect: {left: number, top: number, right: number, bottom: number}) {
-    if(!this.active || this.panning) return
-    const dx = rect.left < 24 ? 24 - rect.left : rect.right > window.innerWidth - 24 ? Math.min(0, window.innerWidth - 24 - rect.right) : 0
-    const dy = rect.top < 24 ? 24 - rect.top : rect.bottom > window.innerHeight - 72 ? Math.min(0, window.innerHeight - 72 - rect.bottom) : 0
-    if(dx || dy) { this.camera.x += dx; this.camera.y += dy; this.applyCamera() }
+    if(this.active) this.viewer?.reveal(rect)
   }
 
   panAtEdge(point: Point, rect?: {left: number, top: number, right: number, bottom: number}) {
-    if(!this.isEnabled || !this.active) return false
-    // Follow the item's visible edges, even when grabbed far from that edge.
-    // For an item spanning both edges, let the pointer choose the direction.
-    const edge = (position: number, start: number, end: number, size: number) =>
-      start < 32 && end > size - 32 ? position : start < 32 ? Math.min(position, start) : end > size - 32 ? Math.max(position, end) : position
-    const delta = (position: number, end: number) => position < 32 ? Math.min(16, (32 - position) / 3)
-      : position > end - 32 ? -Math.min(16, (position - end + 32) / 3) : 0
-    const x = delta(rect ? edge(point.x, rect.left, rect.right, window.innerWidth) : point.x, window.innerWidth)
-    const y = delta(rect ? edge(point.y, rect.top, rect.bottom, window.innerHeight) : point.y, window.innerHeight)
-    if(!x && !y) return false
-    this.camera.x += x; this.camera.y += y
-    this.applyCamera()
-    return true
+    return this.isEnabled && this.active ? this.viewer?.panAtEdge(point, rect) ?? false : false
   }
 
-  private applyCamera() {
-    if(!this.slot || !this.active) return
-    this.slot.style.transform = `translate(${this.camera.x}px, ${this.camera.y}px) scale(${this.camera.zoom})`
-    if(this.background) {
-      this.background.style.backgroundPosition = `${this.camera.x}px ${this.camera.y}px`
-      this.background.style.backgroundSize = `${20 * this.zoom}px ${20 * this.zoom}px`
-      this.background.style.backgroundImage = `radial-gradient(#ccd7e3 ${this.zoom}px, transparent ${this.zoom}px)`
-    }
-    const output = this.controls?.querySelector("output")
-    if(output) output.textContent = `${Math.round(this.zoom * 100)}%`
+  private cameraChanged = () => {
     this.editor.features.transformation.updateInfo()
     this.editor.features.layout.refresh()
     this.editor.features.graphic.refresh()
@@ -296,12 +246,7 @@ export class CanvasFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
-  private stopPan() {
-    const pan = this.panning
-    this.panning = null
-    try { if(pan && this.slot?.hasPointerCapture(pan.id)) this.slot.releasePointerCapture(pan.id) } catch {}
-    removeEditorMarker(document.body, "◆canvas-panning")
-  }
+  private stopPan() { this.viewer?.stopPan() }
 
   private ownEvent(event: Event) {
     return (!isAppendixInteraction(event) || event.composedPath()[0] === this.slot)
@@ -334,43 +279,16 @@ export class CanvasFeature extends EditorFeature {
         return
       }
       if(event.button !== 1 && !(event.button === 0 && (this.hand || this.spaceHand))) return
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      this.panning = {id: event.pointerId, start: {x: event.clientX, y: event.clientY}, camera: {...this.camera}}
-      document.body.classList.add("◆canvas-panning")
-      try { this.slot?.setPointerCapture(event.pointerId) } catch {}
+      this.viewer?.startPan(event)
     },
     mousedown: this.preventBackgroundSelection,
     click: this.preventBackgroundSelection,
-    pointermove: event => {
-      const pan = this.panning
-      if(!pan || event.pointerId !== pan.id) return
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      this.camera.x = pan.camera.x + event.clientX - pan.start.x
-      this.camera.y = pan.camera.y + event.clientY - pan.start.y
-      this.applyCamera()
-    },
-    pointerup: event => { if(this.panning && this.panning.id === event.pointerId) { event.preventDefault(); event.stopImmediatePropagation(); this.stopPan() } },
+    pointermove: event => this.viewer?.movePan(event),
+    pointerup: event => this.viewer?.endPan(event),
     pointercancel: () => this.stopPan(),
     lostpointercapture: () => this.stopPan(),
     wheel: event => {
-      if(!this.active || !this.ownEvent(event)) return
-      // Scrollable widgets/containers keep their own ordinary wheel gestures.
-      if(!event.ctrlKey && !event.metaKey) {
-        let element = event.target instanceof Element ? event.target : null
-        while(element && element !== document.body) {
-          const style = getComputedStyle(element)
-          if(/auto|scroll/.test(style.overflowY) && element.scrollHeight > element.clientHeight
-            || /auto|scroll/.test(style.overflowX) && element.scrollWidth > element.clientWidth) return
-          element = element.parentElement
-        }
-      }
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1
-      if(event.ctrlKey || event.metaKey) this.zoomAt(this.zoom * Math.exp(-event.deltaY * unit * .002), {x: event.clientX, y: event.clientY})
-      else { this.camera.x -= event.deltaX * unit; this.camera.y -= event.deltaY * unit; this.applyCamera() }
+      if(this.active && this.ownEvent(event)) this.viewer?.wheel(event)
     },
     keydown: event => {
       if(!this.active || !this.ownEvent(event)) return
@@ -424,10 +342,8 @@ export class CanvasFeature extends EditorFeature {
     if(this.background) this.background.hidden = !this.active
     if(this.active && !this.slot) {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
-      this.slotStyle = this.slot.getAttribute("style")
-      Object.assign(this.slot.style, {display: "block", position: "relative", width: "1280px", height: "720px", transformOrigin: "0 0"})
-      document.documentElement.classList.add("◆canvas-active")
-      this.applyCamera()
+      this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.cameraChanged)
+      this.viewer.applyCamera()
     }
     else if(!this.active && this.slot) this.restoreSlot()
     if(this.active && (this.hand || this.spaceHand)) {
@@ -463,13 +379,9 @@ export class CanvasFeature extends EditorFeature {
     this.stopPan()
     this.hand = this.spaceHand = false
     removeEditorMarker(document.body, "◆canvas-hand")
-    if(this.slot) {
-      if(this.slotStyle === null) this.slot.removeAttribute("style")
-      else this.slot.setAttribute("style", this.slotStyle)
-    }
+    this.viewer?.destroy()
+    this.viewer = null
     this.slot = null
-    this.camera = {x: 32, y: 32, zoom: 1}
-    removeEditorMarker(document.documentElement, "◆canvas-active")
   }
 
   enable() {
@@ -487,14 +399,7 @@ export class CanvasFeature extends EditorFeature {
     this.controls.setAttribute("role", "toolbar")
     this.controls.setAttribute("aria-label", "Document canvas")
     this.editor.addAppendix(this.controls)
-    this.stylesheet = createStylesheet(`
-      .◆canvas-controls { position: fixed; bottom: 20px; left: 24px; z-index: 1000; display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
-      .◆canvas-controls[hidden] { display: none; }
-      .◆canvas-controls button { font: inherit; padding: 7px 10px; border: 0; border-radius: 6px; color: inherit; background: #f1f5f9; cursor: pointer; }
-      .◆canvas-controls button:hover, .◆canvas-controls button[aria-pressed=true] { background: #dbeafe; }
-      .◆canvas-controls button:disabled { opacity: .5; cursor: default; }
-      .◆canvas-controls output { min-width: 3em; text-align: center; }
-    `)
+    this.stylesheet = createStylesheet(canvasControlsStyles)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
     this.observer = new MutationObserver(this.schedule)
     this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, characterData: true})

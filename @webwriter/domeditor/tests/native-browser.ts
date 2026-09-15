@@ -673,7 +673,9 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
       await layoutFrame()
       assert(slot.style.transform === released, `${direction}: panning continued after release`)
     }
-    assert(editor.toHTML().includes("ww-canvas") && !editor.toHTML().includes("canvas-controls"), "serialization mixed camera and authored layout")
+    const exported = new DOMParser().parseFromString(editor.toHTML(), "text/html")
+    assert(exported.body.classList.contains("ww-canvas") && !exported.body.outerHTML.includes("canvas-controls")
+      && !exported.documentElement.classList.contains("◆canvas-active"), "serialization mixed camera and authored layout")
   }
   finally {
     editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})
@@ -706,6 +708,7 @@ await check("canvas paragraphs split into separate positioned items and conversi
 })
 
 
+let savedCanvasHTML = ""
 await check("a clean canvas retains its initial item when moving and typing without inserting links", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
@@ -847,8 +850,42 @@ await check("a clean canvas retains its initial item when moving and typing with
       assert(!savedView.getComputedStyle(savedDoc.documentElement).backgroundImage.includes("radial-gradient"), "document mode retains canvas dots")
     }
     finally { saved.remove() }
+    doc.body.innerHTML = '<p style="position:absolute;left:-400px;top:-300px;width:200px">Exported canvas</p>'
+    savedCanvasHTML = await canvasEditor.serializeHTML(true)
   }
   finally { canvasEditor?.destroy(); frame.remove() }
+})
+
+await check("exported canvas runs its standalone viewer without editor dependencies", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px;border:0"
+  frame.srcdoc = savedCanvasHTML
+  const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+  document.body.append(frame)
+  try {
+    await loaded
+    const doc = frame.contentDocument!, view = frame.contentWindow!
+    const appendix = doc.body.shadowRoot!
+    assert(appendix, "export did not initialize its reader")
+    assert(!doc.querySelector('script[src]'), "reader depends on an external script")
+    const item = doc.body.querySelector("p")!, original = item.outerHTML
+    const rect = item.getBoundingClientRect()
+    assert(rect.left >= 0 && rect.top >= 0 && rect.right < 900, "reader did not fit negative canvas coordinates")
+    const slot = appendix.querySelector("slot")!
+    const before = slot.style.transform
+    appendix.querySelector<HTMLButtonElement>('button[name="zoom-in"]')!.click()
+    assert(slot.style.transform !== before && appendix.querySelector("output")!.textContent === "120%", "reader zoom control did not move the camera")
+    const zoomed = slot.style.transform
+    slot.dispatchEvent(new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaY: 100}))
+    assert(slot.style.transform !== zoomed, "reader did not pan with the wheel")
+    assert(item.outerHTML === original, "reader changed authored placement")
+    assert(!appendix.querySelector('button[name="text"]'), "reader exposes editing controls")
+    assert(view.getComputedStyle(doc.documentElement).overflow === "clip", "reader viewport is not clipped")
+    doc.body.classList.remove("ww-canvas")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert(!appendix.querySelector("[part=canvas-controls]") && !doc.documentElement.classList.contains("◆canvas-active"), "reader did not clean up after a mode change")
+  }
+  finally { frame.remove() }
 })
 
 let savedSlidesHTML = ""
