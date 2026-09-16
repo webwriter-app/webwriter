@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
+import {graphicShapeOptions, graphicShapeCategories} from "../graphic"
+import {RibbonDrawer} from "./ribbon-drawer"
+import type {RibbonMenu} from "./ribbon-menu"
 import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
 
@@ -9,6 +12,8 @@ beforeEach(() => document.body.replaceChildren())
 describe("graphic ribbon", () => {
   it("stacks inline controls within the narrow toolbox pane", () => {
     const styles = AppRibbon.styles.toString()
+    expect(styles).toMatch(/\.graphic-shape-gallery\s*\{[^}]*grid-column:\s*1 \/ -1/)
+    expect(RibbonDrawer.styles.toString()).toMatch(/:host\(\[pane\]\[layout="graphic"\]\) \.controls,[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/)
 
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-geometry-controls\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-text-controls \.graphic-label-parameter\s*\{[\s\S]*?grid-column:\s*1 \/ -1/)
@@ -42,18 +47,22 @@ describe("graphic ribbon", () => {
     graphic.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "Graphic", keepDrawerOpen: false}}))
-    expect(graphic.submenu.map(item => typeof item === "string" ? item : item.action)).toEqual([
-      "insert-graphic-shape:rectangle",
-      "insert-graphic-shape:ellipse",
-      "insert-graphic-shape:triangle",
-      "insert-graphic-shape:diamond",
-      "insert-graphic-shape:hexagon",
-      "insert-graphic-shape:star",
-      "insert-graphic-shape:arrow",
-      "insert-graphic-shape:polygon",
-      "insert-graphic-shape:line",
-      "insert-graphic-shape:connector",
-    ])
+    expect(graphic.submenu.map(item => typeof item === "string" ? item : item.action)).toEqual(
+      graphicShapeOptions.map(option => `insert-graphic-shape:${option.type}`),
+    )
+    expect(graphic.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!.groups).toHaveLength(0)
+    graphic.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!.click()
+    await graphic.updateComplete
+    const menu = graphic.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    expect(menu).toHaveAttribute("gallery")
+    const gallery = menu.shadowRoot!.querySelector(".shape-gallery")!
+    expect(gallery.querySelectorAll('[role="separator"]')).toHaveLength(graphicShapeCategories.length - 1)
+    expect(gallery.querySelectorAll("h1, h2, h3, h4")).toHaveLength(0)
+    expect(gallery.querySelectorAll('button[role="menuitem"]')).toHaveLength(graphicShapeOptions.length)
+    expect(gallery.querySelector('button[aria-label="Heart"] path')).not.toBeNull()
+    expect(gallery.querySelector('button[aria-label="Arc"] path')).toHaveAttribute("fill", "none")
+
   })
 
   it("expands shape insertion as top-level buttons enabled only for a capture-selected drawing area", async () => {
@@ -65,10 +74,11 @@ describe("graphic ribbon", () => {
     let shapes = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>(
       'ribbon-drawer[label="Graphic"] ribbon-button[action^="add-graphic-shape:"]',
     ))
-    expect(shapes.map(shape => shape.label)).toEqual([
-      "Rectangle", "Ellipse", "Triangle", "Diamond", "Hexagon",
-      "Star", "Arrow", "Polygon", "Line", "Connector",
-    ])
+    expect(shapes.map(shape => shape.label)).toEqual(graphicShapeOptions.map(option => option.label))
+    const gallery = ribbon.shadowRoot!.querySelector('.graphic-shape-gallery')!
+    expect(gallery.querySelectorAll('[role="separator"]')).toHaveLength(graphicShapeCategories.length - 1)
+    expect(gallery.querySelectorAll('ribbon-button[icon-only]')).toHaveLength(graphicShapeOptions.length)
+
     expect(shapes.every(shape => shape.disabled)).toBe(true)
     expect(shapes.every(shape => shape.submenu.length === 0)).toBe(true)
 
@@ -206,6 +216,18 @@ describe("graphic ribbon", () => {
     geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Geometry"] .graphic-geometry-controls')!
     expect(geometry.querySelector('input[aria-label="Graphic: Head size"]')).toHaveValue(36)
     expect(geometry.querySelector('input[aria-label="Graphic: Tail width"]')).toHaveValue(42)
+  })
+
+  it("exposes preset adjustments with their actual labels and ranges", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Edit"
+    ribbon.graphic = {active: true, capture: true, selectionCount: 1, shape: "left-up-arrow", parameters: {"adjust-thickness": "0"}}
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const field = ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Graphic: Bend thickness"]')!
+    expect(field).toHaveValue(0)
+    expect(field.min).toBe("-10")
+    expect(field.max).toBe("15")
   })
 
   it("maps connector routing and arrowheads into a contextual drawer", async () => {

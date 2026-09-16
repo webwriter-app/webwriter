@@ -3860,7 +3860,7 @@ export class DomEditor extends LitElement {
       "stroke-width", "opacity", "corner-radius", "routing", "start-arrow", "end-arrow",
       "label", "text-color", "font-size", "inset", "inner-radius", "head-size", "tail-width",
     ])
-    if(typeof detail?.name !== "string" || !allowed.has(detail.name) || typeof detail.value !== "string") {
+    if(typeof detail?.name !== "string" || (!allowed.has(detail.name) && !/^adjust-[a-z][a-z -]*$/.test(detail.name)) || typeof detail.value !== "string") {
       this.focusEditor()
       return
     }

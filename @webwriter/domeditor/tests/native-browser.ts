@@ -963,6 +963,86 @@ await check("selection markers and appendix layout artifacts tear down cleanly",
   section.remove()
 })
 
+await check("shape labels retain capture while typing and selecting text", async () => {
+  $.selectRange(fixture, fixture.childNodes.length)
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+  const graphic = $.selectedElement as SVGSVGElement
+  try {
+    graphic.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+    let proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+    const text = graphic.querySelector("text")!
+    proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Label text", cancelable: true}))
+    await layoutFrame()
+    assert(text.textContent === "Label text", "typing did not reach the SVG label")
+    assert(editor.features.selection.captureSelectedElement === graphic, "typing lost graphic capture")
+    const caret = editor.appendix.querySelector<HTMLElement>('[part="graphic-text-caret"]')!
+    assert(getComputedStyle(caret).animationName === "blink", "the label caret does not blink")
+    proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    await layoutFrame()
+    assert(getComputedStyle(text).cursor === "text" && getComputedStyle(text).pointerEvents !== "none", "closed label is not a text target")
+    assert(getComputedStyle(text, "::selection").backgroundColor === "rgba(0, 0, 0, 0)", "shape selection highlights its label")
+    const point = (index: number) => {
+      const start = text.getStartPositionOfChar(index), end = text.getEndPositionOfChar(index)
+      return new DOMPoint(start.x + (end.x - start.x) * .1, (start.y + end.y) / 2).matrixTransform(text.getScreenCTM()!)
+    }
+    const start = point(8), end = point(2)
+    text.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 98, clientX: start.x, clientY: start.y, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 98, clientX: end.x, clientY: end.y, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 98}))
+    await layoutFrame()
+    proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+    assert(proxy, "one click did not reopen label editing")
+    const selected = editor.features.graphic.textEditingRange!.toString()
+    assert(selected === "bel te", `drag selected the wrong text: ${selected}`)
+    proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true}))
+    assert(editor.features.graphic.textEditingRange!.toString() === "el te", "backwards Shift selection lost its anchor")
+    editor.features.selection.processSelection()
+    assert(editor.features.selection.captureSelectedElement === graphic && graphic.classList.contains("◆element-capture-selected"), "text selection lost graphic capture")
+    proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "!", cancelable: true}))
+    assert(text.textContent === "Lab!xt", "typing did not replace the selected text")
+    const word = point(5)
+    text.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 99, clientX: word.x, clientY: word.y, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 99}))
+    text.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0, cancelable: true}))
+    assert(editor.features.graphic.textEditingRange!.toString() === "xt", "double-click did not select the label word")
+    text.dispatchEvent(new MouseEvent("click", {bubbles: true, button: 0, detail: 3, cancelable: true}))
+    assert(editor.features.graphic.textEditingRange!.toString() === "Lab!xt", "triple-click did not select the label line")
+    proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    assert(!graphic.querySelector('[class*="◆graphic-text-editing"]'), "label editing marker was not cleaned up")
+  }
+  finally {
+    graphic.remove()
+    $.selectDocumentStart()
+    editor.features.selection.processSelection()
+  }
+})
+
+await check("ribbon shapes retain their aspect ratio under the document theme", async () => {
+  const theme = document.createElement("style")
+  theme.textContent = defaultDocumentTheme.source
+  document.head.append(theme)
+  try {
+    for(const shape of ["ellipse", "rounded-rectangle", "line"] as const) {
+      $.selectRange(document.body, document.body.childNodes.length)
+      editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape})
+      const graphic = $.selectedElement as SVGSVGElement
+      try {
+        await layoutFrame()
+        const rect = graphic.getBoundingClientRect()
+        const width = Number(graphic.getAttribute("width")), height = Number(graphic.getAttribute("height"))
+        assert(Math.abs(rect.width - width) < 1 && Math.abs(rect.height - height) < 1,
+          `${shape} stretched from ${width} × ${height} to ${rect.width} × ${rect.height}`)
+      }
+      finally { graphic.remove() }
+    }
+  }
+  finally {
+    theme.remove()
+    $.selectDocumentStart()
+    editor.features.selection.processSelection()
+  }
+})
+
 await check("standalone SVG affordances refit rotated elements and resize beyond their original size", async () => {
   $.selectRange(fixture, fixture.childNodes.length)
   editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "ellipse"})

@@ -30,10 +30,12 @@ export const placeholderSharingLink = "https://webwriter.app/share/placeholder"
 
 type InsertionSection = "Text" | "Lists" | "Media"
 
-const insertGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
+const groupedGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
   label: option.label,
   action: `insert-graphic-shape:${option.type}`,
   icon: option.icon,
+  category: option.category,
+  path: option.path,
 }))
 
 const insertMathStructureButtons: RibbonMenuButton[] = mathStructureOptions.map(option => ({
@@ -133,7 +135,7 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
     }
     if(item.section === "Media" && groupedMediaInsertionTags.has(item.tag)) return []
     if(item.section === "Media" && item.tag === "svg") {
-      return [{label: item.name, action: item.name, icon: "Graphic", submenu: insertGraphicShapeButtons}]
+      return [{label: item.name, action: item.name, icon: "Graphic", submenu: groupedGraphicShapeButtons}]
     }
     if(item.section === "Media" && item.tag === "math") {
       return [{label: item.name, action: item.name, icon: "Formula", submenu: insertMathStructureButtons}]

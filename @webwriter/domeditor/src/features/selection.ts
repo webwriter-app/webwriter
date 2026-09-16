@@ -1349,9 +1349,10 @@ export class SelectionFeature extends EditorFeature {
    * selectionchange events and every editor-driven refresh. Passive refreshes
    * preserve the last interaction's scroll target without revealing it again. */
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
-    // The dead-key input temporarily owns native selection in the appendix.
-    // Clamping it into BODY blurs the input and cancels exponent entry.
-    if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused) return
+    // Appendix inputs and SVG label ranges own their text selection. Clamping
+    // them into BODY disrupts typing and clears the graphic's capture outline.
+    if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused
+      || this.editor.features.graphic.textEditingRange) return
     // Chromium can clear its native range when focusing an SVG-only document.
     // Preserve the ordinary node selection only while no new endpoints exist.
     if(!document.getSelection()?.rangeCount) {

@@ -1,17 +1,24 @@
+import {graphicPresetOptions, readGraphicPreset} from "./graphic-shapes"
+
 export const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 
-export const graphicShapeOptions = [
-  {type: "rectangle", label: "Rectangle", icon: "Rectangle"},
-  {type: "ellipse", label: "Ellipse", icon: "Ellipse"},
-  {type: "triangle", label: "Triangle", icon: "Triangle"},
-  {type: "diamond", label: "Diamond", icon: "Diamond"},
-  {type: "hexagon", label: "Hexagon", icon: "Hexagon"},
-  {type: "star", label: "Star", icon: "Star"},
-  {type: "arrow", label: "Arrow", icon: "Arrow"},
-  {type: "polygon", label: "Polygon", icon: "Polygon"},
-  {type: "line", label: "Line", icon: "Line"},
-  {type: "connector", label: "Connector", icon: "Connector"},
+const basicGraphicShapeOptions = [
+  {type: "rectangle", label: "Rectangle", icon: "Rectangle", category: "Rectangles"},
+  {type: "ellipse", label: "Ellipse", icon: "Ellipse", category: "Basic shapes"},
+  {type: "triangle", label: "Triangle", icon: "Triangle", category: "Basic shapes"},
+  {type: "diamond", label: "Diamond", icon: "Diamond", category: "Basic shapes"},
+  {type: "hexagon", label: "Hexagon", icon: "Hexagon", category: "Basic shapes"},
+  {type: "star", label: "Star", icon: "Star", category: "Stars and banners"},
+  {type: "arrow", label: "Arrow", icon: "Arrow", category: "Block arrows"},
+  {type: "polygon", label: "Polygon", icon: "Polygon", category: "Basic shapes"},
+  {type: "line", label: "Line", icon: "Line", category: "Lines"},
+  {type: "connector", label: "Connector", icon: "Connector", category: "Lines"},
 ] as const
+
+export const graphicShapeCategories = ["Lines", "Rectangles", "Basic shapes", "Block arrows", "Equation shapes", "Flowchart", "Stars and banners", "Callouts"]
+export const graphicShapeOptions = [...basicGraphicShapeOptions, ...graphicPresetOptions]
+  .map(option => ({path: undefined as string | undefined, ...option}))
+  .sort((a, b) => graphicShapeCategories.indexOf(a.category) - graphicShapeCategories.indexOf(b.category))
 
 export type GraphicShapeType = typeof graphicShapeOptions[number]["type"]
 
@@ -88,6 +95,7 @@ export function graphicContainerForNode(node: Node | null) {
 
 function primitiveGraphicShapeType(element: Element | null): GraphicShapeType | null {
   if(!element || element.namespaceURI !== SVG_NAMESPACE) return null
+  if(element.localName === "path") return readGraphicPreset(element)?.type ?? null
   if(element.localName === "rect") return "rectangle"
   if(element.localName === "ellipse" || element.localName === "circle") return "ellipse"
   if(element.localName === "line") return "line"

@@ -2509,6 +2509,11 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenNthCalledWith(9, {type: "manageGraphicLayer", operation: "toggle-lock", index: 2})
     expect(execute).toHaveBeenNthCalledWith(10, {type: "navigateGraphic", operation: "set-zoom", zoom: 175})
     expect(execute).toHaveBeenNthCalledWith(11, {type: "navigateGraphic", operation: "fit-content"})
+    ribbon.dispatchEvent(new CustomEvent("graphic-parameter-change", {
+      detail: {name: "adjust-radius", value: "30"}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenNthCalledWith(12, {type: "setGraphicParameter", name: "adjust-radius", value: "30"})
+
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {

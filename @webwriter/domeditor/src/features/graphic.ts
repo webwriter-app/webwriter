@@ -1,3 +1,5 @@
+import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
+import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {
@@ -51,7 +53,7 @@ type InteractionItem = {
 }
 
 type Interaction = {
-  kind: "move" | "resize" | "rotate" | "roundness" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
+  kind: "adjust" | "move" | "resize" | "rotate" | "roundness" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
   handle: string
   start: Point
   startClient: Point
@@ -132,6 +134,8 @@ type LabelEditor = {
   caret: HTMLDivElement
   range: Range
   text: SVGTextElement
+  backwards: boolean
+  pointerId?: number
 }
 
 type GraphicViewport = {
@@ -158,7 +162,7 @@ const cleanNumber = (value: number) => {
 }
 
 const polygonShapeTypes = new Set<GraphicShapeType>(["triangle", "diamond", "hexagon", "star", "arrow", "polygon"])
-const naturalGraphicShapeSize: Record<GraphicShapeType, {width: number, height: number}> = {
+const naturalGraphicShapeSize: Partial<Record<GraphicShapeType, {width: number, height: number}>> = {
   rectangle: {width: 240, height: 240},
   ellipse: {width: 240, height: 240},
   triangle: {width: 240, height: 240},
@@ -319,6 +323,8 @@ const starInnerRadius = (points: Point[]) => {
 
 const shapeBounds = (shape: Element): Bounds => {
   const geometry = shapeGeometry(shape)
+  const preset = readGraphicPreset(geometry)
+  if(preset) return preset.bounds
   switch(graphicShapeType(shape)) {
     case "rectangle": return {
       x: attributeNumber(geometry, "x"),
@@ -486,6 +492,12 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
     x: safe.x + (initial.width ? (point.x - initial.x) / initial.width * safe.width : point.x - initial.x),
     y: safe.y + (initial.height ? (point.y - initial.y) / initial.height * safe.height : point.y - initial.y),
   })
+  const preset = readGraphicPreset(geometry)
+  if(preset) {
+    writeGraphicPreset(geometry, preset, {...safe, width: Math.max(1, safe.width), height: Math.max(1, safe.height)})
+    syncShapeText(shape)
+    return
+  }
   switch(graphicShapeType(shape)) {
     case "rectangle":
       geometry.setAttribute("x", cleanNumber(safe.x))
@@ -581,8 +593,9 @@ export class GraphicFeature extends EditorFeature {
       if(shape !== undefined && !isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#createGraphic()
       if(shape) {
-        const element = this.#createShape(shape, 0, graphic)
+        let element = this.#createShape(shape, 0, graphic)
         graphic.append(element)
+        if(shape === "text-box") element = this.#setLabel(element, "Text")
         this.#fitStandaloneGraphic(graphic, element)
       }
       this.editor.features.manipulation.insert(graphic)
@@ -597,8 +610,9 @@ export class GraphicFeature extends EditorFeature {
       if(!isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#capturedGraphic()
       if(!graphic) return
-      const element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
+      let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
       graphic.append(element)
+      if(shape === "text-box") element = this.#setLabel(element, "Text")
       this.#selectShape(element)
       this.#refresh()
       this.editor.postSelectionPath()
@@ -720,10 +734,22 @@ export class GraphicFeature extends EditorFeature {
     pointerdown: event => this.#handlePointerDown(event),
     dblclick: event => this.#handleDoubleClick(event),
     click: event => {
-      if(this.#labelEditor && event.target instanceof Node && shapeText(this.#labelEditor.shape)?.contains(event.target)) event.preventDefault()
+      if(this.#labelEditor && event.target instanceof Node && shapeText(this.#labelEditor.shape)?.contains(event.target)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        if(event.detail >= 3) this.#expandLabelSelection("lineboundary")
+      }
     },
-    pointermove: event => this.#handlePointerMove(event),
+    pointermove: event => {
+      if(this.#labelEditor && this.#labelEditor.pointerId !== undefined && this.#labelEditor.pointerId === event.pointerId) {
+        event.preventDefault()
+        this.#moveLabelSelection(event, true)
+        return
+      }
+      this.#handlePointerMove(event)
+    },
     pointerup: event => {
+      if(this.#labelEditor && this.#labelEditor.pointerId !== undefined && this.#labelEditor.pointerId === event.pointerId) this.#labelEditor.pointerId = undefined
       if(this.#labelEditor && this.editor.features.mark.isSVGTextSelection) {
         this.#labelEditor.element.focus({preventScroll: true})
         this.editor.postMarkState()
@@ -731,9 +757,15 @@ export class GraphicFeature extends EditorFeature {
       }
       this.#finishPointer(event)
     },
-    pointercancel: event => this.#cancelPointer(event),
+    pointercancel: event => {
+      if(this.#labelEditor && this.#labelEditor.pointerId !== undefined && this.#labelEditor.pointerId === event.pointerId) this.#labelEditor.pointerId = undefined
+      this.#cancelPointer(event)
+    },
     wheel: event => this.#handleWheel(event),
-    beforeinput: event => this.#blockCapturedEditingEvent(event),
+    beforeinput: event => {
+      if(this.textEditingRange) this.#labelInput(event)
+      else this.#blockCapturedEditingEvent(event)
+    },
     compositionstart: event => this.#blockCapturedEditingEvent(event),
     paste: event => this.#blockCapturedEditingEvent(event),
     keydown: event => {
@@ -918,14 +950,27 @@ export class GraphicFeature extends EditorFeature {
   #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement) {
     const bounds = this.#shapeInsertionBounds(type, index, graphic)
     let shape: SVGGraphicsElement
+    if(isGraphicPresetType(type)) {
+      const definition: GraphicShapePreset = graphicShapePresets[type]
+      shape = document.createElementNS(SVG_NAMESPACE, "path")
+      shape.setAttribute("d", graphicPresetPath(type, bounds))
+      shape.setAttribute("aria-label", definition.label)
+      shape.setAttribute("fill-rule", "evenodd")
+      shape.setAttribute("fill", definition.open ? "none" : "#ffffff")
+      shape.setAttribute("stroke", "#334155")
+      shape.setAttribute("stroke-width", definition.open ? "6" : "4")
+      shape.setAttribute("stroke-linejoin", "round")
+      shape.setAttribute("vector-effect", "non-scaling-stroke")
+      return shape
+    }
     if(type === "rectangle") {
       shape = document.createElementNS(SVG_NAMESPACE, "rect")
       shape.setAttribute("x", cleanNumber(bounds.x))
       shape.setAttribute("y", cleanNumber(bounds.y))
       shape.setAttribute("width", cleanNumber(bounds.width))
       shape.setAttribute("height", cleanNumber(bounds.height))
-      shape.setAttribute("rx", cleanNumber(bounds.width / naturalGraphicShapeSize.rectangle.width * 12))
-      shape.setAttribute("ry", cleanNumber(bounds.height / naturalGraphicShapeSize.rectangle.height * 12))
+      shape.setAttribute("rx", cleanNumber(bounds.width / naturalGraphicShapeSize.rectangle!.width * 12))
+      shape.setAttribute("ry", cleanNumber(bounds.height / naturalGraphicShapeSize.rectangle!.height * 12))
     }
     else if(type === "ellipse") {
       shape = document.createElementNS(SVG_NAMESPACE, "ellipse")
@@ -979,7 +1024,7 @@ export class GraphicFeature extends EditorFeature {
     const matrix = graphic?.isConnected ? this.#baseScreenMatrix(graphic) : {a: 1, b: 0, c: 0, d: 1, e: 0, f: 0}
     const xScale = Math.max(0.0001, Math.hypot(matrix.a, matrix.b))
     const yScale = Math.max(0.0001, Math.hypot(matrix.c, matrix.d))
-    const natural = naturalGraphicShapeSize[type]
+    const natural = naturalGraphicShapeSize[type] ?? {width: 240, height: 240}
     const screenWidth = viewBox.width * xScale
     const screenHeight = viewBox.height * yScale
     const margin = Math.min(32, screenWidth * 0.1, screenHeight * 0.1)
@@ -1019,7 +1064,13 @@ export class GraphicFeature extends EditorFeature {
     graphic.setAttribute("height", cleanNumber(height + padding * 2))
     graphic.setAttribute("overflow", "visible")
     graphic.setAttribute("preserveAspectRatio", "none")
-    graphic.style.position = "absolute"
+    // Theme rules for page content override SVG presentation attributes.
+    // Keep the fitted viewport dimensions authoritative for standalone shapes.
+    Object.assign(graphic.style, {
+      position: "absolute",
+      width: `${cleanNumber(width+padding*2)}px`,
+      height: `${cleanNumber(height+padding*2)}px`,
+    })
   }
 
   #fitSelectedStandaloneGraphic() {
@@ -1048,8 +1099,11 @@ export class GraphicFeature extends EditorFeature {
     if(!graphic || !shape || this.#isLocked(shape) || !type && shape.localName !== "text" || type === "line" || type === "connector") return
     event.preventDefault()
     event.stopImmediatePropagation()
-    if(standaloneGraphicShape(graphic)) this.editor.features.selection.selectElement(graphic)
-    else if(this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
+    if(this.#labelEditor?.text.contains(event.target)) {
+      this.#expandLabelSelection("word")
+      return
+    }
+    if(this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
     if(type) this.#selectShape(shape)
     this.#openLabelEditor(shape)
     this.#refresh()
@@ -1059,6 +1113,8 @@ export class GraphicFeature extends EditorFeature {
   #openLabelEditor(shape: SVGGraphicsElement) {
     this.#closeLabelEditor(true, false)
     this.editor.doc.stopCapturing()
+    const graphic = graphicContainerForNode(shape)
+    if(graphic && this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
     if(!shapeText(shape)) {
       shape = this.#setLabel(shape, " ")
       shapeText(shape)!.replaceChildren()
@@ -1078,15 +1134,9 @@ export class GraphicFeature extends EditorFeature {
     this.editor.addAppendix(caret)
     const range = document.createRange()
     range.selectNodeContents(text)
-    this.#labelEditor = {element, shape, caret, range, text}
+    this.#labelEditor = {element, shape, caret, range, text, backwards: false}
     text.classList.add("◆graphic-text-editing")
-    element.addEventListener("beforeinput", event => {
-      if(event.isComposing || event.inputType === "insertCompositionText") return
-      this.editor.features.mark.handleSVGTextInput(event)
-      this.rememberTextSelection()
-      element.focus({preventScroll: true})
-      this.#positionLabelEditor()
-    })
+    element.addEventListener("beforeinput", event => this.#labelInput(event))
     element.addEventListener("compositionend", event => {
       if(event.data) this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {
         inputType: "insertText", data: event.data, cancelable: true,
@@ -1122,6 +1172,67 @@ export class GraphicFeature extends EditorFeature {
     this.#positionLabelEditor()
   }
 
+  #labelInput(event: InputEvent) {
+    if(event.isComposing || event.inputType === "insertCompositionText") return
+    event.stopPropagation()
+    this.editor.features.mark.handleSVGTextInput(event)
+    this.rememberTextSelection()
+    this.focusTextInput()
+    this.#positionLabelEditor()
+    // Applying an SVG Range can move focus back to the document at the end
+    // of the native input event. Restore the proxy after that default action.
+    const editor = this.#labelEditor
+    queueMicrotask(() => { if(this.#labelEditor === editor) this.focusTextInput() })
+  }
+
+  #moveLabelSelection(event: PointerEvent, extend: boolean) {
+    const editor = this.#labelEditor
+    if(!editor || !this.#restoreTextSelection()) return
+    const {text} = editor
+    const native = document.caretPositionFromPoint?.(event.clientX, event.clientY)
+    let point: [Node, number] | null = native && text.contains(native.offsetNode)
+      ? [native.offsetNode, native.offset] : null
+    if(!point) {
+      // Outside the glyphs, clamp dragging to the nearest label caret instead
+      // of allowing hit testing to enter another shape or leave the graphic.
+      let distance = Infinity
+      const content = text.textContent ?? ""
+      for(let offset = 0; offset <= content.length; offset++) {
+        const candidate = textPointAtOffset(text, offset)
+        const range = document.createRange()
+        range.setStart(...candidate)
+        range.collapse(true)
+        const rect = range.getBoundingClientRect()
+        const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom)
+        const next = Math.hypot(rect.left - event.clientX, dy)
+        if(next < distance) { point = candidate; distance = next }
+      }
+    }
+    if(!point) point = [text, 0]
+    const selection = document.getSelection()!
+    if(extend) selection.extend(...point)
+    else selection.setBaseAndExtent(...point, ...point)
+    this.rememberTextSelection()
+    this.focusTextInput()
+    this.editor.postMarkState()
+    this.#positionLabelEditor()
+  }
+
+  #expandLabelSelection(granularity: "word" | "lineboundary") {
+    const editor = this.#labelEditor
+    if(!editor || !this.#restoreTextSelection()) return
+    const selection = document.getSelection()!
+    selection.modify?.("move", "backward", granularity)
+    selection.modify?.("extend", "forward", granularity)
+    if(!editor.text.contains(selection.anchorNode) || !editor.text.contains(selection.focusNode)) {
+      selection.setBaseAndExtent(editor.text, 0, editor.text, editor.text.childNodes.length)
+    }
+    this.rememberTextSelection()
+    this.focusTextInput()
+    this.editor.postMarkState()
+    this.#positionLabelEditor()
+  }
+
   get textEditingRange(): Range | null {
     const editor = this.#labelEditor
     const text = editor && shapeText(editor.shape)
@@ -1129,6 +1240,7 @@ export class GraphicFeature extends EditorFeature {
     const selection = document.getSelection()
     if(selection?.rangeCount && text.contains(selection.anchorNode) && text.contains(selection.focusNode)) {
       editor.range = selection.getRangeAt(0).cloneRange()
+      editor.backwards = !selection.isCollapsed && (selection.anchorNode !== editor.range.startContainer || selection.anchorOffset !== editor.range.startOffset)
     }
     else if(selection?.anchorNode && selection.anchorNode !== document.documentElement
       && (selection.anchorNode !== document.body || !this.isTextInputFocused)) return null
@@ -1145,7 +1257,8 @@ export class GraphicFeature extends EditorFeature {
     const range = this.textEditingRange
     if(!range) return false
     const selection = document.getSelection()!
-    selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+    if(this.#labelEditor?.backwards) selection.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset)
+    else selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
     return true
   }
 
@@ -1166,7 +1279,8 @@ export class GraphicFeature extends EditorFeature {
     this.#restoreTextSelection()
     const selection = document.getSelection()
     if(!selection?.rangeCount || !text.contains(selection.anchorNode) || !text.contains(selection.focusNode)) return
-    if(modifierKeyDown(event) && !event.altKey) {
+    const navigation = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
+    if(!navigation && modifierKeyDown(event) && !event.altKey) {
       const mark = ({b: "b", i: "i", u: "u", k: "a"} as const)[event.key.toLowerCase() as "b" | "i" | "u" | "k"]
       if(mark) { event.preventDefault(); this.editor.features.mark.toggleMark(mark); this.focusTextInput(); return }
       if(["z", "y"].includes(event.key.toLowerCase())) {
@@ -1182,21 +1296,37 @@ export class GraphicFeature extends EditorFeature {
       this.focusTextInput()
       return
     }
-    if(["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+    if(navigation) {
       event.preventDefault()
-      const offset = textOffsetIn(text, selection.focusNode!, selection.focusOffset) ?? 0
-      const content = text.textContent ?? ""
-      let next = event.key === "Home" ? 0 : event.key === "End" ? content.length
-        : event.key === "ArrowLeft" ? offset - ([...content.slice(0, offset)].at(-1)?.length ?? 0)
-        : offset + ([...content.slice(offset)][0]?.length ?? 0)
-      if(!event.shiftKey && !selection.isCollapsed && event.key.startsWith("Arrow")) {
-        const range = selection.getRangeAt(0)
-        next = textOffsetIn(text, event.key === "ArrowLeft" ? range.startContainer : range.endContainer,
-          event.key === "ArrowLeft" ? range.startOffset : range.endOffset) ?? next
+      const backward = ["ArrowLeft", "ArrowUp", "Home"].includes(event.key)
+      const vertical = event.key === "ArrowUp" || event.key === "ArrowDown"
+      if(selection.modify) {
+        const anchor: [Node, number] = [selection.anchorNode!, selection.anchorOffset]
+        const granularity = event.metaKey ? vertical ? "documentboundary" : "lineboundary"
+          : event.key === "Home" || event.key === "End" ? event.ctrlKey ? "documentboundary" : "lineboundary"
+          : vertical ? "line" : event.altKey || event.ctrlKey ? "word" : "character"
+        selection.modify(event.shiftKey ? "extend" : "move", backward ? "backward" : "forward", granularity)
+        if(!text.contains(selection.focusNode)) {
+          const edge = textPointAtOffset(text, backward ? 0 : (text.textContent ?? "").length)
+          if(event.shiftKey) selection.setBaseAndExtent(...anchor, ...edge)
+          else selection.setBaseAndExtent(...edge, ...edge)
+        }
       }
-      const point = textPointAtOffset(text, Math.max(0, Math.min(content.length, next)))
-      if(event.shiftKey) selection.extend(...point)
-      else selection.setBaseAndExtent(...point, ...point)
+      else {
+        const offset = textOffsetIn(text, selection.focusNode!, selection.focusOffset) ?? 0
+        const content = text.textContent ?? ""
+        let next = event.key === "Home" ? 0 : event.key === "End" ? content.length
+          : backward ? offset - ([...content.slice(0, offset)].at(-1)?.length ?? 0)
+          : offset + ([...content.slice(offset)][0]?.length ?? 0)
+        if(!event.shiftKey && !selection.isCollapsed && event.key.startsWith("Arrow")) {
+          const range = selection.getRangeAt(0)
+          next = textOffsetIn(text, backward ? range.startContainer : range.endContainer,
+            backward ? range.startOffset : range.endOffset) ?? next
+        }
+        const point = textPointAtOffset(text, Math.max(0, Math.min(content.length, next)))
+        if(event.shiftKey) selection.extend(...point)
+        else selection.setBaseAndExtent(...point, ...point)
+      }
     }
     else if(event.key === "Backspace" || event.key === "Delete") {
       event.preventDefault()
@@ -1217,6 +1347,7 @@ export class GraphicFeature extends EditorFeature {
     const editor = this.#labelEditor
     if(!editor) return
     this.#labelEditor = null
+    if(editor.pointerId !== undefined && editor.text.hasPointerCapture?.(editor.pointerId)) editor.text.releasePointerCapture(editor.pointerId)
     editor.element.remove()
     editor.caret.remove()
     removeEditorMarker(editor.text, "◆graphic-text-editing")
@@ -1242,12 +1373,18 @@ export class GraphicFeature extends EditorFeature {
     if(!range) { this.#closeLabelEditor(true, false); return }
     editor.caret.hidden = !range
     if(range && !range.collapsed) {
-      const rect = range.getBoundingClientRect()
-      editor.caret.style.cssText = `position:fixed;pointer-events:none;background:rgba(37,99,235,.25);left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+      editor.caret.style.cssText = "position:fixed;pointer-events:none;left:0;top:0;width:0;height:0"
+      editor.caret.replaceChildren(...Array.from(range.getClientRects(), rect => {
+        const highlight = document.createElement("div")
+        highlight.style.cssText = `position:fixed;pointer-events:none;background:var(--editor-selection-background,rgba(37,99,235,.25));left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+        return highlight
+      }))
       return
     }
+    editor.caret.replaceChildren()
     editor.caret.style.width = "1px"
     editor.caret.style.background = "currentColor"
+    editor.caret.style.animation = "var(--ww-ui-animation, blink 1s step-end infinite)"
     if(!range) return
     let rect = range.getBoundingClientRect()
     if(!rect.height && !text.textContent) rect = this.#emptyTextCaretRect(text) ?? rect
@@ -1293,6 +1430,24 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #handlePointerDown(event: PointerEvent) {
+    const target = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null
+    const label = target?.closest<SVGTextElement>("text")
+    const labelShape = label && (graphicShapeForNode(label) ?? label)
+    if(event.button === 0 && label?.namespaceURI === SVG_NAMESPACE && labelShape && graphicContainerForNode(label)
+      && !this.#isLocked(labelShape) && !this.#spaceDown) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if(this.#labelEditor?.text !== label) {
+        this.#openLabelEditor(labelShape)
+        if(graphicShapeType(labelShape)) this.#selectShape(labelShape)
+      }
+      this.#labelEditor!.pointerId = event.pointerId
+      try { label.setPointerCapture?.(event.pointerId) }
+      catch { /* Synthetic pointers do not have an active capture target. */ }
+      this.#moveLabelSelection(event, event.shiftKey)
+      this.editor.postSelectionPath()
+      return
+    }
     if(this.#labelEditor && event.target instanceof Node) {
       const text = shapeText(this.#labelEditor.shape)
       if(text?.contains(event.target)) {
@@ -1368,7 +1523,8 @@ export class GraphicFeature extends EditorFeature {
     if(!shape || !graphic || !shapes.length) return
     const point = this.#clientPoint(graphic, event.clientX, event.clientY)
     const captureTarget = event.composedPath().find(target => target instanceof Element) as Element | undefined
-    const kind = handle.startsWith("resize-") ? "resize"
+    const kind = handle.startsWith("adjust-") ? "adjust"
+      : handle.startsWith("resize-") ? "resize"
       : handle.startsWith("vertex-") ? "vertex"
         : handle === "line-start" || handle === "line-end" || handle === "connector-start" || handle === "connector-end"
           || handle === "roundness" || handle === "radius-x" || handle === "radius-y" || handle === "rotate"
@@ -1995,6 +2151,12 @@ export class GraphicFeature extends EditorFeature {
       setRotation(shape, this.#snapRotation(angle, latest))
       return {}
     }
+    if(interaction.kind === "adjust") {
+      const preset = readGraphicPreset(geometry)
+      if(preset) adjustGraphicPreset(geometry, preset, interaction.handle, point)
+      syncShapeText(shape)
+      return {}
+    }
     if(interaction.kind === "roundness") {
       const radius = Math.max(0, Math.min(interaction.bounds.height / 2, point.x - interaction.bounds.x))
       geometry.setAttribute("rx", cleanNumber(radius))
@@ -2333,7 +2495,7 @@ export class GraphicFeature extends EditorFeature {
 
   #geometrySignature(shape: Element) {
     const geometry = shapeGeometry(shape)
-    const attributes = ["x", "y", "width", "height", "cx", "cy", "r", "rx", "ry", "x1", "y1", "x2", "y2", "points", "transform"]
+    const attributes = ["x", "y", "width", "height", "cx", "cy", "r", "rx", "ry", "x1", "y1", "x2", "y2", "points", "d", "aria-label", "transform"]
     return [shape, ...(geometry === shape ? [] : [geometry])].map(element => attributes
       .map(name => `${name}=${element.getAttribute(name) ?? ""}`)
       .join(";"),
@@ -2975,7 +3137,13 @@ export class GraphicFeature extends EditorFeature {
     container.dataset.signature = signature
     container.replaceChildren()
     if(!shape) return
-    if(type === "rectangle") {
+    const preset = readGraphicPreset(shapeGeometry(shape))
+    if(preset) {
+      container.append(...graphicPresetHandles(preset).map(handle => this.#createHandle(
+        handle.name, `Adjust ${handle.label.toLowerCase()}`, "graphic-affordance graphic-affordance-adjustment",
+      )))
+    }
+    else if(type === "rectangle") {
       container.append(this.#createHandle("roundness", "Adjust corner radius", "graphic-affordance graphic-affordance-roundness"))
     }
     else if(type === "ellipse") {
@@ -3013,7 +3181,9 @@ export class GraphicFeature extends EditorFeature {
       const handle = overlay.querySelector<HTMLElement>(`[data-graphic-handle="${name}"]`)
       if(handle) this.#positionHandle(handle, toClient(point))
     }
-    if(type === "rectangle") position("roundness", {x: bounds.x + attributeNumber(geometry, "rx"), y: bounds.y})
+    const preset = readGraphicPreset(geometry)
+    if(preset) graphicPresetHandles(preset).forEach(handle => position(handle.name, handle.point))
+    else if(type === "rectangle") position("roundness", {x: bounds.x + attributeNumber(geometry, "rx"), y: bounds.y})
     else if(type === "ellipse") {
       const center = shapeCenter(shape)
       position("radius-x", {x: bounds.x + bounds.width, y: center.y})
@@ -3147,7 +3317,6 @@ export class GraphicFeature extends EditorFeature {
       text = document.createElementNS(SVG_NAMESPACE, "text")
       text.setAttribute("text-anchor", "middle")
       text.setAttribute("dominant-baseline", "middle")
-      text.setAttribute("pointer-events", "none")
       text.setAttribute("font-family", "system-ui, sans-serif")
       text.setAttribute("font-size", "48")
       text.setAttribute("fill", "#0f172a")
@@ -3172,6 +3341,7 @@ export class GraphicFeature extends EditorFeature {
     const geometry = shapeGeometry(shape)
     const text = shapeText(shape)
     const points = shapePoints(shape)
+    const preset = readGraphicPreset(geometry)
     return {
       x: cleanNumber(bounds.x),
       y: cleanNumber(bounds.y),
@@ -3187,6 +3357,9 @@ export class GraphicFeature extends EditorFeature {
         "text-color": text?.getAttribute("fill") ?? "#0f172a",
         "font-size": text?.getAttribute("font-size") ?? "48",
       } : {}),
+      ...Object.fromEntries((preset?.definition.adjustments ?? []).map((adjustment, index) => [
+        `adjust-${adjustment.name}`, cleanNumber(preset!.values[index]),
+      ])),
       ...(type === "rectangle" ? {"corner-radius": geometry.getAttribute("rx") ?? "0"} : {}),
       ...(type === "hexagon" ? {inset: cleanNumber(Math.max(0, points[0]?.x - bounds.x))} : {}),
       ...(type === "star" ? {"inner-radius": cleanNumber(starInnerRadius(points))} : {}),
@@ -3227,7 +3400,9 @@ export class GraphicFeature extends EditorFeature {
     }
     const numeric = Number.parseFloat(value)
     if(!Number.isFinite(numeric)) return shape
-    if(name === "stroke-width") geometry.setAttribute(name, cleanNumber(Math.max(0, numeric)))
+    const preset = readGraphicPreset(geometry)
+    if(preset && name.startsWith("adjust-")) adjustGraphicPreset(geometry, preset, name, numeric)
+    else if(name === "stroke-width") geometry.setAttribute(name, cleanNumber(Math.max(0, numeric)))
     else if(name === "opacity") shape.setAttribute(name, cleanNumber(Math.min(1, Math.max(0, numeric))))
     else if(name === "font-size" && text) text.setAttribute(name, cleanNumber(Math.max(1, numeric)))
     else if(name === "rotation" && graphicShapeType(shape) !== "connector") setRotation(shape, numeric)

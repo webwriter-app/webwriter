@@ -40,6 +40,8 @@ const expectedChecks = [
   "focused AI previews preserve widgets, contextual HTML, and rendered styles",
   "selection markers and appendix layout artifacts tear down cleanly",
   "standalone SVG affordances refit rotated elements and resize beyond their original size",
+  "ribbon shapes retain their aspect ratio under the document theme",
+  "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
   "canvas paragraphs split into separate positioned items and conversion returns normal flow",

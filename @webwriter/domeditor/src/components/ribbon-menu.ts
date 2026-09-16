@@ -12,6 +12,9 @@ export type RibbonMenuButton = string | {
   icon?: string
   iconText?: string
   iconUrl?: string
+  /** Optional metadata used by visual galleries such as graphic shapes. */
+  category?: string
+  path?: string
   submenu?: RibbonMenuButton[]
 }
 
@@ -45,6 +48,11 @@ export class RibbonMenu extends LitElement {
       background: transparent;
       /* Let the menu's shadow extend beyond the native popover bounds. */
       overflow: visible;
+    }
+
+    :host([variant="button"][gallery]) {
+      width: min(32rem, calc(100vw - 1rem));
+      max-width: calc(100vw - 1rem);
     }
 
     :host([variant="button"][custom-content]) {
@@ -228,12 +236,53 @@ export class RibbonMenu extends LitElement {
       height: 100%;
       object-fit: contain;
     }
+
+    :host([gallery]) .menu {
+      max-height: min(40rem, calc(100vh - 10rem));
+    }
+
+    .shape-gallery {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      gap: 0.2rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .shape-gallery .gallery-divider {
+      grid-column: 1 / -1;
+      height: 0;
+      margin: 0.25rem 0 0.1rem;
+      border-top: 1px solid #d8dee6;
+    }
+
+    .shape-gallery .item {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 0.2rem;
+      min-width: 0;
+      padding: 0.35rem 0.2rem;
+      text-align: center;
+    }
+
+    .shape-gallery .item-icon {
+      flex-basis: 2.1rem;
+      width: 2.1rem;
+      height: 2.1rem;
+      margin-inline: auto;
+    }
+
+    .shape-gallery .item > span:last-child {
+      display: none;
+    }
   `
 
   groups: RibbonMenuGroup[] = []
   variant = "ribbon"
   customContent = false
   noScroll = false
+  gallery = false
   label = ""
   private openSubmenu: string | null = null
   private openSubmenuToggle: HTMLButtonElement | null = null
@@ -244,6 +293,7 @@ export class RibbonMenu extends LitElement {
     customContent: {type: Boolean, attribute: "custom-content", reflect: true},
     noScroll: {type: Boolean, attribute: "no-scroll", reflect: true},
     label: {type: String},
+    gallery: {type: Boolean, reflect: true},
     openSubmenu: {state: true},
   }
 
@@ -267,6 +317,14 @@ export class RibbonMenu extends LitElement {
     return typeof button === "string" ? "" : button.iconUrl ?? ""
   }
 
+  private buttonCategory(button: RibbonMenuButton) {
+    return typeof button === "string" ? "" : button.category ?? ""
+  }
+
+  private buttonPath(button: RibbonMenuButton) {
+    return typeof button === "string" ? "" : button.path ?? ""
+  }
+
   private handleIconError(event: Event) {
     const image = event.currentTarget as HTMLImageElement
     image.parentElement?.classList.remove("image-icon")
@@ -274,6 +332,14 @@ export class RibbonMenu extends LitElement {
   }
 
   private renderButtonIcon(button: RibbonMenuButton) {
+    const path = this.buttonPath(button)
+    if(path) return html`
+      <span class="item-icon shape-preview" aria-hidden="true">
+        <svg viewBox="-10 -10 120 120" focusable="false" aria-hidden="true">
+          <path d=${path} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </span>
+    `
     const iconUrl = this.buttonIconUrl(button)
     const iconText = typeof button === "string" ? undefined : button.iconText
     if(iconText !== undefined) {
@@ -354,12 +420,47 @@ export class RibbonMenu extends LitElement {
     items[index].focus()
   }
 
+  private renderSubmenu(submenu: RibbonMenuButton[]) {
+    const gallery = submenu.some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate)))
+    const ordered = gallery
+      ? [...new Set(submenu.map(candidate => this.buttonCategory(candidate)).filter(Boolean))]
+        .flatMap(category => submenu.filter(candidate => this.buttonCategory(candidate) === category))
+      : submenu
+    let category = ""
+    let itemIndex = 0
+    return html`
+      ${ordered.map((submenuButton, submenuIndex) => {
+          const nextCategory = this.buttonCategory(submenuButton)
+          const divider = gallery && itemIndex > 0 && nextCategory && nextCategory !== category
+            ? html`<div class="gallery-divider" role="separator"></div>`
+            : nothing
+          category = nextCategory || category
+          itemIndex++
+          return html`${divider}
+            <button
+              class=${`item${gallery ? " gallery-item" : ""}`}
+              type="button"
+              role="menuitem"
+              aria-label=${this.buttonLabel(submenuButton)}
+              tabindex=${submenuIndex === 0 ? "0" : "-1"}
+              title=${this.buttonLabel(submenuButton)}
+              @click=${() => this.handleClick(submenuButton)}>
+              ${this.renderButtonIcon(submenuButton)}
+              <span>${this.buttonLabel(submenuButton)}</span>
+            </button>`
+        })}
+    `
+  }
+
   closeSubmenus() {
     this.openSubmenu = null
     this.openSubmenuToggle = null
   }
 
   render() {
+    this.gallery = this.groups.some(group => group.buttons.some(button =>
+      Boolean(this.buttonCategory(button)) || this.buttonSubmenu(button).some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate))),
+    ))
     return html`
       <div
         class="menu"
@@ -369,8 +470,8 @@ export class RibbonMenu extends LitElement {
       >
         ${this.customContent ? html`<slot></slot>` : ""}
         ${this.groups.map((group, groupIndex) => html`
-          <section aria-label=${group.label}>
-            ${group.buttons.map((button, buttonIndex) => {
+          <section aria-label=${group.label} class=${group.buttons.some(button => this.buttonCategory(button)) ? "shape-gallery" : ""}>
+            ${group.buttons.some(button => this.buttonCategory(button)) ? this.renderSubmenu(group.buttons) : group.buttons.map((button, buttonIndex) => {
               const label = this.buttonLabel(button)
               const submenu = this.buttonSubmenu(button)
               const hasSubmenu = submenu.length > 0
@@ -408,25 +509,13 @@ export class RibbonMenu extends LitElement {
                   </div>
                   ${hasSubmenu && isOpen ? html`
                     <div
-                      class="submenu"
+                      class=${`submenu${submenu.some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate))) ? " shape-gallery" : ""}`}
                       role="menu"
                       aria-label=${`${label} options`}
                       style=${`position-anchor: ${anchorName}`}
                       @keydown=${this.handleMenuKeydown}
                     >
-                      ${submenu.map((submenuButton, submenuIndex) => html`
-                        <button
-                          class="item"
-                          type="button"
-                          role="menuitem"
-                          tabindex=${submenuIndex === 0 ? "0" : "-1"}
-                          title=${this.buttonLabel(submenuButton)}
-                          @click=${() => this.handleClick(submenuButton)}
-                        >
-                          ${this.renderButtonIcon(submenuButton)}
-                          <span>${this.buttonLabel(submenuButton)}</span>
-                        </button>
-                      `)}
+                      ${this.renderSubmenu(submenu)}
                     </div>
                   ` : ""}
                 </div>

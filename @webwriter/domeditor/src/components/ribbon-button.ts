@@ -24,6 +24,8 @@ export class RibbonButton extends LitElement {
     disabled: {type: Boolean, reflect: true},
     icon: {type: String},
     iconUrl: {type: String, attribute: "icon-url"},
+    iconPath: {type: String, attribute: "icon-path"},
+    iconOnly: {type: Boolean, attribute: "icon-only", reflect: true},
     qrValue: {type: String, attribute: "qr-value"},
     shortcut: {type: String},
     submenu: {attribute: false},
@@ -49,6 +51,10 @@ export class RibbonButton extends LitElement {
   }
 
   static styles = css`
+    :host([icon-only]) .button-label { display: none; }
+    :host([icon-only]) .main-button { padding: 0.3rem; justify-content: center; }
+    :host([icon-only]) .button-icon { width: 1.6rem; height: 1.6rem; }
+
     :host {
       display: block;
       flex: 1 1 3rem;
@@ -1073,6 +1079,8 @@ export class RibbonButton extends LitElement {
   disabled = false
   icon = ""
   iconUrl = ""
+  iconOnly = false
+  iconPath = ""
   qrValue = ""
   shortcut = ""
   submenu: RibbonMenuButton[] = []
@@ -1259,6 +1267,9 @@ export class RibbonButton extends LitElement {
       </span>
     `
     const icon = this.icon || this.action || this.label
+    if(this.iconPath) return html`<span class="button-icon shape-preview" aria-hidden="true">
+      <svg viewBox="-10 -10 120 120" focusable="false"><path d=${this.iconPath} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </span>`
     return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
       ${ribbonIcon(icon)}
       ${this.iconUrl ? html`<img
@@ -1307,6 +1318,7 @@ export class RibbonButton extends LitElement {
 
   render() {
     const hasDropdown = this.submenu.length > 0 || this.dropdown !== null
+    const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
       <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
@@ -1367,7 +1379,7 @@ export class RibbonButton extends LitElement {
         <ribbon-menu
           variant="button"
           popover="manual"
-          .groups=${this.dropdown === null ? [{label: `${this.label} options`, buttons: this.submenu}] : []}
+          .groups=${this.dropdown === null && (!shapeGallery || this.submenuOpen) ? [{label: `${this.label} options`, buttons: this.submenu}] : []}
           .customContent=${this.dropdown !== null}
           .label=${`${this.label} options`}
           ?no-scroll=${this.dropdownNoScroll}

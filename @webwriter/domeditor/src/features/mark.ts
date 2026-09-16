@@ -91,7 +91,9 @@ export class MarkFeature extends EditorFeature {
 
   private svgContext(): MarkSelection | null {
     const selection = document.getSelection()
-    if(!selection?.rangeCount || !this.isSVGTextSelection) return null
+    // A focused label proxy can leave no native document range; its saved SVG
+    // range remains authoritative for this input event.
+    if(!selection || !this.isSVGTextSelection) return null
     const range = (this.editor.features.graphic.textEditingRange ?? selection.getRangeAt(0)).cloneRange()
     const block = this.svgTextRoot(range.startContainer)!
     const start = this.textOffset(block, range.startContainer, range.startOffset)

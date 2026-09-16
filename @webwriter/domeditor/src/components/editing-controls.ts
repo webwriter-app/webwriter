@@ -1,3 +1,5 @@
+import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
+import {isGraphicPresetType} from "../graphic-shapes"
 import {LitElement, html, nothing} from "lit"
 import {ref} from "lit/directives/ref.js"
 import {appCommands, defaultAppSettings, formatShortcut, type AppSettings} from "../app-settings"
@@ -1727,6 +1729,8 @@ export abstract class EditingControls extends LitElement {
 
   protected renderGraphicGeometryControls() {
     const connectorSelected = this.graphic?.shape === "connector"
+    const preset: GraphicShapePreset | undefined = this.graphic?.shape && isGraphicPresetType(this.graphic.shape) ? graphicShapePresets[this.graphic.shape] : undefined
+    const adjustments = preset?.adjustments ?? []
     return html`
       <div class="graphic-inline-controls graphic-geometry-controls" role="group" aria-label="Graphic geometry">
         ${this.renderGraphicPaintControls("fill")}
@@ -1749,6 +1753,10 @@ export abstract class EditingControls extends LitElement {
           ${this.graphicNumberInput("head-size", "Head size", {min: 15, max: 80, step: 1})}
           ${this.graphicNumberInput("tail-width", "Tail width", {min: 10, max: 90, step: 1})}
         ` : ""}
+        ${adjustments.map(adjustment => this.graphicNumberInput(
+          `adjust-${adjustment.name}`, adjustment.label,
+          {min: adjustment.min, max: adjustment.max, step: 1},
+        ))}
       </div>
     `
   }
@@ -1993,14 +2001,20 @@ export abstract class EditingControls extends LitElement {
     const options = this.graphic.options
     return html`
       <ribbon-drawer label="Graphic" icon="Graphic" layout="graphic">
-        ${graphicShapeOptions.map(option => html`
-          <ribbon-button
-            label=${option.label}
-            action=${`add-graphic-shape:${option.type}`}
-            icon=${option.icon}
-            ?disabled=${!captured}
-          ></ribbon-button>
-        `)}
+        <div class="graphic-shape-gallery" role="group" aria-label="Graphic shapes">
+          ${graphicShapeOptions.map((option, index, options) => html`
+            ${option.category && index > 0 && option.category !== options[index - 1]?.category
+              ? html`<div class="graphic-shape-divider" role="separator"></div>` : nothing}
+            <ribbon-button
+              label=${option.label}
+              icon-only
+              action=${`add-graphic-shape:${option.type}`}
+              icon=${option.icon}
+              icon-path=${option.path ?? nothing}
+              ?disabled=${!captured}
+            ></ribbon-button>
+          `)}
+        </div>
       </ribbon-drawer>
       <ribbon-drawer label="Geometry" icon="Geometry" layout="graphic-geometry">
         ${this.renderGraphicGeometryControls()}

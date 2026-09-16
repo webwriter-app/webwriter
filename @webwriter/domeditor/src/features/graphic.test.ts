@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
+import {isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 import {
@@ -13,6 +14,15 @@ import {
 } from "../graphic"
 
 let editor: DOMEditor
+
+// Every preset's path and handles are covered in graphic-shapes.test.ts. These
+// exercise each insertion/painting family through the complete editor lifecycle.
+const insertionPresets = new Set([
+  "text-box", "rounded-rectangle", "snip-round", "curved-connector-arrow",
+  "donut", "cube", "heart", "up-arrow", "quad-arrow-callout", "divide",
+  "magnetic-disk", "star-32", "vertical-scroll", "cloud-callout", "line-callout-2",
+])
+const insertionOptions = graphicShapeOptions.filter(option => !isGraphicPresetType(option.type) || insertionPresets.has(option.type))
 
 async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
@@ -68,19 +78,23 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).toBe('<svg viewBox="0 0 1600 900" width="100%"></svg>')
   })
 
-  it.each(graphicShapeOptions)("inserts a standalone $label graphic", option => {
+  it.each(insertionOptions)("inserts a standalone $label graphic", option => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: option.type})
 
     const graphic = document.querySelector("svg")!
     const shape = graphic.firstElementChild!
     expect(Number(graphic.getAttribute("width"))).toBeGreaterThan(0)
-    expect(graphic).toHaveStyle({position: "absolute"})
+    expect(graphic).toHaveStyle({
+      position: "absolute",
+      width: `${graphic.getAttribute("width")}px`,
+      height: `${graphic.getAttribute("height")}px`,
+    })
     expect(graphic).toHaveAttribute("overflow", "visible")
     expect(graphic.getAttribute("viewBox")).not.toBe("0 0 1600 900")
     expect(shape.namespaceURI).toBe(SVG_NAMESPACE)
     const polygonal = ["triangle", "diamond", "hexagon", "star", "arrow", "polygon"].includes(option.type)
-    expect(shape.localName).toBe(option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type)
-    expect(shape).toHaveAttribute("stroke")
+    expect(shape.localName).toBe(option.type === "text-box" ? "g" : isGraphicPresetType(option.type) ? "path" : option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type)
+    expect(shape.localName === "g" ? shape.firstElementChild : shape).toHaveAttribute("stroke")
     expect($.selectedElement).toBe(graphic)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
     expect(graphic).toHaveClass("◆element-selected")
@@ -95,6 +109,69 @@ describe("graphic editing", () => {
     expect(editor.appendix.querySelector('.◆graphic-ports')?.children).toHaveLength(0)
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(document.body.querySelector('[data-graphic-handle]')).toBeNull()
+    if(option.type === "text-box") expect(shape.querySelector("text")).toHaveTextContent("Text")
+  })
+
+  it.each(["commit", "cancel", "replace", "mutate"])("adjusts preset handles safely on %s", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rounded-rectangle"})
+    const graphic = document.querySelector("svg")!
+    const shape = graphic.querySelector("path")!
+    Object.defineProperty(graphic, "getScreenCTM", {
+      configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0}),
+    })
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const original = shape.getAttribute("d")!
+    const state = readGraphicPreset(shape)!
+    const handle = editor.appendix.querySelector('[data-graphic-handle="adjust-radius"]')!
+    const pointer = {bubbles: true, composed: true, button: 0, pointerId: 19}
+    handle.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: state.bounds.x + 28.8, clientY: state.bounds.y}))
+    document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: state.bounds.x + 72, clientY: state.bounds.y}))
+    expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
+    expect(shape.getAttribute("d")).toBe(original)
+    if(outcome === "cancel") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+    if(outcome === "replace") {
+      const replacement = shape.cloneNode(true) as Element
+      replacement.removeAttribute("class")
+      shape.replaceWith(replacement)
+    }
+    const externalPath = "M 0 0 C 10 10 30 70 99 35 Z"
+    if(outcome === "mutate") shape.setAttribute("d", externalPath)
+    document.dispatchEvent(new PointerEvent("pointerup", pointer))
+    await mutationsDelivered()
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(document.querySelector(".◆graphic-preview-source")).toBeNull()
+    if(outcome === "commit") {
+      expect(readGraphicPreset(shape)!.values[0]).toBeCloseTo(30)
+      editor.features.history.actions.undo({type: "undo"})
+      expect(shape.getAttribute("d")).toBe(original)
+      editor.features.history.actions.redo({type: "redo"})
+      expect(readGraphicPreset(shape)!.values[0]).toBeCloseTo(30)
+    }
+    else expect(shape.getAttribute("d")).toBe(outcome === "mutate" ? externalPath : original)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(document.body.querySelector("[data-graphic-handle]")).toBeNull()
+  })
+
+  it("adjusts a labeled preset in an irregular SVG group without changing siblings", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rounded-rectangle"})
+    const shape = graphic.querySelector("path")!
+    const group = document.createElementNS(SVG_NAMESPACE, "g")
+    group.innerHTML = '<!--preserve--><foreignObject><custom-widget xmlns="http://www.w3.org/1999/xhtml" title="keep"/></foreignObject>'
+    const sibling = group.innerHTML
+    graphic.append(group)
+    group.append(shape)
+    clickShape(shape)
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "label", value: "Caption"})
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "adjust-radius", value: "35"})
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "420"})
+    expect(readGraphicPreset(shape)?.values[0]).toBeCloseTo(35)
+    expect(readGraphicPreset(shape)?.bounds.width).toBeCloseTo(420)
+    expect(group.querySelector("text")?.textContent).toBe("Caption")
+    expect(group.innerHTML.startsWith(sibling)).toBe(true)
+    expect(shape.attributes).not.toEqual(expect.arrayContaining([expect.objectContaining({name: "data-shape"})]))
   })
 
   it("capture-selects a drawing-area click and adds a shape to that live SVG", () => {
@@ -252,13 +329,13 @@ describe("graphic editing", () => {
     editor.features.history.actions.undo({type: "undo"})
     expect(ellipse).toHaveAttribute("rx", "120")
     expect(graphic).toHaveAttribute("viewBox", "678 328 244 244")
-    expect(graphic.style.width).toBe("")
+    expect(graphic.style.width).toBe("244px")
     editor.features.history.actions.redo({type: "redo"})
     expect(ellipse).toHaveAttribute("rx", "300")
     expect(graphic.getAttribute("style")).toContain("width: 604px")
   })
 
-  it.each(graphicShapeOptions)("preserves the rendered form and size of an added $label", option => {
+  it.each(insertionOptions)("preserves the rendered form and size of an added $label", option => {
     const createGraphic = (xScale: number, yScale: number) => {
       const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
       graphic.setAttribute("viewBox", "0 0 1600 900")
@@ -281,8 +358,8 @@ describe("graphic editing", () => {
 
     expect(Number(transformed.width)).toBeCloseTo(Number(baseline.width), 2)
     expect(Number(transformed.height) * 0.5).toBeCloseTo(Number(baseline.height), 2)
-    expect(baselineShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
-    expect(transformedShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
+    expect(baselineShape.localName === "g" ? baselineShape.firstElementChild : baselineShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
+    expect(transformedShape.localName === "g" ? transformedShape.firstElementChild : transformedShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
     if(option.type === "rectangle") {
       expect(Number(transformedShape.getAttribute("rx"))).toBeCloseTo(Number(baselineShape.getAttribute("rx")), 2)
       expect(Number(transformedShape.getAttribute("ry")) * 0.5).toBeCloseTo(Number(baselineShape.getAttribute("ry")), 2)
@@ -337,6 +414,7 @@ describe("graphic editing", () => {
     editor.features.selection.captureElement(graphic)
 
     graphicShapeOptions.filter(option => option.type !== "line" && option.type !== "connector").forEach(option => {
+      graphic.replaceChildren()
       editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: option.type})
       const parameters = editor.features.graphic.getState()!.parameters!
       const ratio = Number(parameters.width) / Number(parameters.height)
@@ -446,7 +524,8 @@ describe("graphic editing", () => {
     })
     expect(text).toHaveAttribute("x", "800")
     expect(text).toHaveAttribute("y", "450")
-    expect(text).toHaveAttribute("pointer-events", "none")
+    expect(getComputedStyle(text).pointerEvents).toBe("auto")
+    expect(getComputedStyle(text).cursor).toBe("text")
     expect(Array.from(text.querySelectorAll("tspan"), span => span.textContent)).toEqual(["Release", "plan"])
 
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "720"})
@@ -1822,6 +1901,52 @@ it("creates an editable centered label on double-clicking an unlabeled shape", (
   proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "New", cancelable: true}))
   expect(text.textContent).toBe("New")
   expect(editor.features.mark.getState().marks).toContain("b")
+})
+
+it("retains graphic capture while editing a label and typing after native focus moves", async () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+  const graphic = document.querySelector("svg")!
+  graphic.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+  const text = graphic.querySelector("text")!
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  proxy.blur()
+  editor.features.selection.processSelection()
+  expect(graphic).toHaveClass("◆element-capture-selected")
+  document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "First", cancelable: true}))
+  await mutationsDelivered()
+  expect(text.textContent).toBe("First")
+  expect(editor.features.graphic.isTextInputFocused).toBe(true)
+  expect(editor.appendix.querySelector<HTMLElement>('[part="graphic-text-caret"]')!.style.animation).toContain("blink")
+  document.getSelection()!.removeAllRanges()
+  proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: " second", cancelable: true}))
+  expect(text.textContent).toBe("First second")
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+})
+
+it("reopens a label on one click and preserves backwards Shift selection across proxy focus", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "text-box"})
+  const graphic = document.querySelector("svg")!
+  const text = graphic.querySelector("text")!
+  text.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 1}))
+  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 1}))
+  const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+  expect(proxy).not.toBeNull()
+  const node = text.firstChild!
+  document.getSelection()!.setBaseAndExtent(node, 4, node, 2)
+  editor.features.graphic.rememberTextSelection()
+  // Chromium projects an appendix input selection to BODY while it is focused.
+  document.getSelection()!.setBaseAndExtent(document.body, 0, document.body, 0)
+  proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowLeft", shiftKey: true, bubbles: true, cancelable: true}))
+  expect(document.getSelection()!.anchorOffset).toBe(4)
+  expect(document.getSelection()!.focusOffset).toBe(1)
+  expect(editor.features.graphic.textEditingRange?.toString()).toBe("ext")
+  proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true}))
+  expect(editor.features.graphic.textEditingRange?.toString()).toBe("xt")
+  proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  expect(text).not.toHaveClass("◆graphic-text-editing")
+  expect(editor.toHTML(true)).not.toContain("◆")
 })
 
 

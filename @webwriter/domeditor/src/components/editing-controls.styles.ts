@@ -954,6 +954,29 @@ export const editingControlStyles = css`
       font-size: 0.66rem;
     }
 
+    .graphic-shape-gallery {
+      grid-column: 1 / -1;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(2.1rem, 1fr));
+      grid-auto-rows: auto;
+      gap: 0.1rem;
+      align-content: start;
+      width: 100%;
+      max-height: 100%;
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+
+    .graphic-shape-gallery .graphic-shape-divider {
+      grid-column: 1 / -1;
+      height: 0;
+      margin: 0.15rem 0;
+      border-top: 1px solid #d8dee6;
+    }
+
+    .graphic-shape-gallery ribbon-button { min-width: 0; height: 2.4rem; }
+
     .graphic-inline-controls .graphic-parameter {
       box-sizing: border-box;
       display: flex;

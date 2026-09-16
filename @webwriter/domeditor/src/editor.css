@@ -1976,8 +1976,22 @@ math msubsup:has(> mo:first-child) > .◆math-slot:nth-child(2) {
 }
 
 
+svg text, svg text * {
+  pointer-events: auto;
+  cursor: text;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Label ranges are painted in the appendix, including while the input proxy
+ * owns focus. Selecting a shape must never paint its label as selected text. */
+svg text::selection, svg text *::selection {
+  background: transparent !important;
+}
+
 .◆graphic-text-editing, .◆graphic-text-editing * {
   pointer-events: auto !important;
   user-select: text !important;
+  -webkit-user-select: text !important;
   cursor: text;
 }
