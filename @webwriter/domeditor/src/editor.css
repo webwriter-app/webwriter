@@ -1912,6 +1912,13 @@ math, math * {
   cursor: text;
 }
 
+/* Native MathML edge carets can resolve into the surrounding paragraph.
+ * Suppress that paint while the appendix owns the caret, including capture's
+ * higher-specificity rule that normally restores a block's native caret. */
+body.◆node-selection-active math.◆element-capture-selected.◆math-structural-caret,
+body.◆node-selection-active math.◆element-capture-selected.◆math-structural-caret *,
+body:has(.◆math-structural-caret),
+body:has(.◆math-structural-caret) *,
 .◆math-structural-caret, .◆math-structural-caret * {
   caret-color: transparent !important;
 }
@@ -1920,7 +1927,7 @@ math:not([display="block"]) {
   margin-inline: 2px;
 }
 
-.◆math-editing {
+.◆math-editing:not(.◆atomic-range-selected) {
   background-color: #eeeeee;
 }
 
@@ -1941,8 +1948,8 @@ body.◆math-boundary-caret * {
 
 body.◆math-boundary-caret::part(selection-caret-text) {
   position-anchor: --math-caret-anchor;
-  top: calc(anchor(center) - max(0.5em, calc(anchor-size(height) / 2 - 2px)));
-  height: max(1em, calc(anchor-size(height) - 4px));
+  top: var(--math-caret-top, calc(anchor(center) - 0.5em));
+  height: var(--math-caret-height, 1em);
   width: 1px;
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
@@ -1960,8 +1967,10 @@ body:has(.◆math-caret-outside-right)::part(selection-caret-text) {
   left: calc(anchor(right) + 1px);
 }
 
-/* Empty arguments reserve hit targets only while editing. Their guides are
-   painted in the shadow appendix; the formula uses the native text caret. */
+/* Empty arguments reserve hit targets; guides and measured carets live in
+ * the appendix. Keep unfinished radicals' space even when focus moves away,
+ * so their native baseline does not jump with the editing markers. */
+math :is(mroot, msqrt) > mrow:empty,
 .◆math-slot, .◆math-editing:empty {
   display: inline-block;
   min-width: 0.7em;
@@ -1969,4 +1978,11 @@ body:has(.◆math-caret-outside-right)::part(selection-caret-text) {
 }
 .◆math-editing[display="block"]:empty {
   display: block;
+}
+
+/* Large operators can pull a lower script into their italic overhang. Keep
+ * the empty hit target clear of the operator until it contains actual text. */
+math msubsup:has(> mo:first-child) > .◆math-slot:nth-child(2) {
+  padding-inline-start: 1em;
+  min-width: 1.7em;
 }

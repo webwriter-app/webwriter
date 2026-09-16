@@ -40,7 +40,7 @@ const structure = (name: string, label: string, title: string): MathTool => ({la
 export const mathStructureOptions: MathTool[] = [
   structure("frac", "□/□", "Fraction"), structure("square", "x²", "Square"),
   structure("sup", "xⁿ", "Power"), structure("sub", "xₙ", "Subscript"),
-  structure("root", "ⁿ√□", "Root (leave index empty for square root)"),
+  structure("root", "ⁿ√□", "Root"),
   structure("abs", "|□|", "Absolute value"), structure("paren", "(□)", "Parentheses"),
   structure("binom", "(ⁿₖ)", "Binomial coefficient"), structure("matrix", "[▦]", "Matrix"),
   ...[["sum", "∑"], ["prod", "∏"], ["int", "∫"], ["bigcup", "⋃"], ["bigcap", "⋂"]]

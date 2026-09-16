@@ -60,6 +60,10 @@ import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
   :host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar) {
     display: none !important;
   }

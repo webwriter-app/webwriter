@@ -10,6 +10,7 @@ export type RibbonMenuButton = string | {
   label: string
   action?: string
   icon?: string
+  iconText?: string
   iconUrl?: string
   submenu?: RibbonMenuButton[]
 }
@@ -200,6 +201,15 @@ export class RibbonMenu extends LitElement {
       color: #526b86;
     }
 
+    .item-icon.text-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-basis: 1.5rem;
+      width: 1.5rem;
+      white-space: nowrap;
+    }
+
     .item-icon svg {
       display: block;
       width: 100%;
@@ -265,6 +275,10 @@ export class RibbonMenu extends LitElement {
 
   private renderButtonIcon(button: RibbonMenuButton) {
     const iconUrl = this.buttonIconUrl(button)
+    const iconText = typeof button === "string" ? undefined : button.iconText
+    if(iconText !== undefined) {
+      return html`<span class="item-icon text-icon" aria-hidden="true">${iconText}</span>`
+    }
     return html`
       <span class=${`item-icon${iconUrl ? " image-icon" : ""}`} aria-hidden="true">
         ${ribbonIcon(this.buttonIcon(button))}

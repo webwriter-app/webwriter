@@ -94,7 +94,7 @@ await check("native MathML editing preserves inline rendering and argument hit t
   assert(!editor.features.selection.captureSelectedElement, "inline formula has capture selection")
   assert(!math.classList.contains("◆element-selected"), "inline formula has a node outline")
   assert(getComputedStyle(math).backgroundColor === "rgb(238, 238, 238)", "editing formula background is missing")
-  assert(getComputedStyle(slot).caretColor !== "rgba(0, 0, 0, 0)", "native formula caret is hidden")
+  assert(getComputedStyle(slot).caretColor === "rgba(0, 0, 0, 0)", "native empty argument caret competes with the measured caret")
   assert(getComputedStyle(math).padding === "2px", "formula padding is not 2px on all sides")
   assert(!$.isGapSelection, "empty formula argument became a gap")
   const rect = slot.getBoundingClientRect()
@@ -108,6 +108,205 @@ await check("native MathML editing preserves inline rendering and argument hit t
   assert(!editor.features.selection.captureSelectedElement, "formula retained capture after exit")
   assert(getComputedStyle(math).backgroundColor === "rgba(0, 0, 0, 0)", "formula kept its editing background after exit")
   paragraph.remove()
+})
+
+await check("whole formulas receive one blue selection layer", async () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  try {
+    for(const display of ["inline", "block"]) for(const content of ["<mrow><mi>rterteet</mi></mrow>", "<mrow><mfrac><mi>abc</mi><mi>d</mi></mfrac><msup><mi>x</mi><mn>2</mn></msup></mrow>"]) {
+      paragraph.innerHTML = `before <math display="${display}">${content}</math> after`
+      const math = paragraph.querySelector("math")!
+      for(const contents of [false, true]) {
+        if(contents) document.getSelection()!.setBaseAndExtent(math, 0, math, math.childNodes.length)
+        else $.selectElement(math)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        editor.features.math.refresh()
+        await layoutFrame()
+        const overlays = editor.appendix.querySelectorAll<HTMLElement>('[part="atomic-selection-overlay"]')
+        assert(overlays.length === 1, "whole formula has more than one selection layer")
+        const selected = overlays[0].getBoundingClientRect(), bounds = math.getBoundingClientRect()
+        assert(["left", "top", "width", "height"].every(key => Math.abs(selected[key as keyof DOMRect] as number - (bounds[key as keyof DOMRect] as number)) < 1), "selection layer does not fit the formula")
+        assert(getComputedStyle(overlays[0]).backgroundColor === "rgba(0, 120, 215, 0.3)", "formula does not use the shared selection blue")
+        assert(getComputedStyle(math).backgroundColor === "rgba(0, 0, 0, 0)", "editing background darkens the selected formula")
+        for(const node of [math, ...math.querySelectorAll("*")]) assert(getComputedStyle(node, "::selection").backgroundColor === "rgba(0, 0, 0, 0)", "native descendant selection adds another blue layer")
+        const text = math.querySelector("mi")!.firstChild!
+        document.getSelection()!.setBaseAndExtent(text, 0, text, 1)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        assert(!editor.appendix.querySelector('[part="atomic-selection-overlay"]'), "partial selection retained a whole-formula overlay")
+        assert(getComputedStyle(text.parentElement!, "::selection").backgroundColor !== "rgba(0, 0, 0, 0)", "partial text selection is hidden")
+      }
+    }
+  }
+  finally { paragraph.remove(); editor.features.selection.processSelection(undefined, {scrollIntoView: false}); editor.features.math.refresh() }
+})
+
+await check("empty formula carets fit their space and blink across presentation refreshes", async () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  try {
+    for(const content of ["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mfrac><mrow></mrow><mi>a</mi></mfrac>"]) {
+      paragraph.innerHTML = `a<math>${content}</math>a`
+      const math = paragraph.querySelector("math")!
+      const position = math.querySelector("mrow:empty") ?? math
+      $.move(position, 0)
+      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+      editor.features.math.refresh()
+      await layoutFrame()
+      const caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+      assert(caret, "empty formula has no measured caret")
+      if(!content.includes("mfrac")) {
+        const bounds = position.getBoundingClientRect(), rect = caret.getBoundingClientRect(), style = getComputedStyle(position)
+        const top = bounds.top + (position === math ? parseFloat(style.paddingTop) : 0)
+        const bottom = bounds.bottom - (position === math ? parseFloat(style.paddingBottom) : 0)
+        assert(rect.top >= top - 0.5 && rect.bottom <= bottom + 0.5, "empty formula caret hangs below its space")
+      }
+      const animation = caret.getAnimations()[0]
+      assert(animation, "caret animation cannot resolve its shadow-root keyframes")
+      animation.pause()
+      animation.currentTime = 750
+      assert(getComputedStyle(caret).opacity === "0", "caret never enters its hidden blink phase")
+      editor.features.math.refresh()
+      assert(editor.appendix.querySelector('[part="math-caret"]') === caret && caret.getAnimations()[0] === animation,
+        "refresh replaced the caret or restarted its blink")
+      assert(getComputedStyle(caret).opacity === "0", "refresh reset the blink phase")
+      animation.currentTime = 250
+      assert(getComputedStyle(caret).opacity === "1", "caret never enters its visible blink phase")
+      $.move(paragraph.lastChild!, 1)
+      editor.features.math.refresh()
+      assert(!editor.appendix.querySelector('[part="math-caret"]'), "caret survives leaving the formula")
+    }
+  }
+  finally { paragraph.remove(); editor.features.math.refresh() }
+})
+
+await check("empty roots keep their baseline and one caret across focus and formula edges", async () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  try {
+    for(const direction of ["ltr", "rtl"]) for(const size of [16, 32]) {
+      paragraph.innerHTML = `a<math style="direction:${direction};font-size:${size}px"><mrow><mroot><mrow></mrow><mi>a</mi></mroot></mrow></math>a`
+      const math = paragraph.querySelector("math")!, row = math.firstElementChild!, root = math.querySelector("mroot")!, slot = root.firstElementChild!
+      const textBounds = () => {
+        const range = document.createRange()
+        range.selectNodeContents(paragraph.firstChild!)
+        return range.getBoundingClientRect()
+      }
+      const activate = (node: Node, offset: number) => {
+        $.move(node, offset)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        editor.features.math.refresh()
+      }
+      activate(paragraph.lastChild!, 1)
+      const unfocused = root.getBoundingClientRect(), baseline = textBounds()
+      activate(slot, 0)
+      const focused = root.getBoundingClientRect()
+      assert(Math.abs(focused.top - textBounds().top - (unfocused.top - baseline.top)) < 1
+        && Math.abs(focused.height - unfocused.height) < 1, "unfocused empty radical changes baseline or size")
+      const overlayCarets = () => Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span")).filter(element => element.style.background)
+      const caret = overlayCarets()[0].getBoundingClientRect()
+      const beforeSlot = slot.getBoundingClientRect()
+      editor.features.math.execute("text:x")
+      const range = document.createRange()
+      range.selectNodeContents(slot.firstChild!.firstChild!)
+      const character = range.getBoundingClientRect()
+      range.collapse(true)
+      assert(Math.abs(caret.height - Math.min(character.height, beforeSlot.height)) < 1,
+        "radicand caret does not use the available character height")
+      assert(caret.top >= beforeSlot.top - 0.5 && caret.bottom <= beforeSlot.bottom + 0.5
+        && Math.abs((caret.top + caret.bottom) / 2 - (beforeSlot.top + beforeSlot.bottom) / 2) < 0.5,
+        "radicand caret hangs below the current placeholder")
+      assert(Math.abs(caret.left - beforeSlot.left - (range.getBoundingClientRect().left - slot.getBoundingClientRect().left) - 1) < 1,
+        "radicand caret has the wrong horizontal position")
+      slot.replaceChildren()
+      for(const [node, offset] of [[math, 1], [row, 1], [paragraph.lastChild!, 0], [slot, 0]] as [Node, number][]) {
+        activate(node, offset)
+        await layoutFrame()
+        const shared = editor.features.selection.selectionCaret
+        const sharedVisible = shared?.getAttribute("part")?.includes("selection-caret-text") && getComputedStyle(shared).display !== "none"
+        assert(overlayCarets().length + Number(Boolean(sharedVisible)) <= 1, "formula edge shows two appendix carets")
+        if(overlayCarets().length || sharedVisible) {
+          assert(getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)", "native formula-edge caret can paint in the surrounding paragraph")
+        }
+      }
+      activate(paragraph.lastChild!, 1)
+      assert(!math.classList.contains("◆math-structural-caret") && !editor.appendix.querySelector(".◆math-overlay"), "leaving the formula retains its caret")
+    }
+  }
+  finally { paragraph.remove(); editor.features.math.refresh() }
+})
+
+await check("structural formula carets match inserted text without duplicate capture carets", async () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  try {
+    for(const display of ["inline", "block"]) for(const direction of ["ltr", "rtl"]) {
+      for(const offset of [0, 1]) for(const content of [
+        "<mfrac><mi>a</mi><mi>b</mi></mfrac>",
+        "<mroot><mi>x</mi><mn>3</mn></mroot>",
+        "<msup><mi>x</mi><mn>2</mn></msup>",
+        "<munderover><mo>∑</mo><mi>i</mi><mi>n</mi></munderover>",
+        "<mfrac><mfrac><mi>a</mi><mi>b</mi></mfrac><mi>c</mi></mfrac>",
+      ]) {
+        paragraph.innerHTML = `<math display="${display}" style="direction:${direction};font-size:32px"><mrow>${content}<mi>z</mi></mrow></math>`
+        const math = paragraph.querySelector("math")!, row = math.firstElementChild!
+        $.move(row, offset)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        editor.features.math.refresh()
+        const rootBefore = row.getBoundingClientRect()
+        const baselineBefore = row.lastElementChild!.getBoundingClientRect()
+        const carets = Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
+          .filter(element => element.style.background)
+        assert(carets.length === 1, "expected exactly one structural caret")
+        assert(getComputedStyle(row).caretColor === "rgba(0, 0, 0, 0)", "capture restores a second native caret")
+        const caret = carets[0].getBoundingClientRect()
+        const before = math.innerHTML.replace(/ class="[^"]*"/g, "")
+        editor.features.math.refresh()
+        assert(math.innerHTML.replace(/ class="[^"]*"/g, "") === before, "measuring the caret changed authored content")
+        editor.features.math.execute("text:x")
+        const text = document.getSelection()!.focusNode!
+        const range = document.createRange()
+        range.selectNodeContents(text)
+        const character = range.getBoundingClientRect()
+        range.collapse(true)
+        assert(Math.abs(caret.height - character.height) < 1, "caret inherits the structure height")
+        assert(Math.abs(caret.top - baselineBefore.top - (character.top - row.lastElementChild!.getBoundingClientRect().top)) < 1,
+          "caret does not use the inserted character baseline")
+        assert(Math.abs(caret.left - rootBefore.left - (range.getBoundingClientRect().left - row.getBoundingClientRect().left)) < 1,
+          "caret does not use the insertion position")
+        assert(!math.classList.contains("◆math-structural-caret"), "structural caret suppression survived typing")
+      }
+    }
+    for(const display of ["inline", "block"]) for(const inside of [false, true]) for(const start of [false, true]) for(const direction of ["ltr", "rtl"]) {
+      if(display === "block" && !inside) continue // Block exteriors are paragraph gaps.
+      paragraph.innerHTML = `<span>before</span><math display="${display}" style="font-size:32px;direction:${direction}"><mfrac><mi>a</mi><mfrac><mi>b</mi><mi>c</mi></mfrac></mfrac></math><span>after</span>`
+      const math = paragraph.querySelector("math")!
+      const index = Array.from(paragraph.childNodes).indexOf(math)
+      $.move(inside ? math : paragraph, inside ? start ? 0 : math.childNodes.length : index + Number(!start))
+      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+      editor.features.math.refresh()
+      const caret = (editor.appendix.querySelector('[part="math-caret"]') ?? editor.features.selection.selectionCaret)!.getBoundingClientRect()
+      const referenceRange = document.createRange()
+      referenceRange.selectNodeContents(paragraph.firstElementChild!.firstChild!)
+      const reference = referenceRange.getBoundingClientRect()
+      let text: Node
+      if(inside) {
+        editor.features.math.execute("text:x")
+        text = document.getSelection()!.focusNode!
+      }
+      else {
+        text = document.createTextNode("x")
+        document.getSelection()!.getRangeAt(0).insertNode(text)
+      }
+      const range = document.createRange()
+      range.selectNodeContents(text)
+      const character = range.getBoundingClientRect()
+      assert(Math.abs(caret.height - character.height) < 1, "formula edge caret inherits formula height")
+      assert(Math.abs(caret.top - reference.top - (character.top - referenceRange.getBoundingClientRect().top)) < 1,
+        "formula edge caret does not follow the inserted character baseline")
+    }
+  }
+  finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
 await check("formula clicks distinguish script endings and select whole formulas", async () => {
@@ -131,7 +330,9 @@ await check("formula clicks distinguish script endings and select whole formulas
     assert($.focus === row && $.focusOffset === 1, `${name}: did not reach the row after the script`)
     assert(math.classList.contains("◆math-structural-caret"), "structural caret is not drawn")
     const caret = editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!
-    assert(Math.abs(caret.getBoundingClientRect().top - script.firstElementChild!.getBoundingClientRect().top) < 1, "structural caret uses the script baseline")
+    const baseRange = document.createRange()
+    baseRange.selectNodeContents(script.firstElementChild!)
+    assert(Math.abs(caret.getBoundingClientRect().top - baseRange.getBoundingClientRect().top) < 1, "structural caret uses the base text baseline")
     click(bounds.left, bounds.top + bounds.height / 2, 2)
     const selected = document.getSelection()!.getRangeAt(0)
     assert(selected.cloneContents().textContent === math.textContent && !selected.collapsed,
@@ -189,9 +390,9 @@ await check("inline formula edges use text selections and block formula edges us
       editor.features.selection.processSelection()
       await layoutFrame()
       const caret = editor.features.selection.selectionCaret!.getBoundingClientRect()
-      const formula = math.getBoundingClientRect()
       assert(caret.height >= fontSize, `formula boundary caret ignored ${fontSize}px paragraph text: ${caret.height}px`)
-      assert(Math.abs(caret.top + caret.height / 2 - formula.top - formula.height / 2) < 1, "formula boundary caret is not vertically centered")
+      // Exact height and baseline are checked against an actual insertion in
+      // the structural-caret check; prose and math can use different fonts.
     }
   }
   paragraph.style.removeProperty("font-size")
@@ -828,6 +1029,61 @@ await check("iframe lifecycle reaches load and cleans up", async () => {
   frameWindow.editor!.destroy()
   frame.remove()
   assert(!frame.isConnected && !document.querySelector("#lifecycle"), "iframe was not removed")
+})
+
+await check("dead-key composition stays outside authored formulas", async () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  try {
+    for(const data of ["^2", "â", "release", "cancel"]) {
+      paragraph.innerHTML = "<math><mi>x</mi><mi>a</mi></math>"
+      const math = paragraph.querySelector("math")!
+      $.move(math.lastElementChild!.firstChild!, 1)
+      document.body.dispatchEvent(new KeyboardEvent("keydown", {key: "Dead", code: "IntlBackslash", keyCode: 229, bubbles: true, cancelable: true}))
+      document.body.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true, cancelable: true, data: ""}))
+      const input = editor.appendix.querySelector<HTMLTextAreaElement>('textarea[aria-label="Formula exponent input"]')!
+      assert(input && editor.appendix.activeElement === input, "native composition did not move to the appendix input")
+      await layoutFrame()
+      assert(math.querySelector(".◆math-slot"), "exponent placeholder disappeared during composition")
+      if(data === "cancel") {
+        const prose = document.createTextNode("outside")
+        paragraph.append(prose)
+        paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}))
+        $.move(prose, 2)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        editor.features.math.refresh()
+        await layoutFrame()
+        assert(!input.isConnected && !editor.features.math.isComposingPower, "composition input lingered after leaving the formula")
+        assert(!editor.appendix.querySelector(".◆math-overlay") && !math.querySelector(".◆math-slot"), "formula presentation lingered after leaving")
+        input.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true, data: "^2"}))
+        assert(document.getSelection()!.focusNode === prose && math.textContent === "xa", "late composition returned to the old formula")
+        continue
+      }
+      if(data === "release") {
+        input.value = "^"
+        input.dispatchEvent(new KeyboardEvent("keyup", {key: "Dead", code: "IntlBackslash", isComposing: true, bubbles: true}))
+        await layoutFrame()
+        const slot = math.querySelector("msup > mrow:last-child")!
+        assert(!input.isConnected && document.activeElement === document.body, "formula did not regain focus after releasing the dead key")
+        assert(document.getSelection()!.focusNode === slot && document.getSelection()!.focusOffset === 0, "caret did not return to the exponent start")
+        document.body.dispatchEvent(new KeyboardEvent("keydown", {key: "2", code: "Digit2", bubbles: true, cancelable: true}))
+        assert(slot.textContent === "2", "first exponent character was lost after focus restoration")
+        continue
+      }
+      for(const value of ["^", data]) {
+        input.dispatchEvent(new CompositionEvent("compositionupdate", {bubbles: true, data: value}))
+        input.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: false, isComposing: true, inputType: "insertCompositionText", data: value}))
+        input.value = value
+        input.dispatchEvent(new InputEvent("input", {bubbles: true, isComposing: true, inputType: "insertCompositionText", data: value}))
+        assert(math.textContent === "xa", "composition changed the formula before commit")
+      }
+      input.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true, data}))
+      assert(!input.isConnected, "composition input was not removed")
+      assert(math.querySelector("msup > mrow:last-child")?.textContent === (data === "^2" ? "2" : "a"), "exponent was lost or duplicated")
+      assert(math.querySelector("msup > mrow:first-child")?.textContent === "a", "composition corrupted the base")
+    }
+  }
+  finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
 await check("canvas slot preserves hit testing and document coordinates at different zoom levels", async () => {

@@ -94,13 +94,17 @@ export class SelectionFeature extends EditorFeature {
       if(!$.includesNode(element) || !range.intersectsNode(element)) return
       const children = element.children
       const isTable = element.localName === "table"
-      if(isTable || isAtomicEditingElement(element, this.editor.schema)) {
+      const isFormula = element.localName === "math" && mathRoot(element) === element
+      if(isTable || isFormula || isAtomicEditingElement(element, this.editor.schema)) {
         const parent = element.parentNode!
         const index = Array.from(parent.childNodes).indexOf(element)
         // Touching an edge or selecting a control's internal text is not a
         // selection of that host. Fully selected tables also use one overlay
         // instead of highlighting their atomic descendants twice.
-        if(range.comparePoint(parent, index) === 0 && range.comparePoint(parent, index + 1) === 0) {
+        const wholeNode = range.comparePoint(parent, index) === 0 && range.comparePoint(parent, index + 1) === 0
+        const wholeFormulaContents = isFormula && range.comparePoint(element, 0) === 0
+          && range.comparePoint(element, element.childNodes.length) === 0
+        if(wholeNode || wholeFormulaContents) {
           this.#markSelection(element, "◆atomic-range-selected")
           if($.selectedElement === element && standaloneGraphicShape(element)) return
           const overlay = document.createElement("div")
@@ -996,6 +1000,8 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("top")
     caret.style.removeProperty("height")
     caret.style.removeProperty("font-size")
+    caret.style.removeProperty("--math-caret-top")
+    caret.style.removeProperty("--math-caret-height")
     for(const property of ["width", "position-area", "position-anchor", "translate"]) caret.style.removeProperty(property)
     ;["node", "capture", "gap", "text"].forEach(state => {
       caret.classList.remove(`◆selection-caret-${state}`)
@@ -1337,6 +1343,9 @@ export class SelectionFeature extends EditorFeature {
    * selectionchange events and every editor-driven refresh. Passive refreshes
    * preserve the last interaction's scroll target without revealing it again. */
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
+    // The dead-key input temporarily owns native selection in the appendix.
+    // Clamping it into BODY blurs the input and cancels exponent entry.
+    if(this.editor.features.math.isComposingPower) return
     // Chromium can clear its native range when focusing an SVG-only document.
     // Preserve the ordinary node selection only while no new endpoints exist.
     if(!document.getSelection()?.rangeCount) {
@@ -1403,6 +1412,7 @@ export class SelectionFeature extends EditorFeature {
       document.body.classList.add("◆", "◆node-selection-active")
       this.#markSelection(capturedElement, "◆element-selected", "◆element-capture-selected")
       this.#showSelectionCaret("capture")
+      if(capturedElement.localName === "math" && sel) this.#showAtomicOverlays(sel)
       return
     }
     if(kind === "section") {
@@ -1483,13 +1493,18 @@ export class SelectionFeature extends EditorFeature {
       const outside = boundary && inlineMathRoot(boundary.element)
       const formula = inside ?? outside
       const atInnerEdge = inside && sel.focusNode === inside && (sel.focusOffset === 0 || sel.focusOffset === inside.childNodes.length)
-      if(formula && (atInnerEdge || outside)) {
+      if(formula && (atInnerEdge && inside!.childNodes.length > 0 || outside)) {
         const start = inside ? sel.focusOffset === 0 : boundary!.placement === "before"
         const left = getComputedStyle(formula).direction === "rtl" ? !start : start
         this.#markSelection(formula, `◆math-caret-${inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
         this.#markSelection(document.body, "◆math-boundary-caret")
         const caret = this.#showSelectionCaret("text")
         caret.style.fontSize = getComputedStyle(inside ?? formula.parentElement ?? formula).fontSize
+        const rect = this.editor.features.math.structuralTextRect(formula, start ? 0 : formula.childNodes.length, !inside)
+        if(rect) {
+          caret.style.setProperty("--math-caret-top", `calc(anchor(top) + ${rect.top - formula.getBoundingClientRect().top}px)`)
+          caret.style.setProperty("--math-caret-height", `${rect.height}px`)
+        }
       }
     }
     // Native text carets can disappear while another app owns the drag.

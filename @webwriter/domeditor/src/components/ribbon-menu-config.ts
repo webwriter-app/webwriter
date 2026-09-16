@@ -39,7 +39,7 @@ const insertGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(op
 const insertMathStructureButtons: RibbonMenuButton[] = mathStructureOptions.map(option => ({
   label: option.title,
   action: `insert-math:${option.command.slice("structure:".length)}`,
-  icon: "Formula",
+  iconText: option.label,
 }))
 
 export const graphicAlignButtons: RibbonMenuButton[] = [

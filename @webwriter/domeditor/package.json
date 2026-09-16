@@ -11,6 +11,7 @@
     "start": "node dev-server/server.mjs",
     "start:frontend": "vite",
     "test:native-browser": "node scripts/native-browser.mjs",
+    "test:math-visual": "node scripts/native-browser.mjs --math-visual",
     "test": "vitest watch --reporter=minimal",
     "vitest": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.native-browser.json"

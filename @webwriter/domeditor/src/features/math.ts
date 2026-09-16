@@ -15,6 +15,7 @@ const after = (node: Node): Point => [node.parentNode!, indexOf(node) + 1]
  * only transient command text and presentation are kept outside the DOM. */
 export class MathFeature extends EditorFeature {
   private overlay: HTMLDivElement | null = null
+  private caret: HTMLSpanElement | null = null
   private observer: MutationObserver | null = null
   private resizeObserver: ResizeObserver | null = null
   private observedRoot: Element | null = null
@@ -23,6 +24,9 @@ export class MathFeature extends EditorFeature {
   private frame: number | null = null
   private commandText: string | null = null
   private commandRange: Range | null = null
+  private deadPowerPoint: Point | null = null
+  private deadPowerInput: HTMLTextAreaElement | null = null
+  private deadPowerTarget: Point | null = null
   private drag: {root: Element, pointerId: number} | null = null
   private hovered: Element | null = null
 
@@ -56,6 +60,7 @@ export class MathFeature extends EditorFeature {
     this.frame = null
     this.clearPresentation()
     this.dismissCommand()
+    this.cancelDeadPowerComposition()
     this.drag = null
     this.setHovered(null)
   }
@@ -68,6 +73,13 @@ export class MathFeature extends EditorFeature {
 
   // Capture before generic document commands can split or unwrap MathML.
   captureListeners: DocumentListenerMap = {
+    pointerdown: event => {
+      if(this.deadPowerInput && !event.composedPath().includes(this.deadPowerInput)) {
+        this.cancelDeadPowerComposition()
+        this.clearPresentation()
+      }
+      this.deadPowerPoint = null
+    },
     click: event => {
       if(event.button !== 0 || event.detail !== 2 || event.ctrlKey || event.metaKey
         || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema)
@@ -82,6 +94,11 @@ export class MathFeature extends EditorFeature {
       this.changed()
     },
     keydown: event => { if(this.accepts(event)) this.keydown(event) },
+    compositionstart: event => {
+      if(!this.accepts(event) || !this.atDeadPowerPoint()) return
+      event.stopImmediatePropagation()
+      this.captureDeadPowerComposition()
+    },
     beforeinput: event => {
       if(!this.accepts(event)) return
       const boundary = $.mathBoundary
@@ -98,13 +115,23 @@ export class MathFeature extends EditorFeature {
         return
       }
       if(!this.activeMath) return
+      const deadPower = this.atDeadPowerPoint()
       event.preventDefault()
       event.stopImmediatePropagation()
+      if(deadPower && ["insertText", "insertCompositionText"].includes(event.inputType)) {
+        const text = (event.data ?? "").normalize("NFD").replace(/\u0302/g, "").replace(/^[\^\u02c6]/, "")
+        if(text) {
+          this.deadPowerPoint = null
+          this.typeInput(text)
+        }
+        return
+      }
       if(event.inputType === "historyUndo" || event.inputType === "historyRedo") {
         event.inputType === "historyUndo" ? this.editor.doc.undo() : this.editor.doc.redo()
         this.changed()
       }
-      else if(event.inputType === "insertText" || event.inputType === "insertReplacementText") this.execute(`text:${event.data ?? ""}`)
+      else if(event.inputType === "insertText") this.typeInput(event.data ?? "")
+      else if(event.inputType === "insertReplacementText") this.execute(`text:${event.data ?? ""}`)
       else if(event.inputType.startsWith("delete")) this.execute(`delete:${event.inputType.includes("Forward") ? "forward" : "backward"}`)
       else if(event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") this.execute("exit")
     },
@@ -156,11 +183,16 @@ export class MathFeature extends EditorFeature {
 
   get activeMath() {
     if(!this.isEnabled) return null
+    if(this.isComposingPower && this.deadPowerTarget?.[0].isConnected) return mathRoot(this.deadPowerTarget[0])
     const selection = document.getSelection()
     const selected = this.selectedMath
     if(selected?.localName === "math") return mathRoot(selected)
     const root = mathRoot(selection?.anchorNode ?? null)
     return root && mathRoot(selection?.focusNode ?? null) === root ? root : null
+  }
+
+  get isComposingPower() {
+    return Boolean(this.deadPowerInput?.isConnected && this.editor.appendix.activeElement === this.deadPowerInput)
   }
 
   getState(): MathSelectionState | undefined {
@@ -469,7 +501,7 @@ export class MathFeature extends EditorFeature {
     const [parent, offset] = point
     const previous = parent.childNodes[offset - 1]
     if(!operand.length && ["frac", "square", "sup", "sub"].includes(name) && previous instanceof Element
-      && previous.namespaceURI === MATH_NAMESPACE && previous.localName !== "mo") operand = [previous]
+      && previous.namespaceURI === MATH_NAMESPACE && (name !== "frac" || previous.localName !== "mo")) operand = [previous]
     const first = mathElement("mrow")
     const second = mathElement("mrow")
     let node: Element
@@ -541,7 +573,23 @@ export class MathFeature extends EditorFeature {
         return true
       }
     }
-    // Navigating out of an empty argument never destroys its fixed-arity parent.
+    // Backspace in an empty script undoes adding that script, preserving the
+    // base itself (including its attributes and any nested structure).
+    if(backward && offset === 0) {
+      let slot = node instanceof Text && !node.length && node.parentElement && plainToken(node.parentElement)
+        ? node.parentElement : node instanceof Element && !node.childNodes.length && (isRow(node) || plainToken(node)) ? node : null
+      while(slot?.parentElement && isRow(slot.parentElement) && slot.parentElement.childNodes.length === 1) slot = slot.parentElement
+      const script = slot?.parentElement
+      if(script && isMath(script) && ["msup", "msub"].includes(script.localName)
+        && script.childNodes.length === 2 && script.children.length === 2 && script.lastElementChild === slot) {
+        const base = script.firstElementChild!
+        this.rowFor(script)
+        script.replaceWith(base)
+        $.move(...after(base))
+        return true
+      }
+    }
+    // Other empty arguments retain their fixed-arity parent.
     if(isRow(node) && !node.childNodes.length) return this.move(backward ? "left" : "right", false)
     const point = this.insertionPoint(range)
     if(!point) return false
@@ -669,7 +717,14 @@ export class MathFeature extends EditorFeature {
 
   private keydown(event: KeyboardEvent) {
     const root = this.activeMath
-    if(!root || event.isComposing) return
+    // A circumflex dead key can already carry isComposing on macOS. Resolve
+    // the shortcut before the IME guard, and retain only its live script slot
+    // so the following composed character is not silently discarded.
+    const deadPower = event.key === "Dead" && !event.metaKey && !event.ctrlKey
+      && (["Backquote", "IntlBackslash"].includes(event.code) && !event.altKey
+        || event.code === "KeyI" && event.altKey)
+    const continuingDeadPower = this.atDeadPowerPoint()
+    if(!root || event.isComposing && !deadPower && !continuingDeadPower) return
     this.marked.add(root)
     if((event.metaKey || event.ctrlKey) && ["z", "y"].includes(event.key.toLowerCase())) {
       this.editor.features.history.activeListeners.keydown?.(event)
@@ -683,12 +738,13 @@ export class MathFeature extends EditorFeature {
       this.changed()
       return
     }
-    if((event.metaKey || event.ctrlKey || event.altKey) && !event.getModifierState("AltGraph")
+    if(!deadPower && (event.metaKey || event.ctrlKey || event.altKey) && !event.getModifierState("AltGraph")
       && !["Backspace", "Delete", "Enter"].includes(event.key)) return
-    const key = event.key === "Dead" && ["Backquote", "IntlBackslash"].includes(event.code) ? "^" : event.key
+    const key = deadPower ? "^" : continuingDeadPower ? event.key.normalize("NFD").replace(/\u0302/g, "") : event.key
     const directions: Record<string, string> = {ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", Home: "start", End: "end"}
     const handled = key.length === 1 || key in directions || ["Backspace", "Delete", "Tab", "Enter", "Escape"].includes(key)
     if(!handled) return
+    this.deadPowerPoint = null
     event.preventDefault()
     event.stopImmediatePropagation()
     if(this.commandText !== null) {
@@ -713,8 +769,74 @@ export class MathFeature extends EditorFeature {
     else if(key === "Tab") { this.moveSlot(event.shiftKey); this.changed() }
     else if(key === "Enter" || key === "Escape") this.execute("exit")
     else if(key === "Backspace" || key === "Delete") this.execute(`delete:${key === "Backspace" ? "backward" : "forward"}`)
-    else if(key === "^" || key === "_" || key === "/") this.execute(`structure:${key === "^" ? "sup" : key === "_" ? "sub" : "frac"}`)
-    else this.execute(`text:${key}`)
+    else {
+      this.typeInput(key)
+      const selection = document.getSelection()
+      if(deadPower && selection?.isCollapsed && selection.focusNode) this.deadPowerPoint = [selection.focusNode, selection.focusOffset]
+    }
+  }
+
+  private atDeadPowerPoint() {
+    const selection = document.getSelection()
+    if(this.deadPowerPoint && (!this.activeMath || !selection?.isCollapsed
+      || selection.focusNode !== this.deadPowerPoint[0] || selection.focusOffset !== this.deadPowerPoint[1])) this.deadPowerPoint = null
+    return this.deadPowerPoint !== null
+  }
+
+  private captureDeadPowerComposition() {
+    const point = this.deadPowerPoint
+    if(!point || this.deadPowerInput) return
+    this.deadPowerPoint = null
+    const [slot, offset] = point
+    const root = mathRoot(slot)
+    const input = document.createElement("textarea")
+    input.setAttribute("aria-label", "Formula exponent input")
+    input.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none"
+    this.deadPowerInput = input
+    this.deadPowerTarget = point
+    const finish = (data: string | null) => {
+      if(this.deadPowerInput !== input) return
+      this.deadPowerInput = null
+      this.deadPowerTarget = null
+      input.remove()
+      // A click elsewhere, deletion, or remote replacement must not restore
+      // an obsolete selection or insert into content that changed meanwhile.
+      if(data === null || !slot.isConnected || mathRoot(slot) !== root || slot.childNodes.length || offset !== 0) return
+      document.body.focus({preventScroll: true})
+      $.move(slot, offset)
+      const text = data.normalize("NFD").replace(/\u0302/g, "").replace(/^[\^\u02c6]/, "")
+      if(text) this.typeInput(text)
+      else {
+        this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        this.refresh()
+      }
+    }
+    input.addEventListener("compositionend", event => finish(event.data))
+    input.addEventListener("blur", () => finish(null))
+    input.addEventListener("keyup", event => {
+      if(event.key === "Dead" || ["Backquote", "IntlBackslash", "KeyI"].includes(event.code)) finish("")
+    })
+    // Chrome can finish a dead-key sequence with ordinary text input.
+    input.addEventListener("input", event => {
+      if(!(event as InputEvent).isComposing) finish(input.value)
+    })
+    this.editor.addAppendix(input)
+    // Chrome ignores cancellation of dead-key composition and its beforeinput
+    // events. Move native composition to the appendix before it writes text.
+    input.focus({preventScroll: true})
+  }
+
+  private cancelDeadPowerComposition() {
+    const input = this.deadPowerInput
+    this.deadPowerPoint = null
+    this.deadPowerInput = null
+    this.deadPowerTarget = null
+    input?.remove()
+  }
+
+  private typeInput(text: string) {
+    const structure = text === "^" ? "sup" : text === "_" ? "sub" : text === "/" ? "frac" : null
+    return this.execute(structure ? `structure:${structure}` : `text:${text}`)
   }
 
   private setHovered(element: Element | null) {
@@ -860,10 +982,79 @@ export class MathFeature extends EditorFeature {
     this.marked.clear()
     this.overlay?.remove()
     this.overlay = null
+    this.caret = null
   }
 
-  private pointRect([node, offset]: Point): DOMRect {
+  /** Measure a character at a structural stop without touching authored DOM.
+   * A zero-height inline box gives the probe's baseline before and after the
+   * insertion, so fractions and radicals cannot inflate the caret height. */
+  structuralTextRect(node: Element, offset: number, outside = false): DOMRect | null {
+    const root = mathRoot(node)
+    if(!root) return null
+    const actual = root.getBoundingClientRect()
+    if(!actual.height) return null
+    const originals = [root, ...root.querySelectorAll("*")]
+    if(originals.some(element => !isMath(element) || element.localName.includes("-") || element.hasAttribute("is"))) return null
+    const clone = root.cloneNode(true) as Element
+    const copies = [clone, ...clone.querySelectorAll("*")]
+    const properties = ["font-family", "font-size", "font-style", "font-weight", "line-height", "math-style", "math-depth", "direction", "display", "box-sizing", "padding", "border-top", "border-bottom", "min-width", "min-height"]
+    originals.forEach((element, index) => {
+      const style = getComputedStyle(element)
+      copies[index].removeAttribute("id")
+      copies[index].setAttribute("style", properties.map(key => `${key}:${style.getPropertyValue(key)}`).join(";"))
+    })
+    clone.setAttribute("style", `${clone.getAttribute("style")};display:inline math`)
+    const probe = document.createElement("span")
+    probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;white-space:nowrap"
+    probe.setAttribute("aria-hidden", "true")
+    const baseline = document.createElement("span")
+    baseline.style.cssText = "display:inline-block;width:0;height:0;padding:0;border:0;vertical-align:baseline"
+    probe.append(clone, baseline)
+    this.editor.appendix.append(probe)
+    try {
+      const before = clone.getBoundingClientRect()
+      const actualBaseline = actual.top + baseline.getBoundingClientRect().top - before.top
+      const row = copies[originals.indexOf(node)]
+      if(!node.childNodes.length && (node === root || node.classList.contains("◆math-slot"))) {
+        row.setAttribute("style", `${row.getAttribute("style")};display:math;min-width:0;min-height:0`)
+      }
+      const character = outside ? document.createElement("span") : mathElement("mi", "x")
+      if(outside) {
+        const style = getComputedStyle(root.parentElement ?? root)
+        character.textContent = "x"
+        character.setAttribute("style", ["font-family", "font-size", "font-style", "font-weight", "line-height", "direction"]
+          .map(key => `${key}:${style.getPropertyValue(key)}`).join(";"))
+        probe.insertBefore(character, offset === 0 ? clone : baseline)
+      }
+      else row.insertBefore(character, row.childNodes[offset] ?? null)
+      const range = document.createRange()
+      range.selectNodeContents(character.firstChild!)
+      const rect = range.getBoundingClientRect()
+      if(!rect.height) return null
+      range.collapse(true)
+      const start = range.getBoundingClientRect()
+      const bounds = node.getBoundingClientRect()
+      const fitPlaceholder = !outside && !node.childNodes.length
+      const style = getComputedStyle(node)
+      const paddingTop = node === root ? parseFloat(style.paddingTop) || 0 : 0
+      const paddingBottom = node === root ? parseFloat(style.paddingBottom) || 0 : 0
+      const availableHeight = Math.max(0, bounds.height - paddingTop - paddingBottom)
+      // Empty arguments reserve an inline-block box with no text descent.
+      // Typing replaces that box and can change the structure's layout. Until then,
+      // keep the glyph-sized caret inside the current placeholder, not at the
+      // baseline the structure will have after insertion.
+      const height = fitPlaceholder ? Math.min(rect.height, availableHeight) : rect.height
+      const top = fitPlaceholder ? bounds.top + paddingTop + (availableHeight - height) / 2
+        : actualBaseline + rect.top - baseline.getBoundingClientRect().top
+      return new DOMRect(bounds.left + start.left - row.getBoundingClientRect().left, top, 0, height)
+    }
+    finally { probe.remove() }
+  }
+
+  private pointRect([node, offset]: Point, measureText = false): DOMRect {
     if(node instanceof Element) {
+      const measured = measureText ? this.structuralTextRect(node, offset) : null
+      if(measured) return measured
       const previous = node.childNodes[offset - 1]
       const next = node.childNodes[offset]
       const adjacent = previous instanceof Element && !Boolean(plainToken(previous)) ? previous
@@ -897,6 +1088,7 @@ export class MathFeature extends EditorFeature {
   }
 
   refresh() {
+    if(this.deadPowerInput && (!this.isComposingPower || !this.deadPowerTarget?.[0].isConnected)) this.cancelDeadPowerComposition()
     if(this.hovered && !mathRoot(this.hovered)) this.setHovered(null)
     const root = this.activeMath
     const selection = document.getSelection()
@@ -951,11 +1143,19 @@ export class MathFeature extends EditorFeature {
       this.overlay.setAttribute("aria-hidden", "true")
       this.editor.addAppendix(this.overlay)
     }
-    this.overlay.replaceChildren()
-    const caretNode = selection?.isCollapsed ? selection.focusNode : null
-    const previous = caretNode?.childNodes[selection!.focusOffset - 1]
-    const structuralCaret = Boolean(caretNode && isRow(caretNode) && previous instanceof Element && !plainToken(previous)
-      && !(caretNode === root && selection!.focusOffset === root.childNodes.length))
+    // Keep the caret connected so refreshing guides cannot restart its blink.
+    Array.from(this.overlay.children).forEach(child => { if(child !== this.caret) child.remove() })
+    const caretPoint: Point | null = this.deadPowerTarget ?? (selection?.isCollapsed && selection.focusNode ? [selection.focusNode, selection.focusOffset] : null)
+    const caretNode = caretPoint?.[0]
+    const caretOffset = caretPoint?.[1] ?? 0
+    const previous = caretNode?.childNodes[caretOffset - 1]
+    const next = caretNode?.childNodes[caretOffset]
+    const structuralCaret = Boolean(caretNode && isRow(caretNode)
+      && (caretNode.classList.contains("◆math-slot") || caretNode === root && !root.childNodes.length
+        || previous instanceof Element && !plainToken(previous) || next instanceof Element && !plainToken(next))
+      && !(caretNode === root && root.childNodes.length && root.getAttribute("display") !== "block"
+        && (caretOffset === 0 || caretOffset === root.childNodes.length)))
+    if(!structuralCaret) { this.caret?.remove(); this.caret = null }
     if(structuralCaret && !root.classList.contains("◆math-structural-caret")) root.classList.add("◆math-structural-caret")
     else if(!structuralCaret) removeEditorMarker(root, "◆math-structural-caret")
     const outerRows = new Set<Element>([root])
@@ -967,17 +1167,24 @@ export class MathFeature extends EditorFeature {
     markers.forEach((marker, element) => {
       if(marker !== "◆math-slot" || outerRows.has(element)) return
       const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      const paddingLeft = parseFloat(style.paddingLeft) || 0
+      const paddingRight = parseFloat(style.paddingRight) || 0
       const guide = document.createElement("span")
-      guide.style.cssText = `position:absolute;box-sizing:border-box;border:1px dashed #94a3b8;left:${rect.left}px;top:${rect.top}px;width:${Math.max(10, rect.width)}px;height:${Math.max(18, rect.height)}px`
+      // The slot already reserves its native script-size hit target. Enlarging
+      // the guide here overlaps fraction bars, radicals, and neighboring slots.
+      guide.style.cssText = `position:absolute;box-sizing:border-box;border:1px dashed #94a3b8;left:${rect.left + paddingLeft}px;top:${rect.top}px;width:${Math.max(0, rect.width - paddingLeft - paddingRight)}px;height:${rect.height}px`
       if(element === this.hovered) guide.style.borderColor = "var(--sl-color-primary-400)"
       this.overlay!.append(guide)
     })
     if(selection?.isCollapsed && selection.focusNode) {
-      const rect = this.pointRect([selection.focusNode, selection.focusOffset])
+      const rect = this.pointRect(caretPoint ?? [selection.focusNode, selection.focusOffset], structuralCaret)
       if(structuralCaret) {
-        const caret = document.createElement("span")
-        caret.style.cssText = `position:absolute;background:currentColor;width:1px;left:${rect.left}px;top:${rect.top}px;height:${rect.height}px;animation:var(--ww-ui-animation, blink 1s step-end 0s infinite)`
-        this.overlay.append(caret)
+        const inset = caretNode instanceof Element && markers.get(caretNode) === "◆math-slot" && !outerRows.has(caretNode) ? 1 : 0
+        const caret = this.caret ??= document.createElement("span")
+        caret.setAttribute("part", "math-caret")
+        caret.style.cssText = `position:absolute;background:currentColor;width:1px;left:${rect.left + inset}px;top:${rect.top}px;height:${rect.height}px;animation:var(--ww-ui-animation, blink 1s step-end 0s infinite)`
+        if(caret.parentNode !== this.overlay) this.overlay.append(caret)
       }
       if(this.commandText !== null) {
         if(!this.commandRange?.startContainer.isConnected || !root.contains(this.commandRange.startContainer)

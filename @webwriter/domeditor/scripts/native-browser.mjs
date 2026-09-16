@@ -8,6 +8,11 @@ import {createServer} from "vite"
 const expectedChecks = [
   "column groups expose independent gaps and stack with separator lines",
   "native MathML editing preserves inline rendering and argument hit targets",
+  "dead-key composition stays outside authored formulas",
+  "whole formulas receive one blue selection layer",
+  "empty formula carets fit their space and blink across presentation refreshes",
+  "empty roots keep their baseline and one caret across focus and formula edges",
+  "structural formula carets match inserted text without duplicate capture carets",
   "formula clicks distinguish script endings and select whole formulas",
   "inline formula edges use text selections and block formula edges use gaps",
   "inline formulas retain distinct inner and outer text insertion positions",
@@ -43,6 +48,7 @@ const expectedChecks = [
   "exported canvas runs its standalone viewer without editor dependencies",
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
+const mathVisual = process.argv.includes("--math-visual")
 const chrome = process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 let reportResult
 const resultPromise = new Promise(resolve => { reportResult = resolve })
@@ -92,7 +98,7 @@ try {
     "--disable-software-rasterizer",
     "--no-first-run",
     `--user-data-dir=${profile}`,
-    `http://127.0.0.1:${port}/tests/native-browser.html?run`,
+    `http://127.0.0.1:${port}/tests/${mathVisual ? "math-visual" : "native-browser"}.html?run`,
   ], {stdio: ["ignore", "ignore", "pipe"]})
   browser.stderr.on("data", chunk => errors.push(chunk))
   browserClosed = new Promise(resolve => browser.once("close", (exitCode, signal) => {
@@ -106,12 +112,12 @@ try {
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && checks.length === expectedChecks.length
-    && expectedChecks.every(name => checks.some(check => check?.name === name))
+  const valid = !result?.error && (mathVisual ? checks.length >= 2064 && new Set(checks.map(check => check.name)).size === checks.length : checks.length === expectedChecks.length
+    && expectedChecks.every(name => checks.some(check => check?.name === name)))
     && checks.every(check => check && typeof check.name === "string" && check.error === undefined)
   process.stdout.write(JSON.stringify(checks, null, 2) + "\n")
   if(!valid) {
-    process.stderr.write(`${result?.error ?? "Native checks failed"}\n${Buffer.concat(errors).toString()}`)
+    process.stderr.write(`${result?.error ?? "Native checks failed"}\n${mathVisual && checks.length ? "" : Buffer.concat(errors).toString()}`)
     process.exitCode = 1
   }
 }

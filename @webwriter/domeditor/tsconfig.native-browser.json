@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {"noEmit": true},
-  "include": ["custom.d.ts", "tests/native-browser.ts", "tests/native-browser-frame.ts"],
+  "include": ["custom.d.ts", "tests/native-browser.ts", "tests/native-browser-frame.ts", "tests/math-visual.ts", "tests/math-visual-page.ts", "tests/math-root-regression.ts", "tests/math-keyboard.ts"],
   "exclude": []
 }

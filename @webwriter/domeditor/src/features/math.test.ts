@@ -37,6 +37,125 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("DOM MathML editing", () => {
+  it.each(["inline", "block"])("paints a whole %s formula once and restores partial text selection", display => {
+    const math = load("<mrow><mi>abc</mi><mfrac><mi>x</mi><mi>y</mi></mfrac></mrow>")
+    math.setAttribute("display", display)
+    const authored = clean()
+    const overlays = () => editor.appendix.querySelectorAll('[part="atomic-selection-overlay"]')
+    for(const contents of [false, true]) {
+      if(contents) document.getSelection()!.setBaseAndExtent(math, 0, math, math.childNodes.length)
+      else $.selectElement(math)
+      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+      editor.features.math.refresh()
+      expect(overlays()).toHaveLength(1)
+      expect(math.classList.contains("◆atomic-range-selected")).toBe(true)
+      expect(math.querySelector(".◆atomic-range-selected")).toBeNull()
+      expect(clean()).toBe(authored)
+      const text = math.querySelector("mi")!.firstChild!
+      document.getSelection()!.setBaseAndExtent(text, 0, text, 1)
+      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+      expect(overlays()).toHaveLength(0)
+      expect(math.classList.contains("◆atomic-range-selected")).toBe(false)
+    }
+  })
+
+  it.each(["", "<mrow></mrow>"])("retains the empty formula caret across refreshes: %s", content => {
+    const math = load(content)
+    $.move(math.firstElementChild ?? math, 0)
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    editor.features.math.refresh()
+    const caret = editor.appendix.querySelector('[part="math-caret"]')!
+    expect(caret).not.toBeNull()
+    editor.features.math.refresh()
+    expect(editor.appendix.querySelector('[part="math-caret"]')).toBe(caret)
+    expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "").not.toContain("selection-caret-text")
+    expect(clean()).not.toContain("math-caret")
+    editor.features.math.disable()
+    expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
+  })
+
+  it("owns the empty radicand caret and releases it at formula and prose boundaries", () => {
+    const math = load("<mrow><mroot><mrow></mrow><mi>a</mi></mroot></mrow>")
+    const slot = math.querySelector("mroot")!.firstElementChild!
+    const original = clean()
+    $.move(slot, 0)
+    editor.features.math.refresh()
+    expect(math.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
+      .filter(element => element.style.background)).toHaveLength(1)
+    expect(clean()).toBe(original)
+    $.move(math, math.childNodes.length)
+    editor.features.math.refresh()
+    expect(math.classList.contains("◆math-structural-caret")).toBe(false)
+    $.move(math.nextSibling!, 1)
+    editor.features.math.refresh()
+    expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
+    expect(math.querySelector(".◆math-slot")).toBeNull()
+    expect(clean()).toBe(original)
+  })
+
+  it.each([0, 1])("owns the measured caret at structure boundary %s", offset => {
+    const math = load("<mrow><mfrac><mi>x</mi><mi>y</mi></mfrac><mi>z</mi></mrow>")
+    const row = math.firstElementChild!
+    const authored = clean()
+    $.move(row, offset)
+    editor.features.math.refresh()
+    expect(math.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(editor.appendix.querySelectorAll('[part="math-caret"]')).toHaveLength(1)
+    expect(clean()).toBe(authored)
+    $.move(row.lastElementChild!.firstChild!, 1)
+    editor.features.math.refresh()
+    expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
+    expect(math.classList.contains("◆math-structural-caret")).toBe(false)
+  })
+
+  it.each(["ltr", "rtl"])("insets the %s empty placeholder caret one pixel to the right", direction => {
+    const math = load("<msup><mi>x</mi><mrow></mrow></msup>")
+    const slot = math.querySelector("mrow")!
+    slot.setAttribute("style", `direction:${direction}`)
+    vi.spyOn(slot, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 20, 12, 16))
+    $.move(slot, 0)
+    editor.features.math.refresh()
+    expect(editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!.style.left).toBe("31px")
+    expect(editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!.style.left).toBe("30px")
+  })
+
+  it("keeps small script placeholders inside their reserved native bounds", () => {
+    const math = load("<mroot><mrow></mrow><mrow></mrow></mroot>")
+    const slots = math.querySelectorAll("mrow")
+    vi.spyOn(slots[0], "getBoundingClientRect").mockReturnValue(new DOMRect(30, 20, 12, 16))
+    vi.spyOn(slots[1], "getBoundingClientRect").mockReturnValue(new DOMRect(22, 12, 6, 8))
+    editor.features.math.refresh()
+    const guides = Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
+    expect(guides.map(guide => [guide.style.left, guide.style.top, guide.style.width, guide.style.height]))
+      .toEqual([["30px", "20px", "12px", "16px"], ["22px", "12px", "6px", "8px"]])
+    expect(clean()).not.toContain("◆")
+    editor.features.math.disable()
+    expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
+    expect(math.querySelector(".◆math-slot")).toBeNull()
+  })
+
+  it.each(["ltr", "rtl"])("keeps %s placeholder guides out of spacing reserved for operators", direction => {
+    const math = load("<msubsup><mo>∫</mo><mrow></mrow><mrow></mrow></msubsup>")
+    const slot = math.querySelector("mrow")!
+    slot.setAttribute("style", `direction:${direction};padding-left:${direction === "ltr" ? 10 : 0}px;padding-right:${direction === "rtl" ? 10 : 0}px`)
+    vi.spyOn(slot, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 20, 18, 12))
+    const authored = clean()
+    $.move(slot, 0)
+    editor.features.math.refresh()
+    const guide = editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!
+    expect(guide.style.left).toBe(direction === "ltr" ? "40px" : "30px")
+    expect(guide.style.width).toBe("8px")
+    const caret = editor.appendix.querySelector('[part="math-caret"]')
+    expect(caret).not.toBeNull()
+    editor.features.math.refresh()
+    expect(editor.appendix.querySelector('[part="math-caret"]')).toBe(caret)
+    expect(clean()).toBe(authored)
+    editor.features.math.disable()
+    expect(math.querySelector(".◆math-slot")).toBeNull()
+    expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
+  })
+
   it("highlights only the hovered structure placeholder border and restores it on exit", () => {
     const math = load('<mroot><mrow></mrow><mrow></mrow></mroot>')
     const degree = math.querySelector("mroot")!.lastElementChild!
@@ -332,7 +451,8 @@ describe("DOM MathML editing", () => {
     const math = load(content)
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-editing")).toBe(true)
-    expect(editor.appendix.querySelector(".◆math-overlay")?.children).toHaveLength(0)
+    expect(Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
+      .filter(element => element.style.borderStyle === "dashed")).toHaveLength(0)
     command("exit")
     expect(math.classList.contains("◆math-editing")).toBe(false)
   })
@@ -736,6 +856,151 @@ describe("DOM MathML editing", () => {
     expect(document.querySelector("p")?.lastChild?.textContent).toBe(" after")
   })
 
+  it.each(["^", "_"])("uses the preceding symbol as the base when typing %s", shortcut => {
+    for(const input of ["keydown", "beforeinput"]) for(const token of ["mi", "mn", "mo"]) {
+      const math = load(`<${token} id="base">${token === "mi" ? "x" : token === "mn" ? "12" : "∑"}</${token}><mi>z</mi>`)
+      const base = math.firstElementChild!
+      $.move(base.firstChild!, base.textContent!.length)
+      if(input === "keydown") key(shortcut)
+      else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: shortcut}))
+      const script = math.querySelector(shortcut === "^" ? "msup" : "msub")!
+      expect(script.firstElementChild!.firstElementChild).toBe(base)
+      expect(document.getSelection()!.focusNode).toBe(script.lastElementChild)
+      expect(math.lastElementChild!.textContent).toBe("z")
+      key("2")
+      expect(script.lastElementChild!.textContent).toBe("2")
+      expect(base.id).toBe("base")
+    }
+  })
+
+  it.each(["^", "_"])("keeps an empty base when typing %s without a preceding symbol", shortcut => {
+    const math = load("<mi>x</mi>")
+    $.move(math.firstElementChild!.firstChild!, 0)
+    key(shortcut)
+    const script = math.firstElementChild!
+    expect(script.localName).toBe(shortcut === "^" ? "msup" : "msub")
+    expect(script.textContent).toBe("")
+    expect(document.getSelection()!.focusNode).toBe(script.firstElementChild)
+    expect(math.lastElementChild!.textContent).toBe("x")
+  })
+
+  it.each(["Backquote", "IntlBackslash"])("handles the German circumflex dead key at %s without losing the exponent", code => {
+    for(const isComposing of [false, true]) for(const character of ["a", "2", "â"]) {
+      const math = load("<mi>x</mi>")
+      $.move(math.firstElementChild!.firstChild!, 1)
+      expect(key("Dead", {code, isComposing}).defaultPrevented).toBe(true)
+      const script = math.querySelector("msup")!
+      expect(script.firstElementChild!.textContent).toBe("x")
+      expect(document.getSelection()!.focusNode).toBe(script.lastElementChild)
+      expect(key(character, {isComposing: true}).defaultPrevented).toBe(true)
+      expect(script.lastElementChild!.textContent).toBe(character === "â" ? "a" : character)
+      key("b")
+      expect(script.lastElementChild!.textContent).toBe(character === "2" ? "2b" : "ab")
+    }
+  })
+
+  it("accepts a dead-key continuation delivered as composition input", () => {
+    const math = load("<mi>x</mi>")
+    $.move(math.firstElementChild!.firstChild!, 1)
+    key("Dead", {code: "Backquote", isComposing: true})
+    for(const data of ["^", "â"]) document.dispatchEvent(new InputEvent("beforeinput", {
+      bubbles: true, cancelable: true, inputType: "insertCompositionText", isComposing: true, data,
+    }))
+    expect(math.querySelector("msup")!.lastElementChild!.textContent).toBe("a")
+    expect(math.querySelectorAll("msup")).toHaveLength(1)
+  })
+
+  it.each(["^2", "â"])("isolates Chrome's non-cancelable dead-key composition %s from authored MathML", data => {
+    const math = load("<mi>x</mi><mi>a</mi>")
+    $.move(math.lastElementChild!.firstChild!, 1)
+    key("Dead", {code: "IntlBackslash", keyCode: 229})
+    const script = math.querySelector("msup")!
+    document.body.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true, data: ""}))
+    const input = editor.appendix.querySelector<HTMLTextAreaElement>('textarea[aria-label="Formula exponent input"]')!
+    expect(input).not.toBeNull()
+    expect(input.getRootNode()).toBe(editor.appendix)
+    for(const value of ["^", data]) {
+      input.dispatchEvent(new CompositionEvent("compositionupdate", {bubbles: true, data: value}))
+      input.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: false, inputType: "insertCompositionText", isComposing: true, data: value}))
+      input.value = value // The native edit that cannot be prevented.
+      input.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertCompositionText", isComposing: true, data: value}))
+      expect(script.firstElementChild!.textContent).toBe("a")
+      expect(script.lastElementChild!.childNodes).toHaveLength(0)
+      expect(clean()).not.toContain("textarea")
+    }
+    input.dispatchEvent(Object.assign(new Event("compositionend", {bubbles: true}), {data}))
+    expect(input.isConnected).toBe(false)
+    expect(script.lastElementChild!.textContent).toBe(data === "^2" ? "2" : "a")
+    expect(script.lastElementChild!.firstElementChild!.localName).toBe(data === "^2" ? "mn" : "mi")
+    expect(script.lastElementChild!.contains(document.getSelection()!.focusNode)).toBe(true)
+  })
+
+  it("returns focus and the caret to the exponent start on dead-key release", () => {
+    const math = load("<mi>x</mi>")
+    $.move(math.firstElementChild!.firstChild!, 1)
+    key("Dead", {code: "IntlBackslash", keyCode: 229})
+    document.body.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}))
+    const input = editor.appendix.querySelector<HTMLTextAreaElement>("textarea")!
+    input.value = "^"
+    document.getSelection()!.setBaseAndExtent(input, 0, input, 0)
+    editor.features.selection.processSelection()
+    expect(document.getSelection()!.focusNode).toBe(input)
+    editor.features.math.refresh()
+    const slot = math.querySelector("msup")!.lastElementChild!
+    expect(slot.classList.contains("◆math-slot")).toBe(true)
+    input.dispatchEvent(new KeyboardEvent("keyup", {key: "Dead", code: "IntlBackslash", isComposing: true, bubbles: true}))
+    expect(input.isConnected).toBe(false)
+    expect(document.getSelection()!.focusNode).toBe(slot)
+    expect(document.getSelection()!.focusOffset).toBe(0)
+    key("2")
+    expect(slot.textContent).toBe("2")
+  })
+
+  it("clears the hidden input and caret presentation when clicking away during composition", () => {
+    const math = load("<mi>x</mi>")
+    $.move(math.firstElementChild!.firstChild!, 1)
+    key("Dead", {code: "IntlBackslash"})
+    document.body.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}))
+    const input = editor.appendix.querySelector("textarea")!
+    const prose = document.createElement("p")
+    prose.textContent = "outside"
+    document.body.append(prose)
+    editor.features.math.captureListeners.pointerdown!(new PointerEvent("pointerdown", {bubbles: true}))
+    $.move(prose.firstChild!, 1)
+    editor.features.math.refresh()
+    expect(input.isConnected).toBe(false)
+    expect(editor.features.math.isComposingPower).toBe(false)
+    expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
+    expect(math.querySelector(".◆math-slot")).toBeNull()
+    expect(math.classList.contains("◆math-structural-caret")).toBe(false)
+    input.dispatchEvent(Object.assign(new Event("compositionend", {bubbles: true}), {data: "^2"}))
+    expect(document.getSelection()!.focusNode).toBe(prose.firstChild)
+    expect(math.textContent).toBe("x")
+  })
+
+  it("cancels the dead-key composition target when the exponent is replaced", () => {
+    const math = load("<mi>x</mi>")
+    $.move(math.firstElementChild!.firstChild!, 1)
+    key("Dead", {code: "IntlBackslash"})
+    document.body.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}))
+    const input = editor.appendix.querySelector("textarea")!
+    math.querySelector("msup")!.lastElementChild!.replaceWith(document.createElementNS(MATH_NAMESPACE, "mrow"))
+    input.dispatchEvent(Object.assign(new Event("compositionend", {bubbles: true}), {data: "^2"}))
+    expect(math.textContent).toBe("x")
+    expect(input.isConnected).toBe(false)
+  })
+
+  it("does not treat unrelated composition or a moved selection as a power continuation", () => {
+    const math = load("<mi>x</mi><mi>y</mi>")
+    $.move(math.firstElementChild!.firstChild!, 1)
+    expect(key("Dead", {code: "Quote", isComposing: true}).defaultPrevented).toBe(false)
+    expect(math.querySelector("msup")).toBeNull()
+    key("Dead", {code: "Backquote", isComposing: true})
+    $.move(math.lastElementChild!.firstChild!, 1)
+    expect(key("a", {isComposing: true}).defaultPrevented).toBe(false)
+    expect(math.textContent).toBe("xy")
+  })
+
   it("completes backslash commands without putting command UI in the authored DOM", () => {
     const math = load("")
     for(const character of "\\sqrt") key(character)
@@ -766,6 +1031,47 @@ describe("DOM MathML editing", () => {
     expect(command("text:q")).toBe(false)
     expect(command("delete:backward")).toBe(false)
     expect(clean()).toBe(html)
+  })
+
+  it.each(["msup", "msub"])("unwraps %s on Backspace in its empty script", tag => {
+    for(const empty of ["<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mi></mi>"]) {
+      const math = load(`<${tag}><mrow id="base"><mi>x</mi><!--keep--></mrow>${empty}</${tag}><mi>z</mi>`)
+      const base = math.querySelector("#base")!
+      const slot = math.firstElementChild!.lastElementChild!
+      $.move(slot.firstElementChild ?? slot, 0)
+      expect(key("Backspace").defaultPrevented).toBe(true)
+      expect(math.querySelector(tag)).toBeNull()
+      expect(math.firstElementChild).toBe(base)
+      expect(base.innerHTML).toBe("<mi>x</mi><!--keep-->")
+      expect(document.getSelection()!.focusNode).toBe(math)
+      expect(document.getSelection()!.focusOffset).toBe(1)
+      key("y")
+      expect(math.textContent).toBe("xyz")
+    }
+  })
+
+  it("unwraps an empty script inside a fixed-arity argument without removing the base", () => {
+    const math = load("<mfrac><msup><mi id='base'>x</mi><mrow></mrow></msup><mi>y</mi></mfrac>")
+    const base = math.querySelector("#base")!
+    $.move(math.querySelector("mrow")!, 0)
+    key("Backspace")
+    expect(math.querySelector("msup")).toBeNull()
+    expect(math.querySelector("mfrac")!.children).toHaveLength(2)
+    expect(math.querySelector("mfrac")!.firstElementChild!.firstElementChild).toBe(base)
+    key("2")
+    expect(math.querySelector("mfrac")!.firstElementChild!.textContent).toBe("x2")
+  })
+
+  it("preserves nonempty scripts and other empty structure arguments on Backspace", () => {
+    for(const content of ["<msup><mi>x</mi><mi>2</mi></msup>", "<mfrac><mi>x</mi><mrow></mrow></mfrac>"]) {
+      const math = load(content)
+      const structure = math.firstElementChild!
+      const slot = structure.lastElementChild!
+      $.move(slot.firstChild ?? slot, 0)
+      key("Backspace")
+      expect(structure.isConnected).toBe(true)
+      expect(structure.children).toHaveLength(2)
+    }
   })
 
   it("replaces a deleted fixed argument with an empty row", () => {

@@ -14,7 +14,7 @@ describe("formula toolbox controls", () => {
   it("offers one root structure with an optional index", () => {
     const roots = mathStructureOptions.filter(option => /root/i.test(option.title))
     expect(roots).toEqual([{
-      command: "structure:root", label: "ⁿ√□", title: "Root (leave index empty for square root)",
+      command: "structure:root", label: "ⁿ√□", title: "Root",
     }])
   })
 
@@ -38,6 +38,12 @@ describe("formula toolbox controls", () => {
     const menu = formula.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete
     expect(menu.hidden).toBe(false)
+    for(const option of mathStructureOptions) {
+      const button = menu.shadowRoot!.querySelector<HTMLButtonElement>(`button[title="${option.title}"]`)!
+      const icon = button.querySelector(".item-icon")!
+      expect(icon.textContent).toBe(option.label)
+      expect(icon.querySelector("svg")).toBeNull()
+    }
     menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Fraction"]')!.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "insert-math:frac"}}))
 

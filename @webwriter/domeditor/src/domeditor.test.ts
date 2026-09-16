@@ -63,7 +63,10 @@ describe("DOMEditor stylesheets", () => {
 
     expect(stylesheet).toBeInstanceOf(CSSStyleSheet)
     expect(appendixStylesheet).toBeInstanceOf(CSSStyleSheet)
-    expect((Array.from(appendixStylesheet!.cssRules)[0] as CSSStyleRule).style.display).toBe("none")
+    const lockRule = Array.from(appendixStylesheet!.cssRules).find(rule =>
+      (rule as CSSStyleRule).selectorText === ":host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar)") as CSSStyleRule
+    expect(lockRule.style.display).toBe("none")
+    expect(Array.from(appendixStylesheet!.cssRules).some(rule => (rule as CSSKeyframesRule).name === "blink")).toBe(true)
     expect(editorStyleString).toContain("body::part(transform-overlay)")
     expect(overlay.getAttribute("part")).toContain("transform-overlay")
     expect(overlay.querySelector("#◆transform-overlay-scale-up-left")?.getAttribute("part"))
