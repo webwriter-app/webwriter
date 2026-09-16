@@ -525,7 +525,7 @@ export abstract class EditingControls extends LitElement {
         icon="MarkLink"
         .dropdown=${this.renderLinkDropdown()}
         ?active=${this.marks.includes("a")}
-        ?disabled=${!this.canMark}
+        ?disabled=${!this.canMark || this.math?.active}
       ></ribbon-button>
     `
   }
@@ -546,7 +546,7 @@ export abstract class EditingControls extends LitElement {
         .selectionCount=${Math.max(0, selected.length - 1)}
         .dropdown=${this.renderSpanDropdown(selected)}
         ?active=${selected.length > 0}
-        ?disabled=${!this.canMark}
+        ?disabled=${!this.canMark || this.math?.active}
       ></ribbon-button>
     `
   }

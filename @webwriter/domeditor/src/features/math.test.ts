@@ -3,7 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
-import {isSelectionChangeMessage, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
+import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
 
 let editor: DOMEditor
@@ -1488,5 +1488,152 @@ describe("DOM MathML editing", () => {
       expect(remote.getXmlElement("body").toString()).not.toContain("◆math")
     }
     finally { remote.destroy() }
+  })
+})
+
+
+describe("formula marks", () => {
+  it("styles a selected token without replacing or splitting its DOM", () => {
+    const math = load('<mi data-author="yes">abc</mi>')
+    const token = math.firstElementChild!
+    const text = token.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 1, text, 2)
+    expect(editor.features.mark.getState().canMark).toBe(true)
+    editor.features.mark.toggleMarkGroup("b")
+    editor.features.mark.toggleMarkGroup("u")
+    editor.features.mark.toggleMarkGroup("s")
+    editor.features.mark.setStyleMark("color", "red")
+    expect(token.getAttribute("style")).toContain("font-weight: bold")
+    expect(token.getAttribute("style")).toContain("underline line-through")
+    expect(token.getAttribute("style")).toContain("color: red")
+    expect(token.firstChild).toBe(text)
+    expect(token.textContent).toBe("abc")
+    expect(math.children).toHaveLength(1)
+    editor.features.mark.toggleMarkGroup("u")
+    expect(token.getAttribute("style")).not.toContain("underline")
+    expect(token.getAttribute("style")).toContain("line-through")
+    editor.features.mark.removeMarks()
+    expect(token.hasAttribute("style")).toBe(false)
+    expect(token.getAttribute("data-author")).toBe("yes")
+  })
+
+  it("stores caret styles without changing existing content and uses them on input", () => {
+    const math = load("<mn>12</mn>")
+    const original = math.firstElementChild!
+    $.move(original.firstChild!, 1)
+    editor.features.mark.toggleMark("b")
+    editor.features.mark.setStyleMark("color", "red")
+    expect(original.hasAttribute("style")).toBe(false)
+    expect(math.textContent).toBe("12")
+    command("text:3")
+    const inserted = Array.from(math.children).find(element => element.textContent === "3")!
+    expect(inserted.getAttribute("style")).toContain("font-weight: bold")
+    expect(inserted.getAttribute("style")).toContain("color: red")
+    $.move(math, math.childNodes.length)
+    expect(editor.features.mark.getState().marks).toEqual([])
+  })
+
+  it("clears formulas and surrounding text together while preserving formula structure", () => {
+    const math = load('<mi style="color: red; padding: 2px">x</mi>')
+    const token = math.firstElementChild!
+    const paragraph = math.parentElement!
+    const bold = document.createElement("b")
+    bold.textContent = "bold"
+    paragraph.prepend(bold)
+    document.getSelection()!.setBaseAndExtent(paragraph, 0, paragraph, paragraph.childNodes.length)
+    expect(editor.features.mark.getState().canMark).toBe(true)
+    expect(editor.features.mark.removeMarks()).toBe(true)
+    expect(token.getAttribute("style")).toBe("padding: 2px;")
+    expect(math.firstElementChild).toBe(token)
+    expect(paragraph.querySelector("b")).toBeNull()
+  })
+})
+
+
+it("formats partially selected tokens and preserves intervening comments", () => {
+  const math = load("<mi>abc</mi><!--keep--><mo>+</mo><mi>def</mi>")
+  const nodes = Array.from(math.childNodes)
+  document.getSelection()!.setBaseAndExtent(nodes[0].firstChild!, 1, nodes[3].firstChild!, 2)
+  editor.features.mark.toggleMark("i")
+  expect(Array.from(math.childNodes)).toEqual(nodes)
+  for(const token of Array.from(math.children)) expect(token.getAttribute("style")).toContain("font-style: italic")
+})
+
+it("undoes and redoes formula inline formatting", () => {
+  const math = load("<mi>x</mi>")
+  editor.doc.syncFromDOM()
+  editor.doc.stopCapturing()
+  $.selectElement(math)
+  editor.features.mark.toggleMark("b")
+  editor.doc.syncFromDOM()
+  editor.doc.undo()
+  expect(document.querySelector("math")!.hasAttribute("style")).toBe(false)
+  editor.doc.redo()
+  expect(document.querySelector("math")!.getAttribute("style")).toContain("font-weight: bold")
+})
+
+it("clears pending formula formatting and discards it when its caret is replaced", () => {
+  const math = load("<mi>x</mi>")
+  $.move(math.firstChild!.firstChild!, 1)
+  editor.features.mark.toggleMark("b")
+  editor.features.mark.removeMarks()
+  command("text:y")
+  expect(math.lastElementChild!.hasAttribute("style")).toBe(false)
+  editor.features.mark.toggleMark("b")
+  math.replaceChildren(document.createElementNS(MATH_NAMESPACE, "mi"))
+  $.move(math.firstChild!, 0)
+  expect(editor.features.mark.getState().marks).toEqual([])
+  command("text:z")
+  expect(math.querySelector('[style]')).toBeNull()
+})
+
+
+describe("formula formatting state", () => {
+  const message = () => ({
+    type: markStateChangeEvent,
+    detail: {...editor.features.mark.getState(), styles: editor.features.mark.getStyleState()},
+  })
+
+  it.each(["b", "i", "u", "s"] as const)("publishes valid active state and toggles %s off on a selection", mark => {
+    const math = load("<mi>x</mi>")
+    const token = math.firstElementChild!
+    $.selectElement(token)
+    editor.features.mark.toggleMark(mark)
+    expect(isMarkStateChangeMessage(message())).toBe(true)
+    expect(message().detail.marks).toContain(mark)
+    editor.features.mark.toggleMark(mark)
+    expect(isMarkStateChangeMessage(message())).toBe(true)
+    expect(message().detail.marks).not.toContain(mark)
+    expect(math.firstElementChild).toBe(token)
+  })
+
+  it.each(["b", "i", "u", "s"] as const)("publishes pending %s state and toggles it off before typing", mark => {
+    const math = load("<mi>x</mi>")
+    $.move(math.firstChild!.firstChild!, 1)
+    editor.features.mark.toggleMark(mark)
+    expect(isMarkStateChangeMessage(message())).toBe(true)
+    expect(message().detail.marks).toContain(mark)
+    editor.features.mark.toggleMark(mark)
+    expect(isMarkStateChangeMessage(message())).toBe(true)
+    expect(message().detail.marks).not.toContain(mark)
+    command("text:y")
+    expect(message().detail.marks).not.toContain(mark)
+    expect(math.firstElementChild!.hasAttribute("style")).toBe(false)
+  })
+
+  it("shows descendant formatting on a selected formula and removes its overrides when toggled off", () => {
+    const math = load('<mrow><mi style="font-weight: 700; color: red">x</mi><mi style="font-weight: bold; color: red">y</mi></mrow>')
+    const tokens = Array.from(math.querySelectorAll("mi"))
+    $.selectElement(math)
+    expect(message().detail.marks).toContain("b")
+    expect(message().detail.styles).toEqual({color: "red"})
+    expect(isMarkStateChangeMessage(message())).toBe(true)
+    editor.features.mark.toggleMark("b")
+    expect(message().detail.marks).not.toContain("b")
+    for(const token of tokens) {
+      $.selectElement(token)
+      expect(message().detail.marks).not.toContain("b")
+      expect(token.getAttribute("style")).toContain("color: red")
+    }
   })
 })

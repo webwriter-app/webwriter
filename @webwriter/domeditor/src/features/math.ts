@@ -2,6 +2,11 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {$, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, type MathSelectionState} from "../math"
 
+import {styleMarkNames, type MarkName} from "../marks"
+
+const formulaMarks = {b: ["font-weight", "bold"], i: ["font-style", "italic"], u: ["text-decoration-line", "underline"], s: ["text-decoration-line", "line-through"]} as const
+const formulaStyleNames = [...styleMarkNames, "font-weight", "font-style", "text-decoration-line"]
+
 type Point = [Node, number]
 const indexOf = (node: Node) => Array.from(node.parentNode!.childNodes).indexOf(node as ChildNode)
 const isMath = (node: Node): node is Element => node instanceof Element && node.namespaceURI === MATH_NAMESPACE
@@ -29,6 +34,164 @@ export class MathFeature extends EditorFeature {
   private deadPowerTarget: Point | null = null
   private drag: {root: Element, pointerId: number} | null = null
   private hovered: Element | null = null
+  private typingStyles: Record<string, string> | null = null
+  private typingPoint: Point | null = null
+
+  private pendingStyles() {
+    const selection = document.getSelection()
+    if(!selection?.isCollapsed || !this.typingPoint?.[0].isConnected
+      || selection.anchorNode !== this.typingPoint[0] || selection.anchorOffset !== this.typingPoint[1]) {
+      this.typingStyles = null
+      this.typingPoint = null
+    }
+    return this.typingStyles
+  }
+
+  private inlineStyle(element: Element) {
+    const style = document.createElement("span").style
+    style.cssText = element.getAttribute("style") ?? ""
+    return style
+  }
+
+  private formatTargets() {
+    const root = this.activeMath
+    const selection = document.getSelection()
+    if(!root || this.inWidget(root) || !selection?.rangeCount) return []
+    const range = selection.getRangeAt(0)
+    if(this.selectedMath) return [root]
+    if(range.collapsed || range.startContainer === range.endContainer && range.startContainer instanceof Text) {
+      const element = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement
+      return element && isMath(element) ? [element] : []
+    }
+    return [root, ...Array.from(root.querySelectorAll("*"))].filter(element => {
+      if(!isMath(element) || this.inWidget(element) || !range.intersectsNode(element)) return false
+      if(isToken(element)) {
+        const contents = document.createRange()
+        contents.selectNodeContents(element)
+        return range.compareBoundaryPoints(Range.END_TO_START, contents) < 0
+          && range.compareBoundaryPoints(Range.START_TO_END, contents) > 0
+      }
+      const contents = document.createRange()
+      contents.selectNode(element)
+      return range.compareBoundaryPoints(Range.START_TO_START, contents) <= 0
+        && range.compareBoundaryPoints(Range.END_TO_END, contents) >= 0
+    }).filter((element, _, all) => !all.some(parent => parent !== element && parent.contains(element)))
+  }
+
+  getFormatting() {
+    const pending = this.pendingStyles()
+    const targets = this.formatTargets()
+    const samples = document.getSelection()?.isCollapsed ? targets : targets.flatMap(target => {
+      const tokens = Array.from(target.querySelectorAll("*")).filter(element => isToken(element) && !this.inWidget(element))
+      return tokens.length ? tokens : [target]
+    })
+    const values = samples.map(target => {
+      const styles: Record<string, string> = {}
+      let element: Element | null = target
+      while(element && isMath(element)) {
+        const inline = this.inlineStyle(element)
+        for(const property of formulaStyleNames) {
+          if(!(property in styles) && inline.getPropertyValue(property)) styles[property] = inline.getPropertyValue(property)
+        }
+        element = element.parentElement
+      }
+      return {...styles, ...pending}
+    })
+    const styles = Object.fromEntries(formulaStyleNames.flatMap(property =>
+      values.length && values[0][property] && values.every(value => value[property] === values[0][property])
+        ? [[property, values[0][property]]] : []))
+    const marks = (Object.keys(formulaMarks) as (keyof typeof formulaMarks)[]).filter(mark => {
+      const [property, value] = formulaMarks[mark]
+      return values.length > 0 && values.every(styles => {
+        const current = styles[property] ?? ""
+        if(mark === "b" && Number.parseFloat(current) >= 600) return true
+        return current.split(" ").includes(value)
+      })
+    })
+    return {canMark: targets.length > 0, marks, styles}
+  }
+
+  setFormatting(property: string, value: string) {
+    if(!formulaStyleNames.includes(property)) return false
+    const targets = this.formatTargets()
+    if(!targets.length) return false
+    const selection = document.getSelection()!
+    if(selection.isCollapsed) {
+      this.typingStyles = {...this.pendingStyles(), [property]: value}
+      this.typingPoint = [selection.anchorNode!, selection.anchorOffset]
+    }
+    else for(const element of targets) {
+      this.writeFormatting(element, {[property]: value})
+      // A selected structure can contain explicit styles which override its own.
+      for(const descendant of Array.from(element.querySelectorAll("*"))) {
+        if(isMath(descendant) && !this.inWidget(descendant) && this.inlineStyle(descendant).getPropertyValue(property)) {
+          this.writeFormatting(descendant, {[property]: value})
+        }
+      }
+    }
+    this.editor.postMarkState()
+    return true
+  }
+
+  private writeFormatting(element: Element, values: Record<string, string>) {
+    const style = this.inlineStyle(element)
+    for(const [property, value] of Object.entries(values)) {
+      if(value) style.setProperty(property, value)
+      else style.removeProperty(property)
+    }
+    if(style.cssText) element.setAttribute("style", style.cssText)
+    else element.removeAttribute("style")
+  }
+
+  formatMark(mark: MarkName, enabled?: boolean) {
+    if(!(mark in formulaMarks)) return false
+    const [property, value] = formulaMarks[mark as keyof typeof formulaMarks]
+    const state = this.getFormatting()
+    const active = state.marks.includes(mark as keyof typeof formulaMarks)
+    const next = enabled ?? !active
+    if(property === "text-decoration-line") {
+      const lines = new Set((state.styles[property] ?? "").split(" ").filter(Boolean))
+      lines.delete(value)
+      if(next) lines.add(value)
+      return this.setFormatting(property, [...lines].filter(line => line !== "none").join(" ") || "none")
+    }
+    return this.setFormatting(property, next ? value : "normal")
+  }
+
+  get selectedFormulas() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || selection.isCollapsed) return []
+    const range = selection.getRangeAt(0)
+    return Array.from(document.body.querySelectorAll("math")).filter(element =>
+      isMath(element) && range.intersectsNode(element) && !this.inWidget(element))
+  }
+
+  private inWidget(element: Element) {
+    for(let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+      if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")) return true
+    }
+    return false
+  }
+
+  clearFormatting() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount) return false
+    if(this.activeMath && selection.isCollapsed) {
+      for(const property of formulaStyleNames) this.setFormatting(property, "")
+      return true
+    }
+    const range = selection.getRangeAt(0)
+    let changed = false
+    for(const element of Array.from(document.body.querySelectorAll("math, math *"))) {
+      if(!isMath(element) || this.inWidget(element) || !element.hasAttribute("style") || !range.intersectsNode(element)) continue
+      const style = this.inlineStyle(element)
+      if(!formulaStyleNames.some(property => style.getPropertyValue(property))) continue
+      this.writeFormatting(element, Object.fromEntries(formulaStyleNames.map(property => [property, ""])))
+      changed = true
+    }
+    if(changed) this.editor.postMarkState()
+    return changed
+  }
 
   actions = {
     insertMath: ({structure}: {type: "insertMath", structure?: string}) => this.insert(structure),
@@ -62,6 +225,8 @@ export class MathFeature extends EditorFeature {
     this.dismissCommand()
     this.cancelDeadPowerComposition()
     this.drag = null
+    this.typingStyles = null
+    this.typingPoint = null
     this.setHovered(null)
   }
 
@@ -177,7 +342,7 @@ export class MathFeature extends EditorFeature {
     },
     pointerup: () => { if(this.drag) { this.drag = null; this.changed() } },
     pointercancel: () => { this.drag = null; this.setHovered(null) },
-    selectionchange: () => this.scheduleRefresh(),
+    selectionchange: () => { this.pendingStyles(); this.scheduleRefresh() },
     scroll: () => this.scheduleRefresh(),
   }
 
@@ -454,10 +619,11 @@ export class MathFeature extends EditorFeature {
   }
 
   private typeText(range: Range, text: string): boolean {
+    const styles = this.pendingStyles()
     if(!text || !this.removeRange(range)) return false
     const node = range.startContainer
     const type = mathTokenType(text)
-    if(node instanceof Text && node.parentElement && plainToken(node.parentElement)
+    if(!styles && node instanceof Text && node.parentElement && plainToken(node.parentElement)
       && (node.parentElement.localName === "mtext" || type === "mn" && node.parentElement.localName === type)) {
       node.insertData(range.startOffset, text)
       $.move(node, range.startOffset + text.length)
@@ -470,9 +636,11 @@ export class MathFeature extends EditorFeature {
       if(previous?.localName === name && ["mn", "mtext"].includes(name)) previous.textContent += character
       else tokens.push(mathElement(name, character === "-" ? "−" : character))
     }
+    if(styles) tokens.forEach(token => this.writeFormatting(token, styles))
     if(!this.insertNodes(range, tokens)) return false
     const last = tokens.at(-1)!
     $.move(last.firstChild!, last.textContent!.length)
+    if(styles) this.typingPoint = [last.firstChild!, last.textContent!.length]
     return true
   }
 

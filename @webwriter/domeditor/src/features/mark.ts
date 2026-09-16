@@ -146,6 +146,10 @@ export class MarkFeature extends EditorFeature {
 
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
+    if(this.editor.features.math.activeMath) {
+      const {canMark, marks} = this.editor.features.math.getFormatting()
+      return {canMark, marks}
+    }
     this.clearStoredMarksIfSelectionChanged()
     const caret = this.getCaret()
     if(caret) {
@@ -154,7 +158,7 @@ export class MarkFeature extends EditorFeature {
     }
 
     const context = this.getSelection()
-    if(!context) return {canMark: false, marks: []}
+    if(!context) return {canMark: this.editor.features.math.selectedFormulas.length > 0, marks: []}
 
     const marks = new Set<MarkName>()
     for(const {node} of context.text) {
@@ -165,6 +169,10 @@ export class MarkFeature extends EditorFeature {
 
   /** Inline span style values shared by the entire selection, or effective at a caret. */
   getStyleState(): StyleMarkValues {
+    if(this.editor.features.math.activeMath) {
+      const {styles} = this.editor.features.math.getFormatting()
+      return Object.fromEntries(styleMarkNames.flatMap(property => styles[property] ? [[property, styles[property]]] : []))
+    }
     this.clearStoredMarksIfSelectionChanged()
     const caret = this.getCaret()
     if(caret) return {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
@@ -386,6 +394,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   addMark(mark: MarkName): boolean {
+    if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, true)
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.addMark(mark))
     this.assertMark(mark)
     if(mark === "ruby") return this.createRuby("", false)
@@ -414,6 +423,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   removeMark(mark: MarkName): boolean {
+    if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, false)
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.removeMark(mark))
     this.assertMark(mark)
     if(mark === "ruby") return this.removeRuby()
@@ -424,6 +434,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   toggleMark(mark: MarkName) {
+    if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
     this.assertMark(mark)
     if(mark === "ruby") return this.selectedRuby() ? this.removeRuby() : this.createRuby("", false)
     const caret = this.getCaret()
@@ -438,6 +449,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Toggles all exact tag variants represented by one merged drawer control. */
   toggleMarkGroup(mark: MarkName) {
+    if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
     this.assertMark(mark)
     const group = mergedMarkGroupFor(mark)
     if(!group || group.primary !== mark) throw new TypeError(`'${mark}' is not a primary merged mark`)
@@ -462,6 +474,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Sets all exact mark tags represented by one drawer group. */
   setMarkGroup(primary: MarkName, marks: MarkName[]) {
+    if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(primary, marks.length > 0)
     this.assertMark(primary)
     const group = mergedMarkGroupFor(primary)
     if(!group || group.primary !== primary) {
@@ -497,6 +510,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Replaces a merged mark's exact HTML tag while preserving the selected text. */
   setMarkType(primary: MarkName, mark: MarkName) {
+    if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(primary, true)
     this.assertMark(primary)
     this.assertMark(mark)
     const group = mergedMarkGroupFor(primary)
@@ -576,6 +590,7 @@ export class MarkFeature extends EditorFeature {
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setStyleMark(property, value))
     this.assertStyleMark(property)
     const normalizedValue = this.normalizeStyleValue(property, value)
+    if(this.editor.features.math.activeMath) return this.editor.features.math.setFormatting(property, normalizedValue)
     const caret = this.getCaret()
     if(caret) return this.setStoredStyle(property, normalizedValue, caret)
 
@@ -636,17 +651,56 @@ export class MarkFeature extends EditorFeature {
 
   /** Removes every supported mark (including strong/em aliases) in one pass. */
   removeMarks() {
+    const formulas = this.editor.features.math.selectedFormulas
+    const removedMath = this.editor.features.math.clearFormatting()
+    if(this.editor.features.math.activeMath) return removedMath
+    if(formulas.length) {
+      const selection = document.getSelection()!
+      const original = selection.getRangeAt(0).cloneRange()
+      const backwards = $.isBackwards
+      const rest = original.cloneRange()
+      const ranges: Range[] = []
+      for(const formula of formulas) {
+        if(!formula.contains(rest.startContainer)) {
+          const before = rest.cloneRange()
+          before.setEndBefore(formula)
+          if(!before.collapsed) ranges.push(before)
+        }
+        if(formula.contains(rest.endContainer)) {
+          rest.collapse(false)
+          break
+        }
+        rest.setStartAfter(formula)
+      }
+      if(!rest.collapsed) ranges.push(rest)
+      let changed = removedMath
+      try {
+        for(const range of ranges.reverse()) {
+          selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+          changed = this.removeMarks() || changed
+        }
+      }
+      finally {
+        selection.setBaseAndExtent(
+          backwards ? original.endContainer : original.startContainer,
+          backwards ? original.endOffset : original.startOffset,
+          backwards ? original.startContainer : original.endContainer,
+          backwards ? original.startOffset : original.endOffset,
+        )
+      }
+      return changed
+    }
     const removedRuby = this.selectedRuby() ? this.removeRuby() : false
     const caret = this.getCaret()
     if(caret) {
-      if(!this.effectiveCaretMarks(caret).size && !Object.keys(this.effectiveCaretStyles(caret)).length) return removedRuby
+      if(!this.effectiveCaretMarks(caret).size && !Object.keys(this.effectiveCaretStyles(caret)).length) return removedRuby || removedMath
       this.storeMarks(new Set(), caret.selection)
       this.storeStyles({}, caret.selection)
       this.editor.postMarkState()
       return true
     }
-    if(!this.getState().marks.length && !Object.keys(this.getStyleState()).length) return removedRuby
-    return this.removeMatching(element => canonicalMarkName(element.localName) !== null) || removedRuby
+    if(!this.getState().marks.length && !Object.keys(this.getStyleState()).length) return removedRuby || removedMath
+    return this.removeMatching(element => canonicalMarkName(element.localName) !== null) || removedRuby || removedMath
   }
 
   private effectiveCaretMarks(caret: MarkCaret) {

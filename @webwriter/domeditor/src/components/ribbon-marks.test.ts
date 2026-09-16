@@ -1060,3 +1060,15 @@ describe("mark ribbon bridge", () => {
     })
   })
 })
+
+
+it("disables Link and More for formulas while keeping inline formatting available", async () => {
+  const {ribbon, drawer} = await mountRibbon()
+  ribbon.canMark = true
+  ribbon.math = {active: true, display: "inline"}
+  await ribbon.updateComplete
+  expect(drawer.querySelector<RibbonButton>(".mark-link")!.disabled).toBe(true)
+  expect(drawer.querySelector<RibbonButton>(".mark-span")!.disabled).toBe(true)
+  expect(drawer.querySelector<RibbonButton>('[action="mark:b"]')!.disabled).toBe(false)
+  expect(drawer.querySelector<RibbonButton>(".mark-remove")!.disabled).toBe(false)
+})
