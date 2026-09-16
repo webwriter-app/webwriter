@@ -107,12 +107,12 @@ try {
   }))
   const failedToStart = new Promise(resolve => browser.once("error", error => resolve({error: String(error)})))
   const timedOut = new Promise(resolve => {
-    timeout = setTimeout(() => resolve({error: "Native browser timed out"}), 20000)
+    timeout = setTimeout(() => resolve({error: "Native browser timed out"}), mathVisual ? 60000 : 20000)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && (mathVisual ? checks.length >= 2064 && new Set(checks.map(check => check.name)).size === checks.length : checks.length === expectedChecks.length
+  const valid = !result?.error && (mathVisual ? checks.length >= 4304 && new Set(checks.map(check => check.name)).size === checks.length : checks.length === expectedChecks.length
     && expectedChecks.every(name => checks.some(check => check?.name === name)))
     && checks.every(check => check && typeof check.name === "string" && check.error === undefined)
   process.stdout.write(JSON.stringify(checks, null, 2) + "\n")

@@ -81,17 +81,18 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
         if(!slots.length) throw new Error(`${template.name} has no argument fixtures`)
         if(!filled) slots.forEach((slot, index) => add(slot, 0, `empty argument ${index + 1}`))
         else {
-          slots.forEach(slot => slot.append(mathElement("mi", "xg")))
+          // Match normal typing: identifiers are separate tokens. Exercise both
+          // native text endpoints and explicit row boundaries for insertion.
+          slots.forEach(slot => slot.append(mathElement("mi", "x"), mathElement("mi", "g")))
           original.querySelectorAll("mi, mn").forEach((token, index) => {
             if(token === original.lastElementChild!.lastElementChild) return
-            for(let offset = 0; offset <= token.textContent!.length; offset++) add(token.firstChild!, offset, `token ${index + 1}, offset ${offset}`)
+            for(const offset of [0, token.textContent!.length]) add(token.firstChild!, offset, `token ${index + 1}, offset ${offset}`)
           })
           original.querySelectorAll("mrow").forEach((row, index) => {
             Array.from(row.children).forEach(child => {
-              if(["mi", "mn", "mo", "mtext"].includes(child.localName)) return
               const offset = Array.from(row.childNodes).indexOf(child)
-              add(row, offset, `row ${index + 1}, before ${child.localName}`)
-              add(row, offset + 1, `row ${index + 1}, after ${child.localName}`)
+              add(row, offset, `row ${index + 1}, before ${child.localName} at ${offset}`)
+              add(row, offset + 1, `row ${index + 1}, after ${child.localName} at ${offset + 1}`)
             })
           })
         }
@@ -136,6 +137,7 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           const selection = document.getSelection()!
           const text = selection.focusNode!
           if(!(text instanceof Text)) throw new Error(`${template.name}: insertion did not select text`)
+          if(text.parentElement?.localName !== "mi" || text.parentElement.textContent !== "x") errors.push("insertion did not create a separate identifier token")
           const characterRange = document.createRange()
           characterRange.setStart(text, selection.focusOffset - 1)
           characterRange.setEnd(text, selection.focusOffset)

@@ -988,7 +988,7 @@ export class MathFeature extends EditorFeature {
   /** Measure a character at a structural stop without touching authored DOM.
    * A zero-height inline box gives the probe's baseline before and after the
    * insertion, so fractions and radicals cannot inflate the caret height. */
-  structuralTextRect(node: Element, offset: number, outside = false): DOMRect | null {
+  structuralTextRect(node: Node, offset: number, outside = false): DOMRect | null {
     const root = mathRoot(node)
     if(!root) return null
     const actual = root.getBoundingClientRect()
@@ -1014,8 +1014,15 @@ export class MathFeature extends EditorFeature {
     try {
       const before = clone.getBoundingClientRect()
       const actualBaseline = actual.top + baseline.getBoundingClientRect().top - before.top
-      const row = copies[originals.indexOf(node)]
-      if(!node.childNodes.length && (node === root || node.classList.contains("◆math-slot"))) {
+      const element = node instanceof Element ? node : node.parentElement!
+      const token = plainToken(element)
+      const copy = copies[originals.indexOf(element)]
+      // Use the same insertion boundary as typing, including fixed-arity slots
+      // and imported multi-character tokens. Native text carets follow bidi text
+      // order, which differs from insertion between MathML siblings.
+      const container = token ? element.parentElement! : element
+      const row = copies[originals.indexOf(container)]
+      if(!node.childNodes.length && (node === root || element.classList.contains("◆math-slot"))) {
         row.setAttribute("style", `${row.getAttribute("style")};display:math;min-width:0;min-height:0`)
       }
       const character = outside ? document.createElement("span") : mathElement("mi", "x")
@@ -1026,16 +1033,23 @@ export class MathFeature extends EditorFeature {
           .map(key => `${key}:${style.getPropertyValue(key)}`).join(";"))
         probe.insertBefore(character, offset === 0 ? clone : baseline)
       }
-      else row.insertBefore(character, row.childNodes[offset] ?? null)
+      else {
+        const insertion = document.createRange()
+        insertion.setStart(node instanceof Text ? copy.firstChild! : copy, offset)
+        insertion.collapse(true)
+        const point = this.insertionPoint(insertion)
+        if(!point) return null
+        point[0].insertBefore(character, point[0].childNodes[point[1]] ?? null)
+      }
       const range = document.createRange()
       range.selectNodeContents(character.firstChild!)
       const rect = range.getBoundingClientRect()
       if(!rect.height) return null
       range.collapse(true)
       const start = range.getBoundingClientRect()
-      const bounds = node.getBoundingClientRect()
-      const fitPlaceholder = !outside && !node.childNodes.length
-      const style = getComputedStyle(node)
+      const bounds = container.getBoundingClientRect()
+      const fitPlaceholder = !outside && !element.childNodes.length
+      const style = getComputedStyle(element)
       const paddingTop = node === root ? parseFloat(style.paddingTop) || 0 : 0
       const paddingBottom = node === root ? parseFloat(style.paddingBottom) || 0 : 0
       const availableHeight = Math.max(0, bounds.height - paddingTop - paddingBottom)
@@ -1052,9 +1066,9 @@ export class MathFeature extends EditorFeature {
   }
 
   private pointRect([node, offset]: Point, measureText = false): DOMRect {
+    const measured = measureText ? this.structuralTextRect(node, offset) : null
+    if(measured) return measured
     if(node instanceof Element) {
-      const measured = measureText ? this.structuralTextRect(node, offset) : null
-      if(measured) return measured
       const previous = node.childNodes[offset - 1]
       const next = node.childNodes[offset]
       const adjacent = previous instanceof Element && !Boolean(plainToken(previous)) ? previous
@@ -1148,11 +1162,9 @@ export class MathFeature extends EditorFeature {
     const caretPoint: Point | null = this.deadPowerTarget ?? (selection?.isCollapsed && selection.focusNode ? [selection.focusNode, selection.focusOffset] : null)
     const caretNode = caretPoint?.[0]
     const caretOffset = caretPoint?.[1] ?? 0
-    const previous = caretNode?.childNodes[caretOffset - 1]
-    const next = caretNode?.childNodes[caretOffset]
-    const structuralCaret = Boolean(caretNode && isRow(caretNode)
-      && (caretNode.classList.contains("◆math-slot") || caretNode === root && !root.childNodes.length
-        || previous instanceof Element && !plainToken(previous) || next instanceof Element && !plainToken(next))
+    const caretElement = caretNode instanceof Element ? caretNode : caretNode?.parentElement
+    const structuralCaret = Boolean(caretNode && caretElement
+      && (Boolean(isRow(caretElement)) || caretElement.localName !== "mtext" && plainToken(caretElement))
       && !(caretNode === root && root.childNodes.length && root.getAttribute("display") !== "block"
         && (caretOffset === 0 || caretOffset === root.childNodes.length)))
     if(!structuralCaret) { this.caret?.remove(); this.caret = null }

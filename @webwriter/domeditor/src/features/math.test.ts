@@ -105,6 +105,10 @@ describe("DOM MathML editing", () => {
     expect(clean()).toBe(authored)
     $.move(row.lastElementChild!.firstChild!, 1)
     editor.features.math.refresh()
+    expect(editor.appendix.querySelectorAll('[part="math-caret"]')).toHaveLength(1)
+    expect(math.classList.contains("◆math-structural-caret")).toBe(true)
+    $.move(math.nextSibling!, 1)
+    editor.features.math.refresh()
     expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
     expect(math.classList.contains("◆math-structural-caret")).toBe(false)
   })
@@ -804,6 +808,26 @@ describe("DOM MathML editing", () => {
     expect(command("text:x")).toBe(true)
     expect(clean()).toBe("<p>before<math><mrow><mi>x</mi></mrow></math>after</p>")
     expect(editor.schema.isContentValid(document.querySelector("p")!)).toBe(true)
+  })
+
+  it.each(["ltr", "rtl"])("inserts separate identifiers at token boundaries in %s formulas", direction => {
+    for(const offset of [0, 1]) {
+      const math = load('<mrow><mi id="operand">g</mi><!-- keep --><mi>z</mi></mrow>')
+      math.setAttribute("dir", direction)
+      const operand = math.querySelector("#operand")!
+      $.move(operand.firstChild!, offset)
+      editor.features.math.refresh()
+      expect(editor.appendix.querySelector('[part="math-caret"]')).not.toBeNull()
+      expect(command("text:xy")).toBe(true)
+      expect(Array.from(math.querySelectorAll("mi"), token => token.textContent)).toEqual(offset ? ["g", "x", "y", "z"] : ["x", "y", "g", "z"])
+      expect(math.querySelector("#operand")).toBe(operand)
+      expect(operand.textContent).toBe("g")
+      expect(clean()).toContain("<!-- keep -->")
+      expect(clean()).not.toContain("◆")
+      expect(clean()).not.toContain("math-caret")
+    }
+    editor.features.math.disable()
+    expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
   })
 
   it("types tokens and transforms the operand into a fraction without rebuilding it", () => {
