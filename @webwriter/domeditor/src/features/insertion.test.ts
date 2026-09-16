@@ -231,6 +231,17 @@ describe("insertion menu", () => {
     postSelectionPath.mockRestore()
   })
 
+  it.each(["Divider", "Glossary"])("does not offer %s insertion", async name => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    typeText(name)
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    expect(menu.shadowRoot?.querySelector(".item")).toBeNull()
+  })
+
   it("does not offer unsupported form controls", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)

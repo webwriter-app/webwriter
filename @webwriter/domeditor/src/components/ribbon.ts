@@ -1734,10 +1734,15 @@ export class AppRibbon extends EditingControls {
     }
 
     .preview-icon {
-      display: block;
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
       flex-shrink: 0;
-      width: 1.5rem;
-      height: 1.5rem;
+      width: 1.2rem;
+      height: 1.2rem;
+      padding: 0.1rem;
+      border: 1.5px solid currentColor;
+      border-radius: 50%;
     }
 
     .preview-icon svg {
@@ -3012,7 +3017,7 @@ export class AppRibbon extends EditingControls {
       icon: button.icon,
     }))
     const compactButtons: RibbonMenuButton[] = [
-      groupedButton("Text", "Text", ["Paragraph", "Heading", "List"]),
+      groupedButton("Text", "Text", ["Paragraph", "Heading", "List", "Details"]),
       {
         ...groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
         submenu: [
@@ -3023,7 +3028,6 @@ export class AppRibbon extends EditingControls {
         ],
       },
       buttonByLabel("Table"),
-      buttonByLabel("Details"),
     ]
     const renderButton = (button: RibbonMenuButton, slot = "") => {
       const item = typeof button === "string" ? {label: button} : button

@@ -35,9 +35,9 @@ const insertionMenuItem = (
   return {section, tag, name: name ?? presentation.name, icon: presentation.icon}
 }
 
-export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as const
+export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6"] as const
 export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
-export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", "dialog", "hgroup", ...formElementTypes] as const
+export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", "dialog", "hgroup", "hr", "dl", ...formElementTypes] as const
 
 export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
@@ -46,7 +46,6 @@ export const insertionMenuItems: InsertionMenuItem[] = [
   ...headingInsertionTags.map(tag => insertionMenuItem("Text", tag)),
   insertionMenuItem("Lists", "ul"),
   insertionMenuItem("Lists", "ol"),
-  insertionMenuItem("Lists", "dl"),
   insertionMenuItem("Lists", "details"),
   insertionMenuItem("Media", "table"),
   insertionMenuItem("Media", "picture"),

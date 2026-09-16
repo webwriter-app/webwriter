@@ -44,10 +44,10 @@ describe("list ribbon drawer", () => {
     expect(elements.layoutWidths.compact).toBe(192)
     expect(defaultSlot.hidden).toBe(true)
     expect(compactSlot.hidden).toBe(false)
-    expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Details", "Layouts"])
+    expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Layouts"])
     expect(getComputedStyle(primaryControls).gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))")
     expect(button("Text").submenu.map(item => typeof item === "string" ? item : item.label))
-      .toEqual(["Paragraph", "Heading", "List"])
+      .toEqual(["Paragraph", "Heading", "List", "Details"])
     expect(button("Media").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual([
         "Image", "Audio", "Video", "Graphic", "Formula", "Website",
@@ -55,7 +55,7 @@ describe("list ribbon drawer", () => {
         "Audio: Select file", "Audio: Capture screen", "Audio: Record",
         "Video: Select file", "Video: Capture screen", "Video: Record",
       ])
-    expect(button("Details").action).toBe("insert-details")
+    expect(button("Text").submenu).toContainEqual({label: "Details", action: "insert-details", icon: "Details"})
     expect(button("Media").action).toBe("Image")
     expect(button("Media").dropdownOnClick).toBe(false)
 
@@ -91,10 +91,10 @@ describe("list ribbon drawer", () => {
     expect(button("Elements", "Form")).toBeNull()
     expect(button("Elements", "HTML")).toBeNull()
     expect(button("Elements", "Script")).toBeNull()
-    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
+    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6"])
     expect(insertionMenuItems.find(item => item.tag === "hgroup")).toBeUndefined()
     expect(submenuTags(button("Elements", "Details"))).toEqual([])
-    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot", "dialog", "hgroup", ...formElementTypes])
+    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot", "dialog", "hgroup", "hr", "dl", ...formElementTypes])
     expect(insertionMenuItems.filter(item => (
       item.tag && (deliberatelyUnsupportedInsertionTags as readonly string[]).includes(item.tag)
     ))).toEqual([])
@@ -159,7 +159,7 @@ describe("list ribbon drawer", () => {
     expect(list.submenu.map(item => typeof item === "string" ? item : item.action))
       .toContain("toggle-list:menu")
     expect(list.submenu.map(item => typeof item === "string" ? item : item.action))
-      .toContain("toggle-list:dl")
+      .not.toContain("toggle-list:dl")
   })
 
   it("shows native ordered-list and direct item controls in Edit", async () => {
@@ -183,7 +183,7 @@ describe("list ribbon drawer", () => {
     expect(changed).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "start", value: "6"}}))
   })
 
-  it("shows Glossary only in the List dropdown and marks List active for a glossary", async () => {
+  it("omits Glossary insertion while marking List active for an existing glossary", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     ribbon.listType = "dl"
@@ -193,7 +193,7 @@ describe("list ribbon drawer", () => {
     const lists = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
     const list = lists.querySelector<RibbonButton>('ribbon-button[label="List"]')!
     expect(lists.querySelector('ribbon-button[label="Glossary"]')).toBeNull()
-    expect(list.submenu).toContainEqual({label: "Glossary", action: "toggle-list:dl", icon: "Glossary"})
+    expect(list.submenu).not.toContainEqual({label: "Glossary", action: "toggle-list:dl", icon: "Glossary"})
     expect(list.active).toBe(true)
   })
 

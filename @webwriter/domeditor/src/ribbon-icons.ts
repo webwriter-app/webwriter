@@ -77,7 +77,7 @@ import messagePlus from "@tabler/icons/outline/message-plus.svg?raw"
 import palette from "@tabler/icons/outline/palette.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import pilcrow from "@tabler/icons/outline/pilcrow.svg?raw"
-import preview from "./assets/preview.svg?raw"
+import playerPlay from "@tabler/icons/filled/player-play.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
@@ -202,7 +202,7 @@ const icons: Record<string, string> = {
   Button: button,
   Input: input,
   Text: typography,
-  Preview: preview,
+  Preview: playerPlay,
   Plus: plus,
   Undo: arrowBackUp,
   AIPromptSubmit: arrowBack,

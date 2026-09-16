@@ -2605,7 +2605,7 @@ describe("DomEditor.execute()", () => {
     expect(users.dataset.userCount).toBe("4")
   })
 
-  it("renders the preview control after redo with the WebWriter play icon", async () => {
+  it("renders the preview control after redo with the circular play icon", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const previewButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!
@@ -2614,7 +2614,8 @@ describe("DomEditor.execute()", () => {
     expect(previewButton.previousElementSibling?.querySelector('[aria-label="Redo"]')).not.toBeNull()
     expect(previewButton.nextElementSibling).toBeNull()
     expect(previewButton.querySelector(".preview-icon")).not.toBeNull()
-    expect(previewButton.querySelector(".icon-webwriter-preview")).not.toBeNull()
+    expect(previewButton.querySelector(".icon-tabler-player-play")).not.toBeNull()
+    expect(getComputedStyle(previewButton.querySelector(".preview-icon")!).borderRadius).toBe("50%")
   })
 
   it("starts a live preview session and restores the editor selection when it stops", async () => {
@@ -4286,11 +4287,7 @@ describe("DomEditor.execute()", () => {
 
     expect(execute).toHaveBeenLastCalledWith({type: "setBlockType", tag: "h3"})
 
-    heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
-    await heading.updateComplete
-    submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Divider"]')!.click()
-
-    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<hr>"})
+    expect(submenu.shadowRoot!.querySelector('button[title="Divider"]')).toBeNull()
   })
 
   it("applies or changes a section type without form insertion", async () => {

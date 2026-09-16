@@ -71,12 +71,6 @@ const insertionButtonForTag = (tag: string): RibbonMenuButton => {
 
 const insertionSubmenuForTags = (tags: readonly string[]) => tags.map(insertionButtonForTag)
 
-const glossaryInsertionButton: RibbonMenuButton = {
-  label: "Glossary",
-  action: "toggle-list:dl",
-  icon: "Glossary",
-}
-
 export const orderedListStyles: RibbonMenuButton[] = [
   {label: "1, 2, 3", action: "list-style:ol:decimal", icon: "Enumeration"},
   {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "Enumeration"},
@@ -99,7 +93,6 @@ export const listInsertionOptions: RibbonMenuButton[] = [
   {label: "Circle", action: "list-style:ul:circle", icon: "List"},
   {label: "Square", action: "list-style:ul:square", icon: "List"},
   {label: "No marker", action: "list-style:ul:none", icon: "List"},
-  glossaryInsertionButton,
 ]
 
 const groupedMediaInsertionTags = new Set<string>([
@@ -119,7 +112,7 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
           submenu: listInsertionOptions,
         }]
       }
-      if(item.tag === "ol" || item.tag === "dl") return []
+      if(item.tag === "ol") return []
       return [{
         label: item.name,
         action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
