@@ -39,6 +39,50 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("capture outline selection", () => {
+  it.each(["top", "right", "bottom", "left"])("selects the captured element through its %s edge", side => {
+    const widget = el("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    button.focus()
+    feature.captureElement(widget)
+    const edge = feature.selectionCaret!.querySelector(`[part~="selection-capture-edge-${side}"]`)!
+    const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+
+    edge.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(widget)
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
+    expect(feature.isInDragSelection).toBe(false)
+    expect(document.body.querySelector(".◆capture-edge")).toBeNull()
+  })
+
+  it("ignores an outline whose captured element was removed", () => {
+    const widget = el("interactive-widget")
+    feature.captureElement(widget)
+    const edge = feature.selectionCaret!.querySelector(".◆capture-edge")!
+    widget.remove()
+    const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+    edge.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+
+  it.each(["svg", "math"])("selects a captured %s through its outline", tag => {
+    const element = document.createElementNS(tag === "svg" ? "http://www.w3.org/2000/svg" : "http://www.w3.org/1998/Math/MathML", tag)
+    if(tag === "math") element.setAttribute("display", "block")
+    appendToBody(element)
+    feature.captureElement(element)
+    expect(feature.captureSelectedElement).toBe(element)
+    feature.selectionCaret!.querySelector(".◆capture-edge")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    expect($.selectedElement).toBe(element)
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+})
+
 describe("contentful widgets", () => {
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   beforeEach(() => {
@@ -1666,6 +1710,9 @@ describe("document listeners", () => {
     widget.attachShadow({mode: "open"}).append(button)
     appendToBody(widget)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    button.focus()
+    // Releasing a widget control can project its native caret above the host.
+    button.addEventListener("blur", () => document.getSelection()!.setPosition(document.body, 0))
     expect(widget).toHaveClass("◆element-capture-selected")
 
     feature.actions.selectNode({type: "selectNode", path: [0]})
@@ -1674,6 +1721,10 @@ describe("document listeners", () => {
     expect(widget).toHaveClass("◆element-selected")
     expect(widget).not.toHaveClass("◆element-capture-selected")
     expect(feature.isCaptureSelection).toBe(false)
+    feature.passiveListeners.selectionchange!(new Event("selectionchange"))
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
+    expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
   })
   it("does not reset a widget's shadow contenteditable selection during input", () => {
     const widget = document.createElement("editable-widget")

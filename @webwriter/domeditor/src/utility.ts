@@ -43,7 +43,11 @@ type Direction = "left" | "right" | "forward" | "backward"
 
 /** Focuses the outer editing surface, releasing focus held inside a widget. */
 function focusEditorWindow() {
-  focusedWidgetHost()?.blur()
+  const widget = focusedWidgetHost()
+  let focused: Element | null = widget
+  while(focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement
+  if(focused instanceof HTMLElement) focused.blur()
+  widget?.blur()
   window.focus()
 }
 
@@ -349,13 +353,14 @@ export class EditingSelection {
   static selectElement(element: Element, focus=true) {
     this.columnAffinity = null
     if(!element.parentNode) return
+    if(focus) focusEditorWindow()
+    if(!element.parentNode) return
     if(this.#selection.rangeCount) this.range.selectNode(element)
     else {
       const range = document.createRange()
       range.selectNode(element)
       this.#selection.addRange(range)
     }
-    if(focus) focusEditorWindow()
   }
 
   /** Sets anchor and focus of the selection; collapses to the anchor when the focus is omitted. */

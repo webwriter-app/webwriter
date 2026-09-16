@@ -1649,13 +1649,18 @@ export class DomEditor extends LitElement {
   }
 
   private focusEditor(restoreSelection = false) {
+    // Activating designMode can collapse the range established by a command.
+    // Preserve that live range unless the caller requested its saved bookmark.
+    if(!restoreSelection) {
+      this.savedEditorSelection = null
+      this.saveEditorSelection()
+    }
     const iframe = this.editorIframe()
     iframe?.focus({preventScroll: true})
     this.editorWindow?.focus()
     // Focusing the frame alone does not activate native designMode typing.
     this.editorDocument?.body.focus({preventScroll: true})
-    if(restoreSelection) this.restoreEditorSelection()
-    else this.savedEditorSelection = null
+    this.restoreEditorSelection()
   }
 
   private async joinLiveSession(sessionId: string) {

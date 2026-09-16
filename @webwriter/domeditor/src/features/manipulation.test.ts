@@ -1013,6 +1013,66 @@ describe("Tab paragraph behavior", () => {
   })
 })
 describe("delete()", () => {
+  describe.each(["backward", "forward"] as const)("selecting an adjacent widget on %s deletion", direction => {
+    it.each(["gap", "inline", "block"])("selects before deleting from a %s caret", shape => {
+      const widget = document.createElement("opaque-widget")
+      widget.innerHTML = "<unfamiliar-content data-authored='keep'>fallback</unfamiliar-content><!--keep-->"
+      widget.attachShadow({mode: "open"}).innerHTML = "<button>Widget control</button>"
+      const paragraph = document.createElement("p")
+      paragraph.innerHTML = "<strong><em>text</em></strong>"
+      const text = paragraph.querySelector("em")!.firstChild!
+      if(shape === "inline") {
+        direction === "backward" ? paragraph.prepend(widget, document.createComment("between")) : paragraph.append(document.createComment("between"), widget)
+        document.body.replaceChildren(paragraph)
+      }
+      else document.body.replaceChildren(...(direction === "backward" ? [widget, paragraph] : [paragraph, widget]))
+      if(shape === "gap") $.selectGap(widget, direction === "backward" ? "after" : "before")
+      else $.move(text, direction === "backward" ? 0 : 4)
+      const before = editor.toHTML(true)
+      const key = direction === "backward" ? "Backspace" : "Delete"
+
+      document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+
+      expect($.selectedElement).toBe(widget)
+      expect(editor.features.selection.isCaptureSelection).toBe(false)
+      expect(editor.toHTML(true)).toBe(before)
+      expect(widget).toHaveClass("◆element-selected")
+      document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+      expect(widget.isConnected).toBe(false)
+      expect(paragraph.textContent).toBe("text")
+    })
+
+    it("selects a widget at the document boundary", () => {
+      document.body.innerHTML = "<opaque-widget></opaque-widget>"
+      const widget = document.body.firstElementChild!
+      $.selectGap(widget, direction === "backward" ? "after" : "before")
+      editor.features.manipulation.delete(direction)
+      expect($.selectedElement).toBe(widget)
+      expect(widget.isConnected).toBe(true)
+    })
+
+    it("does not intercept deletion beside a contentful widget", () => {
+      editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "text*"}}])
+      document.body.innerHTML = "<content-widget>text</content-widget>"
+      const widget = document.body.firstElementChild!
+      $.selectGap(widget, direction === "backward" ? "after" : "before")
+      expect(editor.features.selection.selectAdjacentContentlessWidget(direction)).toBe(false)
+      expect($.selectedElement).not.toBe(widget)
+    })
+
+    it("uses the current sibling after a widget is replaced", () => {
+      document.body.innerHTML = "<opaque-widget></opaque-widget>"
+      const widget = document.body.firstElementChild!
+      $.selectGap(widget, direction === "backward" ? "after" : "before")
+      const replacement = document.createElement("replacement-widget")
+      widget.replaceWith(replacement)
+      $.selectGap(replacement, direction === "backward" ? "after" : "before")
+      editor.features.manipulation.delete(direction)
+      expect($.selectedElement).toBe(replacement)
+      expect(widget).not.toHaveClass("◆element-selected")
+    })
+  })
+
   it("uses Ctrl for word deletion on non-Apple platforms", () => {
     const originalPlatform = navigator.platform
     try {

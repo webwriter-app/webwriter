@@ -1855,6 +1855,7 @@ export class ManipulationFeature extends EditorFeature {
     const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide($.range.startContainer) : null
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
+    if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     return this.withNormalization(() => {
       if($.isGapSelection && direction === "backward" && !$.elementAfter && $.elementBefore) {
         $.move($.elementBefore, -1)

@@ -116,6 +116,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(selection-caret\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?position-anchor:\s*--selection-anchor;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret-node\),[\s\S]*?body::part\(selection-caret-capture\)\s*\{[\s\S]*?left:\s*anchor\(left\);[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret-capture\)\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);/)
+    expect(editorStyleString).toMatch(/body\s+\*:not\(\s*:where\(/)
+    expect(editorStyleString).toContain("body:has(.◆element-capture-selected:is(:hover, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {\n  display: none;")
     expect(editorStyleString).toMatch(/\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active,\s*body\.◆node-selection-active\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected,\s*body\.◆node-selection-active\s+math\.◆element-capture-selected\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)

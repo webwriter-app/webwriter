@@ -88,6 +88,17 @@ async function mutationsDelivered() {
 }
 
 describe("selection-owned transformation", () => {
+  it.each(["pointerup", "pointercancel"])("handles %s after pressing a captured element's outline", ending => {
+    const target = targetElement("demo-widget")
+    mockRect(target)
+    captureNode(target)
+    const edge = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
+    edge.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer(ending, {pointerId: 3}))
+    expect(editor.features.selection.captureSelectedElement).toBe(ending === "pointercancel" ? target : null)
+    if(ending === "pointerup") expect($.selectedElement).toBe(target)
+  })
+
   describe.each(["canvas", "slides"] as const)("selections inside %s items", mode => {
     it("restores dimensions on cancellation and supports undo/redo after resizing", async () => {
       const target = targetElement()

@@ -217,6 +217,28 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("preserves the first widget's breadcrumb selection when refocusing the document", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    body.innerHTML = "<interactive-widget></interactive-widget><p>after</p>"
+    const selection = iframe.contentWindow!.getSelection()!
+    selection.setPosition(body, 0)
+    vi.spyOn(editor, "execute").mockImplementation(async () => {
+      selection.setBaseAndExtent(body, 0, body, 1)
+      return {update: []}
+    })
+    vi.spyOn(body, "focus").mockImplementation(() => selection.setPosition(body, 0))
+
+    ;(editor as any).handleBreadcrumbItemSelect(new CustomEvent("item-select", {detail: {path: [0]}}))
+
+    await vi.waitFor(() => expect(body.focus).toHaveBeenCalled())
+    expect(selection.anchorNode).toBe(body)
+    expect(selection.anchorOffset).toBe(0)
+    expect(selection.focusNode).toBe(body)
+    expect(selection.focusOffset).toBe(1)
+    expect(selection.isCollapsed).toBe(false)
+  })
+
   it("restores iframe focus after a package reload from inside the shadow root", async () => {
     const {editor, iframe} = await mountEditor()
     const state = editor as any

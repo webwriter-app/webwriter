@@ -307,7 +307,7 @@ describe("DOM MathML editing", () => {
   it("uses capture presentation for a whole block formula and releases it on disable", () => {
     const math = load("<mi>x</mi>")
     math.setAttribute("display", "block")
-    editor.features.selection.selectElement(math)
+    editor.features.selection.captureElement(math)
     expect(editor.features.selection.captureSelectedElement).toBe(math)
     expect($.selectedElement).toBe(math)
     editor.features.math.disable()

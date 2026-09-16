@@ -321,6 +321,17 @@ export class SelectionFeature extends EditorFeature {
     return true
   }
 
+  /** Deletion first selects an adjacent opaque widget so its contents cannot
+   * be removed or merged into a neighboring block by the same keypress. */
+  selectAdjacentContentlessWidget(direction: "backward" | "forward") {
+    if(this.isCaptureSelection) return false
+    const adjacent = this.#adjacentNavigationElement(direction)
+    if(!(adjacent instanceof HTMLElement) || !(adjacent.localName.includes("-") || adjacent.hasAttribute("is"))
+      || isContentfulWidget(adjacent, this.editor.schema)) return false
+    this.selectElement(adjacent)
+    return true
+  }
+
   /** Each column exposes its own block boundaries, including both outer edges. */
   #navigateColumnGap(direction: "backward" | "forward", vertical: boolean) {
     if(!$.isEmpty) return false
@@ -665,7 +676,18 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
-    pointerdown: event => this.#handleWidgetShadowInteraction(event),
+    pointerdown: event => {
+      const edge = event.composedPath().find(node => node instanceof Element && node.classList.contains("◆capture-edge"))
+      const captured = this.captureSelectedElement
+      if(edge instanceof Element && edge.parentElement === this.selectionCaret && captured
+        && event.button === 0 && !event.defaultPrevented) {
+        event.preventDefault()
+        this.#endDrag()
+        this.selectElement(captured)
+        return
+      }
+      this.#handleWidgetShadowInteraction(event)
+    },
     pointermove: event => {
       if(this.isInDragSelection) event.preventDefault()
       if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
@@ -944,6 +966,12 @@ export class SelectionFeature extends EditorFeature {
     node.setAttribute("aria-hidden", "true")
     node.setAttribute("visibility", "hidden")
     node.contentEditable = "false"
+    for(const side of ["top", "right", "bottom", "left"]) {
+      const edge = document.createElement("span")
+      edge.classList.add("◆capture-edge")
+      edge.setAttribute("part", `selection-capture-edge selection-capture-edge-${side}`)
+      node.append(edge)
+    }
     this.editor.addAppendix(node)
     return node
   }
@@ -1324,7 +1352,7 @@ export class SelectionFeature extends EditorFeature {
     const formula = this.editor.features.math.activeMath
     if(this.#capturedElement?.localName === "math" && (this.#capturedElement !== formula || inlineMathRoot(formula))) this.#releaseCaptureSelection()
     if(formula && inlineMathRoot(formula) && !focusedWidget) this.#releaseCaptureSelection()
-    if(formula && !inlineMathRoot(formula) && !this.captureSelectedElement) this.#capturedElement = formula
+    if(formula && this.editor.features.math.selectedMath !== formula && !inlineMathRoot(formula) && !this.captureSelectedElement) this.#capturedElement = formula
     const capturedElement = this.captureSelectedElement
     let sel: Selection | null
     if(capturedElement) {

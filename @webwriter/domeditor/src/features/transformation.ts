@@ -833,7 +833,10 @@ export class TransformationFeature extends EditorFeature {
     this.#clearDrop()
     gesture.endUndoGroup()
     if(valid) {
-      if(gesture.captured) this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
+      if(gesture.captured && !cancel && !gesture.moved && gesture.handle.classList.contains("◆transform-overlay-edge")) {
+        this.editor.features.selection.selectElement(target)
+      }
+      else if(gesture.captured) this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
       else this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     }
     this.updateInfo()

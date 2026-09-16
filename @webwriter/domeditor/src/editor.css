@@ -206,9 +206,10 @@ a:not([href]) {
   color: #0000ee;
 }
 
+/* Keep hover specificity below the rules that preserve selection anchors. */
 body
   *:not(
-    :is(
+    :where(
         a,
         abbr,
         b,
@@ -447,6 +448,10 @@ body:has(.◆element-hovered)::part(hover-caret) {
   outline: 2px dotted var(--sl-color-primary-400);
 }
 
+body:has(.◆element-capture-selected:is(:hover, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
+  display: none;
+}
+
 body.◆element-hovered::part(hover-caret) {
   position-anchor: auto;
   inset: 0;
@@ -481,6 +486,36 @@ body::part(selection-caret-capture) {
 
 body::part(selection-caret-capture) {
   outline: 2px solid var(--sl-color-primary-400);
+}
+
+body::part(selection-capture-edge) {
+  display: none;
+  position: absolute;
+  pointer-events: auto;
+}
+
+body:has(.◆element-capture-selected)::part(selection-capture-edge) {
+  display: block;
+}
+
+body::part(selection-capture-edge-top) {
+  inset: -4px -4px auto;
+  height: 4px;
+}
+
+body::part(selection-capture-edge-bottom) {
+  inset: auto -4px -4px;
+  height: 4px;
+}
+
+body::part(selection-capture-edge-left) {
+  inset: 0 auto 0 -4px;
+  width: 4px;
+}
+
+body::part(selection-capture-edge-right) {
+  inset: 0 -4px 0 auto;
+  width: 4px;
 }
 
 body.◆element-selected::part(selection-caret-node) {
