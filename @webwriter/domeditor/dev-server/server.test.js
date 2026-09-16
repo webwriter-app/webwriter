@@ -101,7 +101,7 @@ describe("development server", () => {
   it("seeds the MathML preset and preserves edits across restarts", async () => {
     const id = "preset-mozilla-mathml-test"
     const documents = (await request("/api/documents")).value.documents
-    expect(documents).toEqual([expect.objectContaining({id, title: "Mozilla MathML Test", format: "html"})])
+    expect(documents).toEqual(expect.arrayContaining([expect.objectContaining({id, title: "Mozilla MathML Test", format: "html"})]))
     expect(documents[0]).not.toHaveProperty("content")
     const {document} = (await request(`/api/documents/${id}`)).value
     expect(document.content.match(/<math\b/g)).toHaveLength(60)
@@ -131,7 +131,32 @@ describe("development server", () => {
     expect((await request(`/api/documents/${id}`)).value.document).toEqual(expect.objectContaining({
       id, title: "Edited MathML", content: "<p>Saved edits</p>", createdAt: document.createdAt,
     }))
-    expect((await request("/api/documents")).value.documents).toHaveLength(1)
+    expect((await request("/api/documents")).value.documents).toHaveLength(2)
+  })
+
+  it("seeds the Kitchen Sink preset, preserves edits, and restores it after deletion", async () => {
+    const id = "preset-kitchen-sink"
+    expect((await request("/api/documents")).value.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({id, title: "Kitchen Sink", format: "html"}),
+    ]))
+    const {document} = (await request(`/api/documents/${id}`)).value
+    expect(document.content).toContain('<title>Kitchen Sink</title>')
+    expect(document.content).toContain('class="ww-column-group"')
+    await request(`/api/documents/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({content: "<p>My kitchen sink</p>"}),
+    })
+    const {dataDirectory} = developmentServer
+    const restart = async () => {
+      await developmentServer.close()
+      developmentServer = await createDevServer({port: 0, vite: false, dataDirectory})
+      baseUrl = (await developmentServer.listen()).url
+    }
+    await restart()
+    expect((await request(`/api/documents/${id}`)).value.document.content).toBe("<p>My kitchen sink</p>")
+    await request(`/api/documents/${id}`, {method: "DELETE"})
+    await restart()
+    expect((await request(`/api/documents/${id}`)).value.document.content).toBe(document.content)
   })
 
   it("manages providers without returning stored API keys", async () => {

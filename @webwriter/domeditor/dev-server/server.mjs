@@ -251,20 +251,23 @@ export async function createDevServer(options = {}) {
   const useVite = options.vite !== false
   await mkdir(documentsDirectory, {recursive: true})
 
-  // Seed an editable copy once; restarting must preserve saved changes.
-  const preset = {
-    id: "preset-mozilla-mathml-test",
-    title: "Mozilla MathML Test",
-    format: "html",
-    content: await readFile(join(projectRoot, "examples/mozilla-mathml-test.html"), "utf8"),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-  try {
-    await writeFile(join(documentsDirectory, `${preset.id}.json`), `${JSON.stringify(preset, null, 2)}\n`, {encoding: "utf8", mode: 0o600, flag: "wx"})
-  }
-  catch(error) {
-    if(error?.code !== "EEXIST") throw error
+  // Seed editable copies once; restarting must preserve saved changes.
+  for(const [id, title, filename] of [
+    ["preset-mozilla-mathml-test", "Mozilla MathML Test", "mozilla-mathml-test.html"],
+    ["preset-kitchen-sink", "Kitchen Sink", "kitchen-sink.html"],
+  ]) {
+    const preset = {
+      id, title, format: "html",
+      content: await readFile(join(projectRoot, "examples", filename), "utf8"),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    try {
+      await writeFile(join(documentsDirectory, `${preset.id}.json`), `${JSON.stringify(preset, null, 2)}\n`, {encoding: "utf8", mode: 0o600, flag: "wx"})
+    }
+    catch(error) {
+      if(error?.code !== "EEXIST") throw error
+    }
   }
 
   // Provider updates are read-modify-write transactions. Queue them per server

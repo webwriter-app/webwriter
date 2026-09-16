@@ -16,6 +16,8 @@ Data is stored in the ignored `.webwriter-dev/` directory. Provider files have o
 
 The [Mozilla MathML Test](examples/mozilla-mathml-test.html) is also bundled as a preset. Start or restart the dev server, then load **Mozilla MathML Test** from the server document list. It contains all 30 comparisons from [Frédéric Wang's test](https://fred-wang.github.io/MathFonts/mozilla_mathml_test/), with native MathML, a forced `math-style: compact` column, and online TeX reference images. The table extends beyond the normal content width to fit the comparisons. The font selector is omitted so rendering uses the browser's default math font. Saved edits survive restarts; deleting the preset restores the bundled version on the next server start.
 
+The [Kitchen Sink](examples/kitchen-sink.html) preset pairs empty and populated versions of every built-in insertable element using the two-column layout. Start or restart the dev server and select **Kitchen Sink** in the document list. Saved edits survive restarts; deleting the preset restores the bundled example on the next start. Only the sample video requires an internet connection.
+
 ## APIs
 
 - `GET /api/session` — backend probe and no-auth login metadata

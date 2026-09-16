@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Kitchen Sink</title>
+<style>
+:root { font: 17px/1.6 system-ui, sans-serif; color: #1e293b; background: #f1f5f9; }
+body { max-width: 1100px; margin: auto; padding: 2rem; background: white; }
+body > h1 { font-size: 2.5rem; }
+body > h2 { margin-top: 2.5rem; border-bottom: 1px solid #cbd5e1; padding-bottom: .5rem; }
+.ww-column-group { display: block; column-count: 2; column-gap: 2rem; margin-block: 1rem; }
+.ww-column-group > * { break-inside: avoid; break-before: avoid-column; min-inline-size: 0; }
+.ww-column-group > .ww-column-right { break-before: column; }
+.sample-label { margin: 0 0 .75rem; color: #64748b; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+.sample { min-height: 3rem; padding: 1rem; border: 1px dashed #cbd5e1; border-radius: .5rem; overflow-wrap: anywhere; }
+.sample > :first-child { margin-top: 0; }
+.sample > :last-child { margin-bottom: 0; }
+.sample > :empty { min-block-size: 1.5rem; }
+picture { display: block; }
+img, svg, video { max-width: 100%; height: auto; }
+audio, iframe { width: 100%; box-sizing: border-box; }
+iframe { height: 14rem; border: 1px solid #cbd5e1; }
+pre { white-space: pre-wrap; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #cbd5e1; padding: .5rem; height: 1.5rem; text-align: left; }
+blockquote { margin-inline: 0; border-left: 3px solid #0f766e; padding-left: 1rem; }
+figure { margin-inline: 0; }
+a { color: #0f766e; }
+input { max-width: 100%; box-sizing: border-box; }
+@media (max-width: 60rem) { body { padding: 1rem; } .ww-column-group { column-count: auto; } .ww-column-group > .ww-column-right { break-before: auto; margin-top: 1rem; } }
+</style>
+</head>
+<body>
+<h1>Kitchen Sink</h1>
+<p>Explore every built-in insertable element, including text and container variants. Each pair uses the editor’s two-column layout: the empty insertion state on the left and authored contents on the right. On narrow screens, the empty state comes first.</p>
+<p>Click into an empty element to add content, edit a populated example, open a disclosure, or play the audio and video. Package widgets depend on installed packages and are not included. All samples are self-contained except the video, which loads online.</p>
+<h2 id="sample-p">Paragraph <code>&lt;p&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><p></p></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><p>Explore <strong>bold</strong>, <em>italic</em>, and <a href="#sample-table">linked text</a> in an editable paragraph.</p></div></div>
+</div>
+
+<h2 id="sample-pre">Preformatted text <code>&lt;pre&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><pre></pre></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><pre><code>const greeting = "Hello, world!";
+console.log(greeting);</code></pre></div></div>
+</div>
+
+<h2 id="sample-h1">Heading 1 <code>&lt;h1&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><h1></h1></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><h1>A level 1 heading</h1></div></div>
+</div>
+
+<h2 id="sample-h2">Heading 2 <code>&lt;h2&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><h2></h2></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><h2>A level 2 heading</h2></div></div>
+</div>
+
+<h2 id="sample-h3">Heading 3 <code>&lt;h3&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><h3></h3></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><h3>A level 3 heading</h3></div></div>
+</div>
+
+<h2 id="sample-h4">Heading 4 <code>&lt;h4&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><h4></h4></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><h4>A level 4 heading</h4></div></div>
+</div>
+
+<h2 id="sample-h5">Heading 5 <code>&lt;h5&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><h5></h5></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><h5>A level 5 heading</h5></div></div>
+</div>
+
+<h2 id="sample-h6">Heading 6 <code>&lt;h6&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><h6></h6></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><h6>A level 6 heading</h6></div></div>
+</div>
+
+<h2 id="sample-hr">Horizontal rule <code>&lt;hr&gt;</code></h2>
+<p>A horizontal rule is a void element and cannot contain content; both states show the same separator.</p>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><hr></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><hr></div></div>
+</div>
+
+<h2 id="sample-ul">Unordered list <code>&lt;ul&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><ul></ul></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><ul><li>Observe the example.</li><li>Try editing its contents.</li></ul></div></div>
+</div>
+
+<h2 id="sample-ol">Ordered list <code>&lt;ol&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><ol></ol></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><ol><li>Make a prediction.</li><li>Test it.</li><li>Compare results.</li></ol></div></div>
+</div>
+
+<h2 id="sample-dl">Description list <code>&lt;dl&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><dl></dl></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><dl><dt>Empty</dt><dd>The initial insertion state.</dd><dt>Populated</dt><dd>The element with authored content.</dd></dl></div></div>
+</div>
+
+<h2 id="sample-details">Disclosure <code>&lt;details&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><details><summary></summary></details></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><details open><summary>What can I explore?</summary><p>Collapse this disclosure, reopen it, and edit the summary or body.</p></details></div></div>
+</div>
+
+<h2 id="sample-table">Table <code>&lt;table&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><table><caption>Plant growth</caption><thead><tr><th scope="col">Day</th><th scope="col">Height</th></tr></thead><tbody><tr><td>1</td><td>2 cm</td></tr><tr><td>7</td><td>6 cm</td></tr></tbody></table></div></div>
+</div>
+
+<h2 id="sample-picture">Picture <code>&lt;picture&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><picture><img></picture></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><picture><img src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20320%20160%22%3E%3Crect%20width%3D%22320%22%20height%3D%22160%22%20fill%3D%22%23e0f2fe%22/%3E%3Ccircle%20cx%3D%22240%22%20cy%3D%2245%22%20r%3D%2222%22%20fill%3D%22%23fbbf24%22/%3E%3Cpath%20d%3D%22M0%20160%20100%2050%20200%20160M120%20160%20230%2075%20320%20160%22%20fill%3D%22%230f766e%22/%3E%3C/svg%3E" alt="Two green mountains beneath a golden sun" width="320" height="160"></picture></div></div>
+</div>
+
+<h2 id="sample-svg">Vector graphic <code>&lt;svg&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><svg xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two green mountains beneath a golden sun" viewBox="0 0 320 160"><rect width="320" height="160" fill="#e0f2fe"/><circle cx="240" cy="45" r="22" fill="#fbbf24"/><path d="M0 160 100 50 200 160M120 160 230 75 320 160" fill="#0f766e"/></svg></div></div>
+</div>
+
+<h2 id="sample-audio">Audio <code>&lt;audio&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><audio controls></audio></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><audio controls src="data:audio/wav;base64,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" aria-label="A short 440 Hz tone"></audio></div></div>
+</div>
+
+<h2 id="sample-iframe">Embedded page <code>&lt;iframe&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><iframe title="Empty embedded page"></iframe></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><iframe title="Interactive embedded page" srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;title&gt;Embedded example&lt;/title&gt;&lt;body style=&quot;font:16px system-ui;padding:16px&quot;&gt;&lt;h3&gt;A page within a page&lt;/h3&gt;&lt;details&gt;&lt;summary&gt;Open me&lt;/summary&gt;&lt;p&gt;This disclosure belongs to the embedded document.&lt;/p&gt;&lt;/details&gt;&lt;/body&gt;&lt;/html&gt;"></iframe></div></div>
+</div>
+
+<h2 id="sample-video">Video <code>&lt;video&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><video controls></video></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><video controls preload="none" src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" aria-label="Flowers moving in the breeze"></video></div></div>
+</div>
+
+<h2 id="sample-math">Math <code>&lt;math&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><math xmlns="http://www.w3.org/1998/Math/MathML"></math></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msup><mi>a</mi><mn>2</mn></msup><mo>+</mo><msup><mi>b</mi><mn>2</mn></msup><mo>=</mo><msup><mi>c</mi><mn>2</mn></msup></mrow></math></div></div>
+</div>
+
+<h2 id="sample-section">Section <code>&lt;section&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><section></section></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><section><h3>A thematic section</h3><p>Related ideas belong together.</p></section></div></div>
+</div>
+
+<h2 id="sample-div">Div <code>&lt;div&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><div></div></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><div><p>A general-purpose container with a paragraph.</p></div></div></div>
+</div>
+
+<h2 id="sample-blockquote">Blockquote <code>&lt;blockquote&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><blockquote></blockquote></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><blockquote><p>Wonder is the beginning of exploration.</p></blockquote></div></div>
+</div>
+
+<h2 id="sample-figure">Figure <code>&lt;figure&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><figure></figure></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><figure><p>Seed → seedling → plant</p><figcaption>A simple growth sequence.</figcaption></figure></div></div>
+</div>
+
+<h2 id="sample-article">Article <code>&lt;article&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><article></article></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><article><h3>A small independent story</h3><p>A seed sprouted after the first spring rain.</p></article></div></div>
+</div>
+
+<h2 id="sample-aside">Aside <code>&lt;aside&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><aside></aside></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><aside><p>A related note: seedlings grow toward the light.</p></aside></div></div>
+</div>
+
+<h2 id="sample-header">Header <code>&lt;header&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><header></header></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><header><h3>Welcome to the activity</h3><p>Read, experiment, and reflect.</p></header></div></div>
+</div>
+
+<h2 id="sample-footer">Footer <code>&lt;footer&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><footer></footer></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><footer><p>End of the activity · Made for curious learners.</p></footer></div></div>
+</div>
+
+<h2 id="sample-main">Main <code>&lt;main&gt;</code></h2>
+<p>HTML permits only one visible main element. The empty main is hidden; its sample frame remains visible.</p>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><main hidden></main></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><main><p>The primary content of a document.</p></main></div></div>
+</div>
+
+<h2 id="sample-nav">Nav <code>&lt;nav&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><nav></nav></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><nav><a href="#sample-p">Paragraph</a> · <a href="#sample-math">Math</a></nav></div></div>
+</div>
+
+<h2 id="sample-search">Search <code>&lt;search&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><search></search></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><search><form action="#sample-search"><label>Search this example <input type="search" name="q" placeholder="Try a search term"></label><button type="submit">Search</button></form></search></div></div>
+</div>
+
+<h2 id="sample-address">Address <code>&lt;address&gt;</code></h2>
+<div class="ww-column-group">
+  <div class="ww-column-left"><p class="sample-label">Empty</p><div class="sample"><address></address></div></div>
+  <div class="ww-column-right"><p class="sample-label">With contents</p><div class="sample"><address><a href="mailto:hello@example.org">hello@example.org</a></address></div></div>
+</div>
+</body>
+</html>
