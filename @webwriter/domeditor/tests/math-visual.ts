@@ -96,6 +96,10 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
             })
           })
         }
+        if(display === "block") {
+          add(original, 0, `block root start, ${filled ? "filled" : "empty"} arguments`)
+          add(original, original.childNodes.length, `block root end, ${filled ? "filled" : "empty"} arguments`)
+        }
         const html = host.innerHTML
         for(const position of positions) {
           host.innerHTML = html
@@ -104,7 +108,8 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           $.move(node, position.offset)
           editor.features.math.refresh()
           const origin = math.getBoundingClientRect()
-          const reference = math.lastElementChild!.lastElementChild!.getBoundingClientRect()
+          const referenceElement = math.lastElementChild!.lastElementChild!
+          const reference = referenceElement.getBoundingClientRect()
           const container = node instanceof Element ? node : node.parentElement!.parentElement!
           const containerBefore = container.getBoundingClientRect()
           const paddingBefore = parseFloat(getComputedStyle(container).paddingLeft) || 0
@@ -115,7 +120,8 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           const caret = box(caretRect, origin)
           const before = snapshots ? snapshot(editor, math, caret, source) : document.createElement("div")
           const errors: string[] = []
-          if(position.label.startsWith("empty argument") && (caretRect.top < containerBefore.top - tolerance || caretRect.bottom > containerBefore.bottom + tolerance)) {
+          const fencedPlaceholder = position.label.startsWith("empty argument") && ["Absolute value", "Parentheses", "Binomial coefficient"].includes(template.name)
+          if(position.label.startsWith("empty argument") && !fencedPlaceholder && (caretRect.top < containerBefore.top - tolerance || caretRect.bottom > containerBefore.bottom + tolerance)) {
             errors.push("caret exceeds the current placeholder")
           }
           if(!painted && !native.height) errors.push("native caret bounds unavailable; slot geometry is shown as a diagnostic")
@@ -125,7 +131,7 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           guides.forEach((guide, i) => {
             const rect = guide.getBoundingClientRect(), bounds = reserved[i]?.getBoundingClientRect()
             if(!rect.width || !rect.height) errors.push(`placeholder ${i + 1} has no area`)
-            if(bounds && (rect.left < bounds.left - tolerance || rect.right > bounds.right + tolerance || rect.top < bounds.top - tolerance || rect.bottom > bounds.bottom + tolerance)) errors.push(`placeholder ${i + 1} exceeds its reserved slot`)
+            if(bounds && (rect.left < bounds.left - tolerance || rect.right > bounds.right + tolerance || (!["Absolute value", "Parentheses", "Binomial coefficient"].includes(template.name) && (rect.top < bounds.top - tolerance || rect.bottom > bounds.bottom + tolerance)))) errors.push(`placeholder ${i + 1} exceeds its reserved slot`)
             guides.slice(i + 1).forEach((other, j) => {
               if(intersects(rect, other.getBoundingClientRect())) errors.push(`placeholders ${i + 1} and ${i + j + 2} overlap`)
             })
@@ -133,6 +139,7 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
               if(intersects(rect, token.getBoundingClientRect())) errors.push(`placeholder ${i + 1} overlaps ${token.localName} ${token.textContent}`)
             })
           })
+          const guideRects = guides.map(guide => guide.getBoundingClientRect())
           if(!editor.features.math.execute("text:x")) throw new Error(`${template.name}: insertion failed at ${position.label}`)
           const selection = document.getSelection()!
           const text = selection.focusNode!
@@ -143,7 +150,9 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           characterRange.setEnd(text, selection.focusOffset)
           const characterRect = characterRange.getBoundingClientRect()
           const afterOrigin = math.getBoundingClientRect()
-          const afterReference = math.lastElementChild!.lastElementChild!.getBoundingClientRect()
+          if(position.label.startsWith("empty argument") && ["Absolute value", "Parentheses", "Binomial coefficient"].includes(template.name)
+            && origin.height - afterOrigin.height > tolerance) errors.push(`empty delimiters shrink by ${(origin.height - afterOrigin.height).toFixed(2)}px on typing`)
+          const afterReference = referenceElement.getBoundingClientRect()
           const character = box(characterRect, afterOrigin)
           const characterStart = characterRange.cloneRange()
           characterStart.collapse(true)
@@ -152,10 +161,14 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           // Align the before/after formulas by their unchanged trailing token.
           // MathML can re-center a block formula and grow its ascent on typing.
           const emptyArgument = position.label.startsWith("empty argument")
-          const expectedHeight = emptyArgument ? Math.min(characterRect.height, containerBefore.height) : characterRect.height
-          const deltaY = emptyArgument ? caretRect.top - (containerBefore.top + (containerBefore.height - expectedHeight) / 2)
+          const expectedHeight = emptyArgument && !fencedPlaceholder ? Math.min(characterRect.height, containerBefore.height) : characterRect.height
+          const deltaY = emptyArgument && !fencedPlaceholder ? caretRect.top - (containerBefore.top + (containerBefore.height - expectedHeight) / 2)
             : caretRect.top - reference.top - (characterRect.top - afterReference.top)
           const deltaHeight = caretRect.height - expectedHeight
+          if(fencedPlaceholder) {
+            const guide = guideRects[reserved.indexOf(node as Element)]
+            if(!guide || Math.abs(guide.height - characterRect.height) > tolerance || Math.abs(guide.top - caretRect.top) > tolerance) errors.push("fenced placeholder does not match the inserted character height and caret")
+          }
           // Empty operator slots reserve extra space which disappears on typing.
           const paddingDelta = emptyArgument ? paddingBefore - (parseFloat(getComputedStyle(container).paddingLeft) || 0) : 0
           const deltaX = caretRect.left - containerBefore.left - (expectedCaret.left - containerAfter.left) - paddingDelta - (emptyArgument ? 1 : 0)

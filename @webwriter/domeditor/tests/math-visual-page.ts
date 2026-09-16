@@ -12,7 +12,7 @@ gallery.style.cssText = "font:14px system-ui;width:calc(100vw - 96px);max-width:
 editor.addAppendix(gallery)
 gallery.innerHTML = `<h1>Formula placeholder and caret audit</h1>
 <p>Before typing (left) and after inserting x (right). Dashed boxes are actual editor placeholders; red lines show caret geometry. Empty native ranges use slot bounds as a diagnostic and are reported as unverified, never passed. Use “Edit this position” to inspect the browser’s real blinking caret at the top of the page.</p>
-<p>21 structures · every empty argument · token endpoints · insertion boundaries between tokens and structures · 16/32px · LTR/RTL · inline/block · 1 CSS px tolerance. Empty argument carets fit the current placeholder at the inserted character’s height; other vertical measurements follow the unchanged trailing z baseline.</p>
+<p>21 structures · every empty argument · token endpoints · insertion boundaries between tokens and structures · centered block edges · 16/32px · LTR/RTL · inline/block · 1 CSS px tolerance. Empty argument carets fit the current placeholder at the inserted character’s height; other vertical measurements follow the unchanged trailing z baseline.</p>
 <p><a href="./math-root-regression.html">Root focus and formula-edge regression fixture</a></p>
 <h2 id="summary">Running browser layout checks…</h2>
 <label>Structure <select id="structure"><option value="">All structures</option></select></label>

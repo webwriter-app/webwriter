@@ -644,9 +644,11 @@ export class MathFeature extends EditorFeature {
         })
       }
     }
-    points.push([root, 0])
-    visit(root)
-    return points
+    // Only the formula itself has an independent leading boundary. Starting
+    // at an argument/cell wrapper would let typing bypass its empty slot.
+    if(root.localName === "math") points.push([root, 0])
+    visit(root, root.localName !== "math")
+    return points.length ? points : [[root, 0]]
   }
 
   /** Enter at the same live stop used by Home/End and pointer hit testing. */
@@ -925,6 +927,13 @@ export class MathFeature extends EditorFeature {
       if(parent && (mathArity[parent.localName] || parent.localName === "mtr")) {
         const next = backward ? element.previousElementSibling : element.nextElementSibling
         if(next) { $.move(...this.stops(next)[0]); return }
+        if(parent.localName === "mtr" && parent.parentElement?.localName === "mtable") {
+          const row = backward ? parent.previousElementSibling : parent.nextElementSibling
+          const cell = backward ? row?.lastElementChild : row?.firstElementChild
+          if(cell?.localName === "mtd") { $.move(...this.stops(cell)[0]); return }
+          $.move(...(backward ? before(parent.parentElement) : after(parent.parentElement)))
+          return
+        }
         if(parent.parentNode) { $.move(...(backward ? before(parent) : after(parent))); return }
       }
       element = parent
@@ -1048,7 +1057,7 @@ export class MathFeature extends EditorFeature {
       range.collapse(true)
       const start = range.getBoundingClientRect()
       const bounds = container.getBoundingClientRect()
-      const fitPlaceholder = !outside && !element.childNodes.length
+      const fitPlaceholder = !outside && !element.childNodes.length && !this.isFencedPlaceholder(element)
       const style = getComputedStyle(element)
       const paddingTop = node === root ? parseFloat(style.paddingTop) || 0 : 0
       const paddingBottom = node === root ? parseFloat(style.paddingBottom) || 0 : 0
@@ -1060,6 +1069,13 @@ export class MathFeature extends EditorFeature {
       const height = fitPlaceholder ? Math.min(rect.height, availableHeight) : rect.height
       const top = fitPlaceholder ? bounds.top + paddingTop + (availableHeight - height) / 2
         : actualBaseline + rect.top - baseline.getBoundingClientRect().top
+      // Root positions need the browser's display-math centering, including its
+      // edge spacing. Measure horizontal placement at the real block width;
+      // retain the inline probe's baseline measurement for vertical placement.
+      if(!outside && container === root && root.getAttribute("display") === "block") {
+        clone.setAttribute("style", `${clone.getAttribute("style")};display:block math;box-sizing:border-box;width:${actual.width}px`)
+        return new DOMRect(bounds.left + range.getBoundingClientRect().left - row.getBoundingClientRect().left, top, 0, height)
+      }
       return new DOMRect(bounds.left + start.left - row.getBoundingClientRect().left, top, 0, height)
     }
     finally { probe.remove() }
@@ -1099,6 +1115,10 @@ export class MathFeature extends EditorFeature {
     }
     const bounds = node.parentElement!.getBoundingClientRect()
     return new DOMRect(offset ? bounds.right : bounds.left, bounds.top, 0, bounds.height)
+  }
+
+  private isFencedPlaceholder(element: Element): boolean {
+    return element.matches("math mrow:has(> mo:first-child):has(> mo:last-child) > mrow:empty, math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty")
   }
 
   refresh() {
@@ -1179,13 +1199,15 @@ export class MathFeature extends EditorFeature {
     markers.forEach((marker, element) => {
       if(marker !== "◆math-slot" || outerRows.has(element)) return
       const rect = element.getBoundingClientRect()
+      const glyph = this.isFencedPlaceholder(element) ? this.structuralTextRect(element, 0) : null
       const style = getComputedStyle(element)
       const paddingLeft = parseFloat(style.paddingLeft) || 0
       const paddingRight = parseFloat(style.paddingRight) || 0
       const guide = document.createElement("span")
-      // The slot already reserves its native script-size hit target. Enlarging
-      // the guide here overlaps fraction bars, radicals, and neighboring slots.
-      guide.style.cssText = `position:absolute;box-sizing:border-box;border:1px dashed #94a3b8;left:${rect.left + paddingLeft}px;top:${rect.top}px;width:${Math.max(0, rect.width - paddingLeft - paddingRight)}px;height:${rect.height}px`
+      // Fenced slots reserve only ink ascent for delimiter layout, but their
+      // visible guide and caret use the full character box. Other slots keep
+      // their reserved bounds to stay clear of bars and neighboring arguments.
+      guide.style.cssText = `position:absolute;box-sizing:border-box;border:1px dashed #94a3b8;left:${rect.left + paddingLeft}px;top:${glyph?.top ?? rect.top}px;width:${Math.max(0, rect.width - paddingLeft - paddingRight)}px;height:${glyph?.height ?? rect.height}px`
       if(element === this.hovered) guide.style.borderColor = "var(--sl-color-primary-400)"
       this.overlay!.append(guide)
     })

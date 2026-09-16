@@ -1976,6 +1976,13 @@ math :is(mroot, msqrt) > mrow:empty,
   min-width: 0.7em;
   min-height: 1em;
 }
+/* Stretchy fences use their arguments' ascent and descent. Reserve the
+ * font's x-height for an empty argument, matching a typed identifier instead
+ * of stretching the fences around a full em above the baseline. */
+math mrow:has(> mo:first-child):has(> mo:last-child) > mrow:empty,
+math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty {
+  min-height: 1ex;
+}
 .◆math-editing[display="block"]:empty {
   display: block;
 }

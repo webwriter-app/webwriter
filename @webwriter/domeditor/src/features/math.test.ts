@@ -113,6 +113,20 @@ describe("DOM MathML editing", () => {
     expect(math.classList.contains("◆math-structural-caret")).toBe(false)
   })
 
+  it.each([0, 1])("keeps block-root insertion at boundary %s inside the centered formula", offset => {
+    const math = load("<mrow><mi>z</mi><munderover><mo>∩</mo><mn>1</mn><mn>2</mn></munderover></mrow>")
+    math.setAttribute("display", "block")
+    const expression = math.firstElementChild!
+    $.move(math, offset)
+    editor.features.math.refresh()
+    expect(editor.appendix.querySelectorAll('[part="math-caret"]')).toHaveLength(1)
+    expect(command("text:x")).toBe(true)
+    expect(math.children[offset === 0 ? 1 : 0]).toBe(expression)
+    expect(math.children[offset].textContent).toBe("x")
+    expect(math.getAttribute("display")).toBe("block")
+    expect(clean()).not.toContain("◆")
+  })
+
   it.each(["ltr", "rtl"])("insets the %s empty placeholder caret one pixel to the right", direction => {
     const math = load("<msup><mi>x</mi><mrow></mrow></msup>")
     const slot = math.querySelector("mrow")!
@@ -122,6 +136,22 @@ describe("DOM MathML editing", () => {
     editor.features.math.refresh()
     expect(editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!.style.left).toBe("31px")
     expect(editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!.style.left).toBe("30px")
+  })
+
+  it.each(["abs", "paren", "binom"])("uses the full character box for the %s placeholder and caret", structure => {
+    const math = load()
+    command(`structure:${structure}`)
+    const slot = document.getSelection()!.focusNode as Element
+    const authored = clean()
+    vi.spyOn(slot, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 25, 12, 8))
+    vi.spyOn(editor.features.math, "structuralTextRect").mockReturnValue(new DOMRect(30, 20, 0, 18))
+    editor.features.math.refresh()
+    const guide = editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!
+    const caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+    expect([guide.style.top, guide.style.height]).toEqual(["20px", "18px"])
+    expect([caret.style.left, caret.style.top, caret.style.height]).toEqual(["31px", "20px", "18px"])
+    expect(clean()).toBe(authored)
+    expect(math.querySelector("span")).toBeNull()
   })
 
   it("keeps small script placeholders inside their reserved native bounds", () => {
@@ -1271,6 +1301,39 @@ describe("DOM MathML editing", () => {
     key("ArrowRight")
     expect($.focus).toBe(math)
     expect($.focusOffset).toBe(1)
+  })
+
+  it.each(["<mrow></mrow>", "<mrow><!-- keep --><mstyle><mrow></mrow></mstyle></mrow>", ""])("enters the actual empty matrix slot vertically: %s", content => {
+    const math = load(`<mtable><mtr><mtd><mi>a</mi></mtd><mtd><mi>b</mi></mtd></mtr><mtr><mtd>${content}</mtd><mtd>${content}</mtd></mtr></mtable>`)
+    const cells = math.querySelectorAll("mtd")
+    const slot = (cell: Element) => cell.querySelector("mrow:empty") ?? cell
+    $.move(cells[0].firstChild!.firstChild!, 1)
+    key("ArrowDown")
+    expect($.focus).toBe(slot(cells[2]))
+    expect($.focusOffset).toBe(0)
+    key("ArrowRight")
+    expect($.focus).toBe(slot(cells[3]))
+    key("ArrowLeft")
+    expect($.focus).toBe(slot(cells[2]))
+    const target = slot(cells[2])
+    command("text:x")
+    expect(cells[2].querySelector("mi")!.parentElement).toBe(target)
+    expect(cells[2].querySelector("mrow:empty")).toBeNull()
+  })
+
+  it("tabs through matrix cells without selecting table or row boundaries", () => {
+    const math = load('<mi>z</mi><mtable><mtr><mtd><mrow></mrow></mtd><mtd><mrow></mrow></mtd></mtr><mtr><mtd><mrow></mrow></mtd><mtd><mrow></mrow></mtd></mtr></mtable>')
+    const slots = math.querySelectorAll("mtd > mrow")
+    $.move(slots[0], 0)
+    for(const slot of Array.from(slots).slice(1)) { key("Tab"); expect($.focus).toBe(slot) }
+    for(const slot of Array.from(slots).slice(0, -1).reverse()) { key("Tab", {shiftKey: true}); expect($.focus).toBe(slot) }
+    key("Tab", {shiftKey: true})
+    expect($.focus).toBe(math)
+    expect($.focusOffset).toBe(1)
+    $.move(slots[3], 0)
+    key("Tab")
+    expect($.focus).toBe(math)
+    expect($.focusOffset).toBe(2)
   })
 
   it("visits a root index before its radicand horizontally", () => {
