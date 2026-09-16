@@ -472,13 +472,14 @@ describe("transform controls and geometry", () => {
     target.style.height = "50px"
     selectNode(target)
     mockRect(target)
-    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 120, clientY: 100}))
+    feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+      .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 120, clientY: 100}))
 
     expect(target.style.position).toBe("absolute")
     expect(target.style.width).toBe("100px")
     expect(target.style.height).toBe("50px")
-    feature.handleMoveEnd()
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
   })
 
   it("constrains movement to one axis with Shift and keeps unsnapped coordinates with Alt", () => {
@@ -667,6 +668,40 @@ describe("transform controls and geometry", () => {
     expect(target).toHaveClass("◆transform-target")
   })
 
+  describe.each(["p", "demo-widget"])("static %s resizing", tag => {
+    it.each(["up", "right", "down", "left", "up-left", "up-right", "down-left", "down-right", "up-up", "right-right", "down-down", "left-left"])("keeps normal flow when dragging %s", direction => {
+      const target = targetElement(tag)
+      Object.assign(target.style, {width: "100px", height: "50px"})
+      if(tag === "demo-widget") target.style.position = "static"
+      mockRect(target)
+      if(tag === "demo-widget") captureNode(target)
+      else selectNode(target)
+      const initialPosition = target.style.position
+      const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+      const dx = direction.includes("left") ? 20 : direction.includes("right") ? -20 : 0
+      const dy = direction.includes("up") ? 10 : direction.includes("down") ? -10 : 0
+
+      for(const modifiers of [{}, {ctrlKey: true}, {metaKey: true}, {shiftKey: true}, {altKey: true}]) {
+        handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+        document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy, ...modifiers}))
+        expect(target.style.position).toBe(initialPosition)
+        for(const property of ["left", "top", "right", "bottom"]) expect(target.style.getPropertyValue(property)).toBe("")
+        if(modifiers.shiftKey) expect(target.style.scale).not.toBe("")
+        else {
+          if(dx) expect(parseFloat(target.style.maxWidth)).toBeLessThan(100)
+          else expect(target.style.maxWidth).toBe("")
+          if(dy) expect(parseFloat(target.style.maxHeight)).toBeLessThan(50)
+          else expect(target.style.maxHeight).toBe("")
+        }
+        document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+        expect(target.style.position).toBe(initialPosition)
+        expect(target.style.maxWidth).toBe("")
+        expect(target.style.maxHeight).toBe("")
+        expect(document.body).not.toHaveClass("◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nwse", "◆transform-scaling-nesw")
+      }
+    })
+  })
+
   describe.each([false, true])("edge resizing with capture selection %s", captured => {
     it.each([
       {edge: "right", x: 200, y: 115, dx: -20, dy: 13, width: "80px", height: "", left: "0px", top: "0px"},
@@ -794,9 +829,11 @@ describe("transform controls and geometry", () => {
     expect(target.style.width).toBe("")
     expect(target.style.height).toBe("")
     expect(target.getBoundingClientRect().width).toBe(120)
+    expect(target.style.position).toBe("")
     expect(feature.overlay).toHaveClass("◆transform-overlay-changed")
     expect(editor.toHTML(true)).toContain("max-width: 120px")
     expect(editor.doc.body.toString()).toContain("max-width: 120px")
+    expect(editor.doc.body.toString()).not.toContain("position:")
     editor.doc.undo()
     await mutationsDelivered()
     // Happy DOM can cache .style after attribute replacement; assert authored DOM.
@@ -806,6 +843,7 @@ describe("transform controls and geometry", () => {
     await mutationsDelivered()
     expect(document.querySelector("demo-widget")!.getAttribute("style")).toContain("max-width: 120px")
     expect(document.querySelector("demo-widget")!.getAttribute("style")).toContain("max-height: 70px")
+    expect(document.querySelector("demo-widget")!.getAttribute("style")).not.toContain("position:")
   })
 
   it("retains a concurrent maximum while restoring other gesture-owned properties", () => {

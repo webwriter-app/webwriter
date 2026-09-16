@@ -732,10 +732,14 @@ export class TransformationFeature extends EditorFeature {
       actualDW = size.width - gesture.width
       actualDH = size.height - gesture.height
     }
-    const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, symmetric ? 0 : y * actualDH / 2)
-    const rect = this.targetRect
-    this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
-      gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))
+    // Static elements stay in normal flow; anchoring the opposite edge must
+    // not implicitly opt them into positioned layout.
+    if((getComputedStyle(target).position || "static") !== "static") {
+      const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, symmetric ? 0 : y * actualDH / 2)
+      const rect = this.targetRect
+      this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
+        gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))
+    }
     this.updateInfo()
   }
 
