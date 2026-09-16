@@ -1904,6 +1904,10 @@ msqrt > mrow:only-child {
   border-top: var(--ww-radical-clearance) solid transparent;
 }
 
+mroot > :nth-child(2) {
+  border-bottom: 1px solid transparent;
+}
+
 math, math * {
   cursor: text;
 }
@@ -1918,6 +1922,10 @@ math:not([display="block"]) {
 
 .◆math-editing {
   background-color: #eeeeee;
+}
+
+.◆math-hovered {
+  color: var(--sl-color-primary-400);
 }
 
 /* Native carets can resolve both sides of MATH to the same token edge.

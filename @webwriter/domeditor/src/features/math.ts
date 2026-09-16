@@ -24,6 +24,7 @@ export class MathFeature extends EditorFeature {
   private commandText: string | null = null
   private commandRange: Range | null = null
   private drag: {root: Element, pointerId: number} | null = null
+  private hovered: Element | null = null
 
   actions = {
     insertMath: ({structure}: {type: "insertMath", structure?: string}) => this.insert(structure),
@@ -56,6 +57,7 @@ export class MathFeature extends EditorFeature {
     this.clearPresentation()
     this.dismissCommand()
     this.drag = null
+    this.setHovered(null)
   }
 
   private accepts(event: Event) {
@@ -127,8 +129,11 @@ export class MathFeature extends EditorFeature {
   }
 
   activeListeners: DocumentListenerMap = {
+    pointerover: event => this.hover(event),
+    pointerout: () => this.setHovered(null),
     pointerdown: event => this.pointerdown(event),
     pointermove: event => {
+      this.hover(event)
       if(!this.drag || event.pointerId !== this.drag.pointerId) return
       if(!this.drag.root.isConnected || !document.getSelection()?.anchorNode?.isConnected) { this.drag = null; return }
       event.preventDefault()
@@ -144,7 +149,7 @@ export class MathFeature extends EditorFeature {
       this.refresh()
     },
     pointerup: () => { if(this.drag) { this.drag = null; this.changed() } },
-    pointercancel: () => { this.drag = null },
+    pointercancel: () => { this.drag = null; this.setHovered(null) },
     selectionchange: () => this.scheduleRefresh(),
     scroll: () => this.scheduleRefresh(),
   }
@@ -712,6 +717,42 @@ export class MathFeature extends EditorFeature {
     else this.execute(`text:${key}`)
   }
 
+  private setHovered(element: Element | null) {
+    if(element === this.hovered) return
+    if(this.hovered) removeEditorMarker(this.hovered, "◆math-hovered")
+    this.hovered = element
+    element?.classList.add("◆math-hovered")
+    this.scheduleRefresh()
+  }
+
+  private hover(event: PointerEvent) {
+    let target = event.target instanceof Element ? event.target : null
+    const root = target && this.accepts(event) ? mathRoot(target) : null
+    // Native MathML hit testing can report MATH for all of its arguments.
+    // Resolve the deepest rendered child under the pointer from the live DOM.
+    if(root && target === root) {
+      target = Array.from(root.querySelectorAll("*")).reverse().find(element => {
+        if(!isMath(element) || mathRoot(element) !== root) return false
+        const rect = element.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0 && event.clientX >= rect.left && event.clientX < rect.right
+          && event.clientY >= rect.top && event.clientY < rect.bottom
+      }) ?? root
+    }
+    let position: Element | null = null
+    if(root && !target!.closest('[contenteditable="false"]')) {
+      for(let element = target; element && element !== root; element = element.parentElement) {
+        if(!isMath(element)) continue
+        const parent = element.parentElement
+        if(parent && isMath(parent) && (mathArity[parent.localName] || parent.localName === "msqrt" || element.localName === "mtd")) {
+          position = element
+          break
+        }
+        if(!position && (isToken(element) || isRow(element))) position = element
+      }
+    }
+    this.setHovered(position)
+  }
+
   private pointerdown(event: PointerEvent) {
     if(event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || !(event.target instanceof Node)) return
     const root = mathRoot(event.target)
@@ -856,6 +897,7 @@ export class MathFeature extends EditorFeature {
   }
 
   refresh() {
+    if(this.hovered && !mathRoot(this.hovered)) this.setHovered(null)
     const root = this.activeMath
     const selection = document.getSelection()
     let removed = false
@@ -927,6 +969,7 @@ export class MathFeature extends EditorFeature {
       const rect = element.getBoundingClientRect()
       const guide = document.createElement("span")
       guide.style.cssText = `position:absolute;box-sizing:border-box;border:1px dashed #94a3b8;left:${rect.left}px;top:${rect.top}px;width:${Math.max(10, rect.width)}px;height:${Math.max(18, rect.height)}px`
+      if(element === this.hovered) guide.style.borderColor = "var(--sl-color-primary-400)"
       this.overlay!.append(guide)
     })
     if(selection?.isCollapsed && selection.focusNode) {

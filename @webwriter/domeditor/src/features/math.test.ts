@@ -37,6 +37,80 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("DOM MathML editing", () => {
+  it("highlights only the hovered structure placeholder border and restores it on exit", () => {
+    const math = load('<mroot><mrow></mrow><mrow></mrow></mroot>')
+    const degree = math.querySelector("mroot")!.lastElementChild!
+    const borders = () => Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
+      .map(guide => guide.style.borderColor)
+    editor.features.math.refresh()
+    const normal = borders()
+    expect(normal).toHaveLength(2)
+    degree.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    editor.features.math.refresh()
+    expect(borders()[0]).toBe(normal[0])
+    expect(borders()[1]).toContain("var(--sl-color-primary-400)")
+    degree.dispatchEvent(new PointerEvent("pointerout", {bubbles: true}))
+    editor.features.math.refresh()
+    expect(borders()).toEqual(normal)
+    expect(clean()).not.toContain("◆")
+  })
+
+  it("resolves native whole-formula pointer targets to the rendered argument as the pointer moves", () => {
+    const math = load('<mroot><mi>x</mi><mn>2</mn></mroot>')
+    const radicand = math.querySelector("mi")!
+    const degree = math.querySelector("mn")!
+    vi.spyOn(radicand, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 20, 20, 20))
+    vi.spyOn(degree, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 10, 10))
+    math.dispatchEvent(new PointerEvent("pointerover", {bubbles: true, clientX: 15, clientY: 15}))
+    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([degree])
+    math.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 35, clientY: 25}))
+    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([radicand])
+    math.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 60, clientY: 25}))
+    expect(math.querySelector(".◆math-hovered")).toBeNull()
+  })
+
+  it("highlights exactly the innermost hovered argument and excludes the marker from saved and shared HTML", () => {
+    const math = load('<mroot><mrow><mi>x</mi><mfrac><mi>a</mi><mi>b</mi></mfrac></mrow><mn>3</mn></mroot>')
+    const hover = (element: Element) => element.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    const radicand = math.querySelector("mrow")!
+    hover(radicand.firstElementChild!)
+    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([radicand])
+    const numerator = math.querySelector("mfrac > mi")!
+    hover(numerator)
+    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([numerator])
+    const degree = math.querySelector("mn")!
+    hover(degree)
+    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([degree])
+    expect(clean()).not.toContain("◆math-hovered")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆math-hovered")
+    degree.dispatchEvent(new PointerEvent("pointerout", {bubbles: true}))
+    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    hover(degree)
+    degree.remove()
+    editor.features.math.refresh()
+    expect(degree.classList.contains("◆math-hovered")).toBe(false)
+    hover(numerator)
+    editor.features.math.disable()
+    expect(math.querySelector(".◆math-hovered")).toBeNull()
+  })
+
+  it("does not highlight math owned by widgets or read-only content", () => {
+    const math = load('<mroot><mi>x</mi><mrow></mrow></mroot>')
+    const degree = math.querySelector("mrow")!
+    degree.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(degree.classList.contains("◆math-hovered")).toBe(true)
+    math.setAttribute("contenteditable", "false")
+    degree.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    math.removeAttribute("contenteditable")
+    const widget = document.createElement("test-widget")
+    math.replaceWith(widget)
+    widget.append(math)
+    degree.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(math.querySelector(".◆math-hovered")).toBeNull()
+  })
+
   it("splits nested marks around a block formula and wraps it when converted back", () => {
     const math = load("<mi>x</mi>")
     const paragraph = math.parentElement!
