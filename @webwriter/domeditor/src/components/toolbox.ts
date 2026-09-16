@@ -25,6 +25,7 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
 export class DomEditorToolbox extends EditingControls {
   static properties = {
     ...EditingControls.properties,
+    showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
@@ -70,6 +71,10 @@ export class DomEditorToolbox extends EditingControls {
       background: transparent;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       transition: var(--ww-ui-transition, width 180ms ease);
+    }
+
+    :host(:not([show-style-toolbox])) {
+      width: 66px;
     }
 
     :host([active-tool]) {
@@ -500,6 +505,7 @@ export class DomEditorToolbox extends EditingControls {
     }
   `
 
+  showStyleToolbox = false
   activeTool: ToolboxTool | null = null
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
@@ -633,6 +639,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   selectTool(tool: ToolboxTool | null) {
+    if(tool === "Style" && !this.showStyleToolbox) return
     const nextTool = tool
     if(this.htmlPending && nextTool !== "Edit") return
     if(this.activeTool === nextTool) return
@@ -746,6 +753,14 @@ export class DomEditorToolbox extends EditingControls {
     `
   }
 
+  protected willUpdate(changed: Map<string, unknown>) {
+    super.willUpdate(changed)
+    if(!this.showStyleToolbox && this.activeTool === "Style") {
+      this.selectTool(null)
+      this.activeMenu = "Edit"
+    }
+  }
+
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
     if(this.activeTool !== "Edit" || !this.documentSelected || this.htmlMode || this.developMode) {
@@ -779,7 +794,7 @@ export class DomEditorToolbox extends EditingControls {
       >
         <div class="toolbox-tabs-area">
           <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
-            ${tools.map(tool => {
+            ${tools.filter(tool => tool.label !== "Style" || this.showStyleToolbox).map(tool => {
               const active = this.activeTool === tool.label
               const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
               const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null

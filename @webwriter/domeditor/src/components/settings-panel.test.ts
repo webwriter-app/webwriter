@@ -133,6 +133,7 @@ describe("settings panel", () => {
       language: "de",
       updateDocumentLanguage: false,
       disableAnimations: true,
+      showStyleToolbox: true,
       shortcuts: {...defaultAppSettings().shortcuts, "document.save": "Alt+S"},
     }
     panel.dispatchEvent(new CustomEvent("settings-change", {
@@ -206,4 +207,19 @@ describe("settings dialog", () => {
     dialog.close()
     expect(dialog.open).toBe(false)
   })
+})
+
+it("defaults to hiding Style and loads the saved preference", async () => {
+  expect(defaultAppSettings().showStyleToolbox).toBe(false)
+  for(const value of [undefined, "yes", true, false]) {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({showStyleToolbox: value}))
+    expect(loadAppSettings().showStyleToolbox).toBe(value === true)
+  }
+  const panel = await mountPanel()
+  const changes: AppSettings[] = []
+  panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
+  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('[aria-labelledby="toolbox-setting-heading"] input')!
+  expect(checkbox.checked).toBe(false)
+  checkbox.click()
+  expect(changes.at(-1)!.showStyleToolbox).toBe(true)
 })

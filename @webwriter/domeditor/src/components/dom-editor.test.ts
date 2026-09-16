@@ -576,6 +576,24 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
+  it("applies the style toolbox preference without changing authored HTML", async () => {
+    const {editor, iframe} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const authoredHTML = iframe.contentDocument!.documentElement.outerHTML
+    await toolbox.updateComplete
+    expect(toolbox.showStyleToolbox).toBe(false)
+    for(const showStyleToolbox of [true, false]) {
+      ribbon.dispatchEvent(new CustomEvent("app-settings-change", {
+        detail: {...defaultAppSettings(), showStyleToolbox}, bubbles: true, composed: true,
+      }))
+      await editor.updateComplete
+      await toolbox.updateComplete
+      expect(Boolean(toolbox.shadowRoot!.querySelector('button[data-tool="Style"]'))).toBe(showStyleToolbox)
+      expect(iframe.contentDocument!.documentElement.outerHTML).toBe(authoredHTML)
+    }
+  })
+
   it("applies and reverses motion preferences without changing authored HTML", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -1927,6 +1945,8 @@ describe("DomEditor.execute()", () => {
       }
     })
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.showStyleToolbox = true
+    await toolbox.updateComplete
     const styleButton = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Style"]')!
 
     expect(toolbox.elementStyle.target).toBeNull()
@@ -2206,6 +2226,8 @@ describe("DomEditor.execute()", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({behavior: "smooth", block: "nearest", inline: "nearest"})
     expect(scrollIntoView.mock.instances.at(-1)).toBe(newestCard)
 
+    toolbox.showStyleToolbox = true
+    await toolbox.updateComplete
     toolbox.selectTool("Style")
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
     toolbox.selectTool("Review")

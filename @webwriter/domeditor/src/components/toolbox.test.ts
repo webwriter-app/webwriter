@@ -10,8 +10,9 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
-async function mountToolbox() {
+async function mountToolbox(showStyleToolbox = true) {
   const toolbox = new DomEditorToolbox()
+  toolbox.showStyleToolbox = showStyleToolbox
   document.body.append(toolbox)
   await toolbox.updateComplete
   return toolbox
@@ -21,6 +22,25 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("hides Style by default and closes its panel when disabled", async () => {
+    expect(new DomEditorToolbox().showStyleToolbox).toBe(false)
+    const toolbox = await mountToolbox(false)
+    expect(toolButton(toolbox, "Style")).toBeNull()
+    toolbox.selectTool("Style")
+    expect(toolbox.activeTool).toBeNull()
+    toolbox.showStyleToolbox = true
+    await toolbox.updateComplete
+    toolButton(toolbox, "Style").click()
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Style")
+    toolbox.showStyleToolbox = false
+    await toolbox.updateComplete
+    expect(toolButton(toolbox, "Style")).toBeNull()
+    expect(toolbox.activeTool).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector("element-style-editor")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>("#toolbox-pane")!.hidden).toBe(true)
+  })
+
   it("renders Edit, Style, and Review as icon-only tabs on the breadcrumb baseline", async () => {
     const toolbox = await mountToolbox()
     const tablist = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
