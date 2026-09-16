@@ -247,7 +247,7 @@ export type ContextDrawerPolicy = {
   documentSelected?: boolean
   paragraphSelected?: boolean
   sectionSelected?: boolean
-  layout?: "grid" | "flex"
+  layout?: "grid" | "flex" | "columns"
   layoutItem?: boolean
   headingGroup?: boolean
   orderedList?: boolean
@@ -300,7 +300,7 @@ export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGro
   }
   if(context.surface === "toolbox" && context.math) return [{label: "Formula", buttons: []}]
   if(context.layout && (!context.layoutItem || ![context.media, context.dialog, context.graphic, context.table, context.disclosure].some(Boolean))) {
-    return menuGroups.Edit.filter(group => group.label === (context.layout === "grid" ? "Grid layout" : "Flex layout")
+    return menuGroups.Edit.filter(group => group.label === (context.layout === "grid" ? "Grid layout" : context.layout === "columns" ? "Layout" : "Flex layout")
       || context.attributes && group.label === "Attributes")
   }
   const priority = context.surface === "ribbon" ? ribbonContextPriority : toolboxContextPriority

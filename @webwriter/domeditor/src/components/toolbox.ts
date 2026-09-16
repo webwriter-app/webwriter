@@ -521,7 +521,7 @@ export class DomEditorToolbox extends EditingControls {
     if(this.math?.active) return "Formula"
     if(this.documentSelected) return "Document"
     if(this.paragraphSelected) return "Paragraph"
-    if(this.layout && (!this.layout.item || !this.media && !this.dialog && !this.table?.active && !this.graphic?.active && this.elementAttributes?.localName !== "details")) return this.layout.kind === "grid" ? "Grid layout" : "Flex layout"
+    if(this.layout && (!this.layout.item || !this.media && !this.dialog && !this.table?.active && !this.graphic?.active && this.elementAttributes?.localName !== "details")) return this.layout.kind === "grid" ? "Grid layout" : this.layout.kind === "columns" ? "Layout" : "Flex layout"
     if(this.sectionSelected) return "Section"
     if(this.headingGroup) return "Heading group"
     if(this.listType === "ol") return "List"

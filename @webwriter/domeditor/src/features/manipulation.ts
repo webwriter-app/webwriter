@@ -1,8 +1,9 @@
+import {authoredLayoutKind, canPlaceLayouts, canBecomeLayout} from "../layouts"
 import {mediaElementSelector} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {isSlide} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isColumnGroup, columnSide, columnSides, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -153,7 +154,60 @@ export class ManipulationFeature extends EditorFeature {
     if(refresh && this.isEnabled && !this.editor.features.selection.isCaptureSelection) this.refreshNodeDragTarget($.selectedElement ?? null)
   }
 
+  private columnObserver: MutationObserver | null = null
+
+  enable() {
+    if(this.isEnabled) return
+    super.enable()
+    this.columnObserver = new MutationObserver(records => {
+      const placement = (classes: string) => classes.split(/\s+/).filter(name => /^(ww-column-(group|left|middle|right|three))$/.test(name)).sort().join(" ")
+      if(records.some(record => record.type === "childList" || placement(record.oldValue ?? "") !== placement((record.target as Element).getAttribute("class") ?? ""))) this.cleanupColumnGroups()
+    })
+    this.columnObserver.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["class"], attributeOldValue: true})
+  }
+
+  /** Unwrap abandoned single-sided groups without rebuilding their content. */
+  cleanupColumnGroups() {
+    if(!this.isEnabled || this.editor.isEditingLocked) return
+    for(const group of Array.from(getDocumentRoot().querySelectorAll(".ww-column-group"))) {
+      if(!isColumnGroup(group) || !group.isConnected || atomicEditingContainer(group, this.editor.schema)) continue
+      const empty = columnSides(group).filter(side => !Array.from(group.children).some(child => columnSide(child) === side))
+      if(!empty.length) continue
+      const selection = document.getSelection()
+      const affinity = $.columnGap
+      // A bare group boundary has no unambiguous side; retain it while editing.
+      const selectedEmpty = affinity?.group === group ? empty.includes(affinity.side)
+        : selection?.anchorNode === group || selection?.focusNode === group
+      if(this.editor.features.selection.selectedSectionElement === group || selectedEmpty || selection?.rangeCount && !selection.isCollapsed && selection.getRangeAt(0).intersectsNode(group)) continue
+      const parent = group.parentNode!
+      const index = Array.from(parent.childNodes).indexOf(group)
+      const endpoint = (node: Node | null, offset: number) => {
+        if(!node) return null
+        if(node === group) return () => [parent, index + offset] as const
+        if(group.contains(node)) return () => [node, offset] as const
+        const range = document.createRange()
+        range.setStart(node, offset)
+        range.collapse(true)
+        return () => [range.startContainer, range.startOffset] as const
+      }
+      const anchor = endpoint(selection?.anchorNode ?? null, selection?.anchorOffset ?? 0)
+      const focus = endpoint(selection?.focusNode ?? null, selection?.focusOffset ?? 0)
+      for(const child of Array.from(group.children)) this.clearColumn(child)
+      group.replaceWith(...Array.from(group.childNodes))
+      if(anchor && focus && selection) {
+        const [a, ao] = anchor(), [f, fo] = focus()
+        if(a.isConnected && f.isConnected) $.selectRange(a, ao, f, fo)
+      }
+    }
+  }
+
+  passiveListeners: DocumentListenerMap = {
+    "selectionchange": () => this.cleanupColumnGroups(),
+  }
+
   disable() {
+    this.columnObserver?.disconnect()
+    this.columnObserver = null
     this.endNodeDrag(false)
     super.disable()
   }
@@ -200,8 +254,10 @@ export class ManipulationFeature extends EditorFeature {
     }
     document.body.classList.add("◆drop-selection-active")
     this.editor.features.selection.selectDropRange(range)
+    this.restoreDropColumn()
+    if(this.dropColumn) this.editor.features.selection.processSelection()
     const source = this.nodeDrag?.element
-    const floatContainer = source && this.floatContainer(range.startContainer, source)
+    const floatContainer = source && this.columnDropTarget(event, source, range)
     if(floatContainer) {
       const rect = floatContainer.getBoundingClientRect()
       this.editor.features.selection.clearDropCaret()
@@ -223,6 +279,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private clearDropSelection(restore=false) {
+    this.dropColumn = undefined
     const active = document.body.classList.contains("◆drop-selection-active")
     document.body.classList.remove("◆drop-selection-active")
     if(active) this.editor.features.selection.clearDropCaret()
@@ -236,25 +293,81 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  /** Text containers accept atomic media/widgets as authored floats. */
+  /** Resolve an authored element as a peer, keeping atomic widget contents intact. */
   floatContainer(node: Node, element: Element): Element | null {
-    if(atomicEditingContainer(node, this.editor.schema) || !this.inlineStyleOf(element) || !(element.matches(mediaElementSelector)
-      || this.insertedWidget(element) && !isContentfulWidget(element, this.editor.schema))) return null
-    let container = node instanceof Element ? node : node.parentElement
+    let container = atomicEditingContainer(node, this.editor.schema) ?? (node instanceof Element ? node : node.parentElement)
     while(container && isMarkElement(container)) container = container.parentElement
-    return container && getDocumentRoot().contains(container) && !element.contains(container)
-      && (this.isTextBlock(container) || isSectionElement(container) && this.editor.schema.isBlock(container)
-        && Array.from(container.childNodes).some(child => child instanceof Text || isElement(child) && isMarkElement(child))) ? container : null
+    const root = getDocumentRoot()
+    const parent = container?.parentElement
+    const allowedParent = parent === root || isColumnGroup(parent) && parent.parentElement === root
+    return container && container !== root && root.contains(container) && !element.contains(container) && allowedParent
+      && canPlaceLayouts([element, container], document.createElement("div")) ? container : null
   }
 
-  /** Applies authored float styles and places the element at the requested
-   * container boundary so the layout survives collaboration/export. */
-  placeFloat(element: Element, container: Element, side: "left" | "right", beforeContainer = false) {
-    if(this.floatContainer(container, element) !== container) return false
-    const style = this.inlineStyleOf(element)!
-    Object.assign(style, {float: side, maxWidth: "50%", minWidth: "0", boxSizing: "border-box"})
-    if(beforeContainer) container.before(element)
-    else container.prepend(element)
+  /** Side drops target the rendered element, even when its native caret point
+   * is an outer gap (images, dividers, tables and widgets). */
+  private columnDropTarget(event: DragEvent, source: Element, range: Range) {
+    if(this.dropColumn) return null
+    const root = getDocumentRoot()
+    const pointer = event.target instanceof Element && root.contains(event.target) && event.target !== root ? event.target : null
+    const hit = pointer ?? document.elementsFromPoint?.(event.clientX, event.clientY).find(element => root.contains(element) && element !== root && !source.contains(element))
+    const node = hit ?? (range.startContainer instanceof Text ? range.startContainer : null)
+    if(!node) return null
+    const container = this.floatContainer(node, source)
+    if(!container) return null
+    const rect = container.getBoundingClientRect()
+    return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY > rect.top && event.clientY < rect.bottom ? container : null
+  }
+
+  private clearColumn(element: Element) {
+    const style = this.inlineStyleOf(element)
+    if(style) {
+      if(style.float && style.maxWidth === "50%") style.removeProperty("max-width")
+      style.removeProperty("float")
+      style.removeProperty("--ww-column")
+      if(!style.length) element.removeAttribute("style")
+    }
+    element.classList.remove("ww-column-left", "ww-column-middle", "ww-column-right")
+    if(!element.classList.length) element.removeAttribute("class")
+  }
+
+  /** Assign the class and keep left-column content before right-column content. */
+  setColumn(element: Element, side: "left" | "right" | "none") {
+    if(isColumnGroup(element)) return
+    const group = isColumnGroup(element.parentElement) ? element.parentElement : null
+    this.clearColumn(element)
+    if(side !== "none") element.classList.add(`ww-column-${side}`)
+    if(group) {
+      if(side === "none") group.after(element)
+      else if(side === "left") {
+        const firstRight = Array.from(group.children).find(child => columnSide(child) === "right")
+        group.insertBefore(element, firstRight ?? null)
+      }
+      else group.append(element)
+    }
+  }
+
+  /** A flat authored group holds all left children, then all right children. */
+  placeFloat(element: Element, container: Element, side: "left" | "right") {
+    if(!container.isConnected || !container.parentElement || this.floatContainer(container, element) !== container) return false
+    const parent = container.parentNode!
+    if(isColumnGroup(parent)) {
+      this.clearColumn(element)
+      element.classList.add(`ww-column-${side}`)
+      if(columnSide(container) === side) container.after(element)
+      else if(side === "left") parent.insertBefore(element, Array.from(parent.children).find(child => columnSide(child) === "right") ?? null)
+      else parent.append(element)
+      return true
+    }
+    const group = document.createElement("div")
+    group.className = "ww-column-group"
+    this.clearColumn(element)
+    this.clearColumn(container)
+    element.classList.add(`ww-column-${side}`)
+    container.classList.add(`ww-column-${side === "left" ? "right" : "left"}`)
+    parent.insertBefore(group, container)
+    if(side === "left") group.append(element, container)
+    else group.append(container, element)
     return true
   }
 
@@ -290,15 +403,18 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false, beforeContainer = false) {
+  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false) {
     const element = node instanceof DocumentFragment && node.childNodes.length === 1 ? node.firstChild : node
     const selection = document.getSelection()
-    if(!isElement(element) || !selection?.rangeCount || !selection.isCollapsed
+    if(!isElement(element) || !(element.matches(mediaElementSelector) || this.insertedWidget(element) && !isContentfulWidget(element, this.editor.schema))
+      || !selection?.rangeCount || !selection.isCollapsed
       || this.editor.features.canvas.active || this.editor.features.slides.active) return false
     const range = selection.getRangeAt(0)
     const container = this.floatContainer(range.startContainer, element)
-    if(!container || !allowEmpty && container.localName === "p" && !container.textContent?.trim()) return false
-    this.placeFloat(element, container, side, beforeContainer)
+    if(!container || !(this.isTextBlock(container) || isSectionElement(container) && this.editor.schema.isBlock(container)
+      && Array.from(container.childNodes).some(child => child instanceof Text || isElement(child) && isMarkElement(child)))
+      || !allowEmpty && container.localName === "p" && !container.textContent?.trim()) return false
+    if(!this.placeFloat(element, container, side)) return false
     if(this.insertedWidget(element)) this.editor.features.selection.captureElement(element)
     else $.selectElement(element)
     this.editor.postSelectionPath(true)
@@ -306,14 +422,24 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Hover and drop resolve the same text or structural insertion point. */
+  private dropColumn: ReturnType<typeof $.pointFromCoords> = undefined
+
+  private restoreDropColumn() {
+    const point = this.dropColumn
+    if(point?.column && isColumnGroup(point.node)) $.selectColumnGap(point.node, point.column, point.gapElement, point.placement)
+  }
+
   private dropRange(event: DragEvent, source: Element | null) {
+    this.dropColumn = undefined
     if(source && !getDocumentRoot().contains(source)) return null
     const point = $.pointFromCoords(event.clientX, event.clientY, event.target, this.editor.schema, getDocumentRoot())
-    if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)) return null
+    if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)
+      || source && !canPlaceLayouts([source], point.node instanceof Text ? point.node.parentNode! : point.node)) return null
+    this.dropColumn = point.column ? point : undefined
     const range = document.createRange()
     range.setStart(point.node, point.offset)
     range.collapse(true)
-    if(source && !this.floatContainer(point.node, source) && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
+    if(source && !this.columnDropTarget(event, source, range) && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
       while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
       if(this.isTextBlock(block) && !this.editor.schema.canInsert(block, source, block.childNodes.length)) {
@@ -340,15 +466,18 @@ export class ManipulationFeature extends EditorFeature {
       if(source) {
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
         if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
-        const container = this.floatContainer(range.startContainer, inserted)
+        const container = this.columnDropTarget(event, inserted, range)
         if(container) {
           const rect = container.getBoundingClientRect()
           clearInlinePlacement(inserted)
-          this.placeFloat(inserted, container, event.clientX < rect.left + rect.width / 2 ? "left" : "right", true)
+          this.placeFloat(inserted, container, event.clientX < rect.left + rect.width / 2 ? "left" : "right")
         }
         else {
           range.insertNode(inserted)
-          if(getDocumentRoot().contains(inserted)) clearInlinePlacement(inserted)
+          if(getDocumentRoot().contains(inserted)) {
+            clearInlinePlacement(inserted)
+            if(this.dropColumn?.column && inserted.parentNode === this.dropColumn.node) inserted.classList.add(`ww-column-${this.dropColumn.column}`)
+          }
         }
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
       }
@@ -356,14 +485,17 @@ export class ManipulationFeature extends EditorFeature {
         const fragment = this.#dataTransferToFragment(data)
         if(!fragment?.childNodes.length) return
         $.move(range.startContainer, range.startOffset)
+        this.restoreDropColumn()
         const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
-        const container = isElement(element) ? this.floatContainer(range.startContainer, element) : null
+        const container = isElement(element) ? this.columnDropTarget(event, element, range) : null
         const rect = container?.getBoundingClientRect()
-        if(!container || !this.insertFloat(fragment, rect && event.clientX < rect.left + rect.width / 2 ? "left" : "right", true, true)) this.insertClipboardFragment(fragment)
+        if(container && isElement(element) && this.placeFloat(element, container, rect && event.clientX < rect.left + rect.width / 2 ? "left" : "right")) $.selectElement(element)
+        else this.insertClipboardFragment(fragment)
       }
       dropped = true
     }
     finally {
+      this.dropColumn = undefined
       this.endNodeDrag(!dropped)
       this.editor.features.selection.processSelection()
     }
@@ -612,10 +744,10 @@ export class ManipulationFeature extends EditorFeature {
 
   wrapTargetsInSection(targets: Element[], type: SectionName) {
     const context = this.sectionNodes(targets)
-    if(!context) return null
+    if(!context || !canPlaceLayouts(context.nodes, document.createElement(type))) return null
     const section = getInertDocument(context.parent).createElement(type)
     context.nodes.forEach(node => section.append(cloneWithoutEditorMarkers(node, true, {inert: true})))
-    if(!this.canReplaceWithSection(context.parent, context.first, context.last, section)) return null
+    if(!canPlaceLayouts([section], context.parent) || !this.canReplaceWithSection(context.parent, context.first, context.last, section)) return null
 
     const liveSection = document.createElement(type)
     context.nodes[0].before(liveSection)
@@ -1031,7 +1163,7 @@ export class ManipulationFeature extends EditorFeature {
    * end of the inserted content without splitting its containing block. */
   private insertAtSelection(...nodes: Node[]) {
     if(!this.editor.features.slides.allowsSelection()) return
-    if(!nodes.length) return
+    if(!nodes.length || !canPlaceLayouts(nodes, $.range.startContainer)) return
     return this.withNormalization(() => {
       $.replace(...nodes)
       this.moveAfterInsertedNode(nodes.at(-1)!)
@@ -1080,6 +1212,8 @@ export class ManipulationFeature extends EditorFeature {
    * left and right halves. If the surrounding content model cannot accept
    * that shape, their text is inserted instead of creating invalid DOM. */
   private insertBlocks(nodes: ChildNode[]) {
+    const insertionBlock = getContainer($.range.startContainer)
+    if(!canPlaceLayouts(nodes, insertionBlock === getDocumentRoot() ? insertionBlock : insertionBlock.parentNode!)) return
     if(!this.editor.features.slides.allowsSelection()) return
     return this.withNormalization(() => {
       $.delete()
@@ -1248,6 +1382,8 @@ export class ManipulationFeature extends EditorFeature {
       const next = (splittingSummary || container.matches("h1, h2, h3, h4, h5, h6") || strict && schema.inseperable
         ? this.editor.schema.create(undefined, container.ownerDocument)
         : cloneWithoutEditorMarkers(container, false)) as Element
+      const side = isColumnGroup(parent) && columnSide(container)
+      if(side) next.classList.add(`ww-column-${side}`)
       container.after(next)
       const moving = Array.from(container.childNodes).slice(offset).filter(node => !isOutOfFlow(node))
       this.editor.features.list.prepareSplitContinuation(container, next, moving)
@@ -1467,6 +1603,17 @@ export class ManipulationFeature extends EditorFeature {
     return changed
   }
 
+  // Deliberate editor drags can target widget/control surfaces. Their ordinary
+  // internal input remains routed to the widget or native control.
+  captureListeners: DocumentListenerMap = {
+    "dragover": event => {
+      if(this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
+    },
+    "drop": event => {
+      if(this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
+    },
+  }
+
   /** Keyboard and input behavior: Enter splits the containing block
    * (Shift/Alt: <br>, Alt+Shift: <wbr>, modifier: split the parent), deletion
    * follows platform word/line modifiers, and Tab adjusts paragraph indent
@@ -1623,6 +1770,8 @@ export class ManipulationFeature extends EditorFeature {
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false) {
     if(!this.editor.features.slides.allowsSelection()) return
+    const insertionContainer = node ? getContainer($.range.startContainer) : null
+    if(node && !canPlaceLayouts([node], insertionContainer === getDocumentRoot() ? insertionContainer : $.isGapSelection ? $.range.startContainer : insertionContainer!.parentNode!)) return
     if(node && this.insertFloat(node)) return
     if(!node && this.ensureTextBlock()) {
       return
@@ -1652,6 +1801,8 @@ export class ManipulationFeature extends EditorFeature {
       && !emptyDefaultBlock.childNodes.length
       && this.editor.schema.get(insertedElement).group?.includes("flow")) {
       return this.withNormalization(() => {
+        const side = isColumnGroup(emptyDefaultBlock.parentElement) && columnSide(emptyDefaultBlock)
+        if(side) insertedElement.classList.add(`ww-column-${side}`)
         emptyDefaultBlock.replaceWith(insertedElement)
         if(insertedWidget) {
           this.editor.features.selection.captureElement(insertedWidget)
@@ -1801,6 +1952,7 @@ export class ManipulationFeature extends EditorFeature {
         const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild: wrapping
         if(!wrapper) return
         wrapper.append($.slice)
+        if(!canPlaceLayouts([wrapper], $.range.startContainer)) return
         $.replace(wrapper)
         return wrapper
       }
@@ -1809,7 +1961,7 @@ export class ManipulationFeature extends EditorFeature {
         if(!wrapper) {
           return
         }
-        if($.anchorContainer) wrapper.append($.anchorContainer)
+        if($.anchorContainer && canPlaceLayouts([$.anchorContainer], wrapper)) wrapper.append($.anchorContainer)
         return wrapper
       }
     })
@@ -1903,6 +2055,11 @@ export class ManipulationFeature extends EditorFeature {
           if(value !== null && isUnsafeElementAttributeValue(name, value)) {
             throw new TypeError(`The ${name} attribute contains an unsafe URL`)
           }
+          if(name.toLowerCase() === "class") {
+            const probe = element.cloneNode(false) as Element
+            probe.setAttribute("class", value ?? "")
+            if(authoredLayoutKind(probe) && !authoredLayoutKind(element) && !canBecomeLayout(element)) throw new Error("Layouts can only appear at the document top level")
+          }
         }
       }
       elements.forEach(element => entries.forEach(([name, value]) => (
@@ -1947,6 +2104,11 @@ export class ManipulationFeature extends EditorFeature {
       throw new TypeError(`The ${name} attribute contains an unsafe URL`)
     }
 
+    if(node.isConnected && name.toLowerCase() === "class") {
+      const probe = node.cloneNode(false) as Element
+      probe.setAttribute("class", value ?? "")
+      if(authoredLayoutKind(probe) && !authoredLayoutKind(node) && !canBecomeLayout(node)) throw new Error("Layouts can only appear at the document top level")
+    }
     const setClass = (nextValue: string | null) => {
       const markers = Array.from(node.classList).filter(className => className.startsWith("◆"))
       const authored = nextValue === null ? [] : sanitizeAuthoredClass(nextValue).split(/\s+/).filter(Boolean)
@@ -1991,6 +2153,11 @@ export class ManipulationFeature extends EditorFeature {
   ) {
     const style = this.inlineStyleOf(target)
     if(!style) return false
+    if(target.isConnected && entries.some(({name}) => ["display", "columns", "column-count"].includes(name))) {
+      const probe = target.cloneNode(false) as Element
+      this.applyStyleEntries(probe, entries)
+      if(authoredLayoutKind(probe) && !canBecomeLayout(target)) return false
+    }
     entries.forEach(({name, value, priority}) => {
       if(value === null) style.removeProperty(name)
       else style.setProperty(name, value, priority)

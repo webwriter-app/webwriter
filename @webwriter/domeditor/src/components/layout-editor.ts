@@ -358,6 +358,7 @@ export class LayoutEditor extends LitElement {
   }
 
   private renderModeControls() {
+    if(this.state.kind === "columns") return html`<section class="panel mode-panel"><h3 class="panel-title">Columns</h3><p>Content flows independently in each column and stacks on narrow pages.</p></section>`
     if(this.state.kind === "flex") {
       return html`
         <section class="panel mode-panel">
@@ -377,7 +378,7 @@ export class LayoutEditor extends LitElement {
   }
 
   private renderItemControls() {
-    if(!this.state.item) return nothing
+    if(!this.state.item || this.state.kind === "columns") return nothing
     const itemState = this.layoutState.itemStyle ?? this.styleState
     const names = this.state.kind === "flex" ? flexItemPropertyNames : gridItemPropertyNames
     return html`
@@ -402,7 +403,7 @@ export class LayoutEditor extends LitElement {
   render() {
     return html`
       <div class="layout-editor">
-        <div class="mode-switch" role="group" aria-label="Layout mode">
+        <div class="mode-switch" role="group" aria-label="Layout mode" ?hidden=${this.state.kind === "columns"}>
           <button type="button" aria-pressed=${this.state.kind === "grid"} @click=${() => this.setMode("grid")}>Grid</button>
           <button type="button" aria-pressed=${this.state.kind === "flex"} @click=${() => this.setMode("flex")}>Flex</button>
         </div>

@@ -874,26 +874,56 @@ describe("drop, cancellation, and document ownership", () => {
     const text = paragraph.firstChild!
     const target = paragraph.appendChild(document.createElement(tag))
     target.style.float = "right"
+    target.style.maxWidth = "50%"
     if(tag === "demo-widget") captureNode(target)
     else selectNode(target)
     feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-float-right")!.click()
-    expect(paragraph.firstChild).toBe(target)
+    expect(paragraph.nextElementSibling).toBe(target)
     expect(paragraph.lastChild).toBe(text)
-    expect(target.style.maxWidth).toBe("50%")
+    expect(target.style.maxWidth).toBe("")
+    expect(target.style.float).toBe("")
+    expect(target).toHaveClass("ww-column-right")
     if(tag === "demo-widget") expect(editor.features.selection.captureSelectedElement).toBe(target)
     else expect($.selectedElement).toBe(target)
   })
 
-  it("sets float through the appendix buttons", () => {
+  it.each(["img", "demo-widget"])("keeps %s and its text in reading order when switching sides", tag => {
+    const paragraph = targetElement()
+    const text = paragraph.textContent
+    const target = paragraph.appendChild(document.createElement(tag))
+    if(tag === "demo-widget") captureNode(target)
+    else selectNode(target)
+    const click = (side: string) => feature.overlay.querySelector<HTMLButtonElement>(`#◆transform-overlay-float-${side}`)!.click()
+
+    click("left")
+    expect(target).toHaveClass("ww-column-left")
+    expect(target).toHaveClass("ww-column-left")
+    click("right")
+    expect(target.parentElement).toBe(paragraph.parentElement)
+    expect(target).toHaveClass("ww-column-right")
+    click("left")
+    expect(target).toHaveClass("ww-column-left")
+    expect(paragraph.textContent).toBe(text)
+    expect(target.style.float).toBe("")
+    expect(target.style.maxWidth).toBe("")
+    if(tag === "demo-widget") expect(editor.features.selection.captureSelectedElement).toBe(target)
+    else expect($.selectedElement).toBe(target)
+  })
+
+  it("sets column placement through the appendix buttons", () => {
     const target = targetElement()
     selectNode(target)
     const click = (id: string) => feature.overlay.querySelector<HTMLElement>(id)!.dispatchEvent(new MouseEvent("click", {bubbles: true}))
 
     click("#◆transform-overlay-float-left")
-    expect(target.style.float).toBe("left")
+    expect(target).toHaveClass("ww-column-left")
     click("#◆transform-overlay-float-right")
-    expect(target.style.float).toBe("right")
+    expect(target).toHaveClass("ww-column-right")
+    expect(target.style.float).toBe("")
+    expect(target.style.maxWidth).toBe("")
     click("#◆transform-overlay-float-none")
+    expect(target.classList.contains("ww-column-left")).toBe(false)
+    expect(target.classList.contains("ww-column-right")).toBe(false)
     expect(target.style.float).toBe("")
   })
 
@@ -904,13 +934,16 @@ describe("drop, cancellation, and document ownership", () => {
       maxWidth: "70px", maxHeight: "30px",
       float: "left", color: "rebeccapurple",
     })
+    target.classList.add("ww-column-left", "authored")
     target.style.setProperty("rotate", "15deg")
     target.style.setProperty("z-index", "7")
     target.style.setProperty("--unfamiliar", "keep")
     selectNode(target)
     feature.restore()
+    expect(target).toHaveClass("authored")
+    expect(target.classList.contains("ww-column-left")).toBe(false)
 
-    for(const property of ["width", "height", "max-width", "max-height", "rotate", "float", "position", "top", "left", "z-index"]) {
+    for(const property of ["--ww-column", "width", "height", "max-width", "max-height", "rotate", "float", "position", "top", "left", "z-index"]) {
       expect(target.style.getPropertyValue(property)).toBe("")
     }
     expect(target.style.color).toBe("rebeccapurple")
@@ -999,9 +1032,8 @@ describe("drop, cancellation, and document ownership", () => {
     expect(preview.style.height).toBe("100px")
     expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
     feature.handleMoveEnd()
-    expect(target.parentElement).toBe(document.body)
-    expect(paragraph.previousElementSibling).toBe(target)
-    expect(target.style.float).toBe(side)
+    expect(target.parentElement!.parentElement).toBe(paragraph.parentElement!.parentElement)
+    expect(target).toHaveClass(`ww-column-${side}`)
     expect(paragraph.textContent).toBe("keep text")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -1034,6 +1066,7 @@ describe("drop, cancellation, and document ownership", () => {
     const child = target.appendChild(document.createElement("unfamiliar-node"))
     Object.assign(target.style, {position: "absolute", width: "80px", height: "40px", maxInlineSize: "100px", color: "red"})
     target.style.setProperty("inset", "12px")
+    target.classList.add("ww-column-left")
     target.style.setProperty("rotate", "15deg")
     const dropTarget = targetElement()
     mockRect(target)
@@ -1055,7 +1088,7 @@ describe("drop, cancellation, and document ownership", () => {
     editor.doc.syncFromDOM()
 
     expect(target.parentElement).toBe(dropTarget.parentElement)
-    expect(dropTarget.nextElementSibling).toBe(target)
+    expect(dropTarget.previousElementSibling).toBe(target)
     expect(target.style.cssText).toBe("color: red;")
     expect(target.firstElementChild).toBe(child)
     const droppedHTML = editor.toHTML(true)
@@ -1080,9 +1113,9 @@ describe("drop, cancellation, and document ownership", () => {
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 160, ctrlKey: true}))
     feature.handleMoveEnd()
-    expect(dropTarget.nextElementSibling).toBe(target)
+    expect(dropTarget.previousElementSibling).toBe(target)
     expect(floating.firstElementChild).toBe(child)
-    expect(target.parentElement).toBe(document.body)
+    expect(target.parentElement).toHaveClass("ww-column-group")
   })
 
   it("reverts only properties owned by an Escape-cancelled gesture", () => {

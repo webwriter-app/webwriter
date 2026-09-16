@@ -1626,3 +1626,63 @@ describe("DOM path and text point helpers", () => {
     expect(textPointAtOffset(root, 99)).toEqual([root.lastElementChild!.firstChild, 3])
   })
 })
+
+describe("independent column gap hit testing", () => {
+  const caret = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+  const hits = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+  afterEach(() => {
+    if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
+    else delete (document as any).caretPositionFromPoint
+    if(hits) Object.defineProperty(document, "elementsFromPoint", hits)
+    else delete (document as any).elementsFromPoint
+  })
+
+  it.each(["left", "right"])("resolves before, between, and after gaps in the %s column", side => {
+    setBody('<div class="ww-column-group" style="column-count:2"><p class="ww-column-left">left</p><!--keep--><demo-widget class="ww-column-left"></demo-widget><p class="ww-column-right">right</p><!--keep--><demo-widget class="ww-column-right"></demo-widget></div>')
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    const own = Array.from(group.querySelectorAll(`.ww-column-${side}`))
+    Object.defineProperty(group, "getBoundingClientRect", {configurable: true, value: () => new DOMRect(0, 80, 400, 220)})
+    const x = side === "left" ? 20 : 240
+    own.forEach((child, index) => {
+      Object.defineProperty(child, "getBoundingClientRect", {configurable: true, value: () => new DOMRect(x - 10, 100 + index * 80, 180, 40)})
+    })
+    const otherText = document.querySelector(`p.ww-column-${side === "left" ? "right" : "left"}`)!.firstChild!
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: otherText, offset: 1})})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [group]})
+    for(const [y, offset] of [[90, 0], [150, 1], [250, 3]]) {
+      const point = $.selectCoords(x, y, false, group)!
+      expect(point.node).toBe(group)
+      expect(point.offset).toBe(offset + (side === "right" ? 3 : 0))
+      expect($.columnGap?.side).toBe(side)
+      expect($.isGapSelection).toBe(true)
+    }
+    expect($.pointFromCoords(x, 79, group)).toEqual({node: document.body, offset: 0, overrideNative: true})
+    expect($.pointFromCoords(x, 301, group)).toEqual({node: document.body, offset: 1, overrideNative: true})
+    expect(group.childNodes[1].nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("distinguishes the same DOM boundary on the two sides and expires invalid affinity", () => {
+    setBody('<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>')
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    $.selectGap(group.children[0], "after")
+    expect($.anchorOffset).toBe(1)
+    expect($.columnGap?.side).toBe("left")
+    $.selectGap(group.children[1], "before")
+    expect($.anchorOffset).toBe(1)
+    expect($.columnGap?.side).toBe("right")
+    group.children[1].replaceWith(document.createElement("p"))
+    expect($.columnGap).toBeNull()
+  })
+
+  it("resolves an empty column without inserting an authored placeholder", () => {
+    setBody('<div class="ww-column-group" style="column-count:2"><p class="ww-column-right">right</p></div>')
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    Object.defineProperty(group, "getBoundingClientRect", {configurable: true, value: () => new DOMRect(0, 0, 400, 100)})
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => null})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [group]})
+    $.selectCoords(20, 50, false, group)
+    expect($.columnGap?.side).toBe("left")
+    expect($.isGapSelection).toBe(true)
+    expect(group.children).toHaveLength(1)
+  })
+})

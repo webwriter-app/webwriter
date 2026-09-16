@@ -57,24 +57,20 @@ describe("layout preset ribbon", () => {
     expect(gallery.lastElementChild!.querySelector('select[aria-label="Section type"]')).not.toBeNull()
   })
 
-  it("renders eight named, keyboard-activatable layout presets", async () => {
+  it("renders four named, keyboard-activatable layout presets", async () => {
     const ribbon = await mountRibbon()
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
     const gallery = drawer.querySelector<HTMLElement>(".layout-gallery")!
     const presets = Array.from(gallery.querySelectorAll<HTMLButtonElement>(".layout-preset"))
 
-    expect(presets).toHaveLength(8)
+    expect(presets).toHaveLength(4)
     expect(gallery.querySelector(".layout-preset-kind")).toBeNull()
     expect(presets.every(button => button.type === "button")).toBe(true)
     expect(presets.map(button => button.querySelector(".layout-preset-name")?.textContent?.trim())).toEqual([
       "Two columns",
       "Three columns",
-      "Sidebar left",
-      "Sidebar right",
-      "Four panels",
-      "Vertical stack",
-      "Horizontal row",
-      "Wrapping cards",
+      "Grid",
+      "Cards",
     ])
     expect(presets.every(button => button.getAttribute("aria-label")?.startsWith("Insert "))).toBe(true)
     expect(AppRibbon.styles.toString()).toMatch(
@@ -144,4 +140,18 @@ describe("layout preset ribbon", () => {
     expect(first.hasAttribute("drawer-open")).toBe(false)
     expect(second.hasAttribute("drawer-open")).toBe(true)
   })
+})
+
+it.each(["grid", "flex", "columns"] as const)("marks both Layouts buttons active inside %s", async kind => {
+  const ribbon = await mountRibbon()
+  ribbon.layout = {kind, item: true, columns: {tracks: null, automatic: 0, reason: null}, rows: {tracks: null, automatic: 0, reason: null}, style: {target: null, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}}
+  await ribbon.updateComplete
+  const buttons = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>(".layout-opener"))
+  expect(buttons).toHaveLength(2)
+  expect(buttons.every(button => button.active)).toBe(true)
+  expect(Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".layout-preset")).every(button => button.disabled)).toBe(true)
+  ribbon.layout = null
+  await ribbon.updateComplete
+  expect(buttons.every(button => !button.active)).toBe(true)
+  expect(Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".layout-preset")).every(button => !button.disabled)).toBe(true)
 })

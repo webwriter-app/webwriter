@@ -370,19 +370,25 @@ await check("layout insertion retains its selected grid wrapper after two frames
   paragraph.textContent = "insertion point"
   fixture.append(paragraph)
   try {
-    $.selectRange(fixture, fixture.childNodes.length)
+    $.selectRange(document.body, document.body.childNodes.length)
     editor.features.selection.processSelection()
-    const inserted = editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})
+    const inserted = editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "four-panels"})
     assert(inserted === true, "layout insertion was rejected at a valid caret")
     await layoutFrame()
-    const section = fixture.querySelector<HTMLElement>("section")
+    const section = document.body.querySelector<HTMLElement>(":scope > section")
     assert(section, "layout insertion did not create a section")
     assert(editor.features.selection.selectedSectionElement === section, "inserted layout lost its explicit section selection")
     assert(editor.features.layout.getState()?.kind === "grid", "inserted layout did not retain grid state")
     assert(editor.appendix.querySelector<HTMLElement>(".◆layout-overlay")?.hidden === false, "inserted layout overlay was not retained")
+    editor.features.selection.clearSelectedSection()
+    $.move(section!.firstElementChild!, 0)
+    const contents = section!.innerHTML
+    assert(editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"}) === false, "nested preset was accepted")
+    assert(editor.features.manipulation.placeFloat(document.createElement("img"), section!.firstElementChild!, "left") === false, "nested side-drop group was accepted")
+    assert(section!.innerHTML === contents, "rejected layout operation changed existing content")
   }
   finally {
-    fixture.querySelectorAll("section").forEach(section => section.remove())
+    document.body.querySelectorAll(":scope > section").forEach(section => section.remove())
     paragraph.remove()
     editor.features.selection.clearSelectedSection()
   }
@@ -393,11 +399,11 @@ await check("layout presets create direct paragraph children", async () => {
   paragraph.textContent = "preset insertion"
   fixture.append(paragraph)
   try {
-    $.selectRange(fixture, fixture.childNodes.length)
+    $.selectRange(document.body, document.body.childNodes.length)
     editor.features.selection.processSelection()
     const inserted = editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})
     assert(inserted === true, "layout preset insertion was rejected at a valid caret")
-    const section = fixture.querySelector<HTMLElement>("section")
+    const section = document.body.querySelector<HTMLElement>(":scope > section")
     assert(section, "layout preset did not create a section")
     const children = Array.from(section!.children)
     assert(children.length === 2 && children.every(child => child.localName === "p"), "layout preset did not create direct paragraph children")
@@ -408,7 +414,7 @@ await check("layout presets create direct paragraph children", async () => {
     }), "preset paragraphs did not receive min-inline-size")
   }
   finally {
-    fixture.querySelectorAll("section").forEach(section => section.remove())
+    document.body.querySelectorAll(":scope > section").forEach(section => section.remove())
     paragraph.remove()
     editor.features.selection.clearSelectedSection()
   }
@@ -1352,6 +1358,123 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
     assert(frame.contentDocument === previewDoc && previewViewport.scrollLeft > previewViewport.clientWidth / 2, "native preview links did not stay inside srcdoc")
   }
   finally { frame.remove(); URL.revokeObjectURL(url) }
+})
+
+await check("column groups expose independent gaps and stack with separator lines", async () => {
+  for(const [width, count] of [[1200, 2], [640, 2], [1200, 3], [640, 3]]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = `position:fixed;inset:0;inline-size:${width}px;min-inline-size:${width}px;max-inline-size:none;height:600px;border:0`
+    const id = `column-group-${width}-${count}`
+    const result = new Promise<string | null>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if(event.source !== frame.contentWindow || event.data?.id !== id) return
+        window.removeEventListener("message", receive)
+        resolve(event.data.error ?? null)
+      }
+      window.addEventListener("message", receive)
+    })
+    frame.srcdoc = `<!doctype html><body><p>Left text</p><script type="module">
+      import {DOMEditor} from "/src/domeditor.ts";
+      import {$} from "/src/utility.ts";
+      import {defaultDocumentTheme} from "/src/document-themes.ts";
+      const assert = (condition, message) => {if(!condition) throw new Error(message)};
+      let editor;
+      try {
+        const style = document.createElement("style");
+        style.textContent = defaultDocumentTheme.source;
+        document.head.append(style, document.querySelector("script"));
+        editor = new DOMEditor({bridgeOrigin: parent.location.origin});
+        const paragraph = document.querySelector("p"), media = document.createElement("img");
+        media.alt = "Media";
+        media.style.height = "160px";
+        assert(editor.features.manipulation.placeFloat(media, paragraph, "right"), "could not create group");
+        const group = document.querySelector(".ww-column-group");
+        if(${count} === 3) {
+          group.classList.add("ww-column-three");
+          const middle = document.createElement("p");
+          middle.className = "ww-column-middle";
+          middle.textContent = "Middle";
+          media.before(middle);
+        }
+        const columns = Array.from(group.children);
+        assert(columns[0] === paragraph && columns[columns.length - 1] === media, "incorrect group reading order");
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        const left = columns[0].getBoundingClientRect(), right = columns[columns.length - 1].getBoundingClientRect();
+        assert(${width} > 960 ? Math.abs(left.top - right.top) < 1 && right.left > left.left : right.top >= left.bottom, "wrong column geometry " + JSON.stringify({left:left.toJSON(),right:right.toJSON(),grid:getComputedStyle(group).gridTemplateColumns,html:group.outerHTML}));
+        assert((parseFloat(getComputedStyle(group).borderTopWidth) > 0) === (${width} <= 960), "wrong group separator visibility");
+        assert((parseFloat(getComputedStyle(group).borderBottomWidth) > 0) === (${width} <= 960), "missing bottom separator");
+        for(const child of columns) {
+          const side = child === paragraph ? "left" : child === media ? "right" : "middle";
+          for(const edge of ["before", "after"]) {
+            const rect = child.getBoundingClientRect();
+            $.selectCoords(rect.left + rect.width / 2, edge === "before" ? rect.top + 2 : rect.bottom - 2, false, child, editor.schema);
+            editor.features.selection.processSelection();
+            assert($.columnGap?.side === side && $.columnGap?.element === child, "gap escaped its column");
+          }
+          $.selectGap(child, "after");
+          editor.features.selection.processSelection();
+          const columnCursor = editor.features.selection.selectionCaret.getBoundingClientRect();
+          const inserted = editor.features.manipulation.ensureTextBlock();
+          assert(inserted?.parentElement === group && inserted.classList.contains("ww-column-" + side), "new block escaped column " + JSON.stringify({count:${count},side,group:group.outerHTML,inserted:inserted?.outerHTML,parent:inserted?.parentElement?.localName,connected:group.isConnected}));
+          inserted.textContent = "Another block";
+          const insertedRect = inserted.getBoundingClientRect();
+          assert(Math.abs(columnCursor.left - insertedRect.left) < 2 && Math.abs(columnCursor.top - insertedRect.top) < 2, "column cursor differs from insertion");
+        }
+        await new Promise(requestAnimationFrame);
+        const secondLeft = paragraph.nextElementSibling.getBoundingClientRect();
+        const secondRight = media.nextElementSibling.getBoundingClientRect();
+        const firstLeft = paragraph.getBoundingClientRect(), firstRight = media.getBoundingClientRect();
+        assert(Math.abs(secondLeft.top - firstLeft.bottom - 20) < 2, "left flow waits for tall right content");
+        assert(Math.abs(secondRight.top - firstRight.bottom - 20) < 2, "right flow has incorrect spacing");
+        for(const child of group.querySelectorAll(":scope > .ww-column-right")) child.remove();
+        $.selectColumnGap(group, "right");
+        editor.features.selection.processSelection();
+        assert(editor.features.selection.selectionCaret?.getRootNode() === editor.appendix, "gap caret left appendix");
+        const emptyInserted = editor.features.manipulation.ensureTextBlock();
+        assert(emptyInserted?.parentElement === group && emptyInserted.classList.contains("ww-column-right"), "empty-column insertion escaped");
+        emptyInserted.textContent = "Right content";
+        for(const edge of ["before", "after"]) {
+          $.selectGap(group, edge);
+          editor.features.selection.processSelection();
+          await new Promise(requestAnimationFrame);
+          const cursor = editor.features.selection.selectionCaret.getBoundingClientRect();
+          const inserted = editor.features.manipulation.ensureTextBlock();
+          assert(inserted?.parentElement === group.parentElement, "outer gap inserted into group");
+          await new Promise(requestAnimationFrame);
+          const block = inserted.getBoundingClientRect();
+          assert(Math.abs(cursor.left - block.left) < 2 && Math.abs(cursor.top - block.top) < 2, "outer cursor differs from insertion: " + JSON.stringify({edge, cursor:cursor.toJSON(),block:block.toJSON()}));
+          inserted.remove();
+        }
+        const html = new DOMParser().parseFromString(editor.toHTML(true), "text/html").body.innerHTML;
+        assert(html.includes("ww-column-group") && html.includes("ww-column-left") && html.includes("ww-column-right") && !html.includes("◆"), "group serialization lost content or retained editing artifacts: " + html);
+        const dragged = document.createElement("p"), dropTarget = document.createElement("img");
+        dragged.textContent = "Drag a paragraph";
+        dropTarget.alt = "Drop target";
+        dropTarget.style.cssText = "height:80px;min-height:80px";
+        document.body.append(dragged, dropTarget);
+        $.selectElement(dragged);
+        editor.features.selection.processSelection();
+        const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
+        assert(dragSurface, "paragraph has no drag surface");
+        const dataTransfer = new DataTransfer();
+        dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
+        dropTarget.scrollIntoView();
+        await new Promise(requestAnimationFrame);
+        const dropRect = dropTarget.getBoundingClientRect();
+        const dragInit = {dataTransfer, clientX:dropRect.left + dropRect.width * 0.2, clientY:dropRect.top + dropRect.height / 2, bubbles:true, cancelable:true, composed:true};
+        dropTarget.dispatchEvent(new DragEvent("dragover", dragInit));
+        dropTarget.dispatchEvent(new DragEvent("drop", dragInit));
+        assert(dragged.parentElement === dropTarget.parentElement && dragged.parentElement.classList.contains("ww-column-group"), "paragraph-on-media drop did not form a group");
+        assert(dragged.classList.contains("ww-column-left") && dropTarget.classList.contains("ww-column-right"), "paragraph-on-media drop reversed sides");
+        parent.postMessage({id:${JSON.stringify(id)}}, "*");
+      } catch(error) {parent.postMessage({id:${JSON.stringify(id)}, error:String(error)}, "*")}
+      finally {editor?.destroy()}
+    <\/script>`
+    document.body.append(frame)
+    try { assert(await result === null, `column group check at ${width}px: ${await result}`) }
+    finally { frame.remove() }
+  }
 })
 
 editor.destroy()

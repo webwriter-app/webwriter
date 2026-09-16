@@ -2555,3 +2555,61 @@ describe("disclosure gap navigation", () => {
     expect(details.open).toBe(false)
   })
 })
+
+describe("column group gap selection", () => {
+  it.each(["left", "right"] as const)("paints before/after and empty gaps in the %s column without wrappers", side => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    const block = group.querySelector(`.ww-column-${side}`)!
+    for(const edge of ["before", "after"] as const) {
+      $.selectGap(block, edge)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(true)
+      expect($.anchor).toBe(group)
+      expect($.columnGap?.side).toBe(side)
+      expect(block).toHaveClass(`◆gap-${edge}-selected`)
+      expect(feature.selectionCaret?.getRootNode()).toBe(editor.appendix)
+    }
+    group.before(document.createElement("p"))
+    group.after(document.createElement("p"))
+    block.remove()
+    $.selectColumnGap(group, side)
+    feature.processSelection()
+    expect(group).toHaveClass("◆gap-before-selected")
+    expect(group.children).toHaveLength(1)
+    group.append(block)
+    for(const edge of ["before", "after"] as const) {
+      $.selectGap(group, edge)
+      feature.processSelection()
+      expect($.anchor).toBe(document.body)
+      expect($.columnGap).toBeNull()
+      expect(group).toHaveClass(`◆gap-${edge}-selected`)
+      expect(feature.selectionCaret!.style.left).not.toBe("")
+    }
+    feature.disable()
+    expect(group.className).toBe("ww-column-group")
+  })
+
+  it.each(["left", "right"] as const)("navigates both edges of a paragraph in the %s column", side => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    const text = group.querySelector(`.ww-column-${side}`)!.firstChild!
+    const key = (key: string) => {
+      const event = new KeyboardEvent("keydown", {key, cancelable: true})
+      feature.activeListeners.keydown!(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    $.move(text, 0)
+    key("ArrowLeft")
+    expect($.anchor).toBe(group)
+    expect($.columnGap?.side).toBe(side)
+    key("ArrowRight")
+    expect($.anchor).toBe(text)
+    $.move(text, -1)
+    key("ArrowRight")
+    expect($.anchor).toBe(group)
+    expect($.columnGap?.side).toBe(side)
+    key("ArrowLeft")
+    expect($.anchor).toBe(text)
+  })
+})

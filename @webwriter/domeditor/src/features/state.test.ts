@@ -187,7 +187,9 @@ describe("Focused AI proposals", () => {
       expect(() => preview({type: "previewAIOperations", editId: "noop", summary: "Edit", operations: [{type: "set_text", target, text: "Before"}]})).toThrow("does not change")
       target = aiElementTarget(editor, "p")
       preview({type: "previewAIOperations", editId: "layout", summary: "Add two columns", operations: [{type: "insert_layout", target, position: "after", preset: "two-columns"}]})
-      expect(document.querySelector("section")?.style.display).toBe("grid")
+      expect(document.querySelector("section")?.style.display).toBe("block")
+      expect(document.querySelector("section")?.classList.contains("ww-column-group")).toBe(true)
+      expect(document.querySelector("section > p")?.classList.contains("ww-column-left")).toBe(true)
       expect(document.querySelectorAll("section > p")).toHaveLength(2)
       expect(document.querySelector("section section")).toBeNull()
     })
@@ -682,5 +684,36 @@ describe("StateFeature", () => {
     await new Promise<void>(resolve => queueMicrotask(resolve))
     expect(editor.doc.body.toString()).toContain("After failed preview")
     editor.destroy()
+  })
+})
+
+describe("top-level layout operations", () => {
+  it.each(["insert_layout", "set_layout", "insert_html", "move"] as const)("rejects nested %s proposals without changing content", async type => {
+    await withAIEditor('<section style="display:grid"><p>existing</p></section><article><div><p>nested</p></div></article>', editor => {
+      const nested = aiElementTarget(editor, "article div")
+      const existing = aiElementTarget(editor, "body > section")
+      const operation: AIChangeOperation = type === "insert_layout"
+        ? {type, target: nested, position: "append", preset: "two-columns"}
+        : type === "set_layout" ? {type, target: nested, preset: "wrapping-cards"}
+        : type === "move" ? {type, target: existing, destination: nested, position: "append"}
+        : {type, target: nested, position: "append", html: '<section style="display:grid"><p>new</p></section>'}
+      const before = editor.toHTML(true)
+      expect(() => editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: "nested", summary: "Nested layout", operations: [operation]})).toThrow(/top level/)
+      expect(editor.toHTML(true)).toBe(before)
+    })
+  })
+})
+
+it("rejects combining a nested move and layout conversion", async () => {
+  await withAIEditor('<section><p>source</p></section><article><p>destination</p></article>', editor => {
+    const target = aiElementTarget(editor, "section"), destination = aiElementTarget(editor, "article")
+    const before = editor.toHTML(true)
+    expect(() => editor.getActionHandler("previewAIOperations")({
+      type: "previewAIOperations", editId: "moved-layout", summary: "Move and lay out", operations: [
+        {type: "move", target, destination, position: "append"},
+        {type: "set_layout", target, preset: "two-columns"},
+      ],
+    })).toThrow(/overlap/)
+    expect(editor.toHTML(true)).toBe(before)
   })
 })

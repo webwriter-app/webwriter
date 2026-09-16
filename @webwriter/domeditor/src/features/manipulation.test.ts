@@ -33,7 +33,7 @@ beforeEach(async () => {
 
 afterEach(() => editor.destroy())
 
-describe("floating insertion", () => {
+describe("column insertion", () => {
   it.each(["p", "h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
     document.body.innerHTML = `<${tag}>before<b>after</b><!--keep--></${tag}>`
     const block = document.body.firstElementChild!
@@ -41,14 +41,15 @@ describe("floating insertion", () => {
     $.move(bold.firstChild!, 2)
     const image = document.createElement("img")
     editor.features.manipulation.insert(image)
-    expect(image.closest(tag)).toBe(block)
-    expect(image.style.float).toBe("right")
+    expect(image.previousElementSibling).toBe(block)
+    expect(image).toHaveClass("ww-column-right")
     expect(block.textContent).toBe("beforeafter")
     expect(block.querySelector("b")).toBe(bold)
     expect(document.body.children).toHaveLength(1)
-    expect(image.style.maxWidth).toBe("50%")
-    expect(image.parentElement).toBe(block)
-    expect(block.firstChild).toBe(image)
+    expect(image.style.maxWidth).toBe("")
+    expect(image.style.float).toBe("")
+    expect(image.parentElement).toBe(block.parentElement)
+    expect(block.nextElementSibling).toBe(image)
     expect(bold.innerHTML).toBe("after")
   })
 
@@ -59,8 +60,8 @@ describe("floating insertion", () => {
     $.move(block.firstChild!, 2)
     const widget = document.createElement("float-widget")
     editor.features.manipulation.insert(widget)
-    expect(widget.style.float).toBe(content ? "" : "right")
-    if(!content) expect(widget.parentElement).toBe(block)
+    expect(widget.classList.contains("ww-column-right")).toBe(!content)
+    if(!content) expect(widget.previousElementSibling).toBe(block)
   })
 
   it.each(["", " ", "<br>", "<b></b>"])("does not float insertion at a caret in an empty paragraph: %s", html => {
@@ -80,7 +81,26 @@ describe("floating insertion", () => {
     expect(image.style.float).toBe("")
   })
 
-  it("undoes and redoes a floated insertion", () => {
+  it("preserves authored widths and refuses a disconnected text container", () => {
+    const image = document.createElement("img")
+    image.style.float = "left"
+    image.style.maxWidth = "30rem"
+    image.style.setProperty("--ww-column", "1")
+    image.classList.add("authored", "ww-column-left")
+    editor.features.manipulation.setColumn(image, "right")
+    expect(image.style.float).toBe("")
+    expect(image.style.maxWidth).toBe("30rem")
+    expect(image.style.getPropertyValue("--ww-column")).toBe("")
+    expect(image).toHaveClass("authored", "ww-column-right")
+    expect(image.classList.contains("ww-column-left")).toBe(false)
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "detached"
+    expect(editor.features.manipulation.placeFloat(image, paragraph, "left")).toBe(false)
+    expect(image).toHaveClass("ww-column-right")
+    expect(paragraph.textContent).toBe("detached")
+  })
+
+  it("undoes and redoes a column insertion", () => {
     document.querySelector("p")!.textContent = "text"
     $.move(document.querySelector("p")!.firstChild!, 2)
     editor.doc.syncFromDOM()
@@ -88,6 +108,7 @@ describe("floating insertion", () => {
     editor.features.manipulation.insert(document.createElement("img"))
     editor.doc.syncFromDOM()
     const inserted = editor.toHTML(true)
+    expect(document.querySelector("p")!.nextElementSibling).toBe(document.querySelector("img"))
     editor.doc.undo()
     expect(document.querySelector("img")).toBeNull()
     editor.doc.redo()
@@ -578,13 +599,13 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const widget = document.querySelector("webwriter-demo")!
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expectBodyToBe('<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>')
+    expectBodyToBe('<div class="ww-column-group"><p class="ww-column-left">before after</p><webwriter-demo class="ww-column-right"></webwriter-demo></div>')
   })
   it.each([
-    [0, '<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>'],
-    [6, '<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>'],
-    [12, '<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before after</p>'],
-  ] as const)("floats an atomic widget inside a paragraph at text offset %i", (offset, expected) => {
+    [0, '<div class="ww-column-group"><p class="ww-column-left">before after</p><webwriter-demo class="ww-column-right"></webwriter-demo></div>'],
+    [6, '<div class="ww-column-group"><p class="ww-column-left">before after</p><webwriter-demo class="ww-column-right"></webwriter-demo></div>'],
+    [12, '<div class="ww-column-group"><p class="ww-column-left">before after</p><webwriter-demo class="ww-column-right"></webwriter-demo></div>'],
+  ] as const)("places an atomic widget beside a paragraph at text offset %i", (offset, expected) => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
     document.body.innerHTML = "<p>before after</p>"
     const text = document.querySelector("p")!.firstChild!
@@ -597,7 +618,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expectBodyToBe(expected)
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.parentElement).toBe(document.querySelector("p"))
+    expect(widget.previousElementSibling).toBe(document.querySelector("p"))
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
   })
@@ -1467,7 +1488,7 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expectBodyToBe('<p><demo-widget style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;">Widget</demo-widget>hello</p>')
+    expectBodyToBe('<div class="ww-column-group"><p class="ww-column-left">hello</p><demo-widget class="ww-column-right">Widget</demo-widget></div>')
     expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector("demo-widget"))
@@ -1989,7 +2010,51 @@ describe("unified content transfer", () => {
     return event
   }
 
-  it.each([false, true])("floats a dragged media element before the target paragraph on either side (copy: %s)", copy => {
+  it.each([
+    ["<p>source</p>", "<img alt='target'>"],
+    ["<h2>source</h2>", "<hr>"],
+    ["<ul><li>source</li></ul>", "<demo-target></demo-target>"],
+    ["<details><summary>source</summary></details>", "<table><tbody><tr><td>target</td></tr></tbody></table>"],
+    ["<demo-source></demo-source>", "<div><p>target</p></div>"],
+  ])("groups arbitrary source %s beside target %s", (sourceHTML, targetHTML) => {
+    for(const side of ["left", "right"] as const) {
+      document.body.innerHTML = sourceHTML + targetHTML
+      const source = document.body.firstElementChild!, target = document.body.lastElementChild!
+      const targetContent = target.innerHTML
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+      const {data} = beginDrag(source)
+      // Atomic targets report a caret in their parent, not inside themselves.
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 1})
+      const coords = {clientX: side === "left" ? 110 : 190, clientY: 50}
+      target.dispatchEvent(transferEvent("dragover", data, coords))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+      target.dispatchEvent(transferEvent("drop", data, coords))
+      const group = target.parentElement!
+      expect(group).toHaveClass("ww-column-group")
+      expect(source.parentElement).toBe(group)
+      expect(source).toHaveClass(`ww-column-${side}`)
+      expect(target.innerHTML).toBe(targetContent)
+      expect(group.children).toHaveLength(2)
+      expect(group.firstElementChild).toBe(side === "left" ? source : target)
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    }
+  })
+
+  it("rejects dragging a layout into nested content without moving it", () => {
+    document.body.innerHTML = '<section style="display:grid"><p>layout</p></section><article><p>nested</p></article>'
+    const layout = document.querySelector("section")!, nested = document.querySelector("article p")!
+    $.selectElement(layout)
+    editor.features.manipulation.refreshNodeDragTarget(layout)
+    const data = new DataTransfer()
+    editor.appendix.querySelector('[part="node-drag-surface"]')!.dispatchEvent(transferEvent("dragstart", data))
+    const before = editor.toHTML(true)
+    dropAt(data, nested, 0)
+    expect(editor.toHTML(true)).toBe(before)
+    expect(layout.parentElement).toBe(document.body)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it.each([false, true])("floats a dragged media element beside the target paragraph in reading order (copy: %s)", copy => {
     for(const [x, side] of [[110, "left"], [190, "right"]] as const) {
       document.body.innerHTML = '<img style="position: absolute; width: 40px"><p>target</p>'
       const source = document.querySelector("img")!
@@ -2007,10 +2072,10 @@ describe("unified content transfer", () => {
       document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50, ctrlKey: copy}))
       expect(editor.appendix.querySelector("#◆float-drop-preview")).toBe(preview)
       document.body.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 50, ctrlKey: copy}))
-      const placed = paragraph.previousElementSibling as HTMLImageElement
+      const placed = paragraph.closest(".ww-column-group")!.querySelector(`img.ww-column-${side}`) as HTMLImageElement
       expect(placed).not.toBeNull()
       expect(paragraph.querySelector("img")).toBeNull()
-      expect(placed.style.float).toBe(side)
+      expect(placed).toHaveClass(`ww-column-${side}`)
       expect(placed.style.position).toBe("")
       expect(placed === source).toBe(!copy)
       expect(paragraph.textContent).toBe("target")
@@ -2019,7 +2084,7 @@ describe("unified content transfer", () => {
     }
   })
 
-  it.each([[110, "left"], [190, "right"]] as const)("floats externally dropped media before the target paragraph at x=%i", (x, side) => {
+  it.each([[110, "left"], [190, "right"]] as const)("floats externally dropped media beside the target paragraph in reading order at x=%i", (x, side) => {
     document.body.innerHTML = "<p>target</p>"
     const paragraph = document.querySelector("p")!
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
@@ -2028,11 +2093,11 @@ describe("unified content transfer", () => {
 
     dropAt(data, paragraph.firstChild!, 3, {clientX: x, clientY: 50})
 
-    const placed = paragraph.previousElementSibling as HTMLElement
+    const placed = paragraph.closest(".ww-column-group")!.querySelector(`picture.ww-column-${side}`) as HTMLElement
     expect(placed).not.toBeNull()
     expect(placed.localName).toBe("picture")
     expect(placed.querySelector('img[alt="external"]')).not.toBeNull()
-    expect(placed.style.float).toBe(side)
+    expect(placed).toHaveClass(`ww-column-${side}`)
     expect(paragraph.querySelector("img")).toBeNull()
   })
 
@@ -2491,6 +2556,22 @@ describe("unified content transfer", () => {
     editor.features.manipulation.enable()
   })
 
+  it.each(["left", "right"] as const)("keeps external drops in the selected %s group column", side => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    const child = group.querySelector(`.ww-column-${side}`)!
+    const offset = Array.from(group.childNodes).indexOf(child) + 1
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: group, offset, column: side, gapElement: child, placement: "after"})
+    const data = new DataTransfer()
+    data.setData("text/plain", "new")
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect($.columnGap?.side).toBe(side)
+    document.body.dispatchEvent(transferEvent("drop", data))
+    expect(child.nextElementSibling?.textContent).toBe("new")
+    expect(child.nextElementSibling).toHaveClass(`ww-column-${side}`)
+    expect(group.children).toHaveLength(3)
+  })
+
   it("accepts external drops over the selection's drag surface", () => {
     document.body.innerHTML = '<p>selected</p><p>end</p>'
     $.selectElement(document.body.firstElementChild!)
@@ -2678,5 +2759,176 @@ describe("independent positioned flows", () => {
     expect(event.defaultPrevented).toBe(true)
     expect(floating.parentElement).toBe(block)
     expect(block.textContent).toBe("beXfloatinger")
+  })
+})
+
+describe("independent column group insertion", () => {
+  it.each(["left", "right"] as const)("retains %s placement when Enter splits text blocks", side => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    const block = group.querySelector(`.ww-column-${side}`)!
+    $.move(block.firstChild!, 2)
+    editor.features.manipulation.insert()
+    expect(group.children).toHaveLength(3)
+    expect(block.nextElementSibling).toHaveClass(`ww-column-${side}`)
+    expect(group.querySelector("div")).toBeNull()
+    const heading = document.createElement("h2")
+    heading.className = `ww-column-${side}`
+    heading.textContent = "Heading"
+    block.replaceWith(heading)
+    $.move(heading.firstChild!, 3)
+    editor.features.manipulation.insert()
+    expect(heading.nextElementSibling?.localName).toBe("p")
+    expect(heading.nextElementSibling).toHaveClass(`ww-column-${side}`)
+  })
+
+  it.each(["left", "right"] as const)("inserts multiple blocks before and after children in the %s column", side => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    const original = group.querySelector(`.ww-column-${side}`)!
+    const other = group.querySelector(`.ww-column-${side === "left" ? "right" : "left"}`)!
+    const otherHTML = other.outerHTML
+    for(const edge of ["before", "after"] as const) {
+      $.selectGap(original, edge)
+      expect($.isGapSelection).toBe(true)
+      expect($.columnGap?.side).toBe(side)
+      const block = editor.features.manipulation.ensureTextBlock()!
+      expect(block.parentElement).toBe(group)
+      expect(block).toHaveClass(`ww-column-${side}`)
+      block.textContent = edge
+    }
+    expect(Array.from(group.querySelectorAll(`:scope > .ww-column-${side}`)).map(node => node.textContent).join("")).toBe(`before${side}after`)
+    expect(other.outerHTML).toBe(otherHTML)
+    expect(group.children).toHaveLength(4)
+    expect(group.querySelector("div")).toBeNull()
+  })
+
+  it.each(["left", "right"] as const)("populates an empty %s column and preserves grouping through undo/redo", side => {
+    document.body.innerHTML = `<div class="ww-column-group"><p class="ww-column-${side === "left" ? "right" : "left"}">other</p></div>`
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    $.selectColumnGap(group, side)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const block = editor.features.manipulation.ensureTextBlock()!
+    expect(block.parentElement).toBe(group)
+    expect(block).toHaveClass(`ww-column-${side}`)
+    block.textContent = "new text"
+    editor.doc.syncFromDOM()
+    const saved = editor.toHTML(true)
+    expect(saved).toContain('class="ww-column-group"')
+    expect(saved).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelector(".ww-column-group")!.children).toHaveLength(1)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(saved)
+  })
+
+  it("reuses a flat group when adding media and preserves its other children", () => {
+    document.body.innerHTML = '<div class="ww-column-group"><!--group--><p class="ww-column-left">left</p><p class="ww-column-left">more</p><demo-widget class="ww-column-right"></demo-widget></div>'
+    const paragraph = document.querySelector("p")!
+    const widget = document.querySelector("demo-widget")!
+    const image = document.createElement("img")
+    expect(editor.features.manipulation.placeFloat(image, paragraph, "right")).toBe(true)
+    expect(image.parentElement).toBe(widget.parentElement)
+    expect(image.previousElementSibling).toBe(widget)
+    expect(document.querySelectorAll(".ww-column-group")).toHaveLength(1)
+    expect(Array.from(document.querySelectorAll("p")).map(node => node.textContent).join("")).toBe("leftmore")
+    expect(document.querySelector(".ww-column-group")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("keeps insertions at outer group gaps outside the group", () => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    for(const edge of ["before", "after"] as const) {
+      $.selectGap(group, edge)
+      expect($.columnGap).toBeNull()
+      const block = editor.features.manipulation.ensureTextBlock()!
+      expect(block.parentElement).toBe(document.body)
+      expect((block as Element).className).not.toContain("ww-column")
+    }
+    expect(group.children).toHaveLength(2)
+  })
+})
+
+describe("empty column group cleanup", () => {
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  it.each(["left", "right"] as const)("retains an empty %s column until its gap selection leaves", async side => {
+    const other = side === "left" ? "right" : "left"
+    document.body.innerHTML = `<div class="ww-column-group"><p class="ww-column-${other} authored">kept</p><!--keep--></div><p>outside</p>`
+    const group = document.querySelector<HTMLElement>(".ww-column-group")!
+    const kept = group.firstElementChild!
+    $.selectColumnGap(group, side)
+    await settle()
+    expect(group.isConnected).toBe(true)
+    const text = kept.firstChild!
+    $.move(text, 2)
+    document.dispatchEvent(new Event("selectionchange"))
+    await settle()
+    expect(group.isConnected).toBe(false)
+    expect(kept.parentElement).toBe(document.body)
+    expect(kept).toHaveClass("authored")
+    expect(kept.className).not.toContain("ww-column")
+    expect(kept.nextSibling?.nodeType).toBe(Node.COMMENT_NODE)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("unwraps after direct DOM removal and preserves unknown content", async () => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">remove</p><unknown-widget class="ww-column-right authored" custom="yes"></unknown-widget><!--keep--></div><p>outside</p>'
+    const group = document.querySelector(".ww-column-group")!
+    const widget = group.querySelector("unknown-widget")!
+    $.move(document.body.lastChild!, 0)
+    group.firstElementChild!.remove()
+    await settle()
+    expect(group.isConnected).toBe(false)
+    expect(widget.parentElement).toBe(document.body)
+    expect(widget.getAttribute("custom")).toBe("yes")
+    expect(widget.className).toBe("authored")
+    expect(widget.nextSibling?.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("keeps a selected group until the selection leaves", async () => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p></div><p>outside</p>'
+    const group = document.querySelector(".ww-column-group")!
+    $.selectElement(group)
+    editor.features.selection.selectSectionElement(group as HTMLElement)
+    await settle()
+    expect(group.isConnected).toBe(true)
+    $.move(document.body.lastChild!, 0)
+    document.dispatchEvent(new Event("selectionchange"))
+    await settle()
+    expect(group.isConnected).toBe(false)
+  })
+
+  it("restores both columns when undoing removal and cleanup", async () => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div><p>outside</p>'
+    $.move(document.body.lastChild!, 0)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    document.querySelector(".ww-column-right")!.remove()
+    await settle()
+    editor.doc.syncFromDOM()
+    expect(document.querySelector(".ww-column-group")).toBeNull()
+    editor.doc.undo()
+    await settle()
+    expect(document.querySelector(".ww-column-left")?.textContent).toBe("left")
+    expect(document.querySelector(".ww-column-right")?.textContent).toBe("right")
+    expect(document.querySelector(".ww-column-group")?.children).toHaveLength(2)
+    editor.doc.redo()
+    await settle()
+    expect(document.querySelector(".ww-column-group")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("keeps populated columns and stops observing when disabled", async () => {
+    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
+    const group = document.querySelector(".ww-column-group")!
+    await settle()
+    expect(group.isConnected).toBe(true)
+    editor.features.manipulation.disable()
+    group.firstElementChild!.remove()
+    await settle()
+    expect(group.isConnected).toBe(true)
   })
 })

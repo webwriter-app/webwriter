@@ -6,6 +6,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "column groups expose independent gaps and stack with separator lines",
   "native MathML editing preserves inline rendering and argument hit targets",
   "formula clicks distinguish script endings and select whole formulas",
   "inline formula edges use text selections and block formula edges use gaps",

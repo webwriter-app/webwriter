@@ -47,13 +47,13 @@ function inlineDisplay(element: Element) {
 
 function isInlineLayout(element: Element) {
   const display = inlineDisplay(element)
-  return display === "grid" || display === "inline-grid" || display === "flex" || display === "inline-flex"
+  return element.classList.contains("ww-column-group") || display === "grid" || display === "inline-grid" || display === "flex" || display === "inline-flex"
 }
 
 function wrapperDisposition(element: Element): WrapperDisposition {
   const style = inlineStyle(element)
   const display = inlineDisplay(element)
-  if(display === "grid" || display === "inline-grid" || display === "flex" || display === "inline-flex") {
+  if(isInlineLayout(element)) {
     return "layout"
   }
   if(display) return "unnecessary"

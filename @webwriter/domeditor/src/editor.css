@@ -61,10 +61,6 @@ html:has(> body.◆key-mod-down) *::after {
   cursor: pointer !important;
 }
 
-body > * + * {
-  margin-block-start: 1.25rem;
-}
-
 body > :last-child {
   margin-block-end: 0;
 }

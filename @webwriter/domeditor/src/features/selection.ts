@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, isColumnGroup, columnSides, type ColumnSide, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -316,6 +316,29 @@ export class SelectionFeature extends EditorFeature {
       }
       if(!adjacent || !isAtomicEditingElement(adjacent, this.editor.schema)) return false
       $.selectElement(adjacent)
+    }
+    this.processSelection()
+    return true
+  }
+
+  /** Each column exposes its own block boundaries, including both outer edges. */
+  #navigateColumnGap(direction: "backward" | "forward", vertical: boolean) {
+    if(!$.isEmpty) return false
+    if(isColumnGroup($.anchor) && $.isGapSelection) {
+      const child = direction === "backward" ? $.elementBefore : $.elementAfter
+      if(!child) return false
+      if(isAtomicEditingElement(child, this.editor.schema)) $.selectElement(child)
+      else {
+        const edge = this.#disclosureEdge(child, direction === "backward" ? "forward" : "backward")
+        if(!edge) return false
+        $.move(edge, direction === "backward" ? -1 : 0)
+      }
+    }
+    else {
+      const block = this.#selectionBlock()
+      if(!block || !isColumnGroup(block.parentElement)
+        || !this.#atDisclosureEdge(block, direction, vertical)) return false
+      $.selectGap(block, direction === "backward" ? "before" : "after")
     }
     this.processSelection()
     return true
@@ -945,6 +968,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("top")
     caret.style.removeProperty("height")
     caret.style.removeProperty("font-size")
+    for(const property of ["width", "position-area", "position-anchor", "translate"]) caret.style.removeProperty(property)
     ;["node", "capture", "gap", "text"].forEach(state => {
       caret.classList.remove(`◆selection-caret-${state}`)
       setPart(caret, `selection-caret-${state}`, false)
@@ -958,6 +982,36 @@ export class SelectionFeature extends EditorFeature {
     setPart(caret, "gap-caret", false)
     ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"]
       .forEach(state => setPart(caret, `gap-caret-${state}`, false))
+  }
+
+  /** Place group gaps at the prospective content edge, not the full-width wrapper edge. */
+  #positionGroupGap(caret: HTMLElement, group: HTMLElement, placement: "before" | "after", side?: ColumnSide, element?: Element | null) {
+    const parent = side ? group : group.parentElement
+    if(!parent) return
+    const style = getComputedStyle(parent), rect = parent.getBoundingClientRect(), groupRect = group.getBoundingClientRect()
+    const insetLeft = parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth)
+    const insetRight = parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth)
+    const left = rect.left + (insetLeft || 0)
+    const width = Math.max(0, rect.width - (insetLeft || 0) - (insetRight || 0))
+    const count = side ? Number(style.columnCount) || (style.gridTemplateColumns.trim().split(/\s+/).length > 1 ? 2 : 1) : 1
+    const multipleColumns = count > 1
+    const columnIndex = side ? columnSides(group).indexOf(side) : 0
+    const gap = parseFloat(style.columnGap) || 0
+    const available = multipleColumns ? (width - gap * (count - 1)) / count : width
+    const measure = `min(${style.getPropertyValue("--ww-prose-max").trim() || "45rem"}, ${available}px)`
+    const rowGap = style.rowGap && style.rowGap !== "normal" ? style.rowGap
+      : style.getPropertyValue("--ww-block-spacing").trim() || "0px"
+    // Outer ::part rules otherwise override normal declarations inside the appendix.
+    const set = (property: string, value: string) => caret.style.setProperty(property, value, "important")
+    set("position-area", "none")
+    set("position-anchor", "auto")
+    set("width", measure)
+    set("left", `${multipleColumns ? left + columnIndex * (available + gap) + (side === "left" ? available : side === "middle" ? available / 2 : 0) : left + width / 2}px`)
+    set("translate", multipleColumns ? side === "left" ? "-100% 0" : side === "middle" ? "-50% 0" : "none" : "-50% 0")
+    const box = element?.getBoundingClientRect() ?? groupRect
+    const after = element ? placement === "after" : side ? !multipleColumns && side !== "left" : placement === "after"
+    set("top", after ? `calc(${box.bottom}px + ${rowGap})` : `${box.top}px`)
+
   }
 
   /** Shows the shared caret using one of its selection presentations. */
@@ -1335,7 +1389,18 @@ export class SelectionFeature extends EditorFeature {
     if(kind === "text" || kind === "element") this.#showAtomicOverlays(sel)
     if(kind === "gap") {
       const children = sel.anchorNode!.childNodes
-      if(children.length) {
+      const columnGap = $.columnGap
+      if(columnGap) {
+        const element = columnGap.element ?? columnGap.group
+        const placement = columnGap.placement
+        this.#markSelection(element, `◆gap-${placement}-selected`)
+        const caret = this.#showSelectionCaret("gap")
+        caret.classList.add(`◆gap-${placement}-selected`)
+        setPart(caret, `gap-caret-gap-${placement}-selected`)
+        this.#positionGroupGap(caret, columnGap.group, placement, columnGap.side, columnGap.element)
+        document.body.classList.add("◆gap-caret-visible")
+      }
+      else if(children.length) {
         const i = sel.anchorOffset
         const before = Array.from(children).slice(0, i).reverse().find((node): node is Element => isElement(node) && !isOutOfFlow(node))
         const after = Array.from(children).slice(i).find((node): node is Element => isElement(node) && !isOutOfFlow(node))
@@ -1344,7 +1409,7 @@ export class SelectionFeature extends EditorFeature {
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
         const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap
-        const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
+        const placement = structuralGap?.placement ?? (isColumnGroup(after) || !before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
           return
@@ -1353,9 +1418,16 @@ export class SelectionFeature extends EditorFeature {
         if(element) this.#markSelection(element, `◆gap-${placement}-selected`)
         gapCaret.classList.add(`◆gap-${placement}-selected`)
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
+        if(isColumnGroup(element)) this.#positionGroupGap(gapCaret, element, placement)
         document.body.classList.add("◆gap-caret-visible")
       }
-      
+      else if(isColumnGroup(sel.anchorNode)) {
+        this.#markSelection(sel.anchorNode, "◆gap-before-selected")
+        const gapCaret = this.#showSelectionCaret("gap")
+        gapCaret.classList.add("◆gap-before-selected")
+        setPart(gapCaret, "gap-caret-gap-before-selected")
+        document.body.classList.add("◆gap-caret-visible")
+      }
     }
     else if(kind === "element") {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
@@ -1450,7 +1522,8 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
-        && (this.#navigateMathBoundary(direction)
+        && (this.#navigateColumnGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
+          || this.#navigateMathBoundary(direction)
           || this.#navigateDisclosureGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
         ev.preventDefault()

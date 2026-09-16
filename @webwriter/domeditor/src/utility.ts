@@ -91,6 +91,31 @@ export function isOutOfFlow(node: Node | null): boolean {
     || Boolean(style?.float && style.float !== "none")
 }
 
+export type ColumnSide = "left" | "middle" | "right"
+
+/** A column group is an authored section with direct, classed content children. */
+export function isColumnGroup(node: Node | null | undefined): node is HTMLElement {
+  return node instanceof HTMLElement && isSectionElement(node) && !node.hasAttribute("is")
+    && node.classList.contains("ww-column-group")
+}
+
+export function columnSides(group: Element): ColumnSide[] {
+  return group.classList.contains("ww-column-three") ? ["left", "middle", "right"] : ["left", "right"]
+}
+
+export function columnSide(element: Element | null | undefined): ColumnSide | null {
+  const sides = (["left", "middle", "right"] as const).filter(side => element?.classList.contains(`ww-column-${side}`))
+  return sides.length === 1 ? sides[0] : null
+}
+
+function columnGapOffset(group: HTMLElement, side: ColumnSide, element: Element | null, placement: "before" | "after") {
+  const children = Array.from(group.childNodes)
+  if(element) return children.indexOf(element) + (placement === "after" ? 1 : 0)
+  const sides = columnSides(group)
+  const next = children.findIndex(child => child instanceof Element && sides.indexOf(columnSide(child)!) > sides.indexOf(side))
+  return next < 0 ? children.length : next
+}
+
 export function editingFlowRoot(node: Node | null): Element {
   const root = getDocumentRoot()
   let element = isElement(node) ? node : node?.parentElement
@@ -288,9 +313,33 @@ export class EditingSelection {
     return document.getSelection()!.getRangeAt(0)
   }
 
+  private static columnAffinity: {group: HTMLElement, side: ColumnSide, element: Element | null, placement: "before" | "after", range: Range} | null = null
+
+  static get columnGap() {
+    const affinity = this.columnAffinity
+    if(!affinity || !affinity.group.isConnected || !this.isEmpty || this.anchor !== affinity.group
+      || affinity.range.startContainer !== this.anchor || affinity.range.startOffset !== this.anchorOffset
+      || affinity.element && (affinity.element.parentElement !== affinity.group || columnSide(affinity.element) !== affinity.side)) return null
+    return affinity
+  }
+
+  /** Select a gap in one side of a flat group, even when that side is empty. */
+  static selectColumnGap(group: HTMLElement, side: ColumnSide, element: Element | null = null, placement: "before" | "after" = "before") {
+    if(!isColumnGroup(group) || !group.isConnected || element && (element.parentElement !== group || columnSide(element) !== side)) return
+    const offset = columnGapOffset(group, side, element, placement)
+    this.selectRange(group, offset)
+    this.columnAffinity = {group, side, element, placement, range: this.range.cloneRange()}
+  }
+
   /** Places the caret in the gap before or after the element, i.e. at the element's position in its parent. */
   static selectGap(element: Element, direction: "before" | "after" = "after") {
     const parent = element.parentElement!
+    const side = columnSide(element)
+    if(isColumnGroup(parent) && side) {
+      this.selectColumnGap(parent, side, element, direction)
+      return
+    }
+    this.columnAffinity = null
     const i = Array.from(parent.childNodes).indexOf(element)
     this.#selection.setPosition(parent, direction === "before"? i: i + 1)
     window.focus()
@@ -298,6 +347,7 @@ export class EditingSelection {
 
   /** Selects the element itself (the selection is anchored in its parent, spanning exactly the element). */
   static selectElement(element: Element, focus=true) {
+    this.columnAffinity = null
     if(!element.parentNode) return
     if(this.#selection.rangeCount) this.range.selectNode(element)
     else {
@@ -310,6 +360,7 @@ export class EditingSelection {
 
   /** Sets anchor and focus of the selection; collapses to the anchor when the focus is omitted. */
   static selectRange(anchorNode: Node, anchorOffset=0, focusNode: Node=anchorNode, focusOffset=anchorOffset) {
+    this.columnAffinity = null
     this.#selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
     window.focus()
   }
@@ -328,13 +379,14 @@ export class EditingSelection {
     const point = this.pointFromCoords(x, y, pointerTarget, schema, extend ? this.flowRoot : undefined)
     if(!point) return
     if(extend) this.extend(point.node, point.offset)
+    else if(point.column && isColumnGroup(point.node)) this.selectColumnGap(point.node, point.column, point.gapElement, point.placement)
     else this.selectRange(point.node, point.offset)
     return point
   }
 
   /** Resolves text and structural gaps identically for clicks and drags,
    * without installing an intermediate selection inside atomic content. */
-  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element) {
+  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element): {node: Node, offset: number, overrideNative?: boolean, column?: ColumnSide, gapElement?: Element | null, placement?: "before" | "after"} | undefined {
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = getDocumentRoot()
     let overrideNative = false
@@ -360,6 +412,43 @@ export class EditingSelection {
     const caretElement = offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
     const pointerElement = hit ?? (pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
+    // Column affinity distinguishes the shared DOM boundary between the last
+    // left child and first right child without inserting placeholder elements.
+    const pointerGroup = pointerElement?.closest(".ww-column-group")
+    const caretGroup = caretElement?.closest(".ww-column-group")
+    const group = pointerGroup ?? caretGroup
+    if(isColumnGroup(group) && !atomicEditingContainer(group, schema)) {
+      const rect = group.getBoundingClientRect()
+      if(x >= rect.left && x <= rect.right && (y <= rect.top + 1 || y >= rect.bottom - 1)) {
+        overrideNative = true
+        return gap(group, y <= rect.top + 1 ? "before" : "after")
+      }
+      const boxes = layoutChildren(group)
+      const style = getComputedStyle(group)
+      const sides = columnSides(group)
+      const multipleColumns = Number(style.columnCount) > 1 || style.gridTemplateColumns.trim().split(/\s+/).length > 1
+      const hitChild = boxes.find(box => box.node === pointerElement || box.node.contains(pointerElement ?? null))
+        ?? boxes.reduce<(typeof boxes)[number] | undefined>((nearest, box) => {
+          const distance = (item: (typeof boxes)[number]) => Math.max(item.rect.top - y, y - item.rect.bottom, 0)
+          return !nearest || distance(box) < distance(nearest) ? box : nearest
+        }, undefined)
+      const side: ColumnSide = multipleColumns ? sides[Math.max(0, Math.min(sides.length - 1, Math.floor((x - rect.left) / rect.width * sides.length)))]
+        : hitChild?.node instanceof Element && columnSide(hitChild.node) || "left"
+      const own = boxes.filter(box => box.node instanceof Element && columnSide(box.node) === side)
+      const columnPoint = (element: Element | null, placement: "before" | "after") => {
+        const offset = columnGapOffset(group, side, element, placement)
+        return {node: group, offset, overrideNative: true, column: side, gapElement: element, placement}
+      }
+      if(x >= rect.left && x <= rect.right && y >= rect.top - 4 && y <= rect.bottom + 4) {
+        if(!own.length) return columnPoint(null, "before")
+        for(let i = 0; i < own.length; i++) {
+          const box = own[i]
+          if(!(box.node instanceof Element)) continue
+          if(y <= box.rect.top + 3 && (!i || y >= own[i - 1].rect.bottom)) return columnPoint(box.node, "before")
+          if(y >= box.rect.bottom - 3 && (i === own.length - 1 || y < own[i + 1].rect.top)) return columnPoint(box.node, "after")
+        }
+      }
+    }
     const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
     let formula = mathRoot(pointerElement) ?? mathRoot(caretElement ?? null)
     // Blank space below a trailing formula can hit its parent boundary (or
@@ -638,6 +727,9 @@ export class EditingSelection {
     if(mathRoot(this.anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
     if(this.detailsGap || this.dividerGap) return true
+    if(this.isEmpty && isColumnGroup(this.anchor)
+      && [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
+        .every(node => !(isText(node) && node.textContent?.trim()) && !isMarkElement(node))) return true
     const inSlide = isElement(this.anchor) && slideLayoutRole(this.anchor) === "slide"
     const root = inSlide ? this.anchor as Element : getDocumentRoot()
     const firstRootElement = Array.from(root.children).find(element => !isOutOfFlow(element)) ?? null
@@ -922,6 +1014,12 @@ export class EditingSelection {
       return isOutOfFlow(this.selectedElement ?? null) ? null : adjacent(this.selectedElement ?? null)
     }
     else if(this.isGapSelection) {
+      const column = this.columnGap
+      if(column) {
+        const children = Array.from(column.group.childNodes)
+        const side = direction === "previous" ? children.slice(0, this.anchorOffset).reverse() : children.slice(this.anchorOffset)
+        return side.find((child): child is Element => child instanceof Element && columnSide(child) === column.side && !isOutOfFlow(child)) ?? null
+      }
       const [nodesBefore, nodesAfter] = getSidesOfPoint($.range)
       const node = direction === "previous" ? nodesBefore.at(-1) : nodesAfter.at(0)
       return node ? getContainer(node) : null
@@ -989,6 +1087,14 @@ export class EditingSelection {
   static replace(...nodes: Node[]) {
     const fragment = document.createDocumentFragment()
     fragment.append(...nodes)
+    const column = this.columnGap
+    if(column) {
+      for(const element of Array.from(fragment.children)) {
+        element.classList.toggle("ww-column-left", column.side === "left")
+        element.classList.toggle("ww-column-middle", column.side === "middle")
+        element.classList.toggle("ww-column-right", column.side === "right")
+      }
+    }
     $.delete()
     this.range.insertNode(fragment)
     window.focus()
@@ -1029,6 +1135,7 @@ export class EditingSelection {
 
   /** Collapses the selection to the given position. Negative offsets count from the node's end (-1 = at the very end). */
   static move(node: Node, offset: number = 0) {
+    this.columnAffinity = null
     const length = node instanceof Text? node.length: node.childNodes.length
     this.#selection.setPosition(node, offset < 0? length + 1 + offset: offset)
     window.focus()
@@ -1064,7 +1171,7 @@ export const $ = EditingSelection
  * and semantic section wrappers are transparent to ordinary selection. */
 export function getContainer(node: Node) {
   let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
-  while(element && !isOutOfFlow(element) && slideLayoutRole(element) !== "slide" && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
+  while(element && !isColumnGroup(element) && !isOutOfFlow(element) && slideLayoutRole(element) !== "slide" && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
   return element!
 }
 
@@ -1311,6 +1418,8 @@ export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {
 
 /** Removes inline size and placement overrides, letting authored CSS take over. */
 export function clearInlinePlacement(element: Element) {
+  element.classList.remove("ww-column-left", "ww-column-middle", "ww-column-right")
+  if(!element.classList.length) element.removeAttribute("class")
   const style = (element as Element & {style?: CSSStyleDeclaration}).style
   if(!style) return
   for(const property of [
@@ -1319,7 +1428,7 @@ export function clearInlinePlacement(element: Element) {
     "inset-inline", "inset-inline-start", "inset-inline-end",
     "width", "min-width", "max-width", "height", "min-height", "max-height",
     "inline-size", "min-inline-size", "max-inline-size", "block-size", "min-block-size", "max-block-size",
-    "aspect-ratio", "float", "z-index", "transform", "translate", "rotate", "scale",
+    "aspect-ratio", "float", "--ww-column", "z-index", "transform", "translate", "rotate", "scale",
   ]) style.removeProperty(property)
   if(!style.length) element.removeAttribute("style")
 }

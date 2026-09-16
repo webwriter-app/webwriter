@@ -1,8 +1,10 @@
+import {isSectionElement} from "./sections"
+import {getDocumentRoot} from "./document-template"
 import {tokenize, TokenType} from "@csstools/css-tokenizer"
 import type {ElementStyleState} from "./editor-bridge"
 
 export type LayoutAxis = "row" | "column"
-export type LayoutKind = "grid" | "flex"
+export type LayoutKind = "grid" | "flex" | "columns"
 export type LayoutTrackState = {tracks: string[] | null, automatic: number, reason: string | null}
 export type LayoutSelectionState = {
   kind: LayoutKind
@@ -21,21 +23,62 @@ export type LayoutPreset = {
   items: number
 }
 
+/** Layout identity follows authored classes and live CSS, never widget internals. */
+export function authoredLayoutKind(element: Element): LayoutKind | null {
+  if(!isSectionElement(element) || element.hasAttribute("is") || element.localName.includes("-")) return null
+  if(element.classList.contains("ww-column-group")) return "columns"
+  const style = (element as HTMLElement).style
+  const display = element.isConnected ? element.ownerDocument.defaultView?.getComputedStyle(element).display : style?.display
+  if(/(?:^|\s|-)grid$/.test(display ?? "")) return "grid"
+  if(/(?:^|\s|-)flex$/.test(display ?? "")) return "flex"
+  return Number(style?.columnCount) > 1 ? "columns" : null
+}
+
+/** Validate a proposed placement before moving or deleting any live content. */
+export function canPlaceLayouts(nodes: Iterable<Node>, parent: Node, root: Element = getDocumentRoot()): boolean {
+  if(parent.nodeType === Node.TEXT_NODE && parent.parentNode) parent = parent.parentNode
+  for(const node of nodes) {
+    if(node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+      if(!canPlaceLayouts(node.childNodes, parent, root)) return false
+    }
+    else if(node instanceof Element) {
+      if(node.localName.includes("-") || node.hasAttribute("is")) continue
+      if(authoredLayoutKind(node) && parent !== root) return false
+      if(!canPlaceLayouts(node.childNodes, node, root)) return false
+    }
+  }
+  return true
+}
+
+export function canBecomeLayout(element: Element, root: Element = getDocumentRoot()): boolean {
+  return element.parentElement === root && canPlaceLayouts(element.childNodes, element, root)
+}
+
 const grid = (id: string, name: string, columns: number[], rows = 1): LayoutPreset => ({
   id, name, kind: "grid", items: columns.length * rows,
   styles: {display: "grid", "grid-template-columns": columns.map(n => `minmax(0, ${n}fr)`).join(" "), "grid-template-rows": Array(rows).fill("auto").join(" "), gap: "1rem"},
   itemStyles: {"min-inline-size": "0"},
 })
 export const layoutPresets: readonly LayoutPreset[] = [
-  grid("two-columns", "Two columns", [1, 1]),
-  grid("three-columns", "Three columns", [1, 1, 1]),
-  grid("sidebar-left", "Sidebar left", [1, 2]),
-  grid("sidebar-right", "Sidebar right", [2, 1]),
-  grid("four-panels", "Four panels", [1, 1], 2),
-  {id: "vertical-stack", name: "Vertical stack", kind: "flex", items: 3, styles: {display: "flex", "flex-direction": "column", gap: "1rem"}, itemStyles: {"min-inline-size": "0"}},
-  {id: "horizontal-row", name: "Horizontal row", kind: "flex", items: 3, styles: {display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "1rem"}, itemStyles: {flex: "1 1 0", "min-inline-size": "0"}},
-  {id: "wrapping-cards", name: "Wrapping cards", kind: "flex", items: 4, styles: {display: "flex", "flex-wrap": "wrap", gap: "1rem"}, itemStyles: {flex: "1 1 14rem", "min-inline-size": "0"}},
+  {id: "two-columns", name: "Two columns", kind: "columns", items: 2, styles: {display: "block"}, itemStyles: {"min-inline-size": "0"}},
+  {id: "three-columns", name: "Three columns", kind: "columns", items: 3, styles: {display: "block"}, itemStyles: {"min-inline-size": "0"}},
+  grid("four-panels", "Grid", [1, 1], 2),
+  {id: "wrapping-cards", name: "Cards", kind: "flex", items: 4, styles: {display: "flex", "flex-wrap": "wrap", gap: "1rem"}, itemStyles: {flex: "1 1 14rem", "min-inline-size": "0"}},
 ]
+
+/** Apply authored column grouping to the preset's existing direct children. */
+export function applyColumnPreset(container: Element, preset: LayoutPreset) {
+  if(preset.kind !== "columns" && !container.classList.contains("ww-column-group")) return
+  container.classList.toggle("ww-column-group", preset.kind === "columns")
+  container.classList.toggle("ww-column-three", preset.kind === "columns" && preset.items === 3)
+  const sides = preset.items === 3 ? ["left", "middle", "right"] : ["left", "right"]
+  Array.from(container.children).forEach((child, index, children) => {
+    child.classList.remove("ww-column-left", "ww-column-middle", "ww-column-right")
+    if(preset.kind === "columns") child.classList.add(`ww-column-${sides[Math.min(sides.length - 1, Math.floor(index * sides.length / children.length))]}`)
+    else if(!child.classList.length) child.removeAttribute("class")
+  })
+  if(!container.classList.length) container.removeAttribute("class")
+}
 
 export const layoutStyleProperties = [
   "display", "grid-template-columns", "grid-template-rows", "grid-template-areas", "grid-auto-flow", "grid-auto-columns", "grid-auto-rows",

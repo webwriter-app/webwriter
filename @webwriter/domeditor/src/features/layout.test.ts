@@ -31,7 +31,7 @@ describe("layout insertion", () => {
     try {
       expect(editor.features.layout.actions.insertLayout({type: "insertLayout", preset: preset.id})).toBe(true)
       const section = document.querySelector("section")!
-      expect(section.style.display).toBe(preset.kind)
+      expect(section.style.display).toBe(preset.kind === "columns" ? "block" : preset.kind)
       expect(section.children).toHaveLength(preset.items)
       expect(Array.from(section.children).every(child => child.localName === "p" && !child.children.length)).toBe(true)
       expect(section.querySelector("div")).toBeNull()
@@ -52,8 +52,8 @@ describe("layout insertion", () => {
     expect(editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})).toBe(true)
     expect(Array.from(document.querySelector("section")!.childNodes)).toEqual(nodes)
     expect(document.querySelector("custom-content")!.getAttribute("data-authored")).toBe("yes")
-    expect((nodes[0] as HTMLElement).style.gridColumn).toBe("1 / 2")
-    expect((nodes[2] as HTMLElement).style.gridColumn).toBe("2 / 3")
+    expect((nodes[0] as HTMLElement).className).toContain("ww-column-left")
+    expect((nodes[2] as HTMLElement).className).toContain("ww-column-right")
   })
 
   it("does not replace a partial text selection", () => {
@@ -79,11 +79,11 @@ describe("layout insertion", () => {
     document.body.innerHTML = '<div lang="de" style="color:red"><p>A</p></div><!--keep--><p>B</p>'
     const nodes = Array.from(document.body.childNodes)
     getSelection()!.setBaseAndExtent(document.body, 0, document.body, nodes.length)
-    editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "horizontal-row"})
+    editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "wrapping-cards"})
     const section = document.querySelector("section")!
     expect(Array.from(section.childNodes)).toEqual(nodes)
-    expect((nodes[0] as HTMLElement).style.flex).toBe("1 1 0px")
-    expect((nodes[2] as HTMLElement).style.flex).toBe("1 1 0px")
+    expect((nodes[0] as HTMLElement).style.flex).toBe("1 1 14rem")
+    expect((nodes[2] as HTMLElement).style.flex).toBe("1 1 14rem")
     expect((nodes[0] as HTMLElement).style.color).toBe("red")
     expect(section.querySelectorAll("div")).toHaveLength(1)
   })
@@ -91,7 +91,7 @@ describe("layout insertion", () => {
   it("creates enough explicit rows when wrapping more blocks than the preset", () => {
     document.body.innerHTML = '<p>A</p><p>B</p><p>C</p><p>D</p><p>E</p>'
     getSelection()!.setBaseAndExtent(document.body, 0, document.body, 5)
-    editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})
+    editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "four-panels"})
     const section = document.querySelector("section")!
     expect(section.style.gridTemplateRows).toBe("auto auto auto")
     expect((section.lastElementChild as HTMLElement).style.gridRow).toBe("3 / 4")
@@ -101,8 +101,12 @@ describe("layout insertion", () => {
 
 describe("editing direct layout content", () => {
   function preset(id = "four-panels") {
-    editor.features.layout.actions.insertLayout({type: "insertLayout", preset: id})
+    editor.features.layout.actions.insertLayout({type: "insertLayout", preset: id === "two-track-grid" ? "four-panels" : id})
     const section = document.querySelector("section")!
+    if(id === "two-track-grid") {
+      Array.from(section.children).slice(2).forEach(child => child.remove())
+      section.style.gridTemplateRows = "auto"
+    }
     editor.features.selection.clearSelectedSection()
     const first = section.firstElementChild as HTMLElement
     first.textContent = "Hello world"
@@ -155,7 +159,7 @@ describe("editing direct layout content", () => {
   })
 
   it("places pasted blocks and both retained text halves in the same column", () => {
-    const {section} = preset("two-columns")
+    const {section} = preset("two-track-grid")
     editor.features.manipulation.insertHTML('<h2>Pasted</h2><p>More</p>')
     const blocks = Array.from(section.children) as HTMLElement[]
     expect(blocks.map(block => block.textContent)).toEqual(["Hello", "Pasted", "More", " world", ""])
@@ -227,7 +231,7 @@ describe("editing direct layout content", () => {
   })
 
   it("preserves priorities and row order through repeated splits", () => {
-    const {section, first} = preset("two-columns")
+    const {section, first} = preset("two-track-grid")
     first.style.setProperty("grid-column", "1 / 2", "important")
     first.style.setProperty("grid-row", "1 / 2", "important")
     section.style.setProperty("grid-template-rows", "auto", "important")
@@ -255,7 +259,7 @@ describe("editing direct layout content", () => {
   })
 
   it("respects a sibling placement changed during a command", () => {
-    const {section, first} = preset("two-columns")
+    const {section, first} = preset("two-track-grid")
     const other = section.lastElementChild as HTMLElement
     const inserted = document.createElement("p")
     editor.features.layout.preserveItemLayout(() => {
@@ -367,5 +371,116 @@ describe("live layout commands", () => {
     expect(section.classList.contains("◆layout-selected")).toBe(false)
     editor.features.layout.disable()
     expect(editor.appendix.querySelector(".◆layout-overlay")).toBeNull()
+  })
+})
+
+describe("independent column presets", () => {
+  it.each(["two-columns", "three-columns"])("keeps pasted blocks in their reading column for %s", id => {
+    editor.features.layout.actions.insertLayout({type: "insertLayout", preset: id})
+    const group = document.querySelector(".ww-column-group")!
+    expect(group.children).toHaveLength(id === "three-columns" ? 3 : 2)
+    expect((group as HTMLElement).style.gridTemplateColumns).toBe("")
+    const block = group.children[id === "three-columns" ? 1 : 0]
+    const side = id === "three-columns" ? "middle" : "left"
+    block.textContent = "Hello world"
+    editor.features.selection.clearSelectedSection()
+    $.move(block.firstChild!, 5)
+    expect(editor.features.layout.getState()?.kind).toBe("columns")
+    editor.features.manipulation.insertHTML('<h2>Pasted</h2><p>More</p>')
+    const added = Array.from(group.children).filter(child => child.textContent)
+    expect(added.map(child => child.textContent)).toEqual(["Hello", "Pasted", "More", " world"])
+    expect(added.every(child => child.classList.contains(`ww-column-${side}`))).toBe(true)
+    expect(group.querySelector("div")).toBeNull()
+  })
+
+  it.each(["grid", "flex", "columns"] as const)("reports %s layout state from nested text", kind => {
+    document.body.innerHTML = kind === "columns"
+      ? '<section class="ww-column-group"><p class="ww-column-left"><strong>inside</strong></p><p class="ww-column-right">other</p></section><p>outside</p>'
+      : `<section style="display:${kind}"><article><p><strong>inside</strong></p></article></section><p>outside</p>`
+    $.move(document.querySelector("strong")!.firstChild!, 2)
+    expect(editor.features.layout.getState()?.kind).toBe(kind)
+    expect(editor.features.layout.getState()?.item).toBe(true)
+    $.move(document.body.lastChild!.firstChild!, 2)
+    expect(editor.features.layout.getState()).toBeNull()
+  })
+})
+
+it("inserts at a middle-column gap without changing the neighboring columns", () => {
+  editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "three-columns"})
+  const group = document.querySelector<HTMLElement>(".ww-column-group")!
+  const middle = group.children[1]
+  editor.features.selection.clearSelectedSection()
+  $.selectGap(middle, "after")
+  const inserted = editor.features.manipulation.ensureTextBlock() as Element
+  expect(inserted.parentElement).toBe(group)
+  expect(inserted.classList.contains("ww-column-middle")).toBe(true)
+  expect(group.children[0].classList.contains("ww-column-left")).toBe(true)
+  expect(group.lastElementChild!.classList.contains("ww-column-right")).toBe(true)
+})
+
+describe("top-level layouts", () => {
+  it.each(["two-columns", "three-columns", "four-panels", "wrapping-cards"])("rejects nested %s without changing content", preset => {
+    document.body.innerHTML = '<section><p>nested</p></section>'
+    const text = document.querySelector("p")!.firstChild!
+    $.move(text, 2)
+    const before = editor.toHTML(true)
+    expect(editor.features.layout.actions.insertLayout({type: "insertLayout", preset})).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("does not wrap an existing layout in another layout or ordinary section", () => {
+    const section = grid()
+    const before = editor.toHTML(true)
+    expect(editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})).toBe(false)
+    expect(editor.features.manipulation.wrapTargetsInSection([section], "article")).toBeNull()
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
+  it("rejects nested layout styles and grouping classes", () => {
+    document.body.innerHTML = '<article><section><p>nested</p></section></article>'
+    const section = document.querySelector("section")!
+    expect(editor.features.manipulation.setElementStyles(section, {display: "grid"})).toBe(false)
+    expect(() => editor.features.manipulation.setAuthoredElementAttribute(section, "class", "ww-column-group")).toThrow(/top level/)
+    expect(section.hasAttribute("style")).toBe(false)
+    expect(section.hasAttribute("class")).toBe(false)
+  })
+
+  it("allows a layout at a caret in direct root text", () => {
+    document.body.textContent = "root text"
+    $.move(document.body.firstChild!, 4)
+    expect(editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})).toBe(true)
+    expect(document.querySelector(".ww-column-group")?.parentElement).toBe(document.body)
+  })
+
+  it("accepts layouts directly in a document-template root", () => {
+    document.body.innerHTML = '<document-shell role="document"><p>text</p></document-shell>'
+    const root = document.body.firstElementChild!
+    $.selectRange(root, 1)
+    expect(editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})).toBe(true)
+    expect(root.querySelector(":scope > .ww-column-group")).not.toBeNull()
+  })
+
+  it("rejects nested pasted layouts before deleting the selection", () => {
+    document.body.innerHTML = '<article><p>keep me</p></article>'
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 0, text, 4)
+    const before = editor.toHTML(true)
+    editor.features.manipulation.insertHTML('<section style="display:grid"><p>new</p></section>')
+    expect(editor.toHTML(true)).toBe(before)
+    expect(document.getSelection()!.toString()).toBe("keep")
+    $.selectRange(document.body, 1)
+    editor.features.manipulation.insertHTML('<section style="display:grid"><p>allowed</p></section>')
+    expect(document.body.lastElementChild?.textContent).toBe("allowed")
+  })
+
+  it("rejects side grouping inside a section and grouping an existing layout", () => {
+    document.body.innerHTML = '<p>source</p><article><p>nested</p></article><section style="display:grid"><p>layout</p></section>'
+    const source = document.body.firstElementChild!, nested = document.querySelector("article p")!, existing = document.querySelector("section")!
+    const before = editor.toHTML(true)
+    expect(editor.features.manipulation.placeFloat(source, nested, "left")).toBe(false)
+    expect(editor.features.manipulation.placeFloat(source, existing, "right")).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
   })
 })

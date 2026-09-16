@@ -302,11 +302,11 @@ describe("insertion menu", () => {
     menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {kind: "element", tag: "picture"}}))
     const picture = document.querySelector("picture")!
     expect(picture).not.toBeNull()
-    expect(picture.style.float).toBe(text ? "right" : "")
-    expect(picture.parentElement).toBe(text ? paragraph : document.body)
+    expect(picture.classList.contains("ww-column-right")).toBe(Boolean(text))
+    expect(picture.parentElement).toBe(text ? document.querySelector(".ww-column-group") : document.body)
   })
 
-  it("floats an atomic widget inside its paragraph", async () => {
+  it("places an atomic widget beside its paragraph", async () => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
       section: "Packages",
@@ -324,9 +324,9 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe('<p><webwriter-demo style="float: right; max-width: 50%; min-width: 0; box-sizing: border-box;"></webwriter-demo>before</p>')
+    expect(editorHTML()).toBe('<div class="ww-column-group"><p class="ww-column-left">before</p><webwriter-demo class="ww-column-right"></webwriter-demo></div>')
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.parentElement).toBe(document.querySelector("p"))
+    expect(widget.previousElementSibling).toBe(document.querySelector("p"))
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
     expect(document.getSelection()!.isCollapsed).toBe(true)

@@ -1,8 +1,8 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, createStylesheet, getContainer, removeEditorMarker} from "../utility"
+import {$, createStylesheet, getContainer, columnSide, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {isSectionElement} from "../sections"
-import {layoutFraction, layoutPlacement, layoutPresets, layoutStyleProperties, parseLayoutTracks, remapLayoutPlacement, type LayoutAxis, type LayoutKind, type LayoutSelectionState, type LayoutTrackState} from "../layouts"
+import {authoredLayoutKind, canPlaceLayouts, applyColumnPreset, layoutFraction, layoutPlacement, layoutPresets, layoutStyleProperties, parseLayoutTracks, remapLayoutPlacement, type LayoutAxis, type LayoutKind, type LayoutSelectionState, type LayoutTrackState} from "../layouts"
 import type {ElementStyleMutation} from "../editor-bridge"
 
 type Geometry = {start: number, sizes: number[], gap: number, scale: number, reverse: boolean, crossStart: number, crossSize: number}
@@ -41,18 +41,21 @@ export class LayoutFeature extends EditorFeature {
   private kind(element: Element | null): LayoutKind | null {
     if(!(element instanceof HTMLElement) || !isSectionElement(element) || element.hasAttribute("is")
       || !getDocumentRoot().contains(element) || element === getDocumentRoot()) return null
-    const display = getComputedStyle(element).display
-    return /(?:^|\s|-)grid$/.test(display) ? "grid" : /(?:^|\s|-)flex$/.test(display) ? "flex" : null
+    return authoredLayoutKind(element)
   }
 
   private context() {
     const selected = this.editor.features.selection.selectedSectionElement
       ?? this.editor.features.selection.captureSelectedElement ?? $.selectedElement
-    if(!selected?.isConnected || !getDocumentRoot().contains(selected)) return null
-    const ownKind = this.kind(selected)
-    if(ownKind) return {target: selected as HTMLElement, kind: ownKind, item: null}
-    const kind = this.kind(selected.parentElement)
-    return kind && selected instanceof HTMLElement ? {target: selected.parentElement!, kind, item: selected} : null
+    const start = selected ?? ($.anchor ? ($.anchor instanceof Element ? $.anchor : $.anchor.parentElement) : null)
+    if(!start?.isConnected || !getDocumentRoot().contains(start)) return null
+    let child: Element | null = null
+    for(let element: Element | null = start; element && element !== getDocumentRoot(); element = element.parentElement) {
+      const kind = this.kind(element)
+      if(kind) return {target: element as HTMLElement, kind, item: child instanceof HTMLElement ? child : null}
+      child = element
+    }
+    return null
   }
 
   /** Keep the selected item's layout declarations on the blocks produced by
@@ -68,6 +71,7 @@ export class LayoutFeature extends EditorFeature {
     const kind = this.kind(target)
     if(!target || !kind) return command()
     const original = item
+    const side = columnSide(original)
     const children = Array.from(target.children)
     const index = children.indexOf(original)
     const before = children.slice(0, index), after = children.slice(index + 1)
@@ -75,7 +79,7 @@ export class LayoutFeature extends EditorFeature {
     const signatures = new Map(children.map(child => [child, this.itemPlacementSignature(child)]))
     const declarations = new Map<string, ElementStyleMutation>()
     const properties = ["min-inline-size", "order", "align-self", "justify-self",
-      ...(kind === "flex" ? ["flex-grow", "flex-shrink", "flex-basis"]
+      ...(kind === "columns" ? [] : kind === "flex" ? ["flex-grow", "flex-shrink", "flex-basis"]
         : ["grid-row-start", "grid-row-end", "grid-column-start", "grid-column-end"])]
     for(const name of properties) {
       const axis = /^grid-(row|column)-(start|end)$/.exec(name)
@@ -108,6 +112,7 @@ export class LayoutFeature extends EditorFeature {
       const blocks = replacements as HTMLElement[]
       for(const block of blocks) {
         if(block === original) continue
+        if(kind === "columns" && side && !columnSide(block)) block.classList.add(`ww-column-${side}`)
         const styles = Object.fromEntries([...declarations].filter(([name]) => !block.style.getPropertyValue(name)))
         this.editor.features.manipulation.setElementStyles(block, styles)
       }
@@ -218,6 +223,10 @@ export class LayoutFeature extends EditorFeature {
       targets = nodes.filter((node): node is Element => node instanceof Element)
       if(!targets.length || targets.some(node => this.editor.schema.isPhrasing(node))) throw new TypeError("Select complete blocks to wrap them in a layout.")
     }
+    const root = getDocumentRoot()
+    const block = range ? getContainer(range.startContainer) : null
+    const parent = targets?.[0]?.parentElement ?? (range?.startContainer === root || block === root ? root : block?.parentElement)
+    if(parent !== root || targets?.some(target => !canPlaceLayouts([target], document.createElement("section")))) return false
     const end = this.editor.doc.beginUndoGroup()
     try {
       let section: HTMLElement | null
@@ -234,6 +243,7 @@ export class LayoutFeature extends EditorFeature {
         this.editor.features.manipulation.insert(section)
       }
       if(!section?.isConnected) return false
+      applyColumnPreset(section, preset)
       this.editor.features.manipulation.setElementStyles(section, preset.styles)
       const columns = preset.kind === "grid" ? parseLayoutTracks(preset.styles["grid-template-columns"])!.length : 0
       if(columns) {
@@ -431,7 +441,7 @@ export class LayoutFeature extends EditorFeature {
     outline.className = "◆layout-outline"
     Object.assign(outline.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
     overlay.append(outline)
-    const title = this.button(`${context!.kind === "grid" ? "Grid" : "Flex"} layout`, context!.kind === "grid" ? "Grid" : "Flex", undefined, undefined, "select")
+    const title = this.button(`${context!.kind === "grid" ? "Grid" : context!.kind === "columns" ? "Columns" : "Flex"} layout`, context!.kind === "grid" ? "Grid" : context!.kind === "columns" ? "Columns" : "Flex", undefined, undefined, "select")
     Object.assign(title.style, {left: `${Math.max(0, rect.left)}px`, top: `${Math.max(0, rect.top - 48)}px`})
     overlay.append(title)
     if(context!.kind !== "grid") return

@@ -3062,6 +3062,7 @@ export class AppRibbon extends EditingControls {
       <ribbon-button
         slot=${slot}
         class="layout-opener"
+        ?active=${Boolean(this.layout)}
         variant="insertion"
         label="Layouts"
         icon="Layout"
@@ -3076,6 +3077,7 @@ export class AppRibbon extends EditingControls {
     const renderLayoutPreset = (preset: typeof layoutPresets[number]) => {
       const previewStyles = {
         ...preset.styles,
+        ...(preset.kind === "columns" ? {display: "grid", "grid-template-columns": `repeat(${preset.items}, 1fr)`} : {}),
         gap: "0.4rem",
         padding: "0.3rem",
         "box-sizing": "border-box",
@@ -3088,6 +3090,7 @@ export class AppRibbon extends EditingControls {
           class="layout-preset"
           type="button"
           data-layout-id=${preset.id}
+          ?disabled=${Boolean(this.layout)}
           aria-label=${`Insert ${preset.name} layout`}
           @click=${(event: Event) => (event.currentTarget as HTMLElement).dispatchEvent(
             new CustomEvent<{label: string, keepDrawerOpen: boolean}>("ribbon-button-click", {
