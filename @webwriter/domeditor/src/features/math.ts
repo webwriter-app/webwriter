@@ -1039,7 +1039,8 @@ export class MathFeature extends EditorFeature {
           position = element
           break
         }
-        if(!position && (isToken(element) || isRow(element))) position = element
+        // Containers only highlight as arguments above, never as a whole formula.
+        if(!position && isToken(element)) position = element
       }
     }
     this.setHovered(position)

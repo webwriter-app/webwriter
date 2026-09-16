@@ -222,6 +222,28 @@ describe("DOM MathML editing", () => {
     expect(math.querySelector(".◆math-hovered")).toBeNull()
   })
 
+  it.each([
+    '<mrow><mi>x</mi><mo>+</mo><mi>y</mi></mrow>',
+    '<msqrt><mi>x</mi></msqrt>',
+    '<mrow><mstyle><msqrt><mi>x</mi></msqrt></mstyle></mrow>',
+    '<mrow><mfrac><mi>x</mi><mi>y</mi></mfrac></mrow>',
+  ])("highlights parts but never the top-level formula structure: %s", content => {
+    const math = load(content)
+    const part = math.querySelector("mi")!
+    const hover = (element: Element) => element.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    for(const container of [math, ...math.querySelectorAll("mrow, mstyle, msqrt, mfrac")]) {
+      hover(part)
+      expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([part])
+      hover(container)
+      expect(math.querySelector(".◆math-hovered")).toBeNull()
+      expect(math.classList.contains("◆math-hovered")).toBe(false)
+    }
+    vi.spyOn(math.firstElementChild!, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 100, 30))
+    hover(part)
+    math.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 15, clientY: 15}))
+    expect(math.querySelector(".◆math-hovered")).toBeNull()
+  })
+
   it("highlights exactly the innermost hovered argument and excludes the marker from saved and shared HTML", () => {
     const math = load('<mroot><mrow><mi>x</mi><mfrac><mi>a</mi><mi>b</mi></mfrac></mrow><mn>3</mn></mroot>')
     const hover = (element: Element) => element.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
