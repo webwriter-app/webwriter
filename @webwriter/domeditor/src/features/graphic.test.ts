@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, beforeEach, describe, expect, it} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
@@ -466,31 +466,24 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("edits labels directly in the shadow appendix and supports commit or cancel", () => {
+  it("edits rich labels in the SVG with only an input proxy and caret in the appendix", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "diamond"})
     const polygon = document.querySelector("polygon")!
-
     polygon.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
-    let labelEditor = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-editor")!
-    expect(labelEditor).not.toBeNull()
-    expect(labelEditor.getRootNode()).toBe(editor.appendix)
-    expect(document.body.querySelector(".◆graphic-label-editor")).toBeNull()
-    expect(Number.parseFloat(labelEditor.style.height)).toBeLessThan(100)
-    labelEditor.value = "Decision"
-    labelEditor.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Enter"}))
-
+    const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+    expect(proxy).not.toBeNull()
+    expect(proxy.style.opacity).toBe("0")
+    expect(document.body.querySelector("textarea")).toBeNull()
+    editor.features.mark.toggleMark("b")
+    proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Decision", cancelable: true}))
     const group = document.querySelector("svg > g")!
     expect(group.querySelector("text")).toHaveTextContent("Decision")
-    expect(editor.appendix.querySelector(".◆graphic-label-editor")).toBeNull()
-
-    group.querySelector("text")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
-    labelEditor = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-editor")!
-    expect(labelEditor.value).toBe("Decision")
-    labelEditor.value = "Cancelled"
-    labelEditor.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+    expect(group.querySelector("tspan")!.getAttribute("style")).toContain("font-weight: bold")
+    expect(editor.features.mark.getState().marks).toContain("b")
+    proxy.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
     expect(group.querySelector("text")).toHaveTextContent("Decision")
-    expect(editor.appendix.querySelector(".◆graphic-label-editor")).toBeNull()
-    expect(editor.toHTML(true)).not.toContain("graphic-label-editor")
+    expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it("opens the selected shape label editor with Enter and retains graphic capture on Escape", () => {
@@ -504,13 +497,13 @@ describe("graphic editing", () => {
     document.dispatchEvent(enter)
 
     expect(enter.defaultPrevented).toBe(true)
-    expect(editor.appendix.querySelector(".◆graphic-label-editor")).not.toBeNull()
+    expect(editor.appendix.querySelector(".◆graphic-label-input")).not.toBeNull()
 
-    editor.appendix.querySelector(".◆graphic-label-editor")!.dispatchEvent(
+    editor.appendix.querySelector(".◆graphic-label-input")!.dispatchEvent(
       new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Escape"}),
     )
 
-    expect(editor.appendix.querySelector(".◆graphic-label-editor")).toBeNull()
+    expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
     expect(editor.features.selection.captureSelectedElement).toBe(graphic)
     expect(graphic).toHaveClass("◆element-capture-selected")
   })
@@ -1726,4 +1719,170 @@ describe("graphic editing", () => {
       document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== theme)
     }
   })
+})
+
+
+it("edits standalone SVG text without inventing a shape or rebuilding positioned spans", () => {
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg")
+  const text = document.createElementNS(SVG_NAMESPACE, "text")
+  const span = document.createElementNS(SVG_NAMESPACE, "tspan")
+  text.setAttribute("x", "100")
+  span.setAttribute("rotate", "20")
+  span.textContent = "label"
+  text.append(span)
+  svg.append(text)
+  document.body.append(svg)
+  span.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+  expect(proxy).not.toBeNull()
+  editor.features.mark.toggleMark("b")
+  expect(svg.firstElementChild).toBe(text)
+  expect(text.firstElementChild).toBe(span)
+  expect(span.getAttribute("rotate")).toBe("20")
+  expect(editor.features.mark.getState().marks).toContain("b")
+  editor.destroy()
+  expect(text.classList.contains("◆graphic-text-editing")).toBe(false)
+  expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
+})
+
+
+it("cleans up the SVG text input and marker when a remote edit replaces the label", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "diamond"})
+  document.querySelector("polygon")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const old = document.querySelector("text")!
+  const replacement = document.createElementNS(SVG_NAMESPACE, "text")
+  replacement.textContent = "remote"
+  old.replaceWith(replacement)
+  editor.features.graphic.refresh()
+  expect(old.classList.contains("◆graphic-text-editing")).toBe(false)
+  expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
+  expect(replacement.textContent).toBe("remote")
+})
+
+
+it("stops routing marks to a label when the document selection moves elsewhere", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "diamond"})
+  document.querySelector("polygon")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const text = document.querySelector("text")!
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "outside"
+  document.body.append(paragraph)
+  document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 0, paragraph.firstChild!, 7)
+  editor.features.graphic.refresh()
+  editor.features.mark.toggleMark("b")
+  expect(paragraph.querySelector("b")?.textContent).toBe("outside")
+  expect(text.querySelector("tspan")).toBeNull()
+  expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
+})
+
+
+it("positions an empty label caret using an appendix measurement in SVG screen coordinates", () => {
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg")
+  svg.innerHTML = '<g><rect x="100" y="80" width="400" height="140"/><text x="300" y="150" font-size="48" dominant-baseline="middle"></text></g>'
+  document.body.append(svg)
+  const text = svg.querySelector("text")!
+  Object.defineProperty(text, "getScreenCTM", {value: () => ({a: .5, b: 0, c: 0, d: .5, e: 40, f: 20})})
+  const measure = vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(function(this: Range) {
+    const sample = this.startContainer.parentElement
+    if(sample?.getRootNode() !== editor.appendix || sample.localName !== "text") return new DOMRect()
+    expect(this.collapsed).toBe(true)
+    expect(sample.getAttribute("x")).toBe("300")
+    expect(sample.getAttribute("y")).toBe("150")
+    expect(sample.parentElement!.getAttribute("transform")).toBe("matrix(0.5 0 0 0.5 40 20)")
+    expect(text.childNodes).toHaveLength(0)
+    return new DOMRect(190, 81, 0, 28)
+  })
+  try {
+    svg.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+    const caret = editor.appendix.querySelector<HTMLElement>('[part="graphic-text-caret"]')!
+    expect(caret.style.left).toBe("190px")
+    expect(caret.style.top).toBe("81px")
+    expect(caret.style.height).toBe("28px")
+    expect(editor.appendix.querySelector("svg text")).toBeNull()
+    expect(text.childNodes).toHaveLength(0)
+    expect(editor.features.graphic.textEditingRange?.collapsed).toBe(true)
+    const proxy = editor.appendix.querySelector(".◆graphic-label-input")!
+    proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Label", cancelable: true}))
+    expect(text.textContent).toBe("Label")
+    expect(editor.toHTML(true)).not.toContain("graphic-text")
+  }
+  finally { measure.mockRestore() }
+})
+
+it("creates an editable centered label on double-clicking an unlabeled shape", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+  const rect = document.querySelector("rect")!
+  rect.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const text = rect.parentElement!.querySelector("text")!
+  expect(text.textContent).toBe("")
+  expect(Number(text.getAttribute("x"))).toBe(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2)
+  expect(Number(text.getAttribute("y"))).toBe(Number(rect.getAttribute("y")) + Number(rect.getAttribute("height")) / 2)
+  const proxy = editor.appendix.querySelector(".◆graphic-label-input")!
+  editor.features.mark.toggleMark("b")
+  proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "New", cancelable: true}))
+  expect(text.textContent).toBe("New")
+  expect(editor.features.mark.getState().marks).toContain("b")
+})
+
+
+it.each(["shape", "canvas"])("capture-selects an element-selected standalone graphic by clicking its %s", surface => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+  const graphic = document.querySelector("svg")!
+  const shape = graphic.querySelector("rect")!
+  expect($.selectedElement).toBe(graphic)
+  expect(editor.features.selection.captureSelectedElement).toBeNull()
+  clickShape(surface === "shape" ? shape : graphic)
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  expect(graphic).toHaveClass("◆element-capture-selected")
+  expect(editor.features.graphic.getState()?.capture).toBe(true)
+  clickShape(shape)
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  expect(editor.features.graphic.selectedShape).toBe(shape)
+  expect(editor.toHTML(true)).not.toContain("◆")
+})
+
+it("capture-selects an element-selected drawing canvas on an interior click", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  editor.features.selection.selectElement(graphic)
+  expect(editor.features.selection.captureSelectedElement).toBeNull()
+  clickShape(graphic)
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+})
+
+it("does not capture an element-selected graphic on a secondary click", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+  document.querySelector("rect")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 2}))
+  expect(editor.features.selection.captureSelectedElement).toBeNull()
+})
+
+
+it("leaves label editing and capture selection when its canvas edge is clicked", () => {
+  const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
+  graphic.innerHTML = '<g><rect width="100" height="50"/><text>Label</text></g>'
+  document.body.append(graphic)
+  graphic.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  expect(editor.features.graphic.isTextInputFocused).toBe(true)
+  editor.features.selection.selectionCaret!.querySelector(".◆capture-edge")!
+    .dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+  expect(editor.features.selection.captureSelectedElement).toBeNull()
+  expect($.selectedElement).toBe(graphic)
+  expect(graphic).not.toHaveClass("◆element-capture-selected")
+  expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
+})
+
+
+it("keeps graphic grid tiles fixed when dimensions and the viewBox change", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  const tileSize = getComputedStyle(graphic).backgroundSize
+  expect(tileSize).toContain("24px 24px")
+  for(const [width, height, viewBox] of [["300px", "200px", "0 0 1600 900"], ["900px", "100px", "200 300 400 200"]]) {
+    graphic.style.width = width
+    graphic.style.height = height
+    graphic.setAttribute("viewBox", viewBox)
+    editor.features.graphic.refresh()
+    expect(getComputedStyle(graphic).backgroundSize).toBe(tileSize)
+  }
 })

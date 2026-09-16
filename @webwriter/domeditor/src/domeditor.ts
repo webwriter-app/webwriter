@@ -1049,6 +1049,7 @@ export class DOMEditor {
 
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
+    this.features.graphic.rememberTextSelection()
     if(this.features.selection.selectedSectionElement) {
       this.postBridgeEvent(markStateChangeEvent, {
         canMark: false,

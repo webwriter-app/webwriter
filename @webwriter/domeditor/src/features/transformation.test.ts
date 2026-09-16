@@ -1220,3 +1220,131 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target.style.zIndex).not.toBe("1")
   })
 })
+
+
+describe("SVG canvas cropping", () => {
+  function canvas(viewBox = "10 20 200 100", aspect = "none") {
+    const target = append(document.createElementNS("http://www.w3.org/2000/svg", "svg"))
+    target.setAttribute("viewBox", viewBox)
+    target.setAttribute("preserveAspectRatio", aspect)
+    target.innerHTML = '<g transform="translate(5 7)"><rect width="40" height="30"/></g><text x="20" y="30">Label</text>'
+    target.style.position = "absolute"
+    mockRect(target)
+    selectNode(target)
+    return target
+  }
+  function start(direction = "down-right") {
+    feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+      .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+  }
+  function drag(options: PointerEventInit = {}) {
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 140, ...options}))
+  }
+
+  it.each([
+    {direction: "down-right", box: "10 20 160 80", left: "", top: ""},
+    {direction: "up-left", box: "-30 0 240 120", left: "-20px", top: "-10px"},
+    {direction: "right", box: "10 20 160 100", left: "", top: ""},
+  ])("crops from $direction without changing child geometry", ({direction, box, left, top}) => {
+    const target = canvas()
+    const child = target.firstElementChild
+    const contents = target.innerHTML
+    start(direction)
+    drag()
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.getAttribute("viewBox")).toBe(box)
+    expect(target.style.overflow).toBe("hidden")
+    expect(target.style.left).toBe(left)
+    expect(target.style.top).toBe(top)
+    expect(target.firstElementChild).toBe(child)
+    expect(target.innerHTML).toBe(contents)
+  })
+
+  it.each(["", "static"])("preserves normal flow when cropping a centered canvas with position %j", position => {
+    const target = canvas()
+    target.style.position = position
+    const rect = vi.mocked(target.getBoundingClientRect).getMockImplementation()!
+    vi.mocked(target.getBoundingClientRect).mockImplementation(() => {
+      const box = rect.call(target)
+      const left = box.left + (100 - box.width) / 2
+      return new DOMRect(left, box.top, box.width, box.height)
+    })
+    start()
+    drag()
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.getBoundingClientRect().left).toBe(110)
+    expect(target.getBoundingClientRect().top).toBe(100)
+    expect(target.getAttribute("viewBox")).toBe("10 20 160 80")
+    expect(target.style.position).toBe(position)
+    for(const property of ["left", "top", "right", "bottom"]) expect(target.style.getPropertyValue(property)).toBe("")
+  })
+
+  it.each(["", "static", "relative", "absolute", "fixed", "sticky"].flatMap(position => [false, true].map(altKey => ({position, altKey}))))("preserves position $position when resizing with Alt=$altKey", ({position, altKey}) => {
+    const target = canvas()
+    target.style.position = position
+    start("up-left")
+    drag({altKey})
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.position).toBe(position)
+    expect(target.style.width).toBe("120px")
+    expect(target.style.height).toBe("60px")
+    expect(target.getAttribute("viewBox")).toBe(altKey ? "10 20 200 100" : "-30 0 240 120")
+    if(!position || position === "static") {
+      for(const property of ["left", "top", "right", "bottom"]) expect(target.style.getPropertyValue(property)).toBe("")
+    }
+  })
+
+  it("switches between cropping and Alt resizing during a drag and cancels both", () => {
+    const target = canvas()
+    const initial = target.style.cssText
+    start()
+    drag()
+    expect(target.getAttribute("viewBox")).toBe("10 20 160 80")
+    drag({altKey: true})
+    expect(target.getAttribute("viewBox")).toBe("10 20 200 100")
+    expect(target.style.width).toBe("80px")
+    expect(target.style.height).toBe("40px")
+    expect(target.style.overflow).toBe("")
+    drag()
+    expect(target.getAttribute("viewBox")).toBe("10 20 160 80")
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(target.getAttribute("viewBox")).toBe("10 20 200 100")
+    expect(target.style.cssText).toBe(initial)
+  })
+
+  it("preserves letterboxed content scale and supports centered cropping", () => {
+    const target = canvas("0 0 100 100", "xMidYMid meet")
+    start()
+    drag({ctrlKey: true})
+    expect(target.getAttribute("viewBox")).toBe("-10 20 120 60")
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+  })
+
+  it("leaves a concurrently changed viewBox authoritative", () => {
+    const target = canvas()
+    start()
+    drag()
+    target.setAttribute("viewBox", "0 0 500 500")
+    drag({clientX: 170})
+    expect(target.getAttribute("viewBox")).toBe("0 0 500 500")
+    expect(target.style.width).toBe("")
+  })
+
+  it("undoes and redoes the viewport and dimensions together", async () => {
+    const target = canvas()
+    target.id = "cropped-canvas"
+    editor.doc.syncFromDOM()
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    start()
+    drag()
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    await mutationsDelivered()
+    editor.doc.undo()
+    await mutationsDelivered()
+    expect(document.getElementById("cropped-canvas")!.getAttribute("viewBox")).toBe("10 20 200 100")
+    editor.doc.redo()
+    await mutationsDelivered()
+    expect(document.getElementById("cropped-canvas")!.getAttribute("viewBox")).toBe("10 20 160 80")
+  })
+})

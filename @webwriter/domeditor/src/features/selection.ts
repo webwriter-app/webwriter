@@ -211,6 +211,8 @@ export class SelectionFeature extends EditorFeature {
 
   selectElement(element: Element) {
     if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    const focused = document.activeElement === document.body ? this.editor.appendix.activeElement : null
+    if(focused instanceof HTMLElement) focused.blur()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
     $.selectElement(element)
@@ -498,6 +500,7 @@ export class SelectionFeature extends EditorFeature {
   /** Media, SVG interiors and uncaptured shadow endpoints are atomic. Move only
    * the affected endpoints to their host boundaries, preserving outer ranges. */
   #constrainSelectionToAtomicContent() {
+    if(this.editor.features.mark.isSVGTextSelection) return
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
     const atomic = (node: Node) => node.getRootNode() instanceof ShadowRoot
@@ -686,6 +689,7 @@ export class SelectionFeature extends EditorFeature {
       if(edge instanceof Element && edge.parentElement === this.selectionCaret && captured
         && event.button === 0 && !event.defaultPrevented) {
         event.preventDefault()
+        event.stopImmediatePropagation()
         this.#endDrag()
         this.selectElement(captured)
         return
@@ -1172,6 +1176,7 @@ export class SelectionFeature extends EditorFeature {
    * left over from a preceding text selection, regardless of who changed the
    * document Selection. */
   #normalizeNativeSelection() {
+    if(this.editor.features.mark.isSVGTextSelection) return
     let selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
     if(selection.rangeCount !== 1) {
@@ -1206,6 +1211,7 @@ export class SelectionFeature extends EditorFeature {
   /** Classifies the normalized live selection exactly once so only one
    * presentation branch can be applied during this refresh. */
   #selectionKind(inDragSelection: boolean, capturedElement: Element | null): SelectionKind {
+    if(this.editor.features.mark.isSVGTextSelection) return "text"
     if(capturedElement) return "capture"
     if(this.selectedSectionElement) return "section"
     const selection = document.getSelection()
@@ -1345,7 +1351,7 @@ export class SelectionFeature extends EditorFeature {
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
     // The dead-key input temporarily owns native selection in the appendix.
     // Clamping it into BODY blurs the input and cancels exponent entry.
-    if(this.editor.features.math.isComposingPower) return
+    if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused) return
     // Chromium can clear its native range when focusing an SVG-only document.
     // Preserve the ordinary node selection only while no new endpoints exist.
     if(!document.getSelection()?.rangeCount) {
@@ -1424,7 +1430,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(!sel?.anchorNode || !sel.focusNode) return
-    if(kind === "text" || kind === "element") this.#showAtomicOverlays(sel)
+    if((kind === "text" || kind === "element") && !this.editor.features.mark.isSVGTextSelection) this.#showAtomicOverlays(sel)
     if(kind === "gap") {
       const children = sel.anchorNode!.childNodes
       const columnGap = $.columnGap

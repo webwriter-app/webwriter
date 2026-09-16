@@ -18,6 +18,7 @@ afterEach(() => {
 
 const properties = (): EditingUIProperties => ({
   canMark: false,
+  svgText: false,
   canSection: false,
   sectionType: "section",
   sectionActive: false,

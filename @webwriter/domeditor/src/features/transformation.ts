@@ -29,6 +29,7 @@ type Gesture = {
   written: Map<string, StyleValue>
   moved: boolean
   captured: boolean
+  canvas?: {initial: string | null, written: string | null, x: number, y: number, width: number, height: number}
   endUndoGroup: () => void
 }
 
@@ -45,6 +46,7 @@ type Gesture = {
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
  * Shift stretches with CSS scale instead of reflowing content; Alt unsnaps.
+ * SVG canvases crop their viewport by default; Alt resizes their contents.
  * Rotate (absolute targets): drag about the center, snapping to 5 degrees
  * (Shift: 45 degrees; Alt: no snapping).
  *
@@ -555,6 +557,7 @@ export class TransformationFeature extends EditorFeature {
       x: event.clientX, y: event.clientY, rect: target.getBoundingClientRect(), ...this.#size(target),
       matrix, parentMatrix: this.#matrix(renderedParentElement(target)), rotate: this.#angle(style.rotate), scale: this.#scale(style.scale),
       initial, written: new Map(), moved: false,
+      canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       captured: this.editor.features.selection.captureSelectedElement === target,
       endUndoGroup: this.editor.doc.beginUndoGroup(),
     }
@@ -567,10 +570,38 @@ export class TransformationFeature extends EditorFeature {
     return true
   }
 
+  #canvasViewport(target: TransformElement) {
+    if(!(target instanceof SVGSVGElement) || standaloneGraphicShape(target)) return
+    const {cssWidth: width, cssHeight: height} = this.#size(target)
+    if(width <= 0 || height <= 0) return
+    const initial = target.getAttribute("viewBox")
+    const values = initial?.trim().split(/[\s,]+/).map(Number)
+    let [x, y, w, h] = values?.length === 4 && values.every(Number.isFinite) && values[2] > 0 && values[3] > 0
+      ? values : [0, 0, width, height]
+    const aspect = target.getAttribute("preserveAspectRatio") || "xMidYMid meet"
+    if(!aspect.includes("none")) {
+      const scale = Math[aspect.includes("slice") ? "max" : "min"](width / w, height / h)
+      const align = (axis: string) => aspect.includes(`${axis}Min`) ? 0 : aspect.includes(`${axis}Max`) ? 1 : .5
+      x -= (width / scale - w) * align("x")
+      y -= (height / scale - h) * align("Y")
+      w = width / scale
+      h = height / scale
+    }
+    return {initial, written: initial, x, y, width: w, height: h}
+  }
+
+  #writeCanvasViewBox(value: string | null) {
+    const gesture = this.#gesture!
+    if(value === null) gesture.target.removeAttribute("viewBox")
+    else gesture.target.setAttribute("viewBox", value)
+    gesture.canvas!.written = value
+  }
+
   #validGesture() {
     const gesture = this.#gesture
     if(!gesture) return false
-    if(this.editor.isEditingLocked || gesture.target !== this.target || gesture.parent !== gesture.target.parentElement
+    if(gesture.canvas && gesture.target.getAttribute("viewBox") !== gesture.canvas.written
+      || this.editor.isEditingLocked || gesture.target !== this.target || gesture.parent !== gesture.target.parentElement
       || [...gesture.written].some(([key, last]) => gesture.target.style.getPropertyValue(key) !== last.value
         || gesture.target.style.getPropertyPriority(key) !== last.priority)) {
       this.#finish(true)
@@ -713,14 +744,20 @@ export class TransformationFeature extends EditorFeature {
     const dw = x ? Math.max(1 - gesture.width, round(x * delta.x * (symmetric ? 2 : 1))) : 0
     const dh = y ? Math.max(1 - gesture.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
     const target = gesture.target
+    const crop = gesture.canvas && !event.altKey
+    if(gesture.canvas) this.#writeCanvasViewBox(gesture.canvas.initial)
     const style = getComputedStyle(target)
     if(style.display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
     let actualDW = dw, actualDH = dh
-    if(event.shiftKey) {
+    if(event.shiftKey && !crop) {
       this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
     }
     else {
-      if(this.#isFreeformItem(target) || standaloneGraphicShape(target)) {
+      if(gesture.canvas) {
+        this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
+        this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
+      }
+      else if(this.#isFreeformItem(target) || standaloneGraphicShape(target)) {
         if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
@@ -732,8 +769,19 @@ export class TransformationFeature extends EditorFeature {
       actualDW = size.width - gesture.width
       actualDH = size.height - gesture.height
     }
-    // Static elements stay in normal flow; anchoring the opposite edge must
-    // not implicitly opt them into positioned layout.
+    if(crop) {
+      const viewport = gesture.canvas!
+      const dx = actualDW * viewport.width / gesture.cssWidth
+      const dy = actualDH * viewport.height / gesture.cssHeight
+      this.#writeCanvasViewBox([
+        viewport.x - (symmetric ? dx / 2 : x < 0 ? dx : 0),
+        viewport.y - (symmetric ? dy / 2 : y < 0 ? dy : 0),
+        viewport.width + dx, viewport.height + dy,
+      ].join(" "))
+      this.#write("overflow", "hidden")
+    }
+    // Resizing and cropping preserve normal flow. Only adjust offsets for
+    // elements that were already positioned.
     if((getComputedStyle(target).position || "static") !== "static") {
       const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, symmetric ? 0 : y * actualDH / 2)
       const rect = this.targetRect
@@ -808,6 +856,7 @@ export class TransformationFeature extends EditorFeature {
     const valid = gesture.target === this.target && gesture.parent === gesture.target.parentElement
     const target = gesture.target
     if(cancel || !valid) {
+      if(gesture.canvas && target.getAttribute("viewBox") === gesture.canvas.written) this.#writeCanvasViewBox(gesture.canvas.initial)
       // Revert only properties still owned by this gesture. Concurrent changes
       // to other properties, or to these same properties, remain authoritative.
       for(const [key, last] of gesture.written) {

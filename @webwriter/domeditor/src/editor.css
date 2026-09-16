@@ -500,22 +500,22 @@ body:has(.◆element-capture-selected)::part(selection-capture-edge) {
 
 body::part(selection-capture-edge-top) {
   inset: -4px -4px auto;
-  height: 4px;
+  height: 8px;
 }
 
 body::part(selection-capture-edge-bottom) {
   inset: auto -4px -4px;
-  height: 4px;
+  height: 8px;
 }
 
 body::part(selection-capture-edge-left) {
   inset: 0 auto 0 -4px;
-  width: 4px;
+  width: 8px;
 }
 
 body::part(selection-capture-edge-right) {
   inset: 0 -4px 0 auto;
-  width: 4px;
+  width: 8px;
 }
 
 body.◆element-selected::part(selection-caret-node) {
@@ -785,7 +785,7 @@ svg.◆graphic-grid-visible {
   background-image:
     linear-gradient(to right, rgb(100 116 139 / 12%) 1px, transparent 1px),
     linear-gradient(to bottom, rgb(100 116 139 / 12%) 1px, transparent 1px);
-  background-size: 3.125% 5.5556%;
+  background-size: 24px 24px;
   background-repeat: repeat;
 }
 
@@ -962,26 +962,7 @@ body::part(graphic-affordance-connector-end) {
 
 body::part(graphic-affordance-vertex) { cursor: move; }
 
-body::part(graphic-label-editor) {
-  position: fixed;
-  z-index: 2147483647;
-  box-sizing: border-box;
-  min-width: 80px;
-  min-height: 36px;
-  margin: 0;
-  padding: 0.35rem 0.5rem;
-  overflow: hidden;
-  resize: none;
-  border: 2px solid #2563eb;
-  border-radius: 4px;
-  outline: 3px solid rgb(255 255 255 / 85%);
-  color: #0f172a;
-  background: #fff;
-  box-shadow: 0 4px 14px rgb(15 23 42 / 18%);
-  font: 500 1rem/1.2 system-ui, sans-serif;
-  text-align: center;
-  field-sizing: content;
-}
+
 
 body.◆graphic-manipulating,
 body.◆graphic-manipulating * {
@@ -1992,4 +1973,11 @@ math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty {
 math msubsup:has(> mo:first-child) > .◆math-slot:nth-child(2) {
   padding-inline-start: 1em;
   min-width: 1.7em;
+}
+
+
+.◆graphic-text-editing, .◆graphic-text-editing * {
+  pointer-events: auto !important;
+  user-select: text !important;
+  cursor: text;
 }

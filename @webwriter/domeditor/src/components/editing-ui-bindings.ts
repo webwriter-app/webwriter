@@ -6,6 +6,7 @@ import {EditingControls} from "./editing-controls"
 /** Presentation state already mirrored by the editor bridge. */
 export type EditingUIProperties = Pick<EditingControls,
   | "canMark"
+  | "svgText"
   | "canSection"
   | "sectionType"
   | "sectionActive"

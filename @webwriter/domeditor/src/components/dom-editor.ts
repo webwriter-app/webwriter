@@ -373,6 +373,7 @@ export class DomEditor extends LitElement {
     captureSelection: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
+    svgText: {attribute: false, state: true},
     canMark: {attribute: false, state: true},
     canSection: {attribute: false, state: true},
     sectionType: {attribute: false, state: true},
@@ -475,6 +476,7 @@ export class DomEditor extends LitElement {
   private layoutSelection: LayoutSelectionState | null = null
   private layoutError = ""
   private selectedSectionPath: number[] | null = null
+  private svgText = false
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
   private markAttributes: MarkAttributeValues = {}
@@ -4174,6 +4176,7 @@ export class DomEditor extends LitElement {
     }
     if(isMarkStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
+      this.svgText = event.data.detail.svgText === true
       this.canMark = event.data.detail.canMark
       // Markability identifies a text selection. Selection and mark state are
       // delivered as separate messages, so retire any older node/gap state as
@@ -4198,6 +4201,7 @@ export class DomEditor extends LitElement {
       } : {...emptyRubyState}
       this.dispatchEvent(new CustomEvent(markStateChangeEvent, {
         detail: {
+          svgText: this.svgText,
           canMark: this.canMark,
           marks: [...this.marks],
           styles: {...this.markStyles},
@@ -4619,6 +4623,7 @@ export class DomEditor extends LitElement {
 
   private get editingUIProperties(): EditingUIProperties {
     return {
+      svgText: this.svgText,
       canMark: this.canMark,
       canSection: this.canSection,
       sectionType: this.sectionType,

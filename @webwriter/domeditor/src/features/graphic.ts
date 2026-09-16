@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker} from "../utility"
+import {$, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {
   SVG_NAMESPACE,
   graphicContainerForNode,
@@ -129,7 +129,9 @@ type MarqueeInteraction = {
 type LabelEditor = {
   element: HTMLTextAreaElement
   shape: SVGGraphicsElement
-  initial: string
+  caret: HTMLDivElement
+  range: Range
+  text: SVGTextElement
 }
 
 type GraphicViewport = {
@@ -433,14 +435,14 @@ const intersects = (left: Bounds, right: Bounds) => left.x <= right.x + right.wi
   && left.y <= right.y + right.height
   && left.y + left.height >= right.y
 
-const shapeText = (shape: Element) => shape.localName === "g"
+const shapeText = (shape: Element) => shape.localName === "text" && shape.namespaceURI === SVG_NAMESPACE ? shape as SVGTextElement : shape.localName === "g"
   ? Array.from(shape.children).find(child => child.localName === "text") as SVGTextElement | undefined ?? null
   : null
 
 const shapeLabel = (shape: Element) => {
   const text = shapeText(shape)
   if(!text) return ""
-  const lines = Array.from(text.children).filter(child => child.localName === "tspan")
+  const lines = Array.from(text.children).filter(child => child.localName === "tspan" && child.hasAttribute("x") && child.hasAttribute("dy"))
   return lines.length ? lines.map(line => line.textContent ?? "").join("\n") : text.textContent ?? ""
 }
 
@@ -450,7 +452,7 @@ const syncShapeText = (shape: Element) => {
   const center = shapeCenter(shape)
   text.setAttribute("x", cleanNumber(center.x))
   text.setAttribute("y", cleanNumber(center.y))
-  const lines = Array.from(text.children).filter(child => child.localName === "tspan") as SVGTSpanElement[]
+  const lines = Array.from(text.children).filter(child => child.localName === "tspan" && child.hasAttribute("x") && child.hasAttribute("dy")) as SVGTSpanElement[]
   lines.forEach((line, index) => {
     line.setAttribute("x", cleanNumber(center.x))
     line.setAttribute("dy", index === 0 ? `${cleanNumber(-(lines.length - 1) * 0.6)}em` : "1.2em")
@@ -717,14 +719,25 @@ export class GraphicFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     pointerdown: event => this.#handlePointerDown(event),
     dblclick: event => this.#handleDoubleClick(event),
+    click: event => {
+      if(this.#labelEditor && event.target instanceof Node && shapeText(this.#labelEditor.shape)?.contains(event.target)) event.preventDefault()
+    },
     pointermove: event => this.#handlePointerMove(event),
-    pointerup: event => this.#finishPointer(event),
+    pointerup: event => {
+      if(this.#labelEditor && this.editor.features.mark.isSVGTextSelection) {
+        this.#labelEditor.element.focus({preventScroll: true})
+        this.editor.postMarkState()
+        this.#positionLabelEditor()
+      }
+      this.#finishPointer(event)
+    },
     pointercancel: event => this.#cancelPointer(event),
     wheel: event => this.#handleWheel(event),
     beforeinput: event => this.#blockCapturedEditingEvent(event),
     compositionstart: event => this.#blockCapturedEditingEvent(event),
     paste: event => this.#blockCapturedEditingEvent(event),
     keydown: event => {
+      if(this.#labelEditor && this.editor.features.mark.isSVGTextSelection) { this.#labelKeydown(event); return }
       if(event.key === "Escape" && this.#standaloneShape() && (this.#interaction || this.#labelEditor)) {
         this.#claimKeyboardEvent(event)
         this.#cancelPointer()
@@ -817,7 +830,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #blockCapturedEditingEvent(event: Event) {
-    if(!this.#capturedGraphic()) return
+    if(!this.#capturedGraphic() || this.editor.features.mark.isSVGTextSelection) return
     event.preventDefault()
     event.stopImmediatePropagation()
   }
@@ -829,6 +842,7 @@ export class GraphicFeature extends EditorFeature {
 
   passiveListeners: DocumentListenerMap = {
     selectionchange: () => {
+      if(this.#labelEditor) { this.rememberTextSelection(); this.#positionLabelEditor() }
       if(!this.#activeGraphic()) this.#clearShapeSelection()
       this.#syncCanvasPresentation()
       this.#scheduleRefresh()
@@ -891,7 +905,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #activeGraphic() {
-    return this.#capturedGraphic() ?? (this.#standaloneShape() ? $.selectedElement as SVGSVGElement : null)
+    return (this.#labelEditor?.shape.isConnected ? graphicContainerForNode(this.#labelEditor.shape) : null) ?? this.#capturedGraphic() ?? (this.#standaloneShape() ? $.selectedElement as SVGSVGElement : null)
   }
 
   #createGraphic() {
@@ -1028,106 +1042,270 @@ export class GraphicFeature extends EditorFeature {
   #handleDoubleClick(event: MouseEvent) {
     if(event.button !== 0 || !(event.target instanceof Node)) return
     const graphic = graphicContainerForNode(event.target)
-    const shape = graphicShapeForNode(event.target)
+    const element = event.target instanceof Element ? event.target : event.target.parentElement
+    const shape = graphicShapeForNode(event.target) ?? element?.closest<SVGTextElement>("text") ?? null
     const type = graphicShapeType(shape)
-    if(!graphic || !shape || this.#isLocked(shape) || !type || type === "line" || type === "connector") return
+    if(!graphic || !shape || this.#isLocked(shape) || !type && shape.localName !== "text" || type === "line" || type === "connector") return
     event.preventDefault()
     event.stopImmediatePropagation()
     if(standaloneGraphicShape(graphic)) this.editor.features.selection.selectElement(graphic)
     else if(this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
-    this.#selectShape(shape)
+    if(type) this.#selectShape(shape)
     this.#openLabelEditor(shape)
     this.#refresh()
     this.editor.postSelectionPath()
   }
 
   #openLabelEditor(shape: SVGGraphicsElement) {
-    if(this.#labelEditor?.shape === shape) {
-      this.#labelEditor.element.focus()
-      this.#labelEditor.element.select()
-      return
-    }
     this.#closeLabelEditor(true, false)
+    this.editor.doc.stopCapturing()
+    if(!shapeText(shape)) {
+      shape = this.#setLabel(shape, " ")
+      shapeText(shape)!.replaceChildren()
+      this.#setShapeSelection([shape], shape)
+    }
+    const text = shapeText(shape)!
+    // The SVG remains authoritative. This invisible input only collects native
+    // text/IME events; selection and formatting live in the authored text.
     const element = document.createElement("textarea")
-    const initial = shapeLabel(shape)
-    element.classList.add("◆", "◆editor-only", "◆graphic-label-editor")
-    element.setAttribute("part", "graphic-label-editor")
-    element.setAttribute("aria-label", "Shape label")
-    element.placeholder = "Type a label"
-    element.value = initial
-    element.spellcheck = true
-    const stop = (event: Event) => event.stopImmediatePropagation()
-    element.addEventListener("pointerdown", stop)
-    element.addEventListener("mousedown", stop)
-    element.addEventListener("click", stop)
-    element.addEventListener("dblclick", stop)
-    element.addEventListener("input", () => this.#positionLabelEditor())
-    element.addEventListener("keydown", event => {
-      event.stopImmediatePropagation()
-      if(event.key === "Escape") {
-        event.preventDefault()
-        this.#closeLabelEditor(false)
-      }
-      else if(event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault()
-        this.#closeLabelEditor(true)
-      }
-    })
-    element.addEventListener("blur", () => {
-      if(this.#labelEditor?.element === element) this.#closeLabelEditor(true)
-    })
+    element.classList.add("◆graphic-label-input")
+    element.setAttribute("aria-label", "Edit shape text")
+    element.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none"
+    const caret = document.createElement("div")
+    caret.setAttribute("part", "graphic-text-caret")
+    caret.style.cssText = "position:fixed;width:1px;background:currentColor;pointer-events:none"
     this.editor.addAppendix(element)
-    this.#labelEditor = {element, shape, initial}
+    this.editor.addAppendix(caret)
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    this.#labelEditor = {element, shape, caret, range, text}
+    text.classList.add("◆graphic-text-editing")
+    element.addEventListener("beforeinput", event => {
+      if(event.isComposing || event.inputType === "insertCompositionText") return
+      this.editor.features.mark.handleSVGTextInput(event)
+      this.rememberTextSelection()
+      element.focus({preventScroll: true})
+      this.#positionLabelEditor()
+    })
+    element.addEventListener("compositionend", event => {
+      if(event.data) this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {
+        inputType: "insertText", data: event.data, cancelable: true,
+      }))
+      element.value = ""
+      this.#positionLabelEditor()
+    })
+    element.addEventListener("input", event => { if(!(event as InputEvent).isComposing) element.value = "" })
+    for(const type of ["copy", "cut"] as const) element.addEventListener(type, event => {
+      const range = this.textEditingRange
+      if(!range || range.collapsed || !event.clipboardData) return
+      event.preventDefault()
+      event.clipboardData.setData("text/plain", range.toString())
+      if(type === "cut") {
+        this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {inputType: "deleteContentBackward", cancelable: true}))
+        this.rememberTextSelection()
+        this.focusTextInput()
+        this.#positionLabelEditor()
+      }
+    })
+    element.addEventListener("paste", event => {
+      const value = event.clipboardData?.getData("text/plain")
+      if(value) {
+        event.preventDefault()
+        this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {inputType: "insertFromPaste", data: value, cancelable: true}))
+        this.#positionLabelEditor()
+      }
+    })
+    element.addEventListener("keydown", event => this.#labelKeydown(event))
+    document.getSelection()!.setBaseAndExtent(text, 0, text, text.childNodes.length)
+    element.focus({preventScroll: true})
+    this.editor.postMarkState()
     this.#positionLabelEditor()
-    element.focus()
-    element.select()
   }
 
-  #closeLabelEditor(commit: boolean, refresh = true) {
+  get textEditingRange(): Range | null {
+    const editor = this.#labelEditor
+    const text = editor && shapeText(editor.shape)
+    if(!editor || text !== editor.text || !text?.isConnected) return null
+    const selection = document.getSelection()
+    if(selection?.rangeCount && text.contains(selection.anchorNode) && text.contains(selection.focusNode)) {
+      editor.range = selection.getRangeAt(0).cloneRange()
+    }
+    else if(selection?.anchorNode && selection.anchorNode !== document.documentElement
+      && (selection.anchorNode !== document.body || !this.isTextInputFocused)) return null
+    return text.contains(editor.range.startContainer) && text.contains(editor.range.endContainer) ? editor.range : null
+  }
+
+  get isTextInputFocused() {
+    return !!this.#labelEditor && this.editor.appendix.activeElement === this.#labelEditor.element
+  }
+
+  rememberTextSelection() { void this.textEditingRange }
+
+  #restoreTextSelection() {
+    const range = this.textEditingRange
+    if(!range) return false
+    const selection = document.getSelection()!
+    selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+    return true
+  }
+
+  focusTextInput() {
+    if(this.#labelEditor && this.textEditingRange) this.#labelEditor.element.focus({preventScroll: true})
+  }
+
+  #labelKeydown(event: KeyboardEvent) {
+    const editor = this.#labelEditor
+    const text = editor && shapeText(editor.shape)
+    if(!editor || !text || event.isComposing) return
+    event.stopImmediatePropagation()
+    if(event.key === "Escape" || event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault()
+      this.#closeLabelEditor(true)
+      return
+    }
+    this.#restoreTextSelection()
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !text.contains(selection.anchorNode) || !text.contains(selection.focusNode)) return
+    if(modifierKeyDown(event) && !event.altKey) {
+      const mark = ({b: "b", i: "i", u: "u", k: "a"} as const)[event.key.toLowerCase() as "b" | "i" | "u" | "k"]
+      if(mark) { event.preventDefault(); this.editor.features.mark.toggleMark(mark); this.focusTextInput(); return }
+      if(["z", "y"].includes(event.key.toLowerCase())) {
+        this.editor.features.history.activeListeners.keydown?.(event)
+      }
+      if(event.key.toLowerCase() === "a") {
+        event.preventDefault()
+        selection.setBaseAndExtent(text, 0, text, text.childNodes.length)
+      }
+      this.rememberTextSelection()
+      this.editor.postMarkState()
+      this.#positionLabelEditor()
+      this.focusTextInput()
+      return
+    }
+    if(["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      event.preventDefault()
+      const offset = textOffsetIn(text, selection.focusNode!, selection.focusOffset) ?? 0
+      const content = text.textContent ?? ""
+      let next = event.key === "Home" ? 0 : event.key === "End" ? content.length
+        : event.key === "ArrowLeft" ? offset - ([...content.slice(0, offset)].at(-1)?.length ?? 0)
+        : offset + ([...content.slice(offset)][0]?.length ?? 0)
+      if(!event.shiftKey && !selection.isCollapsed && event.key.startsWith("Arrow")) {
+        const range = selection.getRangeAt(0)
+        next = textOffsetIn(text, event.key === "ArrowLeft" ? range.startContainer : range.endContainer,
+          event.key === "ArrowLeft" ? range.startOffset : range.endOffset) ?? next
+      }
+      const point = textPointAtOffset(text, Math.max(0, Math.min(content.length, next)))
+      if(event.shiftKey) selection.extend(...point)
+      else selection.setBaseAndExtent(...point, ...point)
+    }
+    else if(event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault()
+      this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {inputType: event.key === "Backspace" ? "deleteContentBackward" : "deleteContentForward", cancelable: true}))
+    }
+    else if(event.key === "Enter") {
+      event.preventDefault()
+      text.style.whiteSpace = "pre"
+      this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {inputType: "insertText", data: "\n", cancelable: true}))
+    }
+    this.rememberTextSelection()
+    this.editor.postMarkState()
+    this.focusTextInput()
+    this.#positionLabelEditor()
+  }
+
+  #closeLabelEditor(_commit: boolean, refresh = true) {
     const editor = this.#labelEditor
     if(!editor) return
     this.#labelEditor = null
     editor.element.remove()
-    if(commit && editor.shape.isConnected && editor.element.value !== editor.initial) {
-      this.editor.doc.stopCapturing()
-      const next = this.#setLabel(editor.shape, editor.element.value)
-      this.#setShapeSelection([next], next)
-      this.editor.doc.stopCapturing()
+    editor.caret.remove()
+    removeEditorMarker(editor.text, "◆graphic-text-editing")
+    this.editor.doc.stopCapturing()
+    if(refresh) {
+      const graphic = graphicContainerForNode(editor.shape)
+      if(graphic) {
+        if(this.#capturedGraphic() === graphic) this.editor.features.selection.captureElement(graphic)
+        else this.editor.features.selection.selectElement(graphic)
+      }
+      this.#refresh()
+      this.editor.postMarkState()
       this.editor.postSelectionPath()
     }
-    if(refresh) this.#refresh()
   }
 
   #positionLabelEditor() {
     const editor = this.#labelEditor
-    const graphic = editor ? graphicContainerForNode(editor.shape) : null
-    if(!editor || !graphic || !editor.shape.isConnected) return
-    const matrix = this.#screenMatrix(graphic)
-    const bounds = shapeBounds(editor.shape)
-    const center = applyMatrix(matrix, shapeCenter(editor.shape))
-    const xScale = Math.max(0.0001, Math.hypot(matrix.a, matrix.b))
-    const yScale = Math.max(0.0001, Math.hypot(matrix.c, matrix.d))
+    if(!editor) return
     const text = shapeText(editor.shape)
-    const geometry = shapeGeometry(editor.shape)
-    const fontSize = Math.max(14, attributeNumber(text ?? geometry, "font-size", 48) * yScale)
-    const lineCount = Math.max(1, editor.element.value.replace(/\r\n?/g, "\n").split("\n").length)
-    const fill = geometry.getAttribute("fill")
-    Object.assign(editor.element.style, {
-      left: `${center.x}px`,
-      top: `${center.y}px`,
-      width: `${Math.max(100, bounds.width * xScale * 0.9)}px`,
-      height: `${Math.max(38, fontSize * lineCount * 1.25 + 10)}px`,
-      fontSize: `${fontSize}px`,
-      color: text?.getAttribute("fill") ?? "#0f172a",
-      backgroundColor: fill && fill !== "none" ? fill : "#ffffff",
-      transform: `translate(-50%, -50%) rotate(${cleanNumber(rotationOf(editor.shape))}deg)`,
-    })
+    if(!text?.isConnected) { this.#closeLabelEditor(true, false); return }
+    const range = this.textEditingRange
+    if(!range) { this.#closeLabelEditor(true, false); return }
+    editor.caret.hidden = !range
+    if(range && !range.collapsed) {
+      const rect = range.getBoundingClientRect()
+      editor.caret.style.cssText = `position:fixed;pointer-events:none;background:rgba(37,99,235,.25);left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+      return
+    }
+    editor.caret.style.width = "1px"
+    editor.caret.style.background = "currentColor"
+    if(!range) return
+    let rect = range.getBoundingClientRect()
+    if(!rect.height && !text.textContent) rect = this.#emptyTextCaretRect(text) ?? rect
+    const fallback = text.getBoundingClientRect()
+    const x = rect.height ? rect.left : fallback.left
+    const y = rect.height ? rect.top : fallback.top
+    const height = rect.height || fallback.height || 16
+    Object.assign(editor.caret.style, {left: `${x}px`, top: `${y}px`, height: `${height}px`})
+    Object.assign(editor.element.style, {left: `${x}px`, top: `${y}px`})
+  }
+
+  #emptyTextCaretRect(text: SVGTextElement): DOMRect | null {
+    const matrix = text.getScreenCTM?.()
+    if(!matrix) return null
+    // Empty SVG text has no layout box. Measure a collapsed range in an
+    // appendix-only copy, using the original font, baseline and screen transform.
+    const probe = document.createElementNS(SVG_NAMESPACE, "svg")
+    probe.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;overflow:visible;opacity:0;pointer-events:none"
+    probe.setAttribute("aria-hidden", "true")
+    const group = document.createElementNS(SVG_NAMESPACE, "g")
+    group.setAttribute("transform", `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`)
+    const sample = document.createElementNS(SVG_NAMESPACE, "text")
+    const computed = getComputedStyle(text)
+    for(const property of ["font-family", "font-size", "font-weight", "font-style", "font-stretch", "font-variant", "letter-spacing", "dominant-baseline", "alignment-baseline", "baseline-shift", "writing-mode", "direction"]) {
+      sample.style.setProperty(property, computed.getPropertyValue(property))
+    }
+    for(const name of ["x", "y", "dx", "dy"] as const) {
+      const lengths = text[name]?.baseVal
+      sample.setAttribute(name, String(lengths?.numberOfItems ? lengths.getItem(0).value : parseFloat(text.getAttribute(name) ?? "0")))
+    }
+    sample.style.textAnchor = "start"
+    sample.textContent = "M"
+    group.append(sample)
+    probe.append(group)
+    this.editor.addAppendix(probe)
+    try {
+      const range = document.createRange()
+      range.setStart(sample.firstChild!, 0)
+      range.collapse(true)
+      return range.getBoundingClientRect()
+    }
+    finally { probe.remove() }
   }
 
   #handlePointerDown(event: PointerEvent) {
+    if(this.#labelEditor && event.target instanceof Node) {
+      const text = shapeText(this.#labelEditor.shape)
+      if(text?.contains(event.target)) {
+        event.stopImmediatePropagation()
+        return
+      }
+      if(!event.composedPath().includes(this.editor.appendix)) this.#closeLabelEditor(true)
+    }
     const pointerGraphic = event.target instanceof Node ? graphicContainerForNode(event.target) : null
-    // Ordinary selection owns movement, resizing, rotation and document editing.
-    if(pointerGraphic && standaloneGraphicShape(pointerGraphic)) {
+    // The first click selects a standalone graphic as a document element.
+    // Further clicks enter its contents through the normal capture path below.
+    if(pointerGraphic && standaloneGraphicShape(pointerGraphic)
+      && $.selectedElement !== pointerGraphic && this.#capturedGraphic() !== pointerGraphic) {
       if(event.button === 0) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -2979,6 +3157,8 @@ export class GraphicFeature extends EditorFeature {
     if(lines.length === 1) text.textContent = lines[0]
     else text.replaceChildren(...lines.map(line => {
       const span = document.createElementNS(SVG_NAMESPACE, "tspan")
+      span.setAttribute("x", cleanNumber(shapeCenter(root).x))
+      span.setAttribute("dy", "1.2em")
       span.textContent = line
       return span
     }))

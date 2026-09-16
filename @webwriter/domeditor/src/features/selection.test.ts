@@ -60,6 +60,27 @@ describe("capture outline selection", () => {
     expect(document.body.querySelector(".◆capture-edge")).toBeNull()
   })
 
+  it.each(["p", "table", "img", "video", "input", "svg", "math"])("exits capture on every edge of a %s without forwarding the click", tag => {
+    const namespace = tag === "svg" ? "http://www.w3.org/2000/svg" : tag === "math" ? "http://www.w3.org/1998/Math/MathML" : "http://www.w3.org/1999/xhtml"
+    const element = document.createElementNS(namespace, tag)
+    if(tag === "math") { element.setAttribute("display", "block"); element.innerHTML = "<mi>x</mi>" }
+    if(tag === "svg") element.innerHTML = '<rect width="100" height="50"/>'
+    appendToBody(element)
+    for(const side of ["top", "right", "bottom", "left"]) {
+      feature.captureElement(element)
+      expect(feature.captureSelectedElement).toBe(element)
+      const edge = feature.selectionCaret!.querySelector(`[part~="selection-capture-edge-${side}"]`)!
+      const forwarded = vi.fn()
+      edge.addEventListener("pointerdown", forwarded, {once: true})
+      edge.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+      feature.processSelection()
+      expect(forwarded).not.toHaveBeenCalled()
+      expect(feature.captureSelectedElement).toBeNull()
+      expect($.selectedElement).toBe(element)
+    }
+  })
+
   it("ignores an outline whose captured element was removed", () => {
     const widget = el("interactive-widget")
     feature.captureElement(widget)
@@ -2344,15 +2365,16 @@ describe("selection invariants", () => {
     expect($.anchorOffset).toBe(2)
   })
 
-  it("repairs an external selection inside SVG without changing its contents", () => {
+  it("preserves a text selection inside SVG without changing its contents", () => {
     document.body.innerHTML = '<p>hello</p><svg><svg><text>label</text></svg></svg>'
     const graphic = document.querySelector("svg")!
     const text = graphic.querySelector("text")!.firstChild!
     $.selectRange(text, 2)
     feature.processSelection()
-    expect($.selectedElement).toBe(graphic)
+    expect($.selectedElement).toBeUndefined()
     expect(graphic.textContent).toBe("label")
-    expect($.anchor).toBe(document.body)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
   })
 
   it("restores a gap after extending into text and back to its original position", () => {

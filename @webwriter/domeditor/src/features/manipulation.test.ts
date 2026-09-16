@@ -2161,7 +2161,7 @@ describe("unified content transfer", () => {
     expect(paragraph.querySelector("img")).toBeNull()
   })
 
-  it.each(["webwriter-map", "webwriter-code-javascript"])("capture-selects %s when its node drag surface is clicked", tag => {
+  it.each(["webwriter-map", "webwriter-code-javascript", "svg"])("capture-selects %s when its node drag surface is clicked", tag => {
     document.body.innerHTML = `<${tag}></${tag}><p>end</p>`
     const widget = document.body.firstElementChild!
     $.selectElement(widget)
@@ -2181,8 +2181,8 @@ describe("unified content transfer", () => {
     expect(editor.features.selection.isInDragSelection).toBe(false)
   })
 
-  it("does not capture a widget from a stale node drag surface", () => {
-    document.body.innerHTML = '<test-widget></test-widget><p>end</p>'
+  it.each(["test-widget", "svg"])("does not capture %s from a stale node drag surface", tag => {
+    document.body.innerHTML = `<${tag}></${tag}><p>end</p>`
     const widget = document.body.firstElementChild!
     $.selectElement(widget)
     editor.features.selection.processSelection()
@@ -2195,8 +2195,8 @@ describe("unified content transfer", () => {
     expect(editor.features.selection.isCaptureSelection).toBe(false)
   })
 
-  it.each(["pointercancel", "dragstart"])("does not capture a widget after %s on its drag surface", type => {
-    document.body.innerHTML = '<test-widget></test-widget><p>end</p>'
+  it.each(["test-widget", "svg"].flatMap(tag => ["pointercancel", "dragstart"].map(type => ({tag, type}))))("does not capture $tag after $type on its drag surface", ({tag, type}) => {
+    document.body.innerHTML = `<${tag}></${tag}><p>end</p>`
     $.selectElement(document.body.firstElementChild!)
     editor.features.selection.processSelection()
     const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!

@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SVG text editing</title></head>
+<body><svg width="600" height="300" viewBox="0 0 600 300"><g><rect x="100" y="80" width="400" height="140" fill="#e2e8f0"/><text x="300" y="150" text-anchor="middle" font-size="36" fill="#0f172a">Edit this label</text></g></svg>
+<svg aria-label="Empty graphic" width="300" height="300" viewBox="0 0 600 600"><g transform="translate(40 20)"><rect aria-label="Empty shape" x="100" y="80" width="400" height="140" fill="#e2e8f0"/></g></svg>
+<script type="module">
+import {DOMEditor} from '../src/domeditor.ts'
+import {markStateChangeEvent} from '../src/editor-bridge.ts'
+const editor = new DOMEditor()
+const controls = document.createElement('div')
+controls.contentEditable = 'false'
+controls.style.cssText = 'position:fixed;left:10px;top:320px;display:flex;gap:8px'
+for(const [label, action] of [['Bold', () => editor.features.mark.toggleMark('b')], ['Italic', () => editor.features.mark.toggleMark('i')], ['Underline', () => editor.features.mark.toggleMark('u')], ['Link', () => {editor.features.mark.toggleMark('a'); editor.features.mark.setMarkAttribute('a', 'href', 'https://example.com')}], ['Clear', () => editor.features.mark.removeMarks()]]) {
+  const button = document.createElement('button')
+  button.textContent = label
+  button.addEventListener('pointerdown', event => event.preventDefault())
+  button.addEventListener('click', action)
+  window.addEventListener(markStateChangeEvent, event => {
+    const mark = {Bold: 'b', Italic: 'i', Underline: 'u', Link: 'a'}[label]
+    if(mark) button.setAttribute('aria-pressed', String(event.detail.marks.includes(mark)))
+  })
+  controls.append(button)
+}
+editor.addAppendix(controls)
+</script></body></html>

@@ -1,6 +1,7 @@
 import {authoredLayoutKind, canPlaceLayouts, canBecomeLayout} from "../layouts"
 import {mediaElementSelector} from "../media"
 import {MATH_NAMESPACE} from "../math"
+import {SVG_NAMESPACE} from "../graphic"
 import {isSlide} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, isColumnGroup, columnSide, columnSides, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
@@ -102,12 +103,13 @@ export class ManipulationFeature extends EditorFeature {
     surface.draggable = true
     let captureOnClick = false
     surface.addEventListener("pointerdown", event => {
-      captureOnClick = event.button === 0 && element === $.selectedElement && Boolean(this.insertedWidget(element))
+      captureOnClick = event.button === 0 && element === $.selectedElement
+        && (Boolean(this.insertedWidget(element)) || element.namespaceURI === SVG_NAMESPACE && element.localName === "svg")
     })
     surface.addEventListener("click", event => {
       // The native mouse default can collapse the outer range before click.
       // Keep native dragging available and promote only a press on this live
-      // widget surface that ended as a click rather than a drag.
+      // widget or graphic surface that ended as a click rather than a drag.
       if(!captureOnClick || event.button !== 0 || this.nodeDrag || this.dragSurface !== surface
         || !getDocumentRoot().contains(element)) return
       captureOnClick = false
@@ -1628,7 +1630,7 @@ export class ManipulationFeature extends EditorFeature {
     "dragleave": event => this.dragLeave(event),
     "drop": event => this.drop(event),
     "beforeinput": ev => {
-      if(ev.defaultPrevented) return
+      if(ev.defaultPrevented || this.editor.features.mark.isSVGTextSelection) return
       if(["insertFromPaste", "insertFromDrop"].includes(ev.inputType)) {
         ev.preventDefault()
         const fragment = this.#dataTransferToFragment(ev.dataTransfer)

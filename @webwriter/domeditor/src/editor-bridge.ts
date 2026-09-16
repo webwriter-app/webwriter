@@ -288,6 +288,7 @@ export type SelectionChangeMessage = {
 }
 
 export type MarkStateChangeDetail = {
+  svgText?: boolean
   /** True while the live DOM selection is a markable text range or caret. */
   canMark: boolean
   /** Canonical marks found in the range or effective for the caret. */
@@ -665,7 +666,7 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     && typeof message.detail.canMark === "boolean"
     && Array.isArray(message.detail.marks)
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
-  if(!validBase) return false
+  if(!validBase || message.detail!.svgText !== undefined && typeof message.detail!.svgText !== "boolean") return false
   const styles = message.detail!.styles
   if(styles !== undefined && (!styles || typeof styles !== "object" || Array.isArray(styles) || !Object.entries(styles).every(([property, styleValue]) =>
     isStyleMarkName(property) && typeof styleValue === "string",

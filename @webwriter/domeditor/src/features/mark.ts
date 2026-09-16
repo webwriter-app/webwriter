@@ -20,11 +20,13 @@ import {
   type StyleMarkValues,
 } from "../marks"
 import {$, cloneWithoutEditorMarkers, modifierKeyDown, textOffsetIn, textPointAtOffset} from "../utility"
+import {SVG_NAMESPACE} from "../graphic"
 import {isSectionElement} from "../sections"
 
 export type MarkState = {
   /** Whether the current selection is a markable text range or caret. */
   canMark: boolean
+  svgText?: boolean
   /** Marks found in the range, or effective for the next input at a caret. */
   marks: MarkName[]
 }
@@ -58,10 +60,344 @@ type StoredSelection = {
   focusOffset: number
 }
 
+const svgStyleNames = ["font-weight", "font-style", "text-decoration-line", "font-family", "font-size", "fill", "background-color"]
+
 const markerAttribute = "data-domeditor-mark-boundary"
 
 /** Inline formatting derived from the live DOM, with transient caret marks for typing. */
 export class MarkFeature extends EditorFeature {
+  protected handlesCapturedElementInteractions = true
+  /** SVG text uses its own inline vocabulary, while sharing mark commands and caret storage. */
+  private svgTextRoot(node: Node | null): Element | null {
+    let element = node instanceof Element ? node : node?.parentElement
+    let root: Element | null = null
+    while(element) {
+      if(element.localName.includes("-") || element.hasAttribute("is") || element.getAttribute("contenteditable") === "false") return null
+      if(!root) {
+        if(element.namespaceURI !== SVG_NAMESPACE || !["text", "tspan", "textPath", "a"].includes(element.localName)) return null
+        if(element.localName === "text") root = element
+      }
+      element = element.parentElement
+    }
+    return root?.isConnected ? root : null
+  }
+
+  get isSVGTextSelection() {
+    const selection = document.getSelection()
+    const range = this.editor.features.graphic.textEditingRange
+    const root = this.svgTextRoot(range?.startContainer ?? selection?.anchorNode ?? null)
+    return !!root && root === this.svgTextRoot(range?.endContainer ?? selection?.focusNode ?? null)
+  }
+
+  private svgContext(): MarkSelection | null {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !this.isSVGTextSelection) return null
+    const range = (this.editor.features.graphic.textEditingRange ?? selection.getRangeAt(0)).cloneRange()
+    const block = this.svgTextRoot(range.startContainer)!
+    const start = this.textOffset(block, range.startContainer, range.startOffset)
+    const end = this.textOffset(block, range.endContainer, range.endOffset)
+    if(start === null || end === null) return null
+    if(Array.from(block.querySelectorAll("*")).some(element => range.intersectsNode(element) && !this.svgTextRoot(element))) return null
+    const text = this.selectedText(range, block).filter(({node}) => this.svgTextRoot(node) === block)
+    return {selection, range, block, start, end, backwards: this.isBackwards(selection), text}
+  }
+
+  private svgStyle(element: Element) {
+    const style = document.createElement("span").style
+    style.cssText = element.getAttribute("style") ?? ""
+    return style
+  }
+
+  private writeSVGStyle(element: Element, property: string, value: string) {
+    const style = this.svgStyle(element)
+    if(value) style.setProperty(property, value)
+    else style.removeProperty(property)
+    if(style.cssText) element.setAttribute("style", style.cssText)
+    else element.removeAttribute("style")
+  }
+
+  private svgProperty(element: Element, property: string) {
+    const style = this.svgStyle(element)
+    let value = style.getPropertyValue(property) || element.getAttribute(property) || ""
+    if(property === "text-decoration-line" && !value) {
+      value = (style.getPropertyValue("text-decoration") || element.getAttribute("text-decoration") || "")
+        .split(/\s+/).filter(part => ["underline", "line-through", "overline", "none"].includes(part)).join(" ")
+    }
+    if(property === "font-size" && /^\d+(?:\.\d+)?$/.test(value)) value += "px"
+    return value
+  }
+
+  private svgValues(node: Node) {
+    const values: Record<string, string> = {}
+    let link: Element | null = null
+    for(let element = node instanceof Element ? node : node.parentElement; element?.namespaceURI === SVG_NAMESPACE; element = element.parentElement) {
+      for(const property of svgStyleNames) {
+        const value = this.svgProperty(element, property)
+        if(value && !(property in values)) values[property] = value
+      }
+      if(!link && element.localName === "a") link = element
+    }
+    const marks = new Set<MarkName>()
+    if(values["font-weight"] === "bold" || Number.parseFloat(values["font-weight"]) >= 600) marks.add("b")
+    if(/^(italic|oblique)/.test(values["font-style"] ?? "")) marks.add("i")
+    for(const [mark, line] of [["u", "underline"], ["s", "line-through"]] as const) {
+      if(values["text-decoration-line"]?.split(/\s+/).includes(line)) marks.add(mark)
+    }
+    if(link) marks.add("a")
+    const styles = Object.fromEntries(styleMarkNames.flatMap(property => {
+      const value = values[property === "color" ? "fill" : property]
+      return value ? [[property, value]] : []
+    })) as StyleMarkValues
+    const attributes: MarkAttributeValues = link ? {a: Object.fromEntries(markAttributeOptionsFor("a").map(({name}) => [name, link!.getAttribute(name) ?? (name === "href" ? link!.getAttributeNS("http://www.w3.org/1999/xlink", "href") : null) ?? ""]))} : {}
+    return {marks, styles, attributes, link, values}
+  }
+
+  private svgState(context: MarkSelection) {
+    this.clearStoredMarksIfSelectionChanged()
+    const samples = context.range.collapsed ? [this.svgValues(context.range.startContainer)] : context.text.map(({node}) => this.svgValues(node))
+    const first = samples[0]
+    const marks = context.range.collapsed && this.storedMarks !== null ? [...this.storedMarks]
+      : markNames.filter(mark => samples.length && samples.every(sample => sample.marks.has(mark)))
+    const styles = context.range.collapsed && this.storedStyles !== null ? {...this.storedStyles}
+      : Object.fromEntries(styleMarkNames.flatMap(property => first?.styles[property] && samples.every(sample => sample.styles[property] === first.styles[property]) ? [[property, first.styles[property]]] : []))
+    const attributes = context.range.collapsed && this.storedAttributes !== null ? this.cloneAttributeValues(this.storedAttributes)
+      : marks.includes("a") ? {a: Object.fromEntries(markAttributeOptionsFor("a").map(({name}) => [name, first?.attributes.a?.[name] && samples.every(sample => sample.attributes.a?.[name] === first.attributes.a?.[name]) ? first.attributes.a[name] : ""]))} : {}
+    return {canMark: true, svgText: true, marks, styles, attributes}
+  }
+
+  /** Move a property's declaration down one level without splitting positioned elements. */
+  private pushSVGStyle(element: Element, property: string) {
+    const value = this.svgProperty(element, property)
+    if(!value) return
+    for(const child of Array.from(element.childNodes)) {
+      let target: Element
+      if(child instanceof Text) {
+        if(!child.length) continue
+        target = document.createElementNS(SVG_NAMESPACE, "tspan")
+        child.before(target)
+        target.append(child)
+      }
+      else if(child instanceof Element && this.svgTextRoot(child)) target = child
+      else continue
+      if(!this.svgProperty(target, property)) this.writeSVGStyle(target, property, value)
+    }
+    this.writeSVGStyle(element, property, "")
+    element.removeAttribute(property)
+    if(property === "text-decoration-line") element.removeAttribute("text-decoration")
+  }
+
+  private stripSVGStyles(node: Text, root: Element, properties: string[]) {
+    for(const property of properties) {
+      let parent = node.parentElement
+      const ancestors: Element[] = []
+      while(parent && root.contains(parent)) { ancestors.unshift(parent); parent = parent.parentElement }
+      for(const ancestor of ancestors) this.pushSVGStyle(ancestor, property)
+      // Pushing a text parent's declaration creates a final run wrapper.
+      const wrapper = node.parentElement!
+      this.writeSVGStyle(wrapper, property, "")
+      wrapper.removeAttribute(property)
+      if(property === "text-decoration-line") wrapper.removeAttribute("text-decoration")
+    }
+  }
+
+  /** Distribute an SVG link across its text runs, keeping positioned descendants intact. */
+  private isolateSVGLink(node: Text) {
+    const link = this.svgValues(node).link
+    if(!link || !this.svgTextRoot(link)) return null
+    if(link.childNodes.length === 1 && link.firstChild === node) return link
+    const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT)
+    const texts: Text[] = []
+    while(walker.nextNode()) if(this.svgTextRoot(walker.currentNode)) texts.push(walker.currentNode as Text)
+    const attributes = markAttributeOptionsFor("a").map(({name}) => name)
+    const shell = document.createElementNS(SVG_NAMESPACE, "tspan")
+    for(const attribute of Array.from(link.attributes)) if(!attributes.includes(attribute.name) && attribute.name !== "xlink:href") shell.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+    shell.append(...Array.from(link.childNodes))
+    link.replaceWith(shell)
+    for(const text of texts) {
+      const wrapper = document.createElementNS(SVG_NAMESPACE, "a")
+      for(const name of attributes) if(link.hasAttribute(name)) wrapper.setAttribute(name, link.getAttribute(name)!)
+      const href = link.getAttributeNS("http://www.w3.org/1999/xlink", "href")
+      if(href && !wrapper.hasAttribute("href")) wrapper.setAttribute("href", href)
+      text.before(wrapper)
+      wrapper.append(text)
+    }
+    return node.parentElement!
+  }
+
+  private editSVG(context: MarkSelection, styles: Record<string, string>, link?: Record<string, string> | null) {
+    if(context.range.collapsed) return false
+    for(const slice of [...context.text].reverse()) {
+      let node = slice.node
+      const current = this.svgValues(node).values
+      const changes = Object.fromEntries(Object.entries(styles).filter(([property, value]) => (current[property] ?? "") !== value))
+      if(!Object.keys(changes).length && link === undefined) continue
+      if(slice.end < node.length) node.splitText(slice.end)
+      if(slice.start) node = node.splitText(slice.start)
+      this.stripSVGStyles(node, context.block, Object.keys(changes))
+      if(link !== undefined) {
+        const previous = this.isolateSVGLink(node)
+        if(previous) {
+          for(const {name} of markAttributeOptionsFor("a")) previous.removeAttribute(name)
+          previous.removeAttributeNS("http://www.w3.org/1999/xlink", "href")
+          const replacement = document.createElementNS(SVG_NAMESPACE, "tspan")
+          for(const attribute of Array.from(previous.attributes)) replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          replacement.append(...Array.from(previous.childNodes))
+          previous.replaceWith(replacement)
+        }
+      }
+      if(Object.values(changes).some(Boolean)) {
+        const span = document.createElementNS(SVG_NAMESPACE, "tspan")
+        for(const [property, value] of Object.entries(changes)) if(value) this.writeSVGStyle(span, property, value)
+        node.before(span)
+        span.append(node)
+      }
+      if(link) {
+        const anchor = document.createElementNS(SVG_NAMESPACE, "a")
+        for(const [name, value] of Object.entries(link)) if(value) anchor.setAttribute(name, value)
+        node.before(anchor)
+        anchor.append(node)
+      }
+    }
+    for(const element of Array.from(context.block.querySelectorAll("tspan")).reverse()) {
+      if(Array.from(element.attributes).every(attribute => attribute.name === "class" && attribute.value.split(/\s+/).every(name => name.startsWith("◆")))) element.replaceWith(...Array.from(element.childNodes))
+    }
+    this.restoreSelection(context)
+    this.editor.postMarkState()
+    return context.text.length > 0
+  }
+
+  private setSVGMark(context: MarkSelection, mark: MarkName, enabled?: boolean) {
+    if(!["b", "i", "u", "s", "a"].includes(mark)) return false
+    const state = this.svgState(context)
+    const next = enabled ?? !state.marks.includes(mark)
+    if(context.range.collapsed) {
+      const marks = new Set(state.marks)
+      if(next) marks.add(mark)
+      else marks.delete(mark)
+      this.storeMarks(marks, context.selection)
+      if(mark === "a" && !next) this.storeAttributes({}, context.selection)
+      this.editor.postMarkState()
+      return true
+    }
+    if(mark === "a") return this.editSVG(context, {}, next ? state.attributes.a ?? {} : null)
+    const property = mark === "b" ? "font-weight" : mark === "i" ? "font-style" : "text-decoration-line"
+    if(mark === "b" || mark === "i") return this.editSVG(context, {[property]: next ? mark === "b" ? "bold" : "italic" : "normal"})
+    // Keep each run's other decoration when toggling a mixed selection.
+    for(const slice of [...context.text].reverse()) {
+      const marks = this.svgValues(slice.node).marks
+      if(next) marks.add(mark)
+      else marks.delete(mark)
+      this.editSVG({...context, text: [slice]}, {[property]: [marks.has("u") ? "underline" : "", marks.has("s") ? "line-through" : ""].filter(Boolean).join(" ") || "none"})
+    }
+    return context.text.length > 0
+  }
+
+  private selectedSVGTextRoots() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || selection.isCollapsed) return []
+    const range = selection.getRangeAt(0)
+    return Array.from(document.body.querySelectorAll("svg text")).filter(element => this.svgTextRoot(element) === element && range.intersectsNode(element))
+  }
+
+  private clearSelectedSVGText(roots: Element[]) {
+    const selection = document.getSelection()!
+    const original = selection.getRangeAt(0).cloneRange()
+    const backwards = this.isBackwards(selection)
+    let changed = false
+    try {
+      for(const root of roots) {
+        const range = document.createRange()
+        range.selectNodeContents(root)
+        if(original.compareBoundaryPoints(Range.START_TO_START, range) > 0) range.setStart(original.startContainer, original.startOffset)
+        if(original.compareBoundaryPoints(Range.END_TO_END, range) < 0) range.setEnd(original.endContainer, original.endOffset)
+        if(range.collapsed) continue
+        selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+        const context = this.svgContext()
+        if(context) changed = this.clearSVG(context) || changed
+      }
+    }
+    finally {
+      selection.setBaseAndExtent(backwards ? original.endContainer : original.startContainer, backwards ? original.endOffset : original.startOffset,
+        backwards ? original.startContainer : original.endContainer, backwards ? original.startOffset : original.endOffset)
+    }
+    return changed
+  }
+
+  private clearSVG(context: MarkSelection) {
+    if(context.range.collapsed) {
+      this.storeMarks(new Set(), context.selection)
+      this.storeStyles({}, context.selection)
+      this.storeAttributes({}, context.selection)
+      this.editor.postMarkState()
+      return true
+    }
+    return this.editSVG(context, Object.fromEntries(svgStyleNames.map(property => [property, ""])), null)
+  }
+
+  handleSVGTextInput(event: InputEvent) {
+    const context = this.svgContext()
+    if(context) this.handleSVGInput(event, context)
+  }
+
+  private handleSVGInput(event: InputEvent, context: MarkSelection) {
+    if(event.defaultPrevented) return
+    if(["deleteContentBackward", "deleteContentForward"].includes(event.inputType)) {
+      event.preventDefault()
+      const {range, block} = context
+      if(range.collapsed) {
+        const offset = context.start
+        const backwards = event.inputType === "deleteContentBackward"
+        const content = block.textContent ?? ""
+        const length = backwards ? [...content.slice(0, offset)].at(-1)?.length ?? 0 : [...content.slice(offset)][0]?.length ?? 0
+        range.setStart(...this.textPoint(block, backwards ? offset - length : offset))
+        range.setEnd(...this.textPoint(block, backwards ? offset : offset + length))
+      }
+      range.deleteContents()
+      context.selection.removeAllRanges()
+      context.selection.addRange(range)
+      this.clearStoredMarks()
+      this.editor.postMarkState()
+      return
+    }
+    if(!["insertText", "insertReplacementText", "insertFromPaste"].includes(event.inputType) || !event.data) return
+    const state = this.svgState(context)
+    event.preventDefault()
+    const current = this.svgValues(context.range.startContainer)
+    if(context.range.collapsed && context.range.startContainer instanceof Text
+      && markNames.every(mark => state.marks.includes(mark) === current.marks.has(mark))
+      && styleMarkNames.every(property => state.styles[property] === current.styles[property])
+      && markAttributeOptionsFor("a").every(({name}) => (state.attributes.a?.[name] ?? "") === (current.attributes.a?.[name] ?? ""))) {
+      const node = context.range.startContainer
+      const offset = context.range.startOffset + event.data.length
+      node.insertData(context.range.startOffset, event.data)
+      context.selection.setBaseAndExtent(node, offset, node, offset)
+      this.storeMarks(new Set(state.marks), context.selection)
+      this.storeStyles(state.styles, context.selection)
+      this.storeAttributes(state.attributes, context.selection)
+      context.block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: event.inputType, data: event.data}))
+      this.editor.postMarkState()
+      return
+    }
+    context.range.deleteContents()
+    const text = document.createTextNode(event.data)
+    context.range.insertNode(text)
+    context.selection.setBaseAndExtent(text, 0, text, text.length)
+    const inserted = this.svgContext()!
+    const styles: Record<string, string> = {
+      "font-weight": state.marks.includes("b") ? "bold" : "normal",
+      "font-style": state.marks.includes("i") ? "italic" : "normal",
+      "text-decoration-line": [state.marks.includes("u") ? "underline" : "", state.marks.includes("s") ? "line-through" : ""].filter(Boolean).join(" ") || "none",
+      ...Object.fromEntries(styleMarkNames.map(property => [property === "color" ? "fill" : property, state.styles[property] ?? ""])),
+    }
+    this.editSVG(inserted, styles, state.marks.includes("a") ? state.attributes.a ?? {} : null)
+    context.selection.collapseToEnd()
+    this.storeMarks(new Set(state.marks), context.selection)
+    this.storeStyles(state.styles, context.selection)
+    this.storeAttributes(state.attributes, context.selection)
+    context.block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: event.inputType, data: event.data}))
+    this.editor.postMarkState()
+  }
+
   private observer: MutationObserver | null = null
   private stateRefreshQueued = false
   /** `null` inherits the live DOM marks; a Set is an explicit typing state. */
@@ -123,7 +459,7 @@ export class MarkFeature extends EditorFeature {
     try {
       observer.observe(document.body, {
         attributes: true,
-        attributeFilter: ["style", ...markAttributeNames],
+        attributeFilter: ["style", ...markAttributeNames, ...svgStyleNames],
         childList: true,
         characterData: true,
         subtree: true,
@@ -146,6 +482,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
+    const svg = this.svgContext()
+    if(svg) return this.svgState(svg)
     if(this.editor.features.math.activeMath) {
       const {canMark, marks} = this.editor.features.math.getFormatting()
       return {canMark, marks}
@@ -158,7 +496,7 @@ export class MarkFeature extends EditorFeature {
     }
 
     const context = this.getSelection()
-    if(!context) return {canMark: this.editor.features.math.selectedFormulas.length > 0, marks: []}
+    if(!context) return {canMark: this.editor.features.math.selectedFormulas.length > 0 || this.selectedSVGTextRoots().length > 0, marks: []}
 
     const marks = new Set<MarkName>()
     for(const {node} of context.text) {
@@ -169,6 +507,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Inline span style values shared by the entire selection, or effective at a caret. */
   getStyleState(): StyleMarkValues {
+    const svg = this.svgContext()
+    if(svg) return this.svgState(svg).styles
     if(this.editor.features.math.activeMath) {
       const {styles} = this.editor.features.math.getFormatting()
       return Object.fromEntries(styleMarkNames.flatMap(property => styles[property] ? [[property, styles[property]]] : []))
@@ -189,6 +529,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Element-specific attribute values shared by the selected runs. */
   getAttributeState(): MarkAttributeValues {
+    const svg = this.svgContext()
+    if(svg) return this.svgState(svg).attributes
     this.clearStoredMarksIfSelectionChanged()
     const caret = this.getCaret()
     if(caret) {
@@ -394,6 +736,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   addMark(mark: MarkName): boolean {
+    const svg = this.svgContext()
+    if(svg) return this.setSVGMark(svg, mark, true)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, true)
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.addMark(mark))
     this.assertMark(mark)
@@ -423,6 +767,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   removeMark(mark: MarkName): boolean {
+    const svg = this.svgContext()
+    if(svg) return this.setSVGMark(svg, mark, false)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, false)
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.removeMark(mark))
     this.assertMark(mark)
@@ -434,6 +780,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   toggleMark(mark: MarkName) {
+    const svg = this.svgContext()
+    if(svg) return this.setSVGMark(svg, mark)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
     this.assertMark(mark)
     if(mark === "ruby") return this.selectedRuby() ? this.removeRuby() : this.createRuby("", false)
@@ -449,6 +797,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Toggles all exact tag variants represented by one merged drawer control. */
   toggleMarkGroup(mark: MarkName) {
+    const svg = this.svgContext()
+    if(svg) return this.setSVGMark(svg, mark)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
     this.assertMark(mark)
     const group = mergedMarkGroupFor(mark)
@@ -474,6 +824,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Sets all exact mark tags represented by one drawer group. */
   setMarkGroup(primary: MarkName, marks: MarkName[]) {
+    const svg = this.svgContext()
+    if(svg) return this.setSVGMark(svg, primary, marks.length > 0)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(primary, marks.length > 0)
     this.assertMark(primary)
     const group = mergedMarkGroupFor(primary)
@@ -510,6 +862,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Replaces a merged mark's exact HTML tag while preserving the selected text. */
   setMarkType(primary: MarkName, mark: MarkName) {
+    const svg = this.svgContext()
+    if(svg) return this.setSVGMark(svg, primary, true)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(primary, true)
     this.assertMark(primary)
     this.assertMark(mark)
@@ -541,6 +895,23 @@ export class MarkFeature extends EditorFeature {
 
   /** Sets or removes one supported element-specific attribute on active mark wrappers. */
   setMarkAttribute(mark: MarkName, attribute: string, value: string): boolean {
+    const svg = this.svgContext()
+    if(svg) {
+      if(mark !== "a" || !isMarkAttributeName(mark, attribute)) return false
+      const state = this.svgState(svg)
+      if(!state.marks.includes("a")) return false
+      const attributes = {...state.attributes.a, [attribute]: value}
+      if(svg.range.collapsed) {
+        this.storeAttributes({a: attributes}, svg.selection)
+        this.editor.postMarkState()
+        return true
+      }
+      for(const slice of [...svg.text].reverse()) {
+        const current = this.svgValues(slice.node).attributes.a ?? {}
+        this.editSVG({...svg, text: [slice]}, {}, {...current, [attribute]: value})
+      }
+      return svg.text.length > 0
+    }
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setMarkAttribute(mark, attribute, value))
     this.assertMark(mark)
     if(!isMarkAttributeName(mark, attribute)) {
@@ -590,6 +961,18 @@ export class MarkFeature extends EditorFeature {
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setStyleMark(property, value))
     this.assertStyleMark(property)
     const normalizedValue = this.normalizeStyleValue(property, value)
+    const svg = this.svgContext()
+    if(svg) {
+      if(svg.range.collapsed) {
+        const styles = {...this.svgState(svg).styles}
+        if(normalizedValue) styles[property] = normalizedValue
+        else delete styles[property]
+        this.storeStyles(styles, svg.selection)
+        this.editor.postMarkState()
+        return true
+      }
+      return this.editSVG(svg, {[property === "color" ? "fill" : property]: normalizedValue})
+    }
     if(this.editor.features.math.activeMath) return this.editor.features.math.setFormatting(property, normalizedValue)
     const caret = this.getCaret()
     if(caret) return this.setStoredStyle(property, normalizedValue, caret)
@@ -651,8 +1034,14 @@ export class MarkFeature extends EditorFeature {
 
   /** Removes every supported mark (including strong/em aliases) in one pass. */
   removeMarks() {
-    const formulas = this.editor.features.math.selectedFormulas
-    const removedMath = this.editor.features.math.clearFormatting()
+    const svg = this.svgContext()
+    if(svg) return this.clearSVG(svg)
+    const svgRoots = this.selectedSVGTextRoots()
+    const removedSVG = svgRoots.length ? this.clearSelectedSVGText(svgRoots) : false
+    const graphics = svgRoots.map(root => root.closest("svg")!).filter((root, index, all) => all.indexOf(root) === index && !all.some(parent => parent !== root && parent.contains(root)))
+    const formulas = [...this.editor.features.math.selectedFormulas, ...graphics]
+      .sort((first, second) => first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)
+    const removedMath = this.editor.features.math.clearFormatting() || removedSVG
     if(this.editor.features.math.activeMath) return removedMath
     if(formulas.length) {
       const selection = document.getSelection()!
@@ -770,6 +1159,11 @@ export class MarkFeature extends EditorFeature {
 
   private storeSelection(selection: Selection) {
     if(!selection.anchorNode || !selection.focusNode) return
+    const range = this.editor.features.graphic.textEditingRange
+    if(range) {
+      this.storedSelection = {anchorNode: range.startContainer, anchorOffset: range.startOffset, focusNode: range.endContainer, focusOffset: range.endOffset}
+      return
+    }
     this.storedSelection = {
       anchorNode: selection.anchorNode,
       anchorOffset: selection.anchorOffset,
@@ -787,6 +1181,9 @@ export class MarkFeature extends EditorFeature {
 
   private clearStoredMarksIfSelectionChanged() {
     if(!this.storedSelection) return
+    const range = this.editor.features.graphic.textEditingRange
+    if(range && range.startContainer === this.storedSelection.anchorNode && range.startOffset === this.storedSelection.anchorOffset
+      && range.endContainer === this.storedSelection.focusNode && range.endOffset === this.storedSelection.focusOffset) return
     const selection = document.getSelection()
     if(selection?.anchorNode === this.storedSelection.anchorNode
       && selection.anchorOffset === this.storedSelection.anchorOffset
@@ -797,6 +1194,9 @@ export class MarkFeature extends EditorFeature {
 
   /** Applies the explicit collapsed-caret mark set to the next typed text. */
   private handleBeforeInput(event: InputEvent) {
+    const svg = this.svgContext()
+    if(svg) return this.handleSVGInput(event, svg)
+    if(this.editor.features.selection.isCaptureSelection) return
     this.clearStoredMarksIfSelectionChanged()
     if(event.defaultPrevented
       || this.storedMarks === null && this.storedStyles === null && this.storedAttributes === null
@@ -1344,7 +1744,7 @@ export class MarkFeature extends EditorFeature {
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
     while(walker.nextNode()) {
       const node = walker.currentNode as Text
-      if(!$.includesNode(node) || !range.intersectsNode(node)) continue
+      if(block.namespaceURI !== SVG_NAMESPACE && !$.includesNode(node) || !range.intersectsNode(node)) continue
 
       const startRelation = range.comparePoint(node, 0)
       const endRelation = range.comparePoint(node, node.length)
@@ -1381,7 +1781,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private handleShortcut(event: KeyboardEvent) {
-    if(event.defaultPrevented) return
+    if(event.defaultPrevented || this.editor.features.selection.isCaptureSelection && !this.isSVGTextSelection) return
     // Option can transform event.key into a symbol on macOS. Prefer the
     // physical letter code so the displayed Option+Shift shortcut still
     // works, then fall back for synthetic and older keyboard events.

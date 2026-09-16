@@ -116,6 +116,7 @@ const semanticVersionPattern = "(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[
 export abstract class EditingControls extends LitElement {
   static properties = {
     activeMenu: {type: String, attribute: "active-menu"},
+    svgText: {type: Boolean, attribute: false},
     canMark: {type: Boolean, attribute: "can-mark"},
     canSection: {type: Boolean, attribute: "can-section"},
     sectionType: {type: String, attribute: "section-type"},
@@ -166,6 +167,8 @@ export abstract class EditingControls extends LitElement {
   sectionActive = false
 
   sectionSelected = false
+
+  svgText = false
 
   marks: MarkName[] = []
 
@@ -546,7 +549,7 @@ export abstract class EditingControls extends LitElement {
         .selectionCount=${Math.max(0, selected.length - 1)}
         .dropdown=${this.renderSpanDropdown(selected)}
         ?active=${selected.length > 0}
-        ?disabled=${!this.canMark || this.math?.active}
+        ?disabled=${!this.canMark || this.math?.active || this.svgText}
       ></ribbon-button>
     `
   }

@@ -1072,3 +1072,16 @@ it("disables Link and More for formulas while keeping inline formatting availabl
   expect(drawer.querySelector<RibbonButton>('[action="mark:b"]')!.disabled).toBe(false)
   expect(drawer.querySelector<RibbonButton>(".mark-remove")!.disabled).toBe(false)
 })
+
+it("keeps SVG text links available and shows style state while disabling More", async () => {
+  const {ribbon, drawer} = await mountRibbon()
+  ribbon.canMark = true
+  ribbon.svgText = true
+  ribbon.marks = ["b", "a"]
+  await ribbon.updateComplete
+  expect(drawer.querySelector<RibbonButton>(".mark-link")!.disabled).toBe(false)
+  expect(drawer.querySelector<RibbonButton>(".mark-link")!.active).toBe(true)
+  expect(drawer.querySelector<RibbonButton>(".mark-span")!.disabled).toBe(true)
+  expect(drawer.querySelector<RibbonButton>('[action="mark:b"]')!.active).toBe(true)
+  expect(drawer.querySelector<RibbonButton>(".mark-remove")!.disabled).toBe(false)
+})
