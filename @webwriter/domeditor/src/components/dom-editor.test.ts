@@ -997,6 +997,50 @@ describe("DomEditor iframe setup", () => {
   })
 })
 
+describe("DomEditor breadcrumb visibility", () => {
+  it("toggles the breadcrumb and toolbox together and restores them when the ribbon expands", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const breadcrumb = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-breadcrumb")!
+    const toolbox = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-toolbox")!
+
+    expect(breadcrumb.hidden).toBe(false)
+    expect(toolbox.hidden).toBe(false)
+
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(breadcrumb.hidden).toBe(true)
+    expect(getComputedStyle(breadcrumb).display).toBe("none")
+    expect(toolbox.hidden).toBe(true)
+    expect(ribbon.breadcrumbVisible).toBe(false)
+
+    const fileMenu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
+    await fileMenu.updateComplete
+    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Show breadcrumb"]')!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await fileMenu.updateComplete
+    expect(breadcrumb.hidden).toBe(false)
+    expect(getComputedStyle(breadcrumb).display).not.toBe("none")
+    expect(toolbox.hidden).toBe(false)
+    expect(ribbon.expanded).toBe(false)
+
+    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Hide breadcrumb"]')!.click()
+    await editor.updateComplete
+    expect(breadcrumb.hidden).toBe(true)
+    expect(getComputedStyle(breadcrumb).display).toBe("none")
+    expect(toolbox.hidden).toBe(true)
+
+    ribbon.expanded = true
+    await ribbon.updateComplete
+    await editor.updateComplete
+    expect(breadcrumb.hidden).toBe(false)
+    expect(toolbox.hidden).toBe(false)
+  })
+})
+
 describe("Develop local packages", () => {
   it("picks, serves, watches, and enables a built local package", async () => {
     const directory = localPackageDirectory()
@@ -2012,6 +2056,30 @@ describe("DomEditor.execute()", () => {
     selectInserted({path: [{path: [], name: "Document"}, {path: [0], name: "Form"}]})
     expect(toolbox.activeTool).toBeNull()
 
+  })
+
+  it("does not auto-open contextual tools while collapsed, even with the breadcrumb shown", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    await editor.updateComplete
+    for(const visible of [false, true]) {
+      ribbon.dispatchEvent(new CustomEvent("breadcrumb-visibility-change", {detail: {visible}}))
+      await editor.updateComplete
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {
+          inserted: true,
+          path: [{path: [], name: "Document"}, {path: [0], name: "Image"}],
+          nodeSelected: true,
+          media: {type: "picture", attributes: {alt: "Diagram"}},
+        }}, source: editorWindow,
+      }))
+      await editor.updateComplete
+      expect(toolbox.activeTool).toBeNull()
+      expect(toolbox.hidden).toBe(!visible)
+    }
   })
 
   it("loads Style-pane state lazily and routes inline style changes", async () => {

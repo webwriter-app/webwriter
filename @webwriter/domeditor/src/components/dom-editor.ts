@@ -449,6 +449,7 @@ export class DomEditor extends LitElement {
     documentLayout: {attribute: false, state: true},
     documentLayoutError: {attribute: false, state: true},
     settings: {attribute: false, state: true},
+    breadcrumbVisible: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -594,6 +595,7 @@ export class DomEditor extends LitElement {
   private historyDocumentTransitionCount = 0
   private historyError = ""
   private settings: AppSettings = loadAppSettings()
+  private breadcrumbVisible = true
   private motionStylesheet: {document: Document, sheet: CSSStyleSheet} | null = null
   private backendState: "probing" | "connected" | "unavailable" = "probing"
   private backendSession: BackendSession | null = null
@@ -645,17 +647,11 @@ export class DomEditor extends LitElement {
       grid-column: 1 / -1;
     }
 
+    dom-editor-breadcrumb[hidden] { display: none; }
+
     dom-editor-breadcrumb {
       grid-column: 1;
       min-width: 0;
-    }
-
-    app-ribbon:not([expanded]) + dom-editor-breadcrumb {
-      display: none;
-    }
-
-    .app-bar:has(app-ribbon:not([expanded])) ~ dom-editor-toolbox {
-      display: none;
     }
 
     .file-error {
@@ -3654,6 +3650,7 @@ export class DomEditor extends LitElement {
   }
 
   private openEditToolbox() {
+    if(!this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.expanded) return
     this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit")
   }
 
@@ -3940,7 +3937,17 @@ export class DomEditor extends LitElement {
   }
 
   private handleRibbonCollapse = () => {
+    this.breadcrumbVisible = false
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
+  }
+
+  private handleRibbonExpand = () => {
+    this.breadcrumbVisible = true
+  }
+
+  private handleRibbonBreadcrumbVisibilityChange = (event: Event) => {
+    const visible = (event as CustomEvent<{visible?: unknown}>).detail?.visible
+    if(typeof visible === "boolean") this.breadcrumbVisible = visible
   }
 
   private handleBreadcrumbItemSelect = (event: Event) => {
@@ -4739,6 +4746,7 @@ export class DomEditor extends LitElement {
           ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
           ?inert=${this.htmlPending}
           logo-url=${appIconUrl}
+          .breadcrumbVisible=${this.breadcrumbVisible}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
           .installedPackages=${this.installedPackages}
@@ -4766,6 +4774,8 @@ export class DomEditor extends LitElement {
           @backend-login-request=${this.loginToBackend}
           @backend-admin-request=${this.openBackendAdmin}
           @ribbon-collapse=${this.handleRibbonCollapse}
+          @ribbon-expand=${this.handleRibbonExpand}
+          @breadcrumb-visibility-change=${this.handleRibbonBreadcrumbVisibilityChange}
           @package-catalog-request=${this.loadPackageCatalog}
           @app-settings-change=${this.handleAppSettingsChange}
         ></app-ribbon>
@@ -4789,6 +4799,7 @@ export class DomEditor extends LitElement {
             .gap=${this.selectionGap}
             .selectedSectionPath=${this.selectedSectionPath}
             .tree=${this.documentTree}
+            ?hidden=${!this.breadcrumbVisible}
             @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
             @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
             @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
@@ -4862,7 +4873,7 @@ export class DomEditor extends LitElement {
         .localPackageError=${this.localPackageError}
         .selectedLocalPackageName=${this.selectedLocalPackageName}
         .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
-        ?hidden=${this.previewActive || this.liveSessionActive}
+        ?hidden=${!this.breadcrumbVisible || this.previewActive || this.liveSessionActive}
         @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
         @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
         @local-package-contributor-change=${this.handleLocalPackageContributorChange}

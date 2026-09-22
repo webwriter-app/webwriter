@@ -1,8 +1,10 @@
-import {LitElement, css, html, nothing} from "lit"
+import {dropdownContentStyles} from "./dropdown-content.styles"
+import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 
 export type RibbonMenuGroup = {
   label: string
+  content?: TemplateResult
   buttons: RibbonMenuButton[]
 }
 
@@ -17,11 +19,19 @@ export type RibbonMenuButton = string | {
   category?: string
   path?: string
   submenu?: RibbonMenuButton[]
+  submenuGroups?: RibbonMenuGroup[]
+  submenuHeader?: TemplateResult
+  menuOnly?: boolean
+  disabled?: boolean
+  removeAction?: string
 }
 
 /** A dropdown view of the commands in a collapsed ribbon menu. */
 export class RibbonMenu extends LitElement {
   static styles = css`
+    ${dropdownContentStyles}
+    .submenu.form-submenu { width: 19rem; }
+    .submenu.shape-gallery { width: min(32rem, calc(100vw - 1rem)); }
     :host {
       position: absolute;
       top: 39px;
@@ -31,6 +41,24 @@ export class RibbonMenu extends LitElement {
       width: 200px;
       max-width: calc(100% - 1rem);
     }
+
+    :host([variant="nested"]) {
+      position: static;
+      width: auto;
+      max-width: none;
+    }
+
+    :host([variant="nested"]) .menu {
+      border: 0;
+      box-shadow: none;
+      padding: 0;
+      max-height: none;
+      overflow: visible;
+    }
+
+    .item:disabled, .submenu-toggle:disabled { opacity: 0.5; cursor: default; }
+    .remove { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
+    .submenu-header { position: sticky; top: -0.35rem; background: white; z-index: 2; padding-bottom: 0.35rem; }
 
     :host([hidden]) {
       display: none;
@@ -399,7 +427,11 @@ export class RibbonMenu extends LitElement {
       void this.updateComplete.then(() => {
         const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
           .find(candidate => candidate.getAttribute("aria-label") === `${label} options`)
-        if(submenu) this.menuItems(submenu)[0]?.focus()
+        if(submenu) {
+          const nested = submenu.querySelector<RibbonMenu>("ribbon-menu")
+          if(nested) void nested.updateComplete.then(() => nested.renderRoot.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus())
+          else this.menuItems(submenu)[0]?.focus()
+        }
       })
     }
   }
@@ -413,6 +445,7 @@ export class RibbonMenu extends LitElement {
     // Nested menus handle their own key event first. Do not let the same
     // Arrow key run again when it bubbles into the parent menu.
     if(event.defaultPrevented) return
+    if(event.composedPath().some(target => target instanceof HTMLElement && target.matches("input, select, textarea, ribbon-combobox, package-search"))) return
     if(event.key === "Escape") {
       const menu = event.currentTarget as HTMLElement
       if(!menu.classList.contains("submenu")) return
@@ -442,6 +475,9 @@ export class RibbonMenu extends LitElement {
   }
 
   private renderSubmenu(submenu: RibbonMenuButton[]) {
+    if(submenu.some(button => typeof button !== "string" && (button.submenu?.length || button.submenuGroups || button.removeAction))) {
+      return html`<ribbon-menu variant="nested" .groups=${[{label: "Options", buttons: submenu}]}></ribbon-menu>`
+    }
     const gallery = submenu.some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate)))
     const ordered = gallery
       ? [...new Set(submenu.map(candidate => this.buttonCategory(candidate)).filter(Boolean))]
@@ -464,6 +500,7 @@ export class RibbonMenu extends LitElement {
               role="menuitem"
               aria-label=${this.buttonLabel(submenuButton)}
               tabindex=${submenuIndex === 0 ? "0" : "-1"}
+              ?disabled=${typeof submenuButton !== "string" && submenuButton.disabled}
               title=${this.buttonLabel(submenuButton)}
               @click=${() => this.handleClick(submenuButton)}>
               ${this.renderButtonIcon(submenuButton)}
@@ -476,6 +513,7 @@ export class RibbonMenu extends LitElement {
   closeSubmenus() {
     this.openSubmenu = null
     this.openSubmenuToggle = null
+    this.renderRoot?.querySelectorAll<RibbonMenu>("ribbon-menu").forEach(menu => menu.closeSubmenus())
   }
 
   render() {
@@ -492,10 +530,12 @@ export class RibbonMenu extends LitElement {
         ${this.customContent ? html`<slot></slot>` : ""}
         ${this.groups.map((group, groupIndex) => html`
           <section aria-label=${group.label} class=${group.buttons.some(button => this.buttonCategory(button)) ? "shape-gallery" : ""}>
+            ${group.content ? html`<div class="button-dropdown-content">${group.content}</div>` : nothing}
             ${group.buttons.some(button => this.buttonCategory(button)) ? this.renderSubmenu(group.buttons) : group.buttons.map((button, buttonIndex) => {
               const label = this.buttonLabel(button)
               const submenu = this.buttonSubmenu(button)
-              const hasSubmenu = submenu.length > 0
+              const item = typeof button === "string" ? {label: button} : button
+              const hasSubmenu = submenu.length > 0 || Boolean(item.submenuGroups || item.submenuHeader)
               const isOpen = this.openSubmenu === label
               const anchorName = `--ribbon-submenu-${groupIndex}-${buttonIndex}`
               return html`
@@ -507,11 +547,15 @@ export class RibbonMenu extends LitElement {
                       role="menuitem"
                       tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
                       title=${label}
-                      @click=${() => this.handleClick(button)}
+                      ?disabled=${item.disabled}
+                      aria-haspopup=${item.menuOnly ? "menu" : nothing}
+                      aria-expanded=${item.menuOnly ? isOpen : nothing}
+                      @click=${(event: Event) => item.menuOnly ? this.toggleSubmenu(label, event) : this.handleClick(button)}
                     >
                       ${this.renderButtonIcon(button)}
                       <span>${label}</span>
                     </button>
+                    ${item.removeAction ? html`<button class="item remove" role="menuitem" tabindex="-1" aria-label=${`Remove ${label}`} ?disabled=${item.disabled} @click=${() => this.handleClick({label, action: item.removeAction})}>${ribbonIcon("Reject")}</button>` : nothing}
                     ${hasSubmenu ? html`
                       <button
                         class="submenu-toggle"
@@ -520,6 +564,7 @@ export class RibbonMenu extends LitElement {
                         tabindex="-1"
                         aria-label=${`Show more ${label} options`}
                         title=${`Show more ${label} options`}
+                        ?disabled=${item.disabled}
                         aria-haspopup="menu"
                         aria-expanded=${isOpen}
                         @click=${(event: Event) => this.toggleSubmenu(label, event)}
@@ -530,13 +575,14 @@ export class RibbonMenu extends LitElement {
                   </div>
                   ${hasSubmenu && isOpen ? html`
                     <div
-                      class=${`submenu${submenu.some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate))) ? " shape-gallery" : ""}`}
+                      class=${`submenu${item.submenuGroups?.some(group => group.content && !group.buttons.length) ? " form-submenu" : ""}${submenu.some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate))) ? " shape-gallery" : ""}`}
                       role="menu"
                       aria-label=${`${label} options`}
                       style=${`position-anchor: ${anchorName}`}
                       @keydown=${this.handleMenuKeydown}
                     >
-                      ${this.renderSubmenu(submenu)}
+                      ${item.submenuHeader ? html`<div class="submenu-header">${item.submenuHeader}</div>` : nothing}
+                      ${item.submenuGroups ? html`<ribbon-menu variant="nested" .groups=${item.submenuGroups}></ribbon-menu>` : this.renderSubmenu(submenu)}
                     </div>
                   ` : ""}
                 </div>

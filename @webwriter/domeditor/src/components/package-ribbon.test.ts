@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import type {WebWriterPackage} from "../packages"
 import {AppRibbon} from "./ribbon"
 import {RibbonButton} from "./ribbon-button"
+import {RibbonMenu} from "./ribbon-menu"
 import {RibbonDrawer} from "./ribbon-drawer"
 
 const packageFixture = (name = "demo"): WebWriterPackage => ({
@@ -513,4 +514,47 @@ describe("package ribbon controls", () => {
       /:host\(\[variant="package"\]\) \.corner-trigger\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1;/,
     )
   })
+})
+
+
+it("keeps package search, refresh, removal and member insertion available in the collapsed menu", async () => {
+  const ribbon = new AppRibbon()
+  const pkg = packageFixture()
+  ribbon.packages = [pkg, packageFixture("other")]
+  ribbon.installedPackages = [pkg]
+  ribbon.expanded = false
+  ribbon.menuOpen = true
+  document.body.append(ribbon)
+  await ribbon.updateComplete
+  const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+  await menu.updateComplete
+  menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+  await menu.updateComplete
+  const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+  await packages.updateComplete
+  const remove = packages.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Remove Demo"]')!
+  expect(remove.nextElementSibling?.getAttribute("aria-label")).toBe("Show more Demo options")
+  expect(packages.shadowRoot!.querySelector('[aria-label="Remove Other"]')).toBeNull()
+  const search = menu.shadowRoot!.querySelector("package-search")!
+  await search.updateComplete
+  const input = search.shadowRoot!.querySelector<HTMLInputElement>("input")!
+  input.value = "demo"
+  input.dispatchEvent(new Event("input", {bubbles: true}))
+  await ribbon.updateComplete
+  await menu.updateComplete
+  await packages.updateComplete
+  expect(packages.shadowRoot!.querySelector('[title="Other"]')).toBeNull()
+  const requests = vi.fn()
+  ribbon.addEventListener("package-catalog-request", requests)
+  await search.updateComplete
+  search.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Refresh list"]')!.click()
+  expect(requests.mock.calls[0][0].detail).toEqual({refresh: true})
+  expect(search.query).toBe("demo")
+  packages.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more Demo options"]')!.click()
+  await packages.updateComplete
+  expect(packages.shadowRoot!.querySelector(".submenu")?.textContent).toContain("demo Snippet")
+  const commands = vi.fn()
+  ribbon.addEventListener("ribbon-button-click", commands)
+  remove.click()
+  expect(commands.mock.calls[0][0].detail.label).toBe("package-toggle:@webwriter/demo")
 })

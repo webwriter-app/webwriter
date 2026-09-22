@@ -16,6 +16,7 @@ import {persistAppSettings, type AppSettings} from "../app-settings"
 import type {BackendClient} from "../backend-client"
 import {type PresenceUser} from "../editor-bridge"
 import {mediaCaptureOptions, type MediaType} from "../media"
+import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames} from "../marks"
 import {layoutPresets} from "../layouts"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {WebWriterPackage} from "../packages"
@@ -122,6 +123,7 @@ export class AppRibbon extends EditingControls {
     busyPackageNames: {attribute: false},
     packageError: {type: String, attribute: "package-error"},
     packageSearchQuery: {type: String, state: true},
+    breadcrumbVisible: {type: Boolean},
     packageDrawerOpen: {type: Boolean, reflect: true, attribute: "package-drawer-open"},
     packageVisibleCount: {type: Number, state: true},
     layoutInsertionError: {type: String, attribute: "layout-insertion-error"},
@@ -1990,6 +1992,8 @@ export class AppRibbon extends EditingControls {
 
   storageLocation: StorageLocation = "local"
 
+  breadcrumbVisible = true
+
   private packageSearchQuery = ""
 
   private packageDrawerOpen = false
@@ -2805,6 +2809,9 @@ export class AppRibbon extends EditingControls {
     if(changed.has("previewActive") && changed.get("previewActive") !== undefined) {
       this.schedulePreviewTransitionEnd()
     }
+    if(changed.has("expanded") && this.expanded) {
+      this.dispatchEvent(new Event("ribbon-expand", {bubbles: true, composed: true}))
+    }
     if(changed.has("expanded") && !this.expanded) {
       this.dispatchEvent(new Event("ribbon-collapse", {bubbles: true, composed: true}))
     }
@@ -2957,6 +2964,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private insertTableSize(rows: number, columns: number) {
+    this.dismissCollapsedMenu()
     this.dispatchEvent(new CustomEvent("table-insert", {
       detail: {rows, columns},
       bubbles: true,
@@ -3243,8 +3251,78 @@ export class AppRibbon extends EditingControls {
     }
   }
 
+  private collapsedEditingMenuGroups(): RibbonMenuGroup[] {
+    const mark = (name: Parameters<typeof this.markOption>[0]): RibbonMenuButton => {
+      const option = this.markOption(name)
+      return {label: option.label, icon: option.icon, action: `mark:${name}`, disabled: !this.canMark}
+    }
+    const picker = (name: string, label: string, options: typeof fontFamilyOptions) => html`
+      <ribbon-combobox name=${name} label=${label} default-value-label=${label}
+        variant=${name.includes("color") ? "color" : ""}
+        .options=${options} .value=${this.markStyles[name as keyof typeof this.markStyles] ?? ""}
+        ?disabled=${!this.canMark}></ribbon-combobox>
+    `
+    const format: RibbonMenuGroup[] = [
+      {label: "Font", content: html`
+        ${picker("font-family", "Font", fontFamilyOptions)}
+        ${picker("font-size", "Size", fontSizeOptions)}
+      `, buttons: [
+        {label: "Increase font size", action: "increaseFontSize", icon: "IncreaseFontSize", disabled: !this.canMark},
+        {label: "Decrease font size", action: "decreaseFontSize", icon: "DecreaseFontSize", disabled: !this.canMark},
+        {label: "Remove formatting", action: "removeMarks", icon: "RemoveMarks", disabled: !this.canMark},
+      ]},
+      {label: "Standard marks", content: html`
+        ${picker("color", "Text color", textColorOptions)}
+        ${picker("background-color", "Text background color", backgroundColorOptions)}
+      `, buttons: [...primaryDrawerMarkNames.map(mark), {label: "Link", action: "mark:a", icon: "MarkLink", disabled: !this.canMark || this.math?.active, submenuGroups: [{label: "Link", content: this.renderLinkDropdown(), buttons: []}]}]},
+      {label: "More marks", buttons: this.spanGroupMembers().map(mark)},
+    ]
+    const insert = menuGroups.Start.find(group => group.label === "Elements")!.buttons.map((button): RibbonMenuButton => {
+      const item = typeof button === "string" ? {label: button} : button
+      if(item.label === "Section") return {
+        label: "Layouts", icon: "Layout", menuOnly: true,
+        submenu: [...layoutPresets.map(preset => ({label: preset.name, action: `layout-insert:${preset.id}`, disabled: Boolean(this.layout)})),
+          {label: "Custom layout", action: "toggle-section", disabled: !this.canSection}],
+      }
+      if(item.label === "Table") return {...item, submenuGroups: [{label: "Table size", content: this.renderTableSizePicker(), buttons: []}]}
+      const type = insertionMenuItems.find(candidate => candidate.name === item.label)?.tag
+      if(type === "picture" || type === "audio" || type === "video") return {...item, submenu: [
+        {label: "Select file", action: `media-file:${type}`, icon: "Select file"},
+        ...mediaCaptureOptions(type).map(option => ({label: option.label, action: `media-capture:${option.mode}`, icon: option.label})),
+      ]}
+      return item
+    })
+    const packages = this.filteredPackages.map((pkg): RibbonMenuButton => {
+      const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
+      return {
+        label: pkg.label, icon: "Packages", iconUrl: pkg.iconUrl,
+        action: packageAction(pkg),
+        disabled: this.busyPackageNames.includes(pkg.name),
+        removeAction: installed ? packageToggleAction(pkg) : undefined,
+        submenu: pkg.members.filter(member => member.insertable).slice(1).map(member => ({
+          label: member.label, action: packageMemberAction(member), icon: "Packages", iconUrl: pkg.iconUrl,
+        })),
+      }
+    })
+    return [{label: "Editing", buttons: [
+      {label: "Format", icon: "MarkBold", menuOnly: true, submenuGroups: format},
+      {label: "Insert", icon: "Paragraph", menuOnly: true, submenu: insert},
+      {label: "Packages", icon: "Packages", menuOnly: true, submenuGroups: [{label: "Packages", buttons: packages,
+        content: !this.packagesLoading && !packages.length ? html`<span>No packages</span>` : undefined}],
+        submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading}
+          .error=${this.packageError} @package-search-change=${this.handlePackageSearch}></package-search>`},
+    ]}]
+  }
+
   private handleFileMenuAction = (event: CustomEvent<{label: string}>) => {
     this.menuOpen = false
+    if(event.detail.label === "toggle-breadcrumb") {
+      event.stopPropagation()
+      this.breadcrumbVisible = !this.breadcrumbVisible
+      this.dispatchEvent(new CustomEvent("breadcrumb-visibility-change", {
+        detail: {visible: this.breadcrumbVisible}, bubbles: true, composed: true,
+      }))
+    }
     if(event.detail.label === "Settings") {
       event.stopPropagation()
       void this.showRibbonDialog("settings")
@@ -4153,7 +4231,11 @@ export class AppRibbon extends EditingControls {
         <ribbon-menu
           .groups=${[
             menuGroups.File.find(group => group.label === "File")!,
-            {label: "Settings", buttons: [{label: "Settings"}]},
+            ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
+            {label: "Settings", buttons: [
+              ...(!this.previewActive ? [{label: this.breadcrumbVisible ? "Hide breadcrumb" : "Show breadcrumb", action: "toggle-breadcrumb"}] : []),
+              {label: "Settings"},
+            ]},
           ]}
           @ribbon-button-click=${this.handleFileMenuAction}
           @keydown=${(event: KeyboardEvent) => {
