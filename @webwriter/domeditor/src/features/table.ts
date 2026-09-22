@@ -1290,6 +1290,7 @@ export class TableFeature extends EditorFeature {
           if(this.pointerSelecting && !this.restoreTextDragSelection()) {
             event.preventDefault()
             event.stopImmediatePropagation()
+            if(this.anchorCell !== this.pendingCell || this.focusCell !== this.pendingCell) this.selectCells(this.pendingCell)
           }
           return
         }

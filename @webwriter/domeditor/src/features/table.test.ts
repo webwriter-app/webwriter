@@ -271,20 +271,30 @@ describe("table cell selection", () => {
     expect(editor.features.selection.isInDragSelection).toBe(false)
   })
 
-  it("keeps a cell selection when a non-text drag returns to its empty origin", () => {
-    document.body.innerHTML = "<table><tbody><tr><td></td><td></td></tr></tbody></table>"
-    const [first, second] = cells()
+  it.each([1, 2, 3])("collapses a non-text drag from cell %s back to its anchor", focusIndex => {
+    document.body.innerHTML = "<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>"
+    const tableCells = cells()
+    const first = tableCells[0]
+    const second = tableCells[focusIndex]
+    const expanded = focusIndex === 3 ? tableCells : [first, second]
     const restoreCaretPosition = mockCaretPosition(first)
 
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
-    expect(editor.features.table.selectedCells).toEqual([first, second])
+    expect(editor.features.table.selectedCells).toEqual(expanded)
+
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    expect(editor.features.table.selectedCells).toEqual([first])
+    expect(Array.from(document.querySelectorAll(".◆table-cell-selected"))).toEqual([first])
+
+    second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+    expect(editor.features.table.selectedCells).toEqual(expanded)
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
-    expect(editor.features.table.selectedCells).toEqual([first, second])
+    expect(editor.features.table.selectedCells).toEqual([first])
   })
 
   it("places the caret in a clicked cell when Chromium reports the body boundary", () => {
