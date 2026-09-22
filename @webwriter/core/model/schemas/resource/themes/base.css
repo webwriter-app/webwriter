@@ -571,7 +571,9 @@ body {
   inline-size: 100%;
   min-inline-size: 0;
   max-inline-size: calc(var(--ww-page-max) + 2 * var(--ww-page-gutter));
-  margin: 1.25rem auto;
+  margin: 0 auto;
+  min-block-size: 100vh;
+  padding-block: 1.25rem;
   padding-inline: var(--ww-page-gutter);
   background-color: var(--pico-background-color);
   color: var(--pico-color);

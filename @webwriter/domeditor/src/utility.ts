@@ -569,6 +569,14 @@ export class EditingSelection {
         break
       }
     }
+    const hitElement = offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
+    const styledParagraph = hitElement?.closest("p")
+    if(styledParagraph?.style.length && root.contains(styledParagraph) && !isOutOfFlow(styledParagraph)) {
+      const rect = styledParagraph.getBoundingClientRect()
+      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+        return gap(styledParagraph, y < rect.top ? "before" : "after")
+      }
+    }
     // Pointer capture retargets moves to BODY. Hit-test the authored stack
     // beneath appendix shields so iframe/audio positions still resolve even
     // when caretPositionFromPoint sees the overlay instead of the media.
@@ -590,7 +598,8 @@ export class EditingSelection {
         return gap(firstRootElement, "before")
       }
       const lastRootElement = Array.from(root.children).reverse().find(element => !isOutOfFlow(element))
-      if(lastRootElement?.matches("details") && y > lastRootElement.getBoundingClientRect().bottom) {
+      if(lastRootElement && (lastRootElement.matches("details") || lastRootElement instanceof HTMLParagraphElement && lastRootElement.style.length > 0)
+        && y > lastRootElement.getBoundingClientRect().bottom) {
         return gap(lastRootElement, "after")
       }
       return
@@ -619,7 +628,6 @@ export class EditingSelection {
         return point(text ?? targetCell, direction === "end" && text ? text.length : 0)
       }
     }
-    const hitElement = offsetNode instanceof Element ? offsetNode : offsetNode.parentElement
     let outerTable = hitElement?.closest("table") ?? null
     while(outerTable?.parentElement?.closest("table")) outerTable = outerTable.parentElement.closest("table")
     if(outerTable) {
@@ -631,7 +639,8 @@ export class EditingSelection {
     }
     if(offsetNode instanceof Element && typeof offset === "number") {
       const gapAddressableElement = (node: Node | null) => !isOutOfFlow(node) && (isAtomicEditingElement(node, schema)
-        || node instanceof Element && node.matches("table, details"))
+        || node instanceof Element && node.matches("table, details")
+        || node instanceof HTMLParagraphElement && node.style.length > 0)
       const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
       const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
       const elementAfterCaret = adjacentElement(offsetNode.childNodes, offset, "after")
@@ -654,7 +663,7 @@ export class EditingSelection {
         }
       }
       const beforeRect = atomicBeforeCaret?.getBoundingClientRect()
-      if(atomicBeforeCaret?.matches("details") && beforeRect && beforeRect.height > 0 && y < beforeRect.top) {
+      if(atomicBeforeCaret?.matches("details, p") && beforeRect && beforeRect.height > 0 && y < beforeRect.top) {
         return gap(atomicBeforeCaret, "before")
       }
       if(atomicBeforeCaret && beforeRect && (beforeRect.right > beforeRect.left || beforeRect.bottom > beforeRect.top)
@@ -662,7 +671,7 @@ export class EditingSelection {
         return gap(atomicBeforeCaret, "after")
       }
       const afterRect = atomicAfterCaret?.getBoundingClientRect()
-      if(atomicAfterCaret?.matches("details") && afterRect && afterRect.height > 0 && y < afterRect.top) {
+      if(atomicAfterCaret?.matches("details, p") && afterRect && afterRect.height > 0 && y < afterRect.top) {
         return gap(atomicAfterCaret, "before")
       }
       if(atomicAfterCaret && afterRect && (afterRect.right > afterRect.left || afterRect.bottom > afterRect.top)
@@ -731,7 +740,7 @@ export class EditingSelection {
   static get isGapSelection() {
     if(mathRoot(this.anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
-    if(this.detailsGap || this.dividerGap) return true
+    if(this.detailsGap || this.dividerGap || this.styledParagraphGap) return true
     if(this.isEmpty && isColumnGroup(this.anchor)
       && [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
         .every(node => !(isText(node) && node.textContent?.trim()) && !isMarkElement(node))) return true
@@ -762,6 +771,11 @@ export class EditingSelection {
   /** Dividers expose gaps even within sections, table cells, or bare text. */
   static get dividerGap() {
     return this.#gapBeside("hr")
+  }
+
+  static get styledParagraphGap() {
+    const boundary = this.#gapBeside("p[style]")
+    return boundary && (boundary.element as HTMLParagraphElement).style.length > 0 ? boundary : null
   }
 
   /** Inline formulas have text carets at their edges; block formulas have gaps,

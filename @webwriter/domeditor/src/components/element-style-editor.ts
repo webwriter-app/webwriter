@@ -1,4 +1,5 @@
 import {LitElement, css, html, nothing} from "lit"
+import {ribbonIcon} from "../ribbon-icons"
 import {ref} from "lit/directives/ref.js"
 import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
 import {
@@ -36,6 +37,32 @@ const colorHex = (value: string) => {
   return `#${rgb.slice(1, 4).map(channel => Math.min(255, Number(channel)).toString(16).padStart(2, "0")).join("")}`
 }
 
+// Fixed theme columns: base color followed by five shades, like a desktop color palette.
+const borderColorColumns = [
+  ["ffffff", "f2f2f2", "d9d9d9", "bfbfbf", "a6a6a6", "808080"],
+  ["000000", "808080", "595959", "404040", "262626", "0d0d0d"],
+  ["e7e6e6", "d0cece", "aeaaaa", "757171", "3b3838", "171616"],
+  ["44546a", "d6dce4", "adb9ca", "8497b0", "333f50", "222a35"],
+  ["5b9bd5", "deebf7", "bdd7ee", "9dc3e6", "2e75b6", "1f4e78"],
+  ["ed7d31", "fbe5d6", "f8cbad", "f4b183", "c55a11", "833c0c"],
+  ["f04b22", "faddd5", "f7b7a5", "f38e72", "bd3210", "7e210b"],
+  ["ffc000", "fff2cc", "ffe699", "ffd966", "bf9000", "806000"],
+  ["8064a2", "e4dfec", "ccc1d9", "b2a1c7", "60497a", "403152"],
+  ["70ad47", "e2efda", "c6e0b4", "a9d18e", "548235", "375623"],
+] as const
+const boxStylePresets = [
+  {name: "White", background: borderColorColumns[0][0], border: borderColorColumns[1][0]},
+  {name: "Gray", background: borderColorColumns[0][1], border: borderColorColumns[1][1]},
+  {name: "Blue", background: borderColorColumns[4][1], border: borderColorColumns[4][0]},
+  {name: "Green", background: borderColorColumns[9][1], border: borderColorColumns[9][0]},
+  {name: "Orange", background: borderColorColumns[5][1], border: borderColorColumns[5][0]},
+  {name: "Yellow", background: borderColorColumns[7][1], border: borderColorColumns[7][0]},
+  {name: "Red", background: borderColorColumns[6][1], border: borderColorColumns[6][0]},
+  {name: "Purple", background: borderColorColumns[8][1], border: borderColorColumns[8][0]},
+] as const
+
+const standardBorderColors = ["c00000", "ff0000", "ffc000", "ffff00", "92d050", "00b050", "00b0f0", "0070c0", "002060", "7030a0"]
+
 const sectionGroups = (definitions: readonly ElementStylePropertyDefinition[]) => {
   const groups = new Map<string, ElementStylePropertyDefinition[]>()
   definitions.forEach(definition => groups.set(
@@ -55,6 +82,8 @@ export class ElementStyleEditor extends LitElement {
     mode: {type: String, reflect: true},
     orientation: {type: String, reflect: true},
     allowCustom: {type: Boolean, attribute: "allow-custom"},
+    showPresets: {type: Boolean, attribute: "show-presets"},
+    compactMenu: {state: true},
     customProperty: {type: String, state: true},
     customValue: {type: String, state: true},
     customImportant: {type: Boolean, state: true},
@@ -100,6 +129,141 @@ export class ElementStyleEditor extends LitElement {
       color: inherit;
       font: inherit;
     }
+
+    .style-gallery {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-rows: repeat(2, 2rem); gap: 0.5rem; margin: 0.2rem 0 0.65rem;
+    }
+    .style-gallery button {
+      min-width: 0; padding: 0; border: 1px solid; border-radius: 4px; cursor: pointer;
+    }
+    :host([mode="compact"]) .style-gallery button:focus-visible {
+      outline: 2px solid #b9d7f5; outline-offset: 2px;
+    }
+    .style-gallery button:hover { box-shadow: 0 0 0 2px #b9d7f5; }
+    .compact-row {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-width: 0;
+      margin: 0.4rem 0;
+    }
+    .compact-row label, .compact-label { flex: 0 0 4.4rem; }
+    .compact-controls {
+      position: relative; display: flex; flex: 1; min-width: 0; border-radius: 4px;
+      --compact-focus-color: #b9d7f5;
+    }
+    .compact-controls:focus-within { box-shadow: 0 0 0 2px var(--compact-focus-color); }
+    .compact-controls:has(.compact-value.open) { box-shadow: none; }
+    .compact-controls:has(.compact-value.open)::before {
+      content: ""; position: absolute; inset: -2px -2px 0;
+      border: 2px solid var(--compact-focus-color); border-bottom: 0;
+      border-radius: 6px 6px 0 0; pointer-events: none;
+    }
+    .compact-value.open .compact-options::after {
+      content: ""; position: absolute; inset: 0 -3px -3px;
+      border: 2px solid var(--compact-focus-color); border-top: 0;
+      border-radius: 0 0 6px 6px; pointer-events: none;
+    }
+    .compact-controls:has(.compact-value.open) .border-group { border-bottom-left-radius: 0; }
+    .border-picker[open] .border-options { box-shadow: 0 0 0 2px var(--compact-focus-color); }
+    :host([mode="compact"]) .compact-controls input {
+      height: 100%; border-radius: 0; outline: none; box-shadow: none;
+    }
+    :host([mode="compact"]) input[type="color"] { border-left-color: #c5ccd5; }
+    :host([mode="compact"]) button:focus,
+    :host([mode="compact"]) summary:focus { outline: none; }
+    .compact-options button:focus-visible,
+    .border-options button:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--compact-focus-color); background: #e8eef5;
+    }
+    .compact-value { position: relative; min-width: 0; flex: 1; }
+    .compact-input {
+      position: relative; display: flex; align-items: stretch; height: 1.7rem; box-sizing: border-box;
+      border: 1px solid #c5ccd5; border-radius: 4px; background: transparent;
+    }
+    .compact-value.open .compact-input { border-radius: 4px 4px 0 0; }
+    .compact-input input {
+      width: 0; min-width: 0; flex: 1; border: 0; background: transparent;
+      padding: 0.2rem 0.35rem;
+    }
+    .compact-input input::placeholder { font-size: 0.5rem; }
+    .compact-unit { display: flex; align-items: center; justify-content: center; width: 1.1rem; box-sizing: border-box; font-size: 0.55rem; flex: 0 0 auto; border-left: 1px solid #c5ccd5; }
+    [data-property="rotate"] .compact-unit { font-size: 0.85rem; }
+    .compact-toggle {
+      position: absolute; inset-block: 0; right: 1.1rem; width: 1.7rem;
+      display: flex; align-items: center; justify-content: flex-end;
+      border: 0; background: transparent;
+      padding: 0 0.2rem; cursor: pointer;
+    }
+    .compact-toggle svg { width: 14px; height: 14px; display: block; transform: rotate(90deg); transition: transform 120ms ease; }
+    .open .compact-toggle svg { transform: rotate(270deg); }
+    .compact-options {
+      position: absolute; z-index: 3; top: 100%; left: 0; width: 100%; box-sizing: border-box;
+      border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: white;
+      box-shadow: 0 3px 6px #0002;
+    }
+    .compact-options button { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; width: 100%; text-align: left; padding: 0.35rem; border: 0; background: transparent; cursor: pointer; }
+    .compact-option-value { color: #6b7787; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .compact-options button:hover, .compact-options button:focus { background: #e8eef5; }
+    .border-group { display: flex; flex: 0 0 auto; align-items: stretch; height: 1.7rem; border: 1px solid #c5ccd5; border-right: 0; border-radius: 4px 0 0 4px; background: transparent; box-sizing: border-box; }
+    .border-group input[type="color"] { width: 1.25rem; height: 100%; border: 0; border-left: 1px solid #c5ccd5; padding: 2px; background: transparent; }
+    .border-group + .compact-value { position: static; }
+    .border-group + .compact-value .compact-input { border-radius: 0 4px 4px 0; }
+    .border-group + .compact-value.open .compact-input { border-radius: 0 4px 0 0; }
+    .border-picker { position: relative; }
+    .border-picker summary .border-sample { width: 0.85rem; }
+    .border-picker summary { list-style: none; cursor: pointer; width: 1.3rem; height: 100%; display: grid; place-items: center; }
+    .border-picker summary::-webkit-details-marker { display: none; }
+    .border-sample { display: block; width: 1.2rem; border-top-width: 3px; margin: 0.45rem 0; }
+    .border-options {
+      position: absolute; z-index: 3; background: white; padding: 0.3rem;
+      border: 1px solid #c5ccd5; border-radius: 4px; display: grid; grid-template-columns: repeat(2, 2rem);
+    }
+    .border-options button { background: white; border: 0; cursor: pointer; }
+    .background-control { border: 1px solid #c5ccd5; height: 1.7rem; box-sizing: border-box; }
+    .background-control .border-color-picker { width: 100%; border-left: 0; }
+    .background-control .border-color-picker > summary { width: 100%; }
+    .border-color-picker { position: static; border-left: 1px solid #c5ccd5; }
+    .border-color-picker > summary {
+      display: grid; place-items: center; box-sizing: border-box;
+      width: 1.25rem; height: 100%; padding: 3px; list-style: none; cursor: pointer;
+    }
+    .border-color-picker > summary::-webkit-details-marker { display: none; }
+    .border-color-chip { width: 100%; height: 100%; box-shadow: inset 0 0 0 1px #0002; }
+    .text-color-preview { font-size: 0.65rem; font-weight: 700; line-height: 1; padding-bottom: 2px; border-bottom: 4px solid; }
+    .border-color-palette {
+      position: absolute; z-index: 4; top: 100%; right: 0;
+      width: max(100%, 12rem); max-width: calc(100vw - 2rem);
+      box-sizing: border-box; padding: 0.4rem; border: 1px solid #c5ccd5; border-radius: 4px;
+      background: white; box-shadow: 0 0 0 2px var(--compact-focus-color), 0 3px 6px #0002;
+    }
+    .color-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+    .color-column { display: grid; gap: 0; }
+    .color-column .color-swatch:first-child { margin-bottom: 0.4rem; }
+    .border-color-palette .color-swatch {
+      width: 100%; height: auto; aspect-ratio: 1; min-width: 0; border: 0; border-radius: 0;
+      padding: 0; cursor: pointer; box-shadow: inset 0 0 0 1px #0001;
+    }
+    .border-color-palette .color-swatch:hover,
+    :host([mode="compact"]) .border-color-palette .color-swatch:focus-visible,
+    .border-color-palette .color-swatch[aria-pressed="true"] { outline: 2px solid #8eb6df; outline-offset: -2px; }
+    .color-standard { border-top: 1px solid #d8dee6; margin-top: 0.4rem; padding-top: 0.4rem; }
+    .palette-action {
+      display: flex; align-items: center; gap: 0.4rem; width: 100%; padding: 0.35rem;
+      background: transparent; border: 0; text-align: left; cursor: pointer;
+    }
+    .palette-action:hover, .palette-action:focus-visible { background: #e8eef5; }
+    .palette-action:focus-visible { box-shadow: inset 0 0 0 2px var(--compact-focus-color); }
+    .palette-action svg { width: 1rem; height: 1rem; }
+    .palette-action .border-color-chip { width: 1rem; height: 1rem; background: currentColor; }
+    .palette-automatic { border-bottom: 1px solid #d8dee6; margin-bottom: 0.4rem; }
+    .palette-custom { position: relative; border-top: 1px solid #d8dee6; margin-top: 0.4rem; }
+    .palette-custom input[type="color"] {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      opacity: 0; pointer-events: none;
+    }
+
 
     .basic-grid {
       display: grid;
@@ -580,9 +744,54 @@ export class ElementStyleEditor extends LitElement {
   definitions: readonly ElementStylePropertyDefinition[] = []
   propertyNames: readonly string[] | null = null
   state: ElementStyleState = emptyStyleState()
-  mode: "basic" | "advanced" = "basic"
+  mode: "basic" | "advanced" | "compact" = "basic"
   orientation: "horizontal" | "vertical" = "horizontal"
   allowCustom = false
+  showPresets = false
+  private compactMenu: string | null = null
+  private readonly closeCompactMenus = (event: Event) => {
+    const path = event.composedPath()
+    const focused = event.type === "pointerdown" && this.mode === "compact" ? this.shadowRoot?.activeElement : null
+    // Toolbox buttons prevent pointer focus by design. Explicitly blur an
+    // input on outside clicks so its native change/blur lifecycle still runs.
+    if(focused instanceof HTMLInputElement
+      && !path.includes(focused)
+      && !path.some(target => target instanceof HTMLElement && target.classList.contains("compact-options"))
+      && !path.some(target => target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement || target instanceof HTMLElement && target.isContentEditable)) {
+      focused.blur()
+    }
+    const active = this.compactMenu
+      ? this.renderRoot.querySelector(`#compact-${this.compactMenu}`)?.closest(".compact-value")
+      : null
+    if(!active || !path.includes(active)) this.compactMenu = null
+    this.renderRoot.querySelectorAll<HTMLDetailsElement>(".border-picker[open], .border-color-picker[open]").forEach(picker => {
+      if(!path.includes(picker)) picker.open = false
+    })
+  }
+
+  private syncCompactPopupState = () => {
+    this.toggleAttribute("popup-open", Boolean(this.compactMenu
+      || this.renderRoot.querySelector(".border-picker[open], .border-color-picker[open]")))
+  }
+
+  protected updated() {
+    this.syncCompactPopupState()
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.ownerDocument.addEventListener("pointerdown", this.closeCompactMenus, true)
+    this.ownerDocument.addEventListener("focusin", this.closeCompactMenus, true)
+  }
+
+  disconnectedCallback() {
+    this.ownerDocument.removeEventListener("pointerdown", this.closeCompactMenus, true)
+    this.ownerDocument.removeEventListener("focusin", this.closeCompactMenus, true)
+    this.compactMenu = null
+    super.disconnectedCallback()
+  }
+
   private customProperty = ""
   private customValue = ""
   private customImportant = false
@@ -592,9 +801,9 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private get visibleDefinitions() {
-    if(!this.propertyNames) return this.definitions
-    const names = new Set(this.propertyNames)
-    return this.definitions.filter(definition => names.has(definition.name))
+    const names = this.propertyNames ? new Set(this.propertyNames) : null
+    return this.definitions.filter(({name}) => (!names || names.has(name))
+      && (!this.documentRootTarget || name === "background" || name.startsWith("background-")))
   }
 
   private editableValue(name: string) {
@@ -603,6 +812,7 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private dispatchChange(property: string, mutation: ElementStyleMutation) {
+    if(this.documentRootTarget && property !== "background" && !property.startsWith("background-")) return
     this.dispatchEvent(new CustomEvent<ElementStyleChangeDetail>("element-style-change", {
       detail: {property, mutation},
       bubbles: true,
@@ -955,7 +1165,196 @@ export class ElementStyleEditor extends LitElement {
     `
   }
 
+  private commitCompactValue(name: string, value: string) {
+    this.commitValue(name, value)
+  }
+
+  private renderCompactValue(name: string, label: string, presets: readonly number[], unit = "px") {
+    const current = this.declaration(name)?.value ?? ""
+    const value = current === "none" && name === "scale" ? "1"
+      : current === "none" && name === "rotate" ? "0deg" : current
+    const displayed = name === "scale" && value.trim() && Number.isFinite(Number(value))
+      ? String(Number((Number(value) * 100).toPrecision(15)))
+      : unit && value.endsWith(unit) ? value.slice(0, -unit.length) : value
+    const open = this.compactMenu === name
+    return html`<div class=${`compact-value${open ? " open" : ""}`}
+      @keydown=${(event: KeyboardEvent) => {
+        if(event.key === "Escape") {
+          this.compactMenu = null
+          if(event.target instanceof HTMLInputElement) this.dispatchEvent(new CustomEvent("ribbon-input-cancel", {
+            detail: {input: event.target}, bubbles: true, composed: true,
+          }))
+          event.stopPropagation()
+        }
+        if(event.key === "Enter" && event.target instanceof HTMLInputElement && !event.isComposing) {
+          event.preventDefault()
+          event.target.blur()
+          this.compactMenu = null
+        }
+        if(event.key === "ArrowDown" && presets.length) {
+          event.preventDefault()
+          this.compactMenu = name
+          void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLButtonElement>(`#presets-${name} button`)?.focus())
+        }
+      }}>
+      <div class="compact-input">
+        <input id=${`compact-${name}`} aria-label=${label} inputmode="decimal"
+          role=${presets.length ? "combobox" : nothing} aria-autocomplete=${presets.length ? "none" : nothing}
+          aria-expanded=${presets.length ? String(open) : nothing} aria-controls=${presets.length ? `presets-${name}` : nothing}
+          .value=${displayed} placeholder="Default"
+          @focus=${() => { if(presets.length) this.compactMenu = name }}
+          @blur=${(event: FocusEvent) => {
+            const options = this.renderRoot.querySelector(`#presets-${name}`)
+            if(event.relatedTarget instanceof Node && options?.contains(event.relatedTarget)) return
+            if(this.compactMenu === name) this.compactMenu = null
+          }}
+          @change=${(event: Event) => {
+            const input = event.currentTarget as HTMLInputElement
+            const raw = input.value.trim()
+            const next = raw ? name === "scale" ? String(Number(raw) / 100) : `${raw}${unit}` : ""
+            if(raw && (!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !CSS.supports(name, next))) {
+              input.value = displayed
+              return
+            }
+            this.commitCompactValue(name, next)
+          }}>
+        ${presets.length ? html`<button type="button" class="compact-toggle" aria-label=${`${label} presets`}
+          aria-expanded=${open} aria-controls=${`presets-${name}`}
+          @click=${() => this.compactMenu = open ? null : name}>${ribbonIcon("ChevronRight")}</button>` : nothing}
+        ${unit ? html`<span class="compact-unit" aria-hidden="true">${unit === "deg" ? "°" : unit}</span>` : nothing}
+      </div>
+      ${presets.length ? html`<div class="compact-options" id=${`presets-${name}`} role="listbox" aria-label=${`${label} presets`} ?hidden=${!open}
+        @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+        @mousedown=${(event: MouseEvent) => event.preventDefault()}>
+        ${presets.map((preset, index) => html`<button type="button" role="option" aria-selected=${value === `${preset}${unit}`}
+          @click=${(event: MouseEvent) => {
+            const keyboardFocus = this.shadowRoot?.activeElement === event.currentTarget
+            this.commitCompactValue(name, `${preset}${unit}`)
+            const input = this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!
+            input.value = String(preset)
+            if(keyboardFocus) input.focus()
+            this.compactMenu = null
+          }}><span>${["Tiny", "Small", "Medium", "Large", "Huge"][index]}</span><span class="compact-option-value">${preset}${unit === "deg" ? "°" : unit}</span></button>`)}
+      </div>` : nothing}
+    </div>`
+  }
+
+  private renderCompactColorPicker(property = "border-color", label = "Border color") {
+    const current = this.declaration(property)?.value || this.state.computed[property] || ""
+    const selected = colorHex(current)
+    const choose = (event: Event, value: string) => {
+      const keyboardFocus = this.shadowRoot?.activeElement === event.currentTarget
+      this.commitValue(property, value)
+      const picker = (event.currentTarget as HTMLElement).closest("details")!
+      picker.open = false
+      if(keyboardFocus && !(event.currentTarget instanceof HTMLInputElement)) picker.querySelector("summary")!.focus()
+    }
+    const swatch = (hex: string) => html`<button type="button" class="color-swatch"
+      style=${`background:#${hex}`} aria-label=${`Color #${hex}`} title=${`#${hex}`}
+      aria-pressed=${selected === `#${hex}`} @click=${(event: Event) => choose(event, `#${hex}`)}></button>`
+    return html`<details class="border-color-picker" @toggle=${this.syncCompactPopupState} @keydown=${(event: KeyboardEvent) => {
+      if(event.key !== "Escape") return
+      event.stopPropagation()
+      const picker = event.currentTarget as HTMLDetailsElement
+      picker.open = false
+      picker.querySelector("summary")!.focus()
+    }}>
+      <summary aria-label=${label} title=${label}>${property === "color"
+        ? html`<span class="text-color-preview" style=${`border-color:${current || selected}`}>Abc</span>`
+        : html`<span class="border-color-chip" style=${`background:${current || (property === "background-color" ? "transparent" : selected)}`}></span>`}</summary>
+      <div class="border-color-palette" role="group" aria-label=${`${label} palette`}>
+        <button type="button" class="palette-action palette-automatic" @click=${(event: Event) => choose(event, property === "border-color" ? "currentColor" : "")}>
+          <span class="border-color-chip"></span>Automatic
+        </button>
+        <div class="color-grid">${borderColorColumns.map(column => html`<div class="color-column">${column.map(swatch)}</div>`)}</div>
+        <div class="color-grid color-standard">${standardBorderColors.map(swatch)}</div>
+        <div class="palette-custom">
+          <button type="button" class="palette-action" @click=${(event: Event) => {
+            const control = (event.currentTarget as HTMLElement).parentElement!
+            const input = control.querySelector<HTMLInputElement>('input[type="color"]')!
+            this.dispatchEvent(new CustomEvent("ribbon-input-pointerdown", {
+              detail: {input}, bubbles: true, composed: true,
+            }))
+            if(typeof input.showPicker === "function") input.showPicker()
+            else input.click()
+          }}>${ribbonIcon("Theme")}Custom…</button>
+          <input type="color" tabindex="-1" aria-label=${`Custom ${label.toLowerCase()}`} .value=${selected}
+            @change=${(event: Event) => choose(event, (event.currentTarget as HTMLInputElement).value)}>
+        </div>
+      </div>
+    </details>`
+  }
+
+  private get documentRootTarget() {
+    return this.state.target?.documentRoot === true || this.state.target?.localName === "body"
+  }
+
+  private renderStyleGallery() {
+    return html`<div class="style-gallery" role="group" aria-label="Background and border presets">
+      ${boxStylePresets.map(preset => html`<button type="button" aria-label=${`${preset.name} style preset`}
+        title=${`${preset.name}: #${preset.background}${this.documentRootTarget ? "" : `, 1px solid #${preset.border}, 4px corners, 8px padding`}`}
+        style=${`background:#${preset.background};border-color:#${preset.border}`}
+        @click=${() => {
+          const values: Record<string, string> = {"background-color": `#${preset.background}`}
+          if(!this.documentRootTarget) Object.assign(values, {
+            "border-width": "1px", "border-style": "solid", "border-color": `#${preset.border}`, "border-radius": "4px",
+            "padding": "8px",
+          })
+          const styles = Object.fromEntries(Object.entries(values).map(([property, value]) => [property, {
+            value, priority: this.declaration(property)?.priority ?? "",
+          }]))
+          this.dispatchEvent(new CustomEvent("element-style-change", {detail: {styles}, bubbles: true, composed: true}))
+        }}></button>`)}
+    </div>`
+  }
+
+  private renderCompact() {
+    const borderStyle = this.declaration("border-style")?.value || this.state.computed["border-style"] || "solid"
+    return html`<div @mouseenter=${() => this.dispatchTargetHover(true)} @mouseleave=${() => this.dispatchTargetHover(false)}
+      @change=${(event: Event) => {
+        // Native change events do not cross the component's shadow boundary.
+        if(event.target instanceof HTMLInputElement) this.dispatchEvent(new CustomEvent("ribbon-input-commit", {
+          detail: {input: event.target}, bubbles: true, composed: true,
+        }))
+      }}>
+      ${this.showPresets ? this.renderStyleGallery() : nothing}
+      ${(this.propertyNames ?? ["width", "height", "margin", "border-width", "padding", "background-color"])
+        .filter(name => !this.documentRootTarget || name === "background-color").map(name => {
+        if(name === "background-color" || name === "color") return html`<div class="compact-row" data-property=${name}>
+          <span class="compact-label">${name === "color" ? "Text color" : "Background"}</span>
+          <div class="compact-controls background-control">${this.renderCompactColorPicker(name, name === "color" ? "Text color" : "Background color")}</div>
+        </div>`
+        const label = name === "border-width" ? "Border" : name === "border-radius" ? "Rounding" : name[0].toUpperCase() + name.slice(1)
+        return html`<div class="compact-row" data-property=${name}>
+          <label for=${`compact-${name}`}>${label}</label>
+          <div class="compact-controls">
+          ${name === "border-width" ? html`<div class="border-group">
+            <details class="border-picker" @toggle=${this.syncCompactPopupState}>
+              <summary aria-label="Border line style" title="Border line style">
+                <span class="border-sample" style=${`border-top-style:${borderStyle}`} aria-hidden="true"></span>
+              </summary>
+              <div class="border-options">
+                ${["solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"].map(style => html`
+                  <button type="button" aria-label=${style} title=${style} aria-pressed=${borderStyle === style}
+                    @click=${(event: Event) => {
+                      this.commitValue("border-style", style)
+                      const picker = (event.currentTarget as HTMLElement).closest("details")!
+                      picker.open = false
+                    }}><span class="border-sample" style=${`border-top-style:${style}`} aria-hidden="true"></span></button>
+                `)}
+              </div>
+            </details>
+            ${this.renderCompactColorPicker()}
+          </div>` : nothing}
+          ${this.renderCompactValue(name, label, name === "rotate" || name === "scale" ? [] : name === "border-width" ? [0.5, 1, 2, 4, 8] : name === "border-radius" ? [1, 2, 4, 8, 16] : name === "width" || name === "height" ? [50, 100, 200, 400, 800] : [2, 4, 8, 16, 32], name === "rotate" ? "deg" : name === "scale" ? "%" : "px")}
+          </div>
+        </div>`
+      })}
+    </div>`
+  }
+
   render() {
+    if(this.mode === "compact") return this.renderCompact()
     if(this.mode === "basic") {
       return html`
         <fieldset
@@ -980,7 +1379,7 @@ export class ElementStyleEditor extends LitElement {
               <div class="section-controls">${definitions.map(definition => this.renderProperty(definition))}</div>
             </div>
           `)}
-          ${this.allowCustom ? this.renderCustomProperties() : nothing}
+          ${this.allowCustom && !this.documentRootTarget ? this.renderCustomProperties() : nothing}
         </div>
       </fieldset>
     `

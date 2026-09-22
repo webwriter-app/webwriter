@@ -42,7 +42,7 @@ html.◆ai-review-active {
 body {
   --body-padding: var(--ww-page-gutter, 1.25rem);
   anchor-name: --body-anchor;
-  min-height: calc(100% - 2.5rem);
+  min-height: 100%;
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
@@ -65,8 +65,7 @@ body > :last-child {
   margin-block-end: 0;
 }
 
-/* The equivalent space belongs to BODY padding so it cannot collapse through
- * the document edge. Empty documents retain their existing dimensions. */
+/* Keep the trailing editing space inside BODY's painted background. */
 body:has(> :last-child) {
   padding-block-end: 1.25rem;
 }

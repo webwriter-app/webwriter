@@ -169,6 +169,29 @@ describe("selectCoords()", () => {
     }
   })
 
+  it.each(["empty", "break", "text", "parent", "section"])("selects gaps around a styled paragraph with a %s hit", kind => {
+    setBody(kind === "section" ? '<section><p style="padding: 8px"></p></section>' : '<p style="padding: 8px"></p>')
+    const paragraph = document.querySelector("p")!
+    if(kind === "break") paragraph.append(document.createElement("br"))
+    if(kind === "text") paragraph.append(document.createTextNode(""))
+    const parent = paragraph.parentElement!
+    paragraph.getBoundingClientRect = () => new DOMRect(0, 100, 200, 20)
+    const target = kind === "parent" ? parent : (paragraph.firstChild as Element | Text | null) ?? paragraph
+    mockHitTest(target, 0)
+
+    for(const [y, offset] of [[90, 0], [130, 1]]) {
+      $.selectCoords(50, y)
+      expect($.anchor).toBe(parent)
+      expect($.anchorOffset).toBe(offset)
+      expect($.isGapSelection).toBe(true)
+    }
+    if(target !== parent) {
+      $.selectCoords(50, 110)
+      expect($.anchor).toBe(target)
+      expect($.isGapSelection).toBe(false)
+    }
+  })
+
   it("selects the first text position when clicking beside the block", () => {
     setBody("<p>hello</p>")
     const block = document.body.firstElementChild!

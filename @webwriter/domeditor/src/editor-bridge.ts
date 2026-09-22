@@ -215,6 +215,7 @@ export function isBlockFormatTag(value: string): value is BlockFormatTag {
  * requested by the host so ordinary selection changes stay inexpensive. */
 export type ElementStyleState = {
   target: {
+    documentRoot?: true
     localName: string
     namespaceURI: string | null
   } | null

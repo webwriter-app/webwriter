@@ -832,10 +832,10 @@ export class DOMEditor {
 
     Promise.resolve(result).then(
       value => {
-        // Reading the HTML selection does not change it. Reposting the same
-        // selection here makes the host start another HTML-source read before
-        // this response arrives, so every valid response becomes stale.
-        if(ev.data.type !== "beginHTMLSelectionEdit") this.postSelectionPath()
+        // Selection projections do not change the selection. Reposting it
+        // starts another host read before this response arrives, creating a
+        // feedback loop that also makes valid style/HTML responses stale.
+        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState") this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }

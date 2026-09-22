@@ -315,6 +315,21 @@ export class DomEditorToolbox extends EditingControls {
       box-shadow: 0 0.2rem 0.45rem rgb(31 41 55 / 8%);
     }
 
+    .toolbox-pane-content > ribbon-drawer[layout="element-style"]:focus-within,
+    .toolbox-pane-content > ribbon-drawer:has(element-style-editor[popup-open]) {
+      z-index: 4;
+    }
+
+    .style-reset {
+      display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.2rem;
+      border: 0; border-radius: 3px; color: #526b86; background: transparent;
+      font: inherit; font-size: 0.65rem; cursor: pointer;
+    }
+    .style-reset svg { width: 0.85rem; height: 0.85rem; }
+    .style-reset:hover:not(:disabled) { background: #e8eef5; }
+    .style-reset:focus-visible { outline: 2px solid #b9d7f5; }
+    .style-reset:disabled { opacity: 0.4; cursor: default; }
+
     .toolbox-pane-content > ribbon-drawer[layout="element-style"] {
       flex-basis: auto;
     }
@@ -618,16 +633,66 @@ export class DomEditorToolbox extends EditingControls {
     })
   }
 
+  private get resettableStyles() {
+    const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
+    const properties = documentTarget ? ["background-color"] : [
+      "background-color", "color", "border-width", "border-style", "border-color", "padding",
+      "width", "height", "margin", "border-radius", "rotate", "scale",
+    ]
+    // Resolve authored shorthands and side declarations through CSSOM, so
+    // resetting the drawer leaves unrelated styles such as typography intact.
+    const style = this.ownerDocument.createElement("div").style
+    for(const [name, declaration] of Object.entries(this.elementStyle.inline)) {
+      style.setProperty(name, declaration.value, declaration.priority)
+    }
+    const hasValue = (name: string) => {
+      if(style.getPropertyValue(name)) return true
+      if(name === "margin" || name === "padding") return ["top", "right", "bottom", "left"]
+        .some(side => style.getPropertyValue(`${name}-${side}`))
+      if(["border-width", "border-style", "border-color"].includes(name)) return ["top", "right", "bottom", "left"]
+        .some(side => style.getPropertyValue(`border-${side}-${name.slice("border-".length)}`))
+      return name === "border-radius" && ["top-left", "top-right", "bottom-left", "bottom-right"]
+        .some(corner => style.getPropertyValue(`border-${corner}-radius`))
+    }
+    return Object.fromEntries(properties.filter(hasValue).map(name => [name, null]))
+  }
+
+  private renderUniversalStyleDrawer() {
+    const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
+    const advancedProperties = documentTarget ? [] : ["width", "height", "margin", "border-radius", "rotate", "scale"]
+    const setProperties = this.resettableStyles
+    const advancedCount = advancedProperties.filter(name => Object.hasOwn(setProperties, name)).length
+    return html`
+      <ribbon-drawer label="Style" icon="Theme" layout="element-style" show-pane-icon ?expandable=${!documentTarget} .advancedCount=${advancedCount}>
+        <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
+          ?disabled=${!Object.keys(this.resettableStyles).length}
+          @click=${() => {
+            const styles = this.resettableStyles
+            if(Object.keys(styles).length) this.dispatchEvent(new CustomEvent("element-style-change", {
+              detail: {styles}, bubbles: true, composed: true,
+            }))
+          }}>${ribbonIcon("Restore")}Reset</button>
+        <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "padding"]} .state=${this.elementStyle}></element-style-editor>
+        <element-style-editor slot="more" mode="compact" orientation="vertical"
+          .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>
+      </ribbon-drawer>
+    `
+  }
+
   protected renderDrawers() {
     if(this.activeTool === "Edit" && !this.elementAttributes
       && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
-      return [html`
+      return [this.renderUniversalStyleDrawer(), html`
         <ribbon-drawer label="Attributes" icon="Develop" layout="attributes">
           <element-attribute-editor disabled></element-attribute-editor>
         </ribbon-drawer>
       `]
     }
     const drawers = super.renderDrawers()
+    if(this.activeTool === "Edit" && !this.developMode) {
+      const attributesIndex = this.currentMenuGroups.findIndex(group => group.label === "Attributes")
+      drawers.splice(attributesIndex < 0 ? drawers.length : attributesIndex, 0, this.renderUniversalStyleDrawer())
+    }
     if(this.activeTool === "Edit" && !this.developMode && this.documentSelected) {
       drawers.push(html`
         <ribbon-drawer label="Templates" icon="Layout" layout="document-layout">
@@ -696,7 +761,7 @@ export class DomEditorToolbox extends EditingControls {
     this.activeTool = nextTool
     if(nextTool) {
       this.activeMenu = nextTool === "Review" ? "Edit" : nextTool
-      if(previousMenu === nextTool && nextTool === "Style") {
+      if(nextTool === "Edit" || previousMenu === nextTool && nextTool === "Style") {
         this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
       }
     }

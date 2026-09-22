@@ -1817,6 +1817,57 @@ describe("setBlockType()", () => {
   })
 })
 describe("setStyle()", () => {
+  it.each([
+    ["border-width", "4px", "4px", "solid", "black"],
+    ["border-style", "dashed", "1px", "dashed", "black"],
+    ["border-color", "red", "1px", "solid", "red"],
+  ])("completes a border when %s is set", (property, value, width, line, color) => {
+    document.body.innerHTML = "<p>Text</p>"
+    const paragraph = document.body.firstElementChild as HTMLElement
+    $.selectElement(paragraph)
+    editor.features.manipulation.setStyle({[property]: value})
+    const state = editor.features.manipulation.getStyleState(["border-width", "border-style", "border-color"])
+    expect(state.inline["border-width"]?.value).toBe(width)
+    expect(state.inline["border-style"]?.value).toBe(line)
+    expect(state.inline["border-color"]?.value).toBe(color)
+    for(const side of ["top", "right", "bottom", "left"]) {
+      expect(paragraph.style.getPropertyValue(`border-${side}-width`)).toBe(width)
+      expect(paragraph.style.getPropertyValue(`border-${side}-style`)).toBe(line)
+      expect(paragraph.style.getPropertyValue(`border-${side}-color`)).toBe(color)
+    }
+  })
+  it("preserves existing border sides and priority while filling missing parts", () => {
+    document.body.innerHTML = '<p style="border-top: 3px dotted green !important; border-bottom-width: 7px">Text</p>'
+    const paragraph = document.body.firstElementChild as HTMLElement
+    $.selectElement(paragraph)
+    editor.features.manipulation.setStyle({"border-color": "red"})
+    expect(paragraph.style.borderTopWidth).toBe("3px")
+    expect(paragraph.style.borderTopStyle).toBe("dotted")
+    expect(paragraph.style.getPropertyPriority("border-top-width")).toBe("important")
+    expect(paragraph.style.borderBottomWidth).toBe("7px")
+    expect(paragraph.style.borderLeftWidth).toBe("1px")
+    expect(paragraph.style.borderBottomStyle).toBe("solid")
+    editor.features.manipulation.setStyle({"border-width": null})
+    expect(paragraph.style.borderTopWidth).toBe("")
+  })
+
+  it("allows only background changes on a document-template root", () => {
+    document.body.innerHTML = '<my-document role="document" style="width: 500px"><p>Text</p></my-document>'
+    const root = document.body.firstElementChild as HTMLElement
+    $.selectElement(root)
+    editor.features.manipulation.setStyle({width: "20px", "background-color": "red"})
+    expect(root.style.width).toBe("500px")
+    expect(root.style.backgroundColor).toBe("red")
+    expect(editor.features.manipulation.getStyleState().target?.documentRoot).toBe(true)
+    expect(editor.features.manipulation.setElementStyles(root, {padding: "5px"})).toBe(false)
+    editor.features.manipulation.setElementStyles(root, {"background-color": null})
+    expect(root.style.backgroundColor).toBe("")
+    expect(root.style.width).toBe("500px")
+    $.selectElement(root.firstElementChild!)
+    editor.features.manipulation.setStyle({width: "20px"})
+    expect(root.firstElementChild).toHaveStyle({width: "20px"})
+  })
+
   it("can set a style property", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectElement(document.body.firstElementChild!)
@@ -1859,14 +1910,14 @@ describe("setStyle()", () => {
 
     expect(paragraph).toHaveStyle({minHeight: "20px"})
   })
-  it("skips a section wrapper when styling the element containing a gap", () => {
+  it("does not change root layout when the selection is a gap", () => {
     document.body.innerHTML = "<section><p>one</p><p>two</p></section>"
     const section = document.body.firstElementChild!
     $.selectGap(section.lastElementChild!, "before")
 
     editor.features.manipulation.setStyle({display: "grid"})
 
-    expect(document.body).toHaveStyle({display: "grid"})
+    expect(document.body).not.toHaveStyle({display: "grid"})
     expect(section).not.toHaveAttribute("style")
     expect(section.lastElementChild).not.toHaveAttribute("style")
   })
@@ -1993,16 +2044,17 @@ describe("setStyle()", () => {
     editor.features.selection.disable()
     document.getSelection()?.removeAllRanges()
 
-    editor.features.manipulation.setStyle({color: "red"})
+    editor.features.manipulation.setStyle({"background-color": "red", color: "blue"})
     const target = editor.features.manipulation.styleTarget
-    const state = editor.features.manipulation.getStyleState(["color"])
+    const state = editor.features.manipulation.getStyleState(["background-color"])
     editor.features.selection.enable()
 
     expect(target).toBe(document.body)
     expect(state.target).toMatchObject({localName: "body"})
-    expect(state.inline.color).toEqual({value: "red", priority: ""})
+    expect(state.inline["background-color"]).toEqual({value: "red", priority: ""})
     expect(paragraph).not.toHaveAttribute("style")
-    expect(document.body).toHaveStyle({color: "red"})
+    expect(document.body).toHaveStyle({backgroundColor: "red"})
+    expect(document.body.style.color).not.toBe("blue")
   })
   it("supports custom properties and important priority", () => {
     document.body.innerHTML = "<p>hello</p>"

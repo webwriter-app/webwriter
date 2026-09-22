@@ -28,6 +28,7 @@ export class RibbonDrawer extends LitElement {
     drawerSettled: {type: Boolean, reflect: true, attribute: "drawer-settled"},
     drawerScrollable: {type: Boolean, reflect: true, attribute: "drawer-scrollable"},
     expandable: {type: Boolean, reflect: true},
+    advancedCount: {type: Number, attribute: false},
     icon: {type: String},
     label: {type: String},
     showPaneIcon: {type: Boolean, attribute: "show-pane-icon"},
@@ -720,6 +721,13 @@ export class RibbonDrawer extends LitElement {
       transform: rotate(225deg);
     }
 
+    .advanced-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 1.1rem; height: 1rem; padding: 0 0.25rem; margin-left: 0.35rem;
+      box-sizing: border-box; border-radius: 999px; background: #dce7f2; color: #526b86;
+      font-size: 0.6rem; font-weight: 650; font-variant-numeric: tabular-nums;
+    }
+
     .drawer-toggle-label {
       display: none;
     }
@@ -939,6 +947,9 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
     }
 
+    :host([pane][layout="element-style"]) .pane-label { padding-right: 0; }
+    slot[name="heading-action"] { display: flex; margin-left: auto; }
+
     :host([pane][hide-pane-label]) .pane-label {
       display: none;
     }
@@ -1093,6 +1104,7 @@ export class RibbonDrawer extends LitElement {
   collapsed = false
   compact = false
   expandable = false
+  advancedCount: number | null = null
   icon = ""
   label = "Drawer"
   showPaneIcon = false
@@ -1502,7 +1514,8 @@ export class RibbonDrawer extends LitElement {
       title=${toggleLabel}
       @click=${this.toggleDrawer}
     >
-      <span class="drawer-toggle-label">Advanced options</span>
+      <span class="drawer-toggle-label">Advanced options${this.advancedCount !== null ? html`<span
+        class="advanced-count" aria-label=${`${this.advancedCount} advanced options set`}>${this.advancedCount}</span>` : ""}</span>
       <span class="drawer-icon" aria-hidden="true"></span>
     </button>`
     return html`
@@ -1520,6 +1533,7 @@ export class RibbonDrawer extends LitElement {
        <span class="pane-label">
          ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${ribbonIcon(this.icon || this.label)}</span>` : ""}
          ${this.label}
+         <slot name="heading-action"></slot>
        </span>
        <div id="drawer-controls" class="controls">
           ${this.layout === "elements" ? html`

@@ -21,7 +21,7 @@ afterEach(() => document.body.replaceChildren())
 async function mount(
   definitions = elementStyleCategories[0].basic,
   elementState = state(),
-  mode: "basic" | "advanced" = "basic",
+  mode: "basic" | "advanced" | "compact" = "basic",
 ) {
   const editor = new ElementStyleEditor()
   editor.definitions = definitions
@@ -360,4 +360,352 @@ describe("element style controls", () => {
       mutation: {value: "rebeccapurple", priority: ""},
     })
   })
+})
+
+
+describe("compact universal style controls", () => {
+  it("keeps box properties on one row with grouped border controls", async () => {
+    const editor = await mount([], state(), "compact")
+    const root = editor.shadowRoot!
+    expect(Array.from(root.querySelectorAll("[data-property]"), row => row.getAttribute("data-property")))
+      .toEqual(["width", "height", "margin", "border-width", "padding", "background-color"])
+    expect(root.querySelector(".compact-advanced")).toBeNull()
+    expect(root.querySelector('[data-property="border-width"]')!.firstElementChild!.tagName).toBe("LABEL")
+    expect(root.querySelector('[aria-label="Border color"]')).not.toBeNull()
+    expect(root.querySelectorAll(".border-options button")).toHaveLength(8)
+  })
+
+  it("applies presets, pixels, transforms, and clearing through the shared style event", async () => {
+    const editor = await mount([], state({padding: {value: "8px", priority: "important"}}), "compact")
+    const changes: ElementStyleChangeDetail[] = []
+    editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+    const change = (name: string, value: string) => {
+      const input = editor.shadowRoot!.querySelector<HTMLInputElement>(`#compact-${name}`)!
+      input.value = value
+      input.dispatchEvent(new Event("change"))
+    }
+    expect(editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-padding")!.value).toBe("8")
+    editor.shadowRoot!.querySelectorAll<HTMLButtonElement>("#presets-padding button")[3].click()
+    expect(changes.at(-1)).toEqual({property: "padding", mutation: {value: "16px", priority: "important"}})
+    change("width", "125")
+    expect(changes.at(-1)).toEqual({property: "width", mutation: {value: "125px", priority: ""}})
+    change("padding", "")
+    expect(changes.at(-1)).toEqual({property: "padding", mutation: null})
+    editor.propertyNames = ["rotate", "scale"]
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".compact-toggle")).toBeNull()
+    expect(editor.shadowRoot!.querySelector("#compact-rotate")!.nextElementSibling!.textContent).toBe("°")
+    change("rotate", "45")
+    expect(changes.at(-1)).toEqual({property: "rotate", mutation: {value: "45deg", priority: ""}})
+    change("scale", "150")
+    expect(changes.at(-1)).toEqual({property: "scale", mutation: {value: "1.5", priority: ""}})
+    editor.propertyNames = null
+    await editor.updateComplete
+    editor.shadowRoot!.querySelector<HTMLButtonElement>("#presets-border-width button")!.click()
+    expect(changes.at(-1)?.property).toBe("border-width")
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="dashed"]')!.click()
+    expect(changes.at(-1)).toEqual({property: "border-style", mutation: {value: "dashed", priority: ""}})
+  })
+})
+
+
+describe("compact preset menus", () => {
+  it("keeps all options while typing and closes on outside interaction or Escape", async () => {
+    const editor = await mount([], state(), "compact")
+    const root = editor.shadowRoot!
+    const toggle = root.querySelector<HTMLButtonElement>('[aria-label="Width presets"]')!
+    const input = root.querySelector<HTMLInputElement>("#compact-width")!
+    toggle.click()
+    await editor.updateComplete
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(toggle.querySelector("svg")).not.toBeNull()
+    expect(root.querySelector(".compact-value.open")).not.toBeNull()
+    input.value = "123"
+    input.dispatchEvent(new Event("input"))
+    await editor.updateComplete
+    expect(root.querySelectorAll("#presets-width button")).toHaveLength(5)
+    expect(input.getAttribute("list")).toBeNull()
+    expect(input.nextElementSibling).toBe(toggle)
+    expect(toggle.nextElementSibling!.textContent).toBe("px")
+    input.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    document.body.dispatchEvent(new Event("pointerdown", {bubbles: true}))
+    await editor.updateComplete
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    toggle.click()
+    await editor.updateComplete
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    await editor.updateComplete
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+  })
+})
+
+
+it("displays authored scale as a percentage and preserves priority when editing or clearing", async () => {
+  const editor = await mount([], state({scale: {value: "1.1", priority: "important"}}), "compact")
+  editor.propertyNames = ["scale"]
+  await editor.updateComplete
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-scale")!
+  expect(input.value).toBe("110")
+  expect(input.nextElementSibling!.textContent).toBe("%")
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  input.value = "62.5"
+  input.dispatchEvent(new Event("change"))
+  expect(changes.at(-1)).toEqual({property: "scale", mutation: {value: "0.625", priority: "important"}})
+  input.value = ""
+  input.dispatchEvent(new Event("change"))
+  expect(changes.at(-1)).toEqual({property: "scale", mutation: null})
+})
+
+
+it("shows only inline values, follows selection state, and keeps preset amounts", async () => {
+  const current = state()
+  current.computed = {...current.computed, margin: "8px", rotate: "none", scale: "none"}
+  const editor = await mount([], current, "compact")
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  const input = (name: string) => editor.shadowRoot!.querySelector<HTMLInputElement>(`#compact-${name}`)!
+  expect(input("width").value).toBe("")
+  expect(input("margin").value).toBe("")
+  expect(input("width").placeholder).toBe("Default")
+  expect(Array.from(editor.shadowRoot!.querySelectorAll("#presets-width .compact-option-value"), option => option.textContent)).toEqual(["50px", "100px", "200px", "400px", "800px"])
+  expect(editor.shadowRoot!.querySelector('#presets-margin [aria-selected="true"]')).toBeNull()
+  editor.state = {...current, inline: {width: {value: "240px", priority: ""}}}
+  await editor.updateComplete
+  expect(input("width").value).toBe("240")
+  input("width").value = ""
+  input("width").dispatchEvent(new Event("change"))
+  expect(changes.pop()).toEqual({property: "width", mutation: null})
+  editor.state = current
+  await editor.updateComplete
+  expect(input("width").value).toBe("")
+  editor.propertyNames = ["rotate", "scale"]
+  await editor.updateComplete
+  expect(input("rotate").value).toBe("")
+  expect(input("scale").value).toBe("")
+  expect(changes).toEqual([])
+})
+
+
+it("applies Tiny and Huge presets to box properties", async () => {
+  const editor = await mount([], state(), "compact")
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  for(const [property, tiny, huge] of [["width", "50px", "800px"], ["margin", "2px", "32px"], ["border-width", "0.5px", "8px"]]) {
+    const options = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(`#presets-${property} button`)
+    expect(options[0].textContent).toBe(`Tiny${tiny}`)
+    expect(options[4].textContent).toBe(`Huge${huge}`)
+    options[0].click()
+    expect(changes.at(-1)).toEqual({property, mutation: {value: tiny, priority: ""}})
+    options[4].click()
+    expect(changes.at(-1)).toEqual({property, mutation: {value: huge, priority: ""}})
+  }
+})
+
+it("offers fixed border colors, Automatic, and the custom picker", async () => {
+  const editor = await mount([], state(), "compact")
+  const root = editor.shadowRoot!
+  const picker = root.querySelector<HTMLDetailsElement>(".border-color-picker")!
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  expect(picker.querySelectorAll(".color-swatch")).toHaveLength(70)
+  expect(picker.querySelector("h1, h2, h3")).toBeNull()
+  picker.open = true
+  picker.querySelector<HTMLButtonElement>('[aria-label="Color #5b9bd5"]')!.click()
+  expect(changes.at(-1)).toEqual({property: "border-color", mutation: {value: "#5b9bd5", priority: ""}})
+  expect(picker.open).toBe(false)
+  picker.querySelector<HTMLButtonElement>(".palette-automatic")!.click()
+  expect(changes.at(-1)).toEqual({property: "border-color", mutation: {value: "currentColor", priority: ""}})
+  const custom = picker.querySelector<HTMLInputElement>('input[type="color"]')!
+  let opened = 0
+  Object.defineProperty(custom, "showPicker", {value: () => opened++})
+  picker.open = true
+  expect(custom.hidden).toBe(false)
+  expect(custom.parentElement!.classList.contains("palette-custom")).toBe(true)
+  picker.querySelector<HTMLButtonElement>(".palette-custom button")!.click()
+  expect(picker.open).toBe(true)
+  expect(opened).toBe(1)
+  custom.value = "#123456"
+  custom.dispatchEvent(new Event("change"))
+  expect(changes.at(-1)).toEqual({property: "border-color", mutation: {value: "#123456", priority: ""}})
+  picker.open = true
+  document.body.dispatchEvent(new Event("pointerdown", {bubbles: true}))
+  expect(picker.open).toBe(false)
+  picker.open = true
+  picker.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+  expect(picker.open).toBe(false)
+})
+
+
+it("exposes open menus for drawer stacking even without focus", async () => {
+  const editor = await mount([], state(), "compact")
+  const picker = editor.shadowRoot!.querySelector<HTMLDetailsElement>(".border-color-picker")!
+  picker.open = true
+  picker.dispatchEvent(new Event("toggle"))
+  expect(editor.hasAttribute("popup-open")).toBe(true)
+  expect(editor.matches(":focus-within")).toBe(false)
+  picker.open = false
+  picker.dispatchEvent(new Event("toggle"))
+  expect(editor.hasAttribute("popup-open")).toBe(false)
+  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Width presets"]')!.click()
+  await editor.updateComplete
+  expect(editor.hasAttribute("popup-open")).toBe(true)
+  document.body.dispatchEvent(new Event("pointerdown", {bubbles: true}))
+  await editor.updateComplete
+  expect(editor.hasAttribute("popup-open")).toBe(false)
+})
+
+
+it("offers background on every element and only background on the document root", async () => {
+  const current = state()
+  const editor = await mount([], current, "compact")
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  const background = editor.shadowRoot!.querySelector('[data-property="background-color"]')!
+  background.querySelector<HTMLButtonElement>('[aria-label="Color #5b9bd5"]')!.click()
+  expect(changes.at(-1)).toEqual({property: "background-color", mutation: {value: "#5b9bd5", priority: ""}})
+  background.querySelector<HTMLButtonElement>(".palette-automatic")!.click()
+  expect(changes.at(-1)).toEqual({property: "background-color", mutation: null})
+  editor.state = {...current, target: {localName: "my-document", namespaceURI: "http://www.w3.org/1999/xhtml", documentRoot: true}}
+  await editor.updateComplete
+  expect(Array.from(editor.shadowRoot!.querySelectorAll("[data-property]"), row => row.getAttribute("data-property"))).toEqual(["background-color"])
+  editor.propertyNames = ["rotate", "scale"]
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector("input")).toBeNull()
+})
+
+it("does not steal focus when choosing presets or colors with the pointer", async () => {
+  const editor = await mount([], state(), "compact")
+  const outside = document.createElement("button")
+  document.body.append(outside)
+  outside.focus()
+  editor.shadowRoot!.querySelector<HTMLButtonElement>("#presets-width button")!.click()
+  expect(document.activeElement).toBe(outside)
+  editor.shadowRoot!.querySelector<HTMLButtonElement>('.border-color-palette [aria-label="Color #5b9bd5"]')!.click()
+  expect(document.activeElement).toBe(outside)
+})
+
+it("forwards native changes and Escape through the ribbon input lifecycle", async () => {
+  const editor = await mount([], state(), "compact")
+  const events: string[] = []
+  const listener = (event: Event) => events.push(event.type)
+  document.body.addEventListener("ribbon-input-commit", listener)
+  document.body.addEventListener("ribbon-input-cancel", listener)
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!
+  input.value = "150"
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: false}))
+  input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
+  expect(events).toEqual(["ribbon-input-commit", "ribbon-input-cancel"])
+  document.body.removeEventListener("ribbon-input-commit", listener)
+  document.body.removeEventListener("ribbon-input-cancel", listener)
+})
+
+
+it("blurs compact inputs on outside clicks even when the toolbox prevents pointer focus", async () => {
+  const editor = await mount([], state(), "compact")
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!
+  const button = document.createElement("button")
+  button.addEventListener("pointerdown", event => event.preventDefault())
+  document.body.append(button)
+  input.focus()
+  input.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+  expect(editor.shadowRoot!.activeElement).toBe(input)
+  button.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+  expect(editor.shadowRoot!.activeElement).toBeNull()
+  input.focus()
+  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Width presets"]')!
+    .dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+  expect(editor.shadowRoot!.activeElement).toBeNull()
+})
+
+
+it("opens presets on input focus, closes on blur, and blurs on Enter", async () => {
+  const editor = await mount([], state(), "compact")
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!
+  const menu = editor.shadowRoot!.querySelector<HTMLElement>("#presets-width")!
+  input.focus()
+  await editor.updateComplete
+  expect(menu.hidden).toBe(false)
+  input.blur()
+  await editor.updateComplete
+  expect(menu.hidden).toBe(true)
+  input.focus()
+  await editor.updateComplete
+  input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+  await editor.updateComplete
+  expect(editor.shadowRoot!.activeElement).toBeNull()
+  expect(menu.hidden).toBe(true)
+  input.focus()
+  await editor.updateComplete
+  const option = menu.querySelector<HTMLButtonElement>("button")!
+  option.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+  await editor.updateComplete
+  expect(menu.hidden).toBe(false)
+  expect(editor.shadowRoot!.activeElement).toBe(input)
+  option.click()
+  await editor.updateComplete
+  expect(input.value).toBe("50")
+  expect(menu.hidden).toBe(true)
+})
+
+it("offers eight palette-based box presets and applies each as one style change", async () => {
+  const editor = await mount([], state(), "compact")
+  editor.showPresets = true
+  await editor.updateComplete
+  const buttons = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")
+  expect(buttons).toHaveLength(8)
+  expect(Array.from(buttons, button => button.getAttribute("aria-label"))).toEqual([
+    "White style preset", "Gray style preset", "Blue style preset", "Green style preset",
+    "Orange style preset", "Yellow style preset", "Red style preset", "Purple style preset",
+  ])
+  const changes: unknown[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  buttons[2].click()
+  expect(changes).toEqual([{styles: {
+    "background-color": {value: "#deebf7", priority: ""},
+    "border-width": {value: "1px", priority: ""},
+    "border-radius": {value: "4px", priority: ""},
+    "border-style": {value: "solid", priority: ""},
+    "border-color": {value: "#5b9bd5", priority: ""},
+    "padding": {value: "8px", priority: ""},
+  }}])
+  editor.state = {...state(), target: {localName: "body", namespaceURI: "http://www.w3.org/1999/xhtml", documentRoot: true}}
+  await editor.updateComplete
+  buttons[3].click()
+  expect(changes.at(-1)).toEqual({styles: {"background-color": {value: "#e2efda", priority: ""}}})
+})
+
+
+it("edits and clears corner rounding using pixels and presets", async () => {
+  const editor = await mount([], state(), "compact")
+  editor.propertyNames = ["border-radius"]
+  await editor.updateComplete
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Rounding"]')!
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  input.value = "6"
+  input.dispatchEvent(new Event("change"))
+  expect(changes.at(-1)).toEqual({property: "border-radius", mutation: {value: "6px", priority: ""}})
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>("#presets-border-radius button")[2].click()
+  expect(changes.at(-1)).toEqual({property: "border-radius", mutation: {value: "4px", priority: ""}})
+  input.value = ""
+  input.dispatchEvent(new Event("change"))
+  expect(changes.at(-1)).toEqual({property: "border-radius", mutation: null})
+})
+
+it("shows text color as an Abc preview and changes or resets it through the palette", async () => {
+  const editor = await mount([], state({color: {value: "#5b9bd5", priority: "important"}}), "compact")
+  editor.propertyNames = ["color"]
+  await editor.updateComplete
+  const preview = editor.shadowRoot!.querySelector<HTMLElement>(".text-color-preview")!
+  expect(preview.textContent).toBe("Abc")
+  expect(preview.style.borderColor).toBe("#5b9bd5")
+  const changes: unknown[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Color #ed7d31"]')!.click()
+  expect(changes.at(-1)).toEqual({property: "color", mutation: {value: "#ed7d31", priority: "important"}})
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".palette-automatic")!.click()
+  expect(changes.at(-1)).toEqual({property: "color", mutation: null})
 })

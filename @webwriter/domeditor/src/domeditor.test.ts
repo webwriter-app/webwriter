@@ -98,7 +98,7 @@ describe("DOMEditor stylesheets", () => {
     expect(bodyRule?.style.getPropertyValue("--body-padding")).toBe("var(--ww-page-gutter, 1.25rem)")
     expect(bodyRule?.style.getPropertyValue("anchor-name")).toBe("--body-anchor")
     expect(bodyRule?.style.padding).toBe("")
-    expect(bodyRule?.style.minHeight).toBe("calc(100% - 2.5rem)")
+    expect(bodyRule?.style.minHeight).toBe("100%")
     expect(bodyRule?.style.maxWidth).toBe("")
     expect(bodyRule?.style.pointerEvents).toBe("auto")
     expect(bodyRule?.style.userSelect).toBe("text")
@@ -645,6 +645,35 @@ describe("bridge origin binding", () => {
     expect(postMessage).toHaveBeenCalledWith({type: "undo", bridgeNonce}, bridgeOrigin)
     editor.destroy()
     postMessage.mockRestore()
+  })
+
+  it("returns selected styles without reposting an unchanged selection", async () => {
+    document.body.innerHTML = '<p style="padding: 8px">One</p><p style="padding: 16px">Two</p>'
+    const editor = new DOMEditor({bridgeNonce: "0123456789abcdef"})
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      for(const [index, paragraph] of Array.from(document.querySelectorAll("p")).entries()) {
+        const text = paragraph.firstChild!
+        document.getSelection()!.setBaseAndExtent(text, 0, text, 0)
+        postMessage.mockClear()
+        window.dispatchEvent(new MessageEvent("message", {data: {
+          type: "getStyleState", properties: ["padding"], requestId: `style-${index}`,
+          bridgeNonce: editor.trustedScriptNonce,
+        }}))
+        await Promise.resolve()
+        expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+          type: executeCompleteEvent,
+          detail: {requestId: `style-${index}`, result: expect.objectContaining({
+            inline: expect.objectContaining({padding: {value: paragraph.style.padding, priority: ""}}),
+          })},
+        }), window.location.origin)
+        expect(postMessage.mock.calls.some(([message]) => message.type === selectionChangeEvent)).toBe(false)
+      }
+    }
+    finally {
+      editor.destroy()
+      postMessage.mockRestore()
+    }
   })
 
   it("returns selected HTML without reposting an unchanged selection", async () => {

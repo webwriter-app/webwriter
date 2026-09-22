@@ -1479,7 +1479,7 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap
+        const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap
         const placement = structuralGap?.placement ?? (isColumnGroup(after) || !before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {

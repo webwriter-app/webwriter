@@ -1442,6 +1442,7 @@ export class DomEditor extends LitElement {
             this.focusEditor()
           }
           editorReadyResolve?.(editorWindow)
+          if(this.isConnected && this.editorWindow === editorWindow && this.stylesVisible()) this.queueElementStyleRefresh()
         },
         error => editorReadyReject?.(error),
       )
@@ -1505,6 +1506,7 @@ export class DomEditor extends LitElement {
     return authoredChildren.length === 1
       && onlyChild?.nodeType === Node.ELEMENT_NODE
       && (onlyChild as Element).localName === "p"
+      && !(onlyChild as HTMLParagraphElement).style.length
       // Native editing can leave empty text nodes and a placeholder line break.
       && (onlyChild as Element).children.length <= 1
       && Array.from(onlyChild.childNodes).every(node =>
@@ -4002,7 +4004,8 @@ export class DomEditor extends LitElement {
   }
 
   private stylesVisible() {
-    return this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Style"
+    const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+    return toolbox?.activeTool === "Style" || toolbox?.activeTool === "Edit" && !toolbox.developMode
       || this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.activeMenu === "Style"
   }
 
@@ -4015,7 +4018,8 @@ export class DomEditor extends LitElement {
       : isRecord(value.target)
         && typeof value.target.localName === "string"
         && (value.target.namespaceURI === null || typeof value.target.namespaceURI === "string")
-        ? {localName: value.target.localName, namespaceURI: value.target.namespaceURI}
+        ? {localName: value.target.localName, namespaceURI: value.target.namespaceURI,
+          ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined
       || typeof value.context.display !== "string"
@@ -4071,31 +4075,33 @@ export class DomEditor extends LitElement {
     const detail = (event as CustomEvent<{
       property?: unknown
       mutation?: unknown
+      styles?: unknown
     }>).detail
-    const property = detail?.property
-    const mutation = detail?.mutation
-    const validDeclaration = isRecord(mutation)
-      && typeof mutation.value === "string"
-      && (mutation.priority === "" || mutation.priority === "important")
-    if(typeof property !== "string" || !property || property !== property.trim() || property.includes(";")
-      || mutation !== null && typeof mutation !== "string" && !validDeclaration) return
-    const typedMutation = mutation as ElementStyleMutation
+    const entries = isRecord(detail?.styles)
+      ? Object.entries(detail.styles)
+      : [[detail?.property, detail?.mutation]]
+    if(!entries.length || entries.some(([property, mutation]) => {
+      const validDeclaration = isRecord(mutation) && typeof mutation.value === "string"
+        && (mutation.priority === "" || mutation.priority === "important")
+      return typeof property !== "string" || !property || property !== property.trim() || property.includes(";")
+        || mutation !== null && typeof mutation !== "string" && !validDeclaration
+    })) return
+    const styles = Object.fromEntries(entries) as Record<string, ElementStyleMutation>
     const previousState = this.elementStyle
     const inline = {...this.elementStyle.inline}
-    if(typedMutation === null || typedMutation === "") delete inline[property]
-    else inline[property] = typeof typedMutation === "string"
-      ? {value: typedMutation, priority: ""}
-      : {...typedMutation}
+    for(const [property, mutation] of Object.entries(styles)) {
+      if(mutation === null || mutation === "") delete inline[property]
+      else inline[property] = typeof mutation === "string"
+        ? {value: mutation, priority: ""} : {...mutation}
+    }
     this.elementStyle = {...this.elementStyle, inline}
 
-    const paragraphSelection = paragraphStylePropertyNameSet.has(property)
+    const paragraphSelection = Object.keys(styles).every(property => paragraphStylePropertyNameSet.has(property))
       && !this.nodeSelection && !this.selectionGap && !this.tableSelection?.cellSelection
     void this.execute(paragraphSelection ? {
-      type: "setBlockStyle",
-      styles: {[property]: typedMutation},
+      type: "setBlockStyle", styles,
     } : {
-      type: "setStyle",
-      styles: {[property]: typedMutation},
+      type: "setStyle", styles,
     }).then(() => this.refreshElementStyleState()).catch(() => {
       this.elementStyle = previousState
       return this.refreshElementStyleState()

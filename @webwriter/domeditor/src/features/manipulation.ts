@@ -1080,6 +1080,12 @@ export class ManipulationFeature extends EditorFeature {
       }
     }
     const requested = Array.from(new Set(properties.filter(name => typeof name === "string" && name.trim())))
+    // CSSOM may enumerate border sides rather than the aggregate control's
+    // property. Read requested shorthand values from the same inline style.
+    for(const name of requested) {
+      const value = style.getPropertyValue(name)
+      if(value) inline[name] = {value, priority: style.getPropertyPriority(name) === "important" ? "important" : ""}
+    }
     const computedStyle = getComputedStyle(target)
     const computed = Object.fromEntries(requested.map(name => [name, computedStyle.getPropertyValue(name)]))
     const paragraphProperties = requested.filter(name => paragraphStylePropertyNameSet.has(name))
@@ -1104,7 +1110,8 @@ export class ManipulationFeature extends EditorFeature {
     })
     const parentDisplay = target.parentElement? getComputedStyle(target.parentElement).display: ""
     return {
-      target: {localName: target.localName, namespaceURI: target.namespaceURI},
+      target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},
       inline,
       computed,
       context: {display: computedStyle.display, parentDisplay},
@@ -2165,14 +2172,26 @@ export class ManipulationFeature extends EditorFeature {
       if(value === null) style.removeProperty(name)
       else style.setProperty(name, value, priority)
     })
+    if(entries.some(({name, value}) => value && ["border-width", "border-style", "border-color"].includes(name))) {
+      // Resolve missing parts from the live inline declaration, including
+      // shorthands and per-side overrides, within the same edit transaction.
+      for(const [part, fallback] of [["width", "1px"], ["style", "solid"], ["color", "black"]]) {
+        for(const side of ["top", "right", "bottom", "left"]) {
+          const property = `border-${side}-${part}`
+          if(!style.getPropertyValue(property)) style.setProperty(property, fallback)
+        }
+      }
+    }
     return true
   }
 
   /** Assigns inline style properties on the single live style target, merging
    * with existing declarations. Null or an empty string clears a property. */
   setStyle(styles: Record<string, ElementStyleMutation>) {
-    const entries = this.validatedStyleEntries(styles)
-    return this.withNormalization(() => this.applyStyleEntries(this.styleTarget, entries))
+    const target = this.styleTarget
+    const entries = this.allowedElementStyles(target, this.validatedStyleEntries(styles))
+    if(!entries.length) return false
+    return this.withNormalization(() => this.applyStyleEntries(target, entries))
   }
 
   /** Targeted CSS commands never normalize surrounding authored structure or
@@ -2188,9 +2207,16 @@ export class ManipulationFeature extends EditorFeature {
     return entries
   }
 
+  private allowedElementStyles(target: Element, entries: ReturnType<ManipulationFeature["validatedStyleEntries"]>) {
+    return isDocumentRoot(target) || target === document.body
+      ? entries.filter(({name}) => name === "background" || name.startsWith("background-"))
+      : entries
+  }
+
   setElementStyles(target: Element, styles: Record<string, ElementStyleMutation>) {
     if(!target.isConnected || !getDocumentRoot().contains(target) || this.editor.isEditingLocked) return false
-    const entries = this.validateElementStyles(styles)
+    const entries = this.allowedElementStyles(target, this.validateElementStyles(styles))
+    if(!entries.length) return false
     const changed = this.applyStyleEntries(target, entries)
     if(!this.inlineStyleOf(target)?.length) target.removeAttribute("style")
     return changed

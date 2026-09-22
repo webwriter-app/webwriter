@@ -21,6 +21,10 @@ describe("document themes", () => {
     expect(source).toContain("--ww-page-gutter: clamp(1rem, 2vw, 2rem);")
     expect(landmarks).toContain("max-inline-size: calc(var(--ww-page-max) + 2 * var(--ww-page-gutter));")
     expect(landmarks).toContain("min-inline-size: 0;")
+    expect(landmarks).toContain("margin: 0 auto;")
+    expect(landmarks).toContain("min-block-size: 100vh;")
+    expect(landmarks).toContain("padding-block: 1.25rem;")
+    expect(landmarks).not.toContain("margin: 1.25rem auto;")
     expect(landmarks).not.toMatch(/min-(?:inline-size|width):\s*280px|overflow(?:-x)?:\s*hidden/)
   })
 

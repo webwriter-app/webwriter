@@ -1454,6 +1454,17 @@ describe("DomEditor file actions", () => {
     expect((editor as any).fileDirty).toBe(false)
   })
 
+  it("clears unsaved changes when the styles on an otherwise empty paragraph are cleared", async () => {
+    const {editor, iframe} = await mountEditor()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const paragraph = iframe.contentDocument!.createElement("p")
+    iframe.contentDocument!.body.append(paragraph)
+    paragraph.style.padding = "8px"
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
+    paragraph.style.padding = ""
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(false))
+  })
+
   it.each(["empty", "empty text", "placeholder break"])("clears unsaved changes for a fresh paragraph with %s content", async content => {
     const {editor, iframe} = await mountEditor()
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -1487,6 +1498,8 @@ describe("DomEditor file actions", () => {
     "<p><test-widget></test-widget></p>",
     "<p><br><br></p>",
     "<p></p><p></p>",
+    '<p style="padding: 8px"></p>',
+    '<p style="border: 1px solid black"><br></p>',
   ])("keeps authored content dirty in a fresh document: %s", async html => {
     const {editor, iframe} = await mountEditor()
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -2076,6 +2089,49 @@ describe("DomEditor.execute()", () => {
       expect(toolbox.activeTool).toBeNull()
       expect(toolbox.hidden).toBe(!visible)
     }
+  })
+
+  it("refreshes inline styles when Edit opens and the selected element changes", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    let width: string | null = "120px"
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "getStyleState") return {
+        target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
+        inline: width ? {width: {value: width, priority: ""}} : {},
+        computed: {width: "300px"}, context: {display: "block", parentDisplay: "block"},
+      }
+    })
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool(null)
+    toolbox.selectTool("Edit")
+    await vi.waitFor(() => expect(toolbox.elementStyle.inline.width?.value).toBe("120px"))
+    width = "240px"
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [1], name: "Paragraph"}]}},
+      source: editorWindow,
+    }))
+    await vi.waitFor(() => expect(toolbox.elementStyle.inline.width?.value).toBe("240px"))
+    width = null
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [2], name: "Paragraph"}]}},
+      source: editorWindow,
+    }))
+    await vi.waitFor(() => expect(toolbox.elementStyle.inline.width).toBeUndefined())
+    expect(execute.mock.calls.filter(([action]) => action.type === "getStyleState").length).toBeGreaterThanOrEqual(3)
+  })
+
+  it("applies a box preset in one style command", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const styles = {
+      "background-color": {value: "#deebf7", priority: ""},
+      "border-width": {value: "1px", priority: ""},
+      "border-style": {value: "solid", priority: ""},
+      "border-color": {value: "#5b9bd5", priority: ""},
+    }
+    toolbox.dispatchEvent(new CustomEvent("element-style-change", {detail: {styles}, bubbles: true, composed: true}))
+    expect(execute.mock.calls.filter(([action]) => action.type === "setStyle")).toEqual([[{type: "setStyle", styles}]])
   })
 
   it("loads Style-pane state lazily and routes inline style changes", async () => {
