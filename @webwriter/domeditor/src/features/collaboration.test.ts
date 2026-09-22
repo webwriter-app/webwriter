@@ -100,26 +100,26 @@ describe("DOMEditor collaboration wiring", () => {
     expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
   })
 
-  it("synchronizes semantic table cells through undo, redo, and serialization", async () => {
+  it("synchronizes table header rows through undo, redo, and serialization", async () => {
     document.body.innerHTML = '<table><tbody><tr><td id="name"><strong>Name</strong></td></tr></tbody></table>'
     await mutationsDelivered()
     editor.doc.stopCapturing()
     editor.features.table.selectCells(document.querySelector("td")!)
 
-    expect(editor.features.table.actions.setTableCellRole({
-      type: "setTableCellRole", role: "column-header",
+    expect(editor.features.table.actions.toggleTableHeader({
+      type: "toggleTableHeader",
     })).toBe(true)
     await mutationsDelivered()
 
-    expect(document.querySelector("th")?.getAttribute("scope")).toBe("col")
+    expect(document.querySelector("thead th")).not.toBeNull()
     expect(document.querySelector("th")?.innerHTML).toBe("<strong>Name</strong>")
-    expect(editor.toHTML(true)).toContain('<th id="name" scope="col"><strong>Name</strong></th>')
-    expect((editor.doc.body.firstChild as Y.XmlElement).toString()).toContain('scope="col"')
+    expect(editor.toHTML(true)).toContain('<th id="name"><strong>Name</strong></th>')
+    expect((editor.doc.body.firstChild as Y.XmlElement).toString()).toContain('<thead>')
 
     editor.features.history.actions.undo({type: "undo"})
     expect(document.querySelector("td")?.innerHTML).toBe("<strong>Name</strong>")
     editor.features.history.actions.redo({type: "redo"})
-    expect(document.querySelector("th")?.getAttribute("scope")).toBe("col")
+    expect(document.querySelector("thead th")).not.toBeNull()
   })
 
   it("synchronizes structured ruby annotations through undo, redo, and serialization", async () => {

@@ -2016,12 +2016,8 @@ describe("DomEditor.execute()", () => {
         canMerge: false,
         canSplit: false,
         hasCaption: false,
-        selectedRowGroup: "tbody",
-        rowGroups: [],
-        canAddHeaderGroup: true,
-        canAddFooterGroup: true,
-        columnGroups: [],
-        cellSemantics: {role: "data", headers: "", abbr: ""},
+        hasHeader: false,
+        hasFooter: false,
       },
     })
     expect(toolbox.activeTool).toBe("Edit")
@@ -2535,30 +2531,16 @@ describe("DomEditor.execute()", () => {
     expect(focusEditor).not.toHaveBeenCalled()
   })
 
-  it("routes semantic table controls through the iframe bridge", async () => {
+  it.each([
+    ["table-header", "toggleTableHeader"],
+    ["table-footer", "toggleTableFooter"],
+  ])("routes %s through the iframe bridge", async (label, type) => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
-    const dispatch = (detail: object) => toolbox.dispatchEvent(new CustomEvent("table-semantic-action", {
-      detail, bubbles: true, composed: true,
+    editor.shadowRoot!.querySelector("dom-editor-toolbox")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label}, bubbles: true, composed: true,
     }))
-
-    dispatch({action: "convert-rows", group: "thead"})
-    expect(execute).toHaveBeenCalledWith({type: "convertTableRows", group: "thead"})
-    dispatch({action: "move-row-group", index: 2, expected: {"data-kind": "body"}, direction: -1})
-    expect(execute).toHaveBeenCalledWith({
-      type: "moveTableRowGroup", index: 2, expected: {"data-kind": "body"}, direction: -1,
-    })
-    dispatch({action: "set-column-span", path: [1, 0], expected: {span: "2"}, value: "3"})
-    expect(execute).toHaveBeenCalledWith({
-      type: "setTableColumnSpan", path: [1, 0], expected: {span: "2"}, value: "3",
-    })
-    dispatch({action: "set-cell-role", role: "column-header"})
-    expect(execute).toHaveBeenCalledWith({type: "setTableCellRole", role: "column-header"})
-    dispatch({action: "set-cell-attribute", attribute: "headers", value: "name value"})
-    expect(execute).toHaveBeenCalledWith({
-      type: "setTableCellSemanticAttribute", name: "headers", value: "name value",
-    })
+    expect(execute).toHaveBeenCalledWith({type})
   })
 
   it("routes exact element attribute mutations through the iframe bridge", async () => {

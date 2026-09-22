@@ -11,7 +11,7 @@ import {
 import type {EditorStateSnapshot} from "./editor-state"
 import {isMediaType, type MediaSelectionState} from "./media"
 import type {WebWriterPackage} from "./packages"
-import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "./table"
+import {type TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
 import type {MathSelectionState} from "./math"
 import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
@@ -579,25 +579,8 @@ const isTableSelection = (table: UnknownRecord) => isBoolean(table.active)
   && isBoolean(table.canMerge)
   && isBoolean(table.canSplit)
   && isBoolean(table.hasCaption)
-  && (table.selectedRowGroup === "direct" || table.selectedRowGroup === "mixed" || isTableRowGroupType(table.selectedRowGroup))
-  && Array.isArray(table.rowGroups)
-  && table.rowGroups.every(group => isRecord(group)
-    && isNonnegativeInteger(group.index)
-    && isTableRowGroupType(group.type)
-    && isNonnegativeInteger(group.rows)
-    && isStringRecord(group.attributes))
-  && isBoolean(table.canAddHeaderGroup)
-  && isBoolean(table.canAddFooterGroup)
-  && Array.isArray(table.columnGroups)
-  && table.columnGroups.every(group => isRecord(group)
-    && isPath(group.path)
-    && isStringRecord(group.attributes)
-    && Array.isArray(group.columns)
-    && group.columns.every(column => isRecord(column) && isPath(column.path) && isStringRecord(column.attributes)))
-  && isRecord(table.cellSemantics)
-  && (table.cellSemantics.role === "mixed" || isTableCellRole(table.cellSemantics.role))
-  && (table.cellSemantics.headers === null || isString(table.cellSemantics.headers))
-  && (table.cellSemantics.abbr === null || isString(table.cellSemantics.abbr))
+  && isBoolean(table.hasHeader)
+  && isBoolean(table.hasFooter)
 
 const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
   && isBoolean(graphic.capture)

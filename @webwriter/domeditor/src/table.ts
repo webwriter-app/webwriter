@@ -19,42 +19,6 @@ export type TableMap = {
   width: number
 }
 
-export const tableRowGroupTypes = ["thead", "tbody", "tfoot"] as const
-
-export type TableRowGroupType = typeof tableRowGroupTypes[number]
-
-export const tableCellRoles = [
-  "data", "header", "column-header", "row-header", "column-group-header", "row-group-header",
-] as const
-
-export type TableCellRole = typeof tableCellRoles[number]
-
-export type TableRowGroupState = {
-  index: number
-  type: TableRowGroupType
-  rows: number
-  attributes: Record<string, string>
-}
-
-export type TableColumnState = {
-  path: number[]
-  attributes: Record<string, string>
-}
-
-export type TableColumnGroupState = {
-  path: number[]
-  attributes: Record<string, string>
-  columns: TableColumnState[]
-}
-
-export type TableCellSemanticsState = {
-  role: TableCellRole | "mixed"
-  /** Empty means absent on every target; null means the targets differ. */
-  headers: string | null
-  /** Empty means absent on every target; null means the targets differ. */
-  abbr: string | null
-}
-
 export type TableSelectionState = {
   active: boolean
   cellSelection: boolean
@@ -64,20 +28,8 @@ export type TableSelectionState = {
   canMerge: boolean
   canSplit: boolean
   hasCaption: boolean
-  selectedRowGroup: TableRowGroupType | "direct" | "mixed"
-  rowGroups: TableRowGroupState[]
-  canAddHeaderGroup: boolean
-  canAddFooterGroup: boolean
-  columnGroups: TableColumnGroupState[]
-  cellSemantics: TableCellSemanticsState
-}
-
-export function isTableRowGroupType(value: unknown): value is TableRowGroupType {
-  return typeof value === "string" && (tableRowGroupTypes as readonly string[]).includes(value)
-}
-
-export function isTableCellRole(value: unknown): value is TableCellRole {
-  return typeof value === "string" && (tableCellRoles as readonly string[]).includes(value)
+  hasHeader: boolean
+  hasFooter: boolean
 }
 
 export function tableForNode(node: Node | null) {
@@ -200,4 +152,70 @@ export function createTable(rows: number, columns: number) {
 /** Removes editor marker classes from detached clipboard content. */
 export function clearTableMarkers(root: ParentNode) {
   clearEditorMarkerClasses(root as Node)
+}
+
+/** Canonicalize table sections without rebuilding cells or widget content. */
+export function normalizeTableStructure(table: HTMLTableElement, header?: boolean, footer?: boolean) {
+  const changedCells = new Map<HTMLTableCellElement, HTMLTableCellElement>()
+  const groups = Array.from(table.children).filter(child => child.matches("thead, tbody, tfoot"))
+  const rows = Array.from(table.children).flatMap(child => child.localName === "tr"
+    ? [child as HTMLTableRowElement]
+    : groups.includes(child) ? Array.from(child.children).filter((row): row is HTMLTableRowElement => row.localName === "tr") : [])
+  const first = rows[0]
+  const last = rows.at(-1)
+  const firstCells = first ? Array.from(first.children).filter(cell => cell.matches(tableCellSelector)) : []
+  const hasHeader = header ?? (first?.parentElement?.localName === "thead"
+    || firstCells.length > 0 && firstCells.every(cell => cell.localName === "th"))
+  const hasFooter = footer ?? groups.some(group => group.localName === "tfoot" && group.querySelector(":scope > tr"))
+  const headerRow = hasHeader ? first : undefined
+  const footerRow = hasFooter && last !== headerRow ? last : undefined
+  const desired = new Map<string, HTMLTableRowElement[]>([
+    ["thead", headerRow ? [headerRow] : []],
+    ["tbody", rows.filter(row => row !== headerRow && row !== footerRow)],
+    ["tfoot", footerRow ? [footerRow] : []],
+  ])
+  table.removeAttribute("role")
+  Array.from(table.children).filter(child => child.matches("col, colgroup")).forEach(child => child.remove())
+  const sections: Element[] = []
+  for(const [name, sectionRows] of desired) {
+    if(!sectionRows.length) continue
+    const section = groups.find(group => group.localName === name) ?? table.ownerDocument.createElement(name)
+    section.removeAttribute("role")
+    if(!section.parentNode) table.append(section)
+    // Insert only misplaced rows, retaining comments and already-correct nodes.
+    let previous: HTMLTableRowElement | undefined
+    for(const row of sectionRows) {
+      if(row.parentElement !== section || previous && previous.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING) {
+        const next = previous ? previous.nextSibling : Array.from(section.children).find(child => child.localName === "tr") ?? null
+        section.insertBefore(row, next)
+      }
+      previous = row
+      row.removeAttribute("role")
+      const tag = name === "thead" ? "th" : "td"
+      Array.from(row.children).filter(child => child.matches(tableCellSelector)).forEach(child => {
+        let cell = child as HTMLTableCellElement
+        if(cell.localName !== tag) {
+          const replacement = table.ownerDocument.createElement(tag)
+          Array.from(cell.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
+          replacement.append(...Array.from(cell.childNodes))
+          cell.replaceWith(replacement)
+          changedCells.set(cell, replacement)
+          cell = replacement
+        }
+        for(const attribute of ["headers", "scope", "abbr", "role"]) cell.removeAttribute(attribute)
+      })
+    }
+    sections.push(section)
+  }
+  for(const group of groups) {
+    if(sections.includes(group)) continue
+    // Retain comments and other authored nodes from removed section wrappers.
+    group.replaceWith(...Array.from(group.childNodes))
+  }
+  let previous: Element | undefined = table.caption ?? undefined
+  for(const section of sections) {
+    if(previous && previous.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_PRECEDING) previous.after(section)
+    previous = section
+  }
+  return changedCells
 }

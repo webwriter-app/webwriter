@@ -8,12 +8,8 @@ import {DomEditorToolbox} from "./toolbox"
 beforeEach(() => document.body.replaceChildren())
 
 const semanticTableState = {
-  selectedRowGroup: "tbody" as const,
-  rowGroups: [],
-  canAddHeaderGroup: true,
-  canAddFooterGroup: true,
-  columnGroups: [],
-  cellSemantics: {role: "data" as const, headers: "", abbr: ""},
+  hasHeader: false,
+  hasFooter: false,
 }
 
 describe("table controls", () => {
@@ -44,7 +40,7 @@ describe("table controls", () => {
     await toolbox.updateComplete
     const toolboxLabels = Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label"))
-    expect(toolboxLabels).toEqual(["Layout", "Borders", "Background", "Semantics"])
+    expect(toolboxLabels).toEqual(["Layout", "Borders", "Background", "Style"])
 
     const actionIcons = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonButton>("ribbon-button"))
       .map(button => button.icon)
@@ -85,14 +81,11 @@ describe("table controls", () => {
     const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
     expect(drawers.map(drawer => drawer.label)).toEqual([
-      "Layout", "Borders", "Background", "Semantics", "Attributes",
+      "Layout", "Borders", "Background", "Style", "Attributes",
     ])
     const controls = drawers[0].shadowRoot!.querySelector<HTMLElement>(".controls")!
     expect(getComputedStyle(controls).gridAutoRows).toBe("minmax(3rem, auto)")
     expect(getComputedStyle(controls).gap).toBe("0.5rem")
-    const semantics = drawers.find(drawer => drawer.label === "Semantics")!
-    expect(getComputedStyle(semantics.querySelector<HTMLElement>(".table-semantic-controls")!).gridColumn)
-      .toBe("1 / -1")
     const attributes = drawers.find(drawer => drawer.label === "Attributes")!
     expect(getComputedStyle(attributes.querySelector<HTMLElement>("element-attribute-editor")!).gridColumn)
       .toBe("1 / -1")
@@ -211,7 +204,7 @@ describe("table controls", () => {
     }))
   })
 
-  it("presents semantic row, column, and cell concepts and dispatches guarded edits", async () => {
+  it("renders and toggles table header and footer checkboxes", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -224,60 +217,20 @@ describe("table controls", () => {
       canMerge: true,
       canSplit: false,
       hasCaption: false,
-      selectedRowGroup: "tbody",
-      rowGroups: [
-        {index: 0, type: "thead", rows: 1, attributes: {"data-kind": "heading"}},
-        {index: 1, type: "tbody", rows: 1, attributes: {}},
-      ],
-      canAddHeaderGroup: false,
-      canAddFooterGroup: true,
-      columnGroups: [{
-        path: [0],
-        attributes: {span: "2"},
-        columns: [],
-      }],
-      cellSemantics: {role: "column-header", headers: "group", abbr: "Col"},
+      hasHeader: true,
+      hasFooter: false,
     }
     const listener = vi.fn()
-    toolbox.addEventListener("table-semantic-action", listener)
+    toolbox.addEventListener("ribbon-button-click", listener)
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const semantics = toolbox.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Semantics"]')!
-
-    const rows = semantics.querySelector<HTMLSelectElement>('select[aria-label="Selected rows: Group"]')!
-    expect(rows.value).toBe("tbody")
-    rows.value = "tfoot"
-    rows.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {action: "convert-rows", group: "tfoot"}}))
-
-    expect(Array.from(semantics.querySelectorAll<HTMLButtonElement>(".table-semantic-add-grid button"))
-      .find(button => button.textContent === "Add header")?.disabled).toBe(true)
-    semantics.querySelector<HTMLButtonElement>('button[aria-label="Move body group up"]')!.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
-      action: "move-row-group", index: 1, expected: {}, direction: -1,
-    }}))
-
-    const span = semantics.querySelector<HTMLInputElement>('input[aria-label="Column group 1: Span"]')!
-    expect(span.value).toBe("2")
-    span.value = "3"
-    span.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
-      action: "set-column-span", path: [0], expected: {span: "2"}, value: "3",
-    }}))
-
-    const role = semantics.querySelector<HTMLSelectElement>('select[aria-label="Selected cells: Role"]')!
-    expect(role.value).toBe("column-header")
-    role.value = "row-header"
-    role.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
-      action: "set-cell-role", role: "row-header",
-    }}))
-    const headers = semantics.querySelector<HTMLInputElement>('input[aria-label="Selected cells: Associated header IDs"]')!
-    expect(headers.value).toBe("group")
-    headers.value = "name value"
-    headers.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
-      action: "set-cell-attribute", attribute: "headers", value: "name value",
-    }}))
+    const layout = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"]')!
+    const checkboxes = layout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(3)
+    expect(checkboxes[1].checked).toBe(true)
+    checkboxes[1].click()
+    checkboxes[2].click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-header"}}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-footer"}}))
   })
 })

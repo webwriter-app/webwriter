@@ -6,7 +6,7 @@ import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 import {buildTableMap} from "../table"
-import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
+import {markStateChangeEvent, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 
 const editor = new DOMEditor()
 
@@ -271,6 +271,44 @@ describe("table cell selection", () => {
     expect(editor.features.selection.isInDragSelection).toBe(false)
   })
 
+  it("publishes only the completed text range when a cell drag returns to its origin", () => {
+    document.body.innerHTML = "<table><tbody><tr><td><p>Alpha</p></td><td>Beta</td></tr></tbody></table>"
+    const [first, last] = cells()
+    const text = first.querySelector("p")!.firstChild!
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    const originalCaretPosition = document.caretPositionFromPoint
+    let point = {offsetNode: text, offset: 1, getClientRect: () => new DOMRect(10, 0, 1, 20)}
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => point})
+    const states: Array<{collapsed: boolean, table: boolean, cells: boolean}> = []
+    const marks: boolean[] = []
+    const onSelection = (event: Event) => {
+      const detail = (event as CustomEvent<SelectionChangeDetail>).detail
+      states.push({collapsed: $.isEmpty, table: Boolean(detail.table?.active), cells: Boolean(detail.table?.cellSelection)})
+    }
+    const onMarks = (event: Event) => marks.push((event as CustomEvent).detail.canMark)
+    try {
+      first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 10, clientY: 15, bubbles: true, cancelable: true}))
+      last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+      expect(editor.features.table.hasCellSelection).toBe(true)
+      window.addEventListener(selectionChangeEvent, onSelection)
+      window.addEventListener(markStateChangeEvent, onMarks)
+      point = {...point, offset: 4}
+      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(window.getSelection()?.toString()).toBe("lph")
+      expect(states.length).toBeGreaterThan(0)
+      expect(states).toEqual(states.map(() => ({collapsed: false, table: true, cells: false})))
+      expect(marks.length).toBeGreaterThan(0)
+      expect(marks.every(Boolean)).toBe(true)
+    }
+    finally {
+      window.removeEventListener(selectionChangeEvent, onSelection)
+      window.removeEventListener(markStateChangeEvent, onMarks)
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: originalCaretPosition})
+    }
+  })
+
   it.each([1, 2, 3])("collapses a non-text drag from cell %s back to its anchor", focusIndex => {
     document.body.innerHTML = "<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>"
     const tableCells = cells()
@@ -523,15 +561,13 @@ describe("table cell selection", () => {
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
-    const columns = document.querySelectorAll<HTMLTableColElement>("colgroup > col")
-    expect(columns).toHaveLength(2)
-    expect(columns[0].style.width).toBe("130px")
+    expect(document.querySelector("colgroup, col")).toBeNull()
+    expect(first.style.width).toBe("130px")
     expect(editor.toHTML(true)).toContain("width: 130px")
   })
 
   it("continues resizing from a persisted inline column width", () => {
-    document.body.innerHTML = `<table><colgroup><col style="width: 160px"><col></colgroup>
-      <tbody><tr><td>A</td><td>B</td></tr></tbody></table>`
+    document.body.innerHTML = `<table><tbody><tr><td style="width: 160px">A</td><td>B</td></tr></tbody></table>`
     const [first] = cells()
     first.getBoundingClientRect = () => ({
       x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30,
@@ -545,15 +581,14 @@ describe("table cell selection", () => {
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
-    expect(document.querySelector<HTMLTableColElement>("col")?.style.width).toBe("180px")
+    expect(first.style.width).toBe("180px")
   })
 
   it.each([
     "",
-    '<colgroup><col style="width: 160px" span="2"></colgroup>',
-    '<colgroup><col style="width: 160px"><col></colgroup>',
-  ])("undoes a paused column resize from final to original columns: %s", async columns => {
-    document.body.innerHTML = `<table><caption>Data</caption>${columns}<tbody><tr><td><demo-widget>A</demo-widget></td><td>B</td></tr></tbody></table>`
+    'style="width: 160px"',
+  ])("undoes a paused column resize from final to original cells: %s", async style => {
+    document.body.innerHTML = `<table><caption>Data</caption><tbody><tr><td ${style}><demo-widget>A</demo-widget></td><td>B</td></tr></tbody></table>`
     const table = document.querySelector("table")!
     const [first] = cells()
     first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
@@ -573,7 +608,7 @@ describe("table cell selection", () => {
       document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
       const after = editor.toHTML(true)
       expect(after).not.toBe(before)
-      expect(document.querySelector("col")!.getAttribute("style")).toContain(columns ? "220px" : "160px")
+      expect(first.getAttribute("style")).toContain(style ? "220px" : "160px")
       expect(editor.doc.body.toString()).not.toContain("◆")
       table.setAttribute("data-after", "later")
       editor.doc.syncFromDOM()
@@ -598,8 +633,8 @@ describe("table cell selection", () => {
     }
   })
 
-  it.each(["pointercancel", "blur", "disable", "removed column"])("closes a column resize undo group on %s", end => {
-    document.body.innerHTML = '<table><colgroup><col style="width: 100px"></colgroup><tbody><tr><td>A</td></tr></tbody></table>'
+  it.each(["pointercancel", "blur", "disable", "removed cell"])("closes a column resize undo group on %s", end => {
+    document.body.innerHTML = '<table><tbody><tr><td style="width: 100px">A</td></tr></tbody></table>'
     const table = document.querySelector("table")!
     const [first] = cells()
     first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
@@ -613,8 +648,8 @@ describe("table cell selection", () => {
       editor.doc.syncFromDOM()
       if(end === "disable") editor.features.table.disable()
       else if(end === "blur") window.dispatchEvent(new Event("blur"))
-      else if(end === "removed column") {
-        table.querySelector("col")!.remove()
+      else if(end === "removed cell") {
+        first.remove()
         document.dispatchEvent(new PointerEvent("pointermove", {clientX: 140, clientY: 15, bubbles: true}))
       }
       else document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
@@ -669,6 +704,146 @@ describe("table cell selection", () => {
     restoreCaretPosition()
 
     expect(document.querySelector("colgroup")).toBeNull()
+  })
+})
+
+describe("table gap controls", () => {
+  function box(left: number, top: number, right: number, bottom: number) {
+    return {x: left, y: top, left, top, right, bottom, width: right - left, height: bottom - top, toJSON: () => ({})}
+  }
+
+  async function renderGaps(table: HTMLTableElement) {
+    table.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, composed: true, clientX: 10, clientY: 10,
+    }))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const map = buildTableMap(table)
+    await vi.waitFor(() => {
+      const overlay = editor.appendix.querySelector(".◆table-gaps")
+      expect(overlay).not.toBeNull()
+      expect(overlay?.querySelector(`button[aria-label="Insert column ${map.width + 1}"]`)).not.toBeNull()
+      expect(overlay?.querySelector(`button[aria-label="Insert row ${map.rows.length + 1}"]`)).not.toBeNull()
+    })
+    return editor.appendix.querySelectorAll<HTMLButtonElement>(".◆table-gaps button")
+  }
+
+  function mockTableGeometry(table: HTMLTableElement, rows: HTMLTableRowElement[], cellsByRow: HTMLTableCellElement[][]) {
+    table.getBoundingClientRect = () => box(10, 20, 210, 100)
+    rows.forEach((row, rowIndex) => {
+      row.getBoundingClientRect = () => box(10, 20 + rowIndex * 40, 210, 60 + rowIndex * 40)
+      cellsByRow[rowIndex].forEach((cell, columnIndex) => {
+        cell.getBoundingClientRect = () => box(10 + columnIndex * 100, 20 + rowIndex * 40, 110 + columnIndex * 100, 60 + rowIndex * 40)
+      })
+    })
+  }
+
+  it("renders row and column controls in the appendix with boundary geometry", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tr"))
+    const cellsByRow = rows.map(row => Array.from(row.cells))
+    mockTableGeometry(table, rows, cellsByRow)
+
+    const buttons = await renderGaps(table)
+
+    expect(Array.from(buttons, button => button.getAttribute("aria-label"))).toEqual([
+      "Insert column 1", "Insert column 2", "Insert column 3",
+      "Insert row 1", "Insert row 2", "Insert row 3",
+    ])
+    expect(Array.from(buttons, button => [button.dataset.axis, button.style.left, button.style.top])).toEqual([
+      ["column", "10px", "12px"], ["column", "110px", "12px"], ["column", "210px", "12px"],
+      ["row", "2px", "20px"], ["row", "2px", "60px"], ["row", "2px", "100px"],
+    ])
+    expect(document.body.querySelector(".◆table-gaps")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("table-gaps")
+    expect(editor.doc.body.toString()).not.toContain("table-gaps")
+  })
+
+  it.each([
+    ["inner column", "Insert column 2", () => {
+      const table = document.querySelector("table")!
+      return table.querySelectorAll("tr")[0].querySelectorAll("td").length
+    }, 3],
+    ["outer row", "Insert row 3", () => document.querySelectorAll("table tr").length, 3],
+  ] as const)("inserts at an %s boundary", async (_name, label, count, expected) => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tr"))
+    mockTableGeometry(table, rows, rows.map(row => Array.from(row.cells)))
+    const buttons = await renderGaps(table)
+    const button = Array.from(buttons).find(button => button.getAttribute("aria-label") === label)!
+
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+
+    expect(count()).toBe(expected)
+  })
+
+  it("inserts through a colspan and keeps the merged cell spanning the new column", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td colspan='2'>A</td></tr><tr><td>B</td><td>C</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tr"))
+    table.getBoundingClientRect = () => box(0, 0, 200, 80)
+    rows.forEach((row, index) => {
+      row.getBoundingClientRect = () => box(0, index * 40, 200, (index + 1) * 40)
+      Array.from(row.cells).forEach(cell => cell.getBoundingClientRect = () => box(0, index * 40, 200, (index + 1) * 40))
+    })
+    const buttons = await renderGaps(table)
+    const button = Array.from(buttons).find(button => button.getAttribute("aria-label") === "Insert column 2")!
+
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+
+    expect(table.rows[0].cells[0]).toHaveAttribute("colspan", "3")
+    expect(buildTableMap(table).width).toBe(3)
+  })
+
+  it.each(["detached", "replaced"])("ignores a stale control after its %s row changes", async kind => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tr"))
+    mockTableGeometry(table, rows, rows.map(row => Array.from(row.cells)))
+    const buttons = await renderGaps(table)
+    const button = Array.from(buttons).find(button => button.getAttribute("aria-label") === "Insert row 2")!
+    if(kind === "detached") rows[1].remove()
+    else rows[1].replaceWith(document.createElement("tr"))
+
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+
+    expect(table.querySelectorAll("tr")).toHaveLength(kind === "detached" ? 1 : 2)
+  })
+
+  it("groups a gap insertion into one undo and redo step", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const row = table.querySelector("tr")!
+    mockTableGeometry(table, [row], [Array.from(row.cells)])
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const buttons = await renderGaps(table)
+    Array.from(buttons).find(button => button.getAttribute("aria-label") === "Insert row 2")!
+      .dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+
+    expect(after).not.toBe(before)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("removes gap controls and their stylesheet when disabled", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const row = table.querySelector("tr")!
+    mockTableGeometry(table, [row], [Array.from(row.cells)])
+    await renderGaps(table)
+
+    editor.features.table.disable()
+
+    expect(editor.appendix.querySelector(".◆table-gaps")).toBeNull()
+    expect(editor.appendix.adoptedStyleSheets.some(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes(".◆table-gaps")))).toBe(false)
+    editor.features.table.enable()
   })
 })
 
@@ -735,7 +910,7 @@ describe("table actions", () => {
     expect(cells()[0].innerHTML).toContain("<em>A</em>")
   })
 
-  it("splits a table at the selection and retains column definitions", () => {
+  it("splits a table at the selection without copying column definitions", () => {
     document.body.innerHTML = `<table class="data ◆table-marker"><colgroup class="columns ◆column-marker"><col><col></colgroup><thead><tr><th>A</th><th>B</th></tr></thead>
       <tbody class="rows ◆row-marker"><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>`
     editor.features.table.selectCells(cells()[2])
@@ -746,11 +921,9 @@ describe("table actions", () => {
     expect(tables).toHaveLength(2)
     expect(tables[0].querySelectorAll("tr")).toHaveLength(1)
     expect(tables[1].querySelectorAll("tr")).toHaveLength(2)
-    expect(tables[1].querySelectorAll("col")).toHaveLength(2)
+    expect(tables[1].querySelectorAll("col")).toHaveLength(0)
     expect(tables[1]).toHaveClass("data")
     expect(tables[1]).not.toHaveClass("◆table-marker")
-    expect(tables[1].querySelector("colgroup")).toHaveClass("columns")
-    expect(tables[1].querySelector("colgroup")).not.toHaveClass("◆column-marker")
     expect(tables[1].querySelector("tbody")).toHaveClass("rows")
     expect(tables[1].querySelector("tbody")).not.toHaveClass("◆row-marker")
   })
@@ -770,152 +943,73 @@ describe("table actions", () => {
     expect(document.querySelector("caption")).toBeNull()
   })
 
-  it("reports row groups, column definitions, and shared cell semantics without changing the table", () => {
-    document.body.innerHTML = `<table><colgroup span="2" data-size="wide"></colgroup>
-      <thead><tr><th scope="col" headers="group">A</th><th scope="col" headers="group">B</th></tr></thead>
-      <tbody><tr><td>C</td><td>D</td></tr></tbody></table>`
-    const original = editor.toHTML(true)
-    editor.features.table.selectCells(cells()[0], cells()[1])
-
-    const state = editor.features.table.getState()!
-    expect(state.selectedRowGroup).toBe("thead")
-    expect(state.rowGroups.map(group => ({type: group.type, rows: group.rows}))).toEqual([
-      {type: "thead", rows: 1}, {type: "tbody", rows: 1},
-    ])
-    expect(state.canAddHeaderGroup).toBe(false)
-    expect(state.canAddFooterGroup).toBe(true)
-    expect(state.columnGroups).toEqual([expect.objectContaining({
-      attributes: {span: "2", "data-size": "wide"}, columns: [],
-    })])
-    expect(state.cellSemantics).toEqual({role: "column-header", headers: "group", abbr: ""})
-    expect(editor.toHTML(true)).toBe(original)
+  it("keeps only one header and footer row when inserting adjacent rows", () => {
+    document.body.innerHTML = '<table><thead><tr><th>A</th></tr></thead><tbody><tr><td>B</td></tr></tbody><tfoot><tr><td>C</td></tr></tfoot></table>'
+    editor.features.table.selectCells(cells()[0])
+    editor.features.table.actions.insertTableRow({type: "insertTableRow", side: "below"})
+    expect(document.querySelectorAll("thead > tr")).toHaveLength(1)
+    expect(document.querySelectorAll("tbody > tr")).toHaveLength(2)
+    editor.features.table.selectCells(cells().at(-1)!)
+    editor.features.table.actions.insertTableRow({type: "insertTableRow", side: "above"})
+    expect(document.querySelectorAll("tfoot > tr")).toHaveLength(1)
+    expect(document.querySelector("tfoot")?.textContent).toBe("C")
+    expect(document.querySelectorAll("tbody th")).toHaveLength(0)
   })
 
-  it("converts only selected rows and splits an existing group without losing its authored metadata", () => {
-    document.body.innerHTML = `<table><tbody id="records" data-source="remote">
-      <tr><td>A</td></tr><!--between--><tr><td>B</td></tr><tr><td>C</td></tr>
-    </tbody></table>`
+  it("preserves a text selection inside a row designated as header", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>Alpha</td></tr><tr><td>Beta</td></tr></tbody></table>'
+    const text = cells()[0].firstChild!
+    $.selectRange(text, 1, text, 4)
+    editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+    expect(window.getSelection()?.toString()).toBe("lph")
+  })
+
+  it("toggles the first and last rows regardless of which cells are selected", () => {
+    document.body.innerHTML = '<table><tbody><tr><td id="name"><strong>A</strong></td></tr><tr><td><demo-widget>B</demo-widget></td></tr><tr><td>C</td></tr></tbody></table>'
+    const widget = document.querySelector("demo-widget")
     editor.features.table.selectCells(cells()[1])
-
-    expect(editor.features.table.actions.convertTableRows({type: "convertTableRows", group: "thead"})).toBe(true)
-
-    const groups = Array.from(document.querySelector("table")!.children)
-    expect(groups.map(group => group.localName)).toEqual(["tbody", "thead", "tbody"])
-    expect(groups.map(group => group.querySelector("tr")?.textContent?.trim())).toEqual(["A", "B", "C"])
-    expect(groups[0]).toHaveAttribute("id", "records")
-    expect(groups[1]).not.toHaveAttribute("id")
-    expect(groups[2]).not.toHaveAttribute("id")
-    expect(groups.every(group => group.getAttribute("data-source") === "remote")).toBe(true)
-    expect(Array.from(groups[0].childNodes).some(node => node.nodeType === Node.COMMENT_NODE)).toBe(true)
+    expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
+    expect(document.querySelector("thead th")?.innerHTML).toBe("<strong>A</strong>")
+    expect(document.querySelector("thead th")).toHaveAttribute("id", "name")
     expect(editor.features.table.selectedCells[0]?.textContent).toBe("B")
+    expect(editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})).toBe(true)
+    expect(document.querySelector("tfoot td")?.textContent).toBe("C")
+    expect(editor.features.table.getState()).toMatchObject({hasHeader: true, hasFooter: true})
+    editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+    editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})
+    expect(document.querySelector("thead, tfoot, th")).toBeNull()
+    expect(cells().map(cell => cell.textContent)).toEqual(["A", "B", "C"])
+    expect(document.querySelector("demo-widget")).toBe(widget)
   })
 
-  it("inserts, moves, and unwraps row groups through guarded live state", () => {
-    document.body.innerHTML = '<table><caption>Data</caption><tbody data-part="first"><tr><td>A</td></tr></tbody></table>'
+  it("keeps a selected header cell selected through tag changes and undo", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td></tr><tr><td>B</td></tr></tbody></table>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
     editor.features.table.selectCells(cells()[0])
-    expect(editor.features.table.actions.insertTableRowGroup({type: "insertTableRowGroup", group: "thead"})).toBe(true)
-    expect(document.querySelector("table")!.children[1].localName).toBe("thead")
-    expect(document.querySelectorAll("thead th")).toHaveLength(1)
+    const before = editor.toHTML(true)
+    editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+    expect(editor.features.table.selectedCells[0]?.localName).toBe("th")
+    const after = editor.toHTML(true)
+    expect(after).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
 
-    let state = editor.features.table.getState()!
-    const body = state.rowGroups.find(group => group.type === "tbody")!
-    expect(editor.features.table.actions.moveTableRowGroup({
-      type: "moveTableRowGroup", index: body.index, expected: body.attributes, direction: -1,
-    })).toBe(true)
-    expect(Array.from(document.querySelectorAll("table > thead, table > tbody"), group => group.localName))
-      .toEqual(["tbody", "thead"])
-
-    state = editor.features.table.getState()!
-    const header = state.rowGroups.find(group => group.type === "thead")!
-    expect(editor.features.table.actions.removeTableRowGroup({
-      type: "removeTableRowGroup", index: header.index, expected: header.attributes,
-    })).toBe(true)
+  it("uses the current first row after replacement and handles a single-row table", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[0])
+    document.querySelector("tr")!.innerHTML = '<td>B</td>'
+    $.move(cells()[0], 0)
+    editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+    expect(document.querySelector("thead th")?.textContent).toBe("B")
+    $.move(cells()[0], 0)
+    editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})
     expect(document.querySelector("thead")).toBeNull()
-    expect(document.querySelector("table > tr > th")).not.toBeNull()
-  })
-
-  it("manages column groups and spans without changing table cells", () => {
-    document.body.innerHTML = '<table><colgroup span="2" data-columns="main"></colgroup><tbody><tr><td>A</td><td>B</td></tr></tbody></table>'
-    editor.features.table.selectCells(cells()[0])
-    const originalCells = cells()
-    let group = editor.features.table.getState()!.columnGroups[0]
-
-    expect(editor.features.table.actions.setTableColumnSpan({
-      type: "setTableColumnSpan", path: group.path, expected: group.attributes, value: "3",
-    })).toBe(true)
-    group = editor.features.table.getState()!.columnGroups[0]
-    expect(editor.features.table.actions.addTableColumnDefinition({
-      type: "addTableColumnDefinition", path: group.path, expected: group.attributes,
-    })).toBe(true)
-    expect(document.querySelectorAll("colgroup > col")).toHaveLength(3)
-    expect(document.querySelector("colgroup")).not.toHaveAttribute("span")
-
-    group = editor.features.table.getState()!.columnGroups[0]
-    const column = group.columns[1]
-    expect(editor.features.table.actions.setTableColumnSpan({
-      type: "setTableColumnSpan", path: column.path, expected: column.attributes, value: "2",
-    })).toBe(true)
-    expect(document.querySelectorAll("col")[1]).toHaveAttribute("span", "2")
-    expect(cells()).toEqual(originalCells)
-
-    expect(editor.features.table.actions.addTableColumnGroup({type: "addTableColumnGroup"})).toBe(true)
-    let groups = editor.features.table.getState()!.columnGroups
-    expect(groups).toHaveLength(2)
-    expect(editor.features.table.actions.moveTableColumnGroup({
-      type: "moveTableColumnGroup",
-      path: groups[1].path,
-      expected: groups[1].attributes,
-      direction: -1,
-    })).toBe(true)
-    groups = editor.features.table.getState()!.columnGroups
-    expect(groups[0].attributes.span).toBe("1")
-    expect(editor.features.table.actions.removeTableColumnGroup({
-      type: "removeTableColumnGroup", path: groups[0].path, expected: groups[0].attributes,
-    })).toBe(true)
-    expect(document.querySelectorAll("colgroup")).toHaveLength(1)
-  })
-
-  it("rejects row and column group actions after their guarded DOM state changes", () => {
-    document.body.innerHTML = '<table><colgroup span="1"></colgroup><tbody data-version="1"><tr><td>A</td></tr></tbody></table>'
-    editor.features.table.selectCells(cells()[0])
-    const state = editor.features.table.getState()!
-    const rowGroup = state.rowGroups[0]
-    const columnGroup = state.columnGroups[0]
-
-    document.querySelector("tbody")!.setAttribute("data-version", "2")
-    document.querySelector("colgroup")!.setAttribute("span", "2")
-
-    expect(editor.features.table.actions.removeTableRowGroup({
-      type: "removeTableRowGroup", index: rowGroup.index, expected: rowGroup.attributes,
-    })).toBe(false)
-    expect(editor.features.table.actions.removeTableColumnGroup({
-      type: "removeTableColumnGroup", path: columnGroup.path, expected: columnGroup.attributes,
-    })).toBe(false)
-    expect(document.querySelector("tbody")).toHaveAttribute("data-version", "2")
-    expect(document.querySelector("colgroup")).toHaveAttribute("span", "2")
-  })
-
-  it("converts selected cells to understandable header roles and edits accessibility relationships", () => {
-    document.body.innerHTML = '<table><tbody><tr><td id="name"><strong>Name</strong></td><td>Value</td></tr></tbody></table>'
-    editor.features.table.selectCells(cells()[0], cells()[1])
-
-    expect(editor.features.table.actions.setTableCellRole({type: "setTableCellRole", role: "column-header"})).toBe(true)
-    expect(cells().every(cell => cell.localName === "th" && cell.getAttribute("scope") === "col")).toBe(true)
-    expect(cells()[0].innerHTML).toBe("<strong>Name</strong>")
-    expect(cells()[0]).toHaveAttribute("id", "name")
-
-    expect(editor.features.table.actions.setTableCellSemanticAttribute({
-      type: "setTableCellSemanticAttribute", name: "headers", value: "group-heading",
-    })).toBe(true)
-    expect(editor.features.table.actions.setTableCellSemanticAttribute({
-      type: "setTableCellSemanticAttribute", name: "abbr", value: "Val",
-    })).toBe(true)
-    expect(cells().every(cell => cell.getAttribute("headers") === "group-heading")).toBe(true)
-    expect(cells().every(cell => cell.getAttribute("abbr") === "Val")).toBe(true)
-
-    expect(editor.features.table.actions.setTableCellRole({type: "setTableCellRole", role: "data"})).toBe(true)
-    expect(cells().every(cell => cell.localName === "td")).toBe(true)
-    expect(cells().every(cell => !cell.hasAttribute("scope") && !cell.hasAttribute("abbr"))).toBe(true)
-    expect(cells().every(cell => cell.getAttribute("headers") === "group-heading")).toBe(true)
+    expect(document.querySelector("tfoot td")?.textContent).toBe("B")
   })
 })

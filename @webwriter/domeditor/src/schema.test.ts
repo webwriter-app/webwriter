@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
 import { Schema } from "./schema"
+import {normalizeTableStructure} from "./table"
 import { $ } from "./utility"
 
 var editor = new DOMEditor()
@@ -54,6 +55,63 @@ describe("fixInvalidContent()", () => {
     expectBodyToBe(`<ul><li>hello <b>world</b></li></ul>`)
   })
   // it("can fix an invalid tree by filling", () => {})
+})
+
+describe("table normalization", () => {
+  it("preserves comments, section metadata and node identity, and is idempotent", () => {
+    const table = document.createElement("table")
+    table.innerHTML = '<!--table--><tbody id="records"><!--body--><tr><td>A</td></tr><!--between--><tr><td>B</td></tr></tbody>'
+    const body = table.querySelector("tbody")!
+    const last = table.querySelectorAll("tr")[1]
+    normalizeTableStructure(table, true, false)
+    expect(table.querySelector("tbody")).toBe(body)
+    expect(table.querySelector("tbody")).toHaveAttribute("id", "records")
+    expect(table.querySelectorAll("tr")[1]).toBe(last)
+    expect(table.innerHTML).toContain("<!--table-->")
+    expect(table.innerHTML).toContain("<!--body-->")
+    expect(table.innerHTML).toContain("<!--between-->")
+    const observer = new MutationObserver(() => {})
+    observer.observe(table, {childList: true, subtree: true, attributes: true})
+    normalizeTableStructure(table)
+    expect(observer.takeRecords()).toEqual([])
+    observer.disconnect()
+  })
+
+  it("parses nested and irregular tables and rejects the removed forms", () => {
+    const {fragment} = editor.parseHTMLFragment('<table role="grid"><colgroup><col></colgroup><thead><tr><th scope="col" abbr="A" headers="x">A</th></tr><tr><th>B</th></tr></thead><tbody><tr><th>C<table><tr><td>Nested</td></tr></table></th></tr></tbody><tfoot><tr><td>D</td></tr><tr><td>E</td></tr></tfoot></table>')
+    const table = fragment.querySelector("table")!
+    expect(table.querySelector("colgroup, col, [scope], [headers], [abbr], [role]")).toBeNull()
+    expect(table.querySelectorAll(":scope > thead > tr")).toHaveLength(1)
+    expect(table.querySelectorAll(":scope > tfoot > tr")).toHaveLength(1)
+    expect(table.querySelectorAll(":scope > tbody > tr")).toHaveLength(3)
+    expect(table.querySelector("td table td")?.textContent).toBe("Nested")
+    expect(editor.schema.isContentValid(table)).toBe(true)
+    const row = table.querySelector("tbody tr")!
+    row.innerHTML = '<th>Invalid</th>'
+    expect(editor.schema.isContentValid(row)).toBe(false)
+    expect(editor.schema.isContentValid(row, [document.createElement("td")])).toBe(true)
+    const cell = table.querySelector("thead th")!
+    cell.setAttribute("headers", "x")
+    expect(editor.schema.isContentValid(cell)).toBe(false)
+    table.prepend(document.createElement("colgroup"))
+    expect(editor.schema.isContentValid(table)).toBe(false)
+  })
+
+  it("keeps only the first header row and last footer row, converting body cells to td", () => {
+    const table = document.createElement("table")
+    table.innerHTML = `<colgroup><col></colgroup><thead><tr><th headers="h">Head</th></tr><tr><th>Extra</th></tr></thead><tbody><tr><th scope="row">Body</th></tr></tbody><tfoot><tr><td>Old footer</td></tr><tr><td abbr="f">Footer</td></tr></tfoot>`
+    normalizeTableStructure(table)
+    expect(table.innerHTML).toBe(`<thead><tr><th>Head</th></tr></thead><tbody><tr><td>Extra</td></tr><tr><td>Body</td></tr><tr><td>Old footer</td></tr></tbody><tfoot><tr><td>Footer</td></tr></tfoot>`)
+  })
+
+  it("uses explicit header and footer flags and produces schema-valid parsed tables", () => {
+    document.body.innerHTML = `<table role="grid"><tr><td>First</td></tr><tr><th>Last</th></tr></table>`
+    const table = document.querySelector("table")!
+    normalizeTableStructure(table, true, false)
+    expect(table.outerHTML).toBe(`<table><thead><tr><th>First</th></tr></thead><tbody><tr><td>Last</td></tr></tbody></table>`)
+    editor.schema.checkAndCorrect(table, true)
+    expect(editor.schema.isContentValid(table)).toBe(true)
+  })
 })
 
 describe("ensureStaticContent()", () => {

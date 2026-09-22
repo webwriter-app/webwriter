@@ -1,5 +1,19 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
 import { $, cloneInert, getContainer, getIndexBefore, getInertDocument } from "./utility"
+import {normalizeTableStructure} from "./table"
+
+function isSimplifiedTableContentValid(element: Element, content: Node[]) {
+  if(element.namespaceURI !== "http://www.w3.org/1999/xhtml") return true
+  if(element.matches("table, thead, tbody, tfoot, tr, td, th") && element.hasAttribute("role")) return false
+  if(element.matches("td, th") && ["headers", "scope", "abbr"].some(name => element.hasAttribute(name))) return false
+  const elements = content.filter((node): node is Element => node instanceof Element)
+  if(element.localName === "tr") {
+    const group = element.parentElement?.localName
+    if(group === "thead" && elements.some(cell => cell.localName !== "th")) return false
+    if((group === "tbody" || group === "tfoot") && elements.some(cell => cell.localName !== "td")) return false
+  }
+  return true
+}
 
 /** Defers to the parent's content rule ("transparent" content model, e.g. <a>, <ins>, <slot>), optionally restricted by an own selector. */
 export type ContentRuleTransparent = {
@@ -654,6 +668,7 @@ export class Schema {
     let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
     
     if(!(nodeToCheck instanceof Element)) return true;
+    if(!isSimplifiedTableContentValid(nodeToCheck, content ?? Array.from(nodeToCheck.childNodes))) return false
     if(!rule && (content ?? Array.from(nodeToCheck.childNodes)).length) return false
     else if(!rule && !content?.length) return true
     const contentToCheck = content ?? Array.from(nodeToCheck.childNodes)
@@ -1071,6 +1086,7 @@ export class Schema {
     this.#repairingContent = true
     try {
       this.enforceMedia(root)
+      if(root instanceof HTMLTableElement) normalizeTableStructure(root)
       this.fixInvalidContent(root)
     }
     finally { this.#repairingContent = repairing }

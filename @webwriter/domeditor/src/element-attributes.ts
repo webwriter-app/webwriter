@@ -145,20 +145,10 @@ const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[
   td: [
     {name: "colspan", label: "Column span", kind: "number"},
     {name: "rowspan", label: "Row span", kind: "number"},
-    {name: "headers", label: "Header cell IDs"},
   ],
   th: [
     {name: "colspan", label: "Column span", kind: "number"},
     {name: "rowspan", label: "Row span", kind: "number"},
-    {name: "headers", label: "Header cell IDs"},
-    {name: "scope", label: "Scope", kind: "select", options: [
-      {label: "Automatic", value: ""},
-      {label: "Column", value: "col"},
-      {label: "Row", value: "row"},
-      {label: "Column group", value: "colgroup"},
-      {label: "Row group", value: "rowgroup"},
-    ]},
-    {name: "abbr", label: "Abbreviation"},
   ],
 }
 
@@ -169,7 +159,8 @@ const urlAttributes = new Set(["href", "src", "xlink:href", "action", "formactio
 export function elementAttributeOptions(localName: string) {
   const specific = optionsByElement[localName] ?? []
   const specificNames = new Set(specific.map(option => option.name))
-  return [...specific, ...commonAttributeOptions.filter(option => !specificNames.has(option.name))]
+  return [...specific, ...commonAttributeOptions.filter(option => !specificNames.has(option.name) && !(option.name === "role"
+    && ["table", "thead", "tbody", "tfoot", "tr", "td", "th"].includes(localName)))]
 }
 
 export function isEditorOnlyElementAttribute(name: string) {
@@ -180,6 +171,10 @@ export function elementAttributeEditability(name: string, localName?: string, na
   const limitation = localName ? elementEditingLimitation(localName, namespaceURI) : null
   if(limitation?.attributes === "read-only") return {editable: false, reason: "Read-only by policy"} as const
   const normalized = name.toLowerCase()
+  if((localName === "td" || localName === "th") && ["headers", "scope", "abbr"].includes(normalized)
+    || ["table", "thead", "tbody", "tfoot", "tr", "td", "th"].includes(localName ?? "") && normalized === "role") {
+    return {editable: false, reason: "Unsupported by the table schema"} as const
+  }
   if(normalized === "controls" && (localName === "audio" || localName === "video")) {
     return {editable: false, reason: "Required by the media schema"} as const
   }

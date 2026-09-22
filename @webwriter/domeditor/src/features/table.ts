@@ -1,23 +1,18 @@
 import {EditorFeature} from "."
-import {$, cloneWithoutEditorMarkers, getInertDocument, modifierKeyDown, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
+import {$, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
+  normalizeTableStructure,
   cellForNode,
   clearTableMarkers,
   completeCellRectangle,
   createTable,
-  isTableCellRole,
-  isTableRowGroupType,
   placementForCell,
   placementsInRectangle,
   tableCellSelector,
   tableForNode,
   type TableCellPlacement,
-  type TableCellRole,
-  type TableColumnGroupState,
   type TableMap,
-  type TableRowGroupState,
-  type TableRowGroupType,
   type TableSelectionState,
 } from "../table"
 
@@ -28,6 +23,7 @@ type TableResizeEdge = {table: HTMLTableElement, column: number}
 type SelectionPoint = {node: Node, offset: number}
 
 const resizeDragThreshold = 4
+const tableGapOffset = 8
 
 function cellTagForRow(row: HTMLTableRowElement) {
   const cells = Array.from(row.children).filter(child => child.matches(tableCellSelector))
@@ -51,36 +47,6 @@ function authoredClassValue(value: string | null) {
   return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).sort().join(" ")
 }
 
-function stateAttributes(element: Element) {
-  return Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
-    if(attribute.name !== "class") return [[attribute.name, attribute.value]]
-    const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
-    return classes.length ? [["class", classes.join(" ")]] : []
-  }))
-}
-
-function equalAttributes(element: Element, expected: Record<string, string>) {
-  const current = stateAttributes(element)
-  const names = Object.keys(current)
-  return names.length === Object.keys(expected).length && names.every(name => current[name] === expected[name])
-}
-
-function sharedCellAttribute(cells: HTMLTableCellElement[], name: string) {
-  const values = new Set(cells.map(cell => cell.getAttribute(name) ?? ""))
-  return values.size === 1 ? values.values().next().value as string : null
-}
-
-function roleForCell(cell: HTMLTableCellElement): TableCellRole {
-  if(cell.localName === "td") return "data"
-  switch(cell.getAttribute("scope")?.toLowerCase()) {
-    case "col": return "column-header"
-    case "row": return "row-header"
-    case "colgroup": return "column-group-header"
-    case "rowgroup": return "row-group-header"
-    default: return "header"
-  }
-}
-
 function inlineWidthInPixels(element: HTMLElement) {
   const inlineWidth = element.style.getPropertyValue("width").trim()
   if(!inlineWidth) return null
@@ -97,6 +63,14 @@ function inlineWidthInPixels(element: HTMLElement) {
  * this feature stores only transient cell-selection anchors and derives a
  * fresh rowspan/colspan occupancy map immediately before every command. */
 export class TableFeature extends EditorFeature {
+  protected handlesAppendixInteractions = true
+  private gapOverlay: HTMLDivElement | null = null
+  private gapStylesheet: CSSStyleSheet | null = null
+  private gapFrame: number | null = null
+  private gapResizeObserver: ResizeObserver | null = null
+  private gapTable: HTMLTableElement | null = null
+  private hoverTable: HTMLTableElement | null = null
+  private gapControls: Array<{button: HTMLButtonElement, axis: "row" | "column", index: number, map: TableMap}> = []
   private anchorCell: HTMLTableCellElement | null = null
   private focusCell: HTMLTableCellElement | null = null
   private pendingCell: HTMLTableCellElement | null = null
@@ -113,7 +87,7 @@ export class TableFeature extends EditorFeature {
   private resize: {
     table: HTMLTableElement
     column: number
-    columnElement: HTMLTableColElement
+    cells: Array<{cell: HTMLTableCellElement, width: number}>
     startX: number
     startWidth: number
     endUndoGroup: () => void
@@ -140,6 +114,10 @@ export class TableFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     window.addEventListener("blur", this.finishResize)
+    window.addEventListener("resize", this.scheduleGaps)
+    const FrameResizeObserver = document.defaultView?.ResizeObserver
+    if(FrameResizeObserver) this.gapResizeObserver = new FrameResizeObserver(this.scheduleGaps)
+    this.scheduleGaps()
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(mutations => {
@@ -169,6 +147,18 @@ export class TableFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     window.removeEventListener("blur", this.finishResize)
+    window.removeEventListener("resize", this.scheduleGaps)
+    this.gapResizeObserver?.disconnect()
+    this.gapResizeObserver = null
+    if(this.gapFrame !== null) cancelAnimationFrame(this.gapFrame)
+    this.gapFrame = null
+    this.gapOverlay?.remove()
+    this.gapOverlay = null
+    this.gapControls = []
+    this.gapTable = null
+    this.hoverTable = null
+    if(this.gapStylesheet) this.editor.appendix.adoptedStyleSheets = this.editor.appendix.adoptedStyleSheets.filter(sheet => sheet !== this.gapStylesheet)
+    this.gapStylesheet = null
     this.observer?.disconnect()
     this.observer = null
     this.clearCellSelection(false)
@@ -183,12 +173,159 @@ export class TableFeature extends EditorFeature {
     queueMicrotask(() => {
       this.refreshQueued = false
       if(!this.isEnabled) return
+      this.scheduleGaps()
       if(this.hasCellSelection) {
         this.applyCellMarkers()
         this.editor.postSelectionPath()
       }
       else if(this.anchorCell || this.focusCell) this.clearCellSelection()
     })
+  }
+
+  private scheduleGaps = () => {
+    if(!this.isEnabled || this.gapFrame !== null) return
+    this.gapFrame = requestAnimationFrame(() => {
+      this.gapFrame = null
+      this.renderGaps()
+    })
+  }
+
+  private editableTable(table: HTMLTableElement | null): table is HTMLTableElement {
+    if(!table?.isConnected || this.editor.isEditingLocked) return false
+    for(let node: Element | null = table; node && node !== document.body; node = node.parentElement) {
+      if(node.localName.includes("-") || node.hasAttribute("is") || node.getAttribute("contenteditable") === "false") return false
+    }
+    return document.body.contains(table)
+  }
+
+  private createGapOverlay() {
+    this.gapStylesheet = createStylesheet(`
+      .◆table-gaps { position: fixed; inset: 0; pointer-events: none; z-index: 10002; color: var(--sl-color-primary-400, #38bdf8); }
+      .◆table-gaps button { position: absolute; width: 24px; height: 24px; padding: 0; margin: 0; border: 0;
+        background: transparent; color: inherit; pointer-events: auto; cursor: pointer; transform: translate(-50%, -50%); }
+      .◆table-gaps button::before { content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%;
+        background: currentColor; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+      .◆table-gaps button::after { content: ''; position: absolute; inset: 4px; border-radius: 50%;
+        background: linear-gradient(white, white) center / 8px 2px no-repeat,
+          linear-gradient(white, white) center / 2px 8px no-repeat, var(--sl-color-primary-400, #38bdf8);
+        opacity: 0; }
+      .◆table-gaps button:is(:hover, :focus-visible)::after { opacity: 1; }
+      .◆table-gaps button:focus-visible { outline: 2px solid white; border-radius: 50%; }
+      .◆table-gaps button span { position: absolute; display: none; background: currentColor; pointer-events: none; }
+      .◆table-gaps button:is(:hover, :focus-visible) span { display: block; }
+      .◆table-gaps button[data-axis=column] span { left: 11px; top: 12px; width: 2px; height: var(--gap-length); }
+      .◆table-gaps button[data-axis=row] span { left: 12px; top: 11px; height: 2px; width: var(--gap-length); }
+    `)
+    this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.gapStylesheet]
+    this.gapOverlay = document.createElement("div")
+    this.gapOverlay.className = "◆table-gaps"
+    this.gapOverlay.setAttribute("role", "group")
+    this.gapOverlay.setAttribute("aria-label", "Insert table rows and columns")
+    this.editor.addAppendix(this.gapOverlay)
+    return this.gapOverlay
+  }
+
+  private renderGaps() {
+    const table = this.editableTable(this.hoverTable) ? this.hoverTable : this.selectedTable
+    if(!this.editableTable(table) || this.pointerSelecting || this.resize) {
+      if(this.gapOverlay) this.gapOverlay.hidden = true
+      return
+    }
+    const map = buildTableMap(table)
+    const rect = table.getBoundingClientRect()
+    if(!map.rows.length || !map.width || !rect.width || !rect.height) {
+      if(this.gapOverlay) this.gapOverlay.hidden = true
+      return
+    }
+    if(this.gapTable !== table) {
+      this.gapResizeObserver?.disconnect()
+      this.gapResizeObserver?.observe(table)
+      this.gapResizeObserver?.observe(document.body)
+      this.gapTable = table
+    }
+    const overlay = this.gapOverlay ?? this.createGapOverlay()
+    overlay.hidden = false
+    const rtl = getComputedStyle(table).direction === "rtl"
+    const cellRects = new Map(map.placements.map(placement => [placement, placement.cell.getBoundingClientRect()]))
+    const rowRects = map.rows.map(row => row.getBoundingClientRect())
+    const top = rowRects[0].top
+    const bottom = rowRects.at(-1)!.bottom
+    let controlIndex = 0
+    for(const axis of ["column", "row"] as const) {
+      const count = axis === "column" ? map.width : map.rows.length
+      for(let index = 0; index <= count; index++) {
+        let position: number
+        if(axis === "row") {
+          position = index === 0 ? top : index === count ? bottom : (rowRects[index - 1].bottom + rowRects[index].top) / 2
+        }
+        else {
+          const before = map.placements.find(cell => cell.column + cell.columnSpan === index)
+          const after = map.placements.find(cell => cell.column === index)
+          const end = before && cellRects.get(before)![rtl ? "left" : "right"]
+          const start = after && cellRects.get(after)![rtl ? "right" : "left"]
+          if(end !== undefined && start !== undefined) position = (end + start) / 2
+          else if(end !== undefined || start !== undefined) position = (end ?? start)!
+          else {
+            const cell = map.placements.find(cell => cell.column < index && cell.column + cell.columnSpan > index)
+            if(!cell) continue
+            const box = cellRects.get(cell)!
+            position = rtl ? box.right - box.width * (index - cell.column) / cell.columnSpan
+              : box.left + box.width * (index - cell.column) / cell.columnSpan
+          }
+        }
+        let control = this.gapControls[controlIndex++]
+        if(!control) {
+          const button = document.createElement("button")
+          button.type = "button"
+          const line = document.createElement("span")
+          line.setAttribute("aria-hidden", "true")
+          button.append(line)
+          overlay.append(button)
+          control = {button, axis, index, map}
+          this.gapControls.push(control)
+        }
+        Object.assign(control, {axis, index, map})
+        control.button.dataset.axis = axis
+        control.button.setAttribute("aria-label", `Insert ${axis} ${index + 1}`)
+        control.button.style.left = `${axis === "column" ? position : rect.left - tableGapOffset}px`
+        control.button.style.top = `${axis === "row" ? position : top - tableGapOffset}px`
+        control.button.style.setProperty("--gap-length", `${axis === "column" ? bottom - top + tableGapOffset : rect.width + tableGapOffset}px`)
+      }
+    }
+    this.gapControls.splice(controlIndex).forEach(control => control.button.remove())
+  }
+
+  private gapControl(event: Event) {
+    return this.gapControls.find(control => event.composedPath().includes(control.button))
+  }
+
+  private insertAtGap(event: Event) {
+    const control = this.gapControl(event)
+    if(!control || this.gapOverlay?.hidden) return
+    event.preventDefault()
+    const {map: previous, axis, index} = control
+    const table = previous.table
+    if(!this.editableTable(table)) return
+    const current = buildTableMap(table)
+    // Do not reinterpret an old handle after a remote or widget structural edit.
+    if(current.rows.length !== previous.rows.length || current.width !== previous.width
+      || current.rows.some((row, index) => row !== previous.rows[index])
+      || current.placements.length !== previous.placements.length
+      || current.placements.some((cell, index) => {
+        const old = previous.placements[index]
+        return cell.cell !== old.cell || cell.row !== old.row || cell.column !== old.column
+          || cell.rowSpan !== old.rowSpan || cell.columnSpan !== old.columnSpan
+      })) {
+      this.scheduleGaps()
+      return
+    }
+    const endUndoGroup = this.editor.doc.beginUndoGroup()
+    try {
+      axis === "row" ? this.insertRowAt(table, index) : this.insertColumnAt(table, index)
+      this.hoverTable = table
+      this.scheduleGaps()
+    }
+    finally { endUndoGroup() }
   }
 
   private selectionMap() {
@@ -278,52 +415,11 @@ export class TableFeature extends EditorFeature {
     return true
   }
 
-  private actionRows(map: TableMap) {
-    const rectangle = this.actionRectangle(map)
-    return rectangle ? map.rows.slice(rectangle.top, rectangle.bottom + 1) : []
-  }
-
-  private rowGroupState(table: HTMLTableElement): TableRowGroupState[] {
-    return Array.from(table.childNodes).flatMap((node, index) => (
-      node instanceof Element && isTableRowGroupType(node.localName)
-        ? [{
-          index,
-          type: node.localName,
-          rows: Array.from(node.children).filter(child => child.localName === "tr").length,
-          attributes: stateAttributes(node),
-        }]
-        : []
-    ))
-  }
-
-  private columnGroupState(table: HTMLTableElement): TableColumnGroupState[] {
-    return Array.from(table.children).flatMap(group => {
-      if(group.localName !== "colgroup") return []
-      const groupPath = pathFromNode(table, group)
-      if(!groupPath) return []
-      return [{
-        path: groupPath,
-        attributes: stateAttributes(group),
-        columns: Array.from(group.children).flatMap(column => {
-          if(column.localName !== "col") return []
-          const path = pathFromNode(table, column)
-          return path ? [{path, attributes: stateAttributes(column)}] : []
-        }),
-      }]
-    })
-  }
-
   getState(): TableSelectionState | undefined {
     const map = this.selectionMap()
     if(!map) return
     const cells = this.actionCells(map)
     const selected = this.selectedCells
-    const rows = this.actionRows(map)
-    const rowGroupTypes = new Set(rows.map(row => {
-      const parent = row.parentElement
-      return parent && isTableRowGroupType(parent.localName) ? parent.localName : "direct"
-    }))
-    const cellRoles = new Set(cells.map(roleForCell))
     return {
       active: true,
       cellSelection: this.hasCellSelection,
@@ -336,18 +432,8 @@ export class TableFeature extends EditorFeature {
         return Boolean(placement && (placement.rowSpan > 1 || placement.columnSpan > 1))
       }),
       hasCaption: Boolean(map.table.caption),
-      selectedRowGroup: rowGroupTypes.size === 1
-        ? rowGroupTypes.values().next().value as TableRowGroupType | "direct"
-        : "mixed",
-      rowGroups: this.rowGroupState(map.table),
-      canAddHeaderGroup: !Array.from(map.table.children).some(child => child.localName === "thead"),
-      canAddFooterGroup: !Array.from(map.table.children).some(child => child.localName === "tfoot"),
-      columnGroups: this.columnGroupState(map.table),
-      cellSemantics: {
-        role: cellRoles.size === 1 ? cellRoles.values().next().value as TableCellRole : "mixed",
-        headers: sharedCellAttribute(cells, "headers"),
-        abbr: sharedCellAttribute(cells, "abbr"),
-      },
+      hasHeader: Boolean(map.table.querySelector(":scope > thead > tr")),
+      hasFooter: Boolean(map.table.querySelector(":scope > tfoot > tr")),
     }
   }
 
@@ -402,20 +488,26 @@ export class TableFeature extends EditorFeature {
     let map = this.normalizeTable(table)
     const rectangle = this.actionRectangle(map)
     if(!rectangle) return
-    const boundary = side === "above" ? rectangle.top : rectangle.bottom + 1
+    this.insertRowAt(table, side === "above" ? rectangle.top : rectangle.bottom + 1, rectangle.top)
+  }
+
+  private insertRowAt(table: HTMLTableElement, boundary: number, sourceRow = boundary) {
+    let map = this.normalizeTable(table)
+    if(boundary < 0 || boundary > map.rows.length) return
     const crossing = map.placements.filter(placement => placement.row < boundary && placement.row + placement.rowSpan > boundary)
     crossing.forEach(placement => {
       if(placement.cell.getAttribute("rowspan") !== "0") placement.cell.rowSpan = placement.rowSpan + 1
     })
 
     const row = document.createElement("tr")
-    const reference = side === "above" ? map.rows[rectangle.top] : map.rows[rectangle.bottom]
-    side === "above" ? reference.before(row) : reference.after(row)
+    const reference = map.rows[boundary]
+    reference ? reference.before(row) : map.rows.at(-1)!.after(row)
     for(let column = 0; column < map.width; column++) {
       if(crossing.some(placement => placement.column <= column && column < placement.column + placement.columnSpan)) continue
-      const source = map.matrix[Math.min(rectangle.top, map.rows.length - 1)]?.[column]?.cell
+      const source = map.matrix[Math.min(sourceRow, map.rows.length - 1)]?.[column]?.cell
       row.append(newCellForRow(row, source))
     }
+    normalizeTableStructure(table)
     map = this.normalizeTable(table)
     const rowIndex = map.rows.indexOf(row)
     const cells = map.placements.filter(placement => placement.row === rowIndex).map(({cell}) => cell)
@@ -436,7 +528,12 @@ export class TableFeature extends EditorFeature {
     let map = this.normalizeTable(table)
     const rectangle = this.actionRectangle(map)
     if(!rectangle) return
-    const boundary = side === "left" ? rectangle.left : rectangle.right + 1
+    this.insertColumnAt(table, side === "left" ? rectangle.left : rectangle.right + 1)
+  }
+
+  private insertColumnAt(table: HTMLTableElement, boundary: number) {
+    let map = this.normalizeTable(table)
+    if(boundary < 0 || boundary > map.width) return
     const crossing = map.placements.filter(placement => placement.column < boundary
       && placement.column + placement.columnSpan > boundary)
     crossing.forEach(placement => placement.cell.colSpan = placement.columnSpan + 1)
@@ -505,8 +602,6 @@ export class TableFeature extends EditorFeature {
     const next = cloneWithoutEditorMarkers(table, false) as HTMLTableElement
     clearTableMarkers(next)
     next.removeAttribute("id")
-    Array.from(table.children).filter(child => child.matches("colgroup"))
-      .forEach(group => next.append(cloneWithoutEditorMarkers(group, true)))
     const sectionClones = new Map<Element, Element>()
     map.rows.slice(first.row).forEach(row => {
       const parent = row.parentElement!
@@ -566,258 +661,48 @@ export class TableFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
-  private rowGroupShell(source: Element, type: TableRowGroupType, keepId: boolean) {
-    const group = cloneWithoutEditorMarkers(source, false) as HTMLTableSectionElement
-    const replacement = document.createElement(type)
-    Array.from(group.attributes).forEach(attribute => replacement.setAttribute(attribute.name, attribute.value))
-    if(!keepId) replacement.removeAttribute("id")
-    return replacement
-  }
-
-  private convertRowSegment(rows: HTMLTableRowElement[], type: TableRowGroupType) {
-    const first = rows[0]
-    const last = rows.at(-1)
-    if(!first || !last || first.parentElement !== last.parentElement) return
-    const parent = first.parentElement
-    const table = tableForNode(first)
-    if(!parent || !table) return
-    if(parent === table) {
-      const group = document.createElement(type)
-      first.before(group)
-      rows.forEach(row => group.append(row))
-      return
-    }
-    if(!isTableRowGroupType(parent.localName) || parent.localName === type) return
-    const directRows = Array.from(parent.children).filter((child): child is HTMLTableRowElement => child.localName === "tr")
-    const firstPosition = directRows.indexOf(first)
-    const lastPosition = directRows.indexOf(last)
-    if(firstPosition < 0 || lastPosition < firstPosition) return
-    const nodes = Array.from(parent.childNodes)
-    const firstIndex = nodes.indexOf(first)
-    const lastIndex = nodes.indexOf(last)
-    const hasPrefix = firstPosition > 0
-    const hasSuffix = lastPosition < directRows.length - 1
-    const prefixNodes = hasPrefix ? nodes.slice(0, firstIndex) : []
-    const selectedNodes = nodes.slice(hasPrefix ? firstIndex : 0, hasSuffix ? lastIndex + 1 : nodes.length)
-    const suffixNodes = hasSuffix ? nodes.slice(lastIndex + 1) : []
-    const groups: HTMLTableSectionElement[] = []
-    if(hasPrefix) {
-      const prefix = this.rowGroupShell(parent, parent.localName, true)
-      prefix.append(...prefixNodes)
-      groups.push(prefix)
-    }
-    const selected = this.rowGroupShell(parent, type, !hasPrefix)
-    selected.append(...selectedNodes)
-    groups.push(selected)
-    if(hasSuffix) {
-      const suffix = this.rowGroupShell(parent, parent.localName, false)
-      suffix.append(...suffixNodes)
-      groups.push(suffix)
-    }
-    parent.replaceWith(...groups)
-  }
-
-  private convertSelectedRows(type: TableRowGroupType) {
+  private toggleRowGroup(type: "thead" | "tfoot") {
     const table = this.selectedTable
-    if(!table || !isTableRowGroupType(type)) return false
-    const rows = this.actionRows(buildTableMap(table))
+    if(!table) return false
+    const rows = buildTableMap(table).rows
     if(!rows.length) return false
-    const segments: HTMLTableRowElement[][] = []
-    rows.forEach(row => {
-      const segment = segments.at(-1)
-      if(segment?.at(-1)?.parentElement === row.parentElement) segment.push(row)
-      else segments.push([row])
-    })
-    segments.forEach(segment => this.convertRowSegment(segment, type))
-    if(this.anchorCell?.isConnected && this.focusCell?.isConnected) this.applyCellMarkers()
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private rowGroupAt(index: number, expected: Record<string, string>) {
-    if(!Number.isInteger(index) || index < 0 || !expected || typeof expected !== "object" || Array.isArray(expected)) return null
-    const table = this.selectedTable
-    const group = table?.childNodes.item(index)
-    return group instanceof Element && isTableRowGroupType(group.localName) && equalAttributes(group, expected)
-      ? group as HTMLTableSectionElement
-      : null
-  }
-
-  private insertRowGroup(type: TableRowGroupType) {
-    const table = this.selectedTable
-    if(!table || !isTableRowGroupType(type)) return false
-    if(type !== "tbody" && Array.from(table.children).some(child => child.localName === type)) return false
-    const group = document.createElement(type)
-    const row = document.createElement("tr")
-    const width = Math.max(1, buildTableMap(table).width)
-    for(let index = 0; index < width; index++) row.append(document.createElement(type === "thead" ? "th" : "td"))
-    group.append(row)
-    const children = Array.from(table.children)
-    const reference = type === "thead"
-      ? children.find(child => child.matches("thead, tbody, tfoot, tr")) ?? null
-      : type === "tbody"
-        ? children.find(child => child.localName === "tfoot") ?? null
-        : null
-    table.insertBefore(group, reference)
-    const cells = Array.from(row.children) as HTMLTableCellElement[]
-    if(cells.length) this.selectCells(cells[0], cells.at(-1)!)
-    else this.editor.postSelectionPath()
-    return true
-  }
-
-  private removeRowGroup(index: number, expected: Record<string, string>) {
-    const group = this.rowGroupAt(index, expected)
-    if(!group) return false
-    group.replaceWith(...Array.from(group.childNodes))
-    if(this.anchorCell?.isConnected && this.focusCell?.isConnected) this.applyCellMarkers()
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private moveRowGroup(index: number, expected: Record<string, string>, direction: -1 | 1) {
-    if(direction !== -1 && direction !== 1) throw new TypeError("Row groups can only move up or down")
-    const group = this.rowGroupAt(index, expected)
-    const table = this.selectedTable
-    if(!group || !table) return false
-    const groups = Array.from(table.children).filter((child): child is HTMLTableSectionElement => isTableRowGroupType(child.localName))
-    const position = groups.indexOf(group)
-    const neighbour = groups[position + direction]
-    if(!neighbour) return false
-    direction < 0 ? table.insertBefore(group, neighbour) : table.insertBefore(group, neighbour.nextSibling)
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private columnElement(path: number[], expected: Record<string, string>) {
-    if(!Array.isArray(path) || path.some(index => !Number.isInteger(index) || index < 0)
-      || !expected || typeof expected !== "object" || Array.isArray(expected)) return null
-    const table = this.selectedTable
-    const element = table ? nodeAtPath(table, path) : null
-    return element instanceof Element
-      && (element.localName === "colgroup" || element.localName === "col")
-      && equalAttributes(element, expected)
-      ? element as HTMLTableColElement
-      : null
-  }
-
-  private addColumnGroup() {
-    const table = this.selectedTable
-    if(!table) return false
-    const group = document.createElement("colgroup")
-    group.setAttribute("span", "1")
-    const groups = Array.from(table.children).filter(child => child.localName === "colgroup")
-    const reference = groups.at(-1)?.nextSibling
-      ?? Array.from(table.children).find(child => child.matches("thead, tbody, tfoot, tr"))
-      ?? null
-    table.insertBefore(group, reference)
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private removeColumnGroup(path: number[], expected: Record<string, string>) {
-    const group = this.columnElement(path, expected)
-    if(!group || group.localName !== "colgroup" || group.parentElement !== this.selectedTable) return false
-    group.remove()
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private moveColumnGroup(path: number[], expected: Record<string, string>, direction: -1 | 1) {
-    if(direction !== -1 && direction !== 1) throw new TypeError("Column groups can only move up or down")
-    const group = this.columnElement(path, expected)
-    const table = this.selectedTable
-    if(!group || group.localName !== "colgroup" || group.parentElement !== table || !table) return false
-    const groups = Array.from(table.children).filter((child): child is HTMLTableColElement => child.localName === "colgroup")
-    const position = groups.indexOf(group)
-    const neighbour = groups[position + direction]
-    if(!neighbour) return false
-    direction < 0 ? table.insertBefore(group, neighbour) : table.insertBefore(group, neighbour.nextSibling)
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private addColumn(path: number[], expected: Record<string, string>) {
-    const group = this.columnElement(path, expected)
-    if(!group || group.localName !== "colgroup") return false
-    const columns = Array.from(group.children).filter(child => child.localName === "col")
-    if(!columns.length) {
-      const span = Math.max(1, Number.parseInt(group.getAttribute("span") ?? "1", 10) || 1)
-      group.removeAttribute("span")
-      for(let index = 0; index < span; index++) group.append(document.createElement("col"))
+    let header = Boolean(table.querySelector(":scope > thead > tr"))
+    let footer = Boolean(table.querySelector(":scope > tfoot > tr"))
+    if(type === "thead") {
+      header = !header
+      if(header && rows.length === 1) footer = false
     }
-    else group.append(document.createElement("col"))
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private removeColumn(path: number[], expected: Record<string, string>) {
-    const column = this.columnElement(path, expected)
-    if(!column || column.localName !== "col" || column.parentElement?.localName !== "colgroup") return false
-    const group = column.parentElement
-    column.remove()
-    if(group && !Array.from(group.children).some(child => child.localName === "col")) group.setAttribute("span", "1")
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private setColumnSpan(path: number[], expected: Record<string, string>, value: string | null) {
-    const element = this.columnElement(path, expected)
-    if(!element) return false
-    if(value !== null && (!/^[1-9]\d*$/.test(value) || Number(value) > 1000)) throw new RangeError("Column span must be between 1 and 1000")
-    if(element.localName === "colgroup" && element.querySelector(":scope > col") && value !== null) return false
-    value === null ? element.removeAttribute("span") : element.setAttribute("span", value)
-    this.editor.postSelectionPath()
-    return true
-  }
-
-  private replaceCell(cell: HTMLTableCellElement, tag: "td" | "th", scope: string | null) {
-    const replacement = document.createElement(tag) as HTMLTableCellElement
-    Array.from(cell.attributes).forEach(attribute => {
-      if(attribute.name === "class") {
-        const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
-        if(classes.length) replacement.setAttribute("class", classes.join(" "))
+    else {
+      footer = !footer
+      if(footer && rows.length === 1) header = false
+    }
+    const endUndoGroup = this.editor.doc.beginUndoGroup()
+    try {
+      const anchor = this.hasCellSelection ? this.anchorCell : null
+      const focus = this.hasCellSelection ? this.focusCell : null
+      const selection = window.getSelection()
+      const point = selection?.anchorNode && selection.focusNode ? {
+        anchor: selection.anchorNode, anchorOffset: selection.anchorOffset,
+        focus: selection.focusNode, focusOffset: selection.focusOffset,
+      } : null
+      const replacements = normalizeTableStructure(table, header, footer)
+      if(anchor && focus) {
+        const nextAnchor = replacements.get(anchor) ?? anchor
+        const nextFocus = replacements.get(focus) ?? focus
+        if(nextAnchor.isConnected && nextFocus.isConnected) this.selectCells(nextAnchor, nextFocus)
+        else this.clearCellSelection(false)
       }
-      else replacement.setAttribute(attribute.name, attribute.value)
-    })
-    if(tag === "td") {
-      replacement.removeAttribute("scope")
-      replacement.removeAttribute("abbr")
+      else if(point) {
+        const nextAnchor = replacements.get(point.anchor as HTMLTableCellElement) ?? point.anchor
+        const nextFocus = replacements.get(point.focus as HTMLTableCellElement) ?? point.focus
+        if(nextAnchor.isConnected && nextFocus.isConnected) {
+          $.selectRange(nextAnchor, point.anchorOffset, nextFocus, point.focusOffset)
+        }
+      }
+      this.editor.features.selection.processSelection()
+      this.editor.postSelectionPath()
     }
-    else if(scope) replacement.setAttribute("scope", scope)
-    else replacement.removeAttribute("scope")
-    replacement.append(...Array.from(cell.childNodes))
-    cell.replaceWith(replacement)
-    return replacement
-  }
-
-  private setCellRole(role: TableCellRole) {
-    if(!isTableCellRole(role)) throw new TypeError(`Unsupported table cell role '${String(role)}'`)
-    const table = this.selectedTable
-    if(!table) return false
-    const cells = this.actionCells(buildTableMap(table))
-    if(!cells.length) return false
-    const tag = role === "data" ? "td" : "th"
-    const scope = role === "column-header" ? "col"
-      : role === "row-header" ? "row"
-        : role === "column-group-header" ? "colgroup"
-          : role === "row-group-header" ? "rowgroup"
-            : null
-    const replacements = new Map<HTMLTableCellElement, HTMLTableCellElement>()
-    cells.forEach(cell => replacements.set(cell, this.replaceCell(cell, tag, scope)))
-    const anchor = this.anchorCell ? replacements.get(this.anchorCell) ?? this.anchorCell : null
-    const focus = this.focusCell ? replacements.get(this.focusCell) ?? this.focusCell : null
-    if(anchor?.isConnected && focus?.isConnected) this.selectCells(anchor, focus)
-    else this.editor.postSelectionPath()
-    return true
-  }
-
-  private setCellSemanticAttribute(name: "headers" | "abbr", value: string | null) {
-    const table = this.selectedTable
-    if(!table) return false
-    const cells = this.actionCells(buildTableMap(table))
-    if(!cells.length || name === "abbr" && cells.some(cell => cell.localName !== "th")) return false
-    cells.forEach(cell => value === null ? cell.removeAttribute(name) : cell.setAttribute(name, value))
-    this.editor.postSelectionPath()
+    finally { endUndoGroup() }
     return true
   }
 
@@ -925,7 +810,8 @@ export class TableFeature extends EditorFeature {
       map.rows.forEach((row, rowIndex) => row.append(newCellForRow(row, map.matrix[rowIndex]?.at(-1)?.cell)))
       map = this.normalizeTable(table)
     }
-    return map
+    normalizeTableStructure(table)
+    return buildTableMap(table)
   }
 
   private pasteMatrix(matrix: Node[][][]) {
@@ -967,42 +853,6 @@ export class TableFeature extends EditorFeature {
     return this.pasteMatrix(this.clipboardMatrix(html, plain))
   }
 
-  private normalizeColumnElements(table: HTMLTableElement, width: number) {
-    let groups = Array.from(table.children).filter((child): child is HTMLTableColElement => child.matches("colgroup"))
-    if(!groups.length) {
-      const group = document.createElement("colgroup")
-      if(table.caption) table.caption.after(group)
-      else table.prepend(group)
-      groups = [group]
-    }
-    const columns: HTMLTableColElement[] = []
-    groups.forEach(group => {
-      const children = Array.from(group.children).filter((child): child is HTMLTableColElement => child.matches("col"))
-      if(!children.length) {
-        const span = Math.max(1, Number.parseInt(group.getAttribute("span") ?? "1", 10) || 1)
-        group.removeAttribute("span")
-        for(let index = 0; index < span; index++) group.append(document.createElement("col"))
-      }
-      Array.from(group.children).filter((child): child is HTMLTableColElement => child.matches("col")).forEach(column => {
-        const span = Math.max(1, Number.parseInt(column.getAttribute("span") ?? "1", 10) || 1)
-        column.removeAttribute("span")
-        columns.push(column)
-        for(let index = 1; index < span; index++) {
-          const clone = cloneWithoutEditorMarkers(column, false) as HTMLTableColElement
-          column.after(clone)
-          columns.push(clone)
-        }
-      })
-    })
-    const targetGroup = groups.at(-1)!
-    while(columns.length < width) {
-      const column = document.createElement("col")
-      targetGroup.append(column)
-      columns.push(column)
-    }
-    return columns
-  }
-
   private resizeEdge(event: PointerEvent, cell: HTMLTableCellElement): TableResizeEdge | null {
     const table = tableForNode(cell)
     if(!table) return null
@@ -1030,20 +880,18 @@ export class TableFeature extends EditorFeature {
     if(this.resize || !edge.table.isConnected) return false
     const map = buildTableMap(edge.table)
     if(edge.column < 0 || edge.column >= map.width) return false
-    // Column creation and every intermediate width belong to the same drag.
+    // Every intermediate width belongs to the same drag.
     const endUndoGroup = this.editor.doc.beginUndoGroup()
     try {
-      const columns = this.normalizeColumnElements(edge.table, map.width)
-      const columnElement = columns[edge.column]
-      if(!columnElement) return false
-      const placement = map.matrix.find(row => row[edge.column])?.[edge.column]
-      const cellWidth = placement?.cell.getBoundingClientRect().width ?? 0
-      const persistedWidth = inlineWidthInPixels(columnElement)
-      const startWidth = persistedWidth ?? (cellWidth > 0 ? cellWidth / (placement?.columnSpan ?? 1)
-        : Number.parseFloat(getComputedStyle(columnElement).width) || 80
-      )
+      const targets = map.placements.filter(placement => placement.column <= edge.column
+        && placement.column + placement.columnSpan > edge.column)
+      const cells = targets.map(({cell}) => ({
+        cell, width: inlineWidthInPixels(cell) ?? (cell.getBoundingClientRect().width || 80),
+      }))
+      if(!cells.length) return false
+      const startWidth = Math.min(...cells.map(({width}, index) => width / targets[index].columnSpan))
       document.body.classList.add("◆", "◆table-column-resize")
-      this.resize = {table: edge.table, column: edge.column, columnElement, startX, startWidth, endUndoGroup}
+      this.resize = {table: edge.table, column: edge.column, cells, startX, startWidth, endUndoGroup}
       return true
     }
     finally {
@@ -1059,7 +907,7 @@ export class TableFeature extends EditorFeature {
     }
   }
 
-  private restoreTextDragSelection() {
+  private restoreTextDragSelection(restoreCaret = true) {
     const point = this.textDragAnchor
     const origin = this.pendingCell
     if(!point || !origin || !point.node.isConnected || cellForNode(point.node) !== origin) return false
@@ -1070,9 +918,14 @@ export class TableFeature extends EditorFeature {
     this.focusCell = null
     this.pointerSelecting = false
     this.clearCellMarkers()
-    $.selectRange(point.node, point.offset)
-    this.editor.features.selection.processSelection(true)
-    this.editor.postSelectionPath()
+    // Returning to text dragging lets the selection feature restore both
+    // endpoints later in this pointermove. Publishing a collapsed caret here
+    // would briefly switch the host toolbox and mark controls.
+    if(restoreCaret) {
+      $.selectRange(point.node, point.offset)
+      this.editor.features.selection.processSelection(true)
+      this.editor.postSelectionPath()
+    }
     return true
   }
 
@@ -1111,12 +964,13 @@ export class TableFeature extends EditorFeature {
 
   private updateResize(event: PointerEvent) {
     if(!this.resize) return false
-    if(!this.resize.table.isConnected || tableForNode(this.resize.columnElement) !== this.resize.table) {
+    if(!this.resize.table.isConnected || this.resize.cells.some(({cell}) => !cell.isConnected || tableForNode(cell) !== this.resize!.table)) {
       this.stopResize()
       return false
     }
     const width = Math.max(24, this.resize.startWidth + event.clientX - this.resize.startX)
-    this.resize.columnElement.style.width = `${Math.round(width)}px`
+    const delta = width - this.resize.startWidth
+    this.resize.cells.forEach(({cell, width}) => cell.style.width = `${Math.round(Math.max(24, width + delta))}px`)
     return true
   }
 
@@ -1187,34 +1041,8 @@ export class TableFeature extends EditorFeature {
     splitTable: ({}: {type: "splitTable"}) => this.splitTable(),
     addTableCaption: ({}: {type: "addTableCaption"}) => this.addCaption(),
     toggleTableCaption: ({}: {type: "toggleTableCaption"}) => this.toggleCaption(),
-    convertTableRows: ({group}: {type: "convertTableRows", group: TableRowGroupType}) => this.convertSelectedRows(group),
-    insertTableRowGroup: ({group}: {type: "insertTableRowGroup", group: TableRowGroupType}) => this.insertRowGroup(group),
-    removeTableRowGroup: ({index, expected}: {
-      type: "removeTableRowGroup", index: number, expected: Record<string, string>
-    }) => this.removeRowGroup(index, expected),
-    moveTableRowGroup: ({index, expected, direction}: {
-      type: "moveTableRowGroup", index: number, expected: Record<string, string>, direction: -1 | 1
-    }) => this.moveRowGroup(index, expected, direction),
-    addTableColumnGroup: ({}: {type: "addTableColumnGroup"}) => this.addColumnGroup(),
-    removeTableColumnGroup: ({path, expected}: {
-      type: "removeTableColumnGroup", path: number[], expected: Record<string, string>
-    }) => this.removeColumnGroup(path, expected),
-    moveTableColumnGroup: ({path, expected, direction}: {
-      type: "moveTableColumnGroup", path: number[], expected: Record<string, string>, direction: -1 | 1
-    }) => this.moveColumnGroup(path, expected, direction),
-    addTableColumnDefinition: ({path, expected}: {
-      type: "addTableColumnDefinition", path: number[], expected: Record<string, string>
-    }) => this.addColumn(path, expected),
-    removeTableColumnDefinition: ({path, expected}: {
-      type: "removeTableColumnDefinition", path: number[], expected: Record<string, string>
-    }) => this.removeColumn(path, expected),
-    setTableColumnSpan: ({path, expected, value}: {
-      type: "setTableColumnSpan", path: number[], expected: Record<string, string>, value: string | null
-    }) => this.setColumnSpan(path, expected, value),
-    setTableCellRole: ({role}: {type: "setTableCellRole", role: TableCellRole}) => this.setCellRole(role),
-    setTableCellSemanticAttribute: ({name, value}: {
-      type: "setTableCellSemanticAttribute", name: "headers" | "abbr", value: string | null
-    }) => this.setCellSemanticAttribute(name, value),
+    toggleTableHeader: ({}: {type: "toggleTableHeader"}) => this.toggleRowGroup("thead"),
+    toggleTableFooter: ({}: {type: "toggleTableFooter"}) => this.toggleRowGroup("tfoot"),
     setTableCellStyle: ({property, value}: {type: "setTableCellStyle", property: TableCellStyle, value: string}) => {
       if(!["background-color", "border-color", "border-style", "border-width"].includes(property)) {
         throw new TypeError(`Unsupported table cell style '${String(property)}'`)
@@ -1227,14 +1055,30 @@ export class TableFeature extends EditorFeature {
     },
   } as const
 
+  captureListeners = {scroll: this.scheduleGaps}
+
   passiveListeners = {
+    pointerout: (event: PointerEvent) => {
+      if(!event.relatedTarget) {
+        this.hoverTable = null
+        this.scheduleGaps()
+      }
+    },
     selectionchange: () => queueMicrotask(() => {
+      this.scheduleGaps()
       if(this.hasCellSelection && tableForNode($.anchor) !== tableForNode(this.anchorCell)) this.clearCellSelection()
     }),
   }
 
   activeListeners = {
+    click: (event: MouseEvent) => this.insertAtGap(event),
     pointerdown: (event: PointerEvent) => {
+      if(this.gapControl(event)) {
+        event.preventDefault()
+        this.finishResize()
+        return
+      }
+      if(isAppendixInteraction(event)) return
       const cell = cellForNode(event.target instanceof Node ? event.target : null)
       // Modifier-click belongs to node selection; leave no cell drag or
       // column resize pending for subsequent pointer movement.
@@ -1263,6 +1107,12 @@ export class TableFeature extends EditorFeature {
       }
     },
     pointermove: (event: PointerEvent) => {
+      if(isAppendixInteraction(event)) return
+      const hovered = tableForNode(event.target instanceof Node ? event.target : null)
+      const box = this.hoverTable?.getBoundingClientRect()
+      if(hovered || !box || event.clientX < box.left - 32 || event.clientX > box.right + 16
+        || event.clientY < box.top - 32 || event.clientY > box.bottom + 16) this.hoverTable = hovered
+      this.scheduleGaps()
       if(this.updateResize(event)) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -1287,7 +1137,7 @@ export class TableFeature extends EditorFeature {
             && originRect.top <= event.clientY && event.clientY <= originRect.bottom
           : target === this.pendingCell || Boolean(target && this.pendingCell.contains(target))
         if(insideOrigin) {
-          if(this.pointerSelecting && !this.restoreTextDragSelection()) {
+          if(this.pointerSelecting && !this.restoreTextDragSelection(false)) {
             event.preventDefault()
             event.stopImmediatePropagation()
             if(this.anchorCell !== this.pendingCell || this.focusCell !== this.pendingCell) this.selectCells(this.pendingCell)
@@ -1315,6 +1165,7 @@ export class TableFeature extends EditorFeature {
       this.setResizeHover(edge)
     },
     pointerup: (event: PointerEvent) => {
+      if(isAppendixInteraction(event)) return
       if(this.resize) {
         event.preventDefault()
         this.stopResize()
@@ -1330,6 +1181,7 @@ export class TableFeature extends EditorFeature {
     },
     pointercancel: this.finishResize,
     keydown: (event: KeyboardEvent) => {
+      if(isAppendixInteraction(event)) return
       if((event.key === "Backspace" || event.key === "Delete") && this.hasCellSelection) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -1350,6 +1202,7 @@ export class TableFeature extends EditorFeature {
       }
     },
     copy: (event: ClipboardEvent) => {
+      if(isAppendixInteraction(event)) return
       const content = this.clipboardFragment()
       if(!content) return
       event.preventDefault()
@@ -1358,6 +1211,7 @@ export class TableFeature extends EditorFeature {
       event.clipboardData?.setData("text/plain", content.plain)
     },
     cut: (event: ClipboardEvent) => {
+      if(isAppendixInteraction(event)) return
       const content = this.clipboardFragment()
       if(!content) return
       event.preventDefault()
@@ -1367,6 +1221,7 @@ export class TableFeature extends EditorFeature {
       this.deleteSelection()
     },
     paste: (event: ClipboardEvent) => {
+      if(isAppendixInteraction(event)) return
       if(!this.hasCellSelection || !event.clipboardData) return
       const html = event.clipboardData.getData("text/html")
       const plain = event.clipboardData.getData("text/plain")

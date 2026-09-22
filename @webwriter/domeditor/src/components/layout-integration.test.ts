@@ -37,12 +37,8 @@ const tableState = {
   canMerge: false,
   canSplit: false,
   hasCaption: false,
-  selectedRowGroup: "tbody" as const,
-  rowGroups: [],
-  canAddHeaderGroup: true,
-  canAddFooterGroup: true,
-  columnGroups: [],
-  cellSemantics: {role: "data" as const, headers: "", abbr: ""},
+  hasHeader: false,
+  hasFooter: false,
 }
 
 const completePackageLoad = (editorWindow: Window) => {

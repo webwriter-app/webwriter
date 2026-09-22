@@ -63,14 +63,7 @@ import type {WebWriterPackage} from "../packages"
 import {describePackageExport, webWriterPackageExportTypes} from "../packages"
 import {ribbonIcon} from "../ribbon-icons"
 import {sectionOptions, type SectionName} from "../sections"
-import {
-  isTableRowGroupType,
-  type TableCellRole,
-  type TableColumnGroupState,
-  type TableRowGroupState,
-  type TableRowGroupType,
-  type TableSelectionState,
-} from "../table"
+import type {TableSelectionState} from "../table"
 import {isOnApple} from "../utility"
 import {editingControlStyles} from "./editing-controls.styles"
 import "./element-attribute-editor"
@@ -1660,6 +1653,18 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
+  protected toggleTableHeader = () => {
+    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
+      detail: {label: "table-header"}, bubbles: true, composed: true,
+    }))
+  }
+
+  protected toggleTableFooter = () => {
+    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
+      detail: {label: "table-footer"}, bubbles: true, composed: true,
+    }))
+  }
+
   protected dispatchGraphicParameter(name: string, event: Event) {
     const input = event.currentTarget as HTMLInputElement
     this.dispatchGraphicParameterValue(name, input.value)
@@ -2133,217 +2138,6 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected dispatchTableSemanticAction(detail: Record<string, unknown>) {
-    this.dispatchEvent(new CustomEvent("table-semantic-action", {
-      detail,
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected tableRowGroupLabel(type: TableRowGroupType) {
-    return type === "thead" ? "Header" : type === "tfoot" ? "Footer" : "Body"
-  }
-
-  protected renderTableRowGroup(group: TableRowGroupState, position: number, count: number) {
-    const label = this.tableRowGroupLabel(group.type)
-    return html`
-      <div class="table-semantic-card table-row-group-card">
-        <div class="table-semantic-card-heading">
-          <span>${label} · ${group.rows} ${group.rows === 1 ? "row" : "rows"}</span>
-          <span class="table-semantic-actions">
-            <button class="table-semantic-button icon" type="button" aria-label=${`Move ${label.toLowerCase()} group up`}
-              ?disabled=${position === 0}
-              @click=${() => this.dispatchTableSemanticAction({
-                action: "move-row-group", index: group.index, expected: group.attributes, direction: -1,
-              })}>↑</button>
-            <button class="table-semantic-button icon" type="button" aria-label=${`Move ${label.toLowerCase()} group down`}
-              ?disabled=${position === count - 1}
-              @click=${() => this.dispatchTableSemanticAction({
-                action: "move-row-group", index: group.index, expected: group.attributes, direction: 1,
-              })}>↓</button>
-            <button class="table-semantic-button icon" type="button" aria-label=${`Ungroup ${label.toLowerCase()} rows`}
-              @click=${() => this.dispatchTableSemanticAction({
-                action: "remove-row-group", index: group.index, expected: group.attributes,
-              })}>×</button>
-          </span>
-        </div>
-      </div>
-    `
-  }
-
-  protected renderTableColumnGroup(group: TableColumnGroupState, position: number, count: number) {
-    return html`
-      <div class="table-semantic-card table-column-group-card">
-        <div class="table-semantic-card-heading">
-          <span>Column group ${position + 1}</span>
-          <span class="table-semantic-actions">
-            <button class="table-semantic-button icon" type="button" aria-label=${`Move column group ${position + 1} up`}
-              ?disabled=${position === 0}
-              @click=${() => this.dispatchTableSemanticAction({
-                action: "move-column-group", path: group.path, expected: group.attributes, direction: -1,
-              })}>↑</button>
-            <button class="table-semantic-button icon" type="button" aria-label=${`Move column group ${position + 1} down`}
-              ?disabled=${position === count - 1}
-              @click=${() => this.dispatchTableSemanticAction({
-                action: "move-column-group", path: group.path, expected: group.attributes, direction: 1,
-              })}>↓</button>
-            <button class="table-semantic-button icon" type="button" aria-label=${`Remove column group ${position + 1}`}
-              @click=${() => this.dispatchTableSemanticAction({
-                action: "remove-column-group", path: group.path, expected: group.attributes,
-              })}>×</button>
-          </span>
-        </div>
-        ${group.columns.length ? group.columns.map((column, columnIndex) => html`
-          <div class="table-semantic-card">
-            <div class="table-semantic-card-heading">
-              <span>Column ${columnIndex + 1}</span>
-              <button class="table-semantic-button icon" type="button"
-                aria-label=${`Remove column ${columnIndex + 1} from group ${position + 1}`}
-                @click=${() => this.dispatchTableSemanticAction({
-                  action: "remove-column", path: column.path, expected: column.attributes,
-                })}>×</button>
-            </div>
-            <label class="table-semantic-field">
-              <span>Span</span>
-              <input data-ribbon-input-persistent type="number" min="1" max="1000"
-                aria-label=${`Column ${columnIndex + 1}: Span`}
-                .value=${column.attributes.span ?? "1"}
-                @change=${(event: Event) => this.dispatchTableSemanticAction({
-                  action: "set-column-span",
-                  path: column.path,
-                  expected: column.attributes,
-                  value: (event.currentTarget as HTMLInputElement).value || null,
-                })} />
-            </label>
-          </div>
-        `) : html`
-          <label class="table-semantic-field">
-            <span>Group span</span>
-            <input data-ribbon-input-persistent type="number" min="1" max="1000"
-              aria-label=${`Column group ${position + 1}: Span`}
-              .value=${group.attributes.span ?? "1"}
-              @change=${(event: Event) => this.dispatchTableSemanticAction({
-                action: "set-column-span",
-                path: group.path,
-                expected: group.attributes,
-                value: (event.currentTarget as HTMLInputElement).value || null,
-              })} />
-          </label>
-        `}
-        <button class="table-semantic-button" type="button"
-          @click=${() => this.dispatchTableSemanticAction({
-            action: "add-column", path: group.path, expected: group.attributes,
-          })}>${group.columns.length ? "Add column" : "Define individual columns"}</button>
-      </div>
-    `
-  }
-
-  protected renderTableSemantics() {
-    if(!this.table) return nothing
-    const state = this.table
-    const semantics = state.cellSemantics
-    const roleOptions: Array<[TableCellRole, string]> = [
-      ["data", "Data cell"],
-      ["header", "Header cell"],
-      ["column-header", "Header for this column"],
-      ["row-header", "Header for this row"],
-      ["column-group-header", "Header for this column group"],
-      ["row-group-header", "Header for this row group"],
-    ]
-    return html`
-      <div class="table-semantic-controls">
-        <section class="table-semantic-section" aria-label="Row groups">
-          <div class="table-semantic-heading"><span>Selected rows</span></div>
-          <label class="table-semantic-field">
-            <span>Place in</span>
-            <select
-              ${ref(element => {
-                if(!(element instanceof HTMLSelectElement)) return
-                const value = isTableRowGroupType(state.selectedRowGroup) ? state.selectedRowGroup : ""
-                queueMicrotask(() => {
-                  if(element.isConnected) element.value = value
-                })
-              })}
-              data-ribbon-input-persistent aria-label="Selected rows: Group"
-              @change=${(event: Event) => this.dispatchTableSemanticAction({
-                action: "convert-rows", group: (event.currentTarget as HTMLSelectElement).value,
-              })}>
-              ${state.selectedRowGroup === "mixed" ? html`<option value="" selected disabled>Mixed groups</option>` : ""}
-              ${state.selectedRowGroup === "direct" ? html`<option value="" selected disabled>Ungrouped rows</option>` : ""}
-              <option value="thead" ?selected=${state.selectedRowGroup === "thead"}>Table header</option>
-              <option value="tbody" ?selected=${state.selectedRowGroup === "tbody"}>Table body</option>
-              <option value="tfoot" ?selected=${state.selectedRowGroup === "tfoot"}>Table footer</option>
-            </select>
-          </label>
-          <div class="table-semantic-add-grid" aria-label="Add row group">
-            <button class="table-semantic-button" type="button" ?disabled=${!state.canAddHeaderGroup}
-              @click=${() => this.dispatchTableSemanticAction({action: "add-row-group", group: "thead"})}>Add header</button>
-            <button class="table-semantic-button" type="button"
-              @click=${() => this.dispatchTableSemanticAction({action: "add-row-group", group: "tbody"})}>Add body</button>
-            <button class="table-semantic-button" type="button" ?disabled=${!state.canAddFooterGroup}
-              @click=${() => this.dispatchTableSemanticAction({action: "add-row-group", group: "tfoot"})}>Add footer</button>
-          </div>
-          ${state.rowGroups.map((group, position) => this.renderTableRowGroup(group, position, state.rowGroups.length))}
-        </section>
-        <section class="table-semantic-section" aria-label="Column definitions">
-          <div class="table-semantic-heading">
-            <span>Column definitions</span>
-            <button class="table-semantic-button" type="button"
-              @click=${() => this.dispatchTableSemanticAction({action: "add-column-group"})}>Add group</button>
-          </div>
-          ${state.columnGroups.length
-            ? state.columnGroups.map((group, position) => this.renderTableColumnGroup(group, position, state.columnGroups.length))
-            : html`<p class="table-semantic-note">No explicit column definitions.</p>`}
-        </section>
-        <section class="table-semantic-section" aria-label="Cell semantics">
-          <div class="table-semantic-heading"><span>Selected cells</span></div>
-          <label class="table-semantic-field">
-            <span>Role</span>
-            <select
-              ${ref(element => {
-                if(!(element instanceof HTMLSelectElement)) return
-                const value = semantics.role === "mixed" ? "" : semantics.role
-                queueMicrotask(() => {
-                  if(element.isConnected) element.value = value
-                })
-              })}
-              data-ribbon-input-persistent aria-label="Selected cells: Role"
-              @change=${(event: Event) => this.dispatchTableSemanticAction({
-                action: "set-cell-role", role: (event.currentTarget as HTMLSelectElement).value,
-              })}>
-              ${semantics.role === "mixed" ? html`<option value="" selected disabled>Mixed roles</option>` : ""}
-              ${roleOptions.map(([value, label]) => html`
-                <option value=${value} ?selected=${semantics.role === value}>${label}</option>
-              `)}
-            </select>
-          </label>
-          <label class="table-semantic-field">
-            <span>Associated header IDs</span>
-            <input data-ribbon-input-persistent type="text" aria-label="Selected cells: Associated header IDs"
-              placeholder=${semantics.headers === null ? "Mixed values" : "heading-id another-id"}
-              .value=${semantics.headers ?? ""}
-              @change=${(event: Event) => this.dispatchTableSemanticAction({
-                action: "set-cell-attribute", attribute: "headers",
-                value: (event.currentTarget as HTMLInputElement).value || null,
-              })} />
-          </label>
-          <label class="table-semantic-field">
-            <span>Abbreviation</span>
-            <input data-ribbon-input-persistent type="text" aria-label="Selected cells: Abbreviation"
-              ?disabled=${semantics.role === "data"}
-              placeholder=${semantics.abbr === null ? "Mixed values" : "Short header label"}
-              .value=${semantics.abbr ?? ""}
-              @change=${(event: Event) => this.dispatchTableSemanticAction({
-                action: "set-cell-attribute", attribute: "abbr",
-                value: (event.currentTarget as HTMLInputElement).value || null,
-              })} />
-          </label>
-        </section>
-      </div>
-    `
-  }
-
   protected renderTableDrawers() {
     const active = Boolean(this.table?.active)
     return html`
@@ -2365,15 +2159,20 @@ export abstract class EditingControls extends LitElement {
             @change=${this.toggleTableCaption}
           /> Caption</span>
         </label>
+        <label class="table-caption-toggle">
+          <span><input type="checkbox" aria-label="Table header" data-ribbon-input-persistent .checked=${this.table?.hasHeader ?? false}
+            ?disabled=${!active} @change=${this.toggleTableHeader} /> Header</span>
+        </label>
+        <label class="table-caption-toggle">
+          <span><input type="checkbox" aria-label="Table footer" data-ribbon-input-persistent .checked=${this.table?.hasFooter ?? false}
+            ?disabled=${!active} @change=${this.toggleTableFooter} /> Footer</span>
+        </label>
       </ribbon-drawer>
       <ribbon-drawer label="Borders" icon="TableBorders" layout="table-borders">
         ${this.renderTableBorderControls()}
       </ribbon-drawer>
       <ribbon-drawer label="Background" icon="TableBackground" layout="table-background">
         ${this.renderTableBackgroundControls()}
-      </ribbon-drawer>
-      <ribbon-drawer label="Semantics" icon="Settings" layout="table-semantics">
-        ${this.renderTableSemantics()}
       </ribbon-drawer>
     `
   }

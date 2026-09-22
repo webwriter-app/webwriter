@@ -463,9 +463,8 @@ export const baseSchema = {
     group: ["flow", "palpable"],
     content: {terms: [
       {selector: "caption", min: 0, max: 1},
-      {selector: "colgroup", min: 0, max: Infinity},
       {selector: "thead", min: 0, max: 1},
-      {options: [{selector: "tbody", min: 0, max: Infinity}, {selector: "tr", min: 1, max: Infinity}]},
+      {selector: "tbody", min: 0, max: 1},
       {selector: "tfoot", min: 0, max: 1},
     ]}
   },
@@ -519,7 +518,7 @@ export const baseSchema = {
   },
   "tfoot": {
     directlyInsertable: false,
-    content: {selector: "tr", min: 0, max: Infinity}
+    content: {selector: "tr", min: 1, max: 1}
   },
   "th": {
     directlyInsertable: false,
@@ -527,7 +526,7 @@ export const baseSchema = {
   },
   "thead": {
     directlyInsertable: false,
-    content: {selector: "tr", min: 0, max: Infinity}
+    content: {selector: "tr", min: 1, max: 1}
   },
   "tr": {
     directlyInsertable: false,

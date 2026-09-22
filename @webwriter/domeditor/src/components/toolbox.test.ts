@@ -330,12 +330,8 @@ describe("toolbox", () => {
       canMerge: false,
       canSplit: false,
       hasCaption: false,
-      selectedRowGroup: "tbody",
-      rowGroups: [],
-      canAddHeaderGroup: true,
-      canAddFooterGroup: true,
-      columnGroups: [],
-      cellSemantics: {role: "data", headers: "", abbr: ""},
+      hasHeader: false,
+      hasFooter: false,
     }
     await toolbox.updateComplete
     expect(label.textContent).toBe("Table")
