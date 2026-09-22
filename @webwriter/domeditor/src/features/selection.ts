@@ -1157,7 +1157,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Clears the previous presentation, including markers on removed nodes. */
-  #clearSelections() {
+  #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture") {
     this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
       "◆element-capture-selected", "◆text-selected", "◆empty-selected",
@@ -1166,10 +1166,15 @@ export class SelectionFeature extends EditorFeature {
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
     elements.forEach(element => {
-      removeEditorMarker(element, ...markers)
+      const removed = markers.filter(marker => !(
+        element === retainedElement && (marker === "◆element-selected" || marker === "◆element-capture-selected" && retainedKind === "capture")
+        || element === document.body && retainedElement && marker === "◆node-selection-active"
+      ))
+      removeEditorMarker(element, ...removed)
     })
     this.#selectionMarkers.clear()
-    this.#hideSelectionCaret()
+    if(retainedElement) this.#selectionMarkers.add(retainedElement)
+    if(!retainedKind || !this.selectionCaret?.classList.contains(`◆selection-caret-${retainedKind}`)) this.#hideSelectionCaret()
   }
 
   /** Replaces malformed or newly entered element selections with one
@@ -1394,13 +1399,17 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.list.clearSelectionPresentation()
     }
     const kind = this.#selectionKind(inDragSelection, capturedElement)
-    this.#clearSelections()
-    if(sel?.rangeCount && !sel.isCollapsed) {
-      $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
-    }
     const selectedElement = kind === "capture" ? capturedElement
       : kind === "section" ? this.selectedSectionElement
         : kind === "element" ? $.selectedElement ?? null : null
+    // Geometry refreshes read layout below. Keep an unchanged node's anchor
+    // and outline installed while those reads flush styles during a gesture.
+    const retained = selectedElement && this.#selectionMarkers.has(selectedElement)
+      && selectedElement.classList.contains("◆element-selected") ? selectedElement : null
+    this.#clearSelections(retained, retained ? kind === "capture" ? "capture" : "node" : undefined)
+    if(sel?.rangeCount && !sel.isCollapsed) {
+      $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
+    }
     const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
     if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)

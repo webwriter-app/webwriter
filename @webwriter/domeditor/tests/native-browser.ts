@@ -1081,7 +1081,19 @@ await check("standalone SVG affordances refit rotated elements and resize beyond
   // transformation methods with a mouse gesture and real rendered geometry.
   resizer.addEventListener("mousedown", event => editor.features.transformation.handleScaleStart(event), {once: true})
   resizer.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: x, clientY: y}))
-  editor.features.transformation.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: x + 180, clientY: y + 180}))
+  const selectionMutations: MutationRecord[] = []
+  const selectionObserver = new MutationObserver(records => selectionMutations.push(...records))
+  selectionObserver.observe(graphic, {attributes: true, attributeFilter: ["class"], attributeOldValue: true})
+  try {
+    for(let step = 1; step <= 3; step++) {
+      editor.features.transformation.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: x + step * 60, clientY: y + step * 60}))
+      await layoutFrame()
+      assert($.selectedElement === graphic, "resizing changed the selected element")
+    }
+    selectionMutations.push(...selectionObserver.takeRecords())
+    assert(selectionMutations.every(record => record.oldValue?.split(/\s+/).includes("◆element-selected")), "resizing temporarily removed the selection marker")
+  }
+  finally { selectionObserver.disconnect() }
   editor.features.transformation.handleScaleEnd()
   await layoutFrame()
   assert(parseFloat(getComputedStyle(graphic).width) > beforeResize + 100, "standard resizing could not enlarge the shape")

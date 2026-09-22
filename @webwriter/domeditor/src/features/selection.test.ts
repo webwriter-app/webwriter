@@ -39,6 +39,32 @@ function el(tag = "p", text = "") {
   return element
 }
 
+it.each([false, true])("keeps graphic selection visible during passive geometry refreshes (capture: %s)", captured => {
+  const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  graphic.innerHTML = '<rect width="100" height="50"/>'
+  appendToBody(graphic)
+  if(captured) feature.captureElement(graphic)
+  else feature.selectElement(graphic)
+  const caret = feature.selectionCaret!
+  const refresh = vi.spyOn(editor.features.graphic, "refresh").mockImplementation(() => {
+    expect(graphic).toHaveClass("◆element-selected")
+    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(caret).not.toHaveAttribute("visibility", "hidden")
+    expect(caret).toHaveClass(captured ? "◆selection-caret-capture" : "◆selection-caret-node")
+  })
+  try {
+    for(let i = 0; i < 3; i++) {
+      graphic.setAttribute("viewBox", `0 0 ${100 + i * 10} 50`)
+      feature.processSelection(undefined, {scrollIntoView: false})
+    }
+  }
+  finally { refresh.mockRestore() }
+  $.selectRange(document.body, document.body.childNodes.length)
+  feature.selectElement(el("p", "next"))
+  expect(graphic).not.toHaveClass("◆element-selected")
+  expect(graphic).not.toHaveClass("◆element-capture-selected")
+})
+
 describe("capture outline selection", () => {
   it.each(["top", "right", "bottom", "left"])("selects the captured element through its %s edge", side => {
     const widget = el("interactive-widget")
