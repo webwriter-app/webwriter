@@ -2503,6 +2503,31 @@ describe("DomEditor.execute()", () => {
     })
   })
 
+  it("saves graphics through the file picker and falls back to SVG downloads", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue('<svg xmlns="http://www.w3.org/2000/svg"/>')
+    const write = vi.fn().mockResolvedValue(undefined)
+    const close = vi.fn().mockResolvedValue(undefined)
+    const picker = vi.fn().mockResolvedValue({createWritable: async () => ({write, close})})
+    const pickerWindow = window as Window & {showSaveFilePicker?: typeof picker}
+    const previous = pickerWindow.showSaveFilePicker
+    pickerWindow.showSaveFilePicker = picker
+    try {
+      await (editor as any).saveGraphic()
+      expect(picker).toHaveBeenCalledWith(expect.objectContaining({suggestedName: "graphic.svg"}))
+      expect(execute).toHaveBeenCalledWith({type: "serializeGraphic"})
+      expect(write).toHaveBeenCalledWith(expect.any(Blob))
+      expect(close).toHaveBeenCalledOnce()
+      pickerWindow.showSaveFilePicker = undefined
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+      await (editor as any).saveGraphic()
+      expect(click).toHaveBeenCalledOnce()
+      expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe("graphic.svg")
+      click.mockRestore()
+    }
+    finally { pickerWindow.showSaveFilePicker = previous }
+  })
+
   it("routes graphic insertion, shape, and parameter commands through the iframe bridge", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

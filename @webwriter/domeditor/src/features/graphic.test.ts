@@ -43,6 +43,71 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it("imports SVG in place, preserving unfamiliar content, and exports without markers", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const old = document.querySelector("svg")!
+    const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(input.accept).toBe(".svg,image/svg+xml")
+    expect(document.body.querySelector('input[type="file"]')).toBeNull()
+    Object.defineProperty(input, "files", {value: [{name: "drawing.svg", text: async () =>
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 24"><!--keep--><defs><linearGradient id="paint"/></defs><g class="authored ◆selected"><path d="M0 0L5 5"/></g></svg>'}]})
+    input.dispatchEvent(new Event("change"))
+    await pending
+    expect(old.isConnected).toBe(false)
+    const source = editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})!
+    expect(source).toContain('viewBox="0 0 42 24"')
+    expect(source).toContain("<!--keep-->")
+    expect(source).toContain("linearGradient")
+    expect(source).toContain('class="authored"')
+    expect(source).not.toContain("◆")
+    expect(input.isConnected).toBe(false)
+  })
+
+  it("inserts an imported graphic at the selection and supports undo and redo", async () => {
+    const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, "files", {value: [{name: "new.svg", text: async () =>
+      '<svg xmlns="http://www.w3.org/2000/svg"><circle r="12"/></svg>'}]})
+    input.dispatchEvent(new Event("change"))
+    await pending
+    await mutationsDelivered()
+    expect(document.querySelector("svg circle")).not.toBeNull()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(document.querySelector("svg")).toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(document.querySelector("svg circle")).not.toBeNull()
+  })
+
+  it("leaves the graphic untouched on invalid SVG and cleans up cancelled imports", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, "files", {value: [{name: "bad.svg", text: async () => '<html></html>'}]})
+    input.dispatchEvent(new Event("change"))
+    await expect(pending).rejects.toThrow()
+    expect(graphic.isConnected).toBe(true)
+    const cancelled = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    editor.appendix.querySelector('input[type="file"]')!.dispatchEvent(new Event("cancel"))
+    await cancelled
+    expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it("does not reinsert a graphic removed while a file is being read", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, "files", {value: [{name: "drawing.svg", text: async () => {
+      graphic.remove()
+      return '<svg xmlns="http://www.w3.org/2000/svg"/>'
+    }}]})
+    input.dispatchEvent(new Event("change"))
+    await pending
+    expect(document.querySelector("svg")).toBeNull()
+  })
+
   it("shows a move cursor over preset paths inside a captured graphic", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "heart"})
     const graphic = document.querySelector("svg")!

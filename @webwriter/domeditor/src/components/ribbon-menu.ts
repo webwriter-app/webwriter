@@ -13,6 +13,7 @@ export type RibbonMenuButton = string | {
   iconText?: string
   iconUrl?: string
   /** Optional metadata used by visual galleries such as graphic shapes. */
+  galleryColumns?: number
   category?: string
   path?: string
   submenu?: RibbonMenuButton[]
@@ -266,6 +267,26 @@ export class RibbonMenu extends LitElement {
       text-align: center;
     }
 
+    .shape-gallery .gallery-wide {
+      grid-column: -4 / -1;
+      border: 1px solid #d8dee6;
+      border-radius: 0.35rem;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .shape-gallery .item.gallery-wide > span:last-child {
+      display: inline;
+    }
+
+    .shape-gallery .item.gallery-wide .item-icon {
+      flex-basis: 1rem;
+      width: 1rem;
+      height: 1rem;
+      margin-inline: 0;
+    }
+
     .shape-gallery .item-icon {
       flex-basis: 2.1rem;
       width: 2.1rem;
@@ -438,7 +459,7 @@ export class RibbonMenu extends LitElement {
           itemIndex++
           return html`${divider}
             <button
-              class=${`item${gallery ? " gallery-item" : ""}`}
+              class=${`item${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
               type="button"
               role="menuitem"
               aria-label=${this.buttonLabel(submenuButton)}

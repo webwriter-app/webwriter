@@ -2358,6 +2358,34 @@ export class DomEditor extends LitElement {
     this.editorWindow?.print()
   }
 
+  private async saveGraphic() {
+    try {
+      const picker = this.filePickerWindow().showSaveFilePicker
+      const handlePromise = picker?.call(window, {
+        suggestedName: "graphic.svg",
+        types: [{description: "SVG graphic", accept: {"image/svg+xml": [".svg"]}}],
+        excludeAcceptAllOption: true,
+      })
+      const [source, handle] = await Promise.all([this.execute({type: "serializeGraphic"}), handlePromise])
+      if(typeof source !== "string") return
+      const blob = new Blob([source], {type: "image/svg+xml;charset=utf-8"})
+      if(handle) {
+        const writable = await handle.createWritable()
+        await writable.write(blob)
+        await writable.close()
+      }
+      else {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = "graphic.svg"
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 0)
+      }
+    }
+    catch(error) { this.reportFileError(error) }
+  }
+
   private async downloadDocument() {
     try {
       const source = await this.execute({
@@ -2686,6 +2714,14 @@ export class DomEditor extends LitElement {
     }
     if(label?.startsWith("insert-math:")) {
       void this.execute({type: "insertMath", structure: label.slice("insert-math:".length)}).finally(() => this.focusEditor())
+      return
+    }
+    if(label === "import-graphic") {
+      void this.execute({type: "importGraphic"}).catch(error => this.reportFileError(error))
+      return
+    }
+    if(label === "save-graphic") {
+      void this.saveGraphic()
       return
     }
     if(label?.startsWith("insert-graphic-shape:")) {

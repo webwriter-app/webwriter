@@ -2015,11 +2015,19 @@ export abstract class EditingControls extends LitElement {
       </div>
     `
     const primaryCategories = graphicShapeCategories.slice(0, 3)
+    const fileControls = html`
+      <div class="graphic-file-controls" role="group" aria-label="Graphic files">
+        <ribbon-button label="Import graphic" action="import-graphic" icon="Upload"></ribbon-button>
+        <ribbon-button label="Save graphic" action="save-graphic" icon="Download"></ribbon-button>
+      </div>
+    `
     return html`
       <ribbon-drawer label="Style" icon="Theme" layout="graphic-geometry" show-pane-icon>
         ${this.renderGraphicGeometryControls(toolbox, !labelableShapeSelected)}
         ${connectorSelected ? this.renderGraphicConnectorControls(false) : nothing}
+        ${toolbox ? fileControls : nothing}
       </ribbon-drawer>
+      ${toolbox ? nothing : fileControls}
       <ribbon-drawer label="Insert shapes" icon="Graphic" layout="graphic">
         ${toolbox ? html`
           ${renderShapes(graphicShapeOptions.filter(option => primaryCategories.includes(option.category)))}

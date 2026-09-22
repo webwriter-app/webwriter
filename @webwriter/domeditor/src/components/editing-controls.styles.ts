@@ -942,6 +942,23 @@ export const editingControlStyles = css`
       line-height: 0.72rem;
     }
 
+    .graphic-file-controls {
+      display: flex;
+      grid-column: 1 / -1;
+      border: 1px solid #d8dee6;
+      border-radius: 0.35rem;
+      overflow: hidden;
+    }
+
+    .graphic-file-controls > ribbon-button + ribbon-button {
+      border-inline-start: 1px solid #d8dee6;
+    }
+
+    ribbon-drawer[pane] .graphic-file-controls {
+      margin-top: 0.4rem;
+      margin-bottom: 0.25rem;
+    }
+
     .graphic-inline-controls {
       box-sizing: border-box;
       grid-column: 1 / -1;

@@ -37,6 +37,10 @@ const groupedGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(o
   category: option.category,
   path: option.path,
 }))
+groupedGraphicShapeButtons.splice(
+  graphicShapeOptions.filter(option => option.category === graphicShapeOptions[0].category).length, 0,
+  {label: "Import graphic", action: "import-graphic", icon: "Upload", category: graphicShapeOptions[0].category, galleryColumns: 3},
+)
 
 const insertMathStructureButtons: RibbonMenuButton[] = mathStructureOptions.map(option => ({
   label: option.title,

@@ -36,6 +36,7 @@ import copy from "@tabler/icons/outline/copy.svg?raw"
 import chevronRight from "@tabler/icons/outline/chevron-right.svg?raw"
 import circleChevronRight from "@tabler/icons/outline/circle-chevron-right.svg?raw"
 import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
+import upload from "@tabler/icons/outline/upload.svg?raw"
 import download from "@tabler/icons/outline/download.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
 import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
@@ -247,6 +248,7 @@ const icons: Record<string, string> = {
   Record: playerRecord,
   Save: deviceFloppy,
   "Save as": fileExport,
+  Upload: upload,
   Download: download,
   FileDownload: fileDownload,
   Local: deviceDesktop,

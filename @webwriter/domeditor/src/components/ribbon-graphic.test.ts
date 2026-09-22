@@ -34,6 +34,11 @@ describe("graphic ribbon", () => {
     expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 2)).toEqual([
       "Style", "Insert shapes",
     ])
+    const files = root.querySelector('[aria-label="Graphic files"]')!
+    expect(files.parentElement).toHaveAttribute("label", "Style")
+    expect(files.parentElement!.lastElementChild).toBe(files)
+    expect(files.querySelector('[action="import-graphic"]')).toHaveAttribute("icon", "Upload")
+    expect(files.querySelector('[action="save-graphic"]')).toHaveAttribute("icon", "Download")
     const geometry = root.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
     await geometry.updateComplete
     const heading = geometry.shadowRoot!.querySelector<HTMLElement>(".pane-label")!
@@ -115,7 +120,7 @@ describe("graphic ribbon", () => {
     graphic.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "Graphic", keepDrawerOpen: false}}))
-    expect(graphic.submenu.map(item => typeof item === "string" ? item : item.action)).toEqual(
+    expect(graphic.submenu.filter(item => typeof item === "string" || item.action !== "import-graphic").map(item => typeof item === "string" ? item : item.action)).toEqual(
       graphicShapeOptions.map(option => `insert-graphic-shape:${option.type}`),
     )
     expect(graphic.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!.groups).toHaveLength(0)
@@ -127,7 +132,11 @@ describe("graphic ribbon", () => {
     const gallery = menu.shadowRoot!.querySelector(".shape-gallery")!
     expect(gallery.querySelectorAll('[role="separator"]')).toHaveLength(graphicShapeCategories.length - 1)
     expect(gallery.querySelectorAll("h1, h2, h3, h4")).toHaveLength(0)
-    expect(gallery.querySelectorAll('button[role="menuitem"]')).toHaveLength(graphicShapeOptions.length)
+    expect(gallery.querySelectorAll('button[role="menuitem"]')).toHaveLength(graphicShapeOptions.length + 1)
+    const importButton = gallery.querySelector('button[aria-label="Import graphic"]')!
+    expect(importButton).toHaveClass("gallery-wide")
+    expect(importButton.nextElementSibling).toHaveAttribute("role", "separator")
+    expect(importButton.querySelector(".icon-tabler-upload")).not.toBeNull()
     expect(gallery.querySelector('button[aria-label="Heart"] path')).not.toBeNull()
     expect(gallery.querySelector('button[aria-label="Arc"] path')).toHaveAttribute("fill", "none")
 

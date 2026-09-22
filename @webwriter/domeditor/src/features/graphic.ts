@@ -542,6 +542,7 @@ export class GraphicFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
 
   protected handlesCapturedElementInteractions = true
+  #cancelImport: (() => void) | null = null
   #selectedShapes = new Set<SVGGraphicsElement>()
   #primaryShape: SVGGraphicsElement | null = null
   #interaction: Interaction | null = null
@@ -569,6 +570,7 @@ export class GraphicFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.#cancelImport?.()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
     document.removeEventListener("scroll", this.#scheduleRefresh, true)
@@ -589,6 +591,70 @@ export class GraphicFeature extends EditorFeature {
   }
 
   actions = {
+    importGraphic: (_: {type: "importGraphic"}) => {
+      this.#cancelImport?.()
+      const target = this.#activeGraphic()
+      const range = document.getSelection()?.rangeCount ? document.getSelection()!.getRangeAt(0).cloneRange() : null
+      const input = document.createElement("input")
+      input.type = "file"
+      input.accept = ".svg,image/svg+xml"
+      input.hidden = true
+      this.editor.addAppendix(input)
+      return new Promise<void>((resolve, reject) => {
+        let cancelled = false
+        const cleanup = () => {
+          cancelled = true
+          input.remove()
+          if(this.#cancelImport === cancel) this.#cancelImport = null
+        }
+        const cancel = () => { cleanup(); resolve() }
+        this.#cancelImport = cancel
+        input.addEventListener("cancel", cancel, {once: true})
+        input.onchange = async () => {
+          try {
+            const file = input.files?.[0]
+            if(!file) return
+            if(!/\.svg$/i.test(file.name)) throw new TypeError("Choose an SVG file")
+            const source = await file.text()
+            if(cancelled || target && !target.isConnected) return
+            const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
+            const root = parsed.documentElement
+            if(parsed.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== SVG_NAMESPACE) {
+              throw new TypeError("The file does not contain valid SVG")
+            }
+            const graphic = clearEditorMarkerClasses(document.importNode(root, true)) as SVGSVGElement
+            this.editor.doc.stopCapturing()
+            if(target) {
+              this.#cancelInteraction()
+              this.#closeLabelEditor(false, false)
+              this.#clearShapeSelection()
+              target.replaceWith(graphic)
+            }
+            else {
+              if(!range?.startContainer.isConnected || !range.endContainer.isConnected) return
+              const selection = document.getSelection()!
+              selection.removeAllRanges()
+              selection.addRange(range)
+              this.editor.features.manipulation.insert(graphic)
+            }
+            if(graphic.isConnected) {
+              this.editor.features.selection.captureElement(graphic)
+              this.#refresh()
+              this.editor.postSelectionPath(true)
+            }
+            this.editor.doc.stopCapturing()
+          }
+          catch(error) { reject(error) }
+          finally { cleanup(); resolve() }
+        }
+        input.click()
+      })
+    },
+    serializeGraphic: (_: {type: "serializeGraphic"}) => {
+      const graphic = this.#activeGraphic()
+      if(!graphic?.isConnected) return null
+      return new XMLSerializer().serializeToString(clearEditorMarkerClasses(graphic.cloneNode(true)))
+    },
     insertGraphic: ({shape}: {type: "insertGraphic", shape?: GraphicShapeType}) => {
       if(shape !== undefined && !isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#createGraphic()
