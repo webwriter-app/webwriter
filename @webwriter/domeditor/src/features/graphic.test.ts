@@ -96,11 +96,34 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).toBe('<svg viewBox="0 0 1600 900" width="100%"></svg>')
   })
 
+  it.each([
+    ["line-start-arrow", true, false],
+    ["line-end-arrow", false, true],
+    ["line-both-arrows", true, true],
+  ] as const)("inserts %s as a native line with arrow markers", (type, start, end) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: type})
+    const line = graphic.querySelector("line")!
+    expect(graphicShapeRoots(graphic)).toEqual([line])
+    expect(line.getAttribute("y1")).toBe(line.getAttribute("y2"))
+    expect(line.getAttribute("x1")).not.toBe(line.getAttribute("x2"))
+    expect(line.hasAttribute("marker-start")).toBe(start)
+    expect(line.hasAttribute("marker-end")).toBe(end)
+    expect(graphic.querySelectorAll("marker")).toHaveLength(1)
+    expect(graphic.querySelector("marker")).toHaveAttribute("orient", "auto-start-reverse")
+    const serialized = new DOMParser().parseFromString(editor.toHTML(true), "text/html")
+    for(const endpoint of ["start", "end"]) {
+      const reference = serialized.querySelector("line")!.getAttribute(`marker-${endpoint}`)
+      if(reference) expect(serialized.getElementById(reference.slice(5, -1))?.localName).toBe("marker")
+    }
+  })
+
   it.each(insertionOptions)("inserts a standalone $label graphic", option => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: option.type})
 
     const graphic = document.querySelector("svg")!
-    const shape = graphic.firstElementChild!
+    const shape = graphicShapeRoots(graphic)[0]!
     expect(Number(graphic.getAttribute("width"))).toBeGreaterThan(0)
     expect(graphic).toHaveStyle({
       position: "absolute",
@@ -111,7 +134,7 @@ describe("graphic editing", () => {
     expect(graphic.getAttribute("viewBox")).not.toBe("0 0 1600 900")
     expect(shape.namespaceURI).toBe(SVG_NAMESPACE)
     const polygonal = ["triangle", "diamond", "hexagon", "star", "arrow", "polygon"].includes(option.type)
-    expect(shape.localName).toBe(option.type === "text-box" ? "g" : isGraphicPresetType(option.type) ? "path" : option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type)
+    expect(shape.localName).toBe(option.type === "text-box" ? "g" : isGraphicPresetType(option.type) ? "path" : option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type.startsWith("line-") ? "line" : option.type)
     expect(shape.localName === "g" ? shape.firstElementChild : shape).toHaveAttribute("stroke")
     expect($.selectedElement).toBe(graphic)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
@@ -431,7 +454,7 @@ describe("graphic editing", () => {
     document.body.append(graphic)
     editor.features.selection.captureElement(graphic)
 
-    graphicShapeOptions.filter(option => option.type !== "line" && option.type !== "connector").forEach(option => {
+    graphicShapeOptions.filter(option => option.category !== "Lines" || option.type === "text-box").forEach(option => {
       graphic.replaceChildren()
       editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: option.type})
       const parameters = editor.features.graphic.getState()!.parameters!

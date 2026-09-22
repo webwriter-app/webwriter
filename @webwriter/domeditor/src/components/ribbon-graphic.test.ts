@@ -5,11 +5,79 @@ import {graphicShapeOptions, graphicShapeCategories} from "../graphic"
 import {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenu} from "./ribbon-menu"
 import {AppRibbon} from "./ribbon"
+import {DomEditorToolbox} from "./toolbox"
 import type {RibbonButton} from "./ribbon-button"
 
 beforeEach(() => document.body.replaceChildren())
 
 describe("graphic ribbon", () => {
+  it("offers the requested text and line presets and omits removed shapes", () => {
+    expect(graphicShapeOptions.filter(option => option.category === "Lines").map(option => option.type)).toEqual([
+      "text-box", "line", "line-start-arrow", "line-end-arrow", "connector",
+    ])
+    expect(graphicShapeOptions.some(option => ["polygon", "not-equal", "multidocument", "line-callout-2", "line-both-arrows"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
+  })
+
+  it("puts Style first and collapses advanced fields and extra shapes in the toolbox", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {
+      active: true, capture: true, selectionCount: 1, shape: "snip-one",
+      parameters: {x: "10", y: "20", width: "100", height: "80", rotation: "0", "adjust-snip": "15"},
+    }
+    const listener = vi.fn()
+    toolbox.addEventListener("graphic-parameter-change", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const root = toolbox.shadowRoot!
+    expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 2)).toEqual([
+      "Style", "Insert shapes",
+    ])
+    const geometry = root.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+    await geometry.updateComplete
+    const heading = geometry.shadowRoot!.querySelector<HTMLElement>(".pane-label")!
+    expect(getComputedStyle(heading).display).toBe("flex")
+    const palette = heading.querySelector<SVGElement>(".pane-icon svg.icon-tabler-palette")!
+    expect(palette).not.toBeNull()
+    expect(getComputedStyle(palette.parentElement!).display).toBe("block")
+    expect(getComputedStyle(palette.parentElement!).width).toBe("16px")
+    const advanced = geometry.querySelector<HTMLDetailsElement>("details")!
+    expect(advanced.open).toBe(false)
+    expect(advanced.querySelector("summary")?.textContent).toBe("Advanced options")
+    expect(Array.from(advanced.querySelectorAll("input"), input => input.getAttribute("aria-label"))).toEqual([
+      "Graphic: X", "Graphic: Y", "Graphic: Width", "Graphic: Height", "Graphic: Rotation", "Graphic: Snip",
+    ])
+    expect(geometry.querySelector('input[aria-label="Graphic: Fill color"]')?.closest("details")).toBeNull()
+    expect(geometry.querySelector(".graphic-connector-controls")).toBeNull()
+    advanced.open = true
+    const snip = advanced.querySelector<HTMLInputElement>('input[aria-label="Graphic: Snip"]')!
+    snip.value = "25"
+    snip.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "adjust-snip", value: "25"}}))
+
+    const graphic = root.querySelector('ribbon-drawer[label="Insert shapes"]')!
+    const more = graphic.querySelector<HTMLDetailsElement>("details")!
+    expect(more.open).toBe(false)
+    expect(more.querySelector("summary")?.textContent).toBe("More shapes")
+    expect(Array.from(graphic.querySelectorAll<RibbonButton>('ribbon-button')).filter(button => !button.closest("details")).map(button => button.label)).toEqual(
+      graphicShapeOptions.filter(option => graphicShapeCategories.slice(0, 3).includes(option.category)).map(option => option.label),
+    )
+    expect(Array.from(more.querySelectorAll<RibbonButton>('ribbon-button'), button => button.label)).toEqual(
+      graphicShapeOptions.filter(option => !graphicShapeCategories.slice(0, 3).includes(option.category)).map(option => option.label),
+    )
+    more.open = true
+    toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "connector"}
+    await toolbox.updateComplete
+    expect(advanced.open).toBe(true)
+    expect(more.open).toBe(true)
+    expect(geometry.querySelector('.graphic-connector-controls')).not.toBeNull()
+    expect(root.querySelector('ribbon-drawer[label="Connector"]')).toBeNull()
+    toolbox.graphic = {active: true, capture: true, selectionCount: 2}
+    await toolbox.updateComplete
+    expect(geometry.querySelector('.graphic-connector-controls')).toBeNull()
+  })
+
   it("stacks inline controls within the narrow toolbox pane", () => {
     const styles = AppRibbon.styles.toString()
     expect(styles).toMatch(/\.graphic-shape-gallery\s*\{[^}]*grid-column:\s*1 \/ -1/)
@@ -28,7 +96,7 @@ describe("graphic ribbon", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
 
-    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Graphic"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Insert shapes"]')).toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Canvas"]')).toBeNull()
   })
 
@@ -72,7 +140,7 @@ describe("graphic ribbon", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
     let shapes = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>(
-      'ribbon-drawer[label="Graphic"] ribbon-button[action^="add-graphic-shape:"]',
+      'ribbon-drawer[label="Insert shapes"] ribbon-button[action^="add-graphic-shape:"]',
     ))
     expect(shapes.map(shape => shape.label)).toEqual(graphicShapeOptions.map(option => option.label))
     const gallery = ribbon.shadowRoot!.querySelector('.graphic-shape-gallery')!
@@ -85,11 +153,11 @@ describe("graphic ribbon", () => {
     ribbon.graphic = {active: true, capture: true, options: {grid: true, snap: true, guides: true}}
     await ribbon.updateComplete
     shapes = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>(
-      'ribbon-drawer[label="Graphic"] ribbon-button[action^="add-graphic-shape:"]',
+      'ribbon-drawer[label="Insert shapes"] ribbon-button[action^="add-graphic-shape:"]',
     ))
     expect(shapes.every(shape => !shape.disabled)).toBe(true)
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer"), drawer => drawer.getAttribute("label"))).toEqual([
-      "Graphic", "Geometry", "Text", "Connector", "Arrange", "Canvas",
+      "Style", "Insert shapes", "Arrange", "Canvas",
     ])
   })
 
@@ -112,10 +180,10 @@ describe("graphic ribbon", () => {
     )!
     const order = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Arrange"] ribbon-button[label="Bring forward"]')!
     const fill = ribbon.shadowRoot!.querySelector<HTMLInputElement>(
-      'ribbon-drawer[label="Geometry"] input[aria-label="Graphic: Fill color"]',
+      'ribbon-drawer[label="Style"] input[aria-label="Graphic: Fill color"]',
     )!
     const width = ribbon.shadowRoot!.querySelector<HTMLInputElement>(
-      'ribbon-drawer[label="Geometry"] input[aria-label="Graphic: Width"]',
+      'ribbon-drawer[label="Style"] input[aria-label="Graphic: Width"]',
     )!
 
     expect(align.disabled).toBe(false)
@@ -124,8 +192,8 @@ describe("graphic ribbon", () => {
     expect(order.disabled).toBe(false)
     expect(fill.disabled).toBe(false)
     expect(width.disabled).toBe(true)
-    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Graphic"] ribbon-button[label="Fill"]')).toBeNull()
-    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Geometry"] ribbon-button[label="Geometry"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Insert shapes"] ribbon-button[label="Fill"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Style"] ribbon-button[label="Geometry"]')).toBeNull()
 
     ribbon.graphic = {...ribbon.graphic, selectionCount: 3}
     await ribbon.updateComplete
@@ -149,7 +217,7 @@ describe("graphic ribbon", () => {
     ribbon.addEventListener("graphic-parameter-change", listener)
     document.body.append(ribbon)
     await ribbon.updateComplete
-    const geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Geometry"] .graphic-geometry-controls')!
+    const geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Style"] .graphic-geometry-controls')!
     const width = geometry.querySelector<HTMLInputElement>('input[aria-label="Graphic: Width"]')!
     expect(width.value).toBe("800")
     expect(geometry.querySelector('input[aria-label="Graphic: Corner radius"]')).not.toBeNull()
@@ -162,7 +230,7 @@ describe("graphic ribbon", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "width", value: "960"}}))
   })
 
-  it("edits native shape labels from the contextual Text drawer", async () => {
+  it("edits text color and font size in the Style drawer without a label input", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Edit"
     ribbon.graphic = {
@@ -177,17 +245,23 @@ describe("graphic ribbon", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
 
-    const label = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Text"] .graphic-text-controls')!
-    const text = label.querySelector<HTMLTextAreaElement>('textarea[aria-label="Graphic: Label"]')!
+    const label = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Style"] .graphic-geometry-controls')!
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Text"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Geometry"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Style"]')).toHaveAttribute("icon", "Theme")
+    expect(label.querySelector('textarea[aria-label="Graphic: Label"]')).toBeNull()
     const color = label.querySelector<HTMLInputElement>('input[aria-label="Graphic: Text color"]')!
     const size = label.querySelector<HTMLInputElement>('input[aria-label="Graphic: Font size"]')!
-    expect(text.value).toBe("Roadmap")
+    expect(color.closest("label")?.querySelector("span")?.textContent).toBe("Text color")
     expect(color.value).toBe("#1d4ed8")
     expect(size.value).toBe("52")
 
-    text.value = "Release plan"
-    text.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "label", value: "Release plan"}}))
+    color.value = "#ff0000"
+    color.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    size.value = "64"
+    size.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener).toHaveBeenNthCalledWith(1, expect.objectContaining({detail: {name: "text-color", value: "#ff0000"}}))
+    expect(listener).toHaveBeenNthCalledWith(2, expect.objectContaining({detail: {name: "font-size", value: "64"}}))
   })
 
   it("shows shape-specific geometry controls for stars and arrows", async () => {
@@ -202,7 +276,7 @@ describe("graphic ribbon", () => {
     }
     document.body.append(ribbon)
     await ribbon.updateComplete
-    let geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Geometry"] .graphic-geometry-controls')!
+    let geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Style"] .graphic-geometry-controls')!
     expect(geometry.querySelector('input[aria-label="Graphic: Inner radius"]')).toHaveValue(45)
 
     ribbon.graphic = {
@@ -213,7 +287,7 @@ describe("graphic ribbon", () => {
       parameters: {"head-size": "36", "tail-width": "42"},
     }
     await ribbon.updateComplete
-    geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Geometry"] .graphic-geometry-controls')!
+    geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Style"] .graphic-geometry-controls')!
     expect(geometry.querySelector('input[aria-label="Graphic: Head size"]')).toHaveValue(36)
     expect(geometry.querySelector('input[aria-label="Graphic: Tail width"]')).toHaveValue(42)
   })
@@ -249,7 +323,7 @@ describe("graphic ribbon", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
     const routing = ribbon.shadowRoot!.querySelector<HTMLElement>(
-      'ribbon-drawer[label="Connector"] .graphic-connector-controls',
+      'ribbon-drawer[label="Style"] .graphic-connector-controls',
     )!
     const select = routing.querySelector<HTMLSelectElement>('select[aria-label="Graphic: Connector routing"]')!
     const startArrow = routing.querySelector<HTMLInputElement>('input[aria-label="Graphic: Start arrow"]')!

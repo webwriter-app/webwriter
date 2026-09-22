@@ -1,4 +1,4 @@
-import {graphicPresetOptions, readGraphicPreset} from "./graphic-shapes"
+import {graphicPresetOptions, isGraphicPresetType, readGraphicPreset} from "./graphic-shapes"
 
 export const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 
@@ -16,11 +16,24 @@ const basicGraphicShapeOptions = [
 ] as const
 
 export const graphicShapeCategories = ["Lines", "Rectangles", "Basic shapes", "Block arrows", "Equation shapes", "Flowchart", "Stars and banners", "Callouts"]
-export const graphicShapeOptions = [...basicGraphicShapeOptions, ...graphicPresetOptions]
+const lineArrowOptions = [
+  {type: "line-start-arrow", label: "Line with start arrow", icon: "Shape", category: "Lines", path: "M 0 50 L 100 50 M 20 30 L 0 50 L 20 70"},
+  {type: "line-end-arrow", label: "Line with end arrow", icon: "Shape", category: "Lines", path: "M 0 50 L 100 50 M 80 30 L 100 50 L 80 70"},
+  {type: "line-both-arrows", label: "Line with arrows at both ends", icon: "Shape", category: "Lines", path: "M 0 50 L 100 50 M 20 30 L 0 50 L 20 70 M 80 30 L 100 50 L 80 70"},
+] as const
+
+export const graphicShapeOptions = [
+  ...graphicPresetOptions.filter(option => option.type === "text-box").map(option => ({...option, category: "Lines"})),
+  ...basicGraphicShapeOptions.filter(option => option.type === "line"),
+  ...lineArrowOptions.filter(option => option.type !== "line-both-arrows"),
+  ...basicGraphicShapeOptions.filter(option => option.type !== "line" && option.type !== "polygon"),
+  ...graphicPresetOptions.filter(option => option.category !== "Lines"
+    && !["text-box", "not-equal", "multidocument", "line-callout-2"].includes(option.type)),
+]
   .map(option => ({path: undefined as string | undefined, ...option}))
   .sort((a, b) => graphicShapeCategories.indexOf(a.category) - graphicShapeCategories.indexOf(b.category))
 
-export type GraphicShapeType = typeof graphicShapeOptions[number]["type"]
+export type GraphicShapeType = typeof basicGraphicShapeOptions[number]["type"] | typeof graphicPresetOptions[number]["type"] | typeof lineArrowOptions[number]["type"]
 
 export const graphicArrangeOperations = [
   "align-left", "align-center", "align-right",
@@ -72,7 +85,8 @@ export type GraphicSelectionState = {
 }
 
 export function isGraphicShapeType(value: unknown): value is GraphicShapeType {
-  return typeof value === "string" && graphicShapeOptions.some(option => option.type === value)
+  return typeof value === "string" && (basicGraphicShapeOptions.some(option => option.type === value)
+    || lineArrowOptions.some(option => option.type === value) || isGraphicPresetType(value))
 }
 
 export function isGraphicArrangeOperation(value: unknown): value is GraphicArrangeOperation {

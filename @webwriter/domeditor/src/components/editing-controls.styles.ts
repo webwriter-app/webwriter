@@ -954,6 +954,27 @@ export const editingControlStyles = css`
       font-size: 0.66rem;
     }
 
+    .graphic-disclosure {
+      grid-column: 1 / -1;
+      min-width: 0;
+      color: #526b86;
+      font-size: 0.66rem;
+    }
+
+    .graphic-disclosure > summary {
+      padding: 0.4rem 0;
+      cursor: pointer;
+    }
+
+    ribbon-drawer[layout="graphic-geometry"] .graphic-connector-controls {
+      grid-row: auto;
+      height: auto;
+    }
+
+    ribbon-drawer[layout="graphic-geometry"] .graphic-geometry-controls {
+      grid-row: auto;
+    }
+
     .graphic-shape-gallery {
       grid-column: 1 / -1;
       min-width: 0;

@@ -947,7 +947,13 @@ export class GraphicFeature extends EditorFeature {
     return graphic
   }
 
-  #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement) {
+  #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement): SVGGraphicsElement {
+    if(type === "line-start-arrow" || type === "line-end-arrow" || type === "line-both-arrows") {
+      const line = this.#createShape("line", index, graphic)
+      if(type !== "line-end-arrow") this.#setConnectorArrow(line, "start", true, graphic)
+      if(type !== "line-start-arrow") this.#setConnectorArrow(line, "end", true, graphic)
+      return line
+    }
     const bounds = this.#shapeInsertionBounds(type, index, graphic)
     let shape: SVGGraphicsElement
     if(isGraphicPresetType(type)) {
@@ -3440,13 +3446,12 @@ export class GraphicFeature extends EditorFeature {
     return shape
   }
 
-  #setConnectorArrow(connector: SVGPolylineElement, endpoint: ConnectorEndpoint, enabled: boolean) {
+  #setConnectorArrow(connector: SVGGraphicsElement, endpoint: ConnectorEndpoint, enabled: boolean, graphic = graphicContainerForNode(connector)) {
     const attribute = endpoint === "start" ? "marker-start" : "marker-end"
     if(!enabled) {
       const reference = connector.getAttribute(attribute)
       connector.removeAttribute(attribute)
       const id = reference?.match(/^url\(#(graphic-arrow-\d+)\)$/)?.[1]
-      const graphic = graphicContainerForNode(connector)
       if(id && graphic) {
         const markerReference = `url(#${id})`
         const stillUsed = Array.from(graphic.querySelectorAll("[marker-start], [marker-end]")).some(element =>
@@ -3461,7 +3466,6 @@ export class GraphicFeature extends EditorFeature {
       }
       return
     }
-    const graphic = graphicContainerForNode(connector)
     if(!graphic) return
     const markerPath = "M 0 0 L 10 5 L 0 10 z"
     let marker = Array.from(graphic.querySelectorAll<SVGMarkerElement>("marker")).find(candidate =>

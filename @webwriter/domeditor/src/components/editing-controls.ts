@@ -20,6 +20,7 @@ import "./layout-editor"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {
   graphicShapeOptions,
+  graphicShapeCategories,
   type GraphicLayerOperation,
   type GraphicSelectionState,
   type GraphicViewportOperation,
@@ -1714,7 +1715,7 @@ export abstract class EditingControls extends LitElement {
       && (this.graphic?.shape === "line" || this.graphic?.shape === "connector")
     return html`
       <label class="mark-attribute graphic-parameter">
-        <span>${kind === "fill" ? "Fill" : "Stroke"}</span>
+        <span>${kind === "fill" ? "Fill color" : "Stroke color"}</span>
         <input
           data-ribbon-input-persistent
           type="color"
@@ -1729,14 +1730,11 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderGraphicGeometryControls() {
+  protected renderGraphicGeometryControls(collapsible = false, textDisabled = false) {
     const connectorSelected = this.graphic?.shape === "connector"
     const preset: GraphicShapePreset | undefined = this.graphic?.shape && isGraphicPresetType(this.graphic.shape) ? graphicShapePresets[this.graphic.shape] : undefined
     const adjustments = preset?.adjustments ?? []
-    return html`
-      <div class="graphic-inline-controls graphic-geometry-controls" role="group" aria-label="Graphic geometry">
-        ${this.renderGraphicPaintControls("fill")}
-        ${this.renderGraphicPaintControls("stroke")}
+    const advanced = html`
         ${this.graphicNumberInput("x", "X")}
         ${this.graphicNumberInput("y", "Y")}
         ${this.graphicNumberInput("width", "Width", {min: 1})}
@@ -1759,6 +1757,18 @@ export abstract class EditingControls extends LitElement {
           `adjust-${adjustment.name}`, adjustment.label,
           {min: adjustment.min, max: adjustment.max, step: 1},
         ))}
+    `
+    return html`
+      <div class="graphic-inline-controls graphic-geometry-controls" role="group" aria-label="Graphic geometry">
+        ${this.renderGraphicPaintControls("fill")}
+        ${this.renderGraphicPaintControls("stroke")}
+        ${this.renderGraphicTextControls(textDisabled)}
+        ${collapsible ? html`
+          <details class="graphic-disclosure">
+            <summary>Advanced options</summary>
+            <div class="graphic-geometry-controls">${advanced}</div>
+          </details>
+        ` : advanced}
       </div>
     `
   }
@@ -1812,23 +1822,11 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderGraphicLabelControls(disabled: boolean) {
+  protected renderGraphicTextControls(disabled: boolean) {
     const parameters = this.graphic?.parameters ?? {}
     return html`
-      <div class="graphic-inline-controls graphic-text-controls" role="group" aria-label="Shape text">
-        <label class="mark-attribute graphic-parameter graphic-label-parameter">
-          <span>Label</span>
-          <textarea
-            data-ribbon-input-persistent
-            rows="3"
-            aria-label="Graphic: Label"
-            .value=${parameters.label ?? ""}
-            ?disabled=${disabled}
-            @change=${(event: Event) => this.dispatchGraphicParameter("label", event)}
-          ></textarea>
-        </label>
         <label class="mark-attribute graphic-parameter">
-          <span>Color</span>
+          <span>Text color</span>
           <input
             data-ribbon-input-persistent
             type="color"
@@ -1839,7 +1837,6 @@ export abstract class EditingControls extends LitElement {
           />
         </label>
         ${this.graphicNumberInput("font-size", "Font size", {min: 1, step: 1, disabled})}
-      </div>
     `
   }
 
@@ -1992,7 +1989,7 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderGraphicDrawer() {
+  protected renderGraphicDrawer(toolbox = false) {
     if(!this.graphic?.active) return nothing
     const captured = Boolean(this.graphic?.capture)
     const selectionCount = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
@@ -2001,31 +1998,36 @@ export abstract class EditingControls extends LitElement {
     const labelableShapeSelected = shapeSelected && this.graphic.shape !== "line" && this.graphic.shape !== "connector"
     const shapesSelected = selectionCount > 0
     const options = this.graphic.options
+    const renderShapes = (options: typeof graphicShapeOptions) => html`
+      <div class="graphic-shape-gallery" role="group" aria-label="Graphic shapes">
+        ${options.map((option, index) => html`
+          ${index > 0 && option.category !== options[index - 1]?.category
+            ? html`<div class="graphic-shape-divider" role="separator"></div>` : nothing}
+          <ribbon-button
+            label=${option.label}
+            icon-only
+            action=${`add-graphic-shape:${option.type}`}
+            icon=${option.icon}
+            icon-path=${option.path ?? nothing}
+            ?disabled=${!captured}
+          ></ribbon-button>
+        `)}
+      </div>
+    `
+    const primaryCategories = graphicShapeCategories.slice(0, 3)
     return html`
-      <ribbon-drawer label="Graphic" icon="Graphic" layout="graphic">
-        <div class="graphic-shape-gallery" role="group" aria-label="Graphic shapes">
-          ${graphicShapeOptions.map((option, index, options) => html`
-            ${option.category && index > 0 && option.category !== options[index - 1]?.category
-              ? html`<div class="graphic-shape-divider" role="separator"></div>` : nothing}
-            <ribbon-button
-              label=${option.label}
-              icon-only
-              action=${`add-graphic-shape:${option.type}`}
-              icon=${option.icon}
-              icon-path=${option.path ?? nothing}
-              ?disabled=${!captured}
-            ></ribbon-button>
-          `)}
-        </div>
+      <ribbon-drawer label="Style" icon="Theme" layout="graphic-geometry" show-pane-icon>
+        ${this.renderGraphicGeometryControls(toolbox, !labelableShapeSelected)}
+        ${connectorSelected ? this.renderGraphicConnectorControls(false) : nothing}
       </ribbon-drawer>
-      <ribbon-drawer label="Geometry" icon="Geometry" layout="graphic-geometry">
-        ${this.renderGraphicGeometryControls()}
-      </ribbon-drawer>
-      <ribbon-drawer label="Text" icon="Text" layout="graphic-text">
-        ${this.renderGraphicLabelControls(!labelableShapeSelected)}
-      </ribbon-drawer>
-      <ribbon-drawer label="Connector" icon="Connector" layout="graphic-connector">
-        ${this.renderGraphicConnectorControls(!connectorSelected)}
+      <ribbon-drawer label="Insert shapes" icon="Graphic" layout="graphic">
+        ${toolbox ? html`
+          ${renderShapes(graphicShapeOptions.filter(option => primaryCategories.includes(option.category)))}
+          <details class="graphic-disclosure">
+            <summary>More shapes</summary>
+            ${renderShapes(graphicShapeOptions.filter(option => !primaryCategories.includes(option.category)))}
+          </details>
+        ` : renderShapes(graphicShapeOptions)}
       </ribbon-drawer>
       <ribbon-drawer label="Arrange" icon="Align" layout="graphic-arrange">
         ${this.renderGraphicArrangeControls(selectionCount, shapesSelected, captured)}

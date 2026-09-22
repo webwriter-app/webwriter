@@ -30,6 +30,7 @@ export class RibbonDrawer extends LitElement {
     expandable: {type: Boolean, reflect: true},
     icon: {type: String},
     label: {type: String},
+    showPaneIcon: {type: Boolean, attribute: "show-pane-icon"},
     hidePaneLabel: {type: Boolean, reflect: true, attribute: "hide-pane-label"},
     layout: {type: String, reflect: true},
     pane: {type: Boolean, reflect: true},
@@ -880,6 +881,13 @@ export class RibbonDrawer extends LitElement {
       display: none;
     }
 
+    .pane-icon {
+      flex-basis: 1rem;
+      width: 1rem;
+      height: 1rem;
+      margin-inline-end: 0.35rem;
+    }
+
     :host([pane]) {
       --ribbon-drawer-expanded-width: 100%;
       --ribbon-drawer-collapsed-width: 100%;
@@ -1072,6 +1080,7 @@ export class RibbonDrawer extends LitElement {
   expandable = false
   icon = ""
   label = "Drawer"
+  showPaneIcon = false
   hidePaneLabel = false
   layout = "default"
   pane = false
@@ -1493,7 +1502,10 @@ export class RibbonDrawer extends LitElement {
           <span class="summary-icon" aria-hidden="true">${ribbonIcon(this.icon || this.label)}</span>
           <span class="summary-label">${this.label}</span>
         </div>
-       <span class="pane-label">${this.label}</span>
+       <span class="pane-label">
+         ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${ribbonIcon(this.icon || this.label)}</span>` : ""}
+         ${this.label}
+       </span>
        <div id="drawer-controls" class="controls">
           ${this.layout === "elements" ? html`
             <div class="elements-primary-controls">

@@ -25,6 +25,10 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * commands, selection preservation, and specialized editors keep one event
  * contract. */
 export class DomEditorToolbox extends EditingControls {
+  protected renderGraphicDrawer() {
+    return super.renderGraphicDrawer(true)
+  }
+
   static properties = {
     ...EditingControls.properties,
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
