@@ -3054,6 +3054,7 @@ export class AppRibbon extends EditingControls {
           variant="insertion"
           label=${item.label}
           .action=${item.action ?? item.label}
+          shortcut=${this.commandShortcut(item.action ?? item.label)}
           .icon=${item.icon ?? item.label}
           .submenu=${type ? sourceSubmenu : tableDropdown ? [] : submenu}
           .dropdown=${tableDropdown}

@@ -68,25 +68,26 @@ export const appCommands: readonly AppCommand[] = [
   ...[
     ["paragraph", "Paragraph", "Paragraph", "Paragraph"],
     ["section", "Section", "Section", "Section"],
-    ["heading", "Heading", "Heading", "Heading 1"],
-    ["details", "Details", "Details", "insert-details"],
-    ["list", "List", "List", "toggle-list:ul"],
-    ["table", "Table", "Table", "Table"],
-    ["image", "Image", "Image", "Image"],
-    ["graphic", "Graphic", "Graphic", "Graphic"],
-    ["audio", "Audio", "Audio", "Audio"],
-    ["website", "Website", "Website", "Website"],
-    ["video", "Video", "Video", "Video"],
-    ["formula", "Formula", "Formula", "Formula"],
+    ["heading", "Heading", "Heading", "Heading 1", "1"],
+    ["details", "Details", "Details", "insert-details", "2"],
+    ["list", "List", "List", "toggle-list:ul", "3"],
+    ["table", "Table", "Table", "Table", "4"],
+    ["image", "Image", "Image", "Image", "5"],
+    ["graphic", "Graphic", "Graphic", "Graphic", "6"],
+    ["audio", "Audio", "Audio", "Audio", "7"],
+    ["website", "Website", "Website", "Website", "8"],
+    ["video", "Video", "Video", "Video", "9"],
+    ["formula", "Formula", "Formula", "Formula", "0"],
     ["form", "Form", "Form", "Form"],
     ["script", "Script", "Develop", "Script"],
-  ].map(([id, label, icon, action]) => ({
+  ].map(([id, label, icon, action, key]) => ({
     id: `insert.${id}`,
     section: "Insert" as const,
     label,
     description: `Insert ${label.toLocaleLowerCase()} content`,
     icon,
     action,
+    defaultShortcut: key ? primary(key) : undefined,
   })),
   ...[
     ["rowAbove", "Row above", "TableRowAbove", "table-row-above"],
@@ -164,7 +165,7 @@ export function loadAppSettings(): AppSettings {
   try {
     const stored = globalThis.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY)
     if(!stored) return defaults
-    const value = JSON.parse(stored) as Partial<AppSettings>
+    const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number}
     const shortcuts = value.shortcuts && typeof value.shortcuts === "object"
       ? Object.fromEntries(appCommands.map(command => [
         command.id,
@@ -173,7 +174,18 @@ export function loadAppSettings(): AppSettings {
           : defaults.shortcuts[command.id],
       ]))
       : defaults.shortcuts
-    return {
+    // Older settings saved every unassigned insertion command as an empty
+    // string. Upgrade those defaults once, without stealing a custom binding.
+    if(!value.shortcutsVersion) {
+      for(const command of appCommands) {
+        const shortcut = defaults.shortcuts[command.id]
+        if(command.section === "Insert" && shortcut && !shortcuts[command.id]
+          && !Object.values(shortcuts).includes(shortcut)) {
+          shortcuts[command.id] = shortcut
+        }
+      }
+    }
+    const settings: AppSettings = {
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
       updateDocumentLanguage: typeof value.updateDocumentLanguage === "boolean"
         ? value.updateDocumentLanguage
@@ -186,6 +198,8 @@ export function loadAppSettings(): AppSettings {
         : defaults.showStyleToolbox,
       shortcuts,
     }
+    if(!value.shortcutsVersion) persistAppSettings(settings)
+    return settings
   }
   catch {
     return defaults
@@ -194,7 +208,7 @@ export function loadAppSettings(): AppSettings {
 
 export function persistAppSettings(settings: AppSettings) {
   try {
-    globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+    globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, shortcutsVersion: 1}))
   }
   catch {
     // Settings remain active for this session when storage is unavailable.

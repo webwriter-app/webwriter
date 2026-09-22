@@ -676,6 +676,55 @@ describe("DomEditor iframe setup", () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  it("dispatches insertion shortcuts after loading legacy saved settings", async () => {
+    const settings = defaultAppSettings()
+    for(const id of Object.keys(settings.shortcuts)) {
+      if(id.startsWith("insert.")) settings.shortcuts[id] = ""
+    }
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+    const {editor, iframe} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const shortcut = defaultAppSettings().shortcuts["insert.image"]
+    const event = new KeyboardEvent("keydown", {
+      key: "5", code: "Digit5", metaKey: shortcut.includes("Meta"), ctrlKey: shortcut.includes("Ctrl"),
+      bubbles: true, cancelable: true,
+    })
+    iframe.contentDocument!.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "insertMedia", media: "picture"})
+  })
+
+  it.each([true, false])("dispatches all numbered insertion shortcuts (Apple: %s)", async apple => {
+    const {editor, iframe} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+      detail: defaultAppSettings(apple), bubbles: true, composed: true,
+    }))
+    const commands = [
+      {type: "setBlockType", tag: "h1"},
+      {type: "insertDetails"},
+      {type: "toggleList", listType: "ul"},
+      {type: "insertTable", rows: 2, columns: 2},
+      {type: "insertMedia", media: "picture"},
+      {type: "insertGraphic"},
+      {type: "insertMedia", media: "audio"},
+      {type: "insertMedia", media: "iframe"},
+      {type: "insertMedia", media: "video"},
+      {type: "insertMath"},
+    ]
+    for(const [index, command] of commands.entries()) {
+      execute.mockClear()
+      const key = String((index + 1) % 10)
+      const event = new KeyboardEvent("keydown", {
+        key, code: `Digit${key}`, metaKey: apple, ctrlKey: !apple, bubbles: true, cancelable: true,
+      })
+      iframe.contentDocument!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(execute).toHaveBeenCalledExactlyOnceWith(command)
+      await Promise.resolve()
+    }
+  })
+
   it("applies the language setting to the active document when requested", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
@@ -4303,7 +4352,7 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Elements"] ribbon-button[label="Heading 2"]')).toBeNull()
     await heading.updateComplete
 
-    heading.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading"]')!.click()
+    heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Heading"]')!.click()
     expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "h1"})
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
