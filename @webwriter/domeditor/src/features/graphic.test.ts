@@ -1921,6 +1921,37 @@ it("creates an editable centered label on double-clicking an unlabeled shape", (
   expect(editor.features.mark.getState().marks).toContain("b")
 })
 
+it.each([false, true])("commits native label input when cancelable beforeinput is absent (beforeinput: %s)", beforeinput => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+  document.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+  const text = document.querySelector("svg text")!
+  editor.features.mark.toggleMark("b")
+  if(beforeinput) proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Label"}))
+  proxy.value = "Label"
+  proxy.dispatchEvent(new InputEvent("input", {inputType: "insertText", data: "Label"}))
+  expect(text.textContent).toBe("Label")
+  expect(proxy.value).toBe("")
+  expect(editor.features.mark.getState().marks).toContain("b")
+  proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "!", cancelable: true}))
+  expect(text.textContent).toBe("Label!")
+  expect(editor.toHTML(true)).not.toContain("graphic-label-input")
+})
+
+it("commits composed label text once after native input", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+  document.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+  const text = document.querySelector("svg text")!
+  proxy.value = "é"
+  proxy.dispatchEvent(new InputEvent("input", {inputType: "insertCompositionText", data: "é", isComposing: true}))
+  expect(text.textContent).toBe("")
+  proxy.dispatchEvent(Object.assign(new Event("compositionend"), {data: "é"}))
+  proxy.dispatchEvent(new InputEvent("input", {inputType: "insertText", data: "é"}))
+  expect(text.textContent).toBe("é")
+  expect(proxy.value).toBe("")
+})
+
 it("retains graphic capture while editing a label and typing after native focus moves", async () => {
   editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
   const graphic = document.querySelector("svg")!

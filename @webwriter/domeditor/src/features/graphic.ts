@@ -1144,7 +1144,14 @@ export class GraphicFeature extends EditorFeature {
       element.value = ""
       this.#positionLabelEditor()
     })
-    element.addEventListener("input", event => { if(!(event as InputEvent).isComposing) element.value = "" })
+    element.addEventListener("input", event => {
+      if((event as InputEvent).isComposing) return
+      // Native replacements can reach input without a cancelable beforeinput.
+      // Commit the proxy value before clearing it; the SVG owns the text.
+      const value = element.value
+      element.value = ""
+      if(value) this.#labelInput(new InputEvent("beforeinput", {inputType: "insertText", data: value, cancelable: true}))
+    })
     for(const type of ["copy", "cut"] as const) element.addEventListener(type, event => {
       const range = this.textEditingRange
       if(!range || range.collapsed || !event.clipboardData) return
@@ -1173,7 +1180,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #labelInput(event: InputEvent) {
-    if(event.isComposing || event.inputType === "insertCompositionText") return
+    if(event.isComposing || event.inputType === "insertCompositionText" || !event.cancelable) return
     event.stopPropagation()
     this.editor.features.mark.handleSVGTextInput(event)
     this.rememberTextSelection()

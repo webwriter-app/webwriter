@@ -971,7 +971,9 @@ await check("shape labels retain capture while typing and selecting text", async
     graphic.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
     let proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
     const text = graphic.querySelector("text")!
-    proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Label text", cancelable: true}))
+    await layoutFrame()
+    proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "L", bubbles: true, cancelable: true}))
+    document.execCommand("insertText", false, "Label text")
     await layoutFrame()
     assert(text.textContent === "Label text", "typing did not reach the SVG label")
     assert(editor.features.selection.captureSelectedElement === graphic, "typing lost graphic capture")
