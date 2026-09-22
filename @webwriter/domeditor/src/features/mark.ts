@@ -1,6 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {
   canonicalMarkName,
+  excludedMarkNames,
   fontSizeOptions,
   hasStandardMarkShortcut,
   isMarkElement,
@@ -1794,7 +1795,7 @@ export class MarkFeature extends EditorFeature {
     const standard = Boolean(option && hasStandardMarkShortcut(option)
       && modifierKeyDown(event) && !event.altKey && !event.shiftKey)
     const legacy = Boolean(option && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey)
-    if(!option || !standard && !legacy || !this.getState().canMark) return
+    if(!option || excludedMarkNames.includes(option.name) || !standard && !legacy || !this.getState().canMark) return
 
     event.preventDefault()
     event.stopImmediatePropagation()

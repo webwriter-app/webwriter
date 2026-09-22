@@ -482,6 +482,7 @@ export abstract class EditingControls extends LitElement {
     const option = this.markOption(mark)
     const attributes = markAttributeOptionsFor(mark)
     const active = selected.includes(mark)
+    const shortcut = this.commandShortcut(`mark:${mark}`)
     return html`
       <div
         class="mark-dropdown-option"
@@ -507,6 +508,7 @@ export abstract class EditingControls extends LitElement {
             ${attributes.map(attribute => this.renderDropdownAttribute(mark, attribute, active))}
           </span>
         ` : ""}
+        ${shortcut ? html`<span class="mark-dropdown-shortcut">${shortcut}</span>` : ""}
       </div>
     `
   }

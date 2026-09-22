@@ -6,6 +6,7 @@ import {
   shortcutFromEvent,
   shortcutParts,
   type AppSettings,
+  type AppCommand,
 } from "../app-settings"
 import {documentLanguages} from "../document-languages"
 import {ribbonIcon} from "../ribbon-icons"
@@ -137,6 +138,18 @@ export class SettingsPanel extends LitElement {
       gap: 0.32rem;
     }
 
+    .command-category {
+      margin-top: 0.5rem;
+    }
+
+    .command-category summary {
+      padding: 0.5rem 0.2rem;
+      color: #202a36;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
     .command-row {
       display: grid;
       grid-template-columns: minmax(9rem, 1fr) minmax(10rem, 0.8fr);
@@ -197,6 +210,7 @@ export class SettingsPanel extends LitElement {
       background: #e8f2fd;
     }
 
+    .command-category summary:focus-visible,
     .shortcut-button:focus-visible,
     select:focus-visible {
       outline: 2px solid #3977c7;
@@ -347,8 +361,34 @@ export class SettingsPanel extends LitElement {
     if(language && language.value !== this.settings.language) language.value = this.settings.language
   }
 
+  private renderCommands(section: AppCommand["section"]) {
+    return html`
+      <div class="command-list">
+        ${appCommands.filter(command => command.section === section).map(command => html`
+          <div class="command-row">
+            <div class="command-details">
+              <span class="command-icon" aria-hidden="true">${ribbonIcon(command.icon)}</span>
+              <span class="command-label">${command.label}</span>
+              <span class="command-description">${command.description}</span>
+            </div>
+            <button
+              class="shortcut-button"
+              type="button"
+              aria-label=${`Configure shortcut for ${command.label}`}
+              aria-pressed=${this.recordingCommandId === command.id}
+              ?data-recording=${this.recordingCommandId === command.id}
+              @click=${() => this.startRecording(command.id)}
+              @keydown=${(event: KeyboardEvent) => this.recordShortcut(command.id, event)}
+            >${this.renderShortcut(command.id)}</button>
+          </div>
+        `)}
+      </div>
+    `
+  }
+
   render() {
-    const sections = ["Document", "Editor", "Text", "Insert", "Table", "Graphic"] as const
+    const sections = ["Document", "Editor", "Text", "Insert"] as const
+    const elementSections = ["Table", "Graphic"] as const
     return html`
       <div class="settings-panel">
         <section class="setting-card" aria-label="Language">
@@ -400,27 +440,14 @@ export class SettingsPanel extends LitElement {
         ` : ""}
         ${sections.map(section => html`
           <section aria-label=${`${section} shortcuts`}>
-            <div class="command-list">
-              ${appCommands.filter(command => command.section === section).map(command => html`
-                <div class="command-row">
-                  <div class="command-details">
-                    <span class="command-icon" aria-hidden="true">${ribbonIcon(command.icon)}</span>
-                    <span class="command-label">${command.label}</span>
-                    <span class="command-description">${command.description}</span>
-                  </div>
-                  <button
-                    class="shortcut-button"
-                    type="button"
-                    aria-label=${`Configure shortcut for ${command.label}`}
-                    aria-pressed=${this.recordingCommandId === command.id}
-                    ?data-recording=${this.recordingCommandId === command.id}
-                    @click=${() => this.startRecording(command.id)}
-                    @keydown=${(event: KeyboardEvent) => this.recordShortcut(command.id, event)}
-                  >${this.renderShortcut(command.id)}</button>
-                </div>
-              `)}
-            </div>
+            ${this.renderCommands(section)}
           </section>
+        `)}
+        ${elementSections.map(section => html`
+          <details class="command-category">
+            <summary>${section} shortcuts</summary>
+            ${this.renderCommands(section)}
+          </details>
         `)}
       </div>
     `

@@ -777,7 +777,7 @@ export class RibbonButton extends LitElement {
     .mark-dropdown-option {
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: auto 1rem minmax(0, 1fr) auto;
+      grid-template-columns: auto 1rem minmax(0, 1fr) auto auto;
       align-items: center;
       gap: 0.35rem;
       min-height: 2rem;
@@ -815,7 +815,16 @@ export class RibbonButton extends LitElement {
       white-space: nowrap;
     }
 
+    .mark-dropdown-shortcut {
+      grid-column: 5;
+      justify-self: end;
+      color: #687383;
+      font-size: 0.66rem;
+      white-space: nowrap;
+    }
+
     .mark-dropdown-attributes {
+      grid-column: 4;
       display: flex;
       flex-direction: column;
       gap: 0.15rem;

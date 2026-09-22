@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
-import {markNames, normalizeEditingContent, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
+import {excludedMarkNames, markNames, normalizeEditingContent, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
 import {$} from "../utility"
 
 const editor = new DOMEditor()
@@ -676,7 +676,7 @@ describe("MarkFeature shortcuts", () => {
     }
   })
 
-  it("provides and handles a unique Alt/Option+Shift shortcut for every primary mark", () => {
+  it("handles insertable primary mark shortcuts and ignores excluded marks", () => {
     expect(new Set(primaryMarkOptions.map(option => option.shortcutKey)).size).toBe(primaryMarkOptions.length)
 
     for(const option of primaryMarkOptions) {
@@ -692,8 +692,8 @@ describe("MarkFeature shortcuts", () => {
 
       document.dispatchEvent(event)
 
-      expect(event.defaultPrevented, option.name).toBe(true)
-      expect(paragraph.querySelector(option.name), option.name).not.toBeNull()
+      expect(event.defaultPrevented, option.name).toBe(!excludedMarkNames.includes(option.name))
+      expect(Boolean(paragraph.querySelector(option.name)), option.name).toBe(!excludedMarkNames.includes(option.name))
     }
   })
 

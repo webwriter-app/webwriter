@@ -7,6 +7,7 @@ import {
   loadAppSettings,
   type AppSettings,
 } from "../app-settings"
+import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import {SettingsPanel} from "./settings-panel"
 import type {RibbonMenu} from "./ribbon-menu"
@@ -41,6 +42,17 @@ afterEach(() => {
 })
 
 describe("settings panel", () => {
+  it("drops excluded mark commands and their saved shortcuts", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
+      shortcuts: Object.fromEntries(excludedMarkNames.map(name => [`text.${name}`, "Alt+Shift+M"])),
+    }))
+    const settings = loadAppSettings()
+    for(const name of excludedMarkNames) {
+      expect(appCommands.some(command => command.id === `text.${name}`)).toBe(false)
+      expect(settings.shortcuts).not.toHaveProperty(`text.${name}`)
+    }
+  })
+
   it("defaults motion disabling to off", () => {
     expect(defaultAppSettings().disableAnimations).toBe(false)
   })
@@ -74,6 +86,37 @@ describe("settings panel", () => {
     expect(panel.shadowRoot!.querySelectorAll(".command-row")).toHaveLength(appCommands.length)
     expect(panel.shadowRoot!.textContent).toContain("Save the active document")
     expect(panel.shadowRoot!.textContent).toContain("Toggle bold formatting")
+  })
+
+  it("places element-specific shortcuts in collapsed categories after general commands", async () => {
+    const panel = await mountPanel()
+    const root = panel.shadowRoot!
+    const categories = [...root.querySelectorAll<HTMLDetailsElement>("details")]
+
+    expect(categories.map(category => category.querySelector("summary")!.textContent))
+      .toEqual(["Table shortcuts", "Graphic shortcuts"])
+    expect([...root.querySelector(".settings-panel")!.children].slice(-2)).toEqual(categories)
+    for(const [index, section] of ["Table", "Graphic"].entries()) {
+      expect(categories[index].open).toBe(false)
+      expect([...categories[index].querySelectorAll(".command-label")].map(label => label.textContent))
+        .toEqual(appCommands.filter(command => command.section === section).map(command => command.label))
+    }
+    expect(root.querySelector('section[aria-label="Insert shortcuts"]')!.closest("details")).toBeNull()
+  })
+
+  it("edits shortcuts inside an expanded category without collapsing it", async () => {
+    const panel = await mountPanel()
+    const category = panel.shadowRoot!.querySelector<HTMLDetailsElement>("details")!
+    category.open = true
+    const button = category.querySelector<HTMLButtonElement>("button")!
+    button.click()
+    await panel.updateComplete
+    button.dispatchEvent(shortcutEvent("Alt+Shift+9"))
+    await panel.updateComplete
+
+    expect(panel.settings.shortcuts["table.rowAbove"]).toBe("Alt+Shift+9")
+    expect(category.open).toBe(true)
+    expect(button.textContent).toContain("9")
   })
 
   it("swaps an occupied shortcut and explains the change", async () => {

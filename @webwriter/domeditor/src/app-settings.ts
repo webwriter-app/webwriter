@@ -1,5 +1,5 @@
 import {isOnApple} from "./utility"
-import {hasStandardMarkShortcut, primaryMarkOptions, secondaryMarkOptions} from "./marks"
+import {excludedMarkNames, hasStandardMarkShortcut, primaryMarkOptions, secondaryMarkOptions} from "./marks"
 import {graphicArrangeOperations, graphicShapeOptions, graphicViewportOperations} from "./graphic"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
@@ -40,7 +40,7 @@ export const appCommands: readonly AppCommand[] = [
     legacyShortcuts: apple => apple ? [] : ["Ctrl+Shift+Z"],
   },
   {id: "editor.preview", section: "Editor", label: "Preview", description: "Toggle the document preview", icon: "Preview", action: "Preview"},
-  ...primaryMarkOptions.map(option => ({
+  ...primaryMarkOptions.filter(option => !excludedMarkNames.includes(option.name)).map(option => ({
     id: `text.${option.name}`,
     section: "Text" as const,
     label: option.label,
@@ -54,7 +54,7 @@ export const appCommands: readonly AppCommand[] = [
       ? (apple: boolean) => [alternate(option.shortcutKey!.toLocaleUpperCase())(apple)]
       : undefined,
   })),
-  ...secondaryMarkOptions.map(option => ({
+  ...secondaryMarkOptions.filter(option => !excludedMarkNames.includes(option.name)).map(option => ({
     id: `text.${option.name}`,
     section: "Text" as const,
     label: option.label,
