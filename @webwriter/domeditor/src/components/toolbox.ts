@@ -1,4 +1,6 @@
 import {css, html} from "lit"
+import {guard} from "lit/directives/guard.js"
+import {tokenizeHTMLSource} from "./html-source-highlight"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
@@ -337,20 +339,61 @@ export class DomEditorToolbox extends EditingControls {
       font-weight: 500;
     }
 
-    .html-source-input {
-      box-sizing: border-box;
+    .html-source-field {
+      position: relative;
       flex: 1 1 auto;
-      width: 100%;
       min-height: 8rem;
+      background: #fafafa;
+      border-radius: 0.35rem;
+    }
+
+    .html-source-input,
+    .html-source-highlight {
+      box-sizing: border-box;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
       padding: 0.65rem;
       border: 1px solid #c7ccd1;
       border-radius: 0.35rem;
       outline: none;
       color: #1f2937;
-      background: #fafafa;
+      background: transparent;
       font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: normal;
+      white-space: pre;
+      overflow: auto;
+      scrollbar-gutter: stable;
       resize: none;
       tab-size: 2;
+    }
+
+    .html-source-highlight {
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .html-source-input {
+      color: transparent;
+      caret-color: #1f2937;
+    }
+
+    .html-source-input::selection {
+      color: #1f2937;
+      background: #bfdbfe;
+    }
+
+    .html-source-highlight .tag { color: #155e9b; }
+    .html-source-highlight .attribute { color: #854d0e; }
+    .html-source-highlight .value { color: #166534; }
+    .html-source-highlight .comment { color: #667085; }
+    .html-source-highlight .entity { color: #7e22ce; }
+
+    @media (forced-colors: active) {
+      .html-source-input { color: CanvasText; caret-color: auto; }
+      .html-source-highlight { visibility: hidden; }
     }
 
     .html-source-input:focus {
@@ -688,11 +731,18 @@ export class DomEditorToolbox extends EditingControls {
 
   private changeHTMLSource(event: Event) {
     const value = (event.currentTarget as HTMLTextAreaElement).value
+    this.htmlSource = value
     this.dispatchEvent(new CustomEvent<{value: string}>("html-source-change", {
       detail: {value},
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private syncHTMLSourceScroll(input: HTMLTextAreaElement) {
+    const highlight = input.previousElementSibling as HTMLElement
+    highlight.scrollTop = input.scrollTop
+    highlight.scrollLeft = input.scrollLeft
   }
 
   private renderHTMLSourceEditor() {
@@ -702,13 +752,18 @@ export class DomEditorToolbox extends EditingControls {
           <span>Selected HTML</span>
           ${this.htmlPending ? html`<span class="html-source-status">Pending change</span>` : ""}
         </div>
-        <textarea
-          class="html-source-input"
-          aria-label="Selected HTML"
-          .value=${this.htmlSource}
-          spellcheck="false"
-          @input=${this.changeHTMLSource}
-        ></textarea>
+        <div class="html-source-field">
+          <pre class="html-source-highlight" aria-hidden="true">${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}${"\n"}</pre>
+          <textarea
+            class="html-source-input"
+            aria-label="Selected HTML"
+            .value=${this.htmlSource}
+            spellcheck="false"
+            wrap="off"
+            @input=${this.changeHTMLSource}
+            @scroll=${(event: Event) => this.syncHTMLSourceScroll(event.currentTarget as HTMLTextAreaElement)}
+          ></textarea>
+        </div>
         ${this.htmlSourceError ? html`<p class="html-source-error" role="alert">${this.htmlSourceError}</p>` : ""}
       </section>
     `
@@ -763,6 +818,10 @@ export class DomEditorToolbox extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    if(changed.has("htmlSource")) {
+      const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
+      if(input) this.syncHTMLSourceScroll(input)
+    }
     if(this.activeTool !== "Edit" || !this.documentSelected || this.htmlMode || this.developMode) {
       this.documentHeadAttributeEditorId = ""
     }

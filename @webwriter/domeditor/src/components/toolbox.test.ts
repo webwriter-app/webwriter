@@ -22,6 +22,40 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("refreshes source colors on input and external updates without replacing the textarea", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.htmlMode = true
+    toolbox.activeTool = "Edit"
+    toolbox.htmlSource = '<p title="hello">Text</p>'
+    await toolbox.updateComplete
+    const root = toolbox.shadowRoot!
+    const input = root.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    const highlight = root.querySelector<HTMLElement>(".html-source-highlight")!
+    expect(highlight.textContent).toBe(toolbox.htmlSource + "\n")
+    expect(highlight.querySelector(".attribute")?.textContent).toBe("title")
+    input.focus()
+    input.value = '<my-widget label="unfinished'
+    input.setSelectionRange(12, 12)
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, isComposing: true}))
+    await toolbox.updateComplete
+    expect(root.querySelector(".html-source-input")).toBe(input)
+    expect(root.activeElement).toBe(input)
+    expect(input.selectionStart).toBe(12)
+    expect(highlight.textContent).toBe(input.value + "\n")
+    expect(highlight.querySelector(".value")?.textContent).toBe('"unfinished')
+    input.scrollTop = 24
+    input.scrollLeft = 40
+    input.dispatchEvent(new Event("scroll"))
+    expect(highlight.scrollTop).toBe(24)
+    expect(highlight.scrollLeft).toBe(40)
+    toolbox.htmlSource = '<img src=x onerror="alert(1)">\n'
+    await toolbox.updateComplete
+    expect(input.value).toBe(toolbox.htmlSource)
+    expect(highlight.textContent).toBe(toolbox.htmlSource + "\n")
+    expect(highlight.querySelector("img")).toBeNull()
+    expect(highlight.getAttribute("aria-hidden")).toBe("true")
+  })
+
   it("hides Style by default and closes its panel when disabled", async () => {
     expect(new DomEditorToolbox().showStyleToolbox).toBe(false)
     const toolbox = await mountToolbox(false)
