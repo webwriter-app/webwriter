@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from "vitest"
+import {version} from "../../package.json"
 import {
   APP_SETTINGS_STORAGE_KEY,
   appCommands,
@@ -292,6 +293,9 @@ describe("settings dialog", () => {
     const close = nav.querySelector<HTMLButtonElement>(".settings-close-button")!
     expect(nav.querySelector("h2")?.textContent).toBe("Settings")
     expect(close.previousElementSibling?.textContent?.trim()).toBe("Reset settings")
+    const versionLabel = close.previousElementSibling?.previousElementSibling!
+    expect(versionLabel.textContent?.trim()).toBe(`WebWriter ${version}`)
+    expect(getComputedStyle(versionLabel).color).toBe("#687383")
     expect(close.textContent?.trim()).toBe("")
     expect(close.querySelector("svg")).not.toBeNull()
     expect(getComputedStyle(close).borderTopWidth).toBe("0px")

@@ -1,5 +1,6 @@
 import {layoutPreviewStyles} from "./template-preview"
 import {css, html} from "lit"
+import {version} from "../../package.json"
 import {
   requestsReadOnlyAI,
   completeAIConversation,
@@ -1353,6 +1354,12 @@ export class AppRibbon extends EditingControls {
       align-items: center;
       gap: 0.5rem;
       margin: 0;
+    }
+
+    .settings-version {
+      color: #687383;
+      font-size: 0.75rem;
+      white-space: nowrap;
     }
 
     .settings-dialog-nav button {
@@ -3249,6 +3256,7 @@ export class AppRibbon extends EditingControls {
         <nav class="settings-dialog-nav" aria-label="Settings">
           <h2 id="settings-dialog-title">Settings</h2>
           <form method="dialog">
+            <span class="settings-version">WebWriter ${version}</span>
             <button
               class="reset-settings-button"
               type="button"
