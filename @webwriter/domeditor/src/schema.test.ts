@@ -56,6 +56,59 @@ describe("fixInvalidContent()", () => {
   // it("can fix an invalid tree by filling", () => {})
 })
 
+describe("ensureStaticContent()", () => {
+  it.each(["absolute", "fixed", "relative", "sticky"])("adds a paragraph alongside %s content", position => {
+    document.body.innerHTML = `<demo-widget style="position: ${position}"><p>Nested</p></demo-widget><!--keep-->`
+    const widget = document.body.firstElementChild!
+    const paragraph = editor.schema.ensureStaticContent(document.body)
+    expect(paragraph?.outerHTML).toBe("<p></p>")
+    expect(document.body.firstElementChild).toBe(widget)
+    expect(widget.innerHTML).toBe("<p>Nested</p>")
+    expect(editor.schema.ensureStaticContent(document.body)).toBeNull()
+    expect(document.body.children).toHaveLength(2)
+  })
+
+  it("keeps an existing static element and selection intact", () => {
+    document.body.innerHTML = "<section><p>Keep</p></section>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, 0)
+    expect(editor.schema.ensureStaticContent(document.body)).toBeNull()
+    expect($.anchor).toBe(paragraph)
+    expectBodyToBe("<section><p>Keep</p></section>")
+  })
+
+  it("preserves text and comments when adding the default element", () => {
+    document.body.innerHTML = "Text<!--keep-->"
+    editor.schema.ensureStaticContent(document.body)
+    expect(document.body.innerHTML).toBe("Text<!--keep--><p></p>")
+  })
+
+  it("uses the configured default element", () => {
+    const schema = new Schema({...Schema.baseSchema, p: {...Schema.baseSchema.p, defaultNode: false},
+      div: {...Schema.baseSchema.div, defaultNode: true}})
+    document.body.replaceChildren()
+    expect(schema.ensureStaticContent(document.body)?.localName).toBe("div")
+  })
+
+  it("falls back to a paragraph when the schema has no default element", () => {
+    document.body.replaceChildren()
+    expect(new Schema({}).ensureStaticContent(document.body)?.localName).toBe("p")
+  })
+
+  it("uses computed styles and remains stable when CSS positions default paragraphs", () => {
+    const style = document.createElement("style")
+    style.textContent = "body > p { position: absolute !important; }"
+    document.head.append(style)
+    try {
+      const paragraph = editor.schema.ensureStaticContent(document.body)!
+      expect(paragraph).not.toBeNull()
+      expect(getComputedStyle(paragraph).position).toBe("static")
+      expect(editor.schema.ensureStaticContent(document.body)).toBeNull()
+    }
+    finally { style.remove() }
+  })
+})
+
 describe("isNodeValid()", () => {
 
 

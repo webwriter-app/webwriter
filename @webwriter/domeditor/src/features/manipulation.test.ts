@@ -2764,9 +2764,10 @@ describe("independent positioned flows", () => {
     const html = widget.outerHTML
     $.selectRange(document.body, 0, document.body, 3)
     editor.features.manipulation.delete()
-    expect(document.body.children).toHaveLength(1)
+    const needsParagraph = style.startsWith("position:")
+    expect(document.body.children).toHaveLength(needsParagraph ? 2 : 1)
     expect(document.body.firstElementChild).toBe(widget)
-    expect(editor.toHTML(true)).toBe(html)
+    expect(editor.toHTML(true)).toBe(html + (needsParagraph ? "<p></p>" : ""))
   })
 
   it.each(["backward", "forward"] as const)("joins the flow across positioned siblings on %s deletion", direction => {

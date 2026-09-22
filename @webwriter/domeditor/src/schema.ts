@@ -937,6 +937,25 @@ export class Schema {
     return Array.from(el.childNodes).filter(n => !this.isNodeValid(n))
   }
 
+  /** Keeps a static top-level element available for document editing without
+   * rebuilding existing content or entering positioned widgets. */
+  ensureStaticContent(body: HTMLElement): Element | null {
+    const view = body.ownerDocument.defaultView
+    if(Array.from(body.children).some(element =>
+      (view?.getComputedStyle(element).position || (element as HTMLElement).style?.position || "static") === "static"
+    )) return null
+    const node = this.create(this.defaultNodeKey.startsWith("#") ? "p" : this.defaultNodeKey, body.ownerDocument)
+    if(!(node instanceof Element)) return null
+    body.append(node)
+    // Authored CSS may position even the default type. Make the new content
+    // static explicitly in that case so subsequent checks stay idempotent.
+    const position = view?.getComputedStyle(node).position
+    if(position && position !== "static") {
+      (node as HTMLElement).style.setProperty("position", "static", "important")
+    }
+    return node
+  }
+
   /** Makes the element's content valid: for each invalid child it attempts to wrap it, lift it, move it to a valid position or delete it, then fills any missing required content. If the content still cannot be made valid, the element itself is removed. */
   fixInvalidContent(el: Element, invalidNodes=this.getInvalidChildNodes(el)) {
     if(this.isContentValid(el)) return;

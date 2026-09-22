@@ -637,7 +637,10 @@ export class DOMEditor {
       const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
       this.#bodySchemaObserver = new DocumentMutationObserver(this.#handleBodySchemaChanges)
       this.#bodySchemaObserver.observe(document.body, {
-        childList: true, subtree: true, attributes: true, attributeFilter: ["contenteditable", "is"],
+        childList: true, subtree: true, attributes: true, attributeFilter: ["contenteditable", "is", "style", "class"],
+      })
+      this.#bodySchemaObserver.observe(document.head, {
+        childList: true, subtree: true, characterData: true, attributes: true,
       })
       this.#enableWidgetEditing(document.body)
       if(!initialYDoc) this.#ensureDocumentContent()
@@ -702,20 +705,17 @@ export class DOMEditor {
     if(descendants) node.childNodes.forEach(child => this.#enableWidgetEditing(child))
   }
 
-  /** Restores the schema's required default flow child after the body's last
-   * authored node is removed. A selection left at BODY or in removed content
+  /** Restores a static default flow child when none remains in the body.
+   * A selection left at BODY or in removed content
    * becomes a normal collapsed selection in the new paragraph. */
   #ensureDocumentContent() {
     if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
     if(documentLayoutMode() === "canvas") return null
-    if(document.body.childNodes.length || this.schema.isContentValid(document.body)) return null
     const selection = document.getSelection()
     const moveSelection = !selection?.anchorNode || !selection.focusNode
       || selection.anchorNode === document.body || selection.focusNode === document.body
       || !selection.anchorNode.isConnected || !selection.focusNode.isConnected
-    const content = this.schema.fillByRule(document.body)
-    document.body.replaceChildren(...content)
-    const defaultBlock = document.body.firstElementChild
+    const defaultBlock = this.schema.ensureStaticContent(document.body)
     if(moveSelection && defaultBlock) $.move(defaultBlock)
     return defaultBlock
   }

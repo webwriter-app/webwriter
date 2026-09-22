@@ -200,6 +200,23 @@ describe("DOMEditor stylesheets", () => {
     expect(editor.toHTML(true)).toBe("<p></p>")
   })
 
+  it.each(["style", "class"])("restores static content after a %s change", async attribute => {
+    const style = document.createElement("style")
+    style.textContent = ".positioned-test { position: absolute; }"
+    document.head.append(style)
+    try {
+      document.body.innerHTML = "<p>Keep</p>"
+      const original = document.body.firstElementChild!
+      original.setAttribute(attribute, attribute === "style" ? "position: fixed" : "positioned-test")
+      await vi.waitFor(() => expect(document.body.children).toHaveLength(2))
+      expect(document.body.firstElementChild).toBe(original)
+      expect(document.body.lastElementChild?.localName).toBe("p")
+      expect(document.body.lastElementChild?.textContent).toBe("")
+      expect(editor.toHTML(true)).toMatch(/<p><\/p>$/)
+    }
+    finally { style.remove() }
+  })
+
   it("moves a user-editing selection into the restored paragraph", () => {
     document.body.replaceChildren()
     document.body.dispatchEvent(new InputEvent("input", {

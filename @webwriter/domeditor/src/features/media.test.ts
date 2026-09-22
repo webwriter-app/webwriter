@@ -134,7 +134,7 @@ describe("media editing", () => {
 
     expect(picture.querySelector(":scope > img")).not.toBeNull()
     expect($.selectedElement).toBe(picture)
-    expect(editor.toHTML(true)).toBe("<picture><img></picture>")
+    expect(editor.toHTML(true)).toBe("<picture><img></picture><p></p>")
 
     $.selectGap(picture)
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
@@ -310,7 +310,7 @@ describe("media editing", () => {
     expect(picker.accept).toBe("image/*")
     expect(picker.getRootNode()).toBe(placeholder.root)
     expect(placeholder.target).toBe(document.querySelector("picture"))
-    expect(editor.toHTML(true)).toBe("<picture><img></picture>")
+    expect(editor.toHTML(true)).toBe("<picture><img></picture><p></p>")
     open.mockRestore()
   })
 
