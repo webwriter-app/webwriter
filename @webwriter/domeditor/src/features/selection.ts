@@ -552,7 +552,7 @@ export class SelectionFeature extends EditorFeature {
     super.enable()
     this.#ensureHoverCaret()
     window.addEventListener("focus", this.#handleWindowFocus)
-    window.addEventListener("blur", this.#endDrag)
+    window.addEventListener("blur", this.#handleWindowBlur)
     this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
     this.processSelection()
   }
@@ -561,7 +561,7 @@ export class SelectionFeature extends EditorFeature {
     if(!this.isEnabled) return
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
     window.removeEventListener("focus", this.#handleWindowFocus)
-    window.removeEventListener("blur", this.#endDrag)
+    window.removeEventListener("blur", this.#handleWindowBlur)
     this.#endDrag()
     this.#releaseCaptureSelection()
     if(this.#revealSelectionFrame !== null) cancelAnimationFrame(this.#revealSelectionFrame)
@@ -576,14 +576,25 @@ export class SelectionFeature extends EditorFeature {
     this.editor.features.manipulation.endNodeDrag(false)
     this.hoverCaret?.remove()
     this.emptyDocumentCaret?.remove()
-    ;[document.documentElement, document.body].forEach(element => {
-      removeEditorMarker(element, "◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
-    })
+    this.#clearKeyState()
     super.disable()
   }
 
   readonly #handleWindowFocus = () => {
+    this.#clearKeyState()
     if(!this.editor.features.media.isPlaceholderInteraction) this.processSelection(undefined, {scrollIntoView: false})
+  }
+
+  readonly #handleWindowBlur = () => {
+    // Modifier releases in another window may never deliver a keyup here.
+    this.#clearKeyState()
+    this.#endDrag()
+  }
+
+  #clearKeyState() {
+    ;[document.documentElement, document.body].forEach(element => {
+      removeEditorMarker(element, "◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
+    })
   }
 
   /** Pointer capture keeps the whole editor drag in the outer document, even
@@ -688,6 +699,7 @@ export class SelectionFeature extends EditorFeature {
 
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
+      this.#handleKeyState(event)
       const edge = event.composedPath().find(node => node instanceof Element && node.classList.contains("◆capture-edge"))
       const captured = this.captureSelectedElement
       if(edge instanceof Element && edge.parentElement === this.selectionCaret && captured
@@ -701,6 +713,7 @@ export class SelectionFeature extends EditorFeature {
       this.#handleWidgetShadowInteraction(event)
     },
     pointermove: event => {
+      this.#handleKeyState(event)
       if(this.isInDragSelection) event.preventDefault()
       if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
     },
@@ -746,7 +759,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Mirrors the physical modifier state onto BODY without depending on the
    * regular feature listeners, which intentionally ignore widget events. */
-  readonly #handleKeyState = (event: KeyboardEvent) => {
+  readonly #handleKeyState = (event: KeyboardEvent | MouseEvent) => {
     const states = [
       ["◆key-mod-down", modifierKeyDown(event)],
       ["◆key-alt-down", event.altKey],
@@ -1543,6 +1556,9 @@ export class SelectionFeature extends EditorFeature {
    * the drag selection on pointer moves, and mirror modifier key state onto
    * the body (`◆key-mod/alt/shift-down`). */
   passiveListeners: DocumentListenerMap = {
+    "visibilitychange": () => {
+      if(document.visibilityState === "hidden") this.#handleWindowBlur()
+    },
     "pointermove": event => this.#extendDrag(event),
     "selectionchange": () => {
       if(this.editor.features.media.isPlaceholderInteraction) return

@@ -1582,6 +1582,39 @@ describe("document listeners", () => {
     document.dispatchEvent(new KeyboardEvent("keyup", {}))
     expect(document.body.hasAttribute("class")).toBe(false)
   })
+  it.each(["blur", "focus", "hidden", "disable"])("clears modifier cursors on %s without a keyup", end => {
+    document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, metaKey: true, altKey: true, shiftKey: true}))
+    if(end === "hidden") {
+      const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+      try { document.dispatchEvent(new Event("visibilitychange")) }
+      finally { visibility.mockRestore() }
+    }
+    else if(end === "disable") feature.disable()
+    else window.dispatchEvent(new Event(end))
+
+    for(const element of [document.documentElement, document.body]) {
+      expect(element).not.toHaveClass("◆key-mod-down")
+      expect(element).not.toHaveClass("◆key-alt-down")
+      expect(element).not.toHaveClass("◆key-shift-down")
+      expect(getComputedStyle(element).cursor).not.toBe("pointer")
+    }
+  })
+  it.each(["pointermove", "pointerdown"])("refreshes modifier state from %s after returning to the editor", type => {
+    const paragraph = el("p", "hello")
+    document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, metaKey: true}))
+    window.dispatchEvent(new Event("blur"))
+    window.dispatchEvent(new Event("focus"))
+    paragraph.dispatchEvent(new MouseEvent(type, {bubbles: true, button: 2, ctrlKey: true, metaKey: true, altKey: true, shiftKey: true}))
+    expect(document.body).toHaveClass("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
+
+    // The release may also have happened outside the document without a blur.
+    paragraph.dispatchEvent(new MouseEvent(type, {bubbles: true, button: 2}))
+    for(const element of [document.documentElement, document.body]) {
+      expect(element).not.toHaveClass("◆key-mod-down")
+      expect(element).not.toHaveClass("◆key-alt-down")
+      expect(element).not.toHaveClass("◆key-shift-down")
+    }
+  })
   it("selects an element on modifier pointerdown", () => {
     const p = el("p", "hello")
     const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
