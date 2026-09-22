@@ -166,7 +166,7 @@ describe("media editing", () => {
     )
     const style = Array.from(placeholderController.root.adoptedStyleSheets[0].cssRules, rule => rule.cssText).join("\n")
     expect(style).toMatch(/\.content\s*\{[\s\S]*?display:\s*flex;/)
-    expect(style).toMatch(/@container \(max-width:\s*44rem\)[\s\S]*?\.file-options \.label\s*\{[\s\S]*?display:\s*none;/)
+    expect(style).toMatch(/@container \(max-width:\s*30rem\)[\s\S]*?\.file-options \.label\s*\{[\s\S]*?display:\s*none;/)
     const buttons = Array.from(placeholderController.root.querySelectorAll<HTMLButtonElement>(".file-options button"))
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Select file", "Capture screen", "Record"])
     expect(buttons.map(button => button.querySelector("svg")?.classList.toString())).toEqual([

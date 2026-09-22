@@ -72,14 +72,14 @@ const equalAttributes = (element: Element, expected: Record<string, string>) => 
 
 const mediaPlaceholderStylesheet = createStylesheet(`
   :host {
-    --control-height: 2.5rem;
+    --control-height: 2rem;
     position: fixed;
     z-index: 2147483647;
     display: none;
     box-sizing: border-box;
     place-items: center;
     overflow: auto;
-    padding: .5rem;
+    padding: .25rem;
     color: #f3f4f6;
     background: rgb(31 41 55 / 94%);
     font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -89,8 +89,6 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   }
   :host([data-open]) { display: grid; }
   :host([data-media="audio"]) {
-    --control-height: 2rem;
-    padding: .25rem;
     background: rgba(31, 41, 55, 0.5);
   }
   .content {
@@ -178,8 +176,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   }
   input:focus { outline: none; }
   button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -2px; }
-  @container (max-width: 44rem) {
-    .content { --control-height: 2rem; }
+  @container (max-width: 30rem) {
     .file-options .label { display: none; }
     .file-options button { width: var(--control-height); padding: 0; }
   }
