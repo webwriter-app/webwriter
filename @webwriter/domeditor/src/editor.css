@@ -712,7 +712,7 @@ svg.◆element-capture-selected {
   cursor: crosshair;
 }
 
-svg.◆element-capture-selected :is(rect, ellipse, circle, line, polyline, polygon) {
+svg.◆element-capture-selected :is(rect, ellipse, circle, line, polyline, polygon, path) {
   cursor: move;
 }
 
@@ -852,7 +852,7 @@ body::part(graphic-port) {
   pointer-events: auto;
   touch-action: none;
   transform: rotate(45deg);
-  cursor: crosshair;
+  cursor: cell;
 }
 
 body::part(graphic-port):hover {

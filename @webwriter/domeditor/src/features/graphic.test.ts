@@ -43,6 +43,24 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it("shows a move cursor over preset paths inside a captured graphic", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "heart"})
+    const graphic = document.querySelector("svg")!
+    const path = graphic.querySelector("path")!
+    editor.features.selection.captureElement(graphic)
+
+    expect(getComputedStyle(graphic).cursor).toBe("crosshair")
+    expect(getComputedStyle(path).cursor).toBe("move")
+
+    const group = document.createElementNS(SVG_NAMESPACE, "g")
+    graphic.append(group)
+    group.append(path)
+    expect(getComputedStyle(path).cursor).toBe("move")
+
+    document.body.classList.add("◆", "◆graphic-panning")
+    expect(getComputedStyle(path).cursor).toBe("grabbing")
+  })
+
   it("recognizes labeled shape roots without normalizing unfamiliar SVG groups", () => {
     const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
     graphic.innerHTML = `
