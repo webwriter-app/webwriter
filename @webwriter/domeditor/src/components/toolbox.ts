@@ -657,13 +657,26 @@ export class DomEditorToolbox extends EditingControls {
     return Object.fromEntries(properties.filter(hasValue).map(name => [name, null]))
   }
 
+  private advancedOpen = new Map<string, boolean>()
+
+  // Toolbox panes are persistent controls, not transient ribbon popups.
+  dismissDrawers() {}
+
+  private rememberAdvancedState = (event: CustomEvent<{open: boolean}>) => {
+    const drawer = event.composedPath()[0] as RibbonDrawer
+    this.advancedOpen.set(`${drawer.layout}:${drawer.label}`, event.detail.open)
+  }
+
   private renderUniversalStyleDrawer() {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const advancedProperties = documentTarget ? [] : ["width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"]
+    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
-    const advancedCount = advancedProperties.filter(name => Object.hasOwn(setProperties, name)).length
+    const advancedCount = advancedProperties.filter(name => name === "border-width"
+      ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
+      : Object.hasOwn(setProperties, name)).length
     return html`
-      <ribbon-drawer label="Style" icon="Theme" layout="element-style" show-pane-icon ?expandable=${!documentTarget} .advancedCount=${advancedCount}>
+      <ribbon-drawer label="Style" icon="Theme" layout="element-style" show-pane-icon expandable .advancedCount=${advancedCount}
+        >
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
           ?disabled=${!Object.keys(this.resettableStyles).length}
           @click=${() => {
@@ -672,7 +685,7 @@ export class DomEditorToolbox extends EditingControls {
               detail: {styles}, bubbles: true, composed: true,
             }))
           }}>${ribbonIcon("Restore")}Reset</button>
-        <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "padding"]} .state=${this.elementStyle}></element-style-editor>
+        <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
         <element-style-editor slot="more" mode="compact" orientation="vertical"
           .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>
       </ribbon-drawer>
@@ -682,17 +695,13 @@ export class DomEditorToolbox extends EditingControls {
   protected renderDrawers() {
     if(this.activeTool === "Edit" && !this.elementAttributes
       && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
-      return [this.renderUniversalStyleDrawer(), html`
+      return [html`
         <ribbon-drawer label="Attributes" icon="Develop" layout="attributes">
           <element-attribute-editor disabled></element-attribute-editor>
         </ribbon-drawer>
       `]
     }
     const drawers = super.renderDrawers()
-    if(this.activeTool === "Edit" && !this.developMode) {
-      const attributesIndex = this.currentMenuGroups.findIndex(group => group.label === "Attributes")
-      drawers.splice(attributesIndex < 0 ? drawers.length : attributesIndex, 0, this.renderUniversalStyleDrawer())
-    }
     if(this.activeTool === "Edit" && !this.developMode && this.documentSelected) {
       drawers.push(html`
         <ribbon-drawer label="Templates" icon="Layout" layout="document-layout">
@@ -755,13 +764,13 @@ export class DomEditorToolbox extends EditingControls {
     const nextTool = tool
     if(this.htmlPending && nextTool !== "Edit") return
     if(this.activeTool === nextTool) return
+    if(nextTool === null) this.advancedOpen.clear()
     const previousMenu = this.activeMenu
-    this.dismissDrawers()
     this.developMode = false
     this.activeTool = nextTool
     if(nextTool) {
       this.activeMenu = nextTool === "Review" ? "Edit" : nextTool
-      if(nextTool === "Edit" || previousMenu === nextTool && nextTool === "Style") {
+      if(nextTool !== "Style" || previousMenu === nextTool) {
         this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
       }
     }
@@ -774,7 +783,6 @@ export class DomEditorToolbox extends EditingControls {
 
   private toggleHTMLMode() {
     if(this.htmlPending) return
-    this.dismissDrawers()
     this.developMode = false
     this.activeMenu = "Edit"
     this.dispatchEvent(new CustomEvent<{enabled: boolean}>("html-mode-change", {
@@ -786,7 +794,6 @@ export class DomEditorToolbox extends EditingControls {
 
   private toggleDevelopMode() {
     if(this.htmlPending) return
-    this.dismissDrawers()
     this.developMode = !this.developMode
     this.activeMenu = this.developMode ? "Develop" : "Edit"
     if(this.htmlMode) {
@@ -879,6 +886,7 @@ export class DomEditorToolbox extends EditingControls {
 
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
+    if(changed.has("activeTool") && this.activeTool === null) this.advancedOpen.clear()
     if(!this.showStyleToolbox && this.activeTool === "Style") {
       this.selectTool(null)
       this.activeMenu = "Edit"
@@ -905,6 +913,11 @@ export class DomEditorToolbox extends EditingControls {
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => {
       drawer.collapsed = false
       drawer.pane = true
+      void drawer.updateComplete.then(() => {
+        if(!drawer.isConnected || !this.activeTool) return
+        if(drawer.expandable && this.advancedOpen.get(`${drawer.layout}:${drawer.label}`)) drawer.openDrawer()
+        else drawer.closeDrawer()
+      })
       drawer.inert = this.historyState.preview !== null && drawer.layout !== "history-versions"
     })
   }
@@ -913,6 +926,7 @@ export class DomEditorToolbox extends EditingControls {
     return html`
       <div
         class="toolbox"
+        @ribbon-drawer-toggle=${this.rememberAdvancedState}
         @pointerdown=${this.handleRibbonPointerDown}
         @mousedown=${this.handleRibbonPointerDown}
         @focusin=${this.handleRibbonInputFocusIn}
@@ -978,6 +992,7 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null}
         >
           <div class="toolbox-pane-content" ?inert=${this.historyState.preview !== null && this.activeTool !== "Review"}>
+            ${this.activeTool === "Edit" && !this.htmlMode && !this.developMode ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" && this.htmlMode && !this.developMode
               ? this.renderHTMLSourceEditor()
               : this.activeTool ? this.renderDrawers() : ""}

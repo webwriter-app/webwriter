@@ -24,11 +24,9 @@ describe("element attribute editor", () => {
   it("presents friendly element-specific and common fields", async () => {
     const editor = await mount("details", {name: "faq", open: "", id: "shipping"})
 
-    expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: Accordion group"]')!.value)
-      .toBe("faq")
+    expect(editor.shadowRoot!.querySelector('[aria-label="Details: Accordion group"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: Initially open"]')!.checked)
       .toBe(true)
-    expect(editor.shadowRoot!.querySelector('[aria-label="Details: Accordion group"]')!.closest("details")).toBeNull()
     expect(editor.shadowRoot!.querySelector('[aria-label="Details: ID"]')!.closest("details")).not.toBeNull()
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: ID"]')!.value)
       .toBe("shipping")

@@ -1661,7 +1661,7 @@ describe("text input normalization", () => {
   })
 })
 describe("setBlockType()", () => {
-  it.each(["caret", "range", "node"])("converts paragraphs to preformatted text and back with a %s selection", selection => {
+  it.each(["caret", "range", "node"])("converts paragraphs to heading text and back with a %s selection", selection => {
     document.body.innerHTML = '<section><test-widget></test-widget><!--keep--><p id="intro" class="lead">  first\n<b>hello</b><br>tail</p></section>'
     const section = document.querySelector("section")!
     const paragraph = document.querySelector("p")!
@@ -1672,7 +1672,7 @@ describe("setBlockType()", () => {
     else if(selection === "range") $.selectRange(text, 1, text, 4)
     else $.move(text, 2)
 
-    for(const tag of ["pre", "p"] as const) {
+    for(const tag of ["h3", "p"] as const) {
       expect(editor.features.manipulation.setBlockType(tag)).toBe(1)
       const replacement = document.querySelector(tag)!
       expect(replacement.id).toBe("intro")
@@ -1690,19 +1690,19 @@ describe("setBlockType()", () => {
     }
   })
 
-  it("supports collaboration undo and redo for paragraph/preformatted conversion", () => {
+  it("supports collaboration undo and redo for paragraph/heading conversion", () => {
     document.body.innerHTML = '<p id="intro">  hello\nworld</p>'
     $.selectElement(document.querySelector("p")!)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
-    editor.features.manipulation.setBlockType("pre")
+    editor.features.manipulation.setBlockType("h3")
     editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).toContain('<pre id="intro">  hello\nworld</pre>')
+    expect(editor.doc.body.toString()).toContain('<h3 id="intro">  hello\nworld</h3>')
     expect(editor.doc.body.toString()).not.toContain("◆")
     editor.doc.undo()
     expectBodyToBe('<p id="intro">  hello\nworld</p>')
     editor.doc.redo()
-    expectBodyToBe('<pre id="intro">  hello\nworld</pre>')
+    expectBodyToBe('<h3 id="intro">  hello\nworld</h3>')
   })
 
   it("converts a block while preserving authored attributes, inline DOM, and selection", () => {

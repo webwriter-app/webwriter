@@ -6,7 +6,7 @@ const labels = (surface: "ribbon" | "toolbox", context: Record<string, boolean> 
 
 describe("context drawer policy", () => {
   it("keeps paragraph and section contexts ahead of overlapping contexts", () => {
-    expect(labels("ribbon", {paragraphSelected: true, media: true})).toEqual(["Paragraph", "Attributes"])
+    expect(labels("ribbon", {paragraphSelected: true, media: true})).toEqual(["Attributes"])
     expect(labels("toolbox", {sectionSelected: true, headingGroup: true, table: true})).toEqual(["Section"])
   })
 
@@ -15,7 +15,7 @@ describe("context drawer policy", () => {
     expect(labels("toolbox", {dialog: true, table: true})).toEqual(["Layout"])
     expect(labels("toolbox", {table: true})).toEqual(["Layout"])
     expect(labels("ribbon", {orderedList: true, disclosure: true})).toEqual(["List"])
-    expect(labels("toolbox", {disclosure: true})).toEqual(["Disclosure", "Attributes"])
+    expect(labels("toolbox", {disclosure: true})).toEqual(["Attributes"])
   })
 
   it("retains media controls for a figure selected through the media context", () => {

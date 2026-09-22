@@ -4370,6 +4370,34 @@ describe("DomEditor.execute()", () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
+  it("keeps Style advanced options open when clicking between paragraphs in the editor frame", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = "<p>First</p><p>Second</p>"
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const drawer = () => toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+    await drawer().updateComplete
+    drawer().shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+    for(const index of [0, 1, 0]) {
+      const paragraph = doc.querySelectorAll("p")[index]
+      paragraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))
+      doc.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 0, paragraph.firstChild!, 0)
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {path: [
+          {path: [], name: "Document"}, {path: [index], name: "Paragraph"},
+        ]}}, source: editorWindow,
+      }))
+      await editor.updateComplete
+      await toolbox.updateComplete
+      await drawer().updateComplete
+      await drawer().updateComplete
+      expect(drawer().shadowRoot!.querySelector(".drawer-toggle")!.getAttribute("aria-expanded")).toBe("true")
+    }
+  })
+
   it("keeps the fixed mark area mounted while selecting text", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     const frameDocument = iframe.contentDocument!
@@ -4584,23 +4612,6 @@ describe("DomEditor.execute()", () => {
     paragraph.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
     expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "p"})
-  })
-
-  it.each(["p", "pre"])("converts %s from the paragraph toolbox switch", async tag => {
-    const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
-    toolbox.elementAttributes = {
-      path: [0], localName: tag, namespaceURI: "http://www.w3.org/1999/xhtml",
-      name: tag === "p" ? "Paragraph" : "Preformatted Text", attributes: {},
-    }
-    toolbox.selectTool("Edit")
-    await toolbox.updateComplete
-    const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"]')!
-    expect(toggle.checked).toBe(tag === "pre")
-    toggle.click()
-
-    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: tag === "p" ? "pre" : "p"})
   })
 
   it("closes expanded ribbon-button menus when the editor receives focus", async () => {

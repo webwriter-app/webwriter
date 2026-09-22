@@ -765,3 +765,58 @@ describe("registered editor commands", () => {
     finally { editor.destroy() }
   })
 })
+
+describe("legacy preformatted blocks", () => {
+  it.each([false, true])("imports PRE as styled paragraphs (transfer: %s)", transfer => {
+    const editor = new DOMEditor()
+    try {
+      const {fragment} = editor.parseHTMLFragment('<pre id="sample" style="color: red">  first\n<b>second</b><!--keep--></pre>', transfer)
+      expect(fragment.querySelector("pre")).toBeNull()
+      const paragraph = fragment.querySelector("p")!
+      expect(paragraph.textContent).toBe("  first\nsecond")
+      expect(paragraph.style.whiteSpace).toBe("pre-wrap")
+      expect(paragraph.style.fontFamily).toBe("monospace")
+      expect(paragraph.id).toBe("sample")
+      expect(paragraph.querySelector("b")!.textContent).toBe("second")
+      expect(paragraph.style.color).toBe(transfer ? "" : "red")
+    }
+    finally {editor.destroy()}
+  })
+
+  it("converts opened PRE content while preserving inline overrides and widget-owned content", () => {
+    document.body.innerHTML = '<pre id="sample" style="font-family: serif; white-space: break-spaces">  hello\nworld</pre><test-widget><pre>owned</pre></test-widget>'
+    const editor = new DOMEditor()
+    try {
+      const paragraph = document.querySelector<HTMLParagraphElement>("p#sample")!
+      expect(paragraph).not.toBeNull()
+      expect(paragraph.style.fontFamily).toBe("serif")
+      expect(paragraph.style.whiteSpace).toBe("break-spaces")
+      expect(paragraph.textContent).toBe("  hello\nworld")
+      expect(document.querySelector("test-widget pre")!.textContent).toBe("owned")
+      expect(editor.toHTML()).not.toContain('<pre id="sample"')
+    }
+    finally {editor.destroy()}
+  })
+})
+
+describe("independent disclosure elements", () => {
+  it("removes accordion names on opening and importing while retaining open state and content", () => {
+    document.body.innerHTML = '<details name="faq" open><summary>Question</summary><p>Answer</p></details>'
+    const editor = new DOMEditor()
+    try {
+      expect(document.querySelector("details")!.hasAttribute("name")).toBe(false)
+      expect(document.querySelector("details")!.open).toBe(true)
+      expect(() => editor.features.manipulation.setAuthoredElementAttribute(document.querySelector("details")!, "name", "faq"))
+        .toThrow()
+      for(const transfer of [false, true]) {
+        const {fragment} = editor.parseHTMLFragment('<details name="faq" open><summary>Question</summary><p>Answer</p></details>', transfer)
+        const details = fragment.querySelector("details")!
+        expect(details.hasAttribute("name")).toBe(false)
+        expect(details.open).toBe(true)
+        expect(details.querySelector("summary")!.textContent).toBe("Question")
+        expect(details.querySelector("p")!.textContent).toBe("Answer")
+      }
+    }
+    finally {editor.destroy()}
+  })
+})

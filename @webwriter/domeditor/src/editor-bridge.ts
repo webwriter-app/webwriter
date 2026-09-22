@@ -200,7 +200,6 @@ export const blockFormatTags = [
   "h4",
   "h5",
   "h6",
-  "pre",
   "blockquote",
 ] as const
 

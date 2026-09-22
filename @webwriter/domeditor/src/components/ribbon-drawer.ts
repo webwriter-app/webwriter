@@ -1132,13 +1132,15 @@ export class RibbonDrawer extends LitElement {
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
     if(
       this.drawerOpen && !event.composedPath().includes(this) &&
+      !this.pane &&
       !(this.layout === "marks" && this.forcedOpen)
     ) this.closeDrawer()
   }
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
-    if(!this.drawerOpen || event.key !== "Escape") return
+    if(!this.drawerOpen || event.key !== "Escape" || this.pane && !event.composedPath().includes(this)) return
     this.closeDrawer()
+    this.dispatchUserToggle()
     const opener = this.layout === "elements" && !this.collapsed
       ? this.querySelector(this.compact ? '.layout-opener[slot="compact"]' : '.layout-opener:not([slot="compact"])')
         ?.shadowRoot?.querySelector<HTMLButtonElement>(".submenu-trigger")
@@ -1153,7 +1155,7 @@ export class RibbonDrawer extends LitElement {
       return
     }
     const keepOpen = detail?.keepDrawerOpen
-    if(!keepOpen) this.closeDrawer()
+    if(!keepOpen && !this.pane) this.closeDrawer()
   }
 
   connectedCallback() {
@@ -1422,9 +1424,15 @@ export class RibbonDrawer extends LitElement {
     if(!this.collapsed && (this.layout === "marks" || !this.expandable)) return
     if(this.drawerOpen) {
       this.closeDrawer()
-      return
     }
-    this.openDrawer(false)
+    else this.openDrawer(false)
+    this.dispatchUserToggle()
+  }
+
+  private dispatchUserToggle() {
+    this.dispatchEvent(new CustomEvent("ribbon-drawer-toggle", {
+      detail: {open: this.drawerOpen}, bubbles: true, composed: true,
+    }))
   }
 
   private dispatchDrawerState() {

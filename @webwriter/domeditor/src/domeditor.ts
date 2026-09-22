@@ -1481,7 +1481,8 @@ export class DOMEditor {
    * strip styling, excluded marks, and section wrappers and canonize aliases; explicit HTML
    * edits retain authored structure and styles. */
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false) {
-    this.schema.enforceMedia(fragment)
+    // Convert PRE after transfer sanitization so its whitespace styles survive.
+    this.schema.enforceMedia(fragment, false)
     this.clearEditingArtifacts(fragment)
     const removedUnsafeItems = stripActiveContent(fragment, {
       allowIframes: true,

@@ -114,7 +114,6 @@ const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[
   blockquote: [{name: "cite", label: "Source URL", kind: "url", placeholder: "https://…"}],
   q: [{name: "cite", label: "Source URL", kind: "url", placeholder: "https://…"}],
   details: [
-    {name: "name", label: "Accordion group"},
     {name: "open", label: "Initially open", kind: "boolean"},
   ],
   ol: [
@@ -171,6 +170,7 @@ export function elementAttributeEditability(name: string, localName?: string, na
   const limitation = localName ? elementEditingLimitation(localName, namespaceURI) : null
   if(limitation?.attributes === "read-only") return {editable: false, reason: "Read-only by policy"} as const
   const normalized = name.toLowerCase()
+  if(localName === "details" && normalized === "name") return {editable: false, reason: "Accordion groups are unsupported"} as const
   if((localName === "td" || localName === "th") && ["headers", "scope", "abbr"].includes(normalized)
     || ["table", "thead", "tbody", "tfoot", "tr", "td", "th"].includes(localName ?? "") && normalized === "role") {
     return {editable: false, reason: "Unsupported by the table schema"} as const

@@ -1542,14 +1542,12 @@ export class DomEditor extends LitElement {
 
   private handleEditorPointerDown = (event: PointerEvent) => {
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-    const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
     ribbon?.dismissAIChat()
     if(isWidgetShadowInteraction(event)) return
     this.focusEditor()
     ribbon?.dismissCollapsedMenu()
     if(!this.editorTargetSharesTextSelection(event.target)) {
       ribbon?.dismissDrawers()
-      toolbox?.dismissDrawers()
     }
   }
 
@@ -3371,11 +3369,6 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
-  private handleParagraphFormatChange = (event: Event) => {
-    const preformatted = (event as CustomEvent<{preformatted?: unknown}>).detail?.preformatted
-    if(typeof preformatted !== "boolean") return
-    void this.execute({type: "setBlockType", tag: preformatted ? "pre" : "p"}).finally(() => this.focusEditor())
-  }
 
   private handleHeadingGroupLevelChange = (event: Event) => {
     const level = (event as CustomEvent<{level?: unknown}>).detail?.level
@@ -4005,7 +3998,7 @@ export class DomEditor extends LitElement {
 
   private stylesVisible() {
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    return toolbox?.activeTool === "Style" || toolbox?.activeTool === "Edit" && !toolbox.developMode
+    return toolbox?.activeTool === "Style" || toolbox?.activeTool === "Edit" && !toolbox.htmlMode && !toolbox.developMode
       || this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.activeMenu === "Style"
   }
 
@@ -4628,7 +4621,6 @@ export class DomEditor extends LitElement {
       "ruby-action": this.handleRubyAction.bind(this),
       "list-attribute-change": this.handleListAttributeChange.bind(this),
       "heading-group-level-change": this.handleHeadingGroupLevelChange.bind(this),
-      "paragraph-format-change": this.handleParagraphFormatChange.bind(this),
       "comment-action": this.handleCommentAction.bind(this),
       "media-attribute-change": this.handleMediaAttributeChange.bind(this),
       "media-resource-action": this.handleMediaResourceAction.bind(this),

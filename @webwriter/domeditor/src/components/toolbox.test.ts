@@ -40,8 +40,8 @@ describe("toolbox", () => {
     expect(drawer.shadowRoot!.querySelector(".pane-icon .icon-tabler-palette")).not.toBeNull()
     const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
     await advanced.updateComplete
-    expect(advanced.propertyNames).toEqual(["width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"])
-    expect(advanced.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(6)
+    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"])
+    expect(advanced.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(8)
     expect(drawer.expandable).toBe(true)
     expect(drawer.shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
     drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
@@ -50,8 +50,9 @@ describe("toolbox", () => {
 
     const basic = drawer.querySelector<ElementStyleEditor>("element-style-editor")!
     await basic.updateComplete
+    expect(basic.shadowRoot!.querySelectorAll(".style-gallery button")).toHaveLength(8)
     expect(Array.from(basic.shadowRoot!.querySelectorAll("[data-property]"), row => row.getAttribute("data-property")))
-      .toEqual(["background-color", "color", "border-width", "padding"])
+      .toEqual([])
     const editor = advanced
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!.value).toBe("123")
     toolbox.elementStyle = {...toolbox.elementStyle, inline: {width: {value: "250px", priority: ""}}}
@@ -496,7 +497,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
-      .toEqual(["Image", "Style", "Attributes"])
+      .toEqual(["Style", "Image", "Attributes"])
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"] element-attribute-editor')).not.toBeNull()
 
     toolbox.media = null
@@ -514,7 +515,7 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).not.toBeNull()
   })
 
-  it("reflects the current paragraph type in its preformatted switch", async () => {
+  it("omits the specialized paragraph toolbox", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Edit")
     for(const tag of ["p", "pre", "p"]) {
@@ -525,10 +526,8 @@ describe("toolbox", () => {
       await toolbox.updateComplete
       expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Paragraph")
       expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
-        .toEqual(["Paragraph", "Style", "Attributes"])
-      const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"]')!
-      expect(toggle.checked).toBe(tag === "pre")
-      expect(toggle.closest("label")!.textContent).toContain("Preformatted text")
+        .toEqual(["Style", "Attributes"])
+      expect(toolbox.shadowRoot!.querySelector('.paragraph-format-switch')).toBeNull()
     }
     toolbox.elementAttributes = {...toolbox.elementAttributes!, localName: "h1", name: "Heading"}
     await toolbox.updateComplete
@@ -550,10 +549,8 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer")).map(drawer => drawer.label))
-      .toEqual(["Disclosure", "Style", "Attributes"])
-    const disclosure = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Disclosure"]')!
-    expect(disclosure.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("faq")
-    expect(disclosure.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
+      .toEqual(["Style", "Attributes"])
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Disclosure"]')).toBeNull()
 
     toolbox.elementAttributes = null
     toolbox.headingGroup = {heading: "h2", beforeCount: 1, afterCount: 1}
@@ -708,8 +705,8 @@ it("limits the document Style drawer to Background", async () => {
   await toolbox.updateComplete
   const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
   await drawer.updateComplete
-  expect(drawer.expandable).toBe(false)
-  const controls = drawer.querySelector<ElementStyleEditor>("element-style-editor")!
+  expect(drawer.expandable).toBe(true)
+  const controls = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
   await controls.updateComplete
   expect(Array.from(controls.shadowRoot!.querySelectorAll("[data-property]"), row => row.getAttribute("data-property"))).toEqual(["background-color"])
 })
@@ -777,9 +774,67 @@ it("counts authored advanced fields once each in the Advanced options pill", asy
   }
   await toolbox.updateComplete
   await drawer.updateComplete
-  expect(drawer.shadowRoot!.querySelector(".advanced-count")!.textContent).toBe("5")
+  expect(drawer.shadowRoot!.querySelector(".advanced-count")!.textContent).toBe("6")
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {}}
   await toolbox.updateComplete
   await drawer.updateComplete
   expect(drawer.shadowRoot!.querySelector(".advanced-count")!.textContent).toBe("0")
+})
+
+it("retains Style advanced options through selection changes and outside clicks", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  await toolbox.updateComplete
+  const drawer = () => toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+  await drawer().updateComplete
+  drawer().shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+  document.body.dispatchEvent(new Event("pointerdown", {bubbles: true}))
+  toolbox.elementAttributes = {
+    path: [0], localName: "my-widget", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Widget", attributes: {},
+  }
+  await toolbox.updateComplete
+  await drawer().updateComplete
+  await drawer().updateComplete
+  expect(drawer().shadowRoot!.querySelector(".drawer-toggle")!.getAttribute("aria-expanded")).toBe("true")
+  toolbox.documentSelected = true
+  await toolbox.updateComplete
+  await drawer().updateComplete
+  toolbox.documentSelected = false
+  await toolbox.updateComplete
+  await drawer().updateComplete
+  await drawer().updateComplete
+  expect(drawer().shadowRoot!.querySelector(".drawer-toggle")!.getAttribute("aria-expanded")).toBe("true")
+})
+
+it("remembers advanced options until explicitly collapsed or the toolbox closes", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  await toolbox.updateComplete
+  const drawer = () => toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+  const settle = async () => {
+    await toolbox.updateComplete
+    await drawer().updateComplete
+    await drawer().updateComplete
+  }
+  await settle()
+  const toggle = () => drawer().shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+  const isOpen = () => drawer().shadowRoot!.querySelector(".drawer-toggle")!.getAttribute("aria-expanded")
+  toggle()
+  toolbox.dismissDrawers()
+  drawer().dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {}, bubbles: true}))
+  toolbox.selectTool("Review")
+  await toolbox.updateComplete
+  toolbox.selectTool("Edit")
+  await settle()
+  expect(isOpen()).toBe("true")
+  toggle()
+  toolbox.elementStyle = {...toolbox.elementStyle, inline: {width: {value: "20px", priority: ""}}}
+  await settle()
+  expect(isOpen()).toBe("false")
+  toggle()
+  toolbox.selectTool(null)
+  await toolbox.updateComplete
+  toolbox.selectTool("Edit")
+  await settle()
+  expect(isOpen()).toBe("false")
 })

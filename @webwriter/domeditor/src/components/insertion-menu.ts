@@ -41,7 +41,6 @@ export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot
 
 export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
-  insertionMenuItem("Text", "pre"),
   insertionMenuItem("Text", "h1"),
   ...headingInsertionTags.map(tag => insertionMenuItem("Text", tag)),
   insertionMenuItem("Lists", "ul"),

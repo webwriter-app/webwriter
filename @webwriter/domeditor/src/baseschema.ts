@@ -452,6 +452,7 @@ export const baseSchema = {
     content: {options: [{group: "phrasing"}, {selector: {type: "text"}}], min: 0, max: Infinity},
   },
   "pre": {
+    directlyInsertable: false,
     group: ["flow", "palpable"],
     content: {options: [{group: "phrasing"}, {selector: {type: "text"}}], min: 0, max: Infinity},
   },

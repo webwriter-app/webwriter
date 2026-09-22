@@ -772,27 +772,6 @@ export abstract class EditingControls extends LitElement {
       && (this.elementAttributes.localName === "p" || this.elementAttributes.localName === "pre")
   }
 
-  protected renderParagraphDrawer() {
-    if(!this.paragraphSelected) return nothing
-    return html`
-      <ribbon-drawer label="Paragraph" icon="Paragraph" layout="form">
-        <label class="paragraph-format-switch">
-          <span>Preformatted text</span>
-          <input
-            type="checkbox"
-            role="switch"
-            .checked=${this.elementAttributes?.localName === "pre"}
-            @change=${(event: Event) => this.dispatchEvent(new CustomEvent("paragraph-format-change", {
-              detail: {preformatted: (event.currentTarget as HTMLInputElement).checked},
-              bubbles: true,
-              composed: true,
-            }))}
-          />
-        </label>
-      </ribbon-drawer>
-    `
-  }
-
   protected renderHeadingGroupDrawer() {
     if(!this.headingGroup) return nothing
     return html`
@@ -810,31 +789,6 @@ export abstract class EditingControls extends LitElement {
         </label>
         <ribbon-button label="Add text above" action="heading-group-add-before" icon="Plus"></ribbon-button>
         <ribbon-button label="Add text below" action="heading-group-add-after" icon="Plus"></ribbon-button>
-      </ribbon-drawer>
-    `
-  }
-
-  protected renderDisclosureDrawer() {
-    if(this.elementAttributes?.localName !== "details") return nothing
-    return html`
-      <ribbon-drawer label="Disclosure" icon="Details" layout="form">
-        <label class="mark-attribute">
-          <span>Group</span>
-          <input
-            type="text"
-            placeholder="Independent"
-            .value=${this.elementAttributes.attributes.name ?? ""}
-            @change=${(event: Event) => this.dispatchSelectedElementAttribute("name", (event.currentTarget as HTMLInputElement).value)}
-          />
-        </label>
-        <label class="mark-attribute">
-          <span>Initially open</span>
-          <input
-            type="checkbox"
-            .checked=${Object.hasOwn(this.elementAttributes.attributes, "open")}
-            @change=${(event: Event) => this.dispatchSelectedElementAttribute("open", (event.currentTarget as HTMLInputElement).checked ? "" : null)}
-          />
-        </label>
       </ribbon-drawer>
     `
   }
@@ -2501,10 +2455,8 @@ export abstract class EditingControls extends LitElement {
     if(drawer.label === "Versions") return this.renderHistoryVersionsDrawer()
     if(drawer.label === "Marks") return this.renderMarkDrawer()
     if(drawer.label === "Section") return this.renderSectionDrawer()
-    if(drawer.label === "Paragraph") return this.renderParagraphDrawer()
     if(drawer.label === "Heading group") return this.renderHeadingGroupDrawer()
     if(drawer.label === "List") return this.renderListDrawer()
-    if(drawer.label === "Disclosure") return this.renderDisclosureDrawer()
     if(drawer.label === "Attributes") return this.renderElementAttributesDrawer()
     if(drawer.label === "Media") return this.renderMediaDrawer()
     if(drawer.label === "Dialog") return this.renderDialogDrawer()

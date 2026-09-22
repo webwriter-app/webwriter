@@ -31,7 +31,7 @@ describe("HTML Living Standard capability coverage", () => {
   })
 
   it("keeps the reviewed support totals and remaining gaps explicit", () => {
-    expect(htmlElementSupportCounts()).toEqual({full: 86, partial: 11, none: 19})
+    expect(htmlElementSupportCounts()).toEqual({full: 85, partial: 11, none: 20})
     expect(sorted(Object.entries(htmlElementCapabilities)
       .filter(([, capability]) => capability.support === "partial")
       .map(([name]) => name))).toEqual(sorted([
@@ -40,7 +40,7 @@ describe("HTML Living Standard capability coverage", () => {
     ]))
     expect(sorted(Object.entries(htmlElementCapabilities)
       .filter(([, capability]) => capability.support === "none")
-      .map(([name]) => name))).toEqual(sorted(["script", "style", "col", "colgroup", ...formElementTypes]))
+      .map(([name]) => name))).toEqual(sorted(["script", "style", "col", "colgroup", "pre", ...formElementTypes]))
   })
 
   it("keeps direct visual insertion in agreement with the actual built-in menu", () => {
@@ -92,6 +92,6 @@ describe("HTML Living Standard capability coverage", () => {
 
     expect(sorted(Object.entries(htmlElementCapabilities)
       .filter(([, capability]) => !capability.attributeEditing)
-      .map(([name]) => name))).toEqual(sorted(["script", "style", "col", "colgroup", ...formElementTypes]))
+      .map(([name]) => name))).toEqual(sorted(["script", "style", "col", "colgroup", "pre", ...formElementTypes]))
   })
 })

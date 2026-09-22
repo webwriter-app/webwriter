@@ -1032,47 +1032,6 @@ export const editingControlStyles = css`
       accent-color: #3977c7;
     }
 
-    .paragraph-format-switch {
-      display: flex;
-      grid-column: 1 / -1;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      font-size: 0.75rem;
-      cursor: pointer;
-    }
-
-    .paragraph-format-switch input {
-      appearance: none;
-      flex: 0 0 auto;
-      width: 2rem;
-      height: 1.125rem;
-      margin: 0;
-      padding: 2px;
-      border: 1px solid #94a3b8;
-      border-radius: 1rem;
-      background: #e2e8f0;
-      cursor: pointer;
-    }
-
-    .paragraph-format-switch input::before {
-      display: block;
-      width: 0.75rem;
-      height: 0.75rem;
-      border-radius: 50%;
-      background: #fff;
-      content: "";
-    }
-
-    .paragraph-format-switch input:checked {
-      border-color: #2563eb;
-      background: #2563eb;
-    }
-
-    .paragraph-format-switch input:checked::before {
-      transform: translateX(0.875rem);
-    }
-
     .media-type-switch {
       box-sizing: border-box;
       width: 100%;

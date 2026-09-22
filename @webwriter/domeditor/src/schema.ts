@@ -1030,16 +1030,29 @@ export class Schema {
     }
   }
 
-  /** Apply the schema's media constraints without repairing unrelated content.
+  /** Apply media constraints and convert legacy preformatted blocks without repairing unrelated content.
    * Widget-owned subtrees and foreign namespaces remain untouched. */
-  enforceMedia(root: Node) {
+  enforceMedia(root: Node, convertPreformatted = true) {
     const replacements = new Map<Element, Element>()
     const visit = (node: Node) => {
       if(node instanceof Element) {
         if(node.namespaceURI !== "http://www.w3.org/1999/xhtml"
           || node.localName.includes("-") || node.hasAttribute("is")) return
+        if(node.localName === "details") node.removeAttribute("name")
+        if(convertPreformatted && node.localName === "pre" && node.parentNode) {
+          const paragraph = node.ownerDocument.createElement("p")
+          for(const attribute of Array.from(node.attributes)) {
+            paragraph.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          }
+          if(!paragraph.style.whiteSpace) paragraph.style.whiteSpace = "pre-wrap"
+          if(!paragraph.style.fontFamily) paragraph.style.fontFamily = "monospace"
+          paragraph.append(...Array.from(node.childNodes))
+          replacements.set(node, paragraph)
+          node.replaceWith(paragraph)
+          node = paragraph
+        }
         const entry = this.get(node)
-        if(entry?.replacement && node.parentNode) {
+        if(entry?.replacement && node instanceof Element && node.parentNode) {
           const replacement = node.ownerDocument.createElement(entry.replacement)
           Array.from(node.attributes).forEach(attribute => {
             if(["type", "data", "form", "usemap", "classid", "codebase", "codetype", "archive", "declare"].includes(attribute.name)) return
@@ -1085,7 +1098,8 @@ export class Schema {
     const repairing = this.#repairingContent
     this.#repairingContent = true
     try {
-      this.enforceMedia(root)
+      root = this.enforceMedia(root).get(root) ?? root
+      if(!(root instanceof Element)) return
       if(root instanceof HTMLTableElement) normalizeTableStructure(root)
       this.fixInvalidContent(root)
     }
