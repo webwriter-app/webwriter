@@ -670,6 +670,8 @@ it("offers eight palette-based box presets and applies each as one style change"
     "border-style": {value: "solid", priority: ""},
     "border-color": {value: "#5b9bd5", priority: ""},
     "padding": {value: "8px", priority: ""},
+    "box-shadow": {value: "none", priority: ""},
+    "color": {value: "#2f3742", priority: ""},
   }}])
   editor.state = {...state(), target: {localName: "body", namespaceURI: "http://www.w3.org/1999/xhtml", documentRoot: true}}
   await editor.updateComplete
@@ -708,4 +710,78 @@ it("shows text color as an Abc preview and changes or resets it through the pale
   expect(changes.at(-1)).toEqual({property: "color", mutation: {value: "#ed7d31", priority: "important"}})
   editor.shadowRoot!.querySelector<HTMLButtonElement>(".palette-automatic")!.click()
   expect(changes.at(-1)).toEqual({property: "color", mutation: null})
+})
+
+it("paginates box presets with shadows and saturated colors", async () => {
+  const editor = await mount([], state(), "compact")
+  editor.showPresets = true
+  await editor.updateComplete
+  const changes: any[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  const next = () => editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Next style presets"]')!
+  const previous = () => editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Previous style presets"]')!
+  expect(previous().disabled).toBe(true)
+  for(let page = 0; page < 4; page++) {
+    const presets = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")
+    expect(presets).toHaveLength(8)
+    expect(presets[2].textContent).toBe("Abc")
+    expect(presets[2].style.color).toBe(page >= 2 ? "#fff" : "#2f3742")
+    presets[2].click()
+    const styles = changes.at(-1).styles
+    expect(styles["box-shadow"].value).toBe(page % 2 ? "0 4px 8px #0003" : "none")
+    expect(styles.color.value).toBe(page >= 2 ? "#ffffff" : "#2f3742")
+    expect(styles["background-color"].value).toBe(page >= 2 ? "#2e75b6" : "#deebf7")
+    if(page < 3) {next().click(); await editor.updateComplete}
+  }
+  expect(next().disabled).toBe(true)
+  previous().click()
+  await editor.updateComplete
+  expect(next().disabled).toBe(false)
+})
+
+it.each(["box-shadow", "filter"])("offers visual presets and custom values for %s", async property => {
+  const editor = await mount([], state(), "compact")
+  editor.propertyNames = [property]
+  await editor.updateComplete
+  const changes: any[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(true)
+  const buttons = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".effect-presets button")
+  expect(buttons).toHaveLength(6)
+  buttons[1].click()
+  expect(changes.at(-1).property).toBe(property)
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>(".effect-control input")!
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(false)
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".effect-custom")!.click()
+  await editor.updateComplete
+  await editor.updateComplete
+  expect(editor.shadowRoot!.activeElement).toBe(input)
+  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(true)
+  input.value = property === "filter" ? "contrast(1.2)" : "2px 2px 4px black"
+  input.dispatchEvent(new Event("change", {bubbles: true}))
+  expect(changes.at(-1)).toEqual({property, mutation: {value: input.value, priority: ""}})
+  input.value = ""
+  input.dispatchEvent(new Event("change", {bubbles: true}))
+  expect(changes.at(-1)).toEqual({property, mutation: null})
+  input.blur()
+  input.focus()
+  await editor.updateComplete
+  input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+  await editor.updateComplete
+  expect(editor.shadowRoot!.activeElement).not.toBe(input)
+  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(true)
+})
+
+it("groups shadow and filter preview fields and reflects their current effects", async () => {
+  const editor = await mount([], state({
+    "box-shadow": {value: "2px 2px 4px black", priority: ""},
+    filter: {value: "sepia(1)", priority: ""},
+  }), "compact")
+  editor.propertyNames = ["box-shadow", "filter"]
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelectorAll(".effect-fields > .effect-control")).toHaveLength(2)
+  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .shadow-preview")!.style.boxShadow).toBe("2px 2px 4px black")
+  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .filter-preview")!.style.filter).toBe("sepia(1)")
 })

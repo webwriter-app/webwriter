@@ -637,7 +637,7 @@ export class DomEditorToolbox extends EditingControls {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
     const properties = documentTarget ? ["background-color"] : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
-      "width", "height", "margin", "border-radius", "rotate", "scale",
+      "width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter",
     ]
     // Resolve authored shorthands and side declarations through CSSOM, so
     // resetting the drawer leaves unrelated styles such as typography intact.
@@ -659,7 +659,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderUniversalStyleDrawer() {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const advancedProperties = documentTarget ? [] : ["width", "height", "margin", "border-radius", "rotate", "scale"]
+    const advancedProperties = documentTarget ? [] : ["width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
     const advancedCount = advancedProperties.filter(name => Object.hasOwn(setProperties, name)).length
     return html`

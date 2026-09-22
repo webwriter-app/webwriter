@@ -40,8 +40,8 @@ describe("toolbox", () => {
     expect(drawer.shadowRoot!.querySelector(".pane-icon .icon-tabler-palette")).not.toBeNull()
     const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
     await advanced.updateComplete
-    expect(advanced.propertyNames).toEqual(["width", "height", "margin", "border-radius", "rotate", "scale"])
-    expect(advanced.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(4)
+    expect(advanced.propertyNames).toEqual(["width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"])
+    expect(advanced.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(6)
     expect(drawer.expandable).toBe(true)
     expect(drawer.shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
     drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
@@ -771,11 +771,13 @@ it("counts authored advanced fields once each in the Advanced options pill", asy
       "margin-bottom": {value: "4px", priority: ""},
       "border-top-left-radius": {value: "4px", priority: ""},
       "background-color": {value: "red", priority: ""},
+      "box-shadow": {value: "0 4px 8px black", priority: ""},
+      filter: {value: "sepia(1)", priority: ""},
     }, computed: {height: "300px"}, context: {display: "block", parentDisplay: "block"},
   }
   await toolbox.updateComplete
   await drawer.updateComplete
-  expect(drawer.shadowRoot!.querySelector(".advanced-count")!.textContent).toBe("3")
+  expect(drawer.shadowRoot!.querySelector(".advanced-count")!.textContent).toBe("5")
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {}}
   await toolbox.updateComplete
   await drawer.updateComplete

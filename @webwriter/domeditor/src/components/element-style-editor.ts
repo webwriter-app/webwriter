@@ -84,6 +84,8 @@ export class ElementStyleEditor extends LitElement {
     allowCustom: {type: Boolean, attribute: "allow-custom"},
     showPresets: {type: Boolean, attribute: "show-presets"},
     compactMenu: {state: true},
+    galleryPage: {state: true},
+    customEffect: {state: true},
     customProperty: {type: String, state: true},
     customValue: {type: String, state: true},
     customImportant: {type: Boolean, state: true},
@@ -130,6 +132,32 @@ export class ElementStyleEditor extends LitElement {
       font: inherit;
     }
 
+    .gallery-pages { display: grid; grid-template-columns: 0.75rem minmax(0, 1fr) 0.75rem; gap: 0.25rem; align-items: center; }
+    .gallery-page { padding: 0; border: 0; background: transparent; cursor: pointer; }
+    .gallery-page:first-child svg { transform: rotate(180deg); }
+    .gallery-page:disabled { opacity: 0.3; cursor: default; }
+    .gallery-page svg { width: 0.75rem; height: 0.75rem; }
+    .effect-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+    .effect-control.compact-row { display: flex; flex-direction: column; align-items: stretch; gap: 0.3rem; }
+    .effect-control.compact-row label { flex: none; }
+    .effect-control .compact-input { height: 1.7rem; }
+    .effect-control [hidden] { display: none !important; }
+    .effect-control .effect-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .effect-trigger { display: grid; place-items: center; width: 100%; min-width: 0; padding: 0.2rem 1.3rem 0.2rem 0.55rem; border: 0; background: transparent; cursor: pointer; overflow: hidden; }
+    .effect-trigger .shadow-preview { width: 1rem; }
+    .effect-trigger .filter-preview svg { width: 1.4rem; margin-inline: auto; }
+    .effect-trigger .filter-preview { width: 2rem; }
+    .effect-control .compact-toggle { right: 0; }
+    .effect-control .compact-input input { padding-right: 1.3rem; }
+    .effect-popup { padding: 0.35rem; }
+    .effect-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.35rem; padding: 0.3rem 0; min-width: 0; }
+    .effect-popup .effect-presets button { display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; justify-content: normal; min-width: 0; gap: 0; padding: 0.35rem; height: 2.7rem; overflow: hidden; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; cursor: pointer; }
+    .effect-presets button[aria-pressed="true"] { border-color: #8eb6df; box-shadow: 0 0 0 1px #b9d7f5; }
+    .shadow-preview { width: min(1.4rem, 100%); box-sizing: border-box; aspect-ratio: 1; background: #fff; border: 1px solid #c5ccd5; }
+    .filter-preview { display: block; width: 100%; min-width: 0; }
+    .filter-preview svg { display: block; width: 2rem; max-width: 100%; height: auto; }
+    .effect-popup .effect-custom { border-top: 1px solid #d8dee6; margin-top: 0.3rem; }
+    .effect-control button:focus-visible, .gallery-page:focus-visible { outline: 2px solid #b9d7f5; outline-offset: 2px; }
     .style-gallery {
       display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
       grid-template-rows: repeat(2, 2rem); gap: 0.5rem; margin: 0.2rem 0 0.65rem;
@@ -748,6 +776,8 @@ export class ElementStyleEditor extends LitElement {
   orientation: "horizontal" | "vertical" = "horizontal"
   allowCustom = false
   showPresets = false
+  private galleryPage = 0
+  private customEffect: string | null = null
   private compactMenu: string | null = null
   private readonly closeCompactMenus = (event: Event) => {
     const path = event.composedPath()
@@ -1289,22 +1319,111 @@ export class ElementStyleEditor extends LitElement {
     return this.state.target?.documentRoot === true || this.state.target?.localName === "body"
   }
 
+  private renderCompactEffect(name: "box-shadow" | "filter") {
+    const label = name === "box-shadow" ? "Shadow" : "Filter"
+    const presets = name === "box-shadow" ? [
+      ["None", "none"], ["Soft", "0 2px 4px #0003"], ["Medium", "0 4px 8px #0003"],
+      ["Large", "0 8px 16px #0004"], ["Hard", "4px 4px 0 #0006"], ["Inset", "inset 0 2px 6px #0005"],
+    ] : [
+      ["None", "none"], ["Grayscale", "grayscale(1)"], ["Sepia", "sepia(1)"],
+      ["Blur", "blur(2px)"], ["Vivid", "saturate(2)"], ["Invert", "invert(1)"],
+    ]
+    const value = this.declaration(name)?.value ?? ""
+    const open = this.compactMenu === name
+    return html`<div class="compact-row effect-control" data-property=${name}>
+      <label id=${`label-${name}`} for=${`compact-${name}`}>${label}</label>
+      <div class="compact-controls"><div class=${`compact-value ${open ? "open" : ""}`}
+        @focusout=${(event: FocusEvent) => {
+          if(event.relatedTarget instanceof Node && (event.currentTarget as HTMLElement).contains(event.relatedTarget)) return
+          if(this.compactMenu === name) this.compactMenu = null
+          this.customEffect = null
+        }} @keydown=${(event: KeyboardEvent) => {
+          if(event.key === "Enter" && event.target instanceof HTMLInputElement || event.key === "Escape") {
+            event.preventDefault()
+            if(event.target instanceof HTMLElement) event.target.blur()
+            this.compactMenu = null
+            this.customEffect = null
+          }
+        }}>
+        <div class="compact-input">
+          <button type="button" class="effect-trigger" ?hidden=${this.customEffect === name} aria-labelledby=${`label-${name}`}
+            aria-expanded=${open} aria-controls=${`presets-${name}`} title=${value || "Default"}
+            @click=${() => this.compactMenu = open ? null : name}>
+            <span class=${name === "filter" ? "filter-preview" : "shadow-preview"} style=${`${name}:${value || this.state.computed[name] || "none"}`}>
+              ${name === "filter" ? html`<svg viewBox="0 0 32 24" aria-hidden="true"><rect width="32" height="24" rx="2" fill="#5b9bd5"/><circle cx="24" cy="6" r="3" fill="#ffc000"/><path d="M0 24 10 8 20 24M12 24 24 12 32 24" fill="#70ad47"/></svg>` : nothing}
+            </span>
+          </button>
+          <input ?hidden=${this.customEffect !== name} id=${`compact-${name}`} aria-label=${label} role="combobox" aria-autocomplete="none"
+            aria-expanded=${open} aria-controls=${`presets-${name}`} .value=${value} placeholder="Default"
+            @focus=${() => this.compactMenu = name}
+            @input=${(event: Event) => (event.currentTarget as HTMLInputElement).setCustomValidity("")}
+            @change=${(event: Event) => {
+              const input = event.currentTarget as HTMLInputElement
+              const next = input.value.trim()
+              if(next && !CSS.supports(name, next)) {input.setCustomValidity(`Enter a valid CSS ${label.toLowerCase()}`); input.reportValidity(); return}
+              input.setCustomValidity("")
+              this.commitValue(name, next)
+            }}>
+          <button type="button" class="compact-toggle" aria-label=${`${label} presets`} aria-expanded=${open}
+            @click=${() => this.compactMenu = open ? null : name}>${ribbonIcon("ChevronRight")}</button>
+        </div>
+        <div class="compact-options effect-popup" id=${`presets-${name}`} role="group" aria-label=${`${label} presets`} ?hidden=${!open}
+          @pointerdown=${(event: PointerEvent) => event.preventDefault()} @mousedown=${(event: MouseEvent) => event.preventDefault()}>
+          <div class="effect-presets">
+            ${presets.map(([title, css]) => html`<button type="button" title=${title} aria-label=${`${label}: ${title}`}
+              aria-pressed=${value === css} @click=${() => {
+                this.commitValue(name, css)
+                this.customEffect = null
+                this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!.value = css
+                this.compactMenu = null
+              }}>
+              <span class=${name === "filter" ? "filter-preview" : "shadow-preview"} style=${`${name}:${css}`}>
+                ${name === "filter" ? html`<svg viewBox="0 0 32 24" aria-hidden="true"><rect width="32" height="24" rx="2" fill="#5b9bd5"/><circle cx="24" cy="6" r="3" fill="#ffc000"/><path d="M0 24 10 8 20 24M12 24 24 12 32 24" fill="#70ad47"/></svg>` : nothing}
+              </span>
+            </button>`)}
+          </div>
+          <button type="button" class="effect-custom" @click=${async () => {
+            this.customEffect = name
+            await this.updateComplete
+            const input = this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!
+            input.focus()
+            input.select()
+            this.compactMenu = null
+          }}>Custom ${label.toLowerCase()}…</button>
+        </div>
+      </div></div>
+    </div>`
+  }
+
   private renderStyleGallery() {
-    return html`<div class="style-gallery" role="group" aria-label="Background and border presets">
-      ${boxStylePresets.map(preset => html`<button type="button" aria-label=${`${preset.name} style preset`}
+    const shadow = this.galleryPage % 2 === 1 ? "0 4px 8px #0003" : "none"
+    const saturated = this.galleryPage >= 2
+    const columns = [1, 3, 4, 9, 5, 7, 6, 8]
+    const presets = boxStylePresets.map((preset, index) => ({...preset,
+      background: saturated ? borderColorColumns[columns[index]][4] : preset.background,
+      border: saturated ? borderColorColumns[columns[index]][5] : preset.border,
+    }))
+    return html`<div class="gallery-pages">
+      <button class="gallery-page" aria-label="Previous style presets" ?disabled=${this.galleryPage === 0}
+        @click=${() => this.galleryPage--}>${ribbonIcon("ChevronRight")}</button>
+      <div class="style-gallery" role="group" aria-label=${`Style presets, page ${this.galleryPage + 1} of 4`}>
+      ${presets.map(preset => html`<button type="button" aria-label=${`${preset.name} style preset`}
         title=${`${preset.name}: #${preset.background}${this.documentRootTarget ? "" : `, 1px solid #${preset.border}, 4px corners, 8px padding`}`}
-        style=${`background:#${preset.background};border-color:#${preset.border}`}
+        style=${`background:#${preset.background};border-color:#${preset.border};box-shadow:${shadow};color:${saturated ? "#fff" : "#2f3742"}`}
         @click=${() => {
           const values: Record<string, string> = {"background-color": `#${preset.background}`}
           if(!this.documentRootTarget) Object.assign(values, {
             "border-width": "1px", "border-style": "solid", "border-color": `#${preset.border}`, "border-radius": "4px",
-            "padding": "8px",
+            "padding": "8px", "box-shadow": shadow, "color": saturated ? "#ffffff" : "#2f3742",
           })
           const styles = Object.fromEntries(Object.entries(values).map(([property, value]) => [property, {
             value, priority: this.declaration(property)?.priority ?? "",
           }]))
           this.dispatchEvent(new CustomEvent("element-style-change", {detail: {styles}, bubbles: true, composed: true}))
-        }}></button>`)}
+        }}>Abc</button>`)}
+      </div>
+      <button class="gallery-page" aria-label="Next style presets" ?disabled=${this.galleryPage === 3}
+        @click=${() => this.galleryPage++}>${ribbonIcon("ChevronRight")}</button>
     </div>`
   }
 
@@ -1320,6 +1439,10 @@ export class ElementStyleEditor extends LitElement {
       ${this.showPresets ? this.renderStyleGallery() : nothing}
       ${(this.propertyNames ?? ["width", "height", "margin", "border-width", "padding", "background-color"])
         .filter(name => !this.documentRootTarget || name === "background-color").map(name => {
+        if(name === "box-shadow" || name === "filter") {
+          const effects = (this.propertyNames ?? []).filter(property => property === "box-shadow" || property === "filter") as ("box-shadow" | "filter")[]
+          return name === effects[0] ? html`<div class="effect-fields">${effects.map(property => this.renderCompactEffect(property))}</div>` : nothing
+        }
         if(name === "background-color" || name === "color") return html`<div class="compact-row" data-property=${name}>
           <span class="compact-label">${name === "color" ? "Text color" : "Background"}</span>
           <div class="compact-controls background-control">${this.renderCompactColorPicker(name, name === "color" ? "Text color" : "Background color")}</div>
