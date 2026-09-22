@@ -6,6 +6,7 @@ import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
+import worldWww from "@tabler/icons/outline/world-www.svg?raw"
 import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
   isEmptyMedia,
@@ -49,6 +50,18 @@ const mediaInteractionShieldStylesheet = createStylesheet(`
     touch-action: none;
   }
   :host([hidden]) { display: none; }
+  svg {
+    display: none;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 64px;
+    height: 64px;
+    color: #6b7280;
+    pointer-events: none;
+  }
+  :host([data-empty-website]) svg { display: block; }
 `)
 
 const isTimedResourceElement = (node: Node, resource?: TimedMediaResourceType): node is Element => (
@@ -81,16 +94,13 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     overflow: auto;
     padding: .25rem;
     color: #f3f4f6;
-    background: rgb(31 41 55 / 94%);
+    background: rgba(31, 41, 55, 0.5);
     font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     pointer-events: none;
     user-select: none;
     container-type: inline-size;
   }
   :host([data-open]) { display: grid; }
-  :host([data-media="audio"]) {
-    background: rgba(31, 41, 55, 0.5);
-  }
   .content {
     display: flex;
     align-items: center;
@@ -781,7 +791,9 @@ class MediaInteractionShield {
     this.element.contentEditable = "false"
     this.element.setAttribute("part", "media-interaction-shield")
     this.element.setAttribute("aria-hidden", "true")
-    adoptStylesheet(this.element.attachShadow({mode: "open"}), mediaInteractionShieldStylesheet)
+    const root = this.element.attachShadow({mode: "open"})
+    root.innerHTML = worldWww
+    adoptStylesheet(root, mediaInteractionShieldStylesheet)
     this.element.addEventListener("pointerdown", this.handlePointerDown)
     this.element.addEventListener("pointerup", this.handlePointerUp)
     this.element.addEventListener("pointercancel", this.handlePointerCancel)
@@ -791,6 +803,7 @@ class MediaInteractionShield {
 
   setTarget(target: Element) {
     this.target = target
+    this.element.toggleAttribute("data-empty-website", isWebsiteType(target.localName) && isEmptyMedia(target))
     const rect = target.getBoundingClientRect()
     Object.assign(this.element.style, {
       left: `${rect.left}px`,
@@ -904,7 +917,7 @@ export class MediaFeature extends EditorFeature {
       || !element.isConnected
       // Empty frames and native media controls can consume pointer events
       // before they reach the document's empty-media pointer handler.
-      || isEmptyMedia(element) && !element.matches("iframe, audio[controls], video[controls]")
+      || isEmptyMedia(element) && !element.matches("iframe, embed, object, audio[controls], video[controls]")
       || element.hasAttribute("hidden")
       || style.display === "none"
       || style.visibility === "hidden"

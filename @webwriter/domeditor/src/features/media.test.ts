@@ -207,6 +207,50 @@ describe("media editing", () => {
     expect(editor.features.media.placeholder.element).toHaveAttribute("data-media", "video")
   })
 
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
+    "overlays the %s input affordance with the same translucent background", media => {
+      editor.features.media.actions.insertMedia({type: "insertMedia", media})
+      const target = document.querySelector(media)!
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
+      const placeholder = editor.features.media.placeholder
+      placeholder.showFor(target)
+
+      const style = getComputedStyle(placeholder.element)
+      expect(style.backgroundColor).toBe("rgba(31, 41, 55, 0.5)")
+      expect(style.position).toBe("fixed")
+      expect([style.left, style.top, style.width, style.height]).toEqual(["20px", "60px", "320px", "180px"])
+      expect(placeholder.element.getRootNode()).toBe(editor.appendix)
+      const shield = editor.appendix.querySelector(".◆media-interaction-shield")
+      if(shield) expect(Number(style.zIndex)).toBeGreaterThan(Number(getComputedStyle(shield).zIndex))
+    },
+  )
+
+  it.each(["iframe", "embed", "object"])("shows the website icon only while %s is empty", async tag => {
+    const target = document.createElement(tag)
+    document.body.replaceChildren(target)
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
+    await vi.waitFor(() => expect(editor.appendix.querySelector("[data-empty-website]")).not.toBeNull())
+    const shield = editor.appendix.querySelector<HTMLElement>("[data-empty-website]")!
+    const icon = shield.shadowRoot!.querySelector(".icon-tabler-world-www")!
+    expect(icon).not.toBeNull()
+    const style = getComputedStyle(icon)
+    expect(style.color).toBe("#6b7280")
+    expect(style.left).toBe("50%")
+    expect(style.top).toBe("50%")
+    expect(style.transform).toBe("translate(-50%, -50%)")
+    expect(document.body.querySelector("svg")).toBeNull()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toMatch(/svg|data-empty-website/)
+    expect(editor.toHTML(true)).not.toMatch(/svg|data-empty-website/)
+
+    target.setAttribute(tag === "object" ? "data" : "src", "about:blank")
+    await vi.waitFor(() => expect(shield).not.toHaveAttribute("data-empty-website"))
+    target.removeAttribute(tag === "object" ? "data" : "src")
+    await vi.waitFor(() => expect(shield).toHaveAttribute("data-empty-website"))
+    target.remove()
+    await vi.waitFor(() => expect(shield.isConnected).toBe(false))
+  })
+
   it("keeps the inactive media placeholder hidden under the editing CSP", () => {
     const placeholder = editor.features.media.placeholder
 
