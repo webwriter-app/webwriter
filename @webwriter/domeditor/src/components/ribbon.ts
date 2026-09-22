@@ -2823,14 +2823,9 @@ export class AppRibbon extends EditingControls {
 
   private get availablePackages() {
     const installed = new Map(this.installedPackages.map(pkg => [pkg.name, pkg]))
-    const catalogNames = new Set(this.packages.map(pkg => pkg.name))
-    const available = [
-      ...this.packages.map(pkg => installed.get(pkg.name) ?? pkg),
-      ...this.installedPackages.filter(pkg => !catalogNames.has(pkg.name)),
-    ]
     return [
-      ...available.filter(pkg => installed.has(pkg.name)),
-      ...available.filter(pkg => !installed.has(pkg.name)),
+      ...this.installedPackages,
+      ...this.packages.filter(pkg => !installed.has(pkg.name)),
     ]
   }
 
@@ -2881,6 +2876,7 @@ export class AppRibbon extends EditingControls {
         ?active=${installed}
         ?management=${management}
         ?muted=${!installed}
+        .loading=${this.busyPackageNames.includes(pkg.name)}
         ?disabled=${this.busyPackageNames.includes(pkg.name) || !management && !members.length}
         ?keep-drawer-open=${management}
       ></ribbon-button>

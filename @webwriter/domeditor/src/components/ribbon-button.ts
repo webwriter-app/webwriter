@@ -22,6 +22,7 @@ export class RibbonButton extends LitElement {
     active: {type: Boolean, reflect: true},
     compact: {type: Boolean, reflect: true},
     disabled: {type: Boolean, reflect: true},
+    loading: {type: Boolean, reflect: true},
     icon: {type: String},
     iconUrl: {type: String, attribute: "icon-url"},
     iconPath: {type: String, attribute: "icon-path"},
@@ -252,6 +253,27 @@ export class RibbonButton extends LitElement {
       width: 100%;
       height: 100%;
       object-fit: contain;
+    }
+
+    .icon-loading {
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    .icon-loading::after {
+      content: "";
+      box-sizing: border-box;
+      width: 0.85rem;
+      height: 0.85rem;
+      border: 2px solid #526b86;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: ribbon-icon-spin 0.8s linear infinite;
+    }
+
+    @keyframes ribbon-icon-spin {
+      to { transform: rotate(360deg); }
     }
 
     .corner-icon {
@@ -1087,6 +1109,7 @@ export class RibbonButton extends LitElement {
   compact = false
   disabled = false
   icon = ""
+  loading = false
   iconUrl = ""
   iconOnly = false
   iconPath = ""
@@ -1270,6 +1293,7 @@ export class RibbonButton extends LitElement {
   }
 
   private renderIcon() {
+    if(this.loading) return html`<span class="button-icon icon-loading" aria-hidden="true"></span>`
     if(this.variant === "qr") return html`
       <span class="button-icon" aria-hidden="true">
         <webwriter-qr-code .value=${this.qrValue} .size=${56}></webwriter-qr-code>
@@ -1335,6 +1359,7 @@ export class RibbonButton extends LitElement {
           class="main-button"
           type="button"
           aria-label=${this.label}
+          aria-busy=${this.loading ? "true" : nothing}
           aria-pressed=${this.toggle? String(this.active): nothing}
           aria-haspopup=${this.dropdownOnClick && hasDropdown ? this.dropdown !== null ? "dialog" : "menu" : nothing}
           aria-expanded=${this.dropdownOnClick && hasDropdown ? String(this.submenuOpen) : nothing}

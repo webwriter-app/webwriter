@@ -66,7 +66,7 @@ export class PackageSearch extends LitElement {
     }
 
     input::-webkit-search-cancel-button { display: none; }
-    :host([loading]) input, .field:has(.clear) input { padding-right: 1.5rem; }
+    .field:has(.clear) input { padding-right: 1.5rem; }
 
     .clear {
       display: grid;
@@ -89,15 +89,16 @@ export class PackageSearch extends LitElement {
     .clear svg { display: block; width: 100%; height: 100%; }
 
     .loading {
-      position: absolute;
-      top: 50%;
-      right: 0.45rem;
-      color: #667085;
-      font-size: 0.55rem;
-      transform: translateY(-50%);
+      box-sizing: border-box;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: package-search-spin 0.8s linear infinite;
     }
 
-    .field:has(.clear) .loading { right: 1.75rem; }
+    @keyframes package-search-spin {
+      to { transform: rotate(360deg); }
+    }
   `
 
   query = ""
@@ -131,11 +132,12 @@ export class PackageSearch extends LitElement {
   render() {
     return html`
       <div class="field">
-        <span class="icon" aria-hidden="true">${ribbonIcon("Search")}</span>
+        <span class=${this.loading ? "icon loading" : "icon"} aria-hidden="true">${this.loading ? "" : ribbonIcon("Search")}</span>
         <input
           type="search"
           placeholder="Search packages"
           aria-label="Search packages"
+          aria-busy=${this.loading}
           title=${this.error || "Search packages"}
           .value=${this.query}
           @focus=${this.requestCatalog}
@@ -146,7 +148,6 @@ export class PackageSearch extends LitElement {
             ${ribbonIcon("Reject")}
           </button>
         ` : ""}
-        ${this.loading ? html`<span class="loading" aria-hidden="true">…</span>` : ""}
       </div>
     `
   }

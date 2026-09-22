@@ -44,6 +44,81 @@ const packageFixture = (name = "demo"): WebWriterPackage => ({
 afterEach(() => document.body.replaceChildren())
 
 describe("package ribbon controls", () => {
+  it.each([true, false])("replaces the busy package icon with a spinner and restores it afterward (image: %s)", async image => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture()
+    if(!image) pkg.iconUrl = undefined
+    ribbon.packages = [pkg, packageFixture("other")]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    const other = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Other"]')!
+
+    ribbon.busyPackageNames = [pkg.name]
+    await ribbon.updateComplete
+    await Promise.all([button.updateComplete, other.updateComplete])
+    expect(button.shadowRoot!.querySelector(".button-icon.icon-loading")).not.toBeNull()
+    expect(button.shadowRoot!.querySelector(".button-icon svg")).toBeNull()
+    expect(button.shadowRoot!.querySelector(".button-icon img")).toBeNull()
+    expect(button.shadowRoot!.querySelector(".main-button")!.getAttribute("aria-busy")).toBe("true")
+    expect(button.disabled).toBe(true)
+    expect(other.shadowRoot!.querySelector(".icon-loading")).toBeNull()
+
+    ribbon.busyPackageNames = []
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.shadowRoot!.querySelector(".icon-loading")).toBeNull()
+    expect(button.shadowRoot!.querySelector(".button-icon svg")).not.toBeNull()
+    expect(Boolean(button.shadowRoot!.querySelector(".button-icon img"))).toBe(image)
+    expect(button.shadowRoot!.querySelector(".main-button")!.hasAttribute("aria-busy")).toBe(false)
+    expect(button.disabled).toBe(false)
+  })
+
+  it("replaces the search icon with a spinner while fetching packages", async () => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const search = ribbon.shadowRoot!.querySelector("package-search")!
+    await search.updateComplete
+    expect(search.shadowRoot!.querySelector(".icon-tabler-search")).not.toBeNull()
+
+    ribbon.packagesLoading = true
+    await ribbon.updateComplete
+    await search.updateComplete
+    expect(search.shadowRoot!.querySelector(".icon-tabler-search")).toBeNull()
+    expect(search.shadowRoot!.querySelector(".icon.loading")).not.toBeNull()
+    expect(search.shadowRoot!.querySelector("input")!.getAttribute("aria-busy")).toBe("true")
+
+    ribbon.packagesLoading = false
+    ribbon.packageError = "Catalog unavailable"
+    await ribbon.updateComplete
+    await search.updateComplete
+    expect(search.shadowRoot!.querySelector(".loading")).toBeNull()
+    expect(search.shadowRoot!.querySelector(".icon-tabler-search")).not.toBeNull()
+    expect(search.shadowRoot!.querySelector("input")!.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it("preserves installed package order and metadata when the catalog arrives", async () => {
+    const ribbon = new AppRibbon()
+    const beta = packageFixture("beta")
+    const alpha = packageFixture("alpha")
+    const missing = packageFixture("missing")
+    ribbon.installedPackages = [beta, missing, alpha]
+    ribbon.packagesLoading = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const labels = () => Array.from(
+      ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'),
+      button => button.label,
+    )
+    expect(labels()).toEqual(["Beta", "Missing", "Alpha"])
+
+    ribbon.packages = [packageFixture("available"), {...alpha, label: "New Alpha"}, {...beta, label: "New Beta"}]
+    ribbon.packagesLoading = false
+    await ribbon.updateComplete
+    expect(labels()).toEqual(["Beta", "Missing", "Alpha", "Available"])
+  })
+
   it("fills the remaining space after the insertion drawers on Start", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
