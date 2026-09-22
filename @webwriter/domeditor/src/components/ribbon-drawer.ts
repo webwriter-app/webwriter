@@ -72,7 +72,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"]) {
       --ribbon-drawer-expanded-width: 22.25rem;
-      --ribbon-drawer-compact-width: 12rem;
+      --ribbon-drawer-compact-width: 8rem;
       /* The gallery is a second tier below the two-row Elements controls. */
       --ribbon-drawer-height: 9rem;
       --ribbon-drawer-more-height: min(28rem, calc(100vh - 4.5rem));
@@ -155,7 +155,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"][compact]) .elements-primary-controls {
       flex-basis: var(--elements-header-height, 5.625rem);
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: row;
       grid-auto-columns: minmax(0, 1fr);

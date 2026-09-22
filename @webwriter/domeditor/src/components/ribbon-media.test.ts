@@ -86,10 +86,16 @@ describe("media ribbon drawer", () => {
     }))
   })
 
-  it("exposes capture actions in the compact Media menu", async () => {
+  it.each([
+    ["Image", "picture", "screen-image", "camera-image"],
+    ["Audio", "audio", "screen-audio", "microphone-audio"],
+    ["Video", "video", "screen-video", "camera-video"],
+  ])("groups source actions under %s in the compact Media menu", async (label, type, screen, record) => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     ribbon.expanded = false
+    const listener = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", listener)
     document.body.append(ribbon)
     await ribbon.updateComplete
 
@@ -101,11 +107,22 @@ describe("media ribbon drawer", () => {
     await media.updateComplete
     const menu = media.shadowRoot!.querySelector("ribbon-menu")!
     await (menu as unknown as {updateComplete: Promise<unknown>}).updateComplete
-    const labels = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+    const labels = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('.item-row > .item'))
       .map(option => option.textContent?.trim())
-    expect(labels).toContain("Image: Select file")
-    expect(labels).toContain("Audio: Record")
-    expect(labels).toContain("Video: Capture screen")
+    expect(labels).toEqual(["Image", "Audio", "Video", "Graphic", "Formula", "Website"])
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(`.item[title="${label}"]`)!.click()
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {label}}))
+
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(`[aria-label="Show more ${label} options"]`)!.click()
+    await (menu as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    const options = menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(`[aria-label="${label} options"] .item`)
+    expect(Array.from(options, option => option.textContent?.trim())).toEqual([
+      "Select file", "Capture screen", "Record",
+    ])
+    for(const [index, action] of [`media-file:${type}`, `media-capture:${screen}`, `media-capture:${record}`].entries()) {
+      options[index].click()
+      expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {label: action}}))
+    }
   })
 
   it.each([

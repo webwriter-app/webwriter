@@ -3011,21 +3011,17 @@ export class AppRibbon extends EditingControls {
         icon: option.label,
       })),
     ]
-    const compactSourceButtons = (type: "picture" | "audio" | "video") => sourceButtons(type).map(button => ({
-      label: `${type === "picture" ? "Image" : type === "audio" ? "Audio" : "Video"}: ${button.label}`,
-      action: button.action,
-      icon: button.icon,
-    }))
     const compactButtons: RibbonMenuButton[] = [
       groupedButton("Text", "Text", ["Paragraph", "Heading", "List", "Details"]),
       {
         ...groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
-        submenu: [
-          ...(["Image", "Audio", "Video", "Graphic", "Formula", "Website"] as const).map(buttonByLabel),
-          ...compactSourceButtons("picture"),
-          ...compactSourceButtons("audio"),
-          ...compactSourceButtons("video"),
-        ],
+        submenu: ["Image", "Audio", "Video", "Graphic", "Formula", "Website"].map(label => {
+          const button = buttonByLabel(label)
+          const type = insertionMenuItems.find(candidate => candidate.name === label)?.tag
+          return type === "picture" || type === "audio" || type === "video"
+            ? {...(typeof button === "string" ? {label: button} : button), submenu: sourceButtons(type)}
+            : button
+        }),
       },
       buttonByLabel("Table"),
     ]
