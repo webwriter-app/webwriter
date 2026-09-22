@@ -340,8 +340,6 @@ type DocumentEditorSession = {
 
 const documentEditorSessions = new WeakMap<Document, DocumentEditorSession>()
 
-const isWidgetElement = (element: Element) => element.namespaceURI === "http://www.w3.org/1999/xhtml"
-  && (element.localName.includes("-") || element.hasAttribute("is"))
 
 type FeatureActions<F extends keyof DOMEditor["features"]> = NonNullable<DOMEditor["features"][F]["actions"]>
 type FeatureAction<F extends keyof DOMEditor["features"]> = {
@@ -642,7 +640,6 @@ export class DOMEditor {
       this.#bodySchemaObserver.observe(document.head, {
         childList: true, subtree: true, characterData: true, attributes: true,
       })
-      this.#enableWidgetEditing(document.body)
       if(!initialYDoc) this.#ensureDocumentContent()
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
@@ -656,7 +653,6 @@ export class DOMEditor {
         })
       }
       this.#ensureDocumentContent()
-      this.#enableWidgetEditing(document.body)
       Object.entries(this.features)
         .forEach(([, feat]) => feat.enable())
       document.addEventListener("input", this.#handleInput)
@@ -685,24 +681,8 @@ export class DOMEditor {
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
   }
 
-  #handleBodySchemaChanges = (mutations: MutationRecord[]) => {
-    for(const mutation of mutations) {
-      if(!document.body.contains(mutation.target)) continue
-      if(mutation.type === "attributes") this.#enableWidgetEditing(mutation.target, false)
-      else mutation.addedNodes.forEach(node => {
-        if(document.body.contains(node)) this.#enableWidgetEditing(node)
-      })
-    }
+  #handleBodySchemaChanges = () => {
     this.#ensureDocumentContent()
-  }
-
-  /** Covers prepared fragments and arbitrary live DOM insertions without
-   * entering widget shadow roots or changing their ordinary light-DOM content. */
-  #enableWidgetEditing(node: Node, descendants=true) {
-    if(node instanceof Element && isWidgetElement(node) && node.getAttribute("contenteditable") !== "true") {
-      node.setAttribute("contenteditable", "true")
-    }
-    if(descendants) node.childNodes.forEach(child => this.#enableWidgetEditing(child))
   }
 
   /** Restores a static default flow child when none remains in the body.
@@ -1226,10 +1206,25 @@ export class DOMEditor {
     if(root.querySelector("iframe[src], iframe[srcdoc]")) {
       throw new Error("Offline export cannot embed an iframe's resource dependencies. Use HTML format for this document.")
     }
+    const svgResources: Array<[Element, string]> = []
+    for(const element of root.querySelectorAll("image, use, feImage")) {
+      if(element.namespaceURI !== "http://www.w3.org/2000/svg") continue
+      for(const attribute of ["href", "xlink:href"]) {
+        const value = element.getAttribute(attribute)?.trim()
+        if(!value || value.startsWith("#") || /^data:/i.test(value)) continue
+        if(element.localName !== "image") {
+          throw new Error(`Offline export cannot embed external SVG ${element.localName} references. Use HTML format for this document.`)
+        }
+        svgResources.push([element, attribute])
+      }
+    }
     for(const [selector, attribute] of resources) {
       root.querySelectorAll<HTMLElement>(selector).forEach(element => {
         jobs.push(this.inlineResourceAttribute(element, attribute))
       })
+    }
+    for(const [element, attribute] of svgResources) {
+      jobs.push(this.inlineResourceAttribute(element, attribute))
     }
     root.querySelectorAll<HTMLElement>("img[srcset], source[srcset]").forEach(element => {
       jobs.push(this.inlineSrcset(element))
@@ -1280,13 +1275,25 @@ export class DOMEditor {
     return await this.blobDataURL(await (await this.fetchResource(url.href)).blob()) + fragment
   }
 
-  private async inlineResourceAttribute(element: HTMLElement, attribute: string) {
+  private async inlineResourceAttribute(element: Element, attribute: string) {
     const original = element.getAttribute(attribute)
     if(!original || /^data:/i.test(original)) return
     try {
-      const data = await this.resourceDataURL(original)
+      let data: string
+      if(element.namespaceURI === "http://www.w3.org/2000/svg") {
+        const response = await this.fetchResource(original)
+        const blob = await response.blob()
+        // A nested SVG may itself fetch external resources. Keep that case
+        // explicit until its dependency graph can be bundled recursively.
+        if(!/^image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon|vnd.microsoft.icon)$/i.test(blob.type)) {
+          throw new Error("Offline export only embeds raster SVG image references. Use HTML format for nested SVG resources.")
+        }
+        data = await this.blobDataURL(blob) + new URL(original, document.baseURI).hash
+      }
+      else data = await this.resourceDataURL(original)
       element.setAttribute(originalURLAttribute(attribute), original)
-      element.setAttribute(attribute, data)
+      if(attribute === "xlink:href") element.setAttributeNS("http://www.w3.org/1999/xlink", attribute, data)
+      else element.setAttribute(attribute, data)
     }
     catch(error) {
       throw new Error(`Could not inline ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
@@ -1466,7 +1473,6 @@ export class DOMEditor {
         return
       }
       this.ignoreAttrs.forEach(attribute => child.removeAttribute(attribute))
-      if(isWidgetElement(child)) child.removeAttribute("contenteditable")
       const markers = Array.from(child.classList).filter(name => name.startsWith("◆"))
       if(markers.length) child.classList.remove(...markers)
       if(!child.classList.length) child.removeAttribute("class")
@@ -1500,7 +1506,6 @@ export class DOMEditor {
     this.schema.checkAndCorrect(stagingBody, true)
     const prepared = stagingBody.ownerDocument.createDocumentFragment()
     prepared.append(...Array.from(stagingBody.childNodes))
-    this.#enableWidgetEditing(prepared)
     return {fragment: prepared, removedUnsafeItems}
   }
 

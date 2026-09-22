@@ -1346,6 +1346,21 @@ export function cloneRangeIn<T extends Node>(root: T, range: Range) {
   return {root: clonedRoot, range: clonedRange}
 }
 
+/** Capture selected node identities before an asynchronous editing operation. */
+export function captureRangeIdentity(range: Range) {
+  const identity = new Set<Node>()
+  const visit = (node: Node) => {
+    try {
+      if(!range.intersectsNode(node)) return
+    }
+    catch { return }
+    identity.add(node)
+    node.childNodes.forEach(visit)
+  }
+  visit(range.commonAncestorContainer)
+  return identity
+}
+
 /** Range.cloneContents() in the live document initializes selected widgets.
  * Clone the range in inert DOM instead, preserving native partial-node rules. */
 export function cloneRangeContents(range: Range) {

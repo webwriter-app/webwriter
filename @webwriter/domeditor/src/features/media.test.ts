@@ -489,6 +489,35 @@ describe("media editing", () => {
     }, {timeout: 5_000})
   })
 
+  it.each(["populated", "moved into a widget", "feature disabled", "editor destroyed"])(
+    "ignores a delayed file read after its target is %s", state => {
+      let reader: FileReader | undefined
+      vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) {
+        reader = this
+      })
+      editor.features.media.actions.insertMedia({type: "insertMedia", media: "img"})
+      const image = document.querySelector("img")!
+      const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
+      Object.defineProperty(picker, "files", {configurable: true, value: [new File(["image"], "photo.png", {type: "image/png"})]})
+      picker.dispatchEvent(new Event("change"))
+      expect(reader).toBeDefined()
+
+      if(state === "populated") image.setAttribute("src", "remote.png")
+      else if(state === "moved into a widget") {
+        const widget = document.createElement("media-widget")
+        image.replaceWith(widget)
+        widget.append(image)
+      }
+      else if(state === "feature disabled") editor.features.media.disable()
+      else editor.destroy()
+
+      Object.defineProperty(reader!, "result", {configurable: true, value: "data:image/png;base64,bG9jYWw="})
+      reader!.dispatchEvent(new Event("load"))
+
+      expect(image.getAttribute("src")).toBe(state === "populated" ? "remote.png" : null)
+    },
+  )
+
   it("edits advanced attributes and retains the picture container", () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "picture"})
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "alt", value: "A diagram"})

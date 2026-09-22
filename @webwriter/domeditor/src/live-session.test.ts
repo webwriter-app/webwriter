@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
+import * as Y from "yjs"
 import {LiveSession} from "./live-session"
 
 const sessions: LiveSession[] = []
@@ -110,6 +111,50 @@ describe("LiveSession", () => {
     const second = create({id: "isolated", role: "learner", token: "bbbbbbbbbbbbbbbbbbbbbbbb", learner: {id: "learner", name: "Learner", color: "#fff"}})
     first.publish({kind: "document", html: "<p>secret</p>"})
     expect(second.steps).toEqual([])
+  })
+
+  it("does not create a serverless BroadcastChannel or accept raw channel updates", () => {
+    const channels = new Map<string, Set<TestBroadcastChannel>>()
+    class TestBroadcastChannel extends EventTarget {
+      static created: TestBroadcastChannel[] = []
+      constructor(readonly name: string) {
+        super()
+        TestBroadcastChannel.created.push(this)
+        const peers = channels.get(name) ?? new Set<TestBroadcastChannel>()
+        peers.add(this)
+        channels.set(name, peers)
+      }
+      postMessage(data: unknown) {
+        channels.get(this.name)?.forEach(peer => {
+          if(peer !== this) peer.dispatchEvent(new MessageEvent("message", {data}))
+        })
+      }
+      close() {
+        channels.get(this.name)?.delete(this)
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", TestBroadcastChannel)
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const host = create({id: "channel-blocked", role: "host", baseHTML: "<p>Host</p>", token})
+
+    expect(TestBroadcastChannel.created).toHaveLength(0)
+
+    const sender = new TestBroadcastChannel("webwriter-live-session:channel-blocked")
+    const forged = new Y.Doc()
+    Y.applyUpdate(forged, Y.encodeStateAsUpdate(host.doc))
+    const before = Y.encodeStateVector(forged)
+    forged.getMap("live-session-meta").set("baseHTML", "<script>forged</script>")
+    sender.postMessage({
+      type: "update",
+      session: host.id,
+      sender: "attacker",
+      token,
+      update: Array.from(Y.encodeStateAsUpdate(forged, before)),
+    })
+
+    expect(host.baseHTML).toBe("<p>Host</p>")
+    sender.close()
+    forged.destroy()
   })
 
   it("keeps a 100-learner roster and propagates incremental activity", () => {

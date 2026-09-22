@@ -1,13 +1,6 @@
+import {isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "./element-attributes"
+
 const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import'], link[rel~='stylesheet']"
-const URL_ATTRIBUTES = new Set(["href", "src", "xlink:href", "action", "formaction", "poster"])
-const unsafeURL = (value: string) => {
-  const normalized = value.trim().toLowerCase().replaceAll(/[\u0000-\u0020]+/g, "")
-  return normalized.startsWith("javascript:")
-    || normalized.startsWith("vbscript:")
-    || normalized.startsWith("data:text/html")
-    || normalized.startsWith("data:image/svg+xml")
-}
-const unsafeStyle = /(?:expression\s*\(|javascript\s*:|data\s*:\s*text\/html)/i
 
 export type ActiveContentStripOptions = {
   /** Retain document CSS in a preview constrained by its own CSP. */
@@ -47,12 +40,14 @@ export function stripActiveContent(root: ParentNode, options: ActiveContentStrip
     element.remove()
     removed++
   })
-  root.querySelectorAll<Element>("*").forEach(element => {
+  const elements = root.nodeType === Node.ELEMENT_NODE
+    ? [root as Element, ...Array.from(root.querySelectorAll<Element>("*"))]
+    : Array.from(root.querySelectorAll<Element>("*"))
+  elements.forEach(element => {
     for(const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase()
-      if(name.startsWith("on") || name === "srcdoc"
-        || URL_ATTRIBUTES.has(name) && unsafeURL(attribute.value)
-        || name === "style" && unsafeStyle.test(attribute.value)
+      if(isUnsafeElementAttributeName(name)
+        || isUnsafeElementAttributeValue(name, attribute.value)
         || options.removeAttribute?.(attribute)) {
         element.removeAttribute(attribute.name)
         removed++

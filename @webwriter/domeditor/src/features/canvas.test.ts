@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import {canvasClass, canvasStyles} from "../document-layout"
 import editorStyleString from "../editor.css?raw"
 import {selectionChangeEvent} from "../editor-bridge"
@@ -348,7 +349,7 @@ describe("canvas document layout", () => {
 
     const remote = new Y.Doc()
     Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
-    remote.getXmlElement("body").setAttribute("class", canvasClass)
+    sharedDOMBody(remote).setAttribute("class", canvasClass)
     Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client")
     await settle()
     expect(canvas.getState().mode).toBe("canvas")

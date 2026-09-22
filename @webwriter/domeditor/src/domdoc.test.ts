@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
-import {SharedDOMDoc} from "./domdoc"
+import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
 
 const sharedDocs: SharedDOMDoc[] = []
 
@@ -55,6 +55,108 @@ afterEach(() => {
 })
 
 describe("SharedDOMDoc initialization", () => {
+  it.each(["<p></p>", "<p>same</p>"])("elects one initial tree when independent clients merge %s", html => {
+    const left = createShared(html)
+    const right = createShared(html)
+    const leftUpdate = Y.encodeStateAsUpdate(left.shared.doc)
+    const rightUpdate = Y.encodeStateAsUpdate(right.shared.doc)
+    Y.applyUpdate(left.shared.doc, rightUpdate, "remote")
+    Y.applyUpdate(right.shared.doc, leftUpdate, "remote")
+    expect(left.root.innerHTML).toBe(html)
+    expect(right.root.innerHTML).toBe(html)
+    left.root.firstChild!.textContent = "edited after initialization"
+    left.shared.syncFromDOM()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "remote")
+    expect(right.root.innerHTML).toBe(left.root.innerHTML)
+    left.shared.undo()
+    expect(left.root.innerHTML).toBe(html)
+  })
+
+  it("uses an existing room snapshot before initializing its local placeholder", () => {
+    const existing = createShared("<article>already authored</article>")
+    const root = document.createElement("main")
+    root.innerHTML = "<p>stale local placeholder</p>"
+    const joining = new SharedDOMDoc("ws://localhost:1234", "existing-room", [], ["◆"], {root, connect: false})
+    sharedDocs.push(joining)
+    expect(sharedDOMBody(joining.doc).length).toBe(0)
+    Y.applyUpdate(joining.doc, Y.encodeStateAsUpdate(existing.shared.doc), "room-sync")
+    joining.provider!.emit("sync", [true])
+    expect(root.innerHTML).toBe("<article>already authored</article>")
+    expect(joining.body.length).toBe(1)
+  })
+
+  it("retains compatibility with legacy top-level DOM snapshots", () => {
+    const legacy = new Y.Doc()
+    const body = legacy.getXmlElement("body")
+    const paragraph = new Y.XmlElement("p")
+    paragraph.insert(0, [new Y.XmlText("legacy")])
+    body.insert(0, [paragraph])
+    const {root, shared} = createShared("<p>placeholder</p>", legacy)
+    expect(shared.body).toBe(body)
+    expect(root.innerHTML).toBe("<p>legacy</p>")
+    expect(legacy.getMap("domeditor").has("document")).toBe(false)
+  })
+
+  it("preserves qualified element names and reserved authored attributes", async () => {
+    const {root, shared} = createShared()
+    const element = document.createElementNS("urn:example", "example:item")
+    element.setAttribute("__domeditor_qualified_name", "authored")
+    element.textContent = "content"
+    root.append(element)
+    await mutationsDelivered()
+    const peer = cloneShared(shared)
+    const copy = peer.root.firstElementChild!
+    expect(copy.prefix).toBe("example")
+    expect(copy.localName).toBe("item")
+    expect(copy.namespaceURI).toBe("urn:example")
+    expect(copy.getAttribute("__domeditor_qualified_name")).toBe("authored")
+    shared.undo()
+    expect(root.children).toHaveLength(0)
+    shared.redo()
+    expect(root.firstElementChild!.prefix).toBe("example")
+  })
+
+  it("limits a text or attribute edit to affected nodes in a wide document", async () => {
+    const {root, shared} = createShared('<p class="authored">text</p>'.repeat(1000))
+    const unrelated = shared.body.get(999) as Y.XmlElement
+    const children = vi.spyOn(unrelated, "toArray")
+    const attributes = vi.spyOn(unrelated, "getAttributes")
+    const domAttributes = vi.spyOn(root.lastElementChild!, "setAttribute")
+    root.firstChild!.firstChild!.textContent = "typed"
+    await mutationsDelivered()
+    expect(shared.body.firstChild!.toString()).toContain("typed")
+    shared.doc.transact(() => shared.body.setAttribute("title", "remote title"), "remote-client")
+    expect(root.title).toBe("remote title")
+    expect(children).not.toHaveBeenCalled()
+    expect(attributes).not.toHaveBeenCalled()
+    expect(domAttributes).not.toHaveBeenCalled()
+  })
+
+  it("keeps pending DOM edits when an unrelated remote update arrives in the same task", () => {
+    const local = createShared('<p class="authored">before</p>')
+    const remote = cloneShared(local.shared)
+    remote.root.title = "remote title"
+    remote.shared.syncFromDOM()
+    local.root.firstElementChild!.textContent = "pending local content"
+    Y.applyUpdate(local.shared.doc, Y.encodeStateAsUpdate(remote.shared.doc), "remote-client")
+    expect(local.root.innerHTML).toBe('<p class="authored">pending local content</p>')
+    expect(local.root.title).toBe("remote title")
+    Y.applyUpdate(remote.shared.doc, Y.encodeStateAsUpdate(local.shared.doc), "remote-client")
+    expect(remote.root.innerHTML).toBe(local.root.innerHTML)
+  })
+
+  it("continues observing templates inserted immediately before a remote update", async () => {
+    const {root, shared} = createShared("<p>Initial</p>")
+    const template = document.createElement("template")
+    template.innerHTML = "<p>Template</p>"
+    root.append(template)
+    shared.doc.transact(() => shared.body.setAttribute("title", "remote"), "remote-client")
+    template.content.firstChild!.textContent = "Changed after remote update"
+    await mutationsDelivered()
+    const peer = cloneShared(shared)
+    expect(peer.root.querySelector("template")!.content.textContent).toBe("Changed after remote update")
+  })
+
   it("synchronizes document attributes independently and preserves markers on undo", async () => {
     const {owner, shared} = createDocumentShared("", "<p>Body</p>", "en")
     owner.documentElement.setAttribute("dir", "rtl")

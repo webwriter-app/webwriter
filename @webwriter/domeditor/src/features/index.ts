@@ -1,4 +1,3 @@
-import type { EditingMutation } from "../domdoc"
 import { DOMEditor } from "../domeditor"
 import {isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 
@@ -17,7 +16,6 @@ export function collectFeatureActions(features: Iterable<{actions?: Record<strin
   return handlers as ReadonlyMap<string, FeatureActionHandler>
 }
 
-type ConstraintMap = Record<string, (transaction: EditingMutation[]) => void>
 type ListenerRegistration = {
   owner: DocumentListenerMap
   type: string
@@ -42,7 +40,6 @@ export class EditorFeature {
   captureListeners: DocumentListenerMap = {}
   passiveListeners: DocumentListenerMap = {}
   activeListeners: DocumentListenerMap = {}
-  constraints: ConstraintMap = {}
   actions?: Record<string, FeatureActionHandler>
   /** Native form controls remain browser-managed while captured. */
   protected handlesFormControlInteractions = false

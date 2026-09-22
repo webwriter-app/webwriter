@@ -67,22 +67,23 @@ describe("DOMEditor lifecycle", () => {
     expect(Array.from(appendix.children).some(element => element.localName === "slot" && !element.hasAttribute("name"))).toBe(false)
   })
 
-  it("enables existing widgets on startup and stops enforcing after destruction", async () => {
+  it("preserves authored widget editability in live, shared and serialized DOM", async () => {
     document.body.innerHTML = '<section><demo-widget contenteditable="false"></demo-widget></section>'
     const widget = document.querySelector("demo-widget")!
     const editor = new DOMEditor()
     try {
-      expect(widget.getAttribute("contenteditable")).toBe("true")
+      expect(widget.getAttribute("contenteditable")).toBe("false")
+      expect(editor.doc.body.toString()).toContain('contenteditable="false"')
+      expect(editor.toHTML(true)).toContain('contenteditable="false"')
     }
     finally {
       editor.destroy()
     }
-    widget.setAttribute("contenteditable", "false")
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(widget.getAttribute("contenteditable")).toBe("false")
   })
 
-  it("enables widgets restored from shared state and inserted by remote updates", async () => {
+  it("preserves editability of widgets restored from shared state and remote updates", async () => {
     const remote = new Y.Doc()
     const body = remote.getXmlElement("body")
     const initial = new Y.XmlElement("demo-widget")
@@ -90,11 +91,12 @@ describe("DOMEditor lifecycle", () => {
     body.insert(0, [initial])
     const editor = new DOMEditor({initialState: {update: Array.from(Y.encodeStateAsUpdate(remote))}})
     try {
-      expect(document.querySelector("demo-widget")?.getAttribute("contenteditable")).toBe("true")
+      expect(document.querySelector("demo-widget")?.getAttribute("contenteditable")).toBe("false")
       body.insert(1, [new Y.XmlElement("remote-widget")])
       Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote))
-      await vi.waitFor(() => expect(document.querySelector("remote-widget")?.getAttribute("contenteditable")).toBe("true"))
-      expect(editor.toHTML(true)).not.toContain("contenteditable")
+      await vi.waitFor(() => expect(document.querySelector("remote-widget")).not.toBeNull())
+      expect(document.querySelector("remote-widget")?.getAttribute("contenteditable")).toBeNull()
+      expect(editor.toHTML(true)).toContain('contenteditable="false"')
     }
     finally {
       editor.destroy()

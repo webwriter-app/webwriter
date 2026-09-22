@@ -64,6 +64,41 @@ describe("table grid", () => {
     expect(map.matrix[2][1]?.cell.textContent).toBe("D")
   })
 
+  it("bounds raw oversized column spans to the HTML table limit", () => {
+    document.body.innerHTML = '<table><tbody><tr><td colspan="4294967296">A</td></tr></tbody></table>'
+
+    const map = buildTableMap(document.querySelector("table")!)
+
+    expect(map.width).toBe(1000)
+    expect(map.placements[0].columnSpan).toBe(1000)
+  })
+
+  it("returns an empty map when combined row and column spans exceed the occupancy limit", () => {
+    const table = document.createElement("table")
+    table.innerHTML = `<tbody>${"<tr><td colspan='1000'></td></tr>".repeat(1001)}</tbody>`
+    document.body.replaceChildren(table)
+
+    const map = buildTableMap(table)
+    expect(map).toMatchObject({rows: [], matrix: [], placements: [], width: 0, limited: true})
+    editor.features.table.actions.normalizeTable({type: "normalizeTable"})
+    expect(table.rows).toHaveLength(1001)
+  })
+
+  it("rejects paste growth beyond the map limit before changing the table", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Keep</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    $.move(table.querySelector("td")!, 0)
+    const original = table.outerHTML
+    const matrix: Node[][][] = Array.from({length: 1001}, () => [])
+    matrix.at(-1)!.length = 1000
+    const pasteMatrix = (editor.features.table as unknown as {
+      pasteMatrix(matrix: Node[][][]): boolean
+    }).pasteMatrix
+
+    expect(pasteMatrix.call(editor.features.table, matrix)).toBe(false)
+    expect(table.outerHTML).toBe(original)
+  })
+
   it("does not expose table internals through generic direct insertion", () => {
     document.body.innerHTML = "<table><tbody><tr><td></td></tr></tbody></table>"
     const row = document.querySelector("tr")!
@@ -883,6 +918,40 @@ describe("table actions", () => {
     expect(table.querySelectorAll(":scope > tbody > tr")).toHaveLength(3)
     expect(table.querySelector("td")?.rowSpan).toBe(3)
     expect(table.querySelectorAll(":scope > tfoot > tr")).toHaveLength(1)
+  })
+
+  it("preserves column definitions, accessibility attributes, and multiple row groups on row commands", () => {
+    document.body.innerHTML = '<table role="grid"><colgroup><col style="width:40%"></colgroup><tbody id="first" role="rowgroup"><tr><td headers="name" scope="row" abbr="Name" role="cell">A</td></tr></tbody><tbody id="second"><tr><td>B</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const originalCell = cells()[0]
+    editor.features.table.selectCells(originalCell)
+
+    editor.features.table.actions.insertTableRow({type: "insertTableRow", side: "below"})
+
+    expect(table.querySelector<HTMLTableColElement>("colgroup col")?.style.width).toBe("40%")
+    expect(table).toHaveAttribute("role", "grid")
+    expect(table.querySelectorAll(":scope > tbody")).toHaveLength(2)
+    expect(table.querySelector("tbody#first")).toHaveAttribute("role", "rowgroup")
+    expect(originalCell).toHaveAttribute("headers", "name")
+    expect(originalCell).toHaveAttribute("scope", "row")
+    expect(originalCell).toHaveAttribute("abbr", "Name")
+    expect(originalCell).toHaveAttribute("role", "cell")
+  })
+
+  it("preserves column definitions and cell accessibility attributes while toggling row groups", () => {
+    document.body.innerHTML = '<table role="grid"><colgroup><col></colgroup><tbody><tr><td headers="name" scope="row" abbr="Name" role="cell">A</td></tr><tr><td>B</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    editor.features.table.selectCells(cells()[0])
+
+    editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+
+    const headerCell = table.querySelector("thead th")!
+    expect(table.querySelector("colgroup col")).not.toBeNull()
+    expect(table).toHaveAttribute("role", "grid")
+    expect(headerCell).toHaveAttribute("headers", "name")
+    expect(headerCell).toHaveAttribute("scope", "row")
+    expect(headerCell).toHaveAttribute("abbr", "Name")
+    expect(headerCell).toHaveAttribute("role", "cell")
   })
 
   it("inserts a column through a colspan", () => {

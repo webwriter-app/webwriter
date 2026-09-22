@@ -120,7 +120,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(selection-caret-node\),[\s\S]*?body::part\(selection-caret-capture\)\s*\{[\s\S]*?left:\s*anchor\(left\);[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret-capture\)\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);/)
     expect(editorStyleString).toMatch(/body\s+\*:not\(\s*:where\(/)
-    expect(editorStyleString).toContain("body:has(.◆element-capture-selected:is(:hover, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {\n  display: none;")
+    expect(editorStyleString).toContain("body:has(.◆element-capture-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {\n  display: none;")
     expect(editorStyleString).toMatch(/\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active,\s*body\.◆node-selection-active\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected,\s*body\.◆node-selection-active\s+math\.◆element-capture-selected\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
@@ -148,14 +148,14 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)[\s\S]*?color:\s*color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);/)
 
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)::after\s*\{[\s\S]*?animation:\s*none;/)
-    expect(editorStyleString).toMatch(/\):hover\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/\):is\(:hover, \.◆pointer-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
     expect(editorStyleString).toMatch(/\.◆element-hovered\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
     expect(editorStyleString).toMatch(/\.◆style-target-hovered\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/\):not\(table \*\):hover\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/body table:hover\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆element-selected:is\(:hover, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/\):not\(table \*\):is\(:hover, \.◆pointer-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/body table:is\(:hover, \.◆pointer-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/\.◆element-selected:is\(:hover, \.◆pointer-hovered, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
     expect(editorStyleString).toMatch(/\.◆element-selected\.◆style-target-hovered:not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆empty-selected:is\(:hover, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/\.◆empty-selected:is\(:hover, \.◆pointer-hovered, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
     expect(editorStyleString).toMatch(/body::part\(hover-caret\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?position-anchor:\s*--hover-anchor;[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*1px dotted var\(--sl-color-gray-400, black\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆style-target-hovered\)::part\(hover-caret\),\s*body\.◆style-target-hovered::part\(hover-caret\)\s*\{[\s\S]*?display:\s*block;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆element-hovered\)::part\(hover-caret\)\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);/)
@@ -231,19 +231,19 @@ describe("DOMEditor stylesheets", () => {
     expect($.isEmptyDocumentSelection).toBe(false)
   })
 
-  it("removes widget contenteditable attributes from saved HTML", () => {
+  it("preserves authored widget contenteditable attributes in saved HTML", () => {
     document.body.innerHTML = '<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
       + '<template><span class="authored ◆text-selected">Template</span><i class="◆editor-only">helper</i></template>'
 
-    expect(editor.toHTML(true)).toBe('<webwriter-demo spellcheck="false" value="7"></webwriter-demo>'
+    expect(editor.toHTML(true)).toBe('<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
       + '<template><span class="authored">Template</span></template>')
     document.body.replaceChildren()
   })
 
-  it("preserves ordinary editing attributes while cleaning nested widgets", () => {
+  it("preserves authored contenteditable values on ordinary and custom elements", () => {
     document.body.innerHTML = '<section contenteditable="false" spellcheck="true"><demo-widget contenteditable="false" spellcheck="true"></demo-widget></section>'
 
-    expect(editor.toHTML(true)).toBe('<section contenteditable="false" spellcheck="true"><demo-widget spellcheck="true"></demo-widget></section>')
+    expect(editor.toHTML(true)).toBe('<section contenteditable="false" spellcheck="true"><demo-widget contenteditable="false" spellcheck="true"></demo-widget></section>')
     document.body.replaceChildren()
   })
 
@@ -256,10 +256,11 @@ describe("DOMEditor stylesheets", () => {
     expect(fragment.firstElementChild?.outerHTML).toBe('<p>&lt;b&gt;current&lt;/b&gt; / new notes</p>')
   })
 
-  it("enforces editing on arbitrary nested DOM insertions and subsequent attribute changes", async () => {
+  it("preserves absent and explicit editing attributes on arbitrary DOM insertions", async () => {
     document.body.innerHTML = '<section><p>Keep</p></section>'
     const section = document.querySelector("section")!
     section.insertAdjacentHTML("beforeend", '<demo-widget contenteditable="false"><span contenteditable="false">Keep</span><nested-widget></nested-widget></demo-widget><div is="custom-widget"></div>')
+    await new Promise(resolve => setTimeout(resolve, 0))
     const widget = section.querySelector("demo-widget")!
     const shadow = widget.attachShadow({mode: "open"})
     shadow.innerHTML = '<private-widget contenteditable="false"></private-widget>'
@@ -267,29 +268,28 @@ describe("DOMEditor stylesheets", () => {
     section.append(removed)
     removed.remove()
 
-    await vi.waitFor(() => expect(widget).toHaveAttribute("contenteditable", "true"))
-    expect(section.querySelector("nested-widget")).toHaveAttribute("contenteditable", "true")
-    expect(section.querySelector("[is]")).toHaveAttribute("contenteditable", "true")
+    expect(widget).toHaveAttribute("contenteditable", "false")
+    expect(section.querySelector("nested-widget")).not.toHaveAttribute("contenteditable")
+    expect(section.querySelector("[is]")).not.toHaveAttribute("contenteditable")
     expect(section.querySelector("span")).toHaveAttribute("contenteditable", "false")
     expect(shadow.firstElementChild).toHaveAttribute("contenteditable", "false")
     expect(removed).not.toHaveAttribute("contenteditable")
 
     widget.removeAttribute("contenteditable")
-    await vi.waitFor(() => expect(widget).toHaveAttribute("contenteditable", "true"))
-    widget.setAttribute("contenteditable", "false")
-    await vi.waitFor(() => expect(widget).toHaveAttribute("contenteditable", "true"))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(widget).not.toHaveAttribute("contenteditable")
+    widget.setAttribute("contenteditable", "plaintext-only")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(widget).toHaveAttribute("contenteditable", "plaintext-only")
   })
 
-  it.each([false, true])("strips widget editing attributes on save, including inert templates (offline=%s)", async offline => {
+  it.each([false, true])("preserves widget editing attributes on save, including inert templates (offline=%s)", async offline => {
     document.body.innerHTML = '<demo-widget contenteditable="false" value="7"></demo-widget><div is="custom-widget" contenteditable="true"></div><template><nested-widget contenteditable="plaintext-only"></nested-widget></template>'
-    await vi.waitFor(() => expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true"))
-
     const saved = await editor.serializeHTML(offline)
-    expect(saved).not.toContain("contenteditable")
-    expect(saved).toContain('<demo-widget value="7"></demo-widget>')
-    expect(saved).toContain('<div is="custom-widget"></div>')
-    expect(saved).toContain('<template><nested-widget></nested-widget></template>')
-    expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
+    expect(saved).toContain('<demo-widget contenteditable="false" value="7"></demo-widget>')
+    expect(saved).toContain('<div is="custom-widget" contenteditable="true"></div>')
+    expect(saved).toContain('<template><nested-widget contenteditable="plaintext-only"></nested-widget></template>')
+    expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "false")
   })
 
   it("unwraps every form element and preserves allowed nested content", () => {

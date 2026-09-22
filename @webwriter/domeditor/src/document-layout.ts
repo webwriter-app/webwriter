@@ -56,7 +56,7 @@ export const slideClass = "ww-slide"
 export const slidesStyles = `
 @media screen {
   html:has(> body.ww-slides) { height: 100%; overflow: hidden; }
-  html > body.ww-slides { box-sizing: border-box; position: relative; display: grid; place-items: center; margin: 0; padding: 0; width: 100%; max-width: none; height: 100vh; height: 100dvh; min-height: 0; background: #f2f2f2; }
+  html > body.ww-slides { box-sizing: border-box; position: relative; display: grid; grid-template-rows: minmax(0, 1fr); place-items: center; margin: 0; padding: 0; width: 100%; max-width: none; height: 100vh; height: 100dvh; min-height: 0; background: #f2f2f2; }
 }
 body.ww-slides > .ww-slides-viewport {
   position: relative; display: flex; width: 100%; max-width: none; height: 100%; min-height: 0;

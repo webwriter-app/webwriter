@@ -700,15 +700,22 @@ export class DomEditorBreadcrumb extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     window.addEventListener("resize", this.handleWindowResize)
+    this.observeBreadcrumbNav()
+    this.scheduleResponsiveLayout()
   }
 
   protected firstUpdated() {
+    this.observeBreadcrumbNav()
+    this.scheduleResponsiveLayout()
+  }
+
+  private observeBreadcrumbNav() {
+    if(this.breadcrumbResizeObserver || typeof ResizeObserver === "undefined") return
     const nav = this.renderRoot.querySelector<HTMLElement>("nav")
-    if(nav && typeof ResizeObserver !== "undefined") {
+    if(nav) {
       this.breadcrumbResizeObserver = new ResizeObserver(() => this.scheduleResponsiveLayout())
       this.breadcrumbResizeObserver.observe(nav)
     }
-    this.scheduleResponsiveLayout()
   }
 
   private scheduleResponsiveLayout() {

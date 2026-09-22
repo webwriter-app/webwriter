@@ -126,6 +126,29 @@ describe("document head editing", () => {
     expect(document.head.querySelector('link[rel="alternate"]')).toBeTruthy()
   })
 
+  it("applies the generic unsafe-attribute and URL rules to head edits", () => {
+    document.head.innerHTML = '<link rel="alternate" href="feed.xml">'
+    editor.doc.syncFromDOM()
+    const link = document.head.querySelector("link")!
+    const id = editor.features.head.state().elements[0].id
+    const setAttribute = editor.features.head.actions.setDocumentHeadElementAttribute
+
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "onerror", value: "run()"})).toBe(false)
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "srcdoc", value: "<script>run()</script>"})).toBe(false)
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "href", value: " java\nscript:run()"})).toBe(false)
+    expect(link).not.toHaveAttribute("onerror")
+    expect(link).not.toHaveAttribute("srcdoc")
+    expect(link).toHaveAttribute("href", "feed.xml")
+
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "href", value: "https://example.com/feed"})).toBe(true)
+    expect(link).toHaveAttribute("href", "https://example.com/feed")
+
+    expect(editor.features.head.actions.setDocumentHeadField({
+      type: "setDocumentHeadField", field: "license", value: "data:image/svg+xml,<svg/>",
+    })).toBe(false)
+    expect(document.head.querySelector('link[rel="license"]')).toBeNull()
+  })
+
   it("uses the package version for newly added generator metadata", () => {
     editor.features.head.actions.addDocumentHeadElement({type: "addDocumentHeadElement", kind: "generator"})
 

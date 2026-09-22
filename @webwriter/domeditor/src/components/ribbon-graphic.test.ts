@@ -31,15 +31,15 @@ describe("graphic ribbon", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const root = toolbox.shadowRoot!
-    expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 2)).toEqual([
-      "Style", "Insert shapes",
+    expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 3)).toEqual([
+      "Style", "Graphic style", "Insert shapes",
     ])
     const files = root.querySelector('[aria-label="Graphic files"]')!
-    expect(files.parentElement).toHaveAttribute("label", "Style")
+    expect(files.parentElement).toHaveAttribute("label", "Graphic style")
     expect(files.parentElement!.lastElementChild).toBe(files)
     expect(files.querySelector('[action="import-graphic"]')).toHaveAttribute("icon", "Upload")
     expect(files.querySelector('[action="save-graphic"]')).toHaveAttribute("icon", "Download")
-    const geometry = root.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+    const geometry = root.querySelector<RibbonDrawer>('ribbon-drawer[label="Graphic style"]')!
     await geometry.updateComplete
     const heading = geometry.shadowRoot!.querySelector<HTMLElement>(".pane-label")!
     expect(getComputedStyle(heading).display).toBe("flex")

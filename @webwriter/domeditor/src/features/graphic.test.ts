@@ -64,6 +64,31 @@ describe("graphic editing", () => {
     expect(input.isConnected).toBe(false)
   })
 
+  it("strips active SVG content and root attributes on import while preserving safe namespaced content", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, "files", {value: [{name: "untrusted.svg", text: async () =>
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:ww="urn:example:widget" viewBox="0 0 42 24" onload="run()" href="javascript:run()" style="background:url(javascript:run())"><!--keep--><g onclick="run()"><ww:widget data-safe="yes"><ww:part/></ww:widget><script>run()</script></g></svg>'}]})
+    input.dispatchEvent(new Event("change"))
+    await pending
+
+    const source = editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})!
+    const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
+    const root = parsed.documentElement
+    expect(root).toHaveAttribute("viewBox", "0 0 42 24")
+    expect(root.hasAttribute("onload")).toBe(false)
+    expect(root.hasAttribute("href")).toBe(false)
+    expect(root.hasAttribute("style")).toBe(false)
+    expect(root.querySelector("script, [onclick]")).toBeNull()
+    const widget = root.querySelector("g")?.firstElementChild
+    expect(widget?.localName).toBe("widget")
+    expect(widget?.namespaceURI).toBe("urn:example:widget")
+    expect(widget?.getAttribute("data-safe")).toBe("yes")
+    expect(root.childNodes[0].nodeType).toBe(Node.COMMENT_NODE)
+    expect(root.childNodes[0].textContent).toBe("keep")
+  })
+
   it("inserts an imported graphic at the selection and supports undo and redo", async () => {
     const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
     const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!

@@ -1,7 +1,6 @@
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {isGraphicPresetType} from "../graphic-shapes"
 import {LitElement, html, nothing} from "lit"
-import {ref} from "lit/directives/ref.js"
 import {appCommands, defaultAppSettings, formatShortcut, type AppSettings} from "../app-settings"
 import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
 import {
@@ -1975,7 +1974,7 @@ export abstract class EditingControls extends LitElement {
       </div>
     `
     return html`
-      <ribbon-drawer label="Style" icon="Theme" layout="graphic-geometry" show-pane-icon>
+      <ribbon-drawer label=${toolbox ? "Graphic style" : "Style"} icon="Theme" layout="graphic-geometry" show-pane-icon>
         ${this.renderGraphicGeometryControls(toolbox, !labelableShapeSelected)}
         ${connectorSelected ? this.renderGraphicConnectorControls(false) : nothing}
         ${toolbox ? fileControls : nothing}

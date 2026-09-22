@@ -447,11 +447,14 @@ export class AIProviderStore extends EventTarget {
 
   async save(provider: AIProviderConfig, apiKey?: string) {
     if(!this.backend) return this.upsert(provider)
+    const backend = this.backend
+    const sequence = this.backendSequence
     const normalized = normalizeAIProvider({...provider, managed: "backend"})
     const result = this.provider(normalized.id)
-      ? await this.backend.updateAIProvider(normalized, apiKey)
-      : await this.backend.createAIProvider(normalized, apiKey)
+      ? await backend.updateAIProvider(normalized, apiKey)
+      : await backend.createAIProvider(normalized, apiKey)
     const saved = normalizeAIProvider({...result.provider, managed: "backend"})
+    if(sequence !== this.backendSequence || this.backend !== backend) return saved
     const index = this.providerList.findIndex(candidate => candidate.id === saved.id)
     this.providerList = index < 0
       ? [...this.providerList, saved]
@@ -497,7 +500,10 @@ export class AIProviderStore extends EventTarget {
       this.remove(providerId)
       return
     }
-    await this.backend.deleteAIProvider(providerId)
+    const backend = this.backend
+    const sequence = this.backendSequence
+    await backend.deleteAIProvider(providerId)
+    if(sequence !== this.backendSequence || this.backend !== backend) return
     this.providerList = this.providerList.filter(provider => provider.id !== providerId)
     if(this.selectedProviderId === providerId) this.selectedProviderId = this.providerList[0]?.id ?? null
     this.notify()

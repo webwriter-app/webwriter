@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import * as Y from "yjs"
 import {$} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
@@ -101,7 +102,6 @@ describe("SVG text marks", () => {
 it("clears SVG text inside a larger document selection", () => {
   const text = load('<tspan style="font-weight: bold; fill: red">hello</tspan>')
   const paragraph = text.closest("p")!
-  const span = text.firstElementChild!
   const before = document.createElement("b")
   before.textContent = "bold"
   paragraph.prepend(before)
@@ -165,12 +165,12 @@ it("drops stored styles when the SVG caret is replaced", () => {
 
 
 it("reads remotely changed SVG styles from the current DOM", () => {
-  const text = load('<tspan style="font-weight: bold">hello</tspan>')
+  load('<tspan style="font-weight: bold">hello</tspan>')
   editor.doc.syncFromDOM()
   const remote = new Y.Doc()
   try {
     Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
-    const paragraph = remote.getXmlElement("body").get(0) as Y.XmlElement
+    const paragraph = sharedDOMBody(remote).get(0) as Y.XmlElement
     const svg = paragraph.get(1) as Y.XmlElement
     const sharedText = svg.get(0) as Y.XmlElement
     const span = sharedText.get(0) as Y.XmlElement

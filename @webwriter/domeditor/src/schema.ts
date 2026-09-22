@@ -1,19 +1,6 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
-import { $, cloneInert, getContainer, getIndexBefore, getInertDocument } from "./utility"
+import { $, cloneInert, columnSide, isColumnGroup, getContainer, getIndexBefore, getInertDocument } from "./utility"
 import {normalizeTableStructure} from "./table"
-
-function isSimplifiedTableContentValid(element: Element, content: Node[]) {
-  if(element.namespaceURI !== "http://www.w3.org/1999/xhtml") return true
-  if(element.matches("table, thead, tbody, tfoot, tr, td, th") && element.hasAttribute("role")) return false
-  if(element.matches("td, th") && ["headers", "scope", "abbr"].some(name => element.hasAttribute(name))) return false
-  const elements = content.filter((node): node is Element => node instanceof Element)
-  if(element.localName === "tr") {
-    const group = element.parentElement?.localName
-    if(group === "thead" && elements.some(cell => cell.localName !== "th")) return false
-    if((group === "tbody" || group === "tfoot") && elements.some(cell => cell.localName !== "td")) return false
-  }
-  return true
-}
 
 /** Defers to the parent's content rule ("transparent" content model, e.g. <a>, <ins>, <slot>), optionally restricted by an own selector. */
 export type ContentRuleTransparent = {
@@ -668,7 +655,6 @@ export class Schema {
     let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
     
     if(!(nodeToCheck instanceof Element)) return true;
-    if(!isSimplifiedTableContentValid(nodeToCheck, content ?? Array.from(nodeToCheck.childNodes))) return false
     if(!rule && (content ?? Array.from(nodeToCheck.childNodes)).length) return false
     else if(!rule && !content?.length) return true
     const contentToCheck = content ?? Array.from(nodeToCheck.childNodes)
@@ -1073,6 +1059,14 @@ export class Schema {
           }
           if(entry?.wrapper && node.parentNode && node.parentElement?.localName !== entry.wrapper) {
             const wrapper = node.ownerDocument.createElement(entry.wrapper)
+            const side = isColumnGroup(node.parentElement) ? columnSide(node) : null
+            if(side) {
+              // Column placement belongs to the direct child of the group.
+              // Preserve it when an image becomes the child of a picture.
+              wrapper.classList.add(`ww-column-${side}`)
+              node.classList.remove(`ww-column-${side}`)
+              if(!node.classList.length) node.removeAttribute("class")
+            }
             replacements.set(node, wrapper)
             node.replaceWith(wrapper)
             wrapper.append(node)

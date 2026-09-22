@@ -20,6 +20,8 @@ const emptyStyleState = (): ElementStyleState => ({
   context: {display: "", parentDisplay: ""},
 })
 
+const filterPreview = html`<svg viewBox="0 0 32 24" aria-hidden="true"><rect width="32" height="24" rx="2" fill="#5b9bd5"/><circle cx="24" cy="6" r="3" fill="#ffc000"/><path d="M0 24 10 8 20 24M12 24 24 12 32 24" fill="#70ad47"/></svg>`
+
 const simpleDimension = (value: string, units: readonly string[]) => {
   const match = value.trim().match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))([a-z%]*)$/i)
   if(!match || !units.includes(match[2])) return null
@@ -1350,7 +1352,7 @@ export class ElementStyleEditor extends LitElement {
             aria-expanded=${open} aria-controls=${`presets-${name}`} title=${value || "Default"}
             @click=${() => this.compactMenu = open ? null : name}>
             <span class=${name === "filter" ? "filter-preview" : "shadow-preview"} style=${`${name}:${value || this.state.computed[name] || "none"}`}>
-              ${name === "filter" ? html`<svg viewBox="0 0 32 24" aria-hidden="true"><rect width="32" height="24" rx="2" fill="#5b9bd5"/><circle cx="24" cy="6" r="3" fill="#ffc000"/><path d="M0 24 10 8 20 24M12 24 24 12 32 24" fill="#70ad47"/></svg>` : nothing}
+              ${name === "filter" ? filterPreview : nothing}
             </span>
           </button>
           <input ?hidden=${this.customEffect !== name} id=${`compact-${name}`} aria-label=${label} role="combobox" aria-autocomplete="none"
@@ -1378,7 +1380,7 @@ export class ElementStyleEditor extends LitElement {
                 this.compactMenu = null
               }}>
               <span class=${name === "filter" ? "filter-preview" : "shadow-preview"} style=${`${name}:${css}`}>
-                ${name === "filter" ? html`<svg viewBox="0 0 32 24" aria-hidden="true"><rect width="32" height="24" rx="2" fill="#5b9bd5"/><circle cx="24" cy="6" r="3" fill="#ffc000"/><path d="M0 24 10 8 20 24M12 24 24 12 32 24" fill="#70ad47"/></svg>` : nothing}
+                ${name === "filter" ? filterPreview : nothing}
               </span>
             </button>`)}
           </div>

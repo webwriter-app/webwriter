@@ -297,7 +297,7 @@ describe("insertion menu", () => {
 
     expect(editorHTML()).toBe("<webwriter-demo></webwriter-demo>")
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.getAttribute("contenteditable")).toBe("true")
+    expect(widget.hasAttribute("contenteditable")).toBe(false)
     expect($.selectedElement).toBe(widget)
     expect(widget.classList.contains("◆element-selected")).toBe(true)
     expect(menu.open).toBe(false)
@@ -343,7 +343,7 @@ describe("insertion menu", () => {
     expect(document.getSelection()!.isCollapsed).toBe(true)
   })
 
-  it("enables editing for every widget inside inserted snippets", async () => {
+  it("preserves authored editing attributes in inserted snippets", async () => {
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
       section: "Packages",
       name: "Demo Snippet",
@@ -366,8 +366,9 @@ describe("insertion menu", () => {
       menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
       await vi.waitFor(() => expect(document.querySelector("webwriter-demo")).toBeTruthy())
-      expect(document.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
-      expect(document.querySelector("webwriter-other")?.getAttribute("contenteditable")).toBe("true")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "false")
+      expect(document.querySelector("webwriter-other")).not.toHaveAttribute("contenteditable")
       expect(fetcher).toHaveBeenCalledWith("https://example.com/demo.html")
     }
     finally {

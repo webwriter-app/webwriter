@@ -2,6 +2,7 @@ import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, isGraphicP
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
+import {stripActiveContent} from "../active-content"
 import {
   SVG_NAMESPACE,
   graphicContainerForNode,
@@ -622,7 +623,9 @@ export class GraphicFeature extends EditorFeature {
             if(parsed.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== SVG_NAMESPACE) {
               throw new TypeError("The file does not contain valid SVG")
             }
-            const graphic = clearEditorMarkerClasses(document.importNode(root, true)) as SVGSVGElement
+            stripActiveContent(root)
+            clearEditorMarkerClasses(root)
+            const graphic = document.importNode(root, true) as unknown as SVGSVGElement
             this.editor.doc.stopCapturing()
             if(target) {
               this.#cancelInteraction()

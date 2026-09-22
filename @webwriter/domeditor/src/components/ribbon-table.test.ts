@@ -40,7 +40,7 @@ describe("table controls", () => {
     await toolbox.updateComplete
     const toolboxLabels = Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label"))
-    expect(toolboxLabels).toEqual(["Layout", "Borders", "Background", "Style"])
+    expect(toolboxLabels).toEqual(["Style", "Layout", "Borders", "Background"])
 
     const actionIcons = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonButton>("ribbon-button"))
       .map(button => button.icon)
@@ -81,9 +81,9 @@ describe("table controls", () => {
     const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
     expect(drawers.map(drawer => drawer.label)).toEqual([
-      "Layout", "Borders", "Background", "Style", "Attributes",
+      "Style", "Layout", "Borders", "Background", "Attributes",
     ])
-    const controls = drawers[0].shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const controls = drawers[1].shadowRoot!.querySelector<HTMLElement>(".controls")!
     expect(getComputedStyle(controls).gridAutoRows).toBe("minmax(3rem, auto)")
     expect(getComputedStyle(controls).gap).toBe("0.5rem")
     const attributes = drawers.find(drawer => drawer.label === "Attributes")!

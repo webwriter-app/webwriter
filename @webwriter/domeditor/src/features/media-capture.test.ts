@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {MediaCapture} from "../components/media-capture"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import type {MediaCaptureMode} from "../media"
 import {$} from "../utility"
 
@@ -399,7 +400,7 @@ describe("media capture in the DOM editor", () => {
     editor.doc.syncFromDOM()
     const remote = new Y.Doc()
     Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
-    const body = remote.getXmlElement("body")
+    const body = sharedDOMBody(remote)
     ;(body.toArray().find(node => node instanceof Y.XmlElement && node.nodeName === "audio") as Y.XmlElement).setAttribute("src", "remote.mp3")
     Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
     expect(document.querySelector("audio")).toHaveAttribute("src", "remote.mp3")

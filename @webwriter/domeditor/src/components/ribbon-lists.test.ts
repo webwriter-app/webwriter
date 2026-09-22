@@ -41,19 +41,16 @@ describe("list ribbon drawer", () => {
     const buttons = Array.from(elements.querySelectorAll<RibbonButton>('ribbon-button[slot="compact"]'))
     const button = (label: string) => buttons.find(candidate => candidate.label === label)!
 
-    expect(elements.layoutWidths.compact).toBe(192)
+    expect(elements.layoutWidths.compact).toBe(128)
     expect(defaultSlot.hidden).toBe(true)
     expect(compactSlot.hidden).toBe(false)
     expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Layouts"])
-    expect(getComputedStyle(primaryControls).gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(primaryControls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
     expect(button("Text").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual(["Paragraph", "Heading", "List", "Details"])
     expect(button("Media").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual([
         "Image", "Audio", "Video", "Graphic", "Formula", "Website",
-        "Image: Select file", "Image: Capture screen", "Image: Record",
-        "Audio: Select file", "Audio: Capture screen", "Audio: Record",
-        "Video: Select file", "Video: Capture screen", "Video: Record",
       ])
     expect(button("Text").submenu).toContainEqual({label: "Details", action: "insert-details", icon: "Details"})
     expect(button("Media").action).toBe("Image")

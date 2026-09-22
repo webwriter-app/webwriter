@@ -13,6 +13,7 @@ import {
   editingDocumentThemeSource,
 } from "../document-themes"
 import {adoptStylesheet, createStylesheet} from "../utility"
+import {elementAttributeEditability, isUnsafeElementAttributeValue} from "../element-attributes"
 
 const editorOnlySelector = ".◆editor-only, [data-webwriter-editor-only]"
 const textContentElements = new Set(["script", "style", "title", "noscript", "template"])
@@ -359,6 +360,7 @@ export class HeadFeature extends EditorFeature {
         return true
       }
       if(field === "license") {
+        if(isUnsafeElementAttributeValue("href", value)) return false
         const current = this.firstLicense()
         if(!value.trim()) {
           if(!current) return false
@@ -497,6 +499,8 @@ export class HeadFeature extends EditorFeature {
       const nextName = name.trim()
       if(!element || isBlockedAuthoredContent(element) || !nextName
         || nextName.toLowerCase() === "data-webwriter-editor-only"
+        || !elementAttributeEditability(nextName, element.localName, element.namespaceURI).editable
+        || isUnsafeElementAttributeValue(nextName, value)
         || element.localName === "link" && nextName.toLowerCase() === "rel"
           && value.toLowerCase().split(/\s+/).includes("stylesheet")) return false
       if(nextName.toLowerCase() === "class") {

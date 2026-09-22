@@ -1,5 +1,6 @@
 import {spawn} from "node:child_process"
-import {mkdtemp, rm} from "node:fs/promises"
+import {existsSync} from "node:fs"
+import {mkdtemp, rm, writeFile} from "node:fs/promises"
 import {createServer as createNetServer} from "node:net"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
@@ -52,7 +53,27 @@ const expectedChecks = [
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
 const mathVisual = process.argv.includes("--math-visual")
+const smoke = process.argv.includes("--smoke")
+const browserArgument = process.argv.find(argument => argument.startsWith("--browser="))?.slice("--browser=".length)
+const browserName = browserArgument ?? "chromium"
+if(!["chromium", "firefox", "webkit"].includes(browserName)) throw new Error(`Unsupported native browser: ${browserName}`)
+if(browserName !== "chromium" && !smoke) throw new Error("Firefox and WebKit are supported by --smoke only")
 const chrome = process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+const firefox = process.env.FIREFOX_BIN ?? "/Applications/Firefox.app/Contents/MacOS/firefox"
+const bundledXcodeDeveloperDir = "/Applications/Xcode.app/Contents/Developer"
+const swiftDeveloperDir = process.env.WEBKIT_DEVELOPER_DIR ?? process.env.DEVELOPER_DIR
+  ?? (existsSync(`${bundledXcodeDeveloperDir}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift`)
+    ? bundledXcodeDeveloperDir
+    : undefined)
+const expectedSmokeChecks = [
+  "native Range and Selection",
+  "designMode editing",
+  "atomic widget editability survives serialization",
+  "shadow appendix stays out of authored serialization",
+  "Yjs remote updates and local undo",
+  "SVG and MathML namespaces survive serialization",
+  "document template serialization",
+]
 let reportResult
 const resultPromise = new Promise(resolve => { reportResult = resolve })
 const resultPlugin = {
@@ -88,6 +109,19 @@ const vite = await createServer({
   server: {host: "127.0.0.1", port, strictPort: true},
 })
 const profile = await mkdtemp(join(tmpdir(), "domeditor-native-"))
+if(browserName === "firefox") {
+  await writeFile(join(profile, "user.js"), [
+    'user_pref("app.update.enabled", false);',
+    'user_pref("browser.aboutwelcome.enabled", false);',
+    'user_pref("browser.shell.checkDefaultBrowser", false);',
+    'user_pref("browser.startup.page", 0);',
+    'user_pref("browser.startup.homepage_override.mstone", "ignore");',
+    'user_pref("browser.newtabpage.enabled", false);',
+    'user_pref("datareporting.policy.dataSubmissionEnabled", false);',
+    'user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);',
+    "",
+  ].join("\n"))
+}
 let browser
 let browserClosed
 let hasClosed = false
@@ -95,14 +129,17 @@ let timeout
 try {
   await vite.listen()
   const errors = []
-  browser = spawn(chrome, [
-    "--headless=new",
-    "--disable-gpu",
-    "--disable-software-rasterizer",
-    "--no-first-run",
-    `--user-data-dir=${profile}`,
-    `http://127.0.0.1:${port}/tests/${mathVisual ? "math-visual" : "native-browser"}.html?run`,
-  ], {stdio: ["ignore", "ignore", "pipe"]})
+  const url = `http://127.0.0.1:${port}/tests/${smoke ? "browser-smoke" : mathVisual ? "math-visual" : "native-browser"}.html?run`
+  const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
+  const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
+    : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
+    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", `--user-data-dir=${profile}`, url]
+  browser = spawn(command, args, {
+    stdio: ["ignore", "ignore", "pipe"],
+    ...(browserName === "webkit" && swiftDeveloperDir
+      ? {env: {...process.env, DEVELOPER_DIR: swiftDeveloperDir}}
+      : {}),
+  })
   browser.stderr.on("data", chunk => errors.push(chunk))
   browserClosed = new Promise(resolve => browser.once("close", (exitCode, signal) => {
     hasClosed = true
@@ -110,12 +147,15 @@ try {
   }))
   const failedToStart = new Promise(resolve => browser.once("error", error => resolve({error: String(error)})))
   const timedOut = new Promise(resolve => {
-    timeout = setTimeout(() => resolve({error: "Native browser timed out"}), mathVisual ? 60000 : 20000)
+    const timeoutMs = mathVisual ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
+    timeout = setTimeout(() => resolve({error: "Native browser timed out"}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && (mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length : checks.length === expectedChecks.length
+  const valid = !result?.error && (mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
+    : smoke ? checks.length === expectedSmokeChecks.length && expectedSmokeChecks.every(name => checks.some(check => check?.name === name))
+    : checks.length === expectedChecks.length
     && expectedChecks.every(name => checks.some(check => check?.name === name)))
     && checks.every(check => check && typeof check.name === "string" && check.error === undefined)
   process.stdout.write(JSON.stringify(checks, null, 2) + "\n")

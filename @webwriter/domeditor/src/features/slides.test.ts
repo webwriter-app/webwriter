@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {slidesStyles} from "../document-layout"
 import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
@@ -410,10 +411,10 @@ describe("CSS-only Slides layout", () => {
     const saved = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
     expect(saved.body.querySelector(".ww-slides-viewport, .ww-slide, .ww-slides-navigation, .ww-slide-directions")).toBeNull()
     Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
-    expect(remote.getXmlElement("body").toString()).not.toContain("ww-slides-navigation")
-    expect(remote.getXmlElement("body").toString()).not.toContain("ww-slide-directions")
-    expect(remote.getXmlElement("body").toString()).not.toContain("ww-slides-viewport")
-    expect(remote.getXmlElement("body").toString()).not.toContain('class="ww-slide"')
+    expect(sharedDOMBody(remote).toString()).not.toContain("ww-slides-navigation")
+    expect(sharedDOMBody(remote).toString()).not.toContain("ww-slide-directions")
+    expect(sharedDOMBody(remote).toString()).not.toContain("ww-slides-viewport")
+    expect(sharedDOMBody(remote).toString()).not.toContain('class="ww-slide"')
     editor.doc.undo(); await settle()
     expect(editor.getDocumentLayoutState().mode).toBe("slides")
     expect(links()).toHaveLength(2)
@@ -715,7 +716,7 @@ describe("CSS-only Slides layout", () => {
   it("synchronizes authored navigation and preserves external changes without repair", async () => {
     seed(); editor.doc.syncFromDOM()
     const remote = new Y.Doc(); Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
-    expect(remote.getXmlElement("body").toString()).toContain("ww-slides-navigation")
+    expect(sharedDOMBody(remote).toString()).toContain("ww-slides-navigation")
     const viewport = document.querySelector(".ww-slides-viewport")!
     viewport.append(document.createComment("external change")); slides()[0].id = "externally-changed"
     const html = editor.toHTML(true); await settle()

@@ -6,6 +6,7 @@ import type {EditorStateSnapshot} from "./editor-state"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
 const INTERNAL_NAMESPACE = "__domeditor_namespace"
+const INTERNAL_QUALIFIED_NAME = "__domeditor_qualified_name"
 const INTERNAL_USER_ATTRIBUTE_PREFIX = "__domeditor_user_attribute__"
 const INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX = "__domeditor_namespaced_attribute__"
 const COMMENT_NODE_NAME = "domeditor-comment"
@@ -14,6 +15,13 @@ const INITIALIZED_KEY = "initialized"
 const HEAD_INITIALIZED_KEY = "head-initialized"
 const LANGUAGE_INITIALIZED_KEY = "language-initialized"
 const ROOT_INITIALIZED_KEY = "root-attributes-initialized"
+const SHARED_DOCUMENT_KEY = "document"
+
+/** The elected mirror for a document. Older snapshots used top-level types. */
+export function sharedDOMBody(doc: Y.Doc): Y.XmlElement {
+  const mirror = doc.getMap("domeditor").get(SHARED_DOCUMENT_KEY)
+  return mirror instanceof Y.Map ? mirror.get("body") : doc.getXmlElement("body")
+}
 
 const presenceColors = [
   "#e11d48",
@@ -134,13 +142,13 @@ export class SharedDOMDoc {
   readonly provider?: WebsocketProvider
   readonly root: HTMLElement
 
-  readonly #body: Y.XmlElement
-  readonly #documentHead: Y.XmlElement | null
-  readonly #documentAttributes: Y.XmlElement | null
+  #body: Y.XmlElement
+  #documentHead: Y.XmlElement | null
+  #documentAttributes: Y.XmlElement | null
   readonly #headRoot: HTMLHeadElement | null
-  readonly #headMetadata: Y.Map<unknown>
+  #headMetadata: Y.Map<unknown>
   readonly #metadata: Y.Map<unknown>
-  readonly #undoManager: Y.UndoManager
+  #undoManager: Y.UndoManager
   readonly #capturedChanges = new Map<string, Y.UndoManager>()
   readonly #observer: MutationObserver
   readonly #domOrigin = {source: "domeditor-dom"}
@@ -158,6 +166,7 @@ export class SharedDOMDoc {
   #hasQueuedYChanges = false
   #activeDOMPreview: DOMChangePreview | null = null
   #observedTemplates = new Set<DocumentFragment>()
+  #awaitingInitialSync = false
 
   constructor(
     readonly serverUrl?: string,
@@ -171,12 +180,16 @@ export class SharedDOMDoc {
     this.root = options.root ?? document.body
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
-    this.#body = this.doc.getXmlElement("body")
-    this.#headRoot = this.root === this.#document.body ? this.#document.head : null
-    this.#documentHead = this.#headRoot ? this.doc.getXmlElement("document-head") : null
-    this.#documentAttributes = this.#headRoot ? this.doc.getXmlElement("document-attributes") : null
-    this.#headMetadata = this.doc.getMap("head")
     this.#metadata = this.doc.getMap("domeditor")
+    const mirror = this.#metadata.get(SHARED_DOCUMENT_KEY)
+    this.#body = sharedDOMBody(this.doc)
+    this.#headRoot = this.root === this.#document.body ? this.#document.head : null
+    this.#documentHead = this.#headRoot ? mirror instanceof Y.Map ? mirror.get("head") : this.doc.getXmlElement("document-head") : null
+    this.#documentAttributes = this.#headRoot ? mirror instanceof Y.Map ? mirror.get("attributes") : this.doc.getXmlElement("document-attributes") : null
+    this.#headMetadata = mirror instanceof Y.Map ? mirror.get("metadata") : this.doc.getMap("head")
+    this.#awaitingInitialSync = Boolean(this.serverUrl && this.sessionId && !mirror
+      && this.#metadata.get(INITIALIZED_KEY) !== true && this.#body.length === 0
+      && Object.keys(this.#body.getAttributes()).length === 0)
     this.awareness = options.awareness ?? new Awareness(this.doc as any)
 
     if((this.awareness as any).doc !== this.doc) {
@@ -192,6 +205,50 @@ export class SharedDOMDoc {
       this.#headMetadata.observe(this.#handleHeadMetadataChange)
     }
 
+    this.#metadata.observe(this.#handleMirrorChange)
+    if(!this.#awaitingInitialSync) this.#initializeSharedDOM(Boolean(previewSource))
+    if(previewSource) {
+      this.#reuseDOMNodePairs(previewSource)
+      this.#relativeSelection = previewSource.#relativeSelection
+      this.#writeYToDOM()
+    }
+
+    this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
+      trackedOrigins: new Set([this.#domOrigin]),
+    })
+
+    const DocumentMutationObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
+    this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
+    this.startObserve()
+    this.doc.on("beforeTransaction", this.#flushPendingDOMChanges)
+
+    const defaultUser: CollaborationUser = {
+      name: `User ${this.doc.clientID.toString(36).toUpperCase()}`,
+      color: presenceColor(this.doc.clientID),
+      ...options.user,
+    }
+    this.setUser(defaultUser)
+
+    if(this.serverUrl && this.sessionId) {
+      this.provider = new WebsocketProvider(this.serverUrl, this.sessionId, this.doc as any, {
+        awareness: this.awareness,
+        // Wait for the room's first snapshot before proposing an initial tree.
+        // BroadcastChannel sync does not establish that server boundary.
+        disableBc: true,
+        connect: false,
+      })
+      this.provider.on("sync", (synced: boolean) => {
+        if(!synced || !this.#awaitingInitialSync) return
+        this.#awaitingInitialSync = false
+        this.#initializeSharedDOM()
+        this.#observer.takeRecords()
+        this.syncFromDOM(this.#initialOrigin)
+      })
+      if(options.connect ?? true) this.provider.connect()
+    }
+  }
+
+  #initializeSharedDOM(deferRendering = false) {
     const hasSharedDOM = this.#metadata.get(INITIALIZED_KEY) === true ||
       this.#body.length > 0 || Object.keys(this.#body.getAttributes()).length > 0
     const hasSharedHead = Boolean(this.#documentHead) && (
@@ -201,6 +258,18 @@ export class SharedDOMDoc {
     const hasSharedLanguage = this.#headRoot !== null && this.#metadata.get(LANGUAGE_INITIALIZED_KEY) === true
     const hasSharedAttributes = this.#documentAttributes !== null && this.#metadata.get(ROOT_INITIALIZED_KEY) === true
     this.doc.transact(() => {
+      if(!hasSharedDOM && !this.#metadata.has(SHARED_DOCUMENT_KEY)) {
+        // A single map assignment elects the initial DOM mirror atomically.
+        // Simultaneous joins can propose different trees, but never concatenate
+        // their independently seeded children. Existing snapshots stay readable.
+        const mirror = new Y.Map<Y.XmlElement | Y.Map<unknown>>()
+        mirror.set("body", new Y.XmlElement("body"))
+        mirror.set("head", new Y.XmlElement("head"))
+        mirror.set("attributes", new Y.XmlElement("html"))
+        mirror.set("metadata", new Y.Map())
+        this.#metadata.set(SHARED_DOCUMENT_KEY, mirror)
+        this.#selectMirror(mirror)
+      }
       if(!hasSharedDOM) {
         this.#metadata.set(INITIALIZED_KEY, true)
         this.#reconcileYElement(this.root, this.#body)
@@ -222,33 +291,40 @@ export class SharedDOMDoc {
         this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes, ["lang"])
       }
     }, this.#initialOrigin)
-    if(previewSource) {
-      this.#reuseDOMNodePairs(previewSource)
-      this.#relativeSelection = previewSource.#relativeSelection
+    if(!deferRendering && (hasSharedDOM || hasSharedHead || hasSharedLanguage || hasSharedAttributes)) this.#writeYToDOM()
+  }
+
+  #selectMirror(mirror: Y.Map<any>) {
+    if(this.#body === mirror.get("body")) return
+    this.#body.unobserveDeep(this.#handleYChanges)
+    this.#documentHead?.unobserveDeep(this.#handleYChanges)
+    this.#documentAttributes?.unobserveDeep(this.#handleYChanges)
+    if(this.#headRoot) this.#headMetadata.unobserve(this.#handleHeadMetadataChange)
+    this.#body = mirror.get("body")
+    this.#documentHead = this.#headRoot ? mirror.get("head") : null
+    this.#documentAttributes = this.#headRoot ? mirror.get("attributes") : null
+    this.#headMetadata = mirror.get("metadata")
+    this.#addNodePair(this.root, this.#body)
+    this.#body.observeDeep(this.#handleYChanges)
+    if(this.#headRoot && this.#documentHead) {
+      this.#addNodePair(this.#headRoot, this.#documentHead)
+      this.#documentHead.observeDeep(this.#handleYChanges)
+      this.#documentAttributes!.observeDeep(this.#handleYChanges)
+      this.#headMetadata.observe(this.#handleHeadMetadataChange)
     }
-    if(hasSharedDOM || hasSharedHead || hasSharedLanguage || hasSharedAttributes) this.#writeYToDOM()
-
-    this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
-      trackedOrigins: new Set([this.#domOrigin]),
-    })
-
-    const DocumentMutationObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
-    this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
-    this.startObserve()
-
-    const defaultUser: CollaborationUser = {
-      name: `User ${this.doc.clientID.toString(36).toUpperCase()}`,
-      color: presenceColor(this.doc.clientID),
-      ...options.user,
+    if(this.#undoManager) {
+      this.#undoManager.destroy()
+      this.#undoManager = new Y.UndoManager(this.#undoScopes(), {trackedOrigins: new Set([this.#domOrigin])})
     }
-    this.setUser(defaultUser)
+  }
 
-    if(this.serverUrl && this.sessionId) {
-      this.provider = new WebsocketProvider(this.serverUrl, this.sessionId, this.doc as any, {
-        awareness: this.awareness,
-        connect: options.connect ?? true,
-      })
-    }
+  readonly #handleMirrorChange = () => {
+    const mirror = this.#metadata.get(SHARED_DOCUMENT_KEY)
+    if(!(mirror instanceof Y.Map) || mirror.get("body") === this.#body) return
+    if(!(mirror.get("body") instanceof Y.XmlElement) || !(mirror.get("head") instanceof Y.XmlElement)
+      || !(mirror.get("attributes") instanceof Y.XmlElement) || !(mirror.get("metadata") instanceof Y.Map)) return
+    this.#selectMirror(mirror)
+    this.#writeYToDOM()
   }
 
   get body() {
@@ -507,18 +583,14 @@ export class SharedDOMDoc {
   }
 
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
-  syncFromDOM(origin: unknown = this.#domOrigin) {
-    if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0) return
+  syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[]) {
+    if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
+    const records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
     this.doc.transact(() => {
-      this.#reconcileYElement(this.root, this.#body)
-      if(this.#headRoot && this.#documentHead) {
-        this.#reconcileYElement(this.#headRoot, this.#documentHead)
-        const language = this.#document.documentElement.getAttribute("lang") ?? ""
-        if(this.#headMetadata.get("language") !== language) this.#headMetadata.set("language", language)
-        this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes!, ["lang"])
-      }
+      if(records) this.#reconcileMutations(records)
+      else this.#reconcileDocument()
     }, origin)
-    if(this.#isObserving) {
+    if(this.#isObserving && (!records || records.some(record => record.type === "childList"))) {
       const templates = this.#templateContents()
       if(templates.length !== this.#observedTemplates.size || templates.some(content => !this.#observedTemplates.has(content))) {
         this.stopObserve()
@@ -530,6 +602,55 @@ export class SharedDOMDoc {
       (selection.anchorNode === this.root || this.root.contains(selection.anchorNode)) &&
       (selection.focusNode === this.root || this.root.contains(selection.focusNode))) {
       this.updateLocalSelection(selection)
+    }
+  }
+
+  #reconcileDocument() {
+    this.#reconcileYElement(this.root, this.#body)
+    if(this.#headRoot && this.#documentHead) {
+      this.#reconcileYElement(this.#headRoot, this.#documentHead)
+      this.#reconcileDocumentAttributes()
+    }
+  }
+
+  #reconcileDocumentAttributes() {
+    const language = this.#document.documentElement.getAttribute("lang") ?? ""
+    if(this.#headMetadata.get("language") !== language) this.#headMetadata.set("language", language)
+    this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes!, ["lang"])
+  }
+
+  #reconcileMutations(records: MutationRecord[]) {
+    const relevant = records.filter(record => this.#isRelevantMutation(record))
+    // Changes to template fragments, ignored-node membership and unmapped
+    // structure need the full reconciler. Ordinary typing/attribute changes
+    // only inspect their current DOM targets.
+    if(relevant.some(record => !this.#xmlNodes.has(record.target)
+      && record.target !== this.#document.documentElement
+      || record.type === "attributes" && (record.attributeName === "data-webwriter-editor-only"
+        || record.attributeName === "class" && ((record.oldValue ?? "").includes("◆editor-only")
+          || (record.target as Element).classList.contains("◆editor-only"))))) {
+      this.#reconcileDocument()
+      return
+    }
+    const containers = new Set(relevant.filter(record => record.type === "childList").map(record => record.target))
+    for(const node of containers) {
+      if([...containers].some(parent => parent !== node && parent.contains(node))) continue
+      const yNode = this.#xmlNodes.get(node)
+      if(isElement(node) && yNode instanceof Y.XmlElement && this.#isSelectionNode(yNode)) {
+        this.#reconcileYElement(node, yNode)
+      }
+    }
+    for(const node of new Set(relevant.filter(record => record.type !== "childList").map(record => record.target))) {
+      if([...containers].some(parent => parent.contains(node))) continue
+      if(node === this.#document.documentElement && this.#documentAttributes) {
+        this.#reconcileDocumentAttributes()
+        continue
+      }
+      const yNode = this.#xmlNodes.get(node)
+      if(!yNode || !this.#isSelectionNode(yNode)) continue
+      if(isElement(node) && yNode instanceof Y.XmlElement) this.#copyDOMAttributesToY(node, yNode)
+      else if(isText(node) && yNode instanceof Y.XmlText) this.#reconcileYText(node, yNode)
+      else if(isComment(node) && this.#isYComment(yNode)) this.#reconcileYComment(node, yNode)
     }
   }
 
@@ -767,6 +888,8 @@ export class SharedDOMDoc {
   destroy() {
     this.#activeDOMPreview?.reject()
     this.stopObserve()
+    this.doc.off("beforeTransaction", this.#flushPendingDOMChanges)
+    this.#metadata.unobserve(this.#handleMirrorChange)
     this.#body.unobserveDeep(this.#handleYChanges)
     this.#documentHead?.unobserveDeep(this.#handleYChanges)
     this.#documentAttributes?.unobserveDeep(this.#handleYChanges)
@@ -780,19 +903,26 @@ export class SharedDOMDoc {
 
   readonly #handleDOMChanges = (mutations: MutationRecord[]) => {
     if(this.#isWritingToDOM || !mutations.some(mutation => this.#isRelevantMutation(mutation))) return
-    this.syncFromDOM()
+    this.syncFromDOM(this.#domOrigin, mutations)
+  }
+
+  readonly #flushPendingDOMChanges = (transaction: Y.Transaction) => {
+    if(!this.#isObserving || this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync
+      || transaction.origin === this.#domOrigin || transaction.origin === this.#remoteReactionOrigin) return
+    const pending = this.#observer.takeRecords()
+    if(pending.length) this.syncFromDOM(this.#domOrigin, pending)
   }
 
   readonly #handleYChanges = (events: Y.YEvent<YXmlNode>[], transaction: Y.Transaction) => {
     if(!events.length) return
-    this.#handleSharedYChange(transaction)
+    this.#handleSharedYChange(transaction, events)
   }
 
   readonly #handleHeadMetadataChange = (_event: Y.YMapEvent<unknown>, transaction: Y.Transaction) => {
-    this.#handleSharedYChange(transaction)
+    this.#handleSharedYChange(transaction, [])
   }
 
-  #handleSharedYChange(transaction: Y.Transaction) {
+  #handleSharedYChange(transaction: Y.Transaction, events: Y.YEvent<YXmlNode>[]) {
     if(transaction.origin === this.#domOrigin ||
       transaction.origin === this.#initialOrigin ||
       transaction.origin === this.#remoteReactionOrigin) return
@@ -800,31 +930,69 @@ export class SharedDOMDoc {
       this.#hasQueuedYChanges = true
       return
     }
-    this.#writeYToDOM()
+    this.#writeYToDOM(events)
   }
 
-  #writeYToDOM() {
+  #writeYToDOM(events?: Y.YEvent<YXmlNode>[]) {
     if(this.#isWritingToDOM) return
     this.#isWritingToDOM = true
+    let reactions: MutationRecord[] | undefined
     try {
-      this.#reconcileDOMElement(this.#body, this.root)
-      if(this.#headRoot && this.#documentHead) {
-        this.#reconcileDOMElement(this.#documentHead, this.#headRoot)
-        this.#copyYAttributesToDOM(this.#documentAttributes!, this.#document.documentElement, ["lang"])
+      if(events) {
+        for(const event of events) this.#renderYChange(event)
+      }
+      else {
+        this.#reconcileDOMElement(this.#body, this.root)
+        if(this.#headRoot && this.#documentHead) {
+          this.#reconcileDOMElement(this.#documentHead, this.#headRoot)
+          this.#copyYAttributesToDOM(this.#documentAttributes!, this.#document.documentElement, ["lang"])
+        }
+      }
+      if(this.#headRoot) {
         const language = this.#headMetadata.get("language")
-        if(typeof language === "string" && language) this.#document.documentElement.setAttribute("lang", language)
-        else this.#document.documentElement.removeAttribute("lang")
+        const html = this.#document.documentElement
+        if(typeof language === "string" && language) {
+          if(html.getAttribute("lang") !== language) html.setAttribute("lang", language)
+        }
+        else if(html.hasAttribute("lang")) html.removeAttribute("lang")
       }
       this.writeSelection()
       // Drop MutationRecords caused by applying the shared tree. A custom
       // element may have synchronously changed its own light DOM while being
       // connected; reconcile once in the other direction to capture that.
-      this.#observer?.takeRecords()
+      reactions = this.#observer?.takeRecords()
     }
     finally {
       this.#isWritingToDOM = false
     }
-    this.syncFromDOM(this.#remoteReactionOrigin)
+    this.syncFromDOM(this.#remoteReactionOrigin, reactions)
+  }
+
+  #renderYChange(event: Y.YEvent<YXmlNode>) {
+    let target = event.target
+    if(target === this.#documentAttributes) {
+      this.#copyYAttributesToDOM(this.#documentAttributes!, this.#document.documentElement, ["lang"])
+      return
+    }
+    if(!this.#isSelectionNode(target)) return
+    // A comment's text is stored inside its Y element without a separate DOM node.
+    if(target.parent && this.#isYComment(target.parent as YXmlNode)) target = target.parent as YXmlNode
+    const node = this.#nodes.get(target)
+    if(!node) return // An inserted ancestor is rendered by its parent's event.
+    if(isText(node) && target instanceof Y.XmlText) this.#reconcileDOMText(target, node)
+    else if(isComment(node) && this.#isYComment(target)) this.#reconcileDOMComment(target, node)
+    else if(isElement(node) && target instanceof Y.XmlElement) {
+      if(!this.#isCompatiblePair(node, target) && target !== this.#body && target !== this.#documentHead) {
+        const parent = target.parent
+        const parentNode = parent && this.#nodes.get(parent as YXmlNode)
+        if(parent instanceof Y.XmlElement && isElement(parentNode)) this.#reconcileDOMElement(parent, parentNode)
+      }
+      else if(event instanceof Y.YXmlEvent && event.changes.delta.length) this.#reconcileDOMElement(target, node)
+      else this.#copyYAttributesToDOM(target, node)
+      this.#restoreControlState(node)
+    }
+    const control = (isElement(node) ? node : node.parentElement)?.closest("select, textarea")
+    if(control) this.#restoreControlState(control)
   }
 
   #isSelectionNode(node: YXmlNode) {
@@ -958,7 +1126,9 @@ export class SharedDOMDoc {
     const namespace = yNode.hasAttribute(INTERNAL_NAMESPACE)
       ? (yNode.getAttribute(INTERNAL_NAMESPACE) || null)
       : this.#document.documentElement.namespaceURI
-    return domNode.localName === yNode.nodeName && domNode.namespaceURI === namespace
+    const qualifiedName = yNode.getAttribute(INTERNAL_QUALIFIED_NAME) ?? yNode.nodeName
+    return (domNode.prefix ? `${domNode.prefix}:${domNode.localName}` : domNode.localName) === qualifiedName
+      && domNode.namespaceURI === namespace
   }
 
   #addNodePair(node: Node, yNode: YXmlNode) {
@@ -983,6 +1153,7 @@ export class SharedDOMDoc {
     if(!isElement(node) || this.#isInsideIgnoredElement(node)) return null
 
     const yElement = new Y.XmlElement(node.localName)
+    if(node.prefix) yElement.setAttribute(INTERNAL_QUALIFIED_NAME, `${node.prefix}:${node.localName}`)
     if(node.namespaceURI !== this.#document.documentElement.namespaceURI) {
       yElement.setAttribute(INTERNAL_NAMESPACE, node.namespaceURI ?? "")
     }
@@ -1026,8 +1197,9 @@ export class SharedDOMDoc {
       : explicitNamespace ?? this.#document.documentElement.namespaceURI
     let element: Element
     try {
-      element = explicitNamespace !== undefined
-        ? this.#document.createElementNS(namespace, yNode.nodeName)
+      const qualifiedName = yNode.getAttribute(INTERNAL_QUALIFIED_NAME) ?? yNode.nodeName
+      element = explicitNamespace !== undefined || qualifiedName !== yNode.nodeName
+        ? this.#document.createElementNS(namespace, qualifiedName)
         : this.#document.createElement(yNode.nodeName)
     }
     catch {
@@ -1060,7 +1232,7 @@ export class SharedDOMDoc {
 
     const current = yElement.getAttributes()
     for(const name of Object.keys(current)) {
-      if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE) continue
+      if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME) continue
       if(!desired.has(name)) yElement.removeAttribute(name)
     }
     desired.forEach((value, name) => {
@@ -1099,15 +1271,18 @@ export class SharedDOMDoc {
         // Ignore malformed attribute metadata from an untrusted remote update.
       }
     })
-    if(classNames.length) element.setAttribute("class", classNames.join(" "))
-    else element.removeAttribute("class")
+    if(classNames.length) {
+      const className = classNames.join(" ")
+      if(element.getAttribute("class") !== className) element.setAttribute("class", className)
+    }
+    else if(element.hasAttribute("class")) element.removeAttribute("class")
   }
 
   #encodeDOMAttribute(attribute: Attr) {
     if(attribute.namespaceURI !== null) {
       return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
     }
-    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE ||
+    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE || attribute.name === INTERNAL_QUALIFIED_NAME ||
       attribute.name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX) ||
       attribute.name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
       return `${INTERNAL_USER_ATTRIBUTE_PREFIX}${encodeURIComponent(attribute.name)}`
@@ -1116,7 +1291,7 @@ export class SharedDOMDoc {
   }
 
   #decodeYAttribute(name: string): DOMAttribute | null {
-    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === "class") return null
+    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === "class") return null
     if(name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
       try {
         const value = JSON.parse(decodeURIComponent(name.slice(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX.length)))
@@ -1145,7 +1320,7 @@ export class SharedDOMDoc {
     if(attribute.namespaceURI !== null) {
       return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
     }
-    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE ||
+    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE || attribute.name === INTERNAL_QUALIFIED_NAME ||
       attribute.name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX) ||
       attribute.name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
       return `${INTERNAL_USER_ATTRIBUTE_PREFIX}${encodeURIComponent(attribute.name)}`

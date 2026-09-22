@@ -92,17 +92,10 @@ export class HistoryFeature extends EditorFeature {
     if(!this.#isDocumentTransaction(transaction)) return
     if(this.#previewCheckpointId) return
     if(this.#restoring) return
-    const local = transaction.local
-    queueMicrotask(() => {
-      if(!this.isEnabled || this.#previewCheckpointId || this.#restoring) return
-      const previousCheckpointId = this.#currentCheckpointId
-      if(this.#synchronizeCurrentCheckpoint()) {
-        this.#cancelCheckpoint()
-        if(previousCheckpointId !== this.#currentCheckpointId) this.postState()
-        return
-      }
-      if(local) this.#queueCheckpoint()
-    })
+    // Document transactions can arrive for every small DOM mutation. Keep the
+    // edit path cheap and serialize only at the debounce or a state boundary.
+    // Remote changes are likewise synchronized when state is next requested.
+    if(transaction.local) this.#queueCheckpoint()
   }
 
   enable() {
@@ -209,11 +202,14 @@ export class HistoryFeature extends EditorFeature {
 
   #recordCheckpoint(label?: string) {
     const source = this.editor.toHTML()
-    const previous = this.#checkpoints.toArray().at(-1)
-    if(previous?.source === source) {
-      this.#currentCheckpointId = previous.id
-      return previous
+    const matchingCheckpoint = this.#checkpoints.toArray().reverse().find(checkpoint => checkpoint.source === source)
+    if(matchingCheckpoint) {
+      const previousCheckpointId = this.#currentCheckpointId
+      this.#currentCheckpointId = matchingCheckpoint.id
+      if(previousCheckpointId !== matchingCheckpoint.id) this.postState()
+      return matchingCheckpoint
     }
+    const previous = this.#checkpoints.toArray().at(-1)
     const user = this.#localUser()
     const checkpoint: StoredCheckpoint = {
       id: this.#id("checkpoint"),

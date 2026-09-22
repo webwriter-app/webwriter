@@ -7,7 +7,6 @@ import type {DomEditorToolbox} from "./toolbox"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
-import type {RibbonMenu} from "./ribbon-menu"
 import type {OpenDocumentMenu} from "./open-document-menu"
 import {
   executeCompleteEvent,
@@ -499,10 +498,16 @@ describe("DomEditor iframe setup", () => {
   })
 
 
-  it.each(["local", "development-server"])("keeps edits dirty during %s saves and excludes overlapping file actions", async storageLocation => {
+  it.each([
+    ["local", "body"], ["development-server", "body"],
+    ["local", "template"], ["development-server", "template"],
+  ])("keeps %s saves dirty after %s edits and excludes overlapping file actions", async (storageLocation, target) => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     host.storageLocation = storageLocation
+    const template = iframe.contentDocument!.createElement("template")
+    iframe.contentDocument!.body.append(template)
+    await new Promise(resolve => setTimeout(resolve, 0))
     let finish!: () => void
     const pending = new Promise<void>(resolve => { finish = resolve })
     const write = vi.fn(() => pending)
@@ -514,7 +519,8 @@ describe("DomEditor iframe setup", () => {
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     const saving = host.saveDocument()
     await vi.waitFor(() => expect(write).toHaveBeenCalledOnce())
-    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+    const container = target === "template" ? template.content : iframe.contentDocument!.body
+    container.append(iframe.contentDocument!.createElement("p"))
     await new Promise(resolve => setTimeout(resolve, 0))
     await host.newDocument()
     await host.saveDocument()
@@ -1452,6 +1458,55 @@ describe("DomEditor file actions", () => {
     body.replaceChildren()
     await new Promise(resolve => setTimeout(resolve, 0))
     expect((editor as any).fileDirty).toBe(false)
+  })
+
+  it.each([
+    ["body", "style", "background: red"],
+    ["html", "dir", "rtl"],
+    ["head", "id", "metadata"],
+    ["p", "id", "empty-paragraph"],
+    ["p", "contenteditable", "false"],
+  ])("tracks attribute-only edits to a fresh %s", async (tag, name, value) => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = "<p></p>"
+    doc.querySelector(tag)!.setAttribute(name, value)
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
+    const unload = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+  })
+
+  it("tracks edits inside existing and newly inserted nested template fragments", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = "<template><p>before</p></template>"
+    await vi.waitFor(() => expect(host.fileDirty).toBe(true))
+    host.fileHandle = {name: "saved.html"}
+    host.fileDirty = false
+    let revision = host.documentChangeSequence
+    const template = doc.querySelector("template")!
+    template.content.querySelector("p")!.textContent = "after"
+    await vi.waitFor(() => expect(host.fileDirty).toBe(true))
+    expect(host.documentChangeSequence).toBeGreaterThan(revision)
+    template.innerHTML = "<template><b>nested</b></template>"
+    await new Promise(resolve => setTimeout(resolve, 0))
+    host.fileDirty = false
+    revision = host.documentChangeSequence
+    template.content.querySelector("template")!.content.querySelector("b")!.setAttribute("title", "authored")
+    await vi.waitFor(() => expect(host.fileDirty).toBe(true))
+    expect(host.documentChangeSequence).toBeGreaterThan(revision)
+    template.remove()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    host.fileDirty = false
+    revision = host.documentChangeSequence
+    template.content.append(doc.createElement("p"))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(host.fileDirty).toBe(false)
+    expect(host.documentChangeSequence).toBe(revision)
   })
 
   it("clears unsaved changes when the styles on an otherwise empty paragraph are cleared", async () => {
@@ -3181,7 +3236,7 @@ describe("DomEditor.execute()", () => {
     }
   })
 
-  it("gates sharing with LIVE and resets the clock between preview and live", async () => {
+  it("keeps serverless recordings local and resets the clock between preview and live", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
@@ -3210,7 +3265,8 @@ describe("DomEditor.execute()", () => {
       toggle().click()
       await editor.updateComplete
       await ribbon.updateComplete
-      expect(share().disabled).toBe(false)
+      expect(share().disabled).toBe(true)
+      expect((editor as any).liveSessionLink).toBe("")
       expect(ribbon.shadowRoot!.querySelector(".learners-summary")?.textContent).toContain("Waiting for learners")
       expect(controls.live).toBe(true)
       expect(controls.currentTime).toBe(0)
@@ -3279,11 +3335,9 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await ribbon.updateComplete
     const host = (editor as unknown as {liveSession: LiveSession}).liveSession
-    const token = new URL((editor as unknown as {liveSessionLink: string}).liveSessionLink).searchParams.get("liveToken")!
     const learner = new LiveSession({
       id: host.id,
       role: "learner",
-      token,
       learner: {id: "learner-ada", name: "Ada Lovelace", color: "#d11b60"},
     })
     try {
@@ -3301,9 +3355,8 @@ describe("DomEditor.execute()", () => {
       const share = ribbon.shadowRoot!.querySelector<RibbonButton>(
         'ribbon-drawer[label="Learners"] ribbon-button[label="Share"]',
       )!
-      const shareURL = new URL(share.qrValue)
-      expect(shareURL.searchParams.get("liveSession")).toBe(host.id)
-      expect(shareURL.searchParams.get("role")).toBe("learner")
+      expect(share.disabled).toBe(true)
+      expect(ribbon.liveSessionLink).toBe("")
 
       const toggle = ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.learner-toggle[data-learner-id="learner-ada"]')!
       expect(toggle).not.toBeNull()
@@ -3349,11 +3402,9 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await ribbon.updateComplete
     const host = (editor as unknown as {liveSession: LiveSession}).liveSession
-    const token = new URL((editor as unknown as {liveSessionLink: string}).liveSessionLink).searchParams.get("liveToken")!
     const learner = new LiveSession({
       id: host.id,
       role: "learner",
-      token,
       learner: {id: "learner-grace", name: "Grace Hopper", color: "#2563eb"},
     })
     try {

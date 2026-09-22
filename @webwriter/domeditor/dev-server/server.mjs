@@ -13,6 +13,7 @@ const serverDirectory = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(serverDirectory, "..")
 const defaultDataDirectory = join(projectRoot, ".webwriter-dev")
 const maximumBodySize = 25 * 1024 * 1024
+const maximumWebSocketPayload = 8 * 1024 * 1024
 const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"])
 const WebSocketServer = WebSocketPackage.WebSocketServer ?? WebSocketPackage.Server
 
@@ -281,7 +282,7 @@ export async function createDevServer(options = {}) {
 
   let viteServer
   const liveSessionTokens = new Map()
-  const websocketServer = new WebSocketServer({noServer: true})
+  const websocketServer = new WebSocketServer({noServer: true, maxPayload: maximumWebSocketPayload})
   websocketServer.on("connection", (socket, request) => {
     // A stale browser connection can produce a malformed frame after wake.
     // Handle it so ws does not turn the expected disconnect into a process error.

@@ -211,6 +211,8 @@ class MediaPlaceholder {
   private focusWithin = false
   private pickerOpen = false
   private interactionActive = false
+  private fileReader: FileReader | null = null
+  private fileReadGeneration = 0
 
   get isInteracting() {
     return this.element.isConnected && this.interactionActive
@@ -289,10 +291,20 @@ class MediaPlaceholder {
       this.pickerOpen = false
       const file = picker.files?.[0]
       if(!file || !this.target) return
+      this.cancelFileRead()
       const target = this.target
+      const generation = this.fileReadGeneration
       const reader = new FileReader()
+      this.fileReader = reader
       reader.addEventListener("load", () => {
+        if(this.fileReader !== reader || generation !== this.fileReadGeneration) return
+        this.fileReader = null
+        if(this.target !== target || !document.body.contains(target) || !isEmptyMedia(target)
+          || atomicEditingContainer(target.parentElement, this.schema)) return
         if(typeof reader.result === "string") this.onSource?.(target, reader.result)
+      }, {once: true})
+      reader.addEventListener("error", () => {
+        if(this.fileReader === reader) this.fileReader = null
       }, {once: true})
       reader.readAsDataURL(file)
       picker.value = ""
@@ -308,6 +320,23 @@ class MediaPlaceholder {
   private beginInteraction() {
     this.interactionActive = true
     this.onInteractionChange?.()
+  }
+
+  private cancelFileRead() {
+    this.fileReadGeneration++
+    const reader = this.fileReader
+    this.fileReader = null
+    if(reader && reader.readyState === 1) reader.abort()
+  }
+
+  dispose() {
+    this.cancelFileRead()
+    this.target = null
+    this.onSource = null
+    this.onCapture = null
+    this.onFocus = null
+    this.onInteractionChange = null
+    this.element.remove()
   }
 
   private applyUrl() {
@@ -339,6 +368,7 @@ class MediaPlaceholder {
 
   selectFile() {
     if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)) return
+    this.cancelFileRead()
     this.beginInteraction()
     this.onFocus?.(this.target)
     this.pickerOpen = true
@@ -347,6 +377,7 @@ class MediaPlaceholder {
 
   showFor(target: Element) {
     if(this.target !== target) {
+      this.cancelFileRead()
       this.root.querySelector<HTMLInputElement>(".url")!.value = ""
       this.clearUrlError()
     }
@@ -378,6 +409,7 @@ class MediaPlaceholder {
   }
 
   hide() {
+    this.cancelFileRead()
     this.target = null
     this.element.removeAttribute("data-open")
     this.element.setAttribute("aria-hidden", "true")
@@ -1036,7 +1068,7 @@ export class MediaFeature extends EditorFeature {
     window.removeEventListener("resize", this.scheduleRefresh)
     window.removeEventListener("blur", this.cancelPendingShield)
     document.removeEventListener("scroll", this.scheduleRefresh, true)
-    this.mediaPlaceholder?.element.remove()
+    this.mediaPlaceholder?.dispose()
     this.mediaPlaceholder = null
     this.imageMapOverlayController?.element.remove()
     this.imageMapOverlayController = null
@@ -1451,7 +1483,8 @@ export class MediaFeature extends EditorFeature {
   }
 
   private setSource(element: Element, source: string) {
-    if(!element.isConnected || !element.matches(mediaSelector)) return
+    if(!element.isConnected || !document.body.contains(element) || !element.matches(mediaSelector)
+      || !isEmptyMedia(element) || atomicEditingContainer(element.parentElement, this.editor.schema)) return false
     const target = mediaSourceTarget(element)
     target.setAttribute(mediaSourceAttribute(target), source)
     if(element.matches("audio, video")) element.setAttribute("controls", "")
@@ -1459,6 +1492,7 @@ export class MediaFeature extends EditorFeature {
     this.editor.features.selection.processSelection()
     this.editor.postSelectionPath()
     this.refresh()
+    return true
   }
 
   private openCapture(target: Element, mode: MediaCaptureMode) {
@@ -1471,8 +1505,7 @@ export class MediaFeature extends EditorFeature {
     this.mediaCapture?.controller.close()
     const controller = new MediaCapture(mode, source => {
       if(!valid()) return false
-      this.setSource(target, source)
-      return true
+      return this.setSource(target, source)
     }, () => {
       if(this.mediaCapture?.controller !== controller) return
       this.mediaCapture = null

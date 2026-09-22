@@ -42,6 +42,27 @@ describe("package embeds", () => {
     expect(fragment.innerHTML).toBe("<p>Keep</p>")
   })
 
+  it("sanitizes the root element attributes while preserving safe unfamiliar namespaced content", () => {
+    const parsed = new DOMParser().parseFromString(
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:ww="urn:example:widget" viewBox="0 0 10 10" onload="run()" href="javascript:run()" style="background:url(javascript:run())"><!--keep--><g onclick="run()"><ww:widget data-safe="yes"><ww:part/></ww:widget><script>run()</script></g></svg>',
+      "image/svg+xml",
+    )
+    const root = parsed.documentElement
+
+    expect(stripActiveContent(root)).toBeGreaterThanOrEqual(5)
+    expect(root.getAttribute("viewBox")).toBe("0 0 10 10")
+    expect(root.hasAttribute("onload")).toBe(false)
+    expect(root.hasAttribute("href")).toBe(false)
+    expect(root.hasAttribute("style")).toBe(false)
+    expect(root.querySelector("script, [onclick]")).toBeNull()
+    const widget = root.querySelector("g")?.firstElementChild
+    expect(widget?.localName).toBe("widget")
+    expect(widget?.namespaceURI).toBe("urn:example:widget")
+    expect(widget?.getAttribute("data-safe")).toBe("yes")
+    expect(root.childNodes[0].nodeType).toBe(Node.COMMENT_NODE)
+    expect(root.childNodes[0].textContent).toBe("keep")
+  })
+
   it("accepts package examples with embedded media larger than one megabyte", () => {
     const html = `<media-widget data-image="${"a".repeat(1_000_000)}"></media-widget>`
     expect(sanitizePackageSnippet(html)).toBe(html)

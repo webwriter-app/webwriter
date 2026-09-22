@@ -189,7 +189,7 @@ describe("editing direct layout content", () => {
   })
 
   it("undoes and redoes the split and placement changes together", () => {
-    const {section} = preset()
+    preset()
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const html = () => (cloneWithoutEditorMarkers(document.querySelector("section")!, true) as HTMLElement).outerHTML

@@ -7,6 +7,7 @@ import {
   clearTableMarkers,
   completeCellRectangle,
   createTable,
+  maximumTableMapSlots,
   placementForCell,
   placementsInRectangle,
   tableCellSelector,
@@ -30,8 +31,8 @@ function cellTagForRow(row: HTMLTableRowElement) {
   return cells.length && cells.every(cell => cell.matches("th")) ? "th" : "td"
 }
 
-function newCellForRow(row: HTMLTableRowElement, source?: HTMLTableCellElement | null) {
-  const cell = document.createElement(source?.localName === "th" ? "th" : source?.localName === "td" ? "td" : cellTagForRow(row))
+function newCellForRow(row: HTMLTableRowElement, source?: HTMLTableCellElement | null, tag?: "td" | "th") {
+  const cell = document.createElement(tag ?? (source?.localName === "th" ? "th" : source?.localName === "td" ? "td" : cellTagForRow(row)))
   if(source) {
     Array.from(source.attributes).forEach(attribute => {
       if(attribute.name !== "id" && attribute.name !== "rowspan" && attribute.name !== "colspan"
@@ -349,6 +350,7 @@ export class TableFeature extends EditorFeature {
   }
 
   private actionCells(map: TableMap) {
+    if(map.limited) return []
     const selected = this.selectedCells
     if(selected.length) return selected
     const current = cellForNode($.anchor)
@@ -441,6 +443,7 @@ export class TableFeature extends EditorFeature {
    * comments, captions, and merged cells are left intact. */
   normalizeTable(table: HTMLTableElement) {
     let map = buildTableMap(table)
+    if(map.limited) return map
     if(!map.rows.length) {
       const body = table.tBodies[0] ?? table.createTBody()
       body.insertRow().append(document.createElement("td"))
@@ -493,19 +496,34 @@ export class TableFeature extends EditorFeature {
 
   private insertRowAt(table: HTMLTableElement, boundary: number, sourceRow = boundary) {
     let map = this.normalizeTable(table)
-    if(boundary < 0 || boundary > map.rows.length) return
+    if(map.limited || boundary < 0 || boundary > map.rows.length) return
+    if((map.rows.length + 1) * map.width > maximumTableMapSlots) return
     const crossing = map.placements.filter(placement => placement.row < boundary && placement.row + placement.rowSpan > boundary)
     crossing.forEach(placement => {
       if(placement.cell.getAttribute("rowspan") !== "0") placement.cell.rowSpan = placement.rowSpan + 1
     })
 
     const row = document.createElement("tr")
-    const reference = map.rows[boundary]
-    reference ? reference.before(row) : map.rows.at(-1)!.after(row)
+    const source = map.rows[Math.min(Math.max(0, sourceRow), map.rows.length - 1)]
+    let parent: Element = source?.parentElement ?? table
+    const sourceGroup = parent.localName
+    if(source && (sourceGroup === "thead" && boundary > sourceRow
+      || sourceGroup === "tfoot" && boundary <= sourceRow)) {
+      parent = Array.from(table.children).find(child => child.localName === "tbody") ?? table.ownerDocument.createElement("tbody")
+      if(!parent.parentNode) {
+        const footer = Array.from(table.children).find(child => child.localName === "tfoot")
+        footer ? table.insertBefore(parent, footer) : table.append(parent)
+      }
+    }
+    const next = map.rows.slice(boundary).find(candidate => candidate.parentElement === parent)
+    const previous = map.rows.slice(0, boundary).reverse().find(candidate => candidate.parentElement === parent)
+    if(next) parent.insertBefore(row, next)
+    else if(previous) previous.after(row)
+    else parent.append(row)
     for(let column = 0; column < map.width; column++) {
       if(crossing.some(placement => placement.column <= column && column < placement.column + placement.columnSpan)) continue
       const source = map.matrix[Math.min(sourceRow, map.rows.length - 1)]?.[column]?.cell
-      row.append(newCellForRow(row, source))
+      row.append(newCellForRow(row, source, parent.localName === "tbody" ? "td" : undefined))
     }
     normalizeTableStructure(table)
     map = this.normalizeTable(table)
@@ -533,7 +551,8 @@ export class TableFeature extends EditorFeature {
 
   private insertColumnAt(table: HTMLTableElement, boundary: number) {
     let map = this.normalizeTable(table)
-    if(boundary < 0 || boundary > map.width) return
+    if(map.limited || boundary < 0 || boundary > map.width) return
+    if(map.rows.length * (map.width + 1) > maximumTableMapSlots) return
     const crossing = map.placements.filter(placement => placement.column < boundary
       && placement.column + placement.columnSpan > boundary)
     crossing.forEach(placement => placement.cell.colSpan = placement.columnSpan + 1)
@@ -799,16 +818,20 @@ export class TableFeature extends EditorFeature {
 
   private ensureSize(table: HTMLTableElement, rows: number, columns: number) {
     let map = this.normalizeTable(table)
+    if(map.limited) return null
+    if(Math.max(rows, map.rows.length) * Math.max(columns, map.width) > maximumTableMapSlots) return null
     while(map.rows.length < rows) {
       const last = map.rows.at(-1)!
       const row = document.createElement("tr")
       for(let column = 0; column < Math.max(columns, map.width); column++) row.append(newCellForRow(row, map.matrix.at(-1)?.[column]?.cell))
       last.after(row)
       map = this.normalizeTable(table)
+      if(map.limited) return null
     }
     while(map.width < columns) {
       map.rows.forEach((row, rowIndex) => row.append(newCellForRow(row, map.matrix[rowIndex]?.at(-1)?.cell)))
       map = this.normalizeTable(table)
+      if(map.limited) return null
     }
     normalizeTableStructure(table)
     return buildTableMap(table)
@@ -824,7 +847,9 @@ export class TableFeature extends EditorFeature {
     const sourceColumns = Math.max(...matrix.map(row => row.length))
     const targetRows = this.hasCellSelection ? Math.max(sourceRows, rectangle.bottom - rectangle.top + 1) : sourceRows
     const targetColumns = this.hasCellSelection ? Math.max(sourceColumns, rectangle.right - rectangle.left + 1) : sourceColumns
-    map = this.ensureSize(table, rectangle.top + targetRows, rectangle.left + targetColumns)
+    const sizedMap = this.ensureSize(table, rectangle.top + targetRows, rectangle.left + targetColumns)
+    if(!sizedMap) return false
+    map = sizedMap
     const changed = new Set<HTMLTableCellElement>()
     for(let rowOffset = 0; rowOffset < targetRows; rowOffset++) {
       for(let columnOffset = 0; columnOffset < targetColumns; columnOffset++) {

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import {$} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
 import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
@@ -1486,7 +1487,7 @@ describe("DOM MathML editing", () => {
     const remote = new Y.Doc()
     try {
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
-      const paragraph = remote.getXmlElement("body").get(0) as Y.XmlElement
+      const paragraph = sharedDOMBody(remote).get(0) as Y.XmlElement
       const sharedMath = paragraph.get(1) as Y.XmlElement
       const token = sharedMath.get(0) as Y.XmlElement
       remote.transact(() => {
@@ -1506,8 +1507,8 @@ describe("DOM MathML editing", () => {
       expect(current.getAttribute("mathvariant")).toBe("normal")
       editor.doc.syncFromDOM()
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
-      expect(remote.getXmlElement("body").toString()).toContain("msup")
-      expect(remote.getXmlElement("body").toString()).not.toContain("◆math")
+      expect(sharedDOMBody(remote).toString()).toContain("msup")
+      expect(sharedDOMBody(remote).toString()).not.toContain("◆math")
     }
     finally { remote.destroy() }
   })

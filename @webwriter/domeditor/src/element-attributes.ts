@@ -154,6 +154,12 @@ const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[
 const editorOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
 const blockedAttributes = new Set(["srcdoc"])
 const urlAttributes = new Set(["href", "src", "xlink:href", "action", "formaction", "poster", "cite", "data"])
+const unsafeStyleValue = /(?:expression\s*\(|javascript\s*:|data\s*:\s*text\/html)/i
+
+export function isUnsafeElementAttributeName(name: string) {
+  const normalized = name.toLowerCase()
+  return blockedAttributes.has(normalized) || normalized.startsWith("on")
+}
 
 export function elementAttributeOptions(localName: string) {
   const specific = optionsByElement[localName] ?? []
@@ -179,7 +185,7 @@ export function elementAttributeEditability(name: string, localName?: string, na
     return {editable: false, reason: "Required by the media schema"} as const
   }
   if(normalized === "style") return {editable: false, reason: "Use the Style tools"} as const
-  if(blockedAttributes.has(normalized) || normalized.startsWith("on")) {
+  if(isUnsafeElementAttributeName(normalized)) {
     return {editable: false, reason: "Blocked for safety"} as const
   }
   if(editorOnlyAttributes.has(normalized)) return {editable: false, reason: "Managed by the editor"} as const
@@ -191,12 +197,14 @@ export function sanitizeAuthoredClass(value: string) {
 }
 
 export function isUnsafeElementAttributeValue(name: string, value: string) {
-  if(!urlAttributes.has(name.toLowerCase())) return false
-  const normalized = value.trim().toLowerCase().replaceAll(/[\u0000-\u0020]+/g, "")
-  return normalized.startsWith("javascript:")
-    || normalized.startsWith("vbscript:")
-    || normalized.startsWith("data:text/html")
-    || normalized.startsWith("data:image/svg+xml")
+  const normalizedName = name.toLowerCase()
+  if(normalizedName === "style") return unsafeStyleValue.test(value)
+  if(!urlAttributes.has(normalizedName)) return false
+  const normalizedValue = value.trim().toLowerCase().replaceAll(/[\u0000-\u0020]+/g, "")
+  return normalizedValue.startsWith("javascript:")
+    || normalizedValue.startsWith("vbscript:")
+    || normalizedValue.startsWith("data:text/html")
+    || normalizedValue.startsWith("data:image/svg+xml")
 }
 
 export function elementAttributeState(element: Element, path: number[] | null): ElementAttributeState {

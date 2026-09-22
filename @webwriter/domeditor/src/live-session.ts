@@ -76,6 +76,7 @@ type LiveSessionOptions = {
   id: string
   role: LiveSessionRole
   baseHTML?: string
+  /** WebSocket collaboration endpoint. Cross-tab live sessions require this endpoint. */
   serverUrl?: string
   /** Capability shared only through the host's learner link. */
   token?: string
@@ -87,15 +88,6 @@ type AwarenessState = {
     role: LiveSessionRole
     learner?: Pick<LiveSessionLearner, "id" | "name" | "color">
   }
-}
-
-type BroadcastMessage = {
-  type: "sync-request" | "sync" | "update" | "awareness"
-  session: string
-  sender: string
-  token?: string
-  update?: number[]
-  awareness?: number[]
 }
 
 const META = "live-session-meta"
@@ -138,6 +130,8 @@ const connectionKey = (id: string, role: string, token: string, learner = "") =>
 /**
  * Durable session timeline and learner registry. The Y.Doc owned here is a
  * session log, not a second representation of the authored editor DOM.
+ * Without `serverUrl`, instances coordinate only in the same JavaScript realm;
+ * sharing across tabs requires the server-backed WebSocket transport.
  */
 export class LiveSession {
   readonly id: string
@@ -150,10 +144,8 @@ export class LiveSession {
   readonly #stepArray: Y.Array<LiveSessionStep>
   readonly #stateMap: Y.Map<LiveSessionLearnerState>
   readonly #transportOrigin = {}
-  readonly #transportId = identifier("transport")
   readonly #listeners = new Set<LiveSessionChangeListener>()
   readonly #clientLearners = new Map<number, string>()
-  readonly #channel?: BroadcastChannel
   readonly #provider?: WebsocketProvider
   readonly #learner?: Pick<LiveSessionLearner, "id" | "name" | "color">
   readonly #token?: string
@@ -232,16 +224,6 @@ export class LiveSession {
       if(source) source.#sendSync(this)
       peers.add(this)
       transportSessions.set(this.id, peers)
-      if(typeof BroadcastChannel !== "undefined") {
-        this.#channel = new BroadcastChannel(`webwriter-live-session:${this.id}`)
-        this.#channel.addEventListener("message", this.#handleBroadcast)
-        this.#channel.postMessage({
-          type: "sync-request",
-          session: this.id,
-          sender: this.#transportId,
-          ...(this.#token ? {token: this.#token} : {}),
-        } satisfies BroadcastMessage)
-      }
       const joiningUpdate = source
         ? Y.encodeStateAsUpdate(this.doc, sourceStateVector)
         : Y.encodeStateAsUpdate(this.doc)
@@ -332,7 +314,6 @@ export class LiveSession {
     removeAwarenessStates(this.awareness, [this.awareness.clientID], "live-session-stop")
     this.#status = "stopped"
     this.#provider?.destroy()
-    this.#channel?.close()
     const peers = transportSessions.get(this.id)
     peers?.delete(this)
     if(peers?.size === 0) transportSessions.delete(this.id)
@@ -415,20 +396,12 @@ export class LiveSession {
   }
 
   #broadcastUpdate(update: Uint8Array) {
-    const data = Array.from(update)
     const peers = [...(transportSessions.get(this.id) ?? [])].filter(peer => peer.#token === this.#token)
     const host = peers.find(peer => peer.role === "host")
     if(this.role === "learner" && host && !acceptLearnerUpdate(host.doc, update, this.#learner!.id)) return
     peers.forEach(peer => {
       if(peer !== this) peer.#applyUpdate(update)
     })
-    this.#channel?.postMessage({
-      type: "update",
-      session: this.id,
-      sender: this.#transportId,
-      ...(this.#token ? {token: this.#token} : {}),
-      update: data,
-    } satisfies BroadcastMessage)
   }
 
   #sendSync(target: LiveSession) {
@@ -454,37 +427,6 @@ export class LiveSession {
     transportSessions.get(this.id)?.forEach(peer => {
       if(peer !== this && peer.#token === this.#token) peer.#applyAwareness(update)
     })
-    this.#channel?.postMessage({
-      type: "awareness",
-      session: this.id,
-      sender: this.#transportId,
-      ...(this.#token ? {token: this.#token} : {}),
-      awareness: Array.from(update),
-    } satisfies BroadcastMessage)
-  }
-
-  #handleBroadcast = (event: MessageEvent<BroadcastMessage>) => {
-    const message = event.data
-    if(!message || message.session !== this.id || message.sender === this.#transportId) return
-    if(message.token !== this.#token) return
-    if(message.type === "sync-request" && this.role === "host") {
-      this.#channel?.postMessage({
-        type: "sync",
-        session: this.id,
-        sender: this.#transportId,
-        ...(this.#token ? {token: this.#token} : {}),
-        update: Array.from(Y.encodeStateAsUpdate(this.doc)),
-        awareness: Array.from(encodeAwarenessUpdate(this.awareness, [...this.awareness.getStates().keys()])),
-      } satisfies BroadcastMessage)
-    }
-    else if(Array.isArray(message.update) && message.update.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
-      this.#applyUpdate(Uint8Array.from(message.update))
-    }
-    if((message.type === "sync" || message.type === "awareness") && message.awareness) {
-      if(Array.isArray(message.awareness) && message.awareness.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
-        this.#applyAwareness(Uint8Array.from(message.awareness))
-      }
-    }
   }
 
   #notify(change: LiveSessionChange = {stepDeltas: []}) {

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
@@ -77,38 +77,38 @@ describe("table normalization", () => {
     observer.disconnect()
   })
 
-  it("parses nested and irregular tables and rejects the removed forms", () => {
-    const {fragment} = editor.parseHTMLFragment('<table role="grid"><colgroup><col></colgroup><thead><tr><th scope="col" abbr="A" headers="x">A</th></tr><tr><th>B</th></tr></thead><tbody><tr><th>C<table><tr><td>Nested</td></tr></table></th></tr></tbody><tfoot><tr><td>D</td></tr><tr><td>E</td></tr></tfoot></table>')
-    const table = fragment.querySelector("table")!
-    expect(table.querySelector("colgroup, col, [scope], [headers], [abbr], [role]")).toBeNull()
-    expect(table.querySelectorAll(":scope > thead > tr")).toHaveLength(1)
-    expect(table.querySelectorAll(":scope > tfoot > tr")).toHaveLength(1)
-    expect(table.querySelectorAll(":scope > tbody > tr")).toHaveLength(3)
-    expect(table.querySelector("td table td")?.textContent).toBe("Nested")
+  it("preserves native table columns, metadata, and repeated row groups", () => {
+    const table = document.createElement("table")
+    table.setAttribute("role", "grid")
+    table.innerHTML = '<caption>Results</caption><colgroup span="2"><col></colgroup><colgroup><col></colgroup><thead role="rowgroup"><tr><td headers="x">Heading</td></tr><tr><th scope="col" abbr="A">A</th></tr></thead><tbody><tr><th scope="row">First</th></tr></tbody><tbody role="rowgroup"><tr><td headers="first">Second</td></tr></tbody><tfoot><tr><td>Summary</td></tr><tr><th>Total</th></tr></tfoot>'
+    const original = table.innerHTML
+
+    editor.schema.checkAndCorrect(table, true)
+
+    expect(table.innerHTML).toBe(original)
+    expect(table.getAttribute("role")).toBe("grid")
+    expect(table.querySelectorAll(":scope > colgroup")).toHaveLength(2)
+    expect(table.querySelectorAll(":scope > tbody")).toHaveLength(2)
+    expect(table.querySelector("th[scope='row']")).not.toBeNull()
+    expect(table.querySelector("td[headers='x']")).not.toBeNull()
     expect(editor.schema.isContentValid(table)).toBe(true)
-    const row = table.querySelector("tbody tr")!
-    row.innerHTML = '<th>Invalid</th>'
-    expect(editor.schema.isContentValid(row)).toBe(false)
-    expect(editor.schema.isContentValid(row, [document.createElement("td")])).toBe(true)
-    const cell = table.querySelector("thead th")!
-    cell.setAttribute("headers", "x")
-    expect(editor.schema.isContentValid(cell)).toBe(false)
-    table.prepend(document.createElement("colgroup"))
-    expect(editor.schema.isContentValid(table)).toBe(false)
+    expect(editor.schema.isContentValid(table.querySelector("tbody tr")!)).toBe(true)
+    expect(editor.schema.isContentValid(table.querySelector("thead tr")!)).toBe(true)
   })
 
-  it("keeps only the first header row and last footer row, converting body cells to td", () => {
+  it("leaves ordinary normalization calls unchanged", () => {
     const table = document.createElement("table")
     table.innerHTML = `<colgroup><col></colgroup><thead><tr><th headers="h">Head</th></tr><tr><th>Extra</th></tr></thead><tbody><tr><th scope="row">Body</th></tr></tbody><tfoot><tr><td>Old footer</td></tr><tr><td abbr="f">Footer</td></tr></tfoot>`
+    const original = table.innerHTML
     normalizeTableStructure(table)
-    expect(table.innerHTML).toBe(`<thead><tr><th>Head</th></tr></thead><tbody><tr><td>Extra</td></tr><tr><td>Body</td></tr><tr><td>Old footer</td></tr></tbody><tfoot><tr><td>Footer</td></tr></tfoot>`)
+    expect(table.innerHTML).toBe(original)
   })
 
   it("uses explicit header and footer flags and produces schema-valid parsed tables", () => {
     document.body.innerHTML = `<table role="grid"><tr><td>First</td></tr><tr><th>Last</th></tr></table>`
     const table = document.querySelector("table")!
     normalizeTableStructure(table, true, false)
-    expect(table.outerHTML).toBe(`<table><thead><tr><th>First</th></tr></thead><tbody><tr><td>Last</td></tr></tbody></table>`)
+    expect(table.outerHTML).toBe(`<table role="grid"><thead><tr><th>First</th></tr></thead><tbody><tr><td>Last</td></tr></tbody></table>`)
     editor.schema.checkAndCorrect(table, true)
     expect(editor.schema.isContentValid(table)).toBe(true)
   })
@@ -1034,6 +1034,17 @@ describe("Schema methods", () => {
 })
 
 describe("media constraints", () => {
+  it("retains a standalone image's column placement on its media wrapper", () => {
+    const group = document.createElement("div")
+    group.className = "ww-column-group"
+    group.innerHTML = '<p class="ww-column-left">Left</p><img class="authored ww-column-right" alt="Right">'
+    const image = group.querySelector("img")!
+    editor.schema.enforceMedia(group)
+    expect(group.querySelector(":scope > picture.ww-column-right > img")).toBe(image)
+    expect(image.className).toBe("authored")
+    expect(group.querySelector(".ww-column-left")!.textContent).toBe("Left")
+  })
+
   it("wraps standalone images without replacing them or touching widgets", () => {
     const body = document.createElement("body")
     body.innerHTML = '<p><!--keep--><img alt="First"><img alt="Second"></p><picture><source srcset="wide.png"><img></picture><media-widget><img><video></video><embed></media-widget>'

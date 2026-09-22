@@ -68,7 +68,7 @@ describe("HTML Living Standard capability coverage", () => {
       .filter(([, capability]) => capability.intentionallyRestricted)
       .map(([name]) => name))).toEqual(sorted([
       "script", "style", "canvas", "template", "noscript", "slot", "iframe", "link",
-      "autonomous-custom-elements", "dialog", "hgroup", "col", "colgroup", ...formElementTypes,
+      "autonomous-custom-elements", "dialog", "hgroup", "dl", "hr", "pre", "col", "colgroup", ...formElementTypes,
     ]))
   })
 

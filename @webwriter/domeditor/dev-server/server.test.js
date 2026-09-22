@@ -321,6 +321,29 @@ describe("development server", () => {
     }
   })
 
+  it("rejects oversized frames on generic and host collaboration sockets", async () => {
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const payload = Buffer.alloc(8 * 1024 * 1024 + 1)
+    const expectPayloadClose = async socket => {
+      const closed = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Oversized frame was not closed")), 5_000)
+        socket.once("close", code => {
+          clearTimeout(timer)
+          resolve(code)
+        })
+      })
+      socket.send(payload)
+      // ws enforces maxPayload by destroying the socket; the client sees 1006.
+      await expect(closed).resolves.toBe(1006)
+    }
+
+    const generic = await openWebSocket(`${websocketUrl}/oversized-generic`)
+    await expectPayloadClose(generic)
+
+    const host = await openWebSocket(`${websocketUrl}/live-session-oversized-host?role=host&token=aaaaaaaaaaaaaaaaaaaaaaaa&hostKey=hhhhhhhhhhhhhhhhhhhhhhhh`)
+    await expectPayloadClose(host)
+  })
+
   it("requires the host capability for live-session WebSockets and releases empty rooms", async () => {
     const websocketUrl = baseUrl.replace(/^http/, "ws")
     const room = "live-session-token-test"

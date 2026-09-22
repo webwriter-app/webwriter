@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Cross-browser smoke checks</title>
+<p id="baseline">Start</p>
+<script>
+const reportSmokeFailure = error => fetch("/__native-result", {
+  method: "POST",
+  headers: {"content-type": "application/json"},
+  body: JSON.stringify({checks: [{name: "smoke fixture runtime", error: String(error)}]}),
+})
+addEventListener("error", event => reportSmokeFailure(event.error ?? event.message))
+addEventListener("unhandledrejection", event => reportSmokeFailure(event.reason))
+</script>
+<script type="module" src="./browser-smoke.ts"></script>
+</html>

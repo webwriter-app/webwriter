@@ -3,7 +3,7 @@ import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
 import type {DOMChangePreview} from "../domdoc"
 import {stripActiveContent} from "../active-content"
 import {isMarkElement} from "../marks"
-import {cloneRangeContents, cloneWithoutEditorMarkers, removeEditorMarker, uiMotionDisabled, atomicEditingContainer, cloneInert, getInertDocument} from "../utility"
+import {captureRangeIdentity, cloneRangeContents, cloneWithoutEditorMarkers, removeEditorMarker, uiMotionDisabled, atomicEditingContainer, cloneInert, getInertDocument} from "../utility"
 import {aiPage, validateAIChangeOperations, type AIReadDocumentOptions, type AIInspectOptions, type AIChangeOperation, type AIInsertPosition} from "../ai-tools"
 import {htmlElementCapabilities} from "../html-element-capabilities"
 import {elementStyleCategories} from "../element-styles"
@@ -379,23 +379,6 @@ export class StateFeature extends EditorFeature {
     return serializeFragment(fragment)
   }
 
-  private captureHTMLSelectionIdentity(range: Range) {
-    const identity = new Set<Node>()
-    const visit = (node: Node) => {
-      if(node !== document.body) {
-        try {
-          if(range.intersectsNode(node)) identity.add(node)
-        }
-        catch {
-          return
-        }
-      }
-      node.childNodes.forEach(visit)
-    }
-    visit(document.body)
-    return identity
-  }
-
   private isCurrentHTMLSelection(range: Range) {
     if(!range.startContainer.isConnected || !range.endContainer.isConnected) return false
     for(const node of this.htmlEditIdentity) if(!node.isConnected) return false
@@ -723,7 +706,7 @@ export class StateFeature extends EditorFeature {
       this.editor.clearEditingArtifacts(fragment)
       const html = serializeFragment(fragment)
       const selectionId = `${this.aiReadPrefix}/selection/${++this.aiReadSequence}`
-      this.aiRanges.set(selectionId, {range: range.cloneRange(), html, identity: this.captureHTMLSelectionIdentity(range)})
+      this.aiRanges.set(selectionId, {range: range.cloneRange(), html, identity: captureRangeIdentity(range)})
       if(this.aiRanges.size > 32) this.aiRanges.delete(this.aiRanges.keys().next().value!)
       const container = range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement
       return {
@@ -746,7 +729,7 @@ export class StateFeature extends EditorFeature {
       const range = this.selectedHTMLRange(path)
       this.htmlEditRange = range
       this.htmlEditSnapshot = this.serializeHTMLRange(range)
-      this.htmlEditIdentity = this.captureHTMLSelectionIdentity(range)
+      this.htmlEditIdentity = captureRangeIdentity(range)
       return {html: this.htmlEditSnapshot}
     },
     setHTMLSelectionEditPending: ({pending}: {type: "setHTMLSelectionEditPending", pending: boolean}) => {

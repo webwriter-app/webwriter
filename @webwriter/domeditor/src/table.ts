@@ -17,6 +17,7 @@ export type TableMap = {
   matrix: Array<Array<TableCellPlacement | undefined>>
   placements: TableCellPlacement[]
   width: number
+  limited?: boolean
 }
 
 export type TableSelectionState = {
@@ -49,9 +50,15 @@ export function tableRows(table: HTMLTableElement) {
     .filter(row => tableForNode(row) === table)
 }
 
+const maximumColumnSpan = 1000
+export const maximumTableMapSlots = 1_000_000
+
 function positiveSpan(cell: Element, name: "rowspan" | "colspan") {
   const value = Number.parseInt(cell.getAttribute(name) ?? "", 10)
-  return Number.isFinite(value) && value > 0 ? value : 1
+  if(!Number.isFinite(value) || value <= 0) return 1
+  // colspan is a limited unsigned integer in HTML. Read the reflected range
+  // here instead of letting a raw, oversized attribute drive grid allocation.
+  return name === "colspan" ? Math.min(value, maximumColumnSpan) : value
 }
 
 function effectiveRowSpan(cell: HTMLTableCellElement, rows: HTMLTableRowElement[], rowIndex: number) {
@@ -67,20 +74,34 @@ function effectiveRowSpan(cell: HTMLTableCellElement, rows: HTMLTableRowElement[
 /** Builds a fresh visual occupancy map without changing the authored table. */
 export function buildTableMap(table: HTMLTableElement): TableMap {
   const rows = tableRows(table)
+  const emptyMap = (): TableMap => ({table, rows: [], matrix: [], placements: [], width: 0, limited: true})
+  if(rows.length > maximumTableMapSlots) return emptyMap()
   const matrix: Array<Array<TableCellPlacement | undefined>> = rows.map(() => [])
   const placements: TableCellPlacement[] = []
   let width = 0
 
-  rows.forEach((row, rowIndex) => {
+  for(let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex]
     let column = 0
     const cells = Array.from(row.children)
       .filter((child): child is HTMLTableCellElement => child.matches(tableCellSelector))
-    cells.forEach(cell => {
+    for(const cell of cells) {
       const columnSpan = positiveSpan(cell, "colspan")
       const rowSpan = Math.min(effectiveRowSpan(cell, rows, rowIndex), rows.length - rowIndex)
       while(matrix[rowIndex][column]) column++
-      while(Array.from({length: columnSpan}).some((_, offset) => matrix[rowIndex][column + offset])) column++
+      while(true) {
+        let occupied = false
+        for(let offset = 0; offset < columnSpan; offset++) {
+          if(matrix[rowIndex][column + offset]) {
+            occupied = true
+            break
+          }
+        }
+        if(!occupied) break
+        column++
+      }
       const placement = {cell, row: rowIndex, column, rowSpan, columnSpan}
+      if(Math.max(width, column + columnSpan) * rows.length > maximumTableMapSlots) return emptyMap()
       placements.push(placement)
       for(let rowOffset = 0; rowOffset < rowSpan; rowOffset++) {
         for(let columnOffset = 0; columnOffset < columnSpan; columnOffset++) {
@@ -89,11 +110,11 @@ export function buildTableMap(table: HTMLTableElement): TableMap {
       }
       column += columnSpan
       width = Math.max(width, column)
-    })
+    }
     width = Math.max(width, matrix[rowIndex].length)
-  })
+  }
 
-  return {table, rows, matrix, placements, width}
+  return {table, rows, matrix, placements, width, limited: false}
 }
 
 export function placementForCell(map: TableMap, cell: Element | null) {
@@ -154,68 +175,79 @@ export function clearTableMarkers(root: ParentNode) {
   clearEditorMarkerClasses(root as Node)
 }
 
-/** Canonicalize table sections without rebuilding cells or widget content. */
+/** Toggle the first and last row groups while preserving other authored table structure. */
 export function normalizeTableStructure(table: HTMLTableElement, header?: boolean, footer?: boolean) {
   const changedCells = new Map<HTMLTableCellElement, HTMLTableCellElement>()
-  const groups = Array.from(table.children).filter(child => child.matches("thead, tbody, tfoot"))
-  const rows = Array.from(table.children).flatMap(child => child.localName === "tr"
-    ? [child as HTMLTableRowElement]
-    : groups.includes(child) ? Array.from(child.children).filter((row): row is HTMLTableRowElement => row.localName === "tr") : [])
+  const rows = tableRows(table)
+  if(header === undefined && footer === undefined) return changedCells
   const first = rows[0]
   const last = rows.at(-1)
-  const firstCells = first ? Array.from(first.children).filter(cell => cell.matches(tableCellSelector)) : []
-  const hasHeader = header ?? (first?.parentElement?.localName === "thead"
-    || firstCells.length > 0 && firstCells.every(cell => cell.localName === "th"))
-  const hasFooter = footer ?? groups.some(group => group.localName === "tfoot" && group.querySelector(":scope > tr"))
-  const headerRow = hasHeader ? first : undefined
-  const footerRow = hasFooter && last !== headerRow ? last : undefined
-  const desired = new Map<string, HTMLTableRowElement[]>([
-    ["thead", headerRow ? [headerRow] : []],
-    ["tbody", rows.filter(row => row !== headerRow && row !== footerRow)],
-    ["tfoot", footerRow ? [footerRow] : []],
-  ])
-  table.removeAttribute("role")
-  Array.from(table.children).filter(child => child.matches("col, colgroup")).forEach(child => child.remove())
-  const sections: Element[] = []
-  for(const [name, sectionRows] of desired) {
-    if(!sectionRows.length) continue
-    const section = groups.find(group => group.localName === name) ?? table.ownerDocument.createElement(name)
-    section.removeAttribute("role")
-    if(!section.parentNode) table.append(section)
-    // Insert only misplaced rows, retaining comments and already-correct nodes.
-    let previous: HTMLTableRowElement | undefined
-    for(const row of sectionRows) {
-      if(row.parentElement !== section || previous && previous.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING) {
-        const next = previous ? previous.nextSibling : Array.from(section.children).find(child => child.localName === "tr") ?? null
-        section.insertBefore(row, next)
-      }
-      previous = row
-      row.removeAttribute("role")
-      const tag = name === "thead" ? "th" : "td"
-      Array.from(row.children).filter(child => child.matches(tableCellSelector)).forEach(child => {
-        let cell = child as HTMLTableCellElement
-        if(cell.localName !== tag) {
-          const replacement = table.ownerDocument.createElement(tag)
-          Array.from(cell.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
-          replacement.append(...Array.from(cell.childNodes))
-          cell.replaceWith(replacement)
-          changedCells.set(cell, replacement)
-          cell = replacement
-        }
-        for(const attribute of ["headers", "scope", "abbr", "role"]) cell.removeAttribute(attribute)
-      })
+  const topLevelChild = (node: Node) => {
+    let child = node
+    while(child.parentNode && child.parentNode !== table) child = child.parentNode
+    return child.parentNode === table ? child : null
+  }
+  const section = (name: "thead" | "tbody" | "tfoot", relativeRow?: HTMLTableRowElement) => {
+    const existing = Array.from(table.children).find(child => child.localName === name)
+    if(existing) return existing
+    const created = table.ownerDocument.createElement(name)
+    const reference = relativeRow ? topLevelChild(relativeRow) : null
+    if(name === "thead" && reference) table.insertBefore(created, reference)
+    else if(name === "tfoot" && reference) table.insertBefore(created, reference.nextSibling)
+    else {
+      const footerSection = Array.from(table.children).find(child => child.localName === "tfoot")
+      footerSection ? table.insertBefore(created, footerSection) : table.append(created)
     }
-    sections.push(section)
+    return created
   }
-  for(const group of groups) {
-    if(sections.includes(group)) continue
-    // Retain comments and other authored nodes from removed section wrappers.
-    group.replaceWith(...Array.from(group.childNodes))
+  const bodySection = (row: HTMLTableRowElement) => {
+    const index = rows.indexOf(row)
+    const neighbor = rows.slice(index + 1).find(candidate => candidate.parentElement?.localName === "tbody")
+      ?? rows.slice(0, index).reverse().find(candidate => candidate.parentElement?.localName === "tbody")
+    return neighbor?.parentElement ?? section("tbody", row)
   }
-  let previous: Element | undefined = table.caption ?? undefined
-  for(const section of sections) {
-    if(previous && previous.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_PRECEDING) previous.after(section)
-    previous = section
+  const moveRow = (row: HTMLTableRowElement, name: "thead" | "tbody" | "tfoot") => {
+    const target = name === "tbody" ? bodySection(row) : section(name, row)
+    if(row.parentElement === target) return
+    const previousParent = row.parentElement
+    if(name === "thead") target.prepend(row)
+    else if(name === "tfoot") target.append(row)
+    else {
+      const index = rows.indexOf(row)
+      const next = rows.slice(index + 1).find(candidate => candidate.parentElement === target)
+      const previous = rows.slice(0, index).reverse().find(candidate => candidate.parentElement === target)
+      if(next) target.insertBefore(row, next)
+      else if(previous) previous.after(row)
+      else target.append(row)
+    }
+    if(previousParent && previousParent !== target && /^(thead|tbody|tfoot)$/.test(previousParent.localName)
+      && previousParent.childNodes.length === 0) previousParent.remove()
+  }
+  const setRowType = (row: HTMLTableRowElement, tag: "td" | "th") => {
+    Array.from(row.children).filter(child => child.matches(tableCellSelector)).forEach(child => {
+      const cell = child as HTMLTableCellElement
+      if(cell.localName === tag) return
+      const replacement = table.ownerDocument.createElement(tag)
+      Array.from(cell.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
+      replacement.append(...Array.from(cell.childNodes))
+      cell.replaceWith(replacement)
+      changedCells.set(cell, replacement)
+    })
+  }
+  if(first && first === last) {
+    const name = header ? "thead" : footer ? "tfoot" : "tbody"
+    moveRow(first, name)
+    setRowType(first, name === "thead" ? "th" : "td")
+  }
+  else {
+    if(first && header !== undefined) {
+      moveRow(first, header ? "thead" : "tbody")
+      setRowType(first, header ? "th" : "td")
+    }
+    if(last && footer !== undefined) {
+      moveRow(last, footer ? "tfoot" : "tbody")
+      setRowType(last, "td")
+    }
   }
   return changedCells
 }

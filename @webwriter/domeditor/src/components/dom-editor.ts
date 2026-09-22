@@ -1348,14 +1348,25 @@ export class DomEditor extends LitElement {
       MutationObserver?: typeof MutationObserver
     } | null)?.MutationObserver
     if(body && FrameMutationObserver) {
+      const observationOptions: MutationObserverInit = {
+        attributes: true, attributeOldValue: true, characterData: true,
+        characterDataOldValue: true, childList: true, subtree: true,
+      }
+      const templateOwners = new WeakMap<Node, HTMLTemplateElement>()
+      const isCurrentTarget = (node: Node): boolean => {
+        if(this.editorDocument!.documentElement.contains(node)) return true
+        const owner = templateOwners.get(node.getRootNode())
+        return Boolean(owner && isCurrentTarget(owner))
+      }
       // Construct the observer in the iframe's realm. Chromium rejects an
       // outer-window MutationObserver when scoped-registry initialization
       // reloads the iframe and hands it an iframe-owned Node.
       const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
         if(mutations.some(mutation => mutation.type === "childList")) {
           this.documentTree = this.buildDocumentTree()
+          observeTemplates(mutations)
         }
-        const hasAuthoredMutation = mutations.some(mutation => this.isAuthoredMutation(mutation))
+        const hasAuthoredMutation = mutations.some(mutation => isCurrentTarget(mutation.target) && this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
           this.documentChangeSequence++
           if(this.historyDocumentTransitionCount === 0) {
@@ -1367,16 +1378,35 @@ export class DomEditor extends LitElement {
           if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
       })
+      // Template contents are separate trees. Release removed fragments and
+      // retain any queued records when the observation roots need rebuilding.
+      let observedTemplates = new Set<DocumentFragment>()
+      const observeTemplates = (mutations: MutationRecord[] = []) => {
+        const roots: ParentNode[] = [this.editorDocument!.documentElement]
+        const templates = new Set<DocumentFragment>()
+        for(let index = 0; index < roots.length; index++) {
+          roots[index].querySelectorAll<HTMLTemplateElement>("template").forEach(template => {
+            if(!template.content) return
+            templateOwners.set(template.content, template)
+            templates.add(template.content)
+            roots.push(template.content)
+          })
+        }
+        const removed = [...observedTemplates].some(fragment => !templates.has(fragment))
+        if(removed) {
+          mutations.push(...observer.takeRecords())
+          observer.disconnect()
+          observer.observe(this.editorDocument!.documentElement, observationOptions)
+        }
+        for(const fragment of templates) {
+          if(removed || !observedTemplates.has(fragment)) observer.observe(fragment, observationOptions)
+        }
+        observedTemplates = templates
+      }
       this.documentTreeObserver = observer
       try {
-        observer.observe(this.editorDocument?.documentElement ?? body, {
-          attributes: true,
-          attributeOldValue: true,
-          characterData: true,
-          characterDataOldValue: true,
-          childList: true,
-          subtree: true,
-        })
+        observer.observe(this.editorDocument?.documentElement ?? body, observationOptions)
+        observeTemplates()
       }
       catch {
         // A preliminary iframe load can expose a body from the document being
@@ -1472,6 +1502,20 @@ export class DomEditor extends LitElement {
     const body = this.editorDocument?.body
     const head = this.editorDocument?.head
     if(!body || !head) return false
+    const hasAttributes = (element: Element, expected: Record<string, string> = {}) => {
+      const attributes = Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
+        if(attribute.name === "class") {
+          const value = this.authoredClasses(attribute.value)
+          return value ? [[attribute.name, value]] : []
+        }
+        if(attribute.name === "style" && !attribute.value.trim()) return []
+        return [[attribute.name, attribute.value]]
+      }))
+      return Object.keys(attributes).length === Object.keys(expected).length
+        && Object.entries(expected).every(([name, value]) => attributes[name] === value)
+    }
+    if(!hasAttributes(body) || !hasAttributes(head)
+      || !hasAttributes(this.editorDocument!.documentElement, {lang: this.settings.language})) return false
 
     const authoredHeadNodes = Array.from(head.childNodes).filter(node => !(
       node.nodeType === Node.ELEMENT_NODE && (
@@ -1491,7 +1535,7 @@ export class DomEditor extends LitElement {
       && (theme as Element).localName === "style"
       && (theme as Element).getAttribute("data-ww-theme") === defaultDocumentTheme.value
       && (theme as Element).textContent === defaultDocumentTheme.source
-      && this.editorDocument?.documentElement.getAttribute("lang") === this.settings.language
+      && hasAttributes(theme as Element, {"data-ww-theme": defaultDocumentTheme.value, blocking: "render"})
     if(!headUnchanged) return false
 
     const authoredChildren = Array.from(body.childNodes).filter(node => {
@@ -1506,12 +1550,12 @@ export class DomEditor extends LitElement {
     return authoredChildren.length === 1
       && onlyChild?.nodeType === Node.ELEMENT_NODE
       && (onlyChild as Element).localName === "p"
-      && !(onlyChild as HTMLParagraphElement).style.length
+      && hasAttributes(onlyChild as Element)
       // Native editing can leave empty text nodes and a placeholder line break.
       && (onlyChild as Element).children.length <= 1
       && Array.from(onlyChild.childNodes).every(node =>
         node.nodeType === Node.TEXT_NODE && !node.textContent
-        || node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "br"
+        || node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "br" && hasAttributes(node as Element)
       )
   }
 
@@ -1523,7 +1567,6 @@ export class DomEditor extends LitElement {
     if(element?.closest(".◆editor-only, [data-webwriter-editor-only]")) return false
     if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
     if(mutation.type === "attributes") {
-      if(mutation.attributeName === "contenteditable" || mutation.attributeName === "spellcheck") return false
       const current = mutation.attributeNamespace
         ? element?.getAttributeNS(mutation.attributeNamespace, mutation.attributeName!) ?? null
         : element?.getAttribute(mutation.attributeName!) ?? null
@@ -1666,6 +1709,10 @@ export class DomEditor extends LitElement {
     if(this.liveSessionActive) return
     if(import.meta.env.MODE !== "test" && !this.backendSession) await this.loginToBackend()
     if(!this.isConnected) return
+    if(!this.backendSession?.collaborationUrl) {
+      this.reportFileError(new Error("Connect to a collaboration server to join a live session"))
+      return
+    }
     const identity = this.learnerIdentity(sessionId)
     const token = new URL(location.href).searchParams.get(liveSessionTokenParameter) ?? ""
     if(this.backendSession?.collaborationUrl && !/^[A-Za-z0-9_-]{24,256}$/.test(token)) {
@@ -1790,16 +1837,17 @@ export class DomEditor extends LitElement {
     }
     try {
       const sessionId = randomIdentifier("live")
-      const sessionToken = randomIdentifier("live-token")
+      const serverUrl = this.backendSession?.collaborationUrl
+      const sessionToken = serverUrl ? randomIdentifier("live-token") : undefined
       const session = new LiveSession({
         id: sessionId,
         role: "host",
         baseHTML: this.previewDocumentHTML ?? this.currentPreviewHTML(),
-        ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
+        ...(serverUrl ? {serverUrl} : {}),
         token: sessionToken,
       })
       this.resetLivePlayback()
-      this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId, sessionToken))
+      this.connectLiveSession(session, "host", sessionToken ? this.liveSessionShareLink(sessionId, sessionToken) : "")
       const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
       if(frame?.contentDocument) this.livePreview.observeHost(frame, frame.contentDocument, () => this.updateLiveWidgetAffordances())
     }

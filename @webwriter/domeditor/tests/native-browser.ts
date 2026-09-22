@@ -301,7 +301,11 @@ await check("structural formula carets match inserted text without duplicate cap
           "caret does not use the inserted character baseline")
         assert(Math.abs(caret.left - rootBefore.left - (range.getBoundingClientRect().left - row.getBoundingClientRect().left)) < 1,
           "caret does not use the insertion position")
-        assert(!math.classList.contains("◆math-structural-caret"), "structural caret suppression survived typing")
+        // Populated MathML tokens also use the measured appendix caret. Check
+        // ownership after typing, rather than requiring a duplicate native caret.
+        assert(math.classList.contains("◆math-structural-caret")
+          && editor.appendix.querySelectorAll('[part="math-caret"]').length === 1
+          && getComputedStyle(text.parentElement!).caretColor === "rgba(0, 0, 0, 0)", "typed formula does not retain exactly one caret")
       }
     }
     for(const display of ["inline", "block"]) for(const inside of [false, true]) for(const start of [false, true]) for(const direction of ["ltr", "rtl"]) {
@@ -580,7 +584,7 @@ await check("selection feature treats custom element as atomic", () => {
   assert($.isElementSelection && $.selectedElement === widget, "selection feature did not select the widget host")
   assert(widget.classList.contains("◆element-selected"), "selection marker missing from widget host")
   assert(widget.shadowRoot!.querySelector("button"), "widget shadow DOM missing")
-  assert(widget.getAttribute("contenteditable") === "true", "editor did not mark widget host as editable boundary")
+  assert(widget.getAttribute("contenteditable") === "false", "editor changed authored widget editability")
 })
 
 await check("layout based hit testing returns the rendered target", async () => {
@@ -1574,7 +1578,8 @@ await check("CSS Slides use native fragment links while editing", async () => {
     const slideRect = second.getBoundingClientRect(), nav = doc.querySelector<HTMLElement>("nav.ww-slides-navigation")!
     assert(Math.abs(slideRect.width - frame.clientWidth) < 1 && Math.abs(slideRect.width / slideRect.height - 16 / 9) < .01,
       `slide does not fit at 16:9: ${slideRect.width} × ${slideRect.height}`)
-    assert(Math.abs(slideRect.top - (frame.clientHeight - slideRect.height) / 2) < 1 && Math.abs(slideRect.left) < 1, "slide is not vertically centered")
+    assert(Math.abs(slideRect.top - (frame.clientHeight - slideRect.height) / 2) < 1 && Math.abs(slideRect.left) < 1,
+      `slide is not vertically centered: ${JSON.stringify({slide: slideRect.toJSON(), viewport: viewport.getBoundingClientRect().toJSON(), frame: [frame.clientWidth, frame.clientHeight], body: doc.body.getBoundingClientRect().toJSON(), grid: getComputedStyle(doc.body).gridTemplateRows, appendix: Array.from(slideEditor.appendix.children).map(e => [e.localName, getComputedStyle(e).display, getComputedStyle(e).position]), margin: getComputedStyle(second).margin, scroll: [viewport.scrollLeft, viewport.scrollTop]})}`)
     const headingRect = second.querySelector("h1")!.getBoundingClientRect(), paragraphRect = second.querySelector("p")!.getBoundingClientRect()
     for(const item of [second.querySelector("h1")!, second.querySelector("p")!]) {
       assert(getComputedStyle(item).position === "absolute" && (item as HTMLElement).offsetParent === second, "slide box is not positioned relative to the slide")
@@ -1761,7 +1766,8 @@ await check("column groups expose independent gaps and stack with separator line
         style.textContent = defaultDocumentTheme.source;
         document.head.append(style, document.querySelector("script"));
         editor = new DOMEditor({bridgeOrigin: parent.location.origin});
-        const paragraph = document.querySelector("p"), media = document.createElement("img");
+        const paragraph = document.querySelector("p");
+        let media = document.createElement("img");
         media.alt = "Media";
         media.style.height = "160px";
         assert(editor.features.manipulation.placeFloat(media, paragraph, "right"), "could not create group");
@@ -1773,10 +1779,12 @@ await check("column groups expose independent gaps and stack with separator line
           middle.textContent = "Middle";
           media.before(middle);
         }
+        assert(group.firstElementChild === paragraph && group.lastElementChild === media, "incorrect group reading order");
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        media = group.querySelector(":scope > .ww-column-right");
+        assert(media && group.isConnected, "image normalization lost its column placement");
         const columns = Array.from(group.children);
-        assert(columns[0] === paragraph && columns[columns.length - 1] === media, "incorrect group reading order");
-        await new Promise(requestAnimationFrame);
-        await new Promise(requestAnimationFrame);
         const left = columns[0].getBoundingClientRect(), right = columns[columns.length - 1].getBoundingClientRect();
         assert(${width} > 960 ? Math.abs(left.top - right.top) < 1 && right.left > left.left : right.top >= left.bottom, "wrong column geometry " + JSON.stringify({left:left.toJSON(),right:right.toJSON(),grid:getComputedStyle(group).gridTemplateColumns,html:group.outerHTML}));
         assert((parseFloat(getComputedStyle(group).borderTopWidth) > 0) === (${width} <= 960), "wrong group separator visibility");
@@ -1825,9 +1833,9 @@ await check("column groups expose independent gaps and stack with separator line
         }
         const html = new DOMParser().parseFromString(editor.toHTML(true), "text/html").body.innerHTML;
         assert(html.includes("ww-column-group") && html.includes("ww-column-left") && html.includes("ww-column-right") && !html.includes("◆"), "group serialization lost content or retained editing artifacts: " + html);
-        const dragged = document.createElement("p"), dropTarget = document.createElement("img");
+        const dragged = document.createElement("p"), dropTarget = document.createElement("picture");
         dragged.textContent = "Drag a paragraph";
-        dropTarget.alt = "Drop target";
+        dropTarget.innerHTML = '<img alt="Drop target">';
         dropTarget.style.cssText = "height:80px;min-height:80px";
         document.body.append(dragged, dropTarget);
         $.selectElement(dragged);

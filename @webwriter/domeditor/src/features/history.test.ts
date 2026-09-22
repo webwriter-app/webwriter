@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import {afterEach, beforeEach, describe, expect, it} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import {executeFailureEvent, type VersionHistoryState} from "../editor-bridge"
 
 let editor: DOMEditor
@@ -28,6 +29,24 @@ afterEach(() => {
 })
 
 describe("collaborative version history", () => {
+  it("defers document serialization until a checkpoint or state boundary during an edit burst", async () => {
+    const history = editor.features.history
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    const serialize = vi.spyOn(editor, "toHTML")
+
+    for(let index = 0; index < 8; index++) {
+      document.querySelector("p")!.textContent = `Edit ${index}`
+      await mutationsDelivered()
+    }
+
+    expect(serialize).not.toHaveBeenCalled()
+    const state = history.actions.getVersionHistory({type: "getVersionHistory"})
+    expect(serialize).toHaveBeenCalled()
+    expect(state.checkpoints).toHaveLength(2)
+    expect(state.checkpoints[0]).not.toHaveProperty("source")
+    expect(editor.toHTML()).toContain("Edit 7")
+  })
+
   it("previews and restores document-level direction, classes and styles", async () => {
     const history = editor.features.history
     const initial = history.actions.getVersionHistory({type: "getVersionHistory"})
@@ -203,7 +222,7 @@ describe("collaborative version history", () => {
     const editorVector = Y.encodeStateVector(editor.doc.doc)
 
     history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: baselineId})
-    const remoteParagraph = remote.getXmlElement("body").firstChild as Y.XmlElement
+    const remoteParagraph = sharedDOMBody(remote).firstChild as Y.XmlElement
     const remoteText = remoteParagraph.firstChild as Y.XmlText
     remote.transact(() => {
       remoteText.delete(0, remoteText.length)

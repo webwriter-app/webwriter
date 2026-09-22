@@ -10,6 +10,12 @@ import {
 
 afterEach(() => localStorage.clear())
 
+const deferred = <T>() => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(done => { resolve = done })
+  return {promise, resolve}
+}
+
 describe("AIProviderStore", () => {
   it("defaults new providers to document-editing instructions", () => {
     expect(createAIProvider("openai").customInstructions).toBe(DEFAULT_AI_INSTRUCTIONS)
@@ -124,5 +130,50 @@ describe("AIProviderStore", () => {
 
     await expect(store.activate(second.id)).rejects.toThrow("backend unavailable")
     expect(store.activeProviderId).toBe(first.id)
+  })
+
+  it("ignores a backend save result after that backend disconnects", async () => {
+    const pending = deferred<{provider: ReturnType<typeof createAIProvider>, activeProviderId: string}>()
+    const backend = {
+      listAIProviders: async () => ({providers: [], activeProviderId: null}),
+      createAIProvider: () => pending.promise,
+      updateAIProvider: () => pending.promise,
+      deleteAIProvider: async () => {},
+      setActiveAIProvider: async () => {},
+    }
+    const store = new AIProviderStore(localStorage)
+    const local = store.upsert({...createAIProvider("custom"), id: "local-provider", name: "Local"})
+    await store.connectBackend(backend)
+
+    const remote = {...createAIProvider("custom"), id: "remote-provider", managed: "backend" as const}
+    const saving = store.save(remote)
+    store.disconnectBackend()
+    pending.resolve({provider: remote, activeProviderId: remote.id})
+    await saving
+
+    expect(store.providers.map(provider => provider.id)).toEqual([local.id])
+  })
+
+  it("does not let a late backend delete remove a restored local provider with the same id", async () => {
+    const pending = deferred<void>()
+    const remote = {...createAIProvider("custom"), id: "shared-provider-id", managed: "backend" as const}
+    const backend = {
+      listAIProviders: async () => ({providers: [remote], activeProviderId: remote.id}),
+      createAIProvider: async () => ({provider: remote, activeProviderId: remote.id}),
+      updateAIProvider: async () => ({provider: remote, activeProviderId: remote.id}),
+      deleteAIProvider: () => pending.promise,
+      setActiveAIProvider: async () => {},
+    }
+    const store = new AIProviderStore(localStorage)
+    const local = store.upsert({...remote, managed: undefined, name: "Local provider"})
+    await store.connectBackend(backend)
+
+    const deleting = store.delete(remote.id)
+    store.disconnectBackend()
+    pending.resolve()
+    await deleting
+
+    expect(store.providers).toEqual([expect.objectContaining({id: local.id, name: "Local provider"})])
+    expect(store.providers[0]).not.toHaveProperty("managed")
   })
 })

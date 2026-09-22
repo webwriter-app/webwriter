@@ -10,6 +10,32 @@ The command serves `tests/native-browser.html` on `127.0.0.1` and runs it in hea
 
 Formula checks verify native inline MathML rendering, preserved operand identity, empty argument dimensions, pointer placement followed by typing, editing-only backgrounds, and shadow appendix cleanup. They also exercise distinct text insertion positions before, at the start, at the end, and after inline formulas in different text-block positions, plus gaps around block formulas.
 
+## Cross-browser smoke matrix
+
+Run the compact platform smoke checks in one engine with:
+
+```sh
+npm run test:native-browser:smoke -- --browser=chromium
+npm run test:native-browser:smoke -- --browser=firefox
+npm run test:native-browser:smoke -- --browser=webkit
+```
+
+The runner serves a dedicated fixture on `127.0.0.1`. It launches Chrome or
+Firefox headlessly, or a small macOS WKWebView host backed by an ephemeral
+website data store; no Safari profile is opened. `CHROME_BIN` and `FIREFOX_BIN`
+can select other installed binaries; `WEBKIT_DEVELOPER_DIR` selects the Xcode
+developer directory for the WKWebView host when more than one Swift toolchain
+is installed. The smoke checks cover native Range and
+Selection, designMode editing, atomic widget editability, shadow appendix
+exclusion, remote Yjs updates plus local undo, SVG and MathML namespaces, and
+document-template serialization. This validates these specific behaviors in
+each engine; it does not claim broad layout, accessibility, or full editor
+compatibility coverage. The detailed regression and math geometry suites remain
+Chromium-only. Current validation: Chromium and WebKit passed all seven checks.
+Firefox launches headlessly with a temporary profile but timed out before the
+fixture reported, even with first-run prompts and automatic updates disabled;
+it remains unvalidated on this host.
+
 ## Formula visual audit
 
 ```sh

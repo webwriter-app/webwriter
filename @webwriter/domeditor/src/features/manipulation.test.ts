@@ -459,25 +459,30 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(fragment.childNodes[3].textContent).toBe(" keep ")
     expect(fragment.querySelector("test-widget")?.innerHTML).toBe("<h3>Widget</h3>")
   })
-  it("enables widget editing in HTML inserted through its action handler", () => {
+  it("preserves absent contenteditable when HTML is inserted through its action handler", async () => {
     editor.features.manipulation.actions.insert({
       type: "insert",
       html: "<section><webwriter-demo></webwriter-demo></section>",
     })
 
-    expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "true")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
+    expect(editor.toHTML(true)).toBe("<section><webwriter-demo></webwriter-demo></section>")
   })
-  it("keeps inserted widgets editable after undo and redo", async () => {
+  it("preserves authored contenteditable through inserted widget undo and redo", async () => {
     editor.features.manipulation.actions.insert({
       type: "insert",
       html: '<webwriter-demo contenteditable="false"></webwriter-demo>',
     })
+    await new Promise(resolve => setTimeout(resolve, 0))
     editor.doc.syncFromDOM()
+    const insertedHTML = editor.toHTML(true)
     editor.doc.undo()
     expect(document.querySelector("webwriter-demo")).toBeNull()
     editor.doc.redo()
-    await vi.waitFor(() => expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "true"))
-    expect(editor.toHTML(true)).toBe('<webwriter-demo></webwriter-demo>')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "false")
+    expect(editor.toHTML(true)).toBe(insertedHTML)
   })
   it("capture-selects a directly inserted widget", () => {
     editor.features.manipulation.actions.insert({
@@ -750,7 +755,6 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 describe("heading groups", () => {
   it("reports and changes the direct heading while preserving attributes and irregular children", () => {
     document.body.innerHTML = '<hgroup data-origin="remote"><p>Eyebrow</p><h2 id="title"><em>Title</em></h2><x-note></x-note><p>Deck</p></hgroup>'
-    const group = document.querySelector("hgroup")!
     $.move(document.querySelector("em")!.firstChild!, 2)
 
     expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
@@ -1436,6 +1440,57 @@ describe("cut()", () => {
       Object.defineProperty(navigator.clipboard, "write", {value: write, configurable: true})
     }
   })
+
+  it("does not cut a selected element whose subtree changed while the clipboard write was pending", async () => {
+    document.body.innerHTML = "<p>original</p><p>end</p>"
+    const selected = document.body.firstElementChild!
+    $.selectElement(selected)
+    let resolveWrite!: () => void
+    const write = navigator.clipboard.write
+    Object.defineProperty(navigator.clipboard, "write", {
+      value: vi.fn(() => new Promise<void>(resolve => { resolveWrite = resolve })),
+      configurable: true,
+    })
+    try {
+      const cutting = editor.features.manipulation.cut()
+      const selection = document.getSelection()!
+      const endpoints = [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]
+      selected.textContent = "changed"
+      expect([selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]).toEqual(endpoints)
+      resolveWrite()
+
+      await expect(cutting).resolves.toBe(false)
+      expectBodyToBe("<p>changed</p><p>end</p>")
+    }
+    finally { Object.defineProperty(navigator.clipboard, "write", {value: write, configurable: true}) }
+  })
+
+  it("does not cut a replacement node with the same outer selection endpoints", async () => {
+    document.body.innerHTML = "<p>original</p><p>end</p>"
+    const selected = document.body.firstElementChild!
+    $.selectElement(selected)
+    let resolveWrite!: () => void
+    const write = navigator.clipboard.write
+    Object.defineProperty(navigator.clipboard, "write", {
+      value: vi.fn(() => new Promise<void>(resolve => { resolveWrite = resolve })),
+      configurable: true,
+    })
+    try {
+      const cutting = editor.features.manipulation.cut()
+      const selection = document.getSelection()!
+      const endpoints = [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]
+      const replacement = document.createElement("p")
+      replacement.textContent = "original"
+      selected.replaceWith(replacement)
+      expect([selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]).toEqual(endpoints)
+      resolveWrite()
+
+      await expect(cutting).resolves.toBe(false)
+      expectBodyToBe("<p>original</p><p>end</p>")
+      expect(document.body.firstElementChild).toBe(replacement)
+    }
+    finally { Object.defineProperty(navigator.clipboard, "write", {value: write, configurable: true}) }
+  })
 })
 describe("paste()", () => {
   it("handles a native plain-text paste into an empty document", () => {
@@ -1549,7 +1604,7 @@ describe("paste()", () => {
     await editor.features.manipulation.paste()
 
     expectBodyToBe('<div class="ww-column-group"><p class="ww-column-left">hello</p><demo-widget class="ww-column-right">Widget</demo-widget></div>')
-    expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
+    expect(document.querySelector("demo-widget")).not.toHaveAttribute("contenteditable")
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector("demo-widget"))
   })
@@ -2343,22 +2398,26 @@ describe("unified content transfer", () => {
     expect(editor.doc.body.toString()).not.toMatch(/<(dialog|hgroup|span|small|ruby|rt)[ >]/)
   })
 
-  it.each(["paste", "drop"])("enables all nested widgets on native %s", method => {
+  it.each(["paste", "drop"])("preserves nested widget editing attributes on native %s", async method => {
     const data = new DataTransfer()
     data.setData("text/html", '<section><demo-widget contenteditable="false"><nested-widget></nested-widget></demo-widget><div is="custom-widget" contenteditable="plaintext-only"></div></section>')
     if(method === "drop") dropAt(data, document.body, 0)
     else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+    await new Promise(resolve => setTimeout(resolve, 0))
 
     const widgets = document.querySelectorAll("demo-widget, nested-widget, [is]")
     expect(widgets).toHaveLength(3)
-    widgets.forEach(widget => expect(widget).toHaveAttribute("contenteditable", "true"))
-    expect(editor.toHTML(true)).not.toContain("contenteditable")
+    expect(widgets[0]).toHaveAttribute("contenteditable", "false")
+    expect(widgets[1]).not.toHaveAttribute("contenteditable")
+    expect(widgets[2]).toHaveAttribute("contenteditable", "plaintext-only")
+    expect(editor.toHTML(true)).toContain('<demo-widget contenteditable="false"><nested-widget></nested-widget></demo-widget>')
+    expect(editor.toHTML(true)).toContain('<div is="custom-widget" contenteditable="plaintext-only"></div>')
   })
 
   it("sanitizes widget and template contents without canonizing a widget's private structure", () => {
     const {fragment} = editor.parseHTMLFragment('<test-widget class="external"><strong style="color:red">keep alias</strong><script>bad()</script><template><style>bad</style><span class="external" onclick="bad()">safe</span></template></test-widget>', true)
     const widget = fragment.querySelector("test-widget")!
-    expect(widget.outerHTML).toBe('<test-widget contenteditable="true"><strong>keep alias</strong><template><span>safe</span></template></test-widget>')
+    expect(widget.outerHTML).toBe('<test-widget><strong>keep alias</strong><template><span>safe</span></template></test-widget>')
   })
 
   it.each([false, true])("preserves installed quiz subtrees despite editing metadata (transfer=%s)", transfer => {
@@ -2367,19 +2426,21 @@ describe("unified content transfer", () => {
       {tagName: "webwriter-task-prompt", editingConfig: {group: "", content: "p+"}},
       {tagName: "webwriter-mark", editingConfig: {group: "answer", content: "(text | br | wbr)*"}},
     ])
-    const html = '<webwriter-task>\n  <webwriter-task-prompt slot="prompt"><p>Question</p></webwriter-task-prompt>\n  <!--keep--><webwriter-mark><p>Answer</p><svg viewBox="0 0 1 1"><path d="M0 0"></path></svg></webwriter-mark>\n</webwriter-task>'
+    const html = '<webwriter-task contenteditable="false">\n  <webwriter-task-prompt slot="prompt" contenteditable="plaintext-only"><p>Question</p></webwriter-task-prompt>\n  <!--keep--><webwriter-mark contenteditable="true"><p>Answer</p><svg viewBox="0 0 1 1"><path d="M0 0"></path></svg></webwriter-mark>\n</webwriter-task>'
     const {fragment} = editor.parseHTMLFragment(html, transfer)
 
-    expect(fragment.querySelectorAll('[contenteditable="true"]')).toHaveLength(3)
+    expect(fragment.querySelector("webwriter-task")).toHaveAttribute("contenteditable", "false")
+    expect(fragment.querySelector("webwriter-task-prompt")).toHaveAttribute("contenteditable", "plaintext-only")
+    expect(fragment.querySelector("webwriter-mark")).toHaveAttribute("contenteditable", "true")
     expect(fragment.querySelector("[class]")).toBeNull()
     editor.clearEditingArtifacts(fragment)
     expect(fragment.firstElementChild?.outerHTML).toBe(html)
     expect(fragment.querySelector("svg")?.namespaceURI).toBe("http://www.w3.org/2000/svg")
   })
 
-  it("preserves customized built-in widget content while sanitizing active markup", () => {
-    const {fragment} = editor.parseHTMLFragment('<div is="custom-quiz"><span><section>Widget layout</section></span><script>bad()</script></div>')
-    expect(fragment.firstElementChild?.outerHTML).toBe('<div is="custom-quiz" contenteditable="true"><span><section>Widget layout</section></span></div>')
+  it("preserves customized built-in widget editing attributes while sanitizing active markup", () => {
+    const {fragment} = editor.parseHTMLFragment('<div is="custom-quiz" contenteditable="plaintext-only"><span><section>Widget layout</section></span><script>bad()</script></div>')
+    expect(fragment.firstElementChild?.outerHTML).toBe('<div is="custom-quiz" contenteditable="plaintext-only"><span><section>Widget layout</section></span></div>')
   })
 
   it.each(sectionNames)("unwraps external <%s> sections while preserving non-section content", name => {
@@ -2421,8 +2482,8 @@ describe("unified content transfer", () => {
   })
 
   it("keeps widget-owned sections atomic while unwrapping their external containers", () => {
-    const {fragment} = editor.parseHTMLFragment('<div><test-widget><section><div>widget structure</div></section></test-widget></div>', true)
-    expect(fragment.firstElementChild?.outerHTML).toBe('<test-widget contenteditable="true"><section><div>widget structure</div></section></test-widget>')
+    const {fragment} = editor.parseHTMLFragment('<div><test-widget contenteditable="false"><section><div>widget structure</div></section></test-widget></div>', true)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<test-widget contenteditable="false"><section><div>widget structure</div></section></test-widget>')
     expect(fragment.childNodes).toHaveLength(1)
   })
 
@@ -2773,6 +2834,37 @@ describe("unified content transfer", () => {
     document.body.dispatchEvent(transferEvent("drop", data))
     expect(document.body.lastElementChild).toBe(source)
     expect(surface.isConnected).toBe(false)
+  })
+
+  it("positions the idle node drag surface only after geometry invalidation and cleans up observers", () => {
+    document.body.innerHTML = "<p>source</p>"
+    const source = document.body.firstElementChild!
+    const callbacks = new Map<number, FrameRequestCallback>()
+    let nextFrame = 0
+    const requestFrame = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
+      const id = ++nextFrame
+      callbacks.set(id, callback)
+      return id
+    })
+    const cancelFrame = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(id => { callbacks.delete(id) })
+    const measure = vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 30))
+
+    editor.features.manipulation.refreshNodeDragTarget(source)
+    expect(requestFrame).toHaveBeenCalledOnce()
+    callbacks.get(1)!(0)
+    expect(measure).toHaveBeenCalledOnce()
+    expect(requestFrame).toHaveBeenCalledOnce()
+
+    window.dispatchEvent(new Event("resize"))
+    expect(requestFrame).toHaveBeenCalledTimes(2)
+    callbacks.get(2)!(16)
+    expect(measure).toHaveBeenCalledTimes(2)
+
+    editor.features.manipulation.disable()
+    expect(cancelFrame).not.toHaveBeenCalled()
+    window.dispatchEvent(new Event("resize"))
+    expect(requestFrame).toHaveBeenCalledTimes(2)
+    editor.features.manipulation.enable()
   })
 
   it.each(["dragend", "dragleave", "disable"])("cleans up the drop indicator and handles %s", ending => {

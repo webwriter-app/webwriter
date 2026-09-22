@@ -7,7 +7,9 @@ describe("Kitchen Sink example", () => {
   it("pairs every built-in insertion type in root-level two-column layouts", () => {
     const doc = new DOMParser().parseFromString(source, "text/html")
     const groups = doc.querySelectorAll("body > .ww-column-group")
-    expect(groups).toHaveLength(insertionMenuItems.length)
+    // The fixture also includes one hidden-main example to explain the
+    // document's single-visible-main constraint; it is not a menu insertion.
+    expect(groups).toHaveLength(insertionMenuItems.length + 1)
     for(const {tag} of insertionMenuItems) {
       const heading = doc.getElementById(`sample-${tag}`)!
       expect(heading).not.toBeNull()

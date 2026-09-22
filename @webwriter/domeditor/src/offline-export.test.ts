@@ -26,6 +26,30 @@ afterEach(() => {
 })
 
 describe("offline HTML resources", () => {
+  it("embeds SVG raster images, preserves fragments and restores namespaced URLs", async () => {
+    document.body.innerHTML = '<svg><image href="/image.png#crop"></image><image xlink:href="/other.png"></image><use href="#local"></use></svg>'
+    mockResources({"/image.png": new Uint8Array([1]), "/other.png": new Uint8Array([2])})
+    const exported = await exportDocument()
+    const images = exported.querySelectorAll("image")
+    expect(images[0].getAttribute("href")).toBe("data:image/png;base64,AQ==#crop")
+    expect(images[1].getAttributeNS("http://www.w3.org/1999/xlink", "href")).toBe("data:image/png;base64,Ag==")
+    expect(exported.querySelector("use")!.getAttribute("href")).toBe("#local")
+    restoreOriginalResourceURLs(exported)
+    expect(images[0].getAttribute("href")).toBe("/image.png#crop")
+    expect(images[1].getAttributeNS("http://www.w3.org/1999/xlink", "href")).toBe("/other.png")
+  })
+
+  it.each(["use", "feImage"])("rejects unsupported external SVG %s dependencies explicitly", async tag => {
+    document.body.innerHTML = `<svg><${tag} href="/sprite.svg#symbol"></${tag}></svg>`
+    await expect(exportDocument()).rejects.toThrow("Offline export cannot embed external SVG")
+  })
+
+  it("rejects nested SVG images instead of silently exporting their online dependencies", async () => {
+    document.body.innerHTML = '<svg><image href="/nested.svg"></image></svg>'
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('<svg><image href="/online.png"/></svg>', {headers: {"content-type": "image/svg+xml"}}))
+    await expect(exportDocument()).rejects.toThrow("nested SVG resources")
+  })
+
   it("resolves each imported stylesheet's assets against that file and preserves link semantics", async () => {
     document.head.insertAdjacentHTML("beforeend", '<link rel="alternate stylesheet" href="/css/main.css" media="print" title="Print" disabled integrity="sha384-original">')
     const fetcher = mockResources({

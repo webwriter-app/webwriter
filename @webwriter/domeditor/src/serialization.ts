@@ -2,9 +2,9 @@ import canvasViewerSource from "./canvas-viewer.js?raw"
 import {documentLayoutMode} from "./document-layout"
 import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, type WebWriterPackage} from "./packages"
 
-export const originalURLAttribute = (name: string) => `data-webwriter-original-${name}`
+export const originalURLAttribute = (name: string) => `data-webwriter-original-${name.replace(":", "-")}`
 
-export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "style", "integrity"] as const
+export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "xlink:href", "style", "integrity"] as const
 
 /** Restores authored resource URLs from a document produced by an offline save. */
 export function restoreOriginalResourceURLs(root: ParentNode) {
@@ -19,7 +19,8 @@ export function restoreOriginalResourceURLs(root: ParentNode) {
       const original = element.getAttribute(marker)
       if(original === null) return
       if(element instanceof HTMLScriptElement && name === "src") element.textContent = ""
-      element.setAttribute(name, original)
+      if(name === "xlink:href") element.setAttributeNS("http://www.w3.org/1999/xlink", name, original)
+      else element.setAttribute(name, original)
       element.removeAttribute(marker)
     })
   }

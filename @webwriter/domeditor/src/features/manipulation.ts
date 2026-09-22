@@ -4,7 +4,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE} from "../graphic"
 import {isSlide} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isColumnGroup, columnSide, columnSides, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isColumnGroup, columnSide, columnSides, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -78,6 +78,9 @@ export class ManipulationFeature extends EditorFeature {
   private dragTarget: Element | null = null
   private dragSurface: HTMLDivElement | null = null
   private dragFrame: number | null = null
+  private dragResizeObserver: ResizeObserver | null = null
+  private dragMutationObserver: MutationObserver | null = null
+  private readonly dragGeometryCleanup: (() => void)[] = []
   private nodeDrag: {element: Element, token: string} | null = null
   private originalDropSelection: Range | null = null
   private floatDropPreviewOwner: "transfer" | "transformation" | null = null
@@ -91,7 +94,10 @@ export class ManipulationFeature extends EditorFeature {
       || this.editor.features.canvas.active || this.editor.features.slides.active
       || isContentfulWidget(element, this.editor.schema)
       || !element?.isConnected || !getDocumentRoot().contains(element)) element = null
-    if(element === this.dragTarget) return
+    if(element === this.dragTarget) {
+      this.scheduleNodeDragPosition()
+      return
+    }
     this.clearNodeDragSurface()
     if(!element) return
     this.dragTarget = element
@@ -124,8 +130,49 @@ export class ManipulationFeature extends EditorFeature {
     surface.addEventListener("drop", event => this.drop(event))
     this.editor.addAppendix(surface)
     this.dragSurface = surface
-    const position = () => {
+    this.observeNodeDragGeometry(element)
+    this.scheduleNodeDragPosition()
+  }
+
+  private observeNodeDragGeometry(element: Element) {
+    const invalidate = () => this.scheduleNodeDragPosition()
+    const view = document.defaultView
+    const FrameMutationObserver = view?.MutationObserver
+    if(FrameMutationObserver) {
+      this.dragMutationObserver = new FrameMutationObserver(invalidate)
+      this.dragMutationObserver.observe(document.body, {
+        attributes: true, characterData: true, childList: true, subtree: true,
+      })
+    }
+    const FrameResizeObserver = view?.ResizeObserver
+    if(FrameResizeObserver) {
+      this.dragResizeObserver = new FrameResizeObserver(invalidate)
+      this.dragResizeObserver.observe(element)
+      this.dragResizeObserver.observe(document.body)
+      this.dragResizeObserver.observe(document.documentElement)
+    }
+    const add = (target: EventTarget | null | undefined, type: string, options?: AddEventListenerOptions | boolean) => {
+      if(!target) return
+      target.addEventListener(type, invalidate, options)
+      this.dragGeometryCleanup.push(() => target.removeEventListener(type, invalidate, options))
+    }
+    add(view, "resize")
+    add(document, "scroll", true)
+    add(view?.visualViewport, "resize")
+    add(view?.visualViewport, "scroll")
+    add(document, "load", true)
+    add(document, "transitionrun", true)
+    add(document, "animationstart", true)
+    add(document.fonts, "loadingdone")
+  }
+
+  private scheduleNodeDragPosition() {
+    const element = this.dragTarget
+    const surface = this.dragSurface
+    if(!element || !surface || this.dragFrame !== null) return
+    this.dragFrame = requestAnimationFrame(() => {
       this.dragFrame = null
+      if(element !== this.dragTarget || surface !== this.dragSurface) return
       if(!element.isConnected || !getDocumentRoot().contains(element)) {
         if(this.nodeDrag) surface.style.display = "none"
         else this.endNodeDrag()
@@ -136,14 +183,25 @@ export class ManipulationFeature extends EditorFeature {
         left: `${rect.left}px`, top: `${rect.top}px`,
         width: `${rect.width}px`, height: `${rect.height}px`,
       })
-      this.dragFrame = requestAnimationFrame(position)
+      if(this.hasActiveNodeDragAnimation(element)) this.scheduleNodeDragPosition()
+    })
+  }
+
+  private hasActiveNodeDragAnimation(element: Element) {
+    for(let current: Element | null = element; current; current = current.parentElement) {
+      if(current.getAnimations?.().some(animation => animation.playState === "running" || animation.pending)) return true
     }
-    position()
+    return false
   }
 
   private clearNodeDragSurface() {
     if(this.dragFrame !== null) cancelAnimationFrame(this.dragFrame)
     this.dragFrame = null
+    this.dragResizeObserver?.disconnect()
+    this.dragResizeObserver = null
+    this.dragMutationObserver?.disconnect()
+    this.dragMutationObserver = null
+    this.dragGeometryCleanup.splice(0).forEach(cleanup => cleanup())
     this.dragSurface?.remove()
     this.dragSurface = null
     this.dragTarget = null
@@ -2029,10 +2087,23 @@ export class ManipulationFeature extends EditorFeature {
       focusNode: selection.focusNode,
       focusOffset: selection.focusOffset,
     }
-    const item = this.#fragmentToClipboardItem($.copy())
+    const range = selection.getRangeAt(0).cloneRange()
+    const identity = captureRangeIdentity(range)
+    const copied = this.#clipboardData($.copy())
+    const item = this.#clipboardItem(copied)
     await navigator.clipboard.write([item])
-    if(selection.anchorNode !== captured.anchorNode || selection.anchorOffset !== captured.anchorOffset
-      || selection.focusNode !== captured.focusNode || selection.focusOffset !== captured.focusOffset) return false
+    const current = document.getSelection()
+    if(current !== selection || current.anchorNode !== captured.anchorNode || current.anchorOffset !== captured.anchorOffset
+      || current.focusNode !== captured.focusNode || current.focusOffset !== captured.focusOffset
+      || !range.startContainer.isConnected || !range.endContainer.isConnected
+      || [...identity].some(node => !node.isConnected || !document.body.contains(node))) return false
+    const currentRange = current.getRangeAt(0)
+    if([...identity].some(node => {
+      try { return !currentRange.intersectsNode(node) }
+      catch { return true }
+    })) return false
+    const currentData = this.#clipboardData($.copy())
+    if(currentData.html !== copied.html || currentData.text !== copied.text) return false
     if(!this.editor.features.slides.allowsSelection()) return false
     return this.withNormalization(() => {
       $.delete()
@@ -2237,7 +2308,15 @@ export class ManipulationFeature extends EditorFeature {
   /** Converts every selected sibling into one shared pair of clipboard
    * flavors after removing transient editing artifacts. */
   #fragmentToClipboardItem(fragment: DocumentFragment) {
+    return this.#clipboardItem(this.#clipboardData(fragment))
+  }
+
+  #clipboardData(fragment: DocumentFragment) {
     const {html, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
+    return {html, text}
+  }
+
+  #clipboardItem({html, text}: {html: string, text: string}) {
     return new ClipboardItem({
       "text/plain": text,
       "text/html": html,

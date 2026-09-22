@@ -365,13 +365,13 @@ describe("DependencyFeature", () => {
     await expect(pending).resolves.toBeUndefined()
   })
 
-  it("rebuilds the schema from editingConfig while keeping all widgets editable", async () => {
+  it("rebuilds the schema from editingConfig without rewriting widget editing attributes", async () => {
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
     vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
       queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
     })
     const editor = new DOMEditor()
-    document.body.innerHTML = "<webwriter-demo><webwriter-demo-item><p>Nested text</p></webwriter-demo-item></webwriter-demo>"
+    document.body.innerHTML = '<webwriter-demo contenteditable="false"><webwriter-demo-item contenteditable="plaintext-only"><p>Nested text</p></webwriter-demo-item></webwriter-demo>'
 
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
@@ -384,14 +384,14 @@ describe("DependencyFeature", () => {
     expect(editor.schema.get("webwriter-demo-item").inseperable).toBe(false)
     expect(editor.schema.isContentValid(widget)).toBe(true)
     expect(editor.schema.isContentValid(item)).toBe(true)
-    expect(widget.getAttribute("contenteditable")).toBe("true")
-    expect(item.getAttribute("contenteditable")).toBe("true")
+    expect(widget.getAttribute("contenteditable")).toBe("false")
+    expect(item.getAttribute("contenteditable")).toBe("plaintext-only")
 
     const remoteItem = document.createElement("webwriter-demo-item")
     remoteItem.append(document.createElement("p"))
     widget.append(remoteItem)
     await new Promise<void>(resolve => queueMicrotask(resolve))
-    expect(remoteItem.getAttribute("contenteditable")).toBe("true")
+    expect(remoteItem.hasAttribute("contenteditable")).toBe(false)
 
     await editor.getActionHandler(loadWidgetsMessage)({type: loadWidgetsMessage, widgets: []})
     expect(editor.schema.get("webwriter-demo")).toBeUndefined()
