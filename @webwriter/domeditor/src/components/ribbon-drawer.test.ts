@@ -24,6 +24,28 @@ async function mountDrawer(collapsed = true) {
 }
 
 describe("responsive ribbon drawer", () => {
+  it("shows the package drawer shadow and bottom border only when packages overflow the top area", async () => {
+    const drawer = await mountDrawer(false)
+    drawer.layout = "packages"
+    drawer.openDrawer(true)
+    await drawer.updateComplete
+
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    expect(getComputedStyle(section).boxShadow).toBe("none")
+    expect(getComputedStyle(section).borderBottomColor).toBe("transparent")
+
+    drawer.expandable = true
+    await drawer.updateComplete
+    expect(getComputedStyle(section).boxShadow).not.toBe("none")
+    expect(getComputedStyle(section).borderBottomColor).not.toBe("transparent")
+
+    drawer.expandable = false
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(getComputedStyle(section).boxShadow).toBe("none")
+    expect(getComputedStyle(section).borderBottomColor).toBe("transparent")
+  })
+
   it("settles and closes without a transition event when motion is disabled", async () => {
     const drawer = await mountDrawer()
     drawer.style.setProperty("--ww-ui-transition", "none")
@@ -196,7 +218,8 @@ describe("responsive ribbon drawer", () => {
     expect(RibbonDrawer.styles.toString()).toContain("padding-bottom: var(--package-expanded-grid-padding")
     expect(getComputedStyle(section).transition).toContain("max-height")
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
-    expect(getComputedStyle(controls).overflowY).toBe("hidden")
+    expect(getComputedStyle(controls).overflowY).toBe("clip")
+    expect(getComputedStyle(controls).overflowX).toBe("visible")
     expect(RibbonDrawer.styles.toString()).toContain("scrollbar-width: none;")
     expect(RibbonDrawer.styles.toString()).toMatch(
       /\.controls::-webkit-scrollbar\s*\{[\s\S]*?display:\s*none;/,
@@ -207,14 +230,16 @@ describe("responsive ribbon drawer", () => {
     controls.dispatchEvent(nestedTransition)
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-settled")).toBe(false)
-    expect(getComputedStyle(controls).overflowY).toBe("hidden")
+    expect(getComputedStyle(controls).overflowY).toBe("clip")
+    expect(getComputedStyle(controls).overflowX).toBe("visible")
 
     const opened = new Event("transitionend") as TransitionEvent
     Object.defineProperty(opened, "propertyName", {value: "max-height"})
     section.dispatchEvent(opened)
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-scrollable")).toBe(false)
-    expect(getComputedStyle(controls).overflowY).toBe("hidden")
+    expect(getComputedStyle(controls).overflowY).toBe("clip")
+    expect(getComputedStyle(controls).overflowX).toBe("visible")
 
     const rounding = new Event("transitionend") as TransitionEvent
     Object.defineProperty(rounding, "propertyName", {value: "max-height"})
@@ -241,7 +266,8 @@ describe("responsive ribbon drawer", () => {
     expect(section.classList.contains("closing")).toBe(true)
     expect(controls.scrollTop).toBe(0)
     expect(getComputedStyle(controls).gridAutoRows).toBe(expandedRows)
-    expect(getComputedStyle(controls).overflowY).toBe("hidden")
+    expect(getComputedStyle(controls).overflowY).toBe("clip")
+    expect(getComputedStyle(controls).overflowX).toBe("visible")
   })
 
   it("fits an open package drawer to reflowed content up to the viewport", async () => {

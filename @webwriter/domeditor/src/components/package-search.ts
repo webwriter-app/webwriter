@@ -51,6 +51,29 @@ export class PackageSearch extends LitElement {
 
     .icon svg { display: block; width: 100%; height: 100%; }
 
+    .refresh {
+      display: grid;
+      place-items: center;
+      flex: 0 0 1.55rem;
+      align-self: stretch;
+      margin-left: -0.35rem;
+      margin-right: -0.35rem;
+      padding: 0;
+      border: 0;
+      border-radius: 0.25rem;
+      color: #667085;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .refresh-icon { display: none; }
+    .refresh:is(:hover, :focus-visible):not(:disabled) .search-icon { display: none; }
+    .refresh:is(:hover, :focus-visible):not(:disabled) .refresh-icon { display: block; }
+    .refresh:hover:not(:disabled) { color: #1e4f87; background: rgb(215 231 247 / 65%); }
+    .refresh:active:not(:disabled) { color: #173d6b; background: #b9d7f5; }
+    .refresh:focus-visible { outline: 2px solid #3977c7; outline-offset: -2px; }
+    .refresh:disabled { cursor: default; }
+
     input {
       box-sizing: border-box;
       flex: 1 1 auto;
@@ -105,6 +128,10 @@ export class PackageSearch extends LitElement {
   loading = false
   error = ""
 
+  focus(options?: FocusOptions) {
+    this.renderRoot.querySelector<HTMLInputElement>("input")?.focus(options)
+  }
+
   private updateQuery(event: Event) {
     this.query = (event.currentTarget as HTMLInputElement).value
     this.dispatchEvent(new CustomEvent<{query: string}>("package-search-change", {
@@ -119,6 +146,14 @@ export class PackageSearch extends LitElement {
     this.dispatchEvent(new Event("package-search-focus", {bubbles: true, composed: true}))
   }
 
+  private refreshCatalog() {
+    this.dispatchEvent(new CustomEvent("package-catalog-request", {
+      detail: {refresh: true},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   private clearQuery() {
     this.query = ""
     this.dispatchEvent(new CustomEvent<{query: string}>("package-search-change", {
@@ -126,13 +161,19 @@ export class PackageSearch extends LitElement {
       bubbles: true,
       composed: true,
     }))
-    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>("input")?.focus())
+    void this.updateComplete.then(() => this.focus())
   }
 
   render() {
     return html`
       <div class="field">
-        <span class=${this.loading ? "icon loading" : "icon"} aria-hidden="true">${this.loading ? "" : ribbonIcon("Search")}</span>
+        <button class="refresh" type="button" aria-label="Refresh list" title="Refresh list"
+          ?disabled=${this.loading} @click=${this.refreshCatalog}>
+          ${this.loading ? html`<span class="icon loading" aria-hidden="true"></span>` : html`
+            <span class="icon search-icon" aria-hidden="true">${ribbonIcon("Search")}</span>
+            <span class="icon refresh-icon" aria-hidden="true">${ribbonIcon("Refresh")}</span>
+          `}
+        </button>
         <input
           type="search"
           placeholder="Search packages"

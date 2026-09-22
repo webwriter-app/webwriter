@@ -395,6 +395,8 @@ export class RibbonDrawer extends LitElement {
       align-content: stretch;
       align-items: stretch;
       scrollbar-width: none;
+      overflow-x: visible;
+      overflow-y: clip;
     }
 
     :host([layout="graphic"]) .controls {
@@ -546,6 +548,13 @@ export class RibbonDrawer extends LitElement {
       /* Reuse the adjacent drawer's separator without shifting the grid. */
       margin-left: -1px;
       padding-left: calc(0.5rem + 1px);
+      border-bottom-color: transparent;
+      box-shadow: none;
+    }
+
+    :host([layout="packages"][expandable]) .drawer.expanded {
+      border-bottom-color: #d8dee6;
+      box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
     }
 
     :host([layout="packages"]) .drawer.expanded.closing {
@@ -572,12 +581,18 @@ export class RibbonDrawer extends LitElement {
       align-content: start;
       padding-top: var(--package-expanded-grid-offset, 0);
       padding-bottom: var(--package-expanded-grid-padding, 0.25rem);
-      overflow-x: hidden;
-      overflow-y: hidden;
+      overflow-x: visible;
+      overflow-y: clip;
     }
 
     :host([layout="packages"][drawer-open][drawer-settled][drawer-scrollable]) .controls {
+      overflow-x: hidden;
       overflow-y: auto;
+    }
+
+    :host([layout="packages"][drawer-scrollable]) ::slotted(package-search) {
+      /* Scrolling clips both axes, so leave room for the focus outline. */
+      padding-inline: 1px;
     }
 
     :host([layout="packages"]) .controls::-webkit-scrollbar {

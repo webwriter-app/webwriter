@@ -845,6 +845,25 @@ describe("DomEditor iframe setup", () => {
     }), window.location.origin)
   })
 
+  it("refreshes an already requested package catalog and ignores duplicate in-flight requests", async () => {
+    const editor = new DomEditor()
+    const load = (event?: Event) => (editor as unknown as {loadPackageCatalog(event?: Event): Promise<void>}).loadPackageCatalog(event)
+    const search = vi.mocked(WebWriterPackageRegistry.prototype.search)
+    await load()
+    await load(new Event("package-catalog-request"))
+    expect(search).toHaveBeenCalledTimes(1)
+
+    let complete!: (packages: WebWriterPackage[]) => void
+    search.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
+    const refresh = () => new CustomEvent("package-catalog-request", {detail: {refresh: true}})
+    const pending = load(refresh())
+    await load(refresh())
+    expect(search).toHaveBeenCalledTimes(2)
+    complete([demoPackage])
+    await pending
+    expect((editor as unknown as {packages: WebWriterPackage[]}).packages).toEqual([demoPackage])
+  })
+
   it("sandboxes the editor iframe while preserving its trusted same-origin bridge", async () => {
     const {editor, iframe} = await mountEditor()
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc

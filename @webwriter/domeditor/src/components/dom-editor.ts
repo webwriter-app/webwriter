@@ -3200,8 +3200,9 @@ export class DomEditor extends LitElement {
     if(shouldRefocus) this.focusEditor()
   }
 
-  private async loadPackageCatalog() {
-    if(this.packageCatalogRequested) return
+  private async loadPackageCatalog(event?: Event) {
+    const refresh = (event as CustomEvent<{refresh?: boolean}> | undefined)?.detail?.refresh === true
+    if(this.packagesLoading || this.packageCatalogRequested && !refresh) return
     this.packageCatalogRequested = true
     this.packagesLoading = true
     this.packageError = ""

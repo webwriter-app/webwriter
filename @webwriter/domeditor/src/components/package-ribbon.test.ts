@@ -74,6 +74,31 @@ describe("package ribbon controls", () => {
     expect(button.disabled).toBe(false)
   })
 
+  it("requests a catalog refresh without changing the search query", async () => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const search = ribbon.shadowRoot!.querySelector("package-search")!
+    search.query = "physics"
+    await search.updateComplete
+    const request = vi.fn()
+    ribbon.addEventListener("package-catalog-request", request)
+    const refresh = search.shadowRoot!.querySelector<HTMLButtonElement>(".refresh")!
+    expect(refresh.title).toBe("Refresh list")
+    expect(refresh.getAttribute("aria-label")).toBe("Refresh list")
+    expect(refresh.querySelector(".icon-tabler-refresh")).not.toBeNull()
+    refresh.click()
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls[0][0].detail).toEqual({refresh: true})
+    expect(search.query).toBe("physics")
+
+    search.loading = true
+    await search.updateComplete
+    expect(refresh.disabled).toBe(true)
+    refresh.click()
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
   it("replaces the search icon with a spinner while fetching packages", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
@@ -425,6 +450,34 @@ describe("package ribbon controls", () => {
     await ribbon.updateComplete
     expect(search.shadowRoot!.querySelector<HTMLInputElement>("input")!.value).toBe("")
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
+  })
+
+  it("focuses package search when expanding the drawer", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Start"
+    ribbon.packages = [packageFixture("alpha"), packageFixture("beta"), packageFixture("gamma")]
+    ;(ribbon as unknown as {packageVisibleCount: number}).packageVisibleCount = 1
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    await drawer.updateComplete
+    const search = drawer.querySelector("package-search")!
+    await search.updateComplete
+    const input = search.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    toggle.focus()
+    toggle.click()
+    await drawer.updateComplete
+    await ribbon.updateComplete
+
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(search.shadowRoot!.activeElement).toBe(input)
+
+    toggle.focus()
+    toggle.click()
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(false)
+    expect(drawer.shadowRoot!.activeElement).toBe(toggle)
   })
 
   it("inserts from the package body and removes only from its corner control", async () => {

@@ -2889,7 +2889,14 @@ export class AppRibbon extends EditingControls {
 
   private handlePackageDrawerState = (event: Event) => {
     const detail = (event as CustomEvent<{label?: string, open?: boolean}>).detail
-    if(detail?.label === "Packages" && detail.open) this.packageDrawerOpen = true
+    if(detail?.label !== "Packages" || !detail.open) return
+    this.packageDrawerOpen = true
+    const drawer = event.currentTarget as RibbonDrawer
+    void drawer.updateComplete.then(() => {
+      if(drawer.isConnected && drawer.hasAttribute("drawer-open")) {
+        drawer.querySelector("package-search")?.focus({preventScroll: true})
+      }
+    })
   }
 
   private handlePackageDrawerClose = (event: Event) => {
