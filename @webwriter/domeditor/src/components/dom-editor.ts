@@ -1,4 +1,5 @@
 import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
+import {indentHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html } from "lit"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
@@ -3631,8 +3632,8 @@ export class DomEditor extends LitElement {
       }) as {html?: unknown}
       if(sequence !== this.htmlSourceRefreshSequence || !this.htmlMode || this.htmlPending) return
       if(typeof result?.html !== "string") throw new TypeError("The editor did not return selected HTML")
-      this.htmlSource = result.html
-      this.htmlOriginalSource = result.html
+      this.htmlSource = indentHTMLSource(result.html)
+      this.htmlOriginalSource = this.htmlSource
       this.htmlSourceError = ""
     }
     catch(error) {

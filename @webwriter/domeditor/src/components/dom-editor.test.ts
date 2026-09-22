@@ -1758,6 +1758,23 @@ describe("DomEditor file actions", () => {
 })
 
 describe("DomEditor.execute()", () => {
+  it("loads indented HTML as the clean baseline and leaves typing untouched", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: '<div><p>Hello <b>world</b></p></div>'} as any)
+    await (editor as any).setHTMLMode(true)
+    const formatted = '<div>\n  <p>Hello <b>world</b></p>\n</div>'
+    expect((editor as any).htmlSource).toBe(formatted)
+    expect((editor as any).htmlOriginalSource).toBe(formatted)
+    expect((editor as any).htmlPending).toBe(false)
+    const draft = '<div><p>Edited'
+    ;(editor as any).handleHTMLSourceChange(new CustomEvent("html-source-change", {detail: {value: draft}}))
+    expect((editor as any).htmlSource).toBe(draft)
+    expect((editor as any).htmlPending).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "setHTMLSelectionEditPending", pending: true})
+    ;(editor as any).handleHTMLSourceChange(new CustomEvent("html-source-change", {detail: {value: formatted}}))
+    expect((editor as any).htmlPending).toBe(false)
+  })
+
   it("posts an action and resolves with the completion result", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     const postMessage = vi.spyOn(editorWindow, "postMessage").mockImplementation((message: any) => {
