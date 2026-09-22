@@ -16,6 +16,8 @@ export type AppCommand = {
 }
 
 const primary = (key: string) => (applePlatform: boolean) => `${applePlatform ? "Meta" : "Ctrl"}+${key}`
+// Use the existing alternate modifier for commands whose familiar bindings
+// open browser windows/files or switch system input sources (Ctrl+Space).
 const alternate = (key: string) => (_applePlatform: boolean) => `Alt+Shift+${key}`
 
 const operationLabel = (operation: string) => operation
@@ -26,12 +28,12 @@ const operationLabel = (operation: string) => operation
 /** User-facing application commands. Keeping this list declarative lets the
  * settings UI and keyboard dispatcher share one source of truth. */
 export const appCommands: readonly AppCommand[] = [
-  {id: "document.new", section: "Document", label: "New", description: "Create a new document", icon: "New", action: "New"},
-  {id: "document.open", section: "Document", label: "Open", description: "Open a document", icon: "Open", action: "Open"},
+  {id: "document.new", section: "Document", label: "New", description: "Create a new document", icon: "New", action: "New", defaultShortcut: alternate("N")},
+  {id: "document.open", section: "Document", label: "Open", description: "Open a document", icon: "Open", action: "Open", defaultShortcut: alternate("F")},
   {id: "document.save", section: "Document", label: "Save", description: "Save the active document", icon: "Save", action: "Save", defaultShortcut: primary("S")},
   {id: "document.saveAs", section: "Document", label: "Save as", description: "Save the active document as a copy", icon: "Save as", action: "Save as", defaultShortcut: apple => `${apple ? "Meta" : "Ctrl"}+Shift+S`},
   {id: "document.print", section: "Document", label: "Print", description: "Print the active document", icon: "Print", action: "Print", defaultShortcut: primary("P")},
-  {id: "document.download", section: "Document", label: "Download", description: "Download the active document", icon: "Download", action: "Download"},
+  {id: "document.download", section: "Document", label: "Download", description: "Download the active document", icon: "Download", action: "Download", defaultShortcut: alternate("D")},
   {id: "editor.undo", section: "Editor", label: "Undo", description: "Undo the last document change", icon: "Undo", action: "Undo", defaultShortcut: primary("Z")},
   {
     id: "editor.redo", section: "Editor", label: "Redo", description: "Redo the last undone document change",
@@ -39,7 +41,7 @@ export const appCommands: readonly AppCommand[] = [
     defaultShortcut: apple => apple ? "Meta+Shift+Z" : "Ctrl+Y",
     legacyShortcuts: apple => apple ? [] : ["Ctrl+Shift+Z"],
   },
-  {id: "editor.preview", section: "Editor", label: "Preview", description: "Toggle the document preview", icon: "Preview", action: "Preview"},
+  {id: "editor.preview", section: "Editor", label: "Preview", description: "Toggle the document preview", icon: "Preview", action: "Preview", defaultShortcut: primary("Alt+P")},
   ...primaryMarkOptions.filter(option => !excludedMarkNames.includes(option.name)).map(option => ({
     id: `text.${option.name}`,
     section: "Text" as const,
@@ -62,12 +64,11 @@ export const appCommands: readonly AppCommand[] = [
     icon: option.icon,
     action: `mark-detail:${option.name}`,
   })),
-  {id: "text.clear", section: "Text", label: "Clear formatting", description: "Remove text formatting", icon: "Clear", action: "removeMarks"},
-  {id: "text.increase", section: "Text", label: "Increase font size", description: "Increase the selected text size", icon: "IncreaseFontSize", action: "increaseFontSize"},
-  {id: "text.decrease", section: "Text", label: "Decrease font size", description: "Decrease the selected text size", icon: "DecreaseFontSize", action: "decreaseFontSize"},
+  {id: "text.clear", section: "Text", label: "Clear formatting", description: "Remove text formatting", icon: "Clear", action: "removeMarks", defaultShortcut: alternate("Backspace")},
+  {id: "text.increase", section: "Text", label: "Increase font size", description: "Increase the selected text size", icon: "IncreaseFontSize", action: "increaseFontSize", defaultShortcut: primary("Shift+>")},
+  {id: "text.decrease", section: "Text", label: "Decrease font size", description: "Decrease the selected text size", icon: "DecreaseFontSize", action: "decreaseFontSize", defaultShortcut: primary("Shift+<")},
+  {id: "insert.paragraph", section: "Insert", label: "Paragraph", description: "Insert paragraph content", icon: "Paragraph", action: "Paragraph", defaultShortcut: alternate("Enter")},
   ...[
-    ["paragraph", "Paragraph", "Paragraph", "Paragraph"],
-    ["section", "Section", "Section", "Section"],
     ["heading", "Heading", "Heading", "Heading 1", "1"],
     ["details", "Details", "Details", "insert-details", "2"],
     ["list", "List", "List", "toggle-list:ul", "3"],
@@ -78,8 +79,6 @@ export const appCommands: readonly AppCommand[] = [
     ["website", "Website", "Website", "Website", "8"],
     ["video", "Video", "Video", "Video", "9"],
     ["formula", "Formula", "Formula", "Formula", "0"],
-    ["form", "Form", "Form", "Form"],
-    ["script", "Script", "Develop", "Script"],
   ].map(([id, label, icon, action, key]) => ({
     id: `insert.${id}`,
     section: "Insert" as const,
@@ -185,6 +184,14 @@ export function loadAppSettings(): AppSettings {
         }
       }
     }
+    if((value.shortcutsVersion ?? 0) < 2) {
+      // Only commands that previously had no default participate in this upgrade.
+      for(const id of ["document.new", "document.open", "document.download", "editor.preview",
+        "text.clear", "text.increase", "text.decrease", "insert.paragraph"]) {
+        const shortcut = defaults.shortcuts[id]
+        if(!shortcuts[id] && !Object.values(shortcuts).includes(shortcut)) shortcuts[id] = shortcut
+      }
+    }
     const settings: AppSettings = {
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
       updateDocumentLanguage: typeof value.updateDocumentLanguage === "boolean"
@@ -198,7 +205,7 @@ export function loadAppSettings(): AppSettings {
         : defaults.showStyleToolbox,
       shortcuts,
     }
-    if(!value.shortcutsVersion) persistAppSettings(settings)
+    if((value.shortcutsVersion ?? 0) < 2) persistAppSettings(settings)
     return settings
   }
   catch {
@@ -208,7 +215,7 @@ export function loadAppSettings(): AppSettings {
 
 export function persistAppSettings(settings: AppSettings) {
   try {
-    globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, shortcutsVersion: 1}))
+    globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, shortcutsVersion: 2}))
   }
   catch {
     // Settings remain active for this session when storage is unavailable.

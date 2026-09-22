@@ -133,6 +133,16 @@ export class SettingsPanel extends LitElement {
       background: #fff0e8;
     }
 
+    .commands-heading {
+      margin: 1rem 0 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .command-section + .command-section {
+      margin-top: 0.32rem;
+    }
+
     .command-list {
       display: grid;
       gap: 0.32rem;
@@ -417,6 +427,7 @@ export class SettingsPanel extends LitElement {
               @change=${(event: Event) => this.emitSettings({...this.settings, showStyleToolbox: (event.currentTarget as HTMLInputElement).checked})}
             />
             <span class="checkbox-label">Show style toolbox</span>
+            <span class="checkbox-description">Show the Style tab to edit the selected element’s CSS properties.</span>
           </label>
         </section>
 
@@ -432,6 +443,7 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        <h3 class="commands-heading">Commands</h3>
         <p class="shortcut-help">Select a shortcut, then press its replacement. Reserved system and browser shortcuts cannot be assigned.</p>
         ${this.message || this.error ? html`
           <div class="status" role="status" aria-live="polite" ?data-error=${Boolean(this.error)}>
@@ -439,13 +451,13 @@ export class SettingsPanel extends LitElement {
           </div>
         ` : ""}
         ${sections.map(section => html`
-          <section aria-label=${`${section} shortcuts`}>
+          <section class="command-section" aria-label=${`${section} commands`}>
             ${this.renderCommands(section)}
           </section>
         `)}
         ${elementSections.map(section => html`
           <details class="command-category">
-            <summary>${section} shortcuts</summary>
+            <summary>${section} commands</summary>
             ${this.renderCommands(section)}
           </details>
         `)}

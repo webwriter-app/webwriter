@@ -101,10 +101,10 @@ describe("insertion ribbon shortcuts", () => {
     }
 
     expect(elements.querySelector<RibbonButton>('ribbon-button[label="Paragraph"]')
-      ?.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe("Paragraph")
+      ?.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe(`Paragraph (${formatShortcut(settings.shortcuts["insert.paragraph"])})`)
     expect(elements.querySelector('ribbon-button[label="Section"]')).toBeNull()
-    expect(settings.shortcuts["insert.paragraph"]).toBe("")
-    expect(settings.shortcuts["insert.section"]).toBe("")
+    expect(settings.shortcuts["insert.paragraph"]).toBe("Alt+Shift+Enter")
+    expect(settings.shortcuts).not.toHaveProperty("insert.section")
     expect(elements.querySelector<RibbonButton>('ribbon-button[label="Layouts"]')
       ?.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe("Layouts")
   })

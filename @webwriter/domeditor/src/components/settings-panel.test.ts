@@ -5,6 +5,9 @@ import {
   appCommands,
   defaultAppSettings,
   loadAppSettings,
+  persistAppSettings,
+  reservedShortcutReason,
+  shortcutMatchesEvent,
   type AppSettings,
 } from "../app-settings"
 import {excludedMarkNames} from "../marks"
@@ -42,6 +45,60 @@ afterEach(() => {
 })
 
 describe("settings panel", () => {
+  it.each([true, false])("assigns unique shortcuts to every general command (Apple: %s)", apple => {
+    const settings = defaultAppSettings(apple)
+    const commands = appCommands.filter(command => !["Table", "Graphic"].includes(command.section))
+    const shortcuts = commands.map(command => settings.shortcuts[command.id])
+    expect(shortcuts.every(Boolean)).toBe(true)
+    expect(new Set(shortcuts).size).toBe(shortcuts.length)
+    for(const shortcut of shortcuts) expect(reservedShortcutReason(shortcut, apple)).toBe("")
+    for(const [id, key, code] of [["text.increase", ">", "Period"], ["text.decrease", "<", "Comma"]]) {
+      expect(shortcutMatchesEvent(settings.shortcuts[id], new KeyboardEvent("keydown", {
+        key, code, shiftKey: true, metaKey: apple, ctrlKey: !apple,
+      }))).toBe(true)
+    }
+  })
+
+  it("upgrades missing defaults once without replacing custom bindings or re-enabling cleared shortcuts", () => {
+    const settings = defaultAppSettings()
+    settings.shortcuts["document.new"] = ""
+    settings.shortcuts["document.open"] = "Alt+F"
+    settings.shortcuts["document.download"] = ""
+    settings.shortcuts["document.save"] = defaultAppSettings().shortcuts["document.download"]
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, shortcutsVersion: 1}))
+    const loaded = loadAppSettings()
+    expect(loaded.shortcuts["document.new"]).toBe(defaultAppSettings().shortcuts["document.new"])
+    expect(loaded.shortcuts["document.open"]).toBe("Alt+F")
+    expect(loaded.shortcuts["document.download"]).toBe("")
+    loaded.shortcuts["document.new"] = ""
+    persistAppSettings(loaded)
+    expect(loadAppSettings().shortcuts["document.new"]).toBe("")
+  })
+
+  it("omits removed insertion commands even from saved settings", async () => {
+    const ids = ["insert.form", "insert.script", "insert.section"]
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
+      shortcuts: Object.fromEntries(ids.map(id => [id, "Alt+F"])),
+    }))
+    const settings = loadAppSettings()
+    for(const id of ids) {
+      expect(appCommands.some(command => command.id === id)).toBe(false)
+      expect(settings.shortcuts).not.toHaveProperty(id)
+    }
+  })
+
+  it("introduces commands, explains the Style tab, and spaces adjacent command sections", async () => {
+    const panel = await mountPanel()
+    const root = panel.shadowRoot!
+    expect(root.querySelector("h3")!.textContent).toBe("Commands")
+    expect(root.querySelector("h3")!.nextElementSibling!.className).toBe("shortcut-help")
+    expect(root.querySelector('[aria-label="Toolbox"] .checkbox-description')!.textContent).toContain("CSS properties")
+    const sections = [...root.querySelectorAll<HTMLElement>(".command-section")]
+    const gap = parseFloat(getComputedStyle(sections[0].querySelector(".command-list")!).gap)
+      * parseFloat(getComputedStyle(document.documentElement).fontSize)
+    for(const section of sections.slice(1)) expect(parseFloat(getComputedStyle(section).marginTop)).toBeCloseTo(gap)
+  })
+
   it("drops excluded mark commands and their saved shortcuts", () => {
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
       shortcuts: Object.fromEntries(excludedMarkNames.map(name => [`text.${name}`, "Alt+Shift+M"])),
@@ -94,14 +151,14 @@ describe("settings panel", () => {
     const categories = [...root.querySelectorAll<HTMLDetailsElement>("details")]
 
     expect(categories.map(category => category.querySelector("summary")!.textContent))
-      .toEqual(["Table shortcuts", "Graphic shortcuts"])
+      .toEqual(["Table commands", "Graphic commands"])
     expect([...root.querySelector(".settings-panel")!.children].slice(-2)).toEqual(categories)
     for(const [index, section] of ["Table", "Graphic"].entries()) {
       expect(categories[index].open).toBe(false)
       expect([...categories[index].querySelectorAll(".command-label")].map(label => label.textContent))
         .toEqual(appCommands.filter(command => command.section === section).map(command => command.label))
     }
-    expect(root.querySelector('section[aria-label="Insert shortcuts"]')!.closest("details")).toBeNull()
+    expect(root.querySelector('section[aria-label="Insert commands"]')!.closest("details")).toBeNull()
   })
 
   it("edits shortcuts inside an expanded category without collapsing it", async () => {
@@ -186,12 +243,12 @@ describe("settings panel", () => {
     await ribbon.updateComplete
 
     expect(ribbon.settings).toEqual(changed)
-    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...changed, shortcutsVersion: 1})
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...changed, shortcutsVersion: 2})
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".reset-settings-button")!.click()
     await panel.updateComplete
     expect(ribbon.settings).toEqual(defaultAppSettings())
-    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...defaultAppSettings(), shortcutsVersion: 1})
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...defaultAppSettings(), shortcutsVersion: 2})
     expect(panel.shadowRoot!.querySelector(".status")?.textContent).toContain("Settings reset")
     expect(ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!.open).toBe(true)
   })
