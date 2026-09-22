@@ -1047,7 +1047,7 @@ export class RibbonButton extends LitElement {
     :host([variant="package"]) .button-label {
       display: -webkit-box;
       flex: 1 1 auto;
-      line-height: 0.68rem;
+      line-height: 1.2;
       font-size: calc(0.6rem + 1px);
       overflow: hidden;
       white-space: normal;
