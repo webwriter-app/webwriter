@@ -524,7 +524,8 @@ describe("toolbox", () => {
         name: tag === "p" ? "Paragraph" : "Preformatted Text", attributes: {},
       }
       await toolbox.updateComplete
-      expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Paragraph")
+      expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit")
+      expect(toolButton(toolbox, "Edit").closest(".toolbox-tab")!.hasAttribute("data-contextual")).toBe(false)
       expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
         .toEqual(["Style", "Attributes"])
       expect(toolbox.shadowRoot!.querySelector('.paragraph-format-switch')).toBeNull()
