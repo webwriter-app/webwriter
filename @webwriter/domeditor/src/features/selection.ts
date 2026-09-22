@@ -57,6 +57,7 @@ export class SelectionFeature extends EditorFeature {
   #selectionMarkers = new Set<Element>()
   #atomicOverlays = new Map<Element, HTMLElement>()
   #atomicOverlayFrame: number | null = null
+  #revealSelectionFrame: number | null = null
   #lastScrollSelection: {element: Element} | {range: Range, backwards: boolean} | null = null
 
   #clearAtomicOverlays() {
@@ -563,6 +564,8 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("blur", this.#endDrag)
     this.#endDrag()
     this.#releaseCaptureSelection()
+    if(this.#revealSelectionFrame !== null) cancelAnimationFrame(this.#revealSelectionFrame)
+    this.#revealSelectionFrame = null
     this.#lastScrollSelection = null
     this.clearSelectedSection()
     this.#clearElementHover()
@@ -1282,14 +1285,14 @@ export class SelectionFeature extends EditorFeature {
     if(!selection?.focusNode || !["virtual", "gap", "text", "empty"].includes(kind)) return
 
     const rect = caretRect(selection.focusNode, selection.focusOffset)
-    // Gap arrows extend above their zero-height DOM point. Reveal them
-    // immediately; smooth scrolling may be cancelled by native focus scrolls.
-    const behavior = kind === "gap" ? "instant" as const : "smooth" as const
+    const margin = 1.25 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16)
+    // Native focus scrolling can cancel smooth scrolling during typing.
+    const behavior = "instant" as const
     let predicted = {
       left: rect.left,
       right: rect.right > rect.left ? rect.right : rect.left + 1,
-      top: rect.top,
-      bottom: rect.bottom > rect.top ? rect.bottom : rect.top + 1,
+      top: rect.top - margin,
+      bottom: (rect.bottom > rect.top ? rect.bottom : rect.top + 1) + margin,
     }
     const nearestDelta = (start: number, end: number, visibleStart: number, visibleEnd: number) => {
       if(start < visibleStart && end > visibleEnd) {
@@ -1559,11 +1562,27 @@ export class SelectionFeature extends EditorFeature {
    * subsequent pointerdown handling). */
   hasDoubleClicked = false
 
+  /** Read the final selection after native defaults and other feature handlers.
+   * Local input can move the caret visually without changing its live Range. */
+  #scheduleSelectionReveal() {
+    if(this.#revealSelectionFrame !== null) return
+    this.#revealSelectionFrame = requestAnimationFrame(() => {
+      this.#revealSelectionFrame = null
+      const selection = document.getSelection()
+      if(this.isCaptureSelection || focusedWidgetHost() || !selection?.focusNode
+        || !getDocumentRoot().contains(selection.focusNode)) return
+      if(this.#lastScrollSelection && "range" in this.#lastScrollSelection) this.#lastScrollSelection = null
+      this.#scrollSelectionIntoView(this.#selectionKind(this.isInDragSelection, null), selection, null)
+    })
+  }
+
   /** Pointer behavior: 
    * pointerdown starts a drag selection at the pointer (modifier-click selects the whole element instead), 
    * double/triple click select the word/line, 
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
+    "beforeinput": () => this.#scheduleSelectionReveal(),
+    "input": () => this.#scheduleSelectionReveal(),
     "mousedown": ev => {
       if(ev.detail >= 2 && !this.#hitsText(ev)) ev.preventDefault()
     },
@@ -1573,6 +1592,9 @@ export class SelectionFeature extends EditorFeature {
       // events. The shared listener router normally enforces this guard; keep
       // it here as the direct-call invariant as well.
       if(this.isCaptureSelection) return
+      if(direction || ["Enter", "Backspace", "Delete", "Home", "End", "PageUp", "PageDown", "Tab"].includes(ev.key)) {
+        this.#scheduleSelectionReveal()
+      }
       this.#releaseCaptureSelection()
       this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {

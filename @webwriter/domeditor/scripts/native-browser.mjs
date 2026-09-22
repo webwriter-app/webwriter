@@ -6,6 +6,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "new paragraphs and line breaks reveal the caret at the document end",
   "column groups expose independent gaps and stack with separator lines",
   "native MathML editing preserves inline rendering and argument hit targets",
   "dead-key composition stays outside authored formulas",

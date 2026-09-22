@@ -1,7 +1,7 @@
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
-import {$} from "../src/utility"
+import {$, caretRect} from "../src/utility"
 import {defaultDocumentTheme} from "../src/document-themes"
 
 const checks: Check[] = []
@@ -72,6 +72,33 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 })
 
 const editor = new DOMEditor()
+
+await check("new paragraphs and line breaks reveal the caret at the document end", async () => {
+  const section = document.createElement("section")
+  section.style.paddingTop = `${window.innerHeight}px`
+  section.innerHTML = "<p>End of document</p>"
+  document.body.append(section)
+  try {
+    for(const shiftKey of [false, true]) {
+      const paragraph = section.lastElementChild!
+      $.move(paragraph, paragraph.childNodes.length)
+      paragraph.scrollIntoView({block: "end", behavior: "instant"})
+      for(let i = 0; i < 5; i++) {
+        document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey, bubbles: true, cancelable: true}))
+        await layoutFrame()
+        const selection = document.getSelection()!
+        const rect = caretRect(selection.focusNode!, selection.focusOffset)
+        const margin = 1.25 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+        assert(rect.height > 0 && rect.top >= margin - 1 && rect.bottom <= window.innerHeight - margin + 1,
+          `caret outside viewport after Enter (shift: ${shiftKey}): ${rect.top}–${rect.bottom}`)
+      }
+    }
+  }
+  finally {
+    section.remove()
+    window.scrollTo({top: 0, behavior: "instant"})
+  }
+})
 editor.schema.extendWidgets([{tagName: "native-audit-widget"}])
 
 await check("native MathML editing preserves inline rendering and argument hit targets", async () => {

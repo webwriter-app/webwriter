@@ -947,6 +947,89 @@ describe("processSelection()", () => {
 describe("scrolling selections into view", () => {
   const options = {behavior: "smooth", block: "nearest", inline: "nearest"} as const
 
+  it.each([16, 24])("leaves 1.25rem above and below the caret with a %spx root font", fontSize => {
+    const paragraph = el("p", "text")
+    const previousStyle = document.documentElement.getAttribute("style")
+    document.documentElement.style.fontSize = `${fontSize}px`
+    const rect = vi.spyOn(Range.prototype, "getBoundingClientRect")
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    try {
+      rect.mockReturnValue(new DOMRect(10, window.innerHeight - 20, 0, 20))
+      $.move(paragraph.firstChild!, 1)
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 1.25 * fontSize, behavior: "instant"})
+      rect.mockReturnValue(new DOMRect(10, 0, 0, 20))
+      $.move(paragraph.firstChild!, 2)
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: -1.25 * fontSize, behavior: "instant"})
+    }
+    finally {
+      if(previousStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", previousStyle)
+      rect.mockRestore()
+      scrollBy.mockRestore()
+    }
+  })
+
+  it.each([false, true])("reveals the final caret after Enter (line break: %s)", shiftKey => {
+    const paragraph = el("p", "last paragraph")
+    $.move(paragraph.firstChild!, paragraph.textContent!.length)
+    feature.processSelection()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(() => new DOMRect(10, window.innerHeight + 40, 0, 20))
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    try {
+      paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey, bubbles: true, cancelable: true}))
+      expect(shiftKey ? paragraph.querySelector("br") : paragraph.nextElementSibling).toBeTruthy()
+      frames.splice(0).forEach(callback => callback(0))
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 80, behavior: "instant"})
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it("rechecks unchanged caret endpoints after native input, but not passive refreshes", () => {
+    const paragraph = el("p", "text")
+    $.move(paragraph.firstChild!, 2)
+    feature.processSelection()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(() => new DOMRect(10, window.innerHeight + 40, 0, 20))
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    try {
+      document.dispatchEvent(new Event("selectionchange"))
+      feature.processSelection()
+      expect(scrollBy).not.toHaveBeenCalled()
+      paragraph.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", bubbles: true}))
+      paragraph.dispatchEvent(new InputEvent("input", {inputType: "insertText", bubbles: true}))
+      expect(frames).toHaveLength(1)
+      frames.splice(0).forEach(callback => callback(0))
+      expect(scrollBy).toHaveBeenCalledExactlyOnceWith({left: 0, top: 80, behavior: "instant"})
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it("cancels a pending caret reveal when disabled", () => {
+    const paragraph = el("p", "text")
+    const request = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(123)
+    const cancel = vi.spyOn(window, "cancelAnimationFrame")
+    try {
+      paragraph.dispatchEvent(new InputEvent("input", {bubbles: true}))
+      feature.disable()
+      expect(cancel).toHaveBeenCalledWith(123)
+    }
+    finally {
+      request.mockRestore()
+      cancel.mockRestore()
+    }
+  })
+
   it("reveals selections instantly while UI motion is disabled and restores smooth scrolling", () => {
     document.body.innerHTML = "<p>first</p><p>second</p>"
     // Happy DOM does not expose inherited custom properties in computed styles.
@@ -1097,12 +1180,12 @@ describe("scrolling selections into view", () => {
       configurable: true,
       value: () => new DOMRect(10, window.innerHeight + 40, 0, 20),
     })
-    const expectMinimalScroll = (select: () => void, behavior = "smooth") => {
+    const expectMinimalScroll = (select: () => void, behavior = "instant") => {
       scrollBy.mockClear()
       select()
       feature.processSelection()
       expect(scrollBy).toHaveBeenCalledOnce()
-      expect(scrollBy).toHaveBeenCalledWith({left: 0, top: 60, behavior})
+      expect(scrollBy).toHaveBeenCalledWith({left: 0, top: 80, behavior})
     }
 
     try {
