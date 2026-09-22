@@ -625,13 +625,14 @@ export class SelectionFeature extends EditorFeature {
     const focus = document.createRange()
     focus.setStart(selection.focusNode, selection.focusOffset)
     focus.collapse(true)
-    const target = event.target instanceof Element ? event.target : document.body
+    const target = document.body
     this.#drag = {anchor, focus, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
       nativeClick, moved: false, target, pointerId: event.pointerId}
     this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
     this.isInDragSelection = true
-    // Keep the original click target and native mouse default, while keeping
-    // subsequent moves in this document even if the first move enters a frame.
+    // Capture on BODY so native mouse selection can cross paragraph boundaries;
+    // capturing the clicked paragraph makes Chromium clamp the range to it.
+    // The original click still establishes native editing focus.
     if(event.pointerId !== undefined) {
       try { target.setPointerCapture(event.pointerId) } catch { /* Synthetic or already cancelled pointer. */ }
     }

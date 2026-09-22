@@ -2209,6 +2209,31 @@ describe("selection invariants", () => {
     expect($.isEmpty).toBe(true)
   })
 
+  it.each(["pointerup", "pointercancel"])("captures paragraph drags on the body and releases on %s", ending => {
+    const paragraph = textDocument()
+    const last = document.querySelectorAll("p")[1]
+    const hit = hitTest()
+    const capture = vi.fn()
+    const release = vi.fn()
+    vi.spyOn(document.body, "setPointerCapture").mockImplementation(capture)
+    vi.spyOn(document.body, "hasPointerCapture").mockReturnValue(true)
+    vi.spyOn(document.body, "releasePointerCapture").mockImplementation(release)
+    const paragraphCapture = vi.spyOn(paragraph, "setPointerCapture")
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 7, clientX: 20, clientY: 25}))
+    expect(capture).toHaveBeenCalledWith(7)
+    expect(paragraphCapture).not.toHaveBeenCalled()
+    hit.mockReturnValue({offsetNode: last.firstChild!, offset: 3} as unknown as CaretPosition)
+    document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 7, clientX: 30, clientY: 25}))
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(2)
+    expect($.focus).toBe(last.firstChild)
+    expect($.focusOffset).toBe(3)
+    document.body.dispatchEvent(new PointerEvent(ending, {bubbles: true, pointerId: 7}))
+    expect(release).toHaveBeenCalledWith(7)
+    expect(feature.isInDragSelection).toBe(false)
+    expect(document.body).not.toHaveClass("◆selection-dragging")
+  })
+
   it("allows native text clicks to focus the editing host and establish the caret", () => {
     const paragraph = textDocument()
     hitTest()
