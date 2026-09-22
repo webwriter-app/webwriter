@@ -46,28 +46,6 @@ export class SettingsPanel extends LitElement {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    h3 {
-      margin: 0;
-      color: #202a36;
-      line-height: 1.2;
-    }
-
-    h3 {
-      margin: 1.1rem 0 0.45rem;
-      font-size: 0.8rem;
-    }
-
-    .setting-title {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      margin-bottom: 0.4rem;
-      color: #202a36;
-      font-size: 0.76rem;
-      font-weight: 700;
-    }
-
-    .setting-icon,
     .command-icon {
       display: block;
       flex: 0 0 auto;
@@ -76,7 +54,6 @@ export class SettingsPanel extends LitElement {
       color: #526b86;
     }
 
-    .setting-icon svg,
     .command-icon svg {
       display: block;
       width: 100%;
@@ -374,11 +351,7 @@ export class SettingsPanel extends LitElement {
     const sections = ["Document", "Editor", "Text", "Insert", "Table", "Graphic"] as const
     return html`
       <div class="settings-panel">
-        <section class="setting-card" aria-labelledby="language-setting-heading">
-          <div id="language-setting-heading" class="setting-title">
-            <span class="setting-icon" aria-hidden="true">${ribbonIcon("Language")}</span>
-            <span>Language</span>
-          </div>
+        <section class="setting-card" aria-label="Language">
           <select aria-label="Interface language" .value=${this.settings.language} @change=${this.changeLanguage}>
             ${languageOptions.map(option => html`
               <option value=${option.value} ?selected=${option.value === this.settings.language}>${option.label}</option>
@@ -396,8 +369,7 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
-        <section class="setting-card" aria-labelledby="toolbox-setting-heading">
-          <div id="toolbox-setting-heading" class="setting-title">Toolbox</div>
+        <section class="setting-card" aria-label="Toolbox">
           <label class="checkbox-setting">
             <input
               type="checkbox"
@@ -408,8 +380,7 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
-        <section class="setting-card" aria-labelledby="motion-setting-heading">
-          <div id="motion-setting-heading" class="setting-title">Motion</div>
+        <section class="setting-card" aria-label="Motion">
           <label class="checkbox-setting">
             <input
               type="checkbox"
@@ -421,7 +392,6 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
-        <h3>Keyboard shortcuts</h3>
         <p class="shortcut-help">Select a shortcut, then press its replacement. Reserved system and browser shortcuts cannot be assigned.</p>
         ${this.message || this.error ? html`
           <div class="status" role="status" aria-live="polite" ?data-error=${Boolean(this.error)}>
@@ -429,8 +399,7 @@ export class SettingsPanel extends LitElement {
           </div>
         ` : ""}
         ${sections.map(section => html`
-          <section aria-labelledby=${`commands-${section.toLocaleLowerCase()}`}>
-            <h3 id=${`commands-${section.toLocaleLowerCase()}`}>${section}</h3>
+          <section aria-label=${`${section} shortcuts`}>
             <div class="command-list">
               ${appCommands.filter(command => command.section === section).map(command => html`
                 <div class="command-row">

@@ -52,8 +52,7 @@ describe("settings panel", () => {
     panel.addEventListener("settings-change", event => {
       changes.push((event as CustomEvent<AppSettings>).detail)
     })
-    const checkbox = panel.shadowRoot!.querySelector<HTMLElement>("#motion-setting-heading")!
-      .closest("section")!.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Motion"] input')!
 
     checkbox.checked = true
     checkbox.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
@@ -218,7 +217,7 @@ it("defaults to hiding Style and loads the saved preference", async () => {
   const panel = await mountPanel()
   const changes: AppSettings[] = []
   panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
-  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('[aria-labelledby="toolbox-setting-heading"] input')!
+  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Toolbox"] input')!
   expect(checkbox.checked).toBe(false)
   checkbox.click()
   expect(changes.at(-1)!.showStyleToolbox).toBe(true)
