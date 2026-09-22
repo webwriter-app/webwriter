@@ -597,6 +597,20 @@ export class SelectionFeature extends EditorFeature {
     })
   }
 
+  #pointerHovered = new Set<Element>()
+
+  #updatePointerHover(target: Element | null) {
+    const hovered = new Set<Element>()
+    for(let element = target; element && element !== document.body && document.body.contains(element); element = element.parentElement) {
+      hovered.add(element)
+    }
+    for(const element of this.#pointerHovered) {
+      if(!hovered.has(element)) removeEditorMarker(element, "◆pointer-hovered")
+    }
+    for(const element of hovered) element.classList.add("◆", "◆pointer-hovered")
+    this.#pointerHovered = hovered
+  }
+
   /** Pointer capture keeps the whole editor drag in the outer document, even
    * when crossing a widget, native media controls, or a child frame. */
   readonly #endDrag = () => {
@@ -605,6 +619,7 @@ export class SelectionFeature extends EditorFeature {
     this.#drag = null
     this.dragAnchor = null
     this.isInDragSelection = false
+    this.#updatePointerHover(null)
     document.body.classList.remove("◆selection-dragging")
     if(pointerId !== undefined && target?.hasPointerCapture?.(pointerId)) {
       target.releasePointerCapture(pointerId)
@@ -644,6 +659,9 @@ export class SelectionFeature extends EditorFeature {
       nativeClick, moved: false, target, pointerId: event.pointerId}
     this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
     this.isInDragSelection = true
+    // BODY capture suppresses descendant :hover; retain the native hover path
+    // and hit-test subsequent moves independently of the captured event target.
+    this.#updatePointerHover(event.target instanceof Element ? event.target : null)
     // Capture on BODY so native mouse selection can cross paragraph boundaries;
     // capturing the clicked paragraph makes Chromium clamp the range to it.
     // The original click still establishes native editing focus.
@@ -714,6 +732,9 @@ export class SelectionFeature extends EditorFeature {
     },
     pointermove: event => {
       this.#handleKeyState(event)
+      if(this.#drag && this.#drag.pointerId === event.pointerId) {
+        this.#updatePointerHover(document.elementFromPoint(event.clientX, event.clientY))
+      }
       if(this.isInDragSelection) event.preventDefault()
       if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
     },

@@ -267,13 +267,13 @@ body
         none,
         semantics
       )
-  ):not(table *):hover {
+  ):not(table *):is(:hover, .◆pointer-hovered) {
   anchor-name: --hover-anchor;
 }
 
 /* A table is the editor's selectable element; its structural descendants and
  * cell contents must therefore share one hover outline around the table. */
-body table:hover {
+body table:is(:hover, .◆pointer-hovered) {
   anchor-name: --hover-anchor;
 }
 
@@ -435,7 +435,7 @@ body::part(hover-caret) {
   z-index: 2147483645;
 }
 
-body:has(> *:hover)::part(hover-caret),
+body:has(> *:is(:hover, .◆pointer-hovered))::part(hover-caret),
 body:has(.◆element-hovered)::part(hover-caret),
 body.◆element-hovered::part(hover-caret),
 body:has(.◆style-target-hovered)::part(hover-caret),
@@ -447,7 +447,7 @@ body:has(.◆element-hovered)::part(hover-caret) {
   outline: 2px dotted var(--sl-color-primary-400);
 }
 
-body:has(.◆element-capture-selected:is(:hover, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
+body:has(.◆element-capture-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
   display: none;
 }
 
@@ -1199,7 +1199,7 @@ body:empty::before {
 
 /* Preserve every active editor anchor when the same element also supplies
  * the shared hover overlay's anchor. */
-.◆element-selected:is(:hover, .◆element-hovered):not(table *) {
+.◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
   anchor-name: --selection-anchor, --hover-anchor;
 }
 
@@ -1207,7 +1207,7 @@ body:empty::before {
   anchor-name: --selection-anchor, --hover-anchor;
 }
 
-body.◆element-selected:is(:hover, .◆element-hovered) {
+body.◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered) {
   anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
 }
 
@@ -1215,7 +1215,7 @@ body.◆element-selected.◆style-target-hovered {
   anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
 }
 
-:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after):is(:hover, .◆element-hovered):not(table *) {
+:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after):is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
   anchor-name: --gap-anchor, --hover-anchor;
 }
 
@@ -1223,7 +1223,7 @@ body.◆element-selected.◆style-target-hovered {
   anchor-name: --gap-anchor, --hover-anchor;
 }
 
-.◆transform-containing-block:is(:hover, .◆element-hovered):not(table *) {
+.◆transform-containing-block:is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
@@ -1231,7 +1231,7 @@ body.◆element-selected.◆style-target-hovered {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
-.◆empty-selected:is(:hover, .◆element-hovered):not(table *) {
+.◆empty-selected:is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
@@ -1239,7 +1239,7 @@ body.◆element-selected.◆style-target-hovered {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
-body.◆empty-selected:is(:hover, .◆element-hovered) {
+body.◆empty-selected:is(:hover, .◆pointer-hovered, .◆element-hovered) {
   anchor-name: --body-anchor, --empty-selected, --hover-anchor;
 }
 

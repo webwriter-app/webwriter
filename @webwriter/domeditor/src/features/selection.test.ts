@@ -2351,6 +2351,39 @@ describe("selection invariants", () => {
     expect($.isEmpty).toBe(true)
   })
 
+  it.each(["pointerup", "pointercancel", "lostpointercapture"])("preserves hover while holding and moving a captured pointer until %s", ending => {
+    const paragraph = textDocument()
+    hitTest()
+    const section = document.createElement("section")
+    paragraph.replaceWith(section)
+    section.append(paragraph)
+    pointer(paragraph, "pointerdown", 20, 25)
+    expect(paragraph).toHaveClass("◆pointer-hovered")
+    expect(section).toHaveClass("◆pointer-hovered")
+    expect(editor.toHTML(true)).not.toContain("◆pointer-hovered")
+    const widget = document.querySelector("second-widget")!
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(widget)
+    pointer(document.body, "pointermove", 21, 25)
+    expect(widget).toHaveClass("◆pointer-hovered")
+    expect(paragraph).not.toHaveClass("◆pointer-hovered")
+    expect(section).not.toHaveClass("◆pointer-hovered")
+    // Cleanup also reaches elements removed by another editing source.
+    widget.remove()
+    pointer(document.body, ending, 21, 25)
+    expect(widget).not.toHaveClass("◆pointer-hovered")
+    expect(document.querySelector(".◆pointer-hovered")).toBeNull()
+  })
+
+  it.each(["blur", "disable"])("clears captured hover on %s", ending => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    expect(paragraph).toHaveClass("◆pointer-hovered")
+    if(ending === "blur") window.dispatchEvent(new Event("blur"))
+    else feature.disable()
+    expect(paragraph).not.toHaveClass("◆pointer-hovered")
+  })
+
   it.each(["pointerup", "pointercancel"])("captures paragraph drags on the body and releases on %s", ending => {
     const paragraph = textDocument()
     const last = document.querySelectorAll("p")[1]
