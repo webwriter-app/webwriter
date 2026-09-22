@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+import {formatShortcut} from "../app-settings"
 import {markStateChangeEvent} from "../editor-bridge"
 import {DomEditor} from "./dom-editor"
 import {AppRibbon} from "./ribbon"
@@ -717,6 +718,28 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(label).display).toBe("flex")
     expect(getComputedStyle(labelText).overflow).toBe("hidden")
     expect(getComputedStyle(count).flexShrink).toBe("0")
+  })
+
+  it("shows configured shortcuts at the right of More menu items", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    ribbon.settings = {
+      ...ribbon.settings,
+      shortcuts: {...ribbon.settings.shortcuts, "text.code": "Alt+Shift+9", "text.q": ""},
+    }
+    await ribbon.updateComplete
+    const more = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!
+    await more.updateComplete
+    const options = [...more.shadowRoot!.querySelectorAll<HTMLElement>(".mark-dropdown-option")]
+    expect(options).toHaveLength(5)
+    for(const [index, name] of ["sup", "sub", "code", "kbd", "q"].entries()) {
+      const shortcut = options[index].querySelector<HTMLElement>(".mark-dropdown-shortcut")
+      const configured = ribbon.settings.shortcuts[`text.${name}`]
+      expect(shortcut?.textContent ?? "").toBe(formatShortcut(configured))
+      if(shortcut) {
+        expect(getComputedStyle(shortcut).justifySelf).toBe("end")
+        expect(["#687383", "rgb(104, 115, 131)"]).toContain(getComputedStyle(shortcut).color)
+      }
+    }
   })
 
   it("keeps an empty span multiselect open and presents it as More", async () => {
