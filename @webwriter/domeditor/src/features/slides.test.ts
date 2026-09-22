@@ -472,7 +472,7 @@ describe("CSS-only Slides layout", () => {
       editor.features.selection.processSelection()
       expect(convert(target)).toBe(true)
       await settle()
-      expect($.selectedElement).toBe(element)
+      expect($.selectedElement).toBe(element.parentElement?.matches("picture") ? element.parentElement : element)
     })
 
     it("retains an explicit document selection", async () => {
@@ -588,7 +588,7 @@ describe("CSS-only Slides layout", () => {
     expect($.anchorOffset).toBe(0)
   })
 
-  it.each(['<custom-card></custom-card>', '<img alt="">', '<svg><circle r="5"/></svg>', '<!--keep-->', '<section><div></div></section>', '<p id="anchor"></p>', '<p><br class="authored"></p>', '<p style="border: 1px solid red"></p>'])("preserves textless authored content on exit: %s", async html => {
+  it.each(['<custom-card></custom-card>', '<picture><img alt=""></picture>', '<svg><circle r="5"/></svg>', '<!--keep-->', '<section><div></div></section>', '<p id="anchor"></p>', '<p><br class="authored"></p>', '<p style="border: 1px solid red"></p>'])("preserves textless authored content on exit: %s", async html => {
     expect(convert("slides")).toBe(true)
     const template = document.createElement("template")
     template.innerHTML = html

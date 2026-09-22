@@ -50,7 +50,6 @@ import {
   isWebsiteType,
   mediaAttributeOptions,
   timedMediaResourceAttributeOptions,
-  websiteTypes,
   type ImageMapAreaState,
   type ImageMapHotspotShape,
   type MediaAttributeOption,
@@ -1324,6 +1323,27 @@ export abstract class EditingControls extends LitElement {
     })
   }
 
+  protected renderMediaAttributeOptions(type: MediaType, options: MediaAttributeOption[]) {
+    const advancedNames = type === "picture" || type === "img"
+      ? new Set(["loading", "decoding", "crossorigin", "referrerpolicy", "sizes", "srcset"])
+      : type === "audio" || type === "video"
+        ? new Set(["preload", "crossorigin", "playsinline"])
+        : new Set(["loading", "sandbox", "allow", "referrerpolicy"])
+    const primary = options.filter(option => !advancedNames.has(option.name))
+    const advanced = options.filter(option => advancedNames.has(option.name))
+    return html`
+      ${primary.map(option => this.renderMediaAttribute(type, option))}
+      ${advanced.length ? html`
+        <details class="media-advanced-options">
+          <summary>More options</summary>
+          <div class="media-advanced-options-content">
+            ${advanced.map(option => this.renderMediaAttribute(type, option))}
+          </div>
+        </details>
+      ` : nothing}
+    `
+  }
+
   protected dispatchMediaResourceAction(detail: Record<string, unknown>) {
     this.dispatchEvent(new CustomEvent("media-resource-action", {
       detail: {type: this.media?.type, ...detail},
@@ -1546,36 +1566,10 @@ export abstract class EditingControls extends LitElement {
           ${this.figure ? this.renderFigureCaptionControls() : html`
             <ribbon-button label="Convert to figure" action="media-to-figure" icon="Section"></ribbon-button>
           `}
-          ${selectedType === "picture" || selectedType === "img" ? html`
-            <button
-              class="media-type-switch"
-              type="button"
-              @click=${() => this.dispatchEvent(new CustomEvent("media-type-change", {
-                detail: {type: selectedType === "picture" ? "img" : "picture"},
-                bubbles: true,
-                composed: true,
-              }))}
-            >Use &lt;${selectedType === "picture" ? "img" : "picture"}&gt;</button>
-          ` : ""}
-          ${isWebsiteType(selectedType) ? html`
-            <label class="mark-attribute media-attribute">
-              <span>Element</span>
-              <select
-                data-ribbon-input-persistent
-                aria-label="Website: Element"
-                @change=${(event: Event) => this.dispatchEvent(new CustomEvent("media-type-change", {
-                  detail: {type: (event.currentTarget as HTMLSelectElement).value},
-                  bubbles: true,
-                  composed: true,
-                }))}
-              >
-                ${websiteTypes.map(website => html`
-                  <option value=${website} ?selected=${website === selectedType}>&lt;${website}&gt;</option>
-                `)}
-              </select>
-            </label>
-          ` : ""}
-          ${mediaAttributeOptions[selectedType].map(option => this.renderMediaAttribute(selectedType, option))}
+          ${this.renderMediaAttributeOptions(
+            isWebsiteType(selectedType) ? "iframe" : selectedType,
+            mediaAttributeOptions[isWebsiteType(selectedType) ? "iframe" : selectedType],
+          )}
           ${this.renderTimedMediaResources()}
           ${this.renderImageMapControls()}
         </div>

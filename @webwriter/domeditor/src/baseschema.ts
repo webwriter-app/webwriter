@@ -173,6 +173,7 @@ export const baseSchema = {
 
   // Embedded elements
   "audio": {
+    requiredAttributes: {controls: ""},
     group: ["embedded", "interactive", "flow"],
     content: {options: [
       {terms: [{selector: "track", min: 0, max: Infinity}, {selector: hasNot("audio", "video"), transparent: true}]},
@@ -184,7 +185,8 @@ export const baseSchema = {
     content: {selector: hasNot("audio", "embed", "iframe", "img[usemap]", "audio[controls]", "video[controls]", "object[usemap]", "details", "label", "select", "textarea", "audio", "input:is([type=checkbox],[type=radio],[type=button])"), transparent: true},
   },
   "embed": {
-    group: ["embedded", "interactive", "flow", "palpable"]
+    replacement: "iframe",
+    directlyInsertable: false
   },
   "iframe": {
     group: ["embedded", "interactive", "flow", "palpable"]
@@ -193,11 +195,12 @@ export const baseSchema = {
     group: ["embedded", "interactive", "flow", "palpable"]
   },
   "img": {
-    group: ["embedded", "interactive", "flow", "palpable", "formassociated"]
+    wrapper: "picture",
+    directlyInsertable: false
   },
   "object": {
-    group: ["embedded", "flow", "palpable", "formassociated", "listed", "submittable"],
-    content: {transparent: true}
+    replacement: "iframe",
+    directlyInsertable: false
   },
   "picture": {
     group: ["embedded", "flow", "palpable"],
@@ -208,6 +211,7 @@ export const baseSchema = {
     ]}
   },
   "video": {
+    requiredAttributes: {controls: ""},
     group: ["embedded", "interactive", "flow", "palpable"],
     content: {options: [
       {terms: [{selector: "track", min: 0, max: Infinity}, {selector: hasNot("audio", "video"), transparent: true}]},

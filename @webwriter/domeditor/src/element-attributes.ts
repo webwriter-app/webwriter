@@ -140,13 +140,7 @@ const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[
     ]},
   ],
   iframe: [
-    {name: "name", label: "Browsing context name"},
-    {name: "loading", label: "Loading", kind: "select", options: [
-      {label: "Default", value: ""},
-      {label: "Lazy", value: "lazy"},
-      {label: "Eager", value: "eager"},
-    ]},
-    {name: "referrerpolicy", label: "Referrer policy"},
+    // Website-specific options are owned by the media drawer.
   ],
   td: [
     {name: "colspan", label: "Column span", kind: "number"},
@@ -186,6 +180,9 @@ export function elementAttributeEditability(name: string, localName?: string, na
   const limitation = localName ? elementEditingLimitation(localName, namespaceURI) : null
   if(limitation?.attributes === "read-only") return {editable: false, reason: "Read-only by policy"} as const
   const normalized = name.toLowerCase()
+  if(normalized === "controls" && (localName === "audio" || localName === "video")) {
+    return {editable: false, reason: "Required by the media schema"} as const
+  }
   if(normalized === "style") return {editable: false, reason: "Use the Style tools"} as const
   if(blockedAttributes.has(normalized) || normalized.startsWith("on")) {
     return {editable: false, reason: "Blocked for safety"} as const

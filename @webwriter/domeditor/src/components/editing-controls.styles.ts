@@ -1206,6 +1206,26 @@ export const editingControlStyles = css`
       border-top: 1px solid #d8e0e9;
     }
 
+    .media-advanced-options {
+      margin-top: 0.2rem;
+      border-top: 1px solid #d8e0e9;
+      padding-top: 0.3rem;
+    }
+
+    .media-advanced-options summary {
+      color: #526b86;
+      cursor: pointer;
+      font-size: 0.64rem;
+      font-weight: 600;
+    }
+
+    .media-advanced-options-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding-top: 0.35rem;
+    }
+
     .media-resource-heading,
     .media-resource-card-heading {
       display: flex;

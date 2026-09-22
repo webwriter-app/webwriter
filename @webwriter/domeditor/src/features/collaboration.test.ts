@@ -205,10 +205,10 @@ describe("DOMEditor collaboration wiring", () => {
   })
 
   it("synchronizes figure conversion and captions through undo, redo, and serialization", async () => {
-    document.body.innerHTML = '<img src="diagram.png" alt="Diagram">'
+    document.body.innerHTML = '<picture><img src="diagram.png" alt="Diagram"></picture>'
     await mutationsDelivered()
     editor.doc.stopCapturing()
-    const image = document.querySelector("img")!
+    const image = document.querySelector("picture")!
     $.selectElement(image)
     editor.features.selection.processSelection()
 
@@ -216,12 +216,12 @@ describe("DOMEditor collaboration wiring", () => {
     editor.features.manipulation.actions.addFigureCaption({type: "addFigureCaption", position: "after"})
     await mutationsDelivered()
 
-    expect(editor.toHTML(true)).toBe('<figure><img src="diagram.png" alt="Diagram"><figcaption></figcaption></figure>')
-    expect(editor.doc.body.toString()).toContain('<figure><img alt="Diagram" src="diagram.png"></img><figcaption></figcaption></figure>')
+    expect(editor.toHTML(true)).toBe('<figure><picture><img src="diagram.png" alt="Diagram"></picture><figcaption></figcaption></figure>')
+    expect(editor.doc.body.toString()).toContain('<figure><picture><img alt="Diagram" src="diagram.png"></img></picture><figcaption></figcaption></figure>')
     editor.features.history.actions.undo({type: "undo"})
-    expect(editor.toHTML(true)).toBe('<img src="diagram.png" alt="Diagram">')
+    expect(editor.toHTML(true)).toBe('<picture><img src="diagram.png" alt="Diagram"></picture>')
     editor.features.history.actions.redo({type: "redo"})
-    expect(editor.toHTML(true)).toBe('<figure><img src="diagram.png" alt="Diagram"><figcaption></figcaption></figure>')
+    expect(editor.toHTML(true)).toBe('<figure><picture><img src="diagram.png" alt="Diagram"></picture><figcaption></figcaption></figure>')
   })
 
   it("synchronizes section wrappers and includes them in undo and redo", async () => {

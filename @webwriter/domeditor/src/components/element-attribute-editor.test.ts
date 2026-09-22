@@ -236,3 +236,10 @@ describe("element attribute editor", () => {
     },
   )
 })
+
+  it.each(["img", "picture", "audio", "video", "iframe"])("omits specialized %s fields from All attributes", async localName => {
+    const editor = await mount(localName, {src: "file", width: "640", controls: "", "data-credit": "Author"})
+    expect(editor.shadowRoot!.querySelector('[aria-label="Rename src"]')).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Rename controls"]')).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Rename data-credit"]')).not.toBeNull()
+  })

@@ -1441,6 +1441,7 @@ export class DOMEditor {
   /** Produces the two clipboard flavors from one cleaned selection clone so
    * native and programmatic copy cannot diverge or leak editing markers. */
   serializeClipboardFragment(fragment: DocumentFragment, innerText?: string) {
+    this.schema.enforceMedia(fragment)
     this.clearEditingArtifacts(fragment)
     const text = innerText ?? plainTextFromDOM(fragment, element => this.schema.isBlock(element))
     const container = fragment.ownerDocument.createElement("div")
@@ -1480,6 +1481,7 @@ export class DOMEditor {
    * strip styling, excluded marks, and section wrappers and canonize aliases; explicit HTML
    * edits retain authored structure and styles. */
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false) {
+    this.schema.enforceMedia(fragment)
     this.clearEditingArtifacts(fragment)
     const removedUnsafeItems = stripActiveContent(fragment, {
       allowIframes: true,

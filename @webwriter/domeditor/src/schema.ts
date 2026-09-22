@@ -79,6 +79,9 @@ export type SchemaEntry = {
   contentNamespace?: string
   /** Whether generic insertion UI may offer this type at a valid position. */
   directlyInsertable?: boolean
+  requiredAttributes?: Record<string, string>
+  wrapper?: string
+  replacement?: string
 }
 
 /** The editing-config fields that affect a widget's document-schema entry. */
@@ -426,6 +429,9 @@ export class Schema {
           ? ownerDocument.createElementNS(contentNamespace, key)
           : ownerDocument.createElement(key)
     }
+    if(node instanceof Element) {
+      Object.entries(this.#schema[key]?.requiredAttributes ?? {}).forEach(([name, value]) => node.setAttribute(name, value))
+    }
     this.#createdTypes.set(node, key)
     return node
   }
@@ -666,6 +672,8 @@ export class Schema {
 
   /** Whether `node` is valid as the next piece of content under `rule`. Stateful: A successful match decrements the rule's min/max in place, so calling this repeatedly with the same rule object consumes it across a sequence of nodes — which is how isContentValid uses it. Elements with `contenteditable=false` are always valid. Throws for malformed rules. */
   isNodeValid(node: Node, rule=this.getContentRule(node.parentElement!)): boolean {
+    if(node instanceof Element && (this.get(node)?.replacement
+      || Object.keys(this.get(node)?.requiredAttributes ?? {}).some(name => !node.hasAttribute(name)))) return false
     if(node instanceof Element && (node.getAttribute("contenteditable") === "false"
       || this.#repairingContent && (node.localName.includes("-") || node.hasAttribute("is")
         || this.#getTypeKey(node) === "#unknownelement"))) {
@@ -1007,6 +1015,48 @@ export class Schema {
     }
   }
 
+  /** Apply the schema's media constraints without repairing unrelated content.
+   * Widget-owned subtrees and foreign namespaces remain untouched. */
+  enforceMedia(root: Node) {
+    const replacements = new Map<Element, Element>()
+    const visit = (node: Node) => {
+      if(node instanceof Element) {
+        if(node.namespaceURI !== "http://www.w3.org/1999/xhtml"
+          || node.localName.includes("-") || node.hasAttribute("is")) return
+        const entry = this.get(node)
+        if(entry?.replacement && node.parentNode) {
+          const replacement = node.ownerDocument.createElement(entry.replacement)
+          Array.from(node.attributes).forEach(attribute => {
+            if(["type", "data", "form", "usemap", "classid", "codebase", "codetype", "archive", "declare"].includes(attribute.name)) return
+            replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          })
+          const source = node.getAttribute(node.localName === "object" ? "data" : "src")
+          if(source !== null) replacement.setAttribute("src", source)
+          // Keep authored fallback nodes; the iframe treats them as fallback.
+          replacement.append(...Array.from(node.childNodes))
+          replacements.set(node, replacement)
+          node.replaceWith(replacement)
+          node = replacement
+        }
+        if(node instanceof Element) {
+          const entry = this.get(node)
+          for(const [name, value] of Object.entries(entry?.requiredAttributes ?? {})) {
+            if(!node.hasAttribute(name)) node.setAttribute(name, value)
+          }
+          if(entry?.wrapper && node.parentNode && node.parentElement?.localName !== entry.wrapper) {
+            const wrapper = node.ownerDocument.createElement(entry.wrapper)
+            replacements.set(node, wrapper)
+            node.replaceWith(wrapper)
+            wrapper.append(node)
+          }
+        }
+      }
+      Array.from(node.childNodes).forEach(visit)
+    }
+    visit(root)
+    return replacements
+  }
+
   /** Fixes the root element's content (see fixInvalidContent), and with `deep` all descendants too. Non-element roots are ignored. */
   checkAndCorrect(root: Node = document.documentElement, deep=false) {
     if(!(root instanceof Element)) return;
@@ -1019,7 +1069,10 @@ export class Schema {
     // validation, and never signal repair by mutating authored attributes.
     const repairing = this.#repairingContent
     this.#repairingContent = true
-    try { this.fixInvalidContent(root) }
+    try {
+      this.enforceMedia(root)
+      this.fixInvalidContent(root)
+    }
     finally { this.#repairingContent = repairing }
     if(deep) Array.from(root.childNodes).forEach(node => this.checkAndCorrect(node, true));
   }

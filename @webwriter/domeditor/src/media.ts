@@ -150,7 +150,6 @@ const imageAttributes: MediaAttributeOption[] = [
 
 const timedMediaAttributes: MediaAttributeOption[] = [
   {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
-  {name: "controls", label: "Controls", kind: "boolean"},
   {name: "autoplay", label: "Autoplay", kind: "boolean"},
   {name: "loop", label: "Loop", kind: "boolean"},
   {name: "muted", label: "Muted", kind: "boolean"},

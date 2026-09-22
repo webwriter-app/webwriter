@@ -1076,6 +1076,7 @@ export class MediaFeature extends EditorFeature {
     },
     insertMedia: ({media, selectFile = false}: {type: "insertMedia", media: MediaType, selectFile?: boolean}) => {
       if(!isMediaType(media)) throw new TypeError(`Unsupported media type '${String(media)}'`)
+      media = media === "img" ? "picture" : isWebsiteType(media) ? "iframe" : media
       const template = document.createElement("template")
       template.innerHTML = mediaDefaultHTML(media)
       const element = template.content.firstElementChild!
@@ -1252,24 +1253,19 @@ export class MediaFeature extends EditorFeature {
     },
     switchImageType: ({image}: {type: "switchImageType", image: "picture" | "img"}) => {
       if(image !== "picture" && image !== "img") throw new TypeError(`Unsupported image type '${String(image)}'`)
+      if(image !== "picture") return
       const selected = this.selectedMedia()
       if(!selected || !selected.matches("picture, img") || selected.localName === image) return
-      let replacement: Element
-      if(image === "img") {
-        replacement = selected.querySelector(":scope > img") ?? document.createElement("img")
-        selected.replaceWith(replacement)
-      }
-      else {
-        replacement = document.createElement("picture")
-        selected.replaceWith(replacement)
-        replacement.append(selected)
-      }
+      const replacement = document.createElement("picture")
+      selected.replaceWith(replacement)
+      replacement.append(selected)
       $.selectElement(replacement)
       this.editor.features.selection.processSelection()
       this.refresh()
     },
     switchWebsiteType: ({website}: {type: "switchWebsiteType", website: WebsiteType}) => {
       if(!isWebsiteType(website)) throw new TypeError(`Unsupported website type '${String(website)}'`)
+      if(website !== "iframe") return
       const selected = this.selectedMedia()
       if(!selected || !isWebsiteType(selected.localName) || selected.localName === website) return
 
@@ -1510,10 +1506,17 @@ export class MediaFeature extends EditorFeature {
 
   private refresh() {
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
+    const selectedBefore = $.selectedElement
+    const capturedBefore = this.editor.features.selection.captureSelectedElement
+    const replacements = this.editor.schema.enforceMedia(document.body)
+    const replacement = selectedBefore && replacements.get(selectedBefore)
+    if(replacement) {
+      $.selectElement(replacement)
+      this.editor.features.selection.processSelection()
+      if(capturedBefore === selectedBefore) this.editor.features.selection.captureElement(replacement)
+    }
     document.querySelectorAll(mediaSelector).forEach(element => {
-      if(element.matches("audio:not([controls])") && !atomicEditingContainer(element.parentElement, this.editor.schema)) {
-        element.setAttribute("controls", "")
-      }
+      if(atomicEditingContainer(element.parentElement, this.editor.schema)) return
       const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))
       if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
     })

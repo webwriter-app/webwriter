@@ -56,7 +56,7 @@ describe("media editing", () => {
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
     "node-selects the %s surface and capture-selects its placeholder controls", async media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})
-      const target = document.querySelector(media)!
+      const target = document.querySelector(media === "img" ? "picture" : ["embed", "object"].includes(media) ? "iframe" : media)!
       const placeholder = editor.features.media.placeholder
 
       for(const selector of [".file", ".file svg", ".url", ".apply"]) {
@@ -210,7 +210,7 @@ describe("media editing", () => {
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
     "overlays the %s input affordance with the same translucent background", media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})
-      const target = document.querySelector(media)!
+      const target = document.querySelector(media === "img" ? "picture" : ["embed", "object"].includes(media) ? "iframe" : media)!
       vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
       const placeholder = editor.features.media.placeholder
       placeholder.showFor(target)
@@ -226,8 +226,9 @@ describe("media editing", () => {
   )
 
   it.each(["iframe", "embed", "object"])("shows the website icon only while %s is empty", async tag => {
-    const target = document.createElement(tag)
-    document.body.replaceChildren(target)
+    document.body.innerHTML = `<${tag}></${tag}>`
+    editor.schema.enforceMedia(document.body)
+    const target = document.querySelector("iframe")!
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
     await vi.waitFor(() => expect(editor.appendix.querySelector("[data-empty-website]")).not.toBeNull())
     const shield = editor.appendix.querySelector<HTMLElement>("[data-empty-website]")!
@@ -243,9 +244,9 @@ describe("media editing", () => {
     expect(editor.doc.body.toString()).not.toMatch(/svg|data-empty-website/)
     expect(editor.toHTML(true)).not.toMatch(/svg|data-empty-website/)
 
-    target.setAttribute(tag === "object" ? "data" : "src", "about:blank")
+    target.setAttribute("src", "about:blank")
     await vi.waitFor(() => expect(shield).not.toHaveAttribute("data-empty-website"))
-    target.removeAttribute(tag === "object" ? "data" : "src")
+    target.removeAttribute("src")
     await vi.waitFor(() => expect(shield).toHaveAttribute("data-empty-website"))
     target.remove()
     await vi.waitFor(() => expect(shield.isConnected).toBe(false))
@@ -263,14 +264,14 @@ describe("media editing", () => {
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
     "applies an HTTP URL to the %s source by clicking the inset arrow", media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})
-      const target = document.querySelector(media)!
-      const sourceTarget = media === "picture" ? target.querySelector("img")! : target
+      const target = document.querySelector(media === "img" ? "picture" : ["embed", "object"].includes(media) ? "iframe" : media)!
+      const sourceTarget = ["picture", "img"].includes(media) ? target.querySelector("img")! : target
       const placeholder = editor.features.media.placeholder
       const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
       input.value = "  https://example.com/media?query=1#section  "
       placeholder.root.querySelector(".apply svg")!.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
 
-      expect(sourceTarget.getAttribute(media === "object" ? "data" : "src")).toBe("https://example.com/media?query=1#section")
+      expect(sourceTarget.getAttribute("src")).toBe("https://example.com/media?query=1#section")
       expect(placeholder.element).not.toHaveAttribute("data-open")
       expect(document.body.querySelector("svg, button, input")).toBeNull()
     },
@@ -361,7 +362,7 @@ describe("media editing", () => {
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
     "capture-selects %s when its placeholder controls receive keyboard focus", async media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})
-      const target = document.querySelector(media)!
+      const target = document.querySelector(media === "img" ? "picture" : ["embed", "object"].includes(media) ? "iframe" : media)!
       const placeholder = editor.features.media.placeholder
       const html = editor.toHTML(true)
 
@@ -488,15 +489,15 @@ describe("media editing", () => {
     }, {timeout: 5_000})
   })
 
-  it("edits advanced attributes and switches between picture and img", () => {
+  it("edits advanced attributes and retains the picture container", () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "picture"})
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "alt", value: "A diagram"})
     expect(document.querySelector("picture > img")).toHaveAttribute("alt", "A diagram")
 
     editor.features.media.actions.switchImageType({type: "switchImageType", image: "img"})
     const image = document.body.firstElementChild!
-    expect(image.localName).toBe("img")
-    expect(image).toHaveAttribute("alt", "A diagram")
+    expect(image.localName).toBe("picture")
+    expect(image.querySelector("img")).toHaveAttribute("alt", "A diagram")
     expect($.selectedElement).toBe(image)
 
     editor.features.media.actions.switchImageType({type: "switchImageType", image: "picture"})
@@ -788,39 +789,28 @@ describe("media editing", () => {
   })
 
   it("converts selected media to a figure without replacing an existing semantic ancestor", () => {
-    document.body.innerHTML = '<article data-origin="remote"><img src="diagram.png" alt="Diagram"><p>Explanation</p></article>'
-    const image = document.querySelector("img")!
+    document.body.innerHTML = '<article data-origin="remote"><picture><img src="diagram.png" alt="Diagram"></picture><p>Explanation</p></article>'
+    const image = document.querySelector("picture")!
     $.selectElement(image)
     editor.features.selection.processSelection()
 
     expect(editor.features.media.actions.wrapMediaInFigure({type: "wrapMediaInFigure"})).toBe(true)
 
-    expect(editor.toHTML(true)).toBe('<article data-origin="remote"><figure><img src="diagram.png" alt="Diagram"></figure><p>Explanation</p></article>')
+    expect(editor.toHTML(true)).toBe('<article data-origin="remote"><figure><picture><img src="diagram.png" alt="Diagram"></picture></figure><p>Explanation</p></article>')
     expect($.selectedElement).toBe(image)
     expect(editor.features.manipulation.getFigureState()).toEqual({hasCaption: false})
     expect(editor.features.media.actions.wrapMediaInFigure({type: "wrapMediaInFigure"})).toBe(false)
     expect(document.querySelectorAll("figure")).toHaveLength(1)
   })
 
-  it("switches website elements and keeps only attributes supported by the new type", () => {
+  it("retains iframe when legacy website switches are requested", () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "iframe"})
-    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "about:blank#website"})
-    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "width", value: "640"})
-    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "sandbox", value: "allow-scripts"})
-
-    editor.features.media.actions.switchWebsiteType({type: "switchWebsiteType", website: "embed"})
-    const embed = document.querySelector("embed")!
-    expect(embed).toHaveAttribute("src", "about:blank#website")
-    expect(embed).toHaveAttribute("width", "640")
-    expect(embed).not.toHaveAttribute("sandbox")
-
-    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "type", value: "text/html"})
-    editor.features.media.actions.switchWebsiteType({type: "switchWebsiteType", website: "object"})
-    const object = document.querySelector("object")!
-    expect(object).toHaveAttribute("data", "about:blank#website")
-    expect(object).not.toHaveAttribute("src")
-    expect(object).toHaveAttribute("type", "text/html")
-    expect($.selectedElement).toBe(object)
+    const frame = document.querySelector("iframe")!
+    for(const website of ["embed", "object"] as const) {
+      editor.features.media.actions.switchWebsiteType({type: "switchWebsiteType", website})
+      expect(document.querySelector("iframe")).toBe(frame)
+      expect(document.querySelector("embed, object")).toBeNull()
+    }
   })
 
   it("node-selects interactive media through an appendix shield and blocks same-click activation", async () => {
@@ -847,13 +837,13 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3" controls=""></audio>')
   })
 
-  it("does not shield empty timed media, widget-owned media, or nested media", async () => {
+  it("shields timed media controls but not widget-owned or nested media", async () => {
     document.body.innerHTML = `
       <audio src="outer.mp3"><video src="nested.mp4"></video></audio>
       <media-widget><iframe src="about:blank#widget"></iframe></media-widget>
       <video></video>
     `
-    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(1))
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
     const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
     expect(shield.isConnected).toBe(true)
     expect(document.querySelector("audio > .◆media-interaction-shield")).toBeNull()
@@ -982,5 +972,27 @@ describe("media editing", () => {
     expect($.selectedElement).toBe(audio)
     expect(editor.features.selection.isCaptureSelection).toBe(false)
     await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+  })
+})
+
+describe("canonical media", () => {
+  it("normalizes direct and shared media changes while preserving image identity", async () => {
+    document.body.innerHTML = '<p><img alt="Image"></p><embed src="https://example.com/site"><video></video><media-widget><img><video></video></media-widget>'
+    const image = document.querySelector("img")!
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    await vi.waitFor(() => {
+      expect(image.parentElement?.localName).toBe("picture")
+      expect(document.querySelector("iframe")).toHaveAttribute("src", "https://example.com/site")
+      expect(document.querySelector("video")).toHaveAttribute("controls")
+    })
+    expect($.selectedElement).toBe(image.parentElement)
+    expect(document.querySelector("media-widget")!.innerHTML).toBe('<img><video></video>')
+    const video = document.querySelector("video")!
+    video.removeAttribute("controls")
+    await vi.waitFor(() => expect(video).toHaveAttribute("controls"))
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).toContain('<picture><img alt="Image"></img></picture>')
+    expect(editor.toHTML(true)).not.toContain('◆')
   })
 })

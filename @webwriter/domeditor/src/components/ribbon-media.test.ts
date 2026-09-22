@@ -156,20 +156,40 @@ describe("media ribbon drawer", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const attributeListener = vi.fn()
-    const typeListener = vi.fn()
     toolbox.addEventListener("media-attribute-change", attributeListener)
-    toolbox.addEventListener("media-type-change", typeListener)
     const alt = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
     expect(alt.value).toBe("A diagram")
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Source URL"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Width"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Height"]')).not.toBeNull()
+    const more = toolbox.shadowRoot!.querySelector<HTMLDetailsElement>(".media-advanced-options")!
+    expect(more.open).toBe(false)
+    more.open = true
+    await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Image: Loading"]')?.value).toBe("lazy")
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-type-switch"))
+      .some(button => button.textContent?.includes("Use <"))).toBe(false)
     alt.value = "A photo"
     alt.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".media-type-switch")!.click()
-
     expect(attributeListener).toHaveBeenCalledWith(expect.objectContaining({
       detail: {type: "img", attribute: "alt", value: "A photo"},
     }))
-    expect(typeListener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "picture"}}))
+  })
+
+  it("keeps media-only options out of generic attributes and hides advanced media options", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "video", attributes: {controls: "", preload: "metadata", playsinline: ""}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Video: Controls"]')).toBeNull()
+    const more = toolbox.shadowRoot!.querySelector<HTMLDetailsElement>(".media-advanced-options")!
+    more.open = true
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('select[aria-label="Video: Preload"] option[selected][value="metadata"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Video: Play inline"]')?.checked).toBe(true)
   })
 
   it("offers figure conversion and caption actions from the media toolbox", async () => {
@@ -320,31 +340,20 @@ describe("media ribbon drawer", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "remove-map"}}))
   })
 
-  it("switches Website details and renders attributes directly in the toolbox", async () => {
+  it("uses iframe website controls without exposing an element switch", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
     toolbox.media = {type: "embed", attributes: {src: "https://example.test", type: "text/html"}}
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const typeListener = vi.fn()
-    toolbox.addEventListener("media-type-change", typeListener)
-    toolbox.addEventListener("media-type-change", event => {
-      const type = (event as CustomEvent<{type: "iframe" | "embed" | "object"}>).detail.type
-      toolbox.media = {type, attributes: {}}
-    })
-    const element = toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Website: Element"]')!
-    expect(element.value).toBe("embed")
-    expect(element.hasAttribute("data-ribbon-input-persistent")).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
-
-    element.value = "object"
-    element.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(typeListener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "object"}}))
+    expect(toolbox.shadowRoot!.querySelector('select[aria-label="Website: Element"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Source URL"]')).not.toBeNull()
+    const more = toolbox.shadowRoot!.querySelector<HTMLDetailsElement>(".media-advanced-options")!
+    expect(more.open).toBe(false)
+    more.open = true
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Data URL"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).not.toBeNull()
   })
 })

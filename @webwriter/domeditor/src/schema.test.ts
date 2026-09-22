@@ -974,3 +974,42 @@ describe("Schema methods", () => {
     })
   })
 })
+
+describe("media constraints", () => {
+  it("wraps standalone images without replacing them or touching widgets", () => {
+    const body = document.createElement("body")
+    body.innerHTML = '<p><!--keep--><img alt="First"><img alt="Second"></p><picture><source srcset="wide.png"><img></picture><media-widget><img><video></video><embed></media-widget>'
+    const images = Array.from(body.querySelectorAll("img"))
+    editor.schema.enforceMedia(body)
+    expect(body.querySelectorAll("p > picture > img")).toHaveLength(2)
+    expect(Array.from(body.querySelectorAll("img"))).toEqual(images)
+    expect(body.querySelectorAll("picture")).toHaveLength(3)
+    expect(body.querySelector("media-widget")!.innerHTML).toBe('<img><video></video><embed>')
+    const html = body.innerHTML
+    editor.schema.enforceMedia(body)
+    expect(body.innerHTML).toBe(html)
+  })
+
+  it("requires controls and canonical media in schema validation", () => {
+    const body = document.createElement("body")
+    body.innerHTML = '<audio></audio><video></video><embed><object></object><img>'
+    for(const child of Array.from(body.children)) expect(editor.schema.isNodeValid(child)).toBe(false)
+    editor.schema.enforceMedia(body)
+    expect(body.querySelectorAll("audio[controls], video[controls]")).toHaveLength(2)
+    expect(body.querySelectorAll("iframe")).toHaveLength(2)
+    expect(body.querySelector("picture > img")).not.toBeNull()
+    for(const child of Array.from(body.children)) expect(editor.schema.isNodeValid(child)).toBe(true)
+  })
+
+  it("converts transferred websites before sanitization and wraps transferred images", () => {
+    const {fragment} = editor.parseHTMLFragment('<p><img src="image.png" alt="Image"></p><object data="https://example.com/page" width="640"></object><embed src="https://example.com/other"><video></video>', true)
+    expect(fragment.querySelector("picture > img")).toHaveAttribute("alt", "Image")
+    const frames = fragment.querySelectorAll("iframe")
+    expect(frames).toHaveLength(2)
+    expect(frames[0]).toHaveAttribute("src", "https://example.com/page")
+    expect(frames[0]).toHaveAttribute("width", "640")
+    expect(frames[0]).toHaveAttribute("sandbox", "allow-scripts")
+    expect(fragment.querySelector("embed, object")).toBeNull()
+    expect(fragment.querySelector("video")).toHaveAttribute("controls")
+  })
+})

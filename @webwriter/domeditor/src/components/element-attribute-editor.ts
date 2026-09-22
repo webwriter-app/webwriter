@@ -1,5 +1,6 @@
 import {LitElement, css, html, nothing} from "lit"
 import "./document-head-editor"
+import {isMediaType, mediaAttributeOptions} from "../media"
 import {groupedLanguageOptions} from "../language-suggestions"
 import {
   elementAttributeEditability,
@@ -290,7 +291,11 @@ export class ElementAttributeEditor extends LitElement {
   render() {
     const state = this.state ?? (this.disabled ? emptyAttributeState : null)
     if(!state) return nothing
-    const options = elementAttributeOptions(state.localName)
+    const mediaNames = new Set(isMediaType(state.localName)
+      ? [...mediaAttributeOptions[state.localName].map(option => option.name), "controls", "usemap"]
+      : [])
+    const attributes = Object.entries(state.attributes).filter(([name]) => !mediaNames.has(name))
+    const options = elementAttributeOptions(state.localName).filter(option => !mediaNames.has(option.name))
     const limitation = elementEditingLimitation(state.localName, state.namespaceURI)
     const additionalOptions = options.filter(option => ["id", "class", "title", "dir", "hidden"].includes(option.name))
     return html`
@@ -305,10 +310,10 @@ export class ElementAttributeEditor extends LitElement {
         ${options.filter(option => !additionalOptions.includes(option)).map(option => this.renderPrimary(option, state))}
       </div>
       <details>
-        <summary>All attributes (${Object.keys(state.attributes).length})</summary>
+        <summary>All attributes (${attributes.length})</summary>
         <div class="attribute-list">
           ${additionalOptions.map(option => this.renderPrimary(option, state))}
-          ${Object.entries(state.attributes).map(([name, value]) => {
+          ${attributes.map(([name, value]) => {
             const editability = elementAttributeEditability(name, state.localName, state.namespaceURI)
             return html`
               <div class="attribute-row" ?data-locked=${this.disabled || !editability.editable}>
