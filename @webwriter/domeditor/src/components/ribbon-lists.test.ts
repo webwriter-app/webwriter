@@ -157,7 +157,7 @@ describe("list ribbon drawer", () => {
     expect(list.submenu.map(item => typeof item === "string" ? item : item.action))
       .toContain("list-style:ul:square")
     expect(list.submenu.map(item => typeof item === "string" ? item : item.action))
-      .toContain("toggle-list:menu")
+      .not.toContain("toggle-list:menu")
     expect(list.submenu.map(item => typeof item === "string" ? item : item.action))
       .not.toContain("toggle-list:dl")
   })

@@ -176,6 +176,32 @@ import world from "@tabler/icons/outline/world.svg?raw"
 
 const iconContents = (icon: string) => icon.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] ?? ""
 
+/** Match Enumeration's enlarged markers and three text lines without font-dependent glyphs. */
+const listStyleIcon = (markers: string) => `
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 6h8M12 12h8M12 18h8" />
+    ${markers}
+  </svg>
+`
+
+const listLeadingZero = listStyleIcon(`
+  <g stroke-width="1.4">
+    <rect x="1" y="4" width="3" height="6" rx="1.5" />
+    <path d="M8 10V4L6 6" />
+    <rect x="1" y="14" width="3" height="6" rx="1.5" />
+    <path d="M6 15.5a1.5 1.5 0 0 1 3 0c0 1-1 2-3 4.5h3" />
+  </g>
+`)
+const listLowerAlpha = listStyleIcon('<path d="M8 6v4M8 8a2 2 0 1 0-4 0 2 2 0 0 0 4 0M4 14v6M4 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0" />')
+const listUpperAlpha = listStyleIcon('<path d="M3 10l2.5-6L8 10M4 8h3M4 14v6h2a1.5 1.5 0 0 0 0-3H4h2a1.5 1.5 0 0 0 0-3Z" />')
+const listLowerRoman = listStyleIcon('<path d="M6 7v3M4 17v3M8 17v3" /><path d="M6 4h.01M4 14h.01M8 14h.01" />')
+const listUpperRoman = listStyleIcon('<g stroke-width="1.5"><path d="M4 4h4M6 4v6M4 10h4M2 14h3M3.5 14v6M2 20h3M7 14h3M8.5 14v6M7 20h3" /></g>')
+const listDisc = listStyleIcon('<g fill="currentColor" stroke="none"><circle cx="6" cy="7" r="2.5" /><circle cx="6" cy="17" r="2.5" /></g>')
+const listCircle = listStyleIcon('<circle cx="6" cy="7" r="2.5" /><circle cx="6" cy="17" r="2.5" />')
+const listSquare = listStyleIcon('<g fill="currentColor" stroke="none"><path d="M3.5 4.5h5v5h-5zM3.5 14.5h5v5h-5z" /></g>')
+const listNoMarker = listStyleIcon("")
+
 /** A table-specific cut symbol assembled from the two Tabler glyphs. */
 const splitTable = `
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -264,6 +290,15 @@ const icons: Record<string, string> = {
   "Description List": listDetails,
   List: list,
   Enumeration: listNumbers,
+  ListLeadingZero: listLeadingZero,
+  ListLowerAlpha: listLowerAlpha,
+  ListUpperAlpha: listUpperAlpha,
+  ListLowerRoman: listLowerRoman,
+  ListUpperRoman: listUpperRoman,
+  ListDisc: listDisc,
+  ListCircle: listCircle,
+  ListSquare: listSquare,
+  ListNoMarker: listNoMarker,
   Glossary: listDetails,
   Menu: list,
   Details: circleChevronRight,

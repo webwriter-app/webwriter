@@ -75,12 +75,12 @@ const insertionSubmenuForTags = (tags: readonly string[]) => tags.map(insertionB
 
 export const orderedListStyles: RibbonMenuButton[] = [
   {label: "1, 2, 3", action: "list-style:ol:decimal", icon: "Enumeration"},
-  {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "Enumeration"},
-  {label: "a, b, c", action: "list-style:ol:lower-alpha", icon: "Enumeration"},
-  {label: "A, B, C", action: "list-style:ol:upper-alpha", icon: "Enumeration"},
-  {label: "i, ii, iii", action: "list-style:ol:lower-roman", icon: "Enumeration"},
-  {label: "I, II, III", action: "list-style:ol:upper-roman", icon: "Enumeration"},
-  {label: "No marker", action: "list-style:ol:none", icon: "Enumeration"},
+  {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "ListLeadingZero"},
+  {label: "a, b, c", action: "list-style:ol:lower-alpha", icon: "ListLowerAlpha"},
+  {label: "A, B, C", action: "list-style:ol:upper-alpha", icon: "ListUpperAlpha"},
+  {label: "i, ii, iii", action: "list-style:ol:lower-roman", icon: "ListLowerRoman"},
+  {label: "I, II, III", action: "list-style:ol:upper-roman", icon: "ListUpperRoman"},
+  {label: "No marker", action: "list-style:ol:none", icon: "ListNoMarker"},
 ]
 
 export const listInsertionOptions: RibbonMenuButton[] = [
@@ -90,11 +90,10 @@ export const listInsertionOptions: RibbonMenuButton[] = [
     icon: "Enumeration",
     submenu: orderedListStyles,
   },
-  {label: "Menu", action: "toggle-list:menu", icon: "List"},
-  {label: "Disc", action: "list-style:ul:disc", icon: "List"},
-  {label: "Circle", action: "list-style:ul:circle", icon: "List"},
-  {label: "Square", action: "list-style:ul:square", icon: "List"},
-  {label: "No marker", action: "list-style:ul:none", icon: "List"},
+  {label: "Disc", action: "list-style:ul:disc", icon: "ListDisc"},
+  {label: "Circle", action: "list-style:ul:circle", icon: "ListCircle"},
+  {label: "Square", action: "list-style:ul:square", icon: "ListSquare"},
+  {label: "No marker", action: "list-style:ul:none", icon: "ListNoMarker"},
 ]
 
 const groupedMediaInsertionTags = new Set<string>([
