@@ -1,6 +1,6 @@
 import {spawn} from "node:child_process"
 import {existsSync} from "node:fs"
-import {mkdtemp, rm, writeFile} from "node:fs/promises"
+import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises"
 import {createServer as createNetServer} from "node:net"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
@@ -54,6 +54,7 @@ const expectedChecks = [
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
 const mathVisual = process.argv.includes("--math-visual")
+const importMapMode = process.argv.includes("--import-map")
 const smoke = process.argv.includes("--smoke")
 const browserArgument = process.argv.find(argument => argument.startsWith("--browser="))?.slice("--browser=".length)
 const browserName = browserArgument ?? "chromium"
@@ -75,12 +76,28 @@ const expectedSmokeChecks = [
   "SVG and MathML namespaces survive serialization",
   "document template serialization",
 ]
+const expectedImportMapChecks = [
+  "JSPM links two local ESM entries to one shared dependency",
+  "native import map loads the shared module once",
+  "nonce CSP permits the editor's import map and module graph",
+  "esbuild-wasm bundles the resolved graph for offline execution",
+  "offline bundling runs under the editor frame CSP",
+]
 let reportResult
 const resultPromise = new Promise(resolve => { reportResult = resolve })
 const resultPlugin = {
   name: "native-result",
   configureServer(server) {
     server.middlewares.use((request, response, next) => {
+      if(request.url?.startsWith("/tests/import-map-fixture/")) {
+        const name = request.url.slice("/tests/import-map-fixture/".length).split("?")[0]
+        if(!["a.js", "b.js", "shared.js"].includes(name)) return next()
+        void readFile(new URL(`../tests/import-map-fixture/${name}`, import.meta.url)).then(source => {
+          response.setHeader("Content-Type", "text/javascript; charset=utf-8")
+          response.end(source)
+        }, next)
+        return
+      }
       if(request.method !== "POST" || request.url !== "/__native-result") return next()
       const chunks = []
       request.on("data", chunk => chunks.push(chunk))
@@ -130,7 +147,7 @@ let timeout
 try {
   await vite.listen()
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${smoke ? "browser-smoke" : mathVisual ? "math-visual" : "native-browser"}.html?run`
+  const url = `http://127.0.0.1:${port}/tests/${smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
@@ -148,13 +165,14 @@ try {
   }))
   const failedToStart = new Promise(resolve => browser.once("error", error => resolve({error: String(error)})))
   const timedOut = new Promise(resolve => {
-    const timeoutMs = mathVisual ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
+    const timeoutMs = mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
     timeout = setTimeout(() => resolve({error: "Native browser timed out"}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && (mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
+  const valid = !result?.error && (importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
+    : mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
     : smoke ? checks.length === expectedSmokeChecks.length && expectedSmokeChecks.every(name => checks.some(check => check?.name === name))
     : checks.length === expectedChecks.length
     && expectedChecks.every(name => checks.some(check => check?.name === name)))

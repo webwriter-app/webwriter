@@ -45,7 +45,13 @@ Those checks require complete coverage and keep the manifest aligned with built-
 
 ## Offline HTML
 
-Offline export embeds media, stylesheets, imported CSS and its assets, and standalone scripts. It preserves original resource URLs for reopening in the editor. Failed downloads, JavaScript module dependencies and embedded iframe documents produce a visible error; use regular HTML for those documents. Arbitrary network requests made by widget code are outside the resource export.
+Offline export embeds media, stylesheets, imported CSS and its assets, and standalone scripts. For packages that opt into import-map resolution, it loads `esbuild-wasm` on demand and bundles the required widget modules and their mapped dependencies in a worker. Original package entry URLs are restored when an offline document is reopened for editing. Authored module dependency graphs, imports that cannot be resolved statically, embedded iframe documents, and arbitrary network requests made by widgets remain outside this export path and produce an error when detected.
+
+## Shared widget dependencies
+
+Published packages can opt into browser import-map resolution with `"webwriter": {"moduleResolution": "import-map"}` in `package.json`. Their widget `.js` exports must be browser-ready ESM that leave shareable dependencies as imports, with compatible version ranges in `dependencies` or `peerDependencies`. Keep CSS exports available as before. Existing bundled packages continue to load unchanged.
+
+The editor links all opted-in widget entries with JSPM before executing them, installs one map in the iframe, and stores the resulting exact URLs for the installed package set. Installing another package retains compatible resolutions. **Refresh dependencies** in Packages resolves the newest versions allowed by the publishers' ranges and reloads the iframe. HTML export includes the exact import map for standalone playback; offline export bundles the selected modules. The editor does not trust import maps supplied by opened HTML files as package-loader input.
 
 ## Formula editing
 

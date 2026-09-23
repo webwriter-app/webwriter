@@ -9,6 +9,7 @@ export const JSDELIVR_PACKAGE_FILES_ENDPOINT = "https://data.jsdelivr.com/v1/pac
 export const WEBWRITER_PACKAGE_QUERY = "scope:webwriter keywords:webwriter-widget"
 /** Storage key for the standalone editor's serialized installed packages. */
 export const INSTALLED_PACKAGES_STORAGE_KEY = "webwriter_domeditor_installedPackages"
+export const INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY = "webwriter_domeditor_packageImportMap"
 
 export type LocalizedText = string | Record<string, string>
 
@@ -92,6 +93,10 @@ export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>
 export type WebWriterPackageManifest = {
   name: string
   version: string
+  /** Opts unbundled browser ESM widget entries into shared dependency resolution. */
+  webwriter?: {moduleResolution?: "import-map"}
+  dependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
   description?: string
   keywords?: string[]
   author?: PersonMetadata

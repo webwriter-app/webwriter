@@ -5,11 +5,13 @@ import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from 
 import {packageCdnUrl, packageInsertionItems, packageWidgetSchemaDefinitions, resolvePackageExport, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
+import {packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
 
 export class DependencyFeature extends EditorFeature {
   private readonly packageRegistry = new WebWriterPackageRegistry()
   private widgetAssets: HTMLElement[] = []
   private widgetPackages: WebWriterPackage[] = []
+  private dependencyPlan: PackageDependencyPlan | null = null
   private widgetLoadSequence = 0
   private readonly pendingAssetCancellations = new Set<() => void>()
 
@@ -23,8 +25,10 @@ export class DependencyFeature extends EditorFeature {
 
   /** Adds runtime resources required by the detached authored document. */
   appendSerializedAssets(root: Document) {
-    appendSerializedAssets(root, this.widgetPackages)
+    appendSerializedAssets(root, this.widgetPackages, this.dependencyPlan?.map)
   }
+
+  get packageDependencyPlan() { return this.dependencyPlan }
 
   /** Resolves pinned widget-package assets and mounts them in the iframe. */
   async loadWidgets(message: LoadWidgetsMessage) {
@@ -44,6 +48,9 @@ export class DependencyFeature extends EditorFeature {
       suppliedPackages.get(`${widget.name}@${widget.version}`) ?? this.packageRegistry.getPackage(widget)
     )))
     if(sequence !== this.widgetLoadSequence) return
+    const entries = packageModuleEntries(packages)
+    if(entries.length && !message.importMap) throw new Error("Import-map packages require a resolved map before widget loading")
+    const plan: PackageDependencyPlan = {entries, map: message.importMap ?? null}
     globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages)
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
     this.editor.schema = new Schema()
@@ -58,6 +65,8 @@ export class DependencyFeature extends EditorFeature {
     })))
 
     this.widgetAssets.forEach(element => element.remove())
+    const importMap = plan.map ? packageImportMapScript(document, plan.map, true) : null
+    if(importMap) importMap.nonce = this.editor.trustedScriptNonce
     const styles = [...new Set(packages.flatMap(pkg => pkg.styles))].map(href => {
       const link = document.createElement("link")
       link.rel = "stylesheet"
@@ -77,10 +86,12 @@ export class DependencyFeature extends EditorFeature {
       return script
     })
     this.widgetPackages = packages
-    this.widgetAssets = [...styles, ...scripts]
+    this.dependencyPlan = plan
+    this.widgetAssets = [...(importMap ? [importMap] : []), ...styles, ...scripts]
     const assetLoads = this.widgetAssets.map(element => {
+      if(element === importMap) return Promise.resolve()
       const url = element instanceof HTMLLinkElement ? element.href : (element as HTMLScriptElement).src
-      const local = new URL(url, document.baseURI).pathname.startsWith(LOCAL_PACKAGE_ROUTE_PREFIX)
+      const local = new URL(url, runtimeDocumentBaseURL()).pathname.startsWith(LOCAL_PACKAGE_ROUTE_PREFIX)
       return new Promise<void>((resolve, reject) => {
         let settled = false
         const settle = (callback: () => void) => {
@@ -100,7 +111,9 @@ export class DependencyFeature extends EditorFeature {
         }), {once: true})
       })
     })
-    document.head.append(...this.widgetAssets)
+    // Import maps must register before any module in this graph is fetched.
+    if(importMap) document.head.prepend(importMap)
+    document.head.append(...styles, ...scripts)
     await Promise.all(assetLoads)
     if(sequence !== this.widgetLoadSequence) return
     this.editor.features.insertion.menu.requestUpdate()
@@ -119,6 +132,7 @@ export class DependencyFeature extends EditorFeature {
     this.widgetAssets.forEach(element => element.remove())
     this.widgetAssets = []
     this.widgetPackages = []
+    this.dependencyPlan = null
     globalThis.DOMEDITOR_PACKAGE_ITEMS = []
     super.disable()
   }

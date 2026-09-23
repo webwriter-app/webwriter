@@ -47,6 +47,32 @@ afterEach(() => {
 })
 
 describe("DependencyFeature", () => {
+  it("registers a supplied import map before opted-in widget modules and exports it", async () => {
+    const pkg: WebWriterPackage = {
+      ...demoPackage,
+      manifest: {name: demoPackage.name, version: demoPackage.version, webwriter: {moduleResolution: "import-map"}},
+    }
+    const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
+    const editor = new DOMEditor()
+    const pending = editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: pkg.name, version: pkg.version}],
+      packages: [pkg],
+      importMap: {imports: {lit: "https://cdn.example/lit.js"}},
+    })
+    await vi.waitFor(() => expect(append).toHaveBeenCalled())
+    expect(document.head.firstElementChild?.id).toBe("webwriter-package-importmap")
+    append.mock.calls.flat().forEach(asset => (asset as HTMLElement).dispatchEvent(new Event("load")))
+    await expect(pending).resolves.toBeUndefined()
+    document.body.innerHTML = "<webwriter-demo></webwriter-demo>"
+    const exported = new DOMParser().parseFromString(editor.toHTML(), "text/html")
+    expect(exported.querySelector('script[type="importmap"]')?.textContent).toContain("https://cdn.example/lit.js")
+    const children = Array.from(exported.head.children)
+    expect(children.findIndex(element => element.matches('script[type="importmap"]')))
+      .toBeLessThan(children.findIndex(element => element.matches('script[type="module"][src]')))
+    editor.destroy()
+  })
+
   it("uses the current iframe's observer realm during feature startup", () => {
     const outerDocument = document
     const outerObserver = MutationObserver

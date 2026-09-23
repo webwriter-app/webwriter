@@ -73,6 +73,8 @@ export type LoadWidgetsMessage = {
   /** Already-resolved package metadata. Local development packages use this
    * path because their assets cannot be resolved through the npm registry. */
   packages?: WebWriterPackage[]
+  /** Exact resolutions from a saved document or the current installed set. */
+  importMap?: import("@jspm/import-map").IImportMap
 }
 
 const isOptionalString = (value: unknown) => value === undefined || typeof value === "string"
@@ -123,9 +125,13 @@ export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessag
   if(!value || typeof value !== "object") return false
   const message = value as Partial<LoadWidgetsMessage>
   const packages = message.packages
+  const importMap = message.importMap
   return message.type === loadWidgetsMessage
     && (message.bridgeNonce === undefined || typeof message.bridgeNonce === "string" && message.bridgeNonce.length >= 16)
     && Array.isArray(message.widgets)
+    && (importMap === undefined || !!importMap && typeof importMap === "object" && !Array.isArray(importMap)
+      && (importMap.imports === undefined || !!importMap.imports && typeof importMap.imports === "object" && !Array.isArray(importMap.imports))
+      && (importMap.scopes === undefined || !!importMap.scopes && typeof importMap.scopes === "object" && !Array.isArray(importMap.scopes)))
     && message.widgets.every(widget => !!widget
       && typeof widget === "object"
       && typeof widget.name === "string"

@@ -2,6 +2,9 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "./domeditor"
 import {restoreOriginalResourceURLs} from "./serialization"
+import {bundleOfflineModules} from "./offline-module-bundler"
+
+vi.mock("./offline-module-bundler", () => ({bundleOfflineModules: vi.fn()}))
 
 let activeEditor: DOMEditor | undefined
 const decodeData = (url: string) => atob(url.slice(url.indexOf(",") + 1).split("#")[0])
@@ -20,12 +23,32 @@ const mockResources = (resources: Record<string, string | Uint8Array<ArrayBuffer
 afterEach(() => {
   activeEditor?.destroy()
   activeEditor = undefined
-  document.head.querySelectorAll("link, style").forEach(element => element.remove())
+  document.head.querySelectorAll("link, style, script[src]").forEach(element => element.remove())
   document.body.replaceChildren()
   vi.restoreAllMocks()
 })
 
 describe("offline HTML resources", () => {
+  it("bundles selected package modules once and restores their online entries on reopen", async () => {
+    document.head.insertAdjacentHTML("beforeend", '<script type="module" src="https://cdn.example/a.js"></script><script type="module" src="https://cdn.example/b.js"></script>')
+    activeEditor = new DOMEditor()
+    ;(activeEditor.features.dependency as unknown as {dependencyPlan: unknown}).dependencyPlan = {
+      entries: ["https://cdn.example/a.js", "https://cdn.example/b.js"],
+      map: {imports: {lit: "https://cdn.example/lit.js"}},
+    }
+    vi.mocked(bundleOfflineModules).mockResolvedValue({js: "customElements.define('test-offline', class extends HTMLElement {})", css: ".widget {color: red}"})
+    const exported = new DOMParser().parseFromString(await activeEditor.serializeHTML(true), "text/html")
+    expect(bundleOfflineModules).toHaveBeenCalledOnce()
+    expect(exported.querySelectorAll('script[type="module"]')).toHaveLength(1)
+    expect(exported.querySelector<HTMLScriptElement>('script[type="module"]')!.src).toMatch(/^data:text\/javascript;base64,/)
+    expect(exported.querySelector("style")!.textContent).toContain(".widget")
+    restoreOriginalResourceURLs(exported)
+    expect(exported.querySelector("style[data-webwriter-offline-package-style]")).toBeNull()
+    expect(Array.from(exported.querySelectorAll<HTMLScriptElement>('script[type="module"]')).map(script => script.src)).toEqual([
+      "https://cdn.example/a.js", "https://cdn.example/b.js",
+    ])
+  })
+
   it("embeds SVG raster images, preserves fragments and restores namespaced URLs", async () => {
     document.body.innerHTML = '<svg><image href="/image.png#crop"></image><image xlink:href="/other.png"></image><use href="#local"></use></svg>'
     mockResources({"/image.png": new Uint8Array([1]), "/other.png": new Uint8Array([2])})

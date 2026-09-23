@@ -13,6 +13,7 @@
     "test:native-browser": "node scripts/native-browser.mjs",
     "test:native-browser:smoke": "node scripts/native-browser.mjs --smoke",
     "test:native-browser:smoke:chromium": "node scripts/native-browser.mjs --smoke --browser=chromium",
+    "test:native-browser:import-map": "node scripts/native-browser.mjs --import-map",
     "test:native-browser:smoke:firefox": "node scripts/native-browser.mjs --smoke --browser=firefox",
     "test:native-browser:smoke:webkit": "node scripts/native-browser.mjs --smoke --browser=webkit",
     "test:math-visual": "node scripts/native-browser.mjs --math-visual",
@@ -21,10 +22,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.native-browser.json"
   },
   "dependencies": {
+    "@jspm/generator": "^2.10.0",
+    "@jspm/import-map": "^1.2.2",
     "@csstools/css-tokenizer": "^3.0.4",
     "es-module-lexer": "^1.7.0",
     "@tabler/icons": "^3.46.0",
     "lit": "^3.3.2",
+    "esbuild-wasm": "^0.25.12",
     "qrcodejs": "^1.0.0",
     "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",

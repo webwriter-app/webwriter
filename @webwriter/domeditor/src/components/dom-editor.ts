@@ -15,6 +15,7 @@ import type {EditorStateSnapshot} from "../editor-state"
 import {
   describePackageExport,
   INSTALLED_PACKAGES_STORAGE_KEY,
+  INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
   SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL as scopedCustomElementRegistryPolyfillUrl,
   packageMemberAction,
   WebWriterPackageRegistry,
@@ -100,6 +101,8 @@ import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
 import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {isPackageImportMap, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
+import type {IImportMap} from "@jspm/import-map"
 import {LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
@@ -522,6 +525,8 @@ export class DomEditor extends LitElement {
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
+  private packageImportMap: IImportMap | null = null
+  private packageImportMapPackageSetKey: string | null = null
   private packagesLoading = false
   private busyPackageNames: string[] = []
   private packageError = ""
@@ -777,6 +782,8 @@ export class DomEditor extends LitElement {
 
     const parsed = new DOMParser().parseFromString(this.frameDocumentHTML, "text/html")
     restoreOriginalResourceURLs(parsed)
+    // The iframe receives its trusted resolution through load-widgets.
+    parsed.getElementById(packageImportMapId)?.remove()
     ensureDefaultDocumentTheme(parsed)
     parsed.head.insertAdjacentHTML("beforeend", bootstrapScripts)
     const cspElement = parsed.createElement("meta")
@@ -826,7 +833,7 @@ export class DomEditor extends LitElement {
     })
 
     // Use the same dependency selection as saving, after stripping authored code.
-    appendSerializedAssets(source, this.installedPackages)
+    appendSerializedAssets(source, this.installedPackages, this.packageImportMap)
     if(source.head) {
       const scripts = Array.from(source.head.querySelectorAll("script"))
       const policy = source.createElement("meta")
@@ -1434,11 +1441,14 @@ export class DomEditor extends LitElement {
         bridgeNonce: this.bridgeNonce,
         ...(this.frameState ? {initialState: this.frameState} : {}),
       }
+      const importMap = this.packageImportMap ?? undefined
+      const packageSetKey = this.packageSetKey(this.installedPackages)
       const loadMessage: LoadWidgetsMessage = {
         type: loadWidgetsMessage,
         bridgeNonce: this.bridgeNonce,
         widgets: this.installedPackages.map(({name, version}) => ({name, version})),
         packages: this.installedPackages,
+        ...(importMap ? {importMap} : {}),
       }
       this.postToEditor(initializeMessage)
       const packageLoadRequestId = `packages-${++this.packageLoadSequence}`
@@ -1446,7 +1456,7 @@ export class DomEditor extends LitElement {
         const timer = setTimeout(() => {
           if(!this.pendingExecutions.delete(packageLoadRequestId)) return
           reject(new Error("The editor did not finish loading package resources"))
-        }, packageLoadTimeoutMs)
+        }, packageModuleEntries(this.installedPackages).length ? 60_000 : packageLoadTimeoutMs)
         this.pendingExecutions.set(packageLoadRequestId, {
           resolve: value => {
             clearTimeout(timer)
@@ -1459,7 +1469,24 @@ export class DomEditor extends LitElement {
         })
       })
       this.packageLoadPromise = packageLoad
-      this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
+      if(packageModuleEntries(this.installedPackages).length) {
+        if(importMap && this.packageImportMapPackageSetKey === packageSetKey) {
+          this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
+        }
+        else void resolvePackageDependencies(this.installedPackages, document.baseURI, importMap).then(plan => {
+          if(this.editorWindow !== editorWindow || !this.pendingExecutions.has(packageLoadRequestId)) return
+          this.packageImportMap = plan.map
+          this.packageImportMapPackageSetKey = packageSetKey
+          this.persistPackageImportMap()
+          this.postToEditor({...loadMessage, ...(plan.map ? {importMap: plan.map} : {}), requestId: packageLoadRequestId})
+        }, error => {
+          const pending = this.pendingExecutions.get(packageLoadRequestId)
+          if(!pending) return
+          this.pendingExecutions.delete(packageLoadRequestId)
+          pending.reject(error)
+        })
+      }
+      else this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
       void packageLoad.catch(error => {
         const message = error instanceof Error ? error.message : String(error)
         if(!this.isConnected || message === "The editor iframe was reloaded for a package change") return
@@ -1468,6 +1495,10 @@ export class DomEditor extends LitElement {
       })
       void packageLoad.then(
         () => {
+          if(this.editorWindow === editorWindow && !packageModuleEntries(this.installedPackages).length) {
+            this.packageImportMap = null
+            this.packageImportMapPackageSetKey = null
+          }
           // Activate the initial selection after the delayed frame and its
           // widget resources are ready. Window focus refreshes its markers.
           if(this.isConnected && this.editorWindow === editorWindow && this.frameRevision === 0 && !this.previewActive) {
@@ -2645,6 +2676,10 @@ export class DomEditor extends LitElement {
       void this.addLocalPackage()
       return
     }
+    if(label === "refresh-package-dependencies") {
+      void this.refreshPackageDependencies()
+      return
+    }
     if(label?.startsWith("local-package-select:")) {
       const name = label.slice("local-package-select:".length)
       this.selectLocalPackage(name)
@@ -3288,6 +3323,25 @@ export class DomEditor extends LitElement {
     if(shouldRefocus) this.focusEditor()
   }
 
+  private async refreshPackageDependencies() {
+    if(!packageModuleEntries(this.installedPackages).length) return
+    this.packageError = ""
+    const previousMap = this.packageImportMap
+    const previousKey = this.packageImportMapPackageSetKey
+    try {
+      const plan = await resolvePackageDependencies(this.installedPackages, document.baseURI)
+      this.packageImportMap = plan.map
+      this.packageImportMapPackageSetKey = this.packageSetKey(this.installedPackages)
+      await this.reloadEditor([...this.installedPackages])
+      this.persistPackageImportMap()
+    }
+    catch(error) {
+      this.packageImportMap = previousMap
+      this.packageImportMapPackageSetKey = previousKey
+      this.packageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   private async loadPackageCatalog(event?: Event) {
     const refresh = (event as CustomEvent<{refresh?: boolean}> | undefined)?.detail?.refresh === true
     if(this.packagesLoading || this.packageCatalogRequested && !refresh) return
@@ -3314,11 +3368,34 @@ export class DomEditor extends LitElement {
       const stored = JSON.parse(serialized) as unknown
       if(!Array.isArray(stored)) return
       this.installedPackages = stored.filter(isStoredPackage)
+      const storedMap = globalThis.localStorage?.getItem(INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY)
+      if(storedMap) {
+        const saved: unknown = JSON.parse(storedMap)
+        if(isRecord(saved) && saved.packageSet === this.packageSetKey(this.installedPackages)
+          && isPackageImportMap(saved.map)) {
+          this.packageImportMap = saved.map
+          this.packageImportMapPackageSetKey = saved.packageSet
+        }
+      }
     }
     catch {
       // A malformed or unavailable local-storage entry should not prevent the
       // editor from mounting with an empty in-memory package list.
     }
+  }
+
+  private packageSetKey(packages: WebWriterPackage[]) {
+    return JSON.stringify(packages.map(pkg => [pkg.name, pkg.version, ...pkg.scripts]).sort((a, b) => a[0].localeCompare(b[0])))
+  }
+
+  private persistPackageImportMap() {
+    if(!this.packageImportMap || this.installedPackages.some(isLocalResourcePackage)) return
+    try {
+      globalThis.localStorage?.setItem(INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY, JSON.stringify({
+        packageSet: this.packageSetKey(this.installedPackages), map: this.packageImportMap,
+      }))
+    }
+    catch { /* Storage is optional; the current editor retains the resolution. */ }
   }
 
   private persistInstalledPackages() {

@@ -1,13 +1,31 @@
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import {documentLayoutMode} from "./document-layout"
 import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, type WebWriterPackage} from "./packages"
+import type {IImportMap} from "@jspm/import-map"
+import {packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
 
 export const originalURLAttribute = (name: string) => `data-webwriter-original-${name.replace(":", "-")}`
+export const originalPackageEntriesAttribute = "data-webwriter-original-package-entries"
+export const offlinePackageStyleAttribute = "data-webwriter-offline-package-style"
 
 export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "xlink:href", "style", "integrity"] as const
 
 /** Restores authored resource URLs from a document produced by an offline save. */
 export function restoreOriginalResourceURLs(root: ParentNode) {
+  root.querySelectorAll(`style[${offlinePackageStyleAttribute}]`).forEach(style => style.remove())
+  root.querySelectorAll<HTMLScriptElement>(`script[${originalPackageEntriesAttribute}]`).forEach(bundle => {
+    try {
+      const entries: unknown = JSON.parse(bundle.getAttribute(originalPackageEntriesAttribute) ?? "")
+      if(!Array.isArray(entries) || !entries.every(entry => typeof entry === "string")) return
+      bundle.replaceWith(...entries.map(src => {
+        const script = bundle.ownerDocument.createElement("script")
+        script.type = "module"
+        script.src = src
+        return script
+      }))
+    }
+    catch { /* Malformed authored metadata is left untouched. */ }
+  })
   for(const name of restorableResourceAttributes) {
     const marker = originalURLAttribute(name)
     const selector = `[${marker}]`
@@ -41,12 +59,13 @@ export function serializeDoctype(doctype: DocumentType | null) {
 }
 
 /** Adds the widget and template resources required by a detached document. */
-export function appendSerializedAssets(root: Document, packages: WebWriterPackage[]) {
+export function appendSerializedAssets(root: Document, packages: WebWriterPackage[], importMap?: IImportMap | null) {
   const resourceKey = (url: string) => {
     try { return new URL(url, root.baseURI).href }
     catch { return url }
   }
   const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
+  root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.
   root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
   if(documentLayoutMode(root.body) === "canvas") {
@@ -83,6 +102,10 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     ...packages.flatMap(pkg => pkg.styles.map(url => ({url, isScript: false}))),
     ...packages.flatMap(pkg => pkg.scripts.map(url => ({url, isScript: true}))),
   ].filter(asset => required.has(resourceKey(asset.url)))
+  const moduleEntries = new Set(packageModuleEntries(packages).map(resourceKey))
+  if(importMap && assets.some(asset => asset.isScript && moduleEntries.has(resourceKey(asset.url)))) {
+    head.prepend(packageImportMapScript(root, importMap))
+  }
   const needsPolyfill = assets.some(asset => asset.isScript)
   root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]").forEach(element => {
     const key = resourceKey(element.localName === "script" ? (element as HTMLScriptElement).src : (element as HTMLLinkElement).href)

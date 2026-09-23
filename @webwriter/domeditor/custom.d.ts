@@ -3,6 +3,16 @@ declare module '*?raw' {
   export default content;
 }
 
+declare module '*?url' {
+  const url: string;
+  export default url;
+}
+
+// @jspm/generator's published declarations refer to this private import alias.
+declare module '#fetch' {
+  export function clearCache(): void
+}
+
 interface ImportMetaEnv {
   readonly BASE_URL: string;
   readonly DEV: boolean;

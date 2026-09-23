@@ -49,7 +49,7 @@ import { getElementPresentation, isLineBreakElement } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import * as Y from "yjs"
-import {originalURLAttribute, serializeDoctype} from "./serialization"
+import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype} from "./serialization"
 import type {DocumentHeadState} from "./document-head"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
@@ -57,6 +57,7 @@ import {stripActiveContent} from "./active-content"
 import {elementAttributeState} from "./element-attributes"
 import {parse as parseModule} from "es-module-lexer/js"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
+import {runtimeDocumentBaseURL} from "./package-dependencies"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
@@ -1190,8 +1191,37 @@ export class DOMEditor {
   async serializeHTML(offline=false) {
     const root = this.cleanDocumentClone()
     this.features.dependency.appendSerializedAssets(root)
-    if(offline) await this.inlineExternalResources(root)
+    if(offline) {
+      await this.bundleOfflinePackageModules(root)
+      await this.inlineExternalResources(root)
+    }
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
+  }
+
+  private async bundleOfflinePackageModules(root: Document) {
+    const plan = this.features.dependency.packageDependencyPlan
+    if(!plan?.map || !plan.entries.length) return
+    const base = runtimeDocumentBaseURL()
+    const entries = new Set(plan.entries.map(url => new URL(url, base).href))
+    const scripts = Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'))
+      .filter(script => entries.has(new URL(script.src, base).href))
+    if(!scripts.length) return
+    const {bundleOfflineModules} = await import("./offline-module-bundler")
+    const {js, css} = await bundleOfflineModules(scripts.map(script => new URL(script.src, base).href), plan.map, base)
+    if(parseModule(js)[0].length) throw new Error("Offline package bundle contains unresolved module imports")
+    const first = scripts[0]
+    const bundle = root.createElement("script")
+    bundle.type = "module"
+    bundle.src = await this.blobDataURL(new Blob([js], {type: "text/javascript"}))
+    bundle.setAttribute(originalPackageEntriesAttribute, JSON.stringify(scripts.map(script => script.src)))
+    first.replaceWith(bundle)
+    scripts.slice(1).forEach(script => script.remove())
+    if(css) {
+      const style = root.createElement("style")
+      style.setAttribute(offlinePackageStyleAttribute, "")
+      style.textContent = css
+      bundle.before(style)
+    }
   }
 
   private async inlineExternalResources(root: Document | DocumentFragment) {
@@ -1247,11 +1277,11 @@ export class DOMEditor {
     await Promise.all(jobs)
   }
 
-  private resolvedResourceURL(value: string, base = document.baseURI) {
+  private resolvedResourceURL(value: string, base = runtimeDocumentBaseURL()) {
     return new URL(value, base).href
   }
 
-  private async fetchResource(value: string, base = document.baseURI) {
+  private async fetchResource(value: string, base = runtimeDocumentBaseURL()) {
     const response = await fetch(this.resolvedResourceURL(value, base))
     if(!response.ok) throw new Error(`Could not fetch ${value}: ${response.status} ${response.statusText}`)
     return response
@@ -1267,7 +1297,7 @@ export class DOMEditor {
     return `data:${blob.type || "application/octet-stream"};base64,${btoa(binary)}`
   }
 
-  private async resourceDataURL(value: string, base = document.baseURI) {
+  private async resourceDataURL(value: string, base = runtimeDocumentBaseURL()) {
     if(value.startsWith("#") || /^data:/i.test(value)) return value
     const url = new URL(value, base)
     const fragment = url.hash
@@ -1288,7 +1318,7 @@ export class DOMEditor {
         if(!/^image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon|vnd.microsoft.icon)$/i.test(blob.type)) {
           throw new Error("Offline export only embeds raster SVG image references. Use HTML format for nested SVG resources.")
         }
-        data = await this.blobDataURL(blob) + new URL(original, document.baseURI).hash
+        data = await this.blobDataURL(blob) + new URL(original, runtimeDocumentBaseURL()).hash
       }
       else data = await this.resourceDataURL(original)
       element.setAttribute(originalURLAttribute(attribute), original)
@@ -1336,6 +1366,7 @@ export class DOMEditor {
 
   private async inlineScript(script: HTMLScriptElement) {
     const original = script.getAttribute("src")
+    if(original && /^data:/i.test(original)) return
     try {
       const source = original ? await (await this.fetchResource(original)).text() : script.textContent ?? ""
       const type = script.type.trim().toLowerCase()
@@ -1378,7 +1409,7 @@ export class DOMEditor {
   private async inlineStyleAttribute(element: HTMLElement) {
     const original = element.getAttribute("style")
     if(!original) return
-    const rewritten = await this.inlineCSS(original, document.baseURI)
+    const rewritten = await this.inlineCSS(original, runtimeDocumentBaseURL())
     if(rewritten === original) return
     element.setAttribute(originalURLAttribute("style"), original)
     element.setAttribute("style", rewritten)
@@ -1386,7 +1417,7 @@ export class DOMEditor {
 
   private async inlineStyleElement(style: HTMLStyleElement) {
     const original = style.textContent ?? ""
-    const rewritten = await this.inlineCSS(original, document.baseURI)
+    const rewritten = await this.inlineCSS(original, runtimeDocumentBaseURL())
     if(rewritten === original) return
     style.setAttribute(originalURLAttribute("text"), original)
     style.textContent = rewritten
