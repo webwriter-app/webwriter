@@ -775,7 +775,7 @@ export class DomEditor extends LitElement {
     // frames inert; browser builds retain the executable script types.
     const testScriptType = import.meta.env.MODE === "test" ? ' type="application/json"' : ""
     const editorScriptType = import.meta.env.MODE === "test" ? "application/json" : "module"
-    const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script><script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
     const bootstrap = `${csp}${bootstrapScripts}`
     if(this.frameDocumentHTML === null) {
       return `<!-- frame ${this.frameRevision} -->${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}`
