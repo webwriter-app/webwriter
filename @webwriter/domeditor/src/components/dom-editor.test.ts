@@ -582,6 +582,41 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
+  it.each(["canvas", "slides"] as const)("uses the selected %s template for File → New and keeps its fresh state clean", async mode => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+      detail: {...defaultAppSettings(), defaultTemplate: mode}, bubbles: true, composed: true,
+    }))
+    const reload = vi.spyOn(host, "reloadDocument").mockImplementation(async () => {
+      iframe.contentDocument!.body.innerHTML = "<p></p>"
+    })
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "setDocumentLayout") iframe.contentDocument!.body.className = mode === "canvas" ? "ww-canvas" : "ww-slides"
+      return true
+    })
+
+    await host.newDocument()
+
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining('<meta name="generator"'))
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode, expectedMode: "document"})
+    expect(host.fileDirty).toBe(false)
+    expect(host.isFreshDocumentUnchanged()).toBe(true)
+    iframe.contentDocument!.querySelector("p")!.textContent = "Edited"
+    expect(host.isFreshDocumentUnchanged()).toBe(false)
+  })
+
+  it("applies the saved default template to the first blank document", async () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), defaultTemplate: "canvas"}))
+    const execute = vi.spyOn(DomEditor.prototype, "execute").mockImplementation(async function(this: DomEditor, action) {
+      if(action.type === "setDocumentLayout") this.shadowRoot!.querySelector("iframe")!.contentDocument!.body.classList.add("ww-canvas")
+      return true
+    })
+    const {editor} = await mountEditor()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"}))
+    expect((editor as any).fileDirty).toBe(false)
+  })
+
   it("applies the style toolbox preference without changing authored HTML", async () => {
     const {editor, iframe} = await mountEditor()
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!

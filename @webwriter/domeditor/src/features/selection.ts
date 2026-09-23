@@ -715,6 +715,50 @@ export class SelectionFeature extends EditorFeature {
     return false
   }
 
+  #handlePointerDown(ev: PointerEvent, fromCanvasSlot = false) {
+    if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
+      || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) return
+    this.#endDrag()
+    this.clearSelectedSection()
+    const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
+    const divider = ev.target instanceof Element && ev.target.localName === "hr" ? ev.target : null
+    if(media || divider) {
+      ev.preventDefault()
+      this.#releaseCaptureSelection()
+      $.selectElement((media ?? divider)!)
+      this.processSelection()
+      return
+    }
+    this.#releaseCaptureSelection()
+    const canvasItem = this.editor.features.canvas.active
+      ? this.editor.features.canvas.itemAtPoint(ev.clientX, ev.clientY) : null
+    if($.isEmptyDocumentSelection && editingFlowRoot(ev.target instanceof Node ? ev.target : null) === getDocumentRoot()
+      && !canvasItem) {
+      // Browsers focus an empty design-mode body on pointerdown but do not
+      // consistently create a DOM selection for it. Restore the editing
+      // position explicitly; pointerup restores it after the browser's
+      // default focus action has completed.
+      $.selectDocumentStart()
+      this.processSelection()
+      return
+    }
+    if(modifierKeyDown(ev)) {
+      ev.preventDefault()
+      const target = this.#modifierSelectionTarget(ev.target)
+      if(target) $.selectElement(target)
+      this.processSelection(this.isInDragSelection)
+    }
+    else {
+      const point = $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target, this.editor.schema)
+      const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
+      const nativeClick = !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
+        && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
+      if(!nativeClick) ev.preventDefault()
+      this.#beginDrag(ev, nativeClick)
+      this.processSelection(true)
+    }
+  }
+
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
       this.#handleKeyState(event)
@@ -729,6 +773,9 @@ export class SelectionFeature extends EditorFeature {
         return
       }
       this.#handleWidgetShadowInteraction(event)
+      const origin = event.composedPath()[0]
+      if(this.editor.features.canvas.active && origin === document.body.shadowRoot?.querySelector("slot:not([name])")
+        && this.editor.features.canvas.itemAtPoint(event.clientX, event.clientY)) this.#handlePointerDown(event, true)
     },
     pointermove: event => {
       this.#handleKeyState(event)
@@ -1696,49 +1743,7 @@ export class SelectionFeature extends EditorFeature {
         
       }
     },
-    "pointerdown": ev => {
-      if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
-        || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) {
-        return
-      }
-      this.#endDrag()
-      this.clearSelectedSection()
-      const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
-      const divider = ev.target instanceof Element && ev.target.localName === "hr" ? ev.target : null
-      if(media || divider) {
-        ev.preventDefault()
-        this.#releaseCaptureSelection()
-        $.selectElement((media ?? divider)!)
-        this.processSelection()
-        return
-      }
-      this.#releaseCaptureSelection()
-      if($.isEmptyDocumentSelection && editingFlowRoot(ev.target instanceof Node ? ev.target : null) === getDocumentRoot()) {
-        // Browsers focus an empty design-mode body on pointerdown but do not
-        // consistently create a DOM selection for it. Restore the editing
-        // position explicitly; pointerup restores it after the browser's
-        // default focus action has completed.
-        $.selectDocumentStart()
-        this.processSelection()
-        return
-      }
-      if(modifierKeyDown(ev)) {
-        ev.preventDefault()
-        const target = this.#modifierSelectionTarget(ev.target)
-        if(target) {
-          $.selectElement(target)
-        }
-        this.processSelection(this.isInDragSelection)
-      }
-      else {
-        const point = $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target, this.editor.schema)
-        const nativeClick = (!point || !$.isGapSelection && !point.overrideNative)
-          && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
-        if(!nativeClick) ev.preventDefault()
-        this.#beginDrag(ev, nativeClick)
-        this.processSelection(true)
-      }
-    },
+    "pointerdown": ev => this.#handlePointerDown(ev),
     "click": ev => {
       this.hasDoubleClicked = false
       if(ev.detail >= 2 && !this.#hitsText(ev)) return

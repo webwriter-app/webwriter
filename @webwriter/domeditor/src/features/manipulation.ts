@@ -1,5 +1,5 @@
 import {authoredLayoutKind, canPlaceLayouts, canBecomeLayout} from "../layouts"
-import {mediaElementSelector} from "../media"
+import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE} from "../graphic"
 import {isSlide} from "../document-layout"
@@ -18,6 +18,8 @@ import {
 import {paragraphStylePropertyNameSet} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
+import {elementDragType, insertionMenuItems} from "../components/insertion-menu"
+import {createTable} from "../table"
 import {
   elementAttributeEditability,
   isUnsafeElementAttributeValue,
@@ -296,13 +298,60 @@ export class ManipulationFeature extends EditorFeature {
   private acceptsDrop(event: DragEvent) {
     return !event.defaultPrevented
       && Boolean(event.dataTransfer && Array.from(event.dataTransfer.types)
-        .some(type => ["text/html", "text/plain", this.dragType].includes(type)))
+        .some(type => ["text/html", "text/plain", this.dragType, elementDragType].includes(type)))
+  }
+
+  private ribbonDragTag(data: DataTransfer) {
+    const tag = data.getData(elementDragType) || Array.from(data.types).find(type => type.startsWith(`${elementDragType}-`))?.slice(elementDragType.length + 1)
+    return insertionMenuItems.some(item => item.tag === tag) ? tag : null
+  }
+
+  private ribbonDropTarget(event: DragEvent) {
+    if(this.editor.features.canvas.active) return document.body
+    if(this.editor.features.slides.active && event.target instanceof Node) return this.editor.features.slides.containingSlide(event.target)
+    return null
+  }
+
+  private ribbonElement(tag: string): Element {
+    if(tag === "table") return createTable(2, 2)
+    if(tag === "ul" || tag === "ol") {
+      const list = document.createElement(tag)
+      const item = document.createElement("li")
+      item.append(document.createElement("p"))
+      list.append(item)
+      return list
+    }
+    if(tag === "details") {
+      const details = document.createElement("details")
+      details.append(document.createElement("summary"))
+      return details
+    }
+    if(isMediaType(tag)) {
+      const template = document.createElement("template")
+      template.innerHTML = mediaDefaultHTML(tag)
+      return template.content.firstElementChild!
+    }
+    const element = this.editor.schema.create(tag) as Element
+    if(tag === "math") element.append(this.editor.schema.create("math|mrow"))
+    if(element instanceof SVGSVGElement) {
+      element.setAttribute("viewBox", "0 0 1600 900")
+      element.setAttribute("width", "100%")
+    }
+    return element
   }
 
   private dragOver(event: DragEvent) {
     if(!this.acceptsDrop(event)) return
+    const ribbonTag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
+    if(ribbonTag && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
+      event.preventDefault()
+      event.dataTransfer!.dropEffect = this.ribbonDropTarget(event) ? "copy" : "none"
+      this.clearDropSelection(true)
+      return
+    }
     event.preventDefault()
-    const range = this.dropRange(event, this.nodeDrag?.element ?? null)
+    const ribbonElement = ribbonTag ? this.ribbonElement(ribbonTag) : null
+    const range = this.dropRange(event, this.nodeDrag?.element ?? ribbonElement, Boolean(ribbonElement))
     if(!range) {
       event.dataTransfer!.dropEffect = "none"
       this.clearDropSelection(true)
@@ -316,7 +365,7 @@ export class ManipulationFeature extends EditorFeature {
     this.editor.features.selection.selectDropRange(range)
     this.restoreDropColumn()
     if(this.dropColumn) this.editor.features.selection.processSelection()
-    const source = this.nodeDrag?.element
+    const source = this.nodeDrag?.element ?? ribbonElement
     const floatContainer = source && this.columnDropTarget(event, source, range)
     if(floatContainer) {
       const rect = floatContainer.getBoundingClientRect()
@@ -489,9 +538,9 @@ export class ManipulationFeature extends EditorFeature {
     if(point?.column && isColumnGroup(point.node)) $.selectColumnGap(point.node, point.column, point.gapElement, point.placement)
   }
 
-  private dropRange(event: DragEvent, source: Element | null) {
+  private dropRange(event: DragEvent, source: Element | null, allowDetached = false) {
     this.dropColumn = undefined
-    if(source && !getDocumentRoot().contains(source)) return null
+    if(source && !allowDetached && !getDocumentRoot().contains(source)) return null
     const point = $.pointFromCoords(event.clientX, event.clientY, event.target, this.editor.schema, getDocumentRoot())
     if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)
       || source && !canPlaceLayouts([source], point.node instanceof Text ? point.node.parentNode! : point.node)) return null
@@ -518,6 +567,52 @@ export class ManipulationFeature extends EditorFeature {
     let dropped = false
     try {
       const data = event.dataTransfer!
+      const ribbonTag = this.ribbonDragTag(data)
+      if(ribbonTag) {
+        const element = this.ribbonElement(ribbonTag)
+        const target = this.ribbonDropTarget(event)
+        if(this.editor.features.slides.active && !target) return
+        const range = target ? null : this.dropRange(event, element, true)
+        if(!target && !range) return
+        const end = this.editor.doc.beginUndoGroup()
+        try {
+          if(target) {
+            const placed = element.namespaceURI === MATH_NAMESPACE ? document.createElement("p") : element
+            if(placed !== element) placed.append(element)
+            target.append(placed)
+            if(placed instanceof HTMLElement || placed instanceof SVGSVGElement) {
+              const point = target === document.body
+                ? this.editor.features.canvas.clientPoint(event.clientX, event.clientY)
+                : {x: event.clientX - target.getBoundingClientRect().left + target.scrollLeft,
+                  y: event.clientY - target.getBoundingClientRect().top + target.scrollTop}
+              Object.assign(placed.style, {position: "absolute", left: `${point.x}px`, top: `${point.y}px`, right: "auto", bottom: "auto"})
+              if(!placed.style.width) placed.style.width = "320px"
+              const rect = placed.getBoundingClientRect()
+              const zoom = target === document.body ? this.editor.features.canvas.zoom : 1
+              placed.style.left = `${point.x + (event.clientX - rect.left - rect.width / 2) / zoom}px`
+              placed.style.top = `${point.y + (event.clientY - rect.top - rect.height / 2) / zoom}px`
+            }
+          }
+          else if(range) {
+            if(element.namespaceURI === MATH_NAMESPACE && element.localName === "math") this.editor.features.math.adaptToPlacement(element, range.startContainer)
+            const container = this.columnDropTarget(event, element, range)
+            if(container) {
+              const rect = container.getBoundingClientRect()
+              clearInlinePlacement(element)
+              this.placeFloat(element, container, event.clientX < rect.left + rect.width / 2 ? "left" : "right")
+            }
+            else {
+              range.insertNode(element)
+              clearInlinePlacement(element)
+              if(this.dropColumn?.column && element.parentNode === this.dropColumn.node) element.classList.add(`ww-column-${this.dropColumn.column}`)
+            }
+          }
+          if(getDocumentRoot().contains(element)) $.selectElement(element)
+          dropped = getDocumentRoot().contains(element)
+        }
+        finally { end() }
+        return
+      }
       // Only this live drag session can bypass import processing. An external
       // application cannot grant trust merely by supplying our MIME type.
       const source = this.nodeDrag?.token === data.getData(this.dragType) ? this.nodeDrag.element : null

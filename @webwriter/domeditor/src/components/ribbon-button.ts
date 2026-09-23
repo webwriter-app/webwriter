@@ -5,6 +5,7 @@ import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
 import "./qr-code"
 import type {RibbonMenuButton} from "./ribbon-menu"
+import {ribbonElementTag, startElementDrag} from "./insertion-menu"
 
 export type RibbonButtonDetails = {
   heading: string
@@ -1227,6 +1228,7 @@ export class RibbonButton extends LitElement {
 
   render() {
     const hasDropdown = this.submenu.length > 0 || this.dropdown !== null
+    const dragTag = this.variant === "insertion" ? ribbonElementTag(this.label, this.action || this.label) : null
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
@@ -1234,6 +1236,7 @@ export class RibbonButton extends LitElement {
         <button
           class="main-button"
           type="button"
+          draggable=${String(Boolean(dragTag) && !this.disabled)}
           aria-label=${this.label}
           aria-busy=${this.loading ? "true" : nothing}
           aria-pressed=${this.toggle? String(this.active): nothing}
@@ -1244,6 +1247,7 @@ export class RibbonButton extends LitElement {
           @focus=${this.showDetails}
           @blur=${this.hideDetails}
           @click=${this.handleClick}
+          @dragstart=${(event: DragEvent) => dragTag && startElementDrag(event, dragTag, (event.currentTarget as HTMLElement).querySelector(".button-icon"))}
         >
           ${this.renderIcon()}
           <span class="button-label">

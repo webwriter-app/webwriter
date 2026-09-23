@@ -152,7 +152,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {slideLayoutRole, type DocumentLayoutState} from "../document-layout"
+import {slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -595,6 +595,8 @@ export class DomEditor extends LitElement {
   private historyDocumentTransitionCount = 0
   private historyError = ""
   private settings: AppSettings = loadAppSettings()
+  private freshTemplateSnapshot: string | null = null
+  private initialTemplateStarted = false
   private breadcrumbVisible = true
   private motionStylesheet: {document: Document, sheet: CSSStyleSheet} | null = null
   private backendState: "probing" | "connected" | "unavailable" = "probing"
@@ -1472,6 +1474,11 @@ export class DomEditor extends LitElement {
             this.focusEditor()
           }
           editorReadyResolve?.(editorWindow)
+          if(this.frameRevision === 0 && this.frameDocumentHTML === null && !this.initialTemplateStarted
+            && this.settings.defaultTemplate !== "document") {
+            this.initialTemplateStarted = true
+            void this.applyDefaultTemplate(this.settings.defaultTemplate, 0).catch(error => this.reportFileError(error))
+          }
           if(this.isConnected && this.editorWindow === editorWindow && this.stylesVisible()) this.queueElementStyleRefresh()
         },
         error => editorReadyReject?.(error),
@@ -1497,8 +1504,27 @@ export class DomEditor extends LitElement {
     return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
   }
 
+  /** Dirty tracking for a generated Canvas or Slides document ignores local
+   * markers and native empty-block placeholders. */
+  private authoredDocumentSnapshot() {
+    const root = this.editorDocument?.documentElement.cloneNode(true) as HTMLElement | undefined
+    if(!root) return null
+    root.querySelectorAll(".◆editor-only, [data-webwriter-editor-only]").forEach(element => element.remove())
+    for(const element of [root, ...root.querySelectorAll("*")]) {
+      const classes = this.authoredClasses(element.getAttribute("class"))
+      if(classes) element.setAttribute("class", classes)
+      else element.removeAttribute("class")
+      if(element.getAttribute("style") === "") element.removeAttribute("style")
+      if(["p", "h1", "h2", "h3", "h4", "h5", "h6"].includes(element.localName)
+        && Array.from(element.childNodes).every(node => node.nodeType === Node.TEXT_NODE && !node.textContent
+          || node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "br")) element.replaceChildren()
+    }
+    return root.outerHTML
+  }
+
   private isFreshDocumentUnchanged() {
     if(this.fileHandle !== null || this.backendDocumentId !== null) return false
+    if(this.freshTemplateSnapshot !== null) return this.authoredDocumentSnapshot() === this.freshTemplateSnapshot
     const body = this.editorDocument?.body
     const head = this.editorDocument?.head
     if(!body || !head) return false
@@ -2157,6 +2183,7 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string) {
+    this.freshTemplateSnapshot = null
     this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
@@ -2285,13 +2312,28 @@ export class DomEditor extends LitElement {
       this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
+      const template = this.settings.defaultTemplate
       await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
+      await this.applyDefaultTemplate(template, this.frameRevision)
       this.fileDirty = false
       this.focusEditor()
     }
     catch(error) {
       this.reportFileError(error)
     }
+  }
+
+  private async applyDefaultTemplate(mode: DocumentLayoutMode, revision: number) {
+    if(mode === "document" || revision !== this.frameRevision) return
+    this.templateConversionCount++
+    try {
+      const changed = await this.execute({type: "setDocumentLayout", mode, expectedMode: "document"})
+      if(changed === false) throw new Error(`Could not create a new ${mode} document`)
+      if(revision !== this.frameRevision) return
+      this.freshTemplateSnapshot = this.authoredDocumentSnapshot()
+      this.fileDirty = false
+    }
+    finally { this.templateConversionCount-- }
   }
 
   private async performOpenDocument() {

@@ -60,6 +60,27 @@ export const insertionMenuItems: InsertionMenuItem[] = [
 /** Returns valid empty-element markup using the browser's HTML serializer. */
 export const emptyElementHTML = (tag: string) => document.createElement(tag).outerHTML
 
+export const elementDragType = "application/x-webwriter-element-tag"
+
+/** Only insertion commands that create an element can be dragged from the ribbon. */
+export function ribbonElementTag(label: string, action = label) {
+  if(action === "toggle-list:ul") return "ul"
+  if(action === "toggle-list:ol") return "ol"
+  if(action === "insert-details") return "details"
+  if(action === "toggle-section") return "section"
+  return insertionMenuItems.find(item => item.name === label && item.tag)?.tag ?? null
+}
+
+export function startElementDrag(event: DragEvent, tag: string, icon: Element | null) {
+  if(!event.dataTransfer || !insertionMenuItems.some(item => item.tag === tag)) return
+  event.dataTransfer.setData(elementDragType, tag)
+  // Dragover may inspect types, but browsers hide data values until drop.
+  event.dataTransfer.setData(`${elementDragType}-${tag}`, tag)
+  event.dataTransfer.setData("text/html", emptyElementHTML(tag))
+  event.dataTransfer.effectAllowed = "copy"
+  if(icon instanceof HTMLElement || icon instanceof SVGElement) event.dataTransfer.setDragImage?.(icon, 12, 12)
+}
+
 /** A searchable element picker for the editor's element command. The editor
  * supplies the query from the text typed after the command trigger. */
 export class InsertionMenu extends LitElement {

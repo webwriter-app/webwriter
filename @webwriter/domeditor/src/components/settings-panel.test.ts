@@ -115,6 +115,32 @@ describe("settings panel", () => {
     expect(defaultAppSettings().disableAnimations).toBe(false)
   })
 
+  it("defaults new documents to Document and validates saved template choices", () => {
+    expect(defaultAppSettings().defaultTemplate).toBe("document")
+    for(const value of ["document", "canvas", "slides", "invalid", null]) {
+      localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultTemplate: value}))
+      expect(loadAppSettings().defaultTemplate).toBe(value === "canvas" || value === "slides" ? value : "document")
+    }
+  })
+
+  it("changes the default template while preserving other settings", async () => {
+    const settings = {...defaultAppSettings(), language: "de"}
+    const panel = await mountPanel(settings)
+    const changes: AppSettings[] = []
+    panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
+    const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#default-template")!
+    expect([...select.options].map(option => option.textContent)).toEqual(["Document", "Canvas", "Slides"])
+    expect(select.value).toBe("document")
+    select.value = "slides"
+    select.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(changes.at(-1)).toMatchObject({defaultTemplate: "slides", language: "de"})
+    expect(parseFloat(getComputedStyle(select.closest(".setting-card")!).marginTop))
+      .toBe(parseFloat(getComputedStyle(document.documentElement).fontSize))
+    panel.resetSettings()
+    await panel.updateComplete
+    expect(select.value).toBe("document")
+  })
+
   it("emits motion changes while preserving the other settings", async () => {
     const settings = {...defaultAppSettings(), language: "de", updateDocumentLanguage: false}
     const panel = await mountPanel(settings)

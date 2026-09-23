@@ -1,6 +1,7 @@
 import {dropdownContentStyles} from "./dropdown-content.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
+import {ribbonElementTag, startElementDrag} from "./insertion-menu"
 
 export type RibbonMenuGroup = {
   label: string
@@ -358,6 +359,15 @@ export class RibbonMenu extends LitElement {
     return typeof button === "string" ? button : button.action ?? button.label
   }
 
+  private dragTag(button: RibbonMenuButton) {
+    return ribbonElementTag(this.buttonLabel(button), this.buttonAction(button))
+  }
+
+  private startDrag(event: DragEvent, button: RibbonMenuButton) {
+    const tag = this.dragTag(button)
+    if(tag) startElementDrag(event, tag, (event.currentTarget as HTMLElement).querySelector(".item-icon"))
+  }
+
   private buttonIcon(button: RibbonMenuButton) {
     return typeof button === "string" ? this.buttonAction(button) : button.icon ?? this.buttonAction(button)
   }
@@ -497,12 +507,14 @@ export class RibbonMenu extends LitElement {
             <button
               class=${`item${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
               type="button"
+              draggable=${String(Boolean(this.dragTag(submenuButton)) && !(typeof submenuButton !== "string" && submenuButton.disabled))}
               role="menuitem"
               aria-label=${this.buttonLabel(submenuButton)}
               tabindex=${submenuIndex === 0 ? "0" : "-1"}
               ?disabled=${typeof submenuButton !== "string" && submenuButton.disabled}
               title=${this.buttonLabel(submenuButton)}
-              @click=${() => this.handleClick(submenuButton)}>
+              @click=${() => this.handleClick(submenuButton)}
+              @dragstart=${(event: DragEvent) => this.startDrag(event, submenuButton)}>
               ${this.renderButtonIcon(submenuButton)}
               <span>${this.buttonLabel(submenuButton)}</span>
             </button>`
@@ -544,6 +556,7 @@ export class RibbonMenu extends LitElement {
                     <button
                       class="item"
                       type="button"
+                      draggable=${String(Boolean(this.dragTag(button)) && !item.disabled && !item.menuOnly)}
                       role="menuitem"
                       tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
                       title=${label}
@@ -551,6 +564,7 @@ export class RibbonMenu extends LitElement {
                       aria-haspopup=${item.menuOnly ? "menu" : nothing}
                       aria-expanded=${item.menuOnly ? isOpen : nothing}
                       @click=${(event: Event) => item.menuOnly ? this.toggleSubmenu(label, event) : this.handleClick(button)}
+                      @dragstart=${(event: DragEvent) => this.startDrag(event, button)}
                     >
                       ${this.renderButtonIcon(button)}
                       <span>${label}</span>

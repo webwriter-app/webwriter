@@ -1258,6 +1258,19 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     assert(editor.features.transformation.target === paragraph && !paragraph.classList.contains("◆element-selected"), "canvas caret does not show item controls independently of node selection")
     assert(getComputedStyle(editor.features.transformation.overlay).outlineStyle === "dotted", "canvas text selection lacks the dotted item outline")
     assert(getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "canvas item controls hide the text caret")
+    for(const surface of [document.body, slot]) {
+      $.selectRange(document.body, 0)
+      const range = document.createRange(), text = paragraph.firstChild!
+      range.setStart(text, 1); range.collapse(true)
+      const start = range.getBoundingClientRect()
+      range.setStart(text, 7)
+      const end = range.getBoundingClientRect(), y = start.top + start.height / 2
+      surface.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 29, clientX: start.left, clientY: y}))
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 29, clientX: end.left, clientY: y}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 29, clientX: end.left, clientY: y}))
+      assert(!getSelection()?.isCollapsed && paragraph.contains(getSelection()!.anchorNode) && paragraph.contains(getSelection()!.focusNode),
+        `canvas drag through ${surface.localName} did not stay inside its item`)
+    }
     dragTextInside(editor, paragraph)
     const selectedText = getSelection()!.toString()
     const resizeBefore = paragraph.getBoundingClientRect()
@@ -1950,6 +1963,17 @@ await check("bottom template cards retain native editing focus after rendering",
         && selection.focusNode === text && selection.focusOffset === 2, `${mode} did not retain the backward text selection`)
       assert(doc.execCommand("insertText", false, "x") && text.textContent === "Sexd", `${mode} typing did not replace the retained selection`)
       text.textContent = "Second"
+    }
+    for(const mode of ["canvas", "slides"] as const) {
+      root.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+        detail: {...(app as any).settings, defaultTemplate: mode}, bubbles: true, composed: true,
+      }))
+      ;(app as any).fileDirty = false
+      await (app as any).newDocument()
+      editingFrame = root.querySelector<HTMLIFrameElement>(".editor-frame")!
+      assert(editingFrame.contentDocument!.body.classList.contains(`ww-${mode}`), `new document did not use the ${mode} default`)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      assert(!(app as any).fileDirty && root.querySelector(".templates-panel:not([inert])"), `new ${mode} document was not clean`)
     }
   }
   finally { frame.remove() }

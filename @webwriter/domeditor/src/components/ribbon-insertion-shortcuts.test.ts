@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import {APP_SETTINGS_STORAGE_KEY, appCommands, defaultAppSettings, formatShortcut, loadAppSettings, persistAppSettings} from "../app-settings"
 import {AppRibbon} from "./ribbon"
 import {SettingsPanel} from "./settings-panel"
 import type {RibbonButton} from "./ribbon-button"
+import {RibbonMenu} from "./ribbon-menu"
+import {insertionMenuGroups} from "./ribbon-menu-config"
+import {elementDragType} from "./insertion-menu"
 
 const insertionShortcuts = [
   ["Heading", "heading", "1"],
@@ -44,6 +47,38 @@ async function mountRibbon(settings = defaultAppSettings(false)) {
 }
 
 describe("insertion ribbon shortcuts", () => {
+  it("drags ribbon elements and dropdown entries with their icon and tag", async () => {
+    const ribbon = await mountRibbon()
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
+    const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const image = vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
+    const drag = (target: HTMLElement) => {
+      const data = new DataTransfer()
+      const event = new Event("dragstart", {bubbles: true, cancelable: true, composed: true})
+      Object.assign(event, {dataTransfer: data})
+      target.dispatchEvent(event)
+      return data
+    }
+    expect(main.getAttribute("draggable")).toBe("true")
+    const down = new MouseEvent("mousedown", {bubbles: true, cancelable: true, composed: true})
+    main.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(false)
+    expect(drag(main).getData(elementDragType)).toBe("p")
+    expect(image.mock.calls.at(-1)?.[0]).toBe(main.querySelector(".button-icon"))
+
+    const menu = new RibbonMenu()
+    menu.groups = insertionMenuGroups
+    document.body.append(menu)
+    await menu.updateComplete
+    const headingToggle = menu.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!
+    headingToggle.click()
+    await menu.updateComplete
+    const heading2 = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".submenu button.item"))
+      .find(item => item.textContent?.trim() === "Heading 2")!
+    expect(heading2.getAttribute("draggable")).toBe("true")
+    expect(drag(heading2).getData(elementDragType)).toBe("h2")
+    expect(image.mock.calls.at(-1)?.[0]).toBe(heading2.querySelector(".item-icon"))
+  })
   it("upgrades saved empty defaults in both tooltips and configurable shortcuts", async () => {
     saveLegacySettings()
     const settings = loadAppSettings()

@@ -39,6 +39,13 @@ export class CanvasFeature extends EditorFeature {
       (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template"))
   }
 
+  itemAtPoint(x: number, y: number): Item | null {
+    return this.items().find(item => {
+      const rect = item.getBoundingClientRect()
+      return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
+    }) ?? null
+  }
+
   canConvertContent(nodes: Iterable<Node>) {
     return !Array.from(nodes).some(node => node instanceof Text && Boolean(node.textContent?.trim())
       || node instanceof Element && !(node instanceof HTMLElement || node instanceof SVGSVGElement)
@@ -253,9 +260,10 @@ export class CanvasFeature extends EditorFeature {
       && !isFormControlInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
   }
 
-  private backgroundInteraction(event: Event) {
+  private backgroundInteraction(event: MouseEvent) {
     const target = event.composedPath()[0]
-    return target === document.body || target === document.documentElement || target === this.slot
+    if(target !== document.body && target !== document.documentElement && target !== this.slot) return false
+    return !this.itemAtPoint(event.clientX, event.clientY)
   }
 
   private readonly preventBackgroundSelection = (event: MouseEvent) => {
@@ -315,11 +323,9 @@ export class CanvasFeature extends EditorFeature {
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
     },
     dblclick: event => {
-      if(this.active && !this.editor.isEditingLocked && (event.target === document.body || event.target === document.documentElement)
-        && (!isAppendixInteraction(event) || event.composedPath()[0] === this.slot)) {
-        event.preventDefault()
-        this.insertText({x: event.clientX, y: event.clientY})
-      }
+      if(!this.active || this.editor.isEditingLocked || !this.backgroundInteraction(event)) return
+      event.preventDefault()
+      this.insertText({x: event.clientX, y: event.clientY})
     },
   }
 

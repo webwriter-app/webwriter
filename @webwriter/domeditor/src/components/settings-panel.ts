@@ -10,6 +10,7 @@ import {
 } from "../app-settings"
 import {documentLanguages} from "../document-languages"
 import {ribbonIcon} from "../ribbon-icons"
+import {templateLabel, templateModes} from "./template-preview"
 
 const languageLabel = (code: string, fallback: string) => {
   try {
@@ -83,6 +84,17 @@ export class SettingsPanel extends LitElement {
 
     .setting-description {
       margin: 0.3rem 0 0;
+    }
+
+    .setting-label {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .setting-card + .setting-card {
+      margin-top: 1rem;
     }
 
     .checkbox-setting {
@@ -281,6 +293,12 @@ export class SettingsPanel extends LitElement {
     this.emitSettings({...this.settings, language: (event.currentTarget as HTMLSelectElement).value})
   }
 
+  private changeDefaultTemplate(event: Event) {
+    const mode = (event.currentTarget as HTMLSelectElement).value
+    if(mode !== "document" && mode !== "canvas" && mode !== "slides") return
+    this.emitSettings({...this.settings, defaultTemplate: mode})
+  }
+
   private changeDocumentLanguageUpdate(event: Event) {
     this.message = ""
     this.error = ""
@@ -369,6 +387,8 @@ export class SettingsPanel extends LitElement {
   protected updated() {
     const language = this.renderRoot.querySelector<HTMLSelectElement>('select[aria-label="Interface language"]')
     if(language && language.value !== this.settings.language) language.value = this.settings.language
+    const template = this.renderRoot.querySelector<HTMLSelectElement>("#default-template")
+    if(template && template.value !== this.settings.defaultTemplate) template.value = this.settings.defaultTemplate
   }
 
   private renderCommands(section: AppCommand["section"]) {
@@ -417,6 +437,14 @@ export class SettingsPanel extends LitElement {
             <span class="checkbox-label">Update language across document</span>
             <span class="checkbox-description">When the language changes, update the active document language so its content and widgets inherit it.</span>
           </label>
+        </section>
+
+        <section class="setting-card" aria-label="New documents">
+          <label class="setting-label" for="default-template">Default template</label>
+          <select id="default-template" .value=${this.settings.defaultTemplate} @change=${this.changeDefaultTemplate}>
+            ${templateModes.map(mode => html`<option value=${mode}>${templateLabel(mode)}</option>`)}
+          </select>
+          <p class="setting-description">Template used when creating a new document.</p>
         </section>
 
         <section class="setting-card" aria-label="Toolbox">

@@ -7,6 +7,7 @@ import { DOMEditor } from "../domeditor"
 import { $, htmlToFragment } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
+import {elementDragType} from "../components/insertion-menu"
 
 let editor: DOMEditor
 
@@ -24,6 +25,7 @@ beforeEach(async () => {
   vi.restoreAllMocks()
   document.body.innerHTML = "<p></p>"
   document.body.removeAttribute("style")
+  document.body.removeAttribute("class")
   editor = new DOMEditor()
   $.move(document.body.firstElementChild!)
   await new Promise<void>(resolve => queueMicrotask(resolve))
@@ -2158,6 +2160,83 @@ function transferEvent(type: string, dataTransfer: DataTransfer, extra: Record<s
 describe("unified content transfer", () => {
   beforeEach(() => {
     vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
+  })
+
+  function ribbonData(tag: string) {
+    const data = new DataTransfer()
+    data.setData(elementDragType, tag)
+    data.setData(`${elementDragType}-${tag}`, tag)
+    data.setData("text/html", `<${tag}></${tag}>`)
+    return data
+  }
+
+  it("drops a ribbon element at the document drop caret like a moved element", () => {
+    document.body.innerHTML = "<p>before</p><p>after</p>"
+    const first = document.body.firstElementChild!
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 20))
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: first.firstChild!, offset: 3})
+    const data = ribbonData("h2")
+    const read = vi.spyOn(data, "getData").mockReturnValue("")
+    document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 150, clientY: 20}))
+    read.mockRestore()
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    document.body.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 20}))
+    expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p"])
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+  })
+
+  it("uses the ribbon's prepared table content when dropped", () => {
+    document.body.innerHTML = "<p>before</p><p>after</p>"
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 1})
+    document.body.dispatchEvent(transferEvent("drop", ribbonData("table")))
+    const table = document.body.children[1] as HTMLTableElement
+    expect(table.localName).toBe("table")
+    expect(table.rows).toHaveLength(2)
+    expect(table.rows[0].cells).toHaveLength(2)
+  })
+
+  it("centers ribbon elements at the canvas drop position", () => {
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    vi.spyOn(editor.features.canvas, "clientPoint").mockReturnValue({x: 200, y: 100})
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+      return new DOMRect(100 + parseFloat(this.style.left || "0"), 50 + parseFloat(this.style.top || "0"), 40, 20)
+    })
+    const data = ribbonData("p")
+    document.body.dispatchEvent(transferEvent("drop", data, {clientX: 300, clientY: 150}))
+    const item = document.body.lastElementChild as HTMLElement
+    expect(item.localName).toBe("p")
+    expect(item.style.position).toBe("absolute")
+    expect(item.style.left).toBe("180px")
+    expect(item.style.top).toBe("90px")
+  })
+
+  it("keeps a dropped formula in a positioned canvas text box", () => {
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    vi.spyOn(editor.features.canvas, "clientPoint").mockReturnValue({x: 100, y: 100})
+    document.body.dispatchEvent(transferEvent("drop", ribbonData("math"), {clientX: 100, clientY: 100}))
+    const box = document.body.lastElementChild as HTMLElement
+    expect(box.localName).toBe("p")
+    expect(box.style.position).toBe("absolute")
+    expect(box.querySelector("math > mrow")?.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML")
+  })
+
+  it("centers ribbon elements within the slide under the drop", () => {
+    document.body.removeAttribute("class")
+    expect(editor.features.slides.convert("slides")).toBe(true)
+    const slide = document.querySelector<HTMLElement>("section.ww-slide")!
+    vi.spyOn(slide, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 800, 600))
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+      return new DOMRect(100 + parseFloat(this.style.left || "0"), 100 + parseFloat(this.style.top || "0"), 40, 20)
+    })
+    const data = ribbonData("p")
+    slide.dispatchEvent(transferEvent("drop", data, {clientX: 300, clientY: 250}))
+    const item = Array.from(slide.children).find(child => child instanceof HTMLElement && child.style.left === "180px") as HTMLElement
+    expect(item.localName).toBe("p")
+    expect(item.style.left).toBe("180px")
+    expect(item.style.top).toBe("140px")
+    const before = slide.children.length
+    document.body.dispatchEvent(transferEvent("drop", ribbonData("p"), {clientX: 10, clientY: 10}))
+    expect(slide.children).toHaveLength(before)
   })
 
   function beginDrag(element: Element) {

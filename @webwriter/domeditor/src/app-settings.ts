@@ -1,6 +1,7 @@
 import {isOnApple} from "./utility"
 import {excludedMarkNames, hasStandardMarkShortcut, primaryMarkOptions, secondaryMarkOptions} from "./marks"
 import {graphicArrangeOperations, graphicShapeOptions, graphicViewportOperations} from "./graphic"
+import type {DocumentLayoutMode} from "./document-layout"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
 
@@ -140,6 +141,7 @@ export const appCommands: readonly AppCommand[] = [
 
 export type AppSettings = {
   language: string
+  defaultTemplate: DocumentLayoutMode
   updateDocumentLanguage: boolean
   showStyleToolbox: boolean
   disableAnimations: boolean
@@ -149,6 +151,7 @@ export type AppSettings = {
 export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
   return {
     language: "en",
+    defaultTemplate: "document",
     updateDocumentLanguage: true,
     showStyleToolbox: false,
     disableAnimations: false,
@@ -194,6 +197,8 @@ export function loadAppSettings(): AppSettings {
     }
     const settings: AppSettings = {
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
+      defaultTemplate: value.defaultTemplate === "canvas" || value.defaultTemplate === "slides"
+        ? value.defaultTemplate : defaults.defaultTemplate,
       updateDocumentLanguage: typeof value.updateDocumentLanguage === "boolean"
         ? value.updateDocumentLanguage
         : defaults.updateDocumentLanguage,

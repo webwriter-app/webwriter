@@ -3795,9 +3795,9 @@ export class AppRibbon extends EditingControls {
     ))
     if(aiAction) return true
 
-    // Native image dragging needs the initiating pointer and mouse events.
-    if(event.composedPath().some(target => target instanceof HTMLImageElement
-      && target.matches('.sharing-dropdown-qr-code[draggable="true"]'))) return true
+    // Native dragging needs the initiating pointer and mouse events.
+    if(event.composedPath().some(target => target instanceof HTMLElement
+      && target.matches('[draggable="true"]'))) return true
 
     return false
   }

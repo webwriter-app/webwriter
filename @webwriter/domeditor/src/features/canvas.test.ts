@@ -378,6 +378,30 @@ describe("canvas document layout", () => {
     expect(inserted.style.width).toBe("320px")
   })
 
+  it("only creates a paragraph when a double click is outside existing canvas items", () => {
+    document.body.innerHTML = "<section><p>Existing text</p></section><custom-widget></custom-widget>"
+    editor.doc.syncFromDOM()
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const section = document.querySelector("section")!, widget = document.querySelector("custom-widget")!
+    const slot = editor.appendix.querySelector("slot")!
+    mockGeometry(section, makeRect(20, 30, 200, 100))
+    mockGeometry(widget, makeRect(300, 30, 100, 100))
+    const doubleClick = (target: Element, x: number, y: number) => {
+      const event = new MouseEvent("dblclick", {bubbles: true, cancelable: true, composed: true, button: 0, clientX: x, clientY: y})
+      target.dispatchEvent(event)
+      return event
+    }
+
+    expect(doubleClick(section.querySelector("p")!, 40, 50).defaultPrevented).toBe(false)
+    expect(doubleClick(document.body, 40, 50).defaultPrevented).toBe(false)
+    expect(doubleClick(slot, 350, 50).defaultPrevented).toBe(false)
+    expect(document.body.children.length).toBe(2)
+
+    expect(doubleClick(document.body, 500, 300).defaultPrevented).toBe(true)
+    expect(document.body.children.length).toBe(3)
+    expect(document.body.lastElementChild?.localName).toBe("p")
+  })
+
   it("pans locally and stops on cancellation without changing authored placement", () => {
     editor.features.canvas.actions.startCanvas({type: "startCanvas"})
     const slot = editor.appendix.querySelector("slot")!
@@ -451,6 +475,38 @@ describe("canvas document layout", () => {
 
     expect(selectCoords).toHaveBeenCalledWith(20, 20, false, span, editor.schema)
     expect(event.defaultPrevented).toBe(false)
+  })
+
+  it.each([
+    ["body", () => document.body],
+    ["camera slot", () => editor.appendix.querySelector("slot")!],
+  ] as const)("drags text inside a canvas item when pointer events reach the %s", (_name, target) => {
+    document.body.innerHTML = "<section><p>Existing text</p></section><section><p>Other text</p></section>"
+    editor.doc.syncFromDOM()
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const [section, other] = Array.from(document.querySelectorAll("section"))
+    const text = section.querySelector("p")!.firstChild!, otherText = other.querySelector("p")!.firstChild!
+    mockGeometry(section, makeRect(20, 30, 200, 100))
+    mockGeometry(other, makeRect(300, 30, 200, 100))
+    $.selectRange(document.body, 0)
+    expect($.isEmptyDocumentSelection).toBe(true)
+    const selectCoords = vi.spyOn($, "selectCoords").mockImplementation(() => {
+      $.selectRange(text, 1)
+      return {node: text, offset: 1}
+    })
+    const pointFromCoords = vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 5})
+
+    const down = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 7, clientX: 40, clientY: 50})
+    target().dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    expect(selectCoords).toHaveBeenCalled()
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, pointerId: 7, clientX: 80, clientY: 50}))
+    expect(document.getSelection()?.toString()).toBe("xist")
+    pointFromCoords.mockReturnValue({node: otherText, offset: 5})
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, pointerId: 7, clientX: 350, clientY: 50}))
+    expect(section.contains(document.getSelection()?.focusNode ?? null)).toBe(true)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 7, clientX: 350, clientY: 50}))
+    expect(document.body.children).toHaveLength(2)
   })
 
   it("keeps centered items still and uses the pointer for items spanning both canvas edges", () => {
