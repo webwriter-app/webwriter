@@ -2210,6 +2210,20 @@ describe("unified content transfer", () => {
     expect(item.style.top).toBe("90px")
   })
 
+  it("accepts a ribbon drop on the canvas's blank shadow slot", () => {
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const slot = editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
+    const data = ribbonData("p")
+    const over = transferEvent("dragover", data, {clientX: 240, clientY: 180})
+    slot.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const original = document.body.firstElementChild
+    slot.dispatchEvent(transferEvent("drop", data, {clientX: 240, clientY: 180}))
+    expect(document.body.lastElementChild).not.toBe(original)
+    expect(document.body.lastElementChild?.localName).toBe("p")
+    expect((document.body.lastElementChild as HTMLElement).style.position).toBe("absolute")
+  })
+
   it("keeps a dropped formula in a positioned canvas text box", () => {
     expect(editor.features.canvas.convert("canvas")).toBe(true)
     vi.spyOn(editor.features.canvas, "clientPoint").mockReturnValue({x: 100, y: 100})

@@ -312,6 +312,11 @@ export class ManipulationFeature extends EditorFeature {
     return null
   }
 
+  private canvasSlotRibbonDrag(event: DragEvent) {
+    return !this.editor.isEditingLocked && this.editor.features.canvas.active && event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
+      && event.composedPath()[0] === this.editor.appendix.querySelector("slot:not([name])")
+  }
+
   private ribbonElement(tag: string): Element {
     if(tag === "table") return createTable(2, 2)
     if(tag === "ul" || tag === "ol") {
@@ -1765,14 +1770,14 @@ export class ManipulationFeature extends EditorFeature {
     return changed
   }
 
-  // Deliberate editor drags can target widget/control surfaces. Their ordinary
-  // internal input remains routed to the widget or native control.
+  // Deliberate drags can target widget/control surfaces and the canvas's
+  // shadow slot. Their ordinary input remains with the owning feature.
   captureListeners: DocumentListenerMap = {
     "dragover": event => {
-      if(this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
+      if(this.canvasSlotRibbonDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
     },
     "drop": event => {
-      if(this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
+      if(this.canvasSlotRibbonDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
     },
   }
 

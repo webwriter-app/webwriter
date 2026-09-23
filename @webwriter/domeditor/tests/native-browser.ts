@@ -1369,6 +1369,36 @@ await check("canvas paragraphs split into separate positioned items and conversi
 
 
 let savedCanvasHTML = ""
+await check("ribbon elements drop on the blank canvas slot", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  document.body.append(frame)
+  let canvasEditor: DOMEditor | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `canvas editor did not initialize: ${view.editorError}`)
+    canvasEditor = view.editor!
+    assert(canvasEditor.features.canvas.actions.startCanvas({type: "startCanvas"}), "empty canvas could not start")
+    await layoutFrame()
+    const doc = frame.contentDocument!, slot = doc.body.shadowRoot!.querySelector<HTMLSlotElement>("slot:not([name])")!
+    const data = new DataTransfer()
+    data.setData("application/x-webwriter-element-tag", "h2")
+    data.setData("application/x-webwriter-element-tag-h2", "h2")
+    data.setData("text/html", "<h2></h2>")
+    const rect = slot.getBoundingClientRect()
+    const init = {dataTransfer: data, clientX: rect.left + 240, clientY: rect.top + 180, bubbles: true, cancelable: true, composed: true}
+    const over = new DragEvent("dragover", init)
+    slot.dispatchEvent(over)
+    assert(over.defaultPrevented, "canvas slot did not accept the ribbon drag")
+    slot.dispatchEvent(new DragEvent("drop", init))
+    const heading = doc.body.querySelector<HTMLElement>("h2")
+    assert(heading?.style.position === "absolute", "canvas slot did not insert the dropped heading")
+  }
+  finally { canvasEditor?.destroy(); frame.remove() }
+})
+
 await check("a clean canvas retains its initial item when moving and typing without inserting links", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
