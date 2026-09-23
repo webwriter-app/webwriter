@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
-import {executeCompleteEvent, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
+import {editorFrameControlMessage, executeCompleteEvent, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
 import {$, cloneInert, getInertDocument} from "./utility"
 
@@ -618,6 +618,20 @@ describe("breadcrumb positioning", () => {
 })
 
 describe("bridge origin binding", () => {
+  it("leaves frame controls to the frame host listener", () => {
+    const bridgeNonce = "0123456789abcdef"
+    const editor = new DOMEditor({bridgeNonce})
+    try {
+      expect(() => window.dispatchEvent(new MessageEvent("message", {data: {
+        type: editorFrameControlMessage, command: "focus", bridgeNonce,
+      }}))).not.toThrow()
+      expect(() => window.dispatchEvent(new MessageEvent("message", {data: {
+        type: "unregistered-action", bridgeNonce,
+      }}))).toThrow("No handler registered")
+    }
+    finally { editor.destroy() }
+  })
+
   it("posts bridge events to the verified initialization origin", () => {
     const bridgeOrigin = "https://editor-host.example"
     const bridgeNonce = "0123456789abcdef"

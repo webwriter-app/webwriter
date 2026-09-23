@@ -1,6 +1,7 @@
 import {
   createLocalPackageRequestHandler,
   localPackageFetchResponse,
+  parseLocalPackageRoute,
   type LocalPackageDirectoryHandle,
 } from "./local-package-worker"
 import type {LocalPackageWorkerMessage} from "./local-package-worker-protocol"
@@ -19,6 +20,31 @@ type WorkerScope = ServiceWorkerGlobalScope & {
 const worker = globalThis as unknown as WorkerScope
 const roots = new Map<string, LocalPackageDirectoryHandle>()
 const requestHandler = createLocalPackageRequestHandler(roots)
+
+async function proxyFrameRequest(request: Request, clientId: string) {
+  const client = clientId && await worker.clients.get(clientId)
+  if(!client) return new Response("Local package frame is unavailable", {status: 503})
+  const channel = new MessageChannel()
+  return await new Promise<Response>(resolve => {
+    const timer = setTimeout(() => {
+      channel.port1.close()
+      resolve(new Response("Local package frame did not respond", {status: 504}))
+    }, 10_000)
+    channel.port1.onmessage = event => {
+      clearTimeout(timer)
+      channel.port1.close()
+      const data = event.data
+      if(typeof data?.status !== "number" || !Array.isArray(data.headers)
+        || !(data.body instanceof ArrayBuffer)) {
+        resolve(new Response("Invalid local package response", {status: 502}))
+        return
+      }
+      resolve(new Response(request.method === "HEAD" ? null : data.body,
+        {status: data.status, headers: data.headers}))
+    }
+    client.postMessage({type: "frame-local-package-request", url: request.url, method: request.method}, [channel.port2])
+  })
+}
 
 async function restoreDirectories() {
   for(const record of await readLocalPackageDirectories(worker.indexedDB)) {
@@ -94,7 +120,12 @@ worker.addEventListener("message", event => {
 worker.addEventListener("fetch", event => {
   const response = localPackageFetchResponse(
     event.request,
-    request => directoriesReady.then(() => requestHandler(request)),
+    request => directoriesReady.then(() => {
+      const parsed = parseLocalPackageRoute(request)
+      return parsed?.kind === "route" && !roots.has(parsed.route.id)
+        ? proxyFrameRequest(request, event.clientId)
+        : requestHandler(request)
+    }),
   )
   if(response) event.respondWith(response)
 })

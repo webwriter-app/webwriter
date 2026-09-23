@@ -1918,11 +1918,28 @@ await check("bottom template cards retain native editing focus after rendering",
     for(let attempt = 0; attempt < 200; attempt++) {
       app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
       editingFrame = app?.shadowRoot?.querySelector<HTMLIFrameElement>(".editor-frame") ?? null
-      if(editingFrame?.contentDocument?.designMode === "on") break
+      if(editingFrame && (app as any)?.editorWindow && (app as any)?.editorDocument) break
       await new Promise(resolve => setTimeout(resolve, 25))
     }
-    assert(app && editingFrame?.contentDocument?.designMode === "on", "app editor did not initialize")
+    assert(app && (app as any).editorWindow, `app editor did not initialize: app=${!!app} frame=${!!editingFrame} window=${!!(app as any)?.editorWindow} opaque=${(app as any)?.editorOpaque} error=${(app as any)?.packageError}`)
     await (app as any).waitForEditorWindow()
+    if(!editingFrame!.contentDocument) {
+      assert(new URL(editingFrame!.src).origin !== frame.contentWindow!.location.origin, "editor frame stayed on the app origin")
+      assert(editingFrame!.getAttribute("sandbox") === "allow-scripts allow-same-origin", "editor frame permissions changed")
+      const source = await app!.execute({type: "serializeDocument"}) as string
+      assert(source.includes("<body"), "cross-origin editor did not answer a document command")
+      await (app as any).enterPreview()
+      const previewFrame = app!.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")
+      assert(previewFrame && new URL(previewFrame.src).origin === new URL(editingFrame!.src).origin,
+        "preview did not use the dedicated editor origin")
+      assert(previewFrame!.getAttribute("sandbox") === "allow-scripts allow-same-origin",
+        "preview frame permissions changed")
+      for(let attempt = 0; attempt < 200 && !(app as any).previewOpaque; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      assert((app as any).previewOpaque, "preview did not initialize on the dedicated origin")
+      return
+    }
     assert(app!.shadowRoot!.activeElement === editingFrame, "initial editor frame was not focused")
     assert(editingFrame!.contentDocument!.body.matches(":focus"), "initial editable body did not receive native focus")
     assert(frame.contentDocument!.activeElement === app, "iframe focus was not retargeted to the shadow host")

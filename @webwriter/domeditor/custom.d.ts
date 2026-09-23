@@ -17,6 +17,8 @@ interface ImportMetaEnv {
   readonly BASE_URL: string;
   readonly DEV: boolean;
   readonly MODE: string;
+  readonly VITE_EDITOR_ORIGIN?: string;
+  readonly VITE_APP_ORIGIN?: string;
 }
 
 interface ImportMeta {

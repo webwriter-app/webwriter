@@ -289,7 +289,7 @@ describe("DomEditor iframe setup", () => {
     else expect(focus).not.toHaveBeenCalled()
   })
 
-  it("starts as soon as packages restore within the 100 ms startup window", async () => {
+  it("starts when catalog and local packages both finish within the 250 ms startup window", async () => {
     vi.useFakeTimers()
     try {
       const editor = new DomEditor()
@@ -312,7 +312,30 @@ describe("DomEditor iframe setup", () => {
     finally { vi.useRealTimers() }
   })
 
-  it("starts after 100 ms and reloads normally when packages restore later", async () => {
+  it("waits for the catalog after local packages finish", async () => {
+    vi.useFakeTimers()
+    try {
+      const editor = new DomEditor()
+      const state = editor as any
+      let finishCatalog!: (packages: WebWriterPackage[]) => void
+      vi.mocked(WebWriterPackageRegistry.prototype.search)
+        .mockImplementationOnce(() => new Promise(resolve => { finishCatalog = resolve }))
+      vi.spyOn(state.localPackageManager, "restore").mockResolvedValue([demoPackage])
+      document.body.append(editor)
+      await editor.updateComplete
+      await vi.advanceTimersByTimeAsync(200)
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+      expect(state.installedPackages).toEqual([demoPackage])
+      finishCatalog([])
+      await vi.advanceTimersByTimeAsync(0)
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBeNull()
+      expect(state.frameRevision).toBe(0)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("starts after 250 ms and reloads normally when packages restore later", async () => {
     vi.useFakeTimers()
     try {
       const editor = new DomEditor()
@@ -321,7 +344,7 @@ describe("DomEditor iframe setup", () => {
       vi.spyOn(state.localPackageManager, "restore").mockImplementation(() => new Promise(resolve => { restore = resolve }))
       document.body.append(editor)
       await editor.updateComplete
-      await vi.advanceTimersByTimeAsync(99)
+      await vi.advanceTimersByTimeAsync(249)
       expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
       await vi.advanceTimersByTimeAsync(1)
       await editor.updateComplete
@@ -366,11 +389,11 @@ describe("DomEditor iframe setup", () => {
       await editor.updateComplete
       await vi.advanceTimersByTimeAsync(25)
       editor.remove()
-      await vi.advanceTimersByTimeAsync(100)
+      await vi.advanceTimersByTimeAsync(250)
       expect(state.frameStarted).toBe(false)
       document.body.append(editor)
       restore([])
-      await vi.advanceTimersByTimeAsync(99)
+      await vi.advanceTimersByTimeAsync(249)
       expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
       await vi.advanceTimersByTimeAsync(1)
       await editor.updateComplete
@@ -1135,6 +1158,36 @@ describe("DomEditor breadcrumb visibility", () => {
 })
 
 describe("Develop local packages", () => {
+  it("proxies only registered local package resources from the isolated frame", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const frameOrigin = host.frameShellURL("editor", 0).split("/frame-shell.html")[0]
+    const id = "test-package"
+    const url = `${frameOrigin}/__webwriter/local-packages/${id}/widget.js`
+    const send = async () => {
+      const channel = new MessageChannel()
+      const result = new Promise<any>(resolve => { channel.port1.onmessage = event => {
+        channel.port1.close()
+        channel.port2.close()
+        resolve(event.data)
+      } })
+      host.handleEditorMessage(new MessageEvent("message", {source: iframe.contentWindow, origin: frameOrigin,
+        data: {type: "frame-local-package-request", bridgeNonce: host.bridgeNonce, url, method: "GET"},
+        ports: [channel.port2]}))
+      return result
+    }
+    expect((await send()).status).toBe(404)
+    host.localPackageManager.records.set(id, {id})
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("export {}", {
+      headers: {"Content-Type": "application/javascript"},
+    }))
+    const response = await send()
+    expect(response.status).toBe(200)
+    expect(new TextDecoder().decode(response.body)).toBe("export {}")
+    expect(fetch).toHaveBeenCalledWith(new URL(url.replace(frameOrigin, location.origin)).href, {method: "GET"})
+    host.localPackageManager.records.delete(id)
+  })
+
   it("picks, serves, watches, and enables a built local package", async () => {
     const directory = localPackageDirectory()
     vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(directory))

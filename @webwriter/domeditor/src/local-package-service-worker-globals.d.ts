@@ -11,4 +11,7 @@ interface ServiceWorkerGlobalScope extends EventTarget {
   addEventListener(type: string, listener: (event: any) => void, options?: boolean | AddEventListenerOptions): void;
 }
 
-interface Clients {claim(): Promise<void>}
+interface Clients {
+  claim(): Promise<void>
+  get(id: string): Promise<{postMessage(message: unknown, transfer?: Transferable[]): void} | undefined>
+}

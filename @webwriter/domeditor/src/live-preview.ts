@@ -124,7 +124,7 @@ export class LivePreview {
     this.documentUpdateQueued = false
   }
 
-  observeLearner(frame: HTMLIFrameElement, previewDocument: Document, publish: PublishPreviewStep) {
+  observeLearner(frame: Pick<HTMLIFrameElement, "contentWindow">, previewDocument: Document, publish: PublishPreviewStep) {
     this.disconnect()
     const generation = this.generation
     const view = frame.contentWindow
@@ -252,7 +252,7 @@ export class LivePreview {
     })
   }
 
-  observeHost(frame: HTMLIFrameElement, previewDocument: Document, update: () => void) {
+  observeHost(frame: Pick<HTMLIFrameElement, "contentWindow">, previewDocument: Document, update: () => void) {
     this.disconnect()
     this.seedWidgetPaths(previewDocument)
     previewWidgetElements(previewDocument).forEach(widget => {

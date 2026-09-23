@@ -31,6 +31,7 @@ export const documentHeadStateChangeEvent = "dom-editor-document-head-state-chan
 export const historyStateChangeEvent = "dom-editor-history-state-change"
 export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
+export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 
 export type AIEditReviewAction = "accept" | "reject"
@@ -64,6 +65,9 @@ export type InitializeEditorMessage = {
   /** Per-iframe capability used to bind postMessage traffic to this frame. */
   bridgeNonce?: string
   initialState?: EditorStateSnapshot
+  language?: string
+  disableAnimations?: boolean
+  shortcuts?: Record<string, string>
 }
 
 export type LoadWidgetsMessage = {
@@ -113,6 +117,10 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
   return message.type === initializeEditorMessage
     && validSyncUrl
     && (message.bridgeNonce === undefined || typeof message.bridgeNonce === "string" && message.bridgeNonce.length >= 16)
+    && (message.language === undefined || typeof message.language === "string")
+    && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
+    && (message.shortcuts === undefined || !!message.shortcuts && typeof message.shortcuts === "object"
+      && !Array.isArray(message.shortcuts) && Object.values(message.shortcuts).every(value => typeof value === "string"))
     && (message.initialState === undefined || (
       !!message.initialState
       && typeof message.initialState === "object"

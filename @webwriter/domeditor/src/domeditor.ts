@@ -29,6 +29,7 @@ import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
+  editorFrameControlMessage,
   executeCompleteEvent,
   executeFailureEvent,
   markStateChangeEvent,
@@ -754,7 +755,8 @@ export class DOMEditor {
     if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
       return
     }
-    if(ev.data.type === selectionChangeEvent) {
+    // The frame host handles controls on the same window message target.
+    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage) {
       return
     }
 

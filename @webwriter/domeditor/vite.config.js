@@ -68,7 +68,9 @@ export default defineConfig({
         rollupOptions: {
           input: {
             index: fileURLToPath(new URL("./index.html", import.meta.url)),
+            "frame-shell": fileURLToPath(new URL("./frame-shell.html", import.meta.url)),
             "editor-entry": fileURLToPath(new URL("./src/editor-entry.ts", import.meta.url)),
+            "preview-entry": fileURLToPath(new URL("./src/preview-entry.ts", import.meta.url)),
             "local-package-service-worker": localPackageWorkerSource,
           },
           output: {
