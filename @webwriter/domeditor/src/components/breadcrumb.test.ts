@@ -9,6 +9,42 @@ afterEach(() => {
 })
 
 describe("breadcrumb resize lifecycle", () => {
+  it("measures the tree panel without scheduling another Lit update", async () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight")
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("tree-panel") ? 120 : 0
+      },
+    })
+
+    try {
+      const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+      breadcrumb.tree = {
+        path: [],
+        name: "Document",
+        children: [{path: [0], name: "main", children: []}],
+      }
+      document.body.append(breadcrumb)
+
+      expect(await breadcrumb.updateComplete).toBe(true)
+      expect(breadcrumb.shadowRoot!.querySelector<HTMLElement>(".tree-panel")!.style.maxHeight).toBe("0px")
+
+      breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
+      expect(await breadcrumb.updateComplete).toBe(true)
+      expect(breadcrumb.shadowRoot!.querySelector<HTMLElement>(".tree-panel")!.style.maxHeight).toBe("120px")
+      breadcrumb.remove()
+    }
+    finally {
+      if(originalScrollHeight) {
+        Object.defineProperty(HTMLElement.prototype, "scrollHeight", originalScrollHeight)
+      }
+      else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight")
+      }
+    }
+  })
+
   it("observes the navigation again when the same element reconnects", async () => {
     const observers: Array<{
       observe: ReturnType<typeof vi.fn>

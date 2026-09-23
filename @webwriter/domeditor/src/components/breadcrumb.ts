@@ -30,7 +30,6 @@ export class DomEditorBreadcrumb extends LitElement {
     treeOpen: {attribute: "tree-open", type: Boolean, reflect: true},
     treeRootPath: {attribute: false, state: true},
     expandedPaths: {attribute: false, state: true},
-    treeHeight: {attribute: false, state: true},
     treeAnimating: {attribute: "tree-animating", type: Boolean, reflect: true},
   }
 
@@ -694,7 +693,10 @@ export class DomEditorBreadcrumb extends LitElement {
     const panel = this.renderRoot.querySelector<HTMLElement>(".tree-panel")
     if(!panel) return
     const height = panel.scrollHeight
-    if(height !== this.treeHeight) this.treeHeight = height
+    if(height !== this.treeHeight) {
+      this.treeHeight = height
+      panel.style.maxHeight = this.treeOpen ? `${height}px` : "0px"
+    }
   }
 
   connectedCallback() {
