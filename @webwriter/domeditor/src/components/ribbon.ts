@@ -2934,13 +2934,12 @@ export class AppRibbon extends EditingControls {
     const displayPackages = this.filteredPackages
     const visiblePackages = displayPackages.slice(0, this.packageVisibleCount)
     const overflowPackages = displayPackages.slice(this.packageVisibleCount)
-    const canRefreshDependencies = this.installedPackages.some(pkg => pkg.manifest?.webwriter?.moduleResolution === "import-map")
     return html`
       <ribbon-drawer
         label="Packages"
         icon="Packages"
         layout="packages"
-        ?expandable=${overflowPackages.length > 0 || canRefreshDependencies}
+        ?expandable=${overflowPackages.length > 0}
         @ribbon-drawer-state-change=${this.handlePackageDrawerState}
         @ribbon-drawer-close-complete=${this.handlePackageDrawerClose}
       >
@@ -2953,11 +2952,6 @@ export class AppRibbon extends EditingControls {
         ></package-search>
         ${visiblePackages.map(pkg => this.renderPackageButton(pkg))}
         ${overflowPackages.map(pkg => this.renderPackageButton(pkg, "more"))}
-        ${canRefreshDependencies ? html`
-          <ribbon-button slot="more" label="Refresh dependencies" icon="Refresh"
-            action="refresh-package-dependencies" title="Resolve the latest compatible dependency versions"
-          ></ribbon-button>
-        ` : ""}
         ${!this.packagesLoading && !displayPackages.length ? html`<span class="package-status">No packages</span>` : ""}
       </ribbon-drawer>
     `
@@ -3314,10 +3308,7 @@ export class AppRibbon extends EditingControls {
       {label: "Format", icon: "MarkBold", menuOnly: true, submenuGroups: format},
       {label: "Insert", icon: "Paragraph", menuOnly: true, submenu: insert},
       {label: "Packages", icon: "Packages", menuOnly: true, submenuGroups: [{label: "Packages", buttons: packages,
-        content: !this.packagesLoading && !packages.length ? html`<span>No packages</span>` : undefined},
-        ...(this.installedPackages.some(pkg => pkg.manifest?.webwriter?.moduleResolution === "import-map")
-          ? [{label: "Dependencies", buttons: [{label: "Refresh dependencies", action: "refresh-package-dependencies", icon: "Refresh"}]}]
-          : [])],
+        content: !this.packagesLoading && !packages.length ? html`<span>No packages</span>` : undefined}],
         submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading}
           .error=${this.packageError} @package-search-change=${this.handlePackageSearch}></package-search>`},
     ]}]

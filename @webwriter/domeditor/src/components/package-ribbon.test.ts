@@ -100,6 +100,25 @@ describe("package ribbon controls", () => {
     expect(request).toHaveBeenCalledTimes(1)
   })
 
+  it("keeps dependency refresh out of package controls", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture()
+    pkg.manifest = {name: pkg.name, version: pkg.version, webwriter: {moduleResolution: "import-map"}}
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    expect(drawer.hasAttribute("expandable")).toBe(false)
+    expect(drawer.textContent).not.toContain("Refresh dependencies")
+
+    ribbon.expanded = false
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    expect(menu.textContent).not.toContain("Refresh dependencies")
+  })
+
   it("replaces the search icon with a spinner while fetching packages", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)

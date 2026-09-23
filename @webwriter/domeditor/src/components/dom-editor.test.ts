@@ -22,6 +22,7 @@ import {
 } from "../editor-bridge"
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import * as packageDependencies from "../package-dependencies"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
@@ -890,9 +891,11 @@ describe("DomEditor iframe setup", () => {
     const editor = new DomEditor()
     const load = (event?: Event) => (editor as unknown as {loadPackageCatalog(event?: Event): Promise<void>}).loadPackageCatalog(event)
     const search = vi.mocked(WebWriterPackageRegistry.prototype.search)
+    const dependencies = vi.spyOn(editor as any, "refreshPackageDependencies").mockResolvedValue(undefined)
     await load()
     await load(new Event("package-catalog-request"))
     expect(search).toHaveBeenCalledTimes(1)
+    expect(dependencies).toHaveBeenCalledTimes(1)
 
     let complete!: (packages: WebWriterPackage[]) => void
     search.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
@@ -903,6 +906,55 @@ describe("DomEditor iframe setup", () => {
     complete([demoPackage])
     await pending
     expect((editor as unknown as {packages: WebWriterPackage[]}).packages).toEqual([demoPackage])
+    expect(dependencies).toHaveBeenCalledTimes(2)
+
+    search.mockRejectedValueOnce(new Error("Catalog unavailable"))
+    await load(refresh())
+    expect((editor as unknown as {packageError: string}).packageError).toBe("Catalog unavailable")
+    expect(dependencies).toHaveBeenCalledTimes(3)
+  })
+
+  it("reloads the editor only when a catalog dependency check changes the import map", async () => {
+    const pkg: WebWriterPackage = {
+      ...demoPackage,
+      manifest: {name: demoPackage.name, version: demoPackage.version, webwriter: {moduleResolution: "import-map"}},
+    }
+    const editor = new DomEditor()
+    ;(editor as any).installedPackages = [pkg]
+    Object.defineProperty(editor, "isConnected", {configurable: true, get: () => true})
+    const reload = vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    const resolve = vi.spyOn(packageDependencies, "resolvePackageDependencies").mockResolvedValue({
+      entries: pkg.scripts, map: {imports: {lit: "https://example.test/lit-3.3.2.js"}},
+    })
+    const refresh = () => (editor as any).refreshPackageDependencies() as Promise<void>
+    await refresh()
+    expect(reload).toHaveBeenCalledTimes(1)
+    await refresh()
+    expect(reload).toHaveBeenCalledTimes(1)
+
+    resolve.mockResolvedValueOnce({entries: pkg.scripts, map: {imports: {lit: "https://example.test/lit-3.3.3.js"}}})
+    await refresh()
+    expect(reload).toHaveBeenCalledTimes(2)
+    expect((editor as any).packageImportMap.imports.lit).toBe("https://example.test/lit-3.3.3.js")
+
+    resolve.mockRejectedValueOnce(new Error("Registry unavailable"))
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+    await refresh()
+    expect(warning).toHaveBeenCalledOnce()
+    expect(reload).toHaveBeenCalledTimes(2)
+    expect((editor as any).packageImportMap.imports.lit).toBe("https://example.test/lit-3.3.3.js")
+
+    const next = {entries: pkg.scripts, map: {imports: {lit: "https://example.test/lit-3.3.4.js"}}}
+    let complete!: (plan: typeof next) => void
+    resolve.mockResolvedValue(next).mockImplementationOnce(() => new Promise(done => { complete = done }))
+    const priorChecks = resolve.mock.calls.length
+    const first = refresh()
+    const second = refresh()
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(priorChecks + 1))
+    complete(next)
+    await Promise.all([first, second])
+    expect(resolve).toHaveBeenCalledTimes(priorChecks + 2)
+    expect(reload).toHaveBeenCalledTimes(3)
   })
 
   it("sandboxes the editor iframe while preserving its trusted same-origin bridge", async () => {

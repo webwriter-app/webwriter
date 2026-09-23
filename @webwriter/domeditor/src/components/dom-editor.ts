@@ -613,6 +613,7 @@ export class DomEditor extends LitElement {
   private dirtyTrackingMutationPending = false
   private dirtyTrackingTimer: ReturnType<typeof setTimeout> | undefined
   private packageCatalogRequested = false
+  private dependencyRefreshPromise: Promise<void> = Promise.resolve()
   private installedPackagesRestored = false
   private readonly packageRegistry = new WebWriterPackageRegistry()
   private breadcrumbHoverPath: number[] | null = null
@@ -2676,10 +2677,6 @@ export class DomEditor extends LitElement {
       void this.addLocalPackage()
       return
     }
-    if(label === "refresh-package-dependencies") {
-      void this.refreshPackageDependencies()
-      return
-    }
     if(label?.startsWith("local-package-select:")) {
       const name = label.slice("local-package-select:".length)
       this.selectLocalPackage(name)
@@ -3323,22 +3320,41 @@ export class DomEditor extends LitElement {
     if(shouldRefocus) this.focusEditor()
   }
 
-  private async refreshPackageDependencies() {
+  private refreshPackageDependencies() {
+    this.dependencyRefreshPromise = this.dependencyRefreshPromise.then(() => this.checkPackageDependencies())
+    return this.dependencyRefreshPromise
+  }
+
+  private async checkPackageDependencies() {
     if(!packageModuleEntries(this.installedPackages).length) return
-    this.packageError = ""
-    const previousMap = this.packageImportMap
-    const previousKey = this.packageImportMapPackageSetKey
+    let previousMap = this.packageImportMap
+    let previousKey = this.packageImportMapPackageSetKey
+    let applied = false
     try {
-      const plan = await resolvePackageDependencies(this.installedPackages, document.baseURI)
+      const packages = [...this.installedPackages]
+      const packageSetKey = this.packageSetKey(packages)
+      const plan = await resolvePackageDependencies(packages, document.baseURI)
+      if(this.packageSetKey(this.installedPackages) !== packageSetKey) return
+      if(this.packageImportMapPackageSetKey === packageSetKey
+        && JSON.stringify(this.packageImportMap) === JSON.stringify(plan.map)) return
+      if(this.frameStarted && this.isConnected) await this.waitForEditorWindow()
+      if(this.packageSetKey(this.installedPackages) !== packageSetKey) return
+      if(this.packageImportMapPackageSetKey === packageSetKey
+        && JSON.stringify(this.packageImportMap) === JSON.stringify(plan.map)) return
+      previousMap = this.packageImportMap
+      previousKey = this.packageImportMapPackageSetKey
       this.packageImportMap = plan.map
-      this.packageImportMapPackageSetKey = this.packageSetKey(this.installedPackages)
-      await this.reloadEditor([...this.installedPackages])
+      this.packageImportMapPackageSetKey = packageSetKey
+      applied = true
+      if(this.isConnected) await this.reloadEditor(packages)
       this.persistPackageImportMap()
     }
     catch(error) {
-      this.packageImportMap = previousMap
-      this.packageImportMapPackageSetKey = previousKey
-      this.packageError = error instanceof Error ? error.message : String(error)
+      if(applied) {
+        this.packageImportMap = previousMap
+        this.packageImportMapPackageSetKey = previousKey
+      }
+      console.warn("Could not refresh package dependencies", error)
     }
   }
 
@@ -3356,6 +3372,7 @@ export class DomEditor extends LitElement {
     }
     finally {
       this.packagesLoading = false
+      await this.refreshPackageDependencies()
     }
   }
 
