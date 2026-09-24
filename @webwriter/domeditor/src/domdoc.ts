@@ -1,7 +1,7 @@
 import * as Y from "yjs"
 import {Awareness} from "y-protocols/awareness"
 import {WebsocketProvider} from "y-websocket"
-import {isComment, isDocument, isElement, isText} from "./utility"
+import {isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
 import type {EditorStateSnapshot} from "./editor-state"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
@@ -167,6 +167,8 @@ export class SharedDOMDoc {
   #activeDOMPreview: DOMChangePreview | null = null
   #observedTemplates = new Set<DocumentFragment>()
   #awaitingInitialSync = false
+  #undoGroupDepth = 0
+  #undoGroupTimeout = 0
 
   constructor(
     readonly serverUrl?: string,
@@ -704,17 +706,23 @@ export class SharedDOMDoc {
    * remote synchronization remain active throughout the interaction. */
   beginUndoGroup() {
     this.syncFromDOM()
-    this.stopCapturing()
-    const captureTimeout = this.#undoManager.captureTimeout
-    this.#undoManager.captureTimeout = Infinity
+    // Overlapping groups (an asynchronous widget action during a drag) end in
+    // any order; only the outermost one restores the capture window.
+    if(this.#undoGroupDepth++ === 0) {
+      this.stopCapturing()
+      this.#undoGroupTimeout = this.#undoManager.captureTimeout
+      this.#undoManager.captureTimeout = Infinity
+    }
     let ended = false
     return () => {
       if(ended) return
       ended = true
       try { this.syncFromDOM() }
       finally {
-        this.#undoManager.captureTimeout = captureTimeout
-        this.stopCapturing()
+        if(--this.#undoGroupDepth === 0) {
+          this.#undoManager.captureTimeout = this.#undoGroupTimeout
+          this.stopCapturing()
+        }
       }
     }
   }
@@ -1060,7 +1068,7 @@ export class SharedDOMDoc {
   #isRelevantMutation(mutation: MutationRecord) {
     if(mutation.type === "attributes") {
       const name = mutation.attributeName?.toLowerCase()
-      if(!name || this.#isIgnoredAttribute(name)) return false
+      if(!name || this.#isIgnoredAttribute(name, isElement(mutation.target) ? mutation.target : undefined)) return false
       if(isElement(mutation.target)) {
         const currentIgnored = this.#isInsideIgnoredElement(mutation.target)
         if(name === "class") {
@@ -1088,8 +1096,9 @@ export class SharedDOMDoc {
     return mutation.type === "characterData"
   }
 
-  #isIgnoredAttribute(name: string) {
+  #isIgnoredAttribute(name: string, element?: Element) {
     return this.ignoreAttrs.some(ignored => ignored.toLowerCase() === name.toLowerCase())
+      || Boolean(element && isEditorOwnedAttribute(element, name))
   }
 
   #isIgnoredClass(name: string) {
@@ -1158,7 +1167,7 @@ export class SharedDOMDoc {
       yElement.setAttribute(INTERNAL_NAMESPACE, node.namespaceURI ?? "")
     }
     for(const attribute of Array.from(node.attributes)) {
-      if(this.#isIgnoredAttribute(attribute.name)) continue
+      if(this.#isIgnoredAttribute(attribute.name, node)) continue
       if(attribute.namespaceURI === null && attribute.name.toLowerCase() === "class") {
         const className = this.#filteredClassValue(attribute.value)
         if(className) yElement.setAttribute("class", className)
@@ -1219,7 +1228,7 @@ export class SharedDOMDoc {
   #copyDOMAttributesToY(element: Element, yElement: Y.XmlElement, excluded: string[] = []) {
     const desired = new Map<string, string>()
     for(const attribute of Array.from(element.attributes)) {
-      if(this.#isIgnoredAttribute(attribute.name) || excluded.includes(attribute.name)) continue
+      if(this.#isIgnoredAttribute(attribute.name, element) || excluded.includes(attribute.name)) continue
       const key = this.#encodeDOMAttribute(attribute)
       if(attribute.namespaceURI === null && attribute.name.toLowerCase() === "class") {
         const className = this.#filteredClassValue(attribute.value)
@@ -1254,7 +1263,7 @@ export class SharedDOMDoc {
 
     for(const attribute of Array.from(element.attributes)) {
       const name = attribute.name
-      if(this.#isIgnoredAttribute(name) || name.toLowerCase() === "class" || excluded.includes(name)) continue
+      if(this.#isIgnoredAttribute(name, element) || name.toLowerCase() === "class" || excluded.includes(name)) continue
       if(!desiredNames.has(this.#domAttributeKey(attribute))) element.removeAttributeNS(attribute.namespaceURI, attribute.localName)
     }
     decodedAttributes.forEach(attribute => {

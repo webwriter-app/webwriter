@@ -40,7 +40,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {isWidgetShadowInteraction, getInertDocument} from "../utility"
+import {clearEditorOwnedAttributes, isWidgetShadowInteraction, getInertDocument} from "../utility"
 import {stripActiveContent} from "../active-content"
 import {
   imageMapAreaAttributeOptions,
@@ -56,6 +56,7 @@ import {
 import type {DialogSelectionState} from "../dialog"
 import type {MathSelectionState} from "../math"
 import type {ElementAttributeState} from "../element-attributes"
+import {widgetOptionValue, type WidgetOptionsState} from "../widget-options"
 import {
   aiEditReviewEvent,
   editorFrameControlMessage,
@@ -419,6 +420,7 @@ export class DomEditor extends LitElement {
     graphicSelection: {attribute: false, state: true},
     mathSelection: {attribute: false, state: true},
     elementAttributes: {attribute: false, state: true},
+    widgetOptions: {attribute: false, state: true},
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
@@ -515,6 +517,7 @@ export class DomEditor extends LitElement {
   private graphicSelection: GraphicSelectionState | null = null
   private mathSelection: MathSelectionState | null = null
   private elementAttributes: ElementAttributeState | null = null
+  private widgetOptions: WidgetOptionsState | null = null
   private elementStyle: ElementStyleState = {
     target: null,
     inline: {},
@@ -837,6 +840,7 @@ export class DomEditor extends LitElement {
       })
     }
     source.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
+    clearEditorOwnedAttributes(source)
 
     // Remove authored executable content before installing the trusted widget
     // and preview bridge scripts in the isolated frame.
@@ -1705,6 +1709,7 @@ export class DomEditor extends LitElement {
     const root = this.editorDocument?.documentElement.cloneNode(true) as HTMLElement | undefined
     if(!root) return null
     root.querySelectorAll(".◆editor-only, [data-webwriter-editor-only]").forEach(element => element.remove())
+    clearEditorOwnedAttributes(root)
     for(const element of [root, ...root.querySelectorAll("*")]) {
       const classes = this.authoredClasses(element.getAttribute("class"))
       if(classes) element.setAttribute("class", classes)
@@ -3979,6 +3984,32 @@ export class DomEditor extends LitElement {
     })
   }
 
+  private handleWidgetOptionChange = (event: Event) => {
+    const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
+    const widget = this.widgetOptions
+    if(!widget || typeof detail?.name !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setWidgetOption",
+      path: [...widget.path],
+      localName: widget.localName,
+      name: detail.name,
+      value: widgetOptionValue(detail.value),
+    })
+  }
+
+  private handleWidgetAction = (event: Event) => {
+    const name = (event as CustomEvent<{name?: unknown}>).detail?.name
+    const widget = this.widgetOptions
+    if(!widget || typeof name !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({type: "runWidgetAction", path: [...widget.path], localName: widget.localName, name})
+  }
+
   private handleMediaTypeChange = (event: Event) => {
     const type = (event as CustomEvent<{type?: unknown}>).detail?.type
     if(type === "picture" || type === "img") {
@@ -4729,6 +4760,7 @@ export class DomEditor extends LitElement {
         path: event.data.detail.element.path ? [...event.data.detail.element.path] : null,
         attributes: {...event.data.detail.element.attributes},
       } : null
+      this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
       const hasContextualEditOptions = this.tableSelection?.active === true
         || this.mathSelection?.active === true
         || this.layoutSelection !== null
@@ -5002,6 +5034,7 @@ export class DomEditor extends LitElement {
     this.nodeSelection = false
     this.captureSelection = false
     this.elementAttributes = null
+    this.widgetOptions = null
     this.selectionGap = null
     this.canMark = false
     this.canSection = false
@@ -5091,6 +5124,7 @@ export class DomEditor extends LitElement {
       graphic: this.graphicSelection,
       math: this.mathSelection,
       elementAttributes: this.elementAttributes,
+      widgetOptions: this.widgetOptions,
       elementStyle: this.elementStyle,
       historyState: this.historyState,
       historyLoading: this.historyLoading,
@@ -5114,6 +5148,8 @@ export class DomEditor extends LitElement {
       "media-resource-action": this.handleMediaResourceAction.bind(this),
       "image-map-action": this.handleImageMapAction.bind(this),
       "element-attribute-change": this.handleElementAttributeChange.bind(this),
+      "widget-option-change": this.handleWidgetOptionChange.bind(this),
+      "widget-action": this.handleWidgetAction.bind(this),
       "media-type-change": this.handleMediaTypeChange.bind(this),
       "dialog-attribute-change": this.handleDialogAttributeChange.bind(this),
       "table-insert": this.handleTableInsert.bind(this),

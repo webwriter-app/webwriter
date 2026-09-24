@@ -28,4 +28,10 @@ describe("context drawer policy", () => {
     expect(labels("toolbox", {attributes: true})).toEqual(["Attributes"])
     expect(labels("ribbon", {attributes: true})).toEqual(["Attributes"])
   })
+
+  it("shows widget options with the widget's attributes", () => {
+    expect(labels("toolbox", {widget: true, attributes: true})).toEqual(["Widget", "Attributes"])
+    expect(labels("ribbon", {widget: true, media: true})).toEqual(["Widget"])
+    expect(labels("toolbox", {paragraphSelected: true, widget: true})).toEqual(["Attributes"])
+  })
 })

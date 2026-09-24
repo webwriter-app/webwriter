@@ -6,7 +6,7 @@ import {
   type VersionHistoryState,
   type VersionHistoryUser,
 } from "../editor-bridge"
-import {isOnApple, modifierKeyDown} from "../utility"
+import {isEditorOwnedAttribute, isOnApple, modifierKeyDown} from "../utility"
 import {userInitials} from "../user-identity"
 
 type StoredCheckpoint = {
@@ -286,11 +286,13 @@ export class HistoryFeature extends EditorFeature {
   #replaceAttributes(target: Element, source: Element) {
     const internalClasses = Array.from(target.classList).filter(name => name.startsWith("◆"))
     for(const attribute of Array.from(target.attributes)) {
-      if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())) continue
+      if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())
+        || isEditorOwnedAttribute(target, attribute.name)) continue
       target.removeAttribute(attribute.name)
     }
     for(const attribute of Array.from(source.attributes)) {
-      if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())) continue
+      if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())
+        || isEditorOwnedAttribute(source, attribute.name)) continue
       if(attribute.name.toLowerCase() !== "class") target.setAttribute(attribute.name, attribute.value)
     }
     const authoredClasses = Array.from(source.classList).filter(name => !name.startsWith("◆"))
@@ -431,7 +433,8 @@ export class HistoryFeature extends EditorFeature {
   #attributeSignature(element: Element) {
     return Array.from(element.attributes)
       .flatMap(attribute => {
-        if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())) return []
+        if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())
+          || isEditorOwnedAttribute(element, attribute.name)) return []
         if(attribute.name.toLowerCase() !== "class") return [[attribute.name, attribute.value] as const]
         const className = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
         return className ? [[attribute.name, className] as const] : []

@@ -16,6 +16,7 @@ import {SlidesFeature} from "./features/slides"
 import {documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
+import { WidgetFeature } from "./features/widget"
 import { TableFeature } from "./features/table"
 import { LayoutFeature } from "./features/layout"
 import { GraphicFeature } from "./features/graphic"
@@ -26,7 +27,7 @@ import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
+import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isEditorOwnedAttribute, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   editorFrameControlMessage,
@@ -406,6 +407,7 @@ export class DOMEditor {
     "comment": new CommentFeature(this),
     "collaboration": new CollaborationFeature(this),
     "media": new MediaFeature(this),
+    "widget": new WidgetFeature(this),
   } as const
 
   readonly #actionHandlers = collectFeatureActions(Object.values(this.features))
@@ -1003,6 +1005,7 @@ export class DOMEditor {
         attributeElement === document.documentElement ? null : this.pathToElement(attributeElement),
       )
       : null
+    const widgetOptions = this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
     const canSection = this.features.manipulation.canSectionSelection()
     const detail: SelectionChangeDetail = {
       path,
@@ -1026,6 +1029,7 @@ export class DOMEditor {
       ...(math ? {math} : {}),
       ...(layout ? {layout} : {}),
       ...(elementState ? {element: elementState} : {}),
+      ...(widgetOptions ? {widget: widgetOptions} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }
@@ -1506,6 +1510,7 @@ export class DOMEditor {
         return
       }
       this.ignoreAttrs.forEach(attribute => child.removeAttribute(attribute))
+      if(isEditorOwnedAttribute(child, "contenteditable")) child.removeAttribute("contenteditable")
       const markers = Array.from(child.classList).filter(name => name.startsWith("◆"))
       if(markers.length) child.classList.remove(...markers)
       if(!child.classList.length) child.removeAttribute("class")

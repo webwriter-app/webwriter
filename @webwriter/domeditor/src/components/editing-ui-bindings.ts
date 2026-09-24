@@ -28,6 +28,7 @@ export type EditingUIProperties = Pick<EditingControls,
   | "layout"
   | "layoutError"
   | "elementAttributes"
+  | "widgetOptions"
   | "elementStyle"
   | "historyState"
   | "historyLoading"

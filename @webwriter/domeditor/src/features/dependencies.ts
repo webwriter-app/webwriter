@@ -55,6 +55,7 @@ export class DependencyFeature extends EditorFeature {
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
     this.editor.schema = new Schema()
     this.editor.schema.extendWidgets(widgetDefinitions)
+    this.editor.features.widget.refresh()
     // Old cached metadata can still infer CSS that a wildcard export never
     // published. Only that inferred CSS is optional; explicit assets must load.
     const inferredStyles = new Set(packages.flatMap(pkg => Object.entries(pkg.manifest?.exports ?? {}).flatMap(([exportName, target]) => {

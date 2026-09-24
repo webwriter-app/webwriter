@@ -40,6 +40,7 @@ const properties = (): EditingUIProperties => ({
   layout: null,
   layoutError: "",
   elementAttributes: null,
+  widgetOptions: null,
   elementStyle: {target: null, inline: {}, computed: {}, context: {display: "", parentDisplay: ""}},
   historyState: emptyVersionHistoryState(),
   historyLoading: false,

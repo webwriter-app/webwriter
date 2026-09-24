@@ -214,6 +214,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Grid layout", buttons: []},
     {label: "Flex layout", buttons: []},
     {label: "Graphic", buttons: []},
+    {label: "Widget", buttons: []},
     {label: "Comments", buttons: []},
     {
       label: "Review",
@@ -254,6 +255,7 @@ export type ContextDrawerPolicy = {
   disclosure?: boolean
   figure?: boolean
   math?: boolean
+  widget?: boolean
   attributes?: boolean
   startPackages?: RibbonMenuGroup
 }
@@ -271,14 +273,15 @@ const contextDrawerLabels = {
   media: "Media",
   dialog: "Dialog",
   figure: "Section",
+  widget: "Widget",
 } as const
 
 // The ribbon and toolbox intentionally prioritize overlapping selections differently.
 const ribbonContextPriority = [
-  "paragraphSelected", "media", "dialog", "graphic", "headingGroup", "orderedList", "disclosure", "figure",
+  "paragraphSelected", "widget", "media", "dialog", "graphic", "headingGroup", "orderedList", "disclosure", "figure",
 ] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
 const toolboxContextPriority = [
-  "math", "documentSelected", "paragraphSelected", "sectionSelected", "headingGroup", "orderedList", "disclosure",
+  "math", "documentSelected", "paragraphSelected", "widget", "sectionSelected", "headingGroup", "orderedList", "disclosure",
   "graphic", "table", "media", "dialog", "figure",
 ] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
 

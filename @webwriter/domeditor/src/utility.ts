@@ -1417,12 +1417,41 @@ export function textPointAtOffset(root: Element, offset: number, fallback?: [Nod
   return fallback ?? (lastText ? [lastText, lastText.length] : [root, 0])
 }
 
+/** Marks a widget whose `contenteditable` attribute the editor set. */
+export const widgetEditableMarker = "◆widget-editable"
+
+/** Whether the editor set this attribute to tell a widget that it is being
+ * edited. It is never authored content, so collaboration, history and
+ * serialization ignore it. */
+export function isEditorOwnedAttribute(element: Element, name: string) {
+  return name.toLowerCase() === "contenteditable" && element.classList.contains(widgetEditableMarker)
+    && element.getAttribute("contenteditable") === ""
+}
+
+/** Removes editor-owned attributes from a node and all descendants,
+ * including inert template contents. */
+export function clearEditorOwnedAttributes(root: Node) {
+  const visit = (node: Node) => {
+    if(node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element
+      if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
+      if(element.localName === "template" && "content" in element) {
+        Array.from((element as HTMLTemplateElement).content.childNodes).forEach(visit)
+      }
+    }
+    Array.from(node.childNodes).forEach(visit)
+  }
+  visit(root)
+  return root
+}
+
 /** Removes transient editor marker classes from a node and all descendants,
  * including inert template contents, while preserving authored classes. */
 export function clearEditorMarkerClasses(root: Node) {
   const visit = (node: Node) => {
     if(node.nodeType === Node.ELEMENT_NODE) {
       const element = node as Element
+      if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
       const markers = Array.from(element.classList).filter(name => name.startsWith("◆"))
       if(markers.length) element.classList.remove(...markers)
       if(!element.classList.length) element.removeAttribute("class")

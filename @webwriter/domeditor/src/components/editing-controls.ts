@@ -13,6 +13,7 @@ import {
   type ListType,
   type VersionHistoryState,
 } from "../editor-bridge"
+import {widgetOptionValue, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
 import type {ElementAttributeState} from "../element-attributes"
 import type {LayoutSelectionState} from "../layouts"
 import "./layout-editor"
@@ -141,6 +142,7 @@ export abstract class EditingControls extends LitElement {
     layoutError: {type: String},
     elementStyle: {attribute: false},
     elementAttributes: {attribute: false},
+    widgetOptions: {attribute: false},
     linkAttributeMenuOpen: {type: Boolean, state: true},
     historyState: {attribute: false},
     historyLoading: {type: Boolean, attribute: "history-loading"},
@@ -217,6 +219,9 @@ export abstract class EditingControls extends LitElement {
   layoutError = ""
 
   elementAttributes: ElementAttributeState | null = null
+
+  /** Options and actions of the selected widget. */
+  widgetOptions: WidgetOptionsState | null = null
 
   elementStyle: ElementStyleState = {
     target: null,
@@ -2214,6 +2219,104 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
+  protected dispatchWidgetOption(name: string, value: WidgetOptionValue) {
+    this.dispatchEvent(new CustomEvent("widget-option-change", {detail: {name, value}, bubbles: true, composed: true}))
+  }
+
+  /** Reads a changed option field as the value type the widget declared. */
+  protected widgetOptionInputValue(option: WidgetOptionState, target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): WidgetOptionValue | undefined {
+    if(option.type === "boolean") return (target as HTMLInputElement).checked
+    if(option.type === "select" && option.multiple) {
+      return Array.from((target as HTMLSelectElement).selectedOptions, choice => choice.value)
+    }
+    if(option.type === "number") return target.value === "" ? null : Number(target.value)
+    if(option.type === "object" || option.type === "array") {
+      if(!target.value.trim()) return null
+      try { return widgetOptionValue(JSON.parse(target.value)) }
+      catch {
+        (target as HTMLTextAreaElement).setCustomValidity("Enter valid JSON")
+        target.reportValidity()
+        return undefined
+      }
+    }
+    return target.value
+  }
+
+  protected renderWidgetOptionField(option: WidgetOptionState) {
+    const change = (event: Event) => {
+      const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      if("setCustomValidity" in target) target.setCustomValidity("")
+      const value = this.widgetOptionInputValue(option, target)
+      if(value !== undefined) this.dispatchWidgetOption(option.name, value)
+    }
+    const help = option.description ? html`<span class="develop-field-help">${option.description}</span>` : nothing
+    if(option.type === "boolean") return html`
+      <label class="develop-field widget-option-checkbox" title=${option.description ?? ""}>
+        <input type="checkbox" .checked=${option.value === true} @change=${change} />
+        <span class="develop-field-label">${option.label}</span>
+      </label>
+    `
+    const text = option.value === null ? "" : typeof option.value === "object" ? JSON.stringify(option.value, undefined, 2) : String(option.value)
+    let field
+    if(option.type === "select") {
+      const selected = new Set(Array.isArray(option.value) ? option.value.map(String) : [text])
+      field = html`<select ?multiple=${option.multiple} @change=${change}>
+        ${!option.multiple ? html`<option value="" .selected=${!text}></option>` : nothing}
+        ${(option.choices ?? []).map(choice => html`<option value=${choice.value} title=${choice.description ?? ""} .selected=${selected.has(choice.value)}>${choice.label}</option>`)}
+      </select>`
+    }
+    else if(option.type === "object" || option.type === "array") {
+      field = html`<textarea data-json spellcheck="false" .value=${text} placeholder=${option.placeholder ?? ""} @change=${change}></textarea>`
+    }
+    else if(option.type === "string" && option.multiline) {
+      field = html`<textarea .value=${text} placeholder=${option.placeholder ?? ""}
+        minlength=${option.minlength ?? nothing} maxlength=${option.maxlength ?? nothing} @change=${change}></textarea>`
+    }
+    else {
+      const listId = option.swatches?.length ? `widget-option-${option.name}-swatches` : undefined
+      field = html`
+        <input
+          type=${option.type === "string" ? "text" : option.type}
+          .value=${text}
+          placeholder=${option.placeholder ?? ""}
+          min=${option.min ?? nothing}
+          max=${option.max ?? nothing}
+          step=${option.step ?? nothing}
+          pattern=${option.pattern ?? nothing}
+          minlength=${option.minlength ?? nothing}
+          maxlength=${option.maxlength ?? nothing}
+          list=${listId ?? nothing}
+          @change=${change}
+        />
+        ${listId ? html`<datalist id=${listId}>${option.swatches!.map(swatch => html`<option value=${swatch}></option>`)}</datalist>` : nothing}
+      `
+    }
+    return html`
+      <label class="develop-field">
+        <span class="develop-field-label">${option.label}</span>
+        ${field}
+        ${help}
+      </label>
+    `
+  }
+
+  protected renderWidgetOptionsDrawer() {
+    const state = this.widgetOptions
+    if(!state) return nothing
+    return html`
+      <ribbon-drawer label="Widget" icon="Packages" layout="form">
+        <div class="widget-options">
+          ${state.options.map(option => this.renderWidgetOptionField(option))}
+          ${state.actions.length ? html`<div class="widget-actions">
+            ${state.actions.map(action => html`<button type="button" class="widget-action" title=${action.description ?? ""}
+              @click=${() => this.dispatchEvent(new CustomEvent("widget-action", {detail: {name: action.name}, bubbles: true, composed: true}))}
+            >${action.label}</button>`)}
+          </div>` : nothing}
+        </div>
+      </ribbon-drawer>
+    `
+  }
+
   protected commandShortcut(action: string) {
     const command = appCommands.find(candidate => candidate.action === action)
     return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "") : ""
@@ -2457,6 +2560,7 @@ export abstract class EditingControls extends LitElement {
     if(drawer.label === "Heading group") return this.renderHeadingGroupDrawer()
     if(drawer.label === "List") return this.renderListDrawer()
     if(drawer.label === "Attributes") return this.renderElementAttributesDrawer()
+    if(drawer.label === "Widget") return this.renderWidgetOptionsDrawer()
     if(drawer.label === "Media") return this.renderMediaDrawer()
     if(drawer.label === "Dialog") return this.renderDialogDrawer()
     if(drawer.label === "Comments") return this.renderCommentDrawer()

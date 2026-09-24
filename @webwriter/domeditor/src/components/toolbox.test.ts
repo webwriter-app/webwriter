@@ -839,3 +839,54 @@ it("remembers advanced options until explicitly collapsed or the toolbox closes"
   await settle()
   expect(isOpen()).toBe("false")
 })
+
+describe("widget options drawer", () => {
+  it("edits declared options and runs actions", async () => {
+    const toolbox = await mountToolbox(false)
+    toolbox.selectTool("Edit")
+    toolbox.widgetOptions = {
+      path: [0],
+      localName: "demo-quiz",
+      options: [
+        {name: "count", type: "number", label: "Count", attribute: "count", value: 3, min: 0},
+        {name: "shuffled", type: "boolean", label: "Shuffled", attribute: "shuffled", value: true},
+        {name: "mode", type: "select", label: "Mode", attribute: "mode", value: "b", choices: [{value: "a", label: "A"}, {value: "b", label: "B"}]},
+        {name: "data", type: "object", label: "Data", attribute: "data", value: {a: 1}},
+      ],
+      actions: [{name: "reset", label: "Reset"}],
+    }
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Widget"]')!
+    const changes: unknown[] = []
+    toolbox.addEventListener("widget-option-change", event => changes.push((event as CustomEvent).detail))
+    const actions: unknown[] = []
+    toolbox.addEventListener("widget-action", event => actions.push((event as CustomEvent).detail))
+
+    const number = drawer.querySelector<HTMLInputElement>('input[type="number"]')!
+    expect(number.value).toBe("3")
+    number.value = "7"
+    number.dispatchEvent(new Event("change"))
+    const checkbox = drawer.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(checkbox.checked).toBe(true)
+    checkbox.checked = false
+    checkbox.dispatchEvent(new Event("change"))
+    const select = drawer.querySelector("select")!
+    // happy-dom misplaces Lit's option.selected bindings; browsers show "b".
+    select.value = "a"
+    select.dispatchEvent(new Event("change"))
+    const json = drawer.querySelector<HTMLTextAreaElement>("textarea[data-json]")!
+    json.value = "{broken"
+    json.dispatchEvent(new Event("change"))
+    json.value = '{"a": 2}'
+    json.dispatchEvent(new Event("change"))
+    drawer.querySelector<HTMLButtonElement>(".widget-action")!.click()
+
+    expect(changes).toEqual([
+      {name: "count", value: 7},
+      {name: "shuffled", value: false},
+      {name: "mode", value: "a"},
+      {name: "data", value: {a: 2}},
+    ])
+    expect(actions).toEqual([{name: "reset"}])
+  })
+})

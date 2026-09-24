@@ -18,6 +18,7 @@ import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
 import type {ElementAttributeState} from "./element-attributes"
+import {isWidgetOptionsState, type WidgetOptionsState} from "./widget-options"
 import type {LayoutSelectionState} from "./layouts"
 import type {DocumentLayoutState} from "./document-layout"
 
@@ -295,6 +296,8 @@ export type SelectionChangeDetail = {
   documentLayout?: DocumentLayoutState
   /** Authored attributes for the exact element-like selection, when any. */
   element?: ElementAttributeState
+  /** Options and actions of the innermost selected widget, when any. */
+  widget?: WidgetOptionsState
   /** Present only when a section was explicitly selected from the breadcrumb. */
   section?: SectionSelectionState
 }
@@ -646,6 +649,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.headingGroup, isHeadingGroup)
     && isOptionalFeature(detail.figure, isFigure)
     && isOptionalFeature(detail.element, isElementSelection)
+    && (detail.widget === undefined || isWidgetOptionsState(detail.widget))
     && isOptionalFeature(detail.media, isMediaSelection)
     && isOptionalFeature(detail.dialog, isDialogSelection)
     && isOptionalFeature(detail.table, isTableSelection)

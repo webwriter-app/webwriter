@@ -628,6 +628,7 @@ export class DomEditorToolbox extends EditingControls {
       graphic: Boolean(this.graphic?.active),
       disclosure: this.elementAttributes?.localName === "details",
       figure: Boolean(this.figure),
+      widget: Boolean(this.widgetOptions),
       attributes: Boolean(this.elementAttributes),
     })
   }

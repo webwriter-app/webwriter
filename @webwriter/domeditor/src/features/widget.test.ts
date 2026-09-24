@@ -1,0 +1,171 @@
+// @vitest-environment happy-dom
+import {afterAll, beforeEach, describe, expect, it, vi} from "vitest"
+import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
+import {Schema} from "../schema"
+import {isWidgetOptionsState} from "../widget-options"
+
+class OptionsWidget extends HTMLElement {
+  static options = {
+    count: {type: Number, label: {_: "Count", de: "Anzahl"}, min: 0},
+    shuffled: {type: Boolean},
+    data: {type: Object, attribute: "widget-data"},
+    mode: {type: "select", options: [{value: "a", label: {_: "A"}}, {value: "b"}]},
+    handler: {type: String, attribute: "onclick"},
+    internal: {type: String, attribute: false},
+  }
+  static actions = {reset: {label: {_: "Reset"}}, missing: {}}
+  internal = ""
+  get count() { return Number(this.getAttribute("count") ?? 0) }
+  get shuffled() { return this.hasAttribute("shuffled") }
+  get data() { return JSON.parse(this.getAttribute("widget-data") ?? "null") }
+  get mode() { return this.getAttribute("mode") }
+  reset() {
+    this.setAttribute("count", "0")
+    this.removeAttribute("shuffled")
+  }
+}
+customElements.define("demo-options", OptionsWidget)
+
+const editor = new DOMEditor()
+
+const installWidgets = () => {
+  editor.schema = new Schema()
+  editor.schema.extendWidgets([
+    {tagName: "demo-widget"},
+    {tagName: "demo-options"},
+  ])
+  editor.features.widget.refresh()
+}
+
+const sharedHTML = () => {
+  editor.doc.syncFromDOM()
+  return sharedDOMBody(editor.doc.doc).toString()
+}
+
+beforeEach(() => {
+  document.body.innerHTML = ""
+  installWidgets()
+})
+
+afterAll(() => editor.destroy())
+
+describe("WidgetFeature", () => {
+  it("marks installed widgets as editable without authoring the attribute", async () => {
+    document.body.innerHTML = '<demo-widget answer="1"></demo-widget><unknown-element></unknown-element><p>Text</p>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("demo-widget")!
+    expect(widget.getAttribute("contenteditable")).toBe("")
+    expect(document.querySelector("unknown-element")!.hasAttribute("contenteditable")).toBe(false)
+
+    const inserted = document.createElement("demo-widget")
+    document.body.append(inserted)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(inserted.getAttribute("contenteditable")).toBe("")
+
+    expect(editor.toHTML(true)).toBe('<demo-widget answer="1"></demo-widget><unknown-element></unknown-element><p>Text</p><demo-widget></demo-widget>')
+    expect(sharedHTML()).not.toContain("contenteditable")
+  })
+
+  it("keeps an authored contenteditable value", () => {
+    document.body.innerHTML = '<demo-widget contenteditable="false"></demo-widget>'
+    editor.features.widget.refresh()
+    expect(document.querySelector("demo-widget")!.getAttribute("contenteditable")).toBe("false")
+    expect(editor.toHTML(true)).toBe('<demo-widget contenteditable="false"></demo-widget>')
+  })
+
+  it("removes the attribute when the editor is disabled", () => {
+    document.body.innerHTML = "<demo-widget></demo-widget>"
+    editor.features.widget.refresh()
+    editor.features.widget.disable()
+    expect(document.querySelector("demo-widget")!.hasAttribute("contenteditable")).toBe(false)
+    editor.features.widget.enable()
+    expect(document.querySelector("demo-widget")!.getAttribute("contenteditable")).toBe("")
+  })
+
+})
+
+describe("widget options", () => {
+  it("describes the options and actions of the selected widget", () => {
+    document.documentElement.lang = "de"
+    document.body.innerHTML = '<p>Before</p><demo-options count="3" shuffled widget-data="[1,2]" mode="b"></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    const state = editor.features.widget.getOptionsState([document.body, widget])!
+    expect(state.path).toEqual([1])
+    expect(state.options).toEqual([
+      {name: "count", type: "number", label: "Anzahl", attribute: "count", value: 3, min: 0},
+      {name: "shuffled", type: "boolean", label: "Shuffled", attribute: "shuffled", value: true},
+      {name: "data", type: "object", label: "Data", attribute: "widget-data", value: [1, 2]},
+      {name: "mode", type: "select", label: "Mode", attribute: "mode", value: "b", choices: [{value: "a", label: "A"}, {value: "b", label: "b"}]},
+      {name: "handler", type: "string", label: "Handler", attribute: "onclick", value: null},
+      {name: "internal", type: "string", label: "Internal", attribute: null, value: ""},
+    ])
+    expect(state.actions).toEqual([{name: "reset", label: "Reset"}])
+    expect(editor.features.widget.getOptionsState([document.body, document.querySelector("p")!])).toBeNull()
+    document.documentElement.removeAttribute("lang")
+  })
+
+  it("writes options to their reflected attributes", () => {
+    document.body.innerHTML = '<demo-options count="3" shuffled></demo-options>'
+    const widget = document.querySelector("demo-options") as OptionsWidget
+    const set = editor.getActionHandler("setWidgetOption")
+    set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "count", value: 5})
+    set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "shuffled", value: false})
+    set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "data", value: {a: [1]}})
+    set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "internal", value: "kept"})
+    expect(editor.toHTML(true)).toBe('<demo-options count="5" widget-data="{&quot;a&quot;:[1]}"></demo-options>')
+    expect(widget.internal).toBe("kept")
+    expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "handler", value: "evil()"})).toThrow("cannot be set")
+    expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "unknown", value: 1})).toThrow("no option")
+    expect(() => set({type: "setWidgetOption", path: [0], localName: "other-widget", name: "count", value: 1})).toThrow("changed")
+  })
+
+  it("runs an action as one undo step", async () => {
+    document.body.innerHTML = '<demo-options count="3" shuffled></demo-options>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const run = editor.getActionHandler("runWidgetAction")
+    await expect(run({type: "runWidgetAction", path: [0], localName: "demo-options", name: "reset"})).resolves.toBe(true)
+    expect(editor.toHTML(true)).toBe('<demo-options count="0"></demo-options>')
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe('<demo-options count="3" shuffled=""></demo-options>')
+    await expect(run({type: "runWidgetAction", path: [0], localName: "demo-options", name: "missing"})).rejects.toThrow("not a method")
+  })
+})
+
+describe("widget contract edge cases", () => {
+  it("syncs an authored contenteditable value written onto a marked widget", () => {
+    document.body.innerHTML = "<demo-widget></demo-widget>"
+    editor.features.widget.refresh()
+    document.querySelector("demo-widget")!.setAttribute("contenteditable", "false")
+    expect(sharedHTML()).toContain('contenteditable="false"')
+    expect(editor.toHTML(true)).toBe('<demo-widget contenteditable="false"></demo-widget>')
+  })
+
+  it("keeps separate undo steps after overlapping groups end out of order", async () => {
+    document.body.innerHTML = '<p id="a">one</p><p id="b">one</p>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const outer = editor.doc.beginUndoGroup()
+    const inner = editor.doc.beginUndoGroup()
+    outer()
+    inner()
+    document.querySelector("#a")!.textContent = "two"
+    editor.doc.syncFromDOM()
+    await new Promise(resolve => setTimeout(resolve, 700))
+    document.querySelector("#b")!.textContent = "two"
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("#a")!.textContent).toBe("two")
+    expect(document.querySelector("#b")!.textContent).toBe("one")
+  })
+
+  it("rejects malformed option state from the frame", () => {
+    const state = {path: [0], localName: "demo-options", actions: [], options: [
+      {name: "color", type: "color", label: "Color", attribute: "color", value: null, swatches: "red"},
+    ]}
+    expect(isWidgetOptionsState(state)).toBe(false)
+    state.options[0].swatches = ["red"] as never
+    expect(isWidgetOptionsState(state)).toBe(true)
+  })
+})

@@ -503,6 +503,68 @@ export const editingControlStyles = css`
       font-size: 0.65rem;
     }
 
+    .widget-options {
+      display: grid;
+      gap: 0.45rem;
+      min-width: 12rem;
+    }
+
+    .widget-options .develop-field input:not([type="checkbox"]) {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      min-height: 1.75rem;
+      padding: 0.3rem 0.4rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.25rem;
+      color: #2f3742;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.65rem;
+    }
+
+    .widget-options .develop-field input[type="color"] {
+      padding: 0.1rem;
+    }
+
+    .widget-options .develop-field input:invalid,
+    .widget-options .develop-field textarea:invalid {
+      border-color: #c2413a;
+    }
+
+    .develop-field.widget-option-checkbox {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .widget-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+    }
+
+    .widget-action {
+      min-height: 1.75rem;
+      padding: 0.25rem 0.6rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.25rem;
+      color: #2f3742;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.65rem;
+      cursor: pointer;
+    }
+
+    .widget-action:hover {
+      background: #eef3f9;
+    }
+
+    .widget-action:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 1px;
+    }
+
     .develop-field-label {
       font-weight: 600;
       line-height: 0.85rem;

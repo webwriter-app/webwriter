@@ -45,7 +45,7 @@ The authored light DOM must contain document content, not editor UI.
 - Put menus, toolbars, overlays, handles, carets, measurement elements, and other editor-owned elements in the body’s shadow root—the **shadow appendix**.
 - Access it through `DOMEditor.appendix` or `DOMEditor.addAppendix`.
 - Keep the appendix’s default `<slot>` so authored body content remains rendered.
-- The only editor artifacts permitted in the authored DOM are temporary marker classes whose names begin with `◆`.
+- The only editor artifacts permitted in the authored DOM are temporary marker classes whose names begin with `◆`, and `contenteditable=""` on installed widgets while they carry the `◆widget-editable` marker (the widget runtime contract, see `WidgetFeature`). That attribute is excluded from collaboration, history and serialization like the marker.
 - Do not add editor-only wrapper elements, text nodes, `data-*` attributes, or inline styles to authored content.
 - Every marker must begin with `◆`, must not carry document meaning, and must be removed when its state ends, including cancellation, failure, and destruction.
 - Marker classes must remain excluded from collaboration and serialization.
