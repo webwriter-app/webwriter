@@ -1758,9 +1758,13 @@ export function widgetHostForScrollEvent(event: Event, schema?: Schema) {
   return event.type === "scroll" ? widgetHostForEventPath(event, schema) : null
 }
 
-/** Whether a non-scroll interaction originated in a mounted widget's shadow tree. */
+/** Whether a non-scroll interaction originated in a mounted widget's shadow
+ * tree. Event types listed in the widget's `propagateEvents` editing config
+ * are left to the editor. */
 export function isWidgetShadowInteraction(event: Event, schema?: Schema) {
-  return widgetHostForShadowInteraction(event, schema) !== null
+  const widget = widgetHostForShadowInteraction(event, schema)
+  if(!widget) return false
+  return !schema?.get(widget)?.propagateEvents?.includes(event.type)
 }
 
 /** Whether an interaction originated in the editor-owned shadow appendix.

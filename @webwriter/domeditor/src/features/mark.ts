@@ -30,6 +30,8 @@ export type MarkState = {
   svgText?: boolean
   /** Marks found in the range, or effective for the next input at a caret. */
   marks: MarkName[]
+  /** Marks a containing widget allows; absent when all marks are allowed. */
+  allowedMarks?: MarkName[]
 }
 
 type TextSlice = {
@@ -483,8 +485,34 @@ export class MarkFeature extends EditorFeature {
     super.disable()
   }
 
+  /** Marks allowed by the nearest widget whose editing config restricts them,
+   * or undefined when every mark is allowed. */
+  allowedMarksAt(node: Node | null): MarkName[] | undefined {
+    let element = node instanceof Element ? node : node?.parentElement ?? null
+    while(element && element !== document.body) {
+      const marks = this.editor.schema.get(element)?.marks
+      if(marks) return markNames.filter(mark => marks.includes(mark))
+      element = element.parentElement
+    }
+  }
+
+  /** Whether a widget around the selection allows `mark` (`span` for styles). */
+  private isMarkAllowed(mark: MarkName) {
+    const allowed = this.allowedMarksAt(document.getSelection()?.anchorNode ?? null)
+    return !allowed || allowed.includes(mark)
+  }
+
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
+    const state = this.getUnrestrictedState()
+    const allowed = this.svgContext() || this.editor.features.math.activeMath
+      ? undefined
+      : this.allowedMarksAt(document.getSelection()?.anchorNode ?? null)
+    if(!allowed) return state
+    return {...state, canMark: state.canMark && allowed.length > 0, allowedMarks: allowed}
+  }
+
+  private getUnrestrictedState(): MarkState {
     const svg = this.svgContext()
     if(svg) return this.svgState(svg)
     if(this.editor.features.math.activeMath) {
@@ -744,6 +772,7 @@ export class MarkFeature extends EditorFeature {
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, true)
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.addMark(mark))
     this.assertMark(mark)
+    if(!this.isMarkAllowed(mark)) return false
     if(mark === "ruby") return this.createRuby("", false)
     const caret = this.getCaret()
     if(caret) return this.setStoredMark(mark, true, caret)
@@ -787,7 +816,7 @@ export class MarkFeature extends EditorFeature {
     if(svg) return this.setSVGMark(svg, mark)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
     this.assertMark(mark)
-    if(mark === "ruby") return this.selectedRuby() ? this.removeRuby() : this.createRuby("", false)
+    if(mark === "ruby") return this.selectedRuby() ? this.removeRuby() : this.isMarkAllowed(mark) && this.createRuby("", false)
     const caret = this.getCaret()
     if(caret) {
       const marks = this.effectiveCaretMarks(caret)
@@ -964,6 +993,7 @@ export class MarkFeature extends EditorFeature {
     if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setStyleMark(property, value))
     this.assertStyleMark(property)
     const normalizedValue = this.normalizeStyleValue(property, value)
+    if(normalizedValue && !this.isMarkAllowed("span")) return false
     const svg = this.svgContext()
     if(svg) {
       if(svg.range.collapsed) {
@@ -1113,6 +1143,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private setStoredMark(mark: MarkName, enabled: boolean, caret: MarkCaret) {
+    if(enabled && !this.isMarkAllowed(mark)) return false
     const marks = this.effectiveCaretMarks(caret)
     if(marks.has(mark) === enabled) return false
     enabled? marks.add(mark): marks.delete(mark)

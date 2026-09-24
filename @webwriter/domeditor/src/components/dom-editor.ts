@@ -392,6 +392,7 @@ export class DomEditor extends LitElement {
     layoutError: {attribute: false, state: true},
     selectedSectionPath: {attribute: false, state: true},
     marks: {attribute: false, state: true},
+    allowedMarks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
     markAttributes: {attribute: false, state: true},
     ruby: {attribute: false, state: true},
@@ -495,6 +496,7 @@ export class DomEditor extends LitElement {
   private selectedSectionPath: number[] | null = null
   private svgText = false
   private marks: MarkName[] = []
+  private allowedMarks: MarkName[] | null = null
   private markStyles: StyleMarkValues = {}
   private markAttributes: MarkAttributeValues = {}
   private ruby: RubyState = {...emptyRubyState}
@@ -4659,6 +4661,7 @@ export class DomEditor extends LitElement {
         this.elementAttributes = null
       }
       this.marks = [...event.data.detail.marks]
+      this.allowedMarks = event.data.detail.allowedMarks ? [...event.data.detail.allowedMarks] : null
       this.markStyles = {...(event.data.detail.styles ?? {})}
       this.markAttributes = Object.fromEntries(
         Object.entries(event.data.detail.attributes ?? {}).map(([mark, attributes]) => [mark, {...attributes}]),
@@ -5110,6 +5113,7 @@ export class DomEditor extends LitElement {
       layout: this.layoutSelection,
       layoutError: this.layoutError,
       marks: this.marks,
+      allowedMarks: this.allowedMarks,
       markStyles: this.markStyles,
       markAttributes: this.markAttributes,
       ruby: this.ruby,

@@ -83,6 +83,10 @@ export type SchemaEntry = {
   requiredAttributes?: Record<string, string>
   wrapper?: string
   replacement?: string
+  /** Mark names allowed inside this element's content. Absent means all. */
+  marks?: string[]
+  /** Events from this widget's shadow tree that editor features still handle. */
+  propagateEvents?: string[]
 }
 
 /** The editing-config fields that affect a widget's document-schema entry. */
@@ -91,6 +95,17 @@ export type WidgetEditingConfig = {
   inline?: boolean
   isolating?: boolean
   content?: string
+  /** Space-separated mark names allowed in the content; "_" allows all, "" none. */
+  marks?: string
+  /** Event types from the widget's shadow tree that editor features handle. */
+  propagateEvents?: string[]
+}
+
+/** Reads `WidgetEditingConfig.marks`: undefined allows all marks. */
+export function parseWidgetMarks(marks: unknown) {
+  if(typeof marks !== "string") return undefined
+  const names = marks.split(/\s+/).filter(Boolean)
+  return names.includes("_") ? undefined : names
 }
 
 export type WidgetSchemaDefinition = {
@@ -387,10 +402,16 @@ export class Schema {
           source: editingConfig.content,
         }
       }
+      const marks = parseWidgetMarks(editingConfig.marks)
+      const propagateEvents = Array.isArray(editingConfig.propagateEvents)
+        ? editingConfig.propagateEvents.filter((type): type is string => typeof type === "string" && type.length > 0)
+        : []
       return [tagName, {
         group: [...groups],
         ...(content ? {content} : {}),
         inseperable: editingConfig.isolating ?? true,
+        ...(marks ? {marks} : {}),
+        ...(propagateEvents.length ? {propagateEvents} : {}),
       } satisfies SchemaEntry]
     }))
     this.extend(extension)

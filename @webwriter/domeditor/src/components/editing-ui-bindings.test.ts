@@ -24,6 +24,7 @@ const properties = (): EditingUIProperties => ({
   sectionActive: false,
   sectionSelected: false,
   marks: [],
+  allowedMarks: null,
   markStyles: {},
   markAttributes: {},
   ruby: {...emptyRubyState},

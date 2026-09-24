@@ -12,6 +12,7 @@ export type EditingUIProperties = Pick<EditingControls,
   | "sectionActive"
   | "sectionSelected"
   | "marks"
+  | "allowedMarks"
   | "markStyles"
   | "markAttributes"
   | "ruby"

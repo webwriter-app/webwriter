@@ -118,6 +118,7 @@ export abstract class EditingControls extends LitElement {
     sectionActive: {type: Boolean, attribute: "section-active"},
     sectionSelected: {type: Boolean, attribute: "section-selected"},
     marks: {attribute: false},
+    allowedMarks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
     ruby: {attribute: false},
@@ -167,6 +168,9 @@ export abstract class EditingControls extends LitElement {
   svgText = false
 
   marks: MarkName[] = []
+
+  /** Marks a containing widget allows; null when all marks are allowed. */
+  allowedMarks: MarkName[] | null = null
 
   markStyles: StyleMarkValues = {}
 
@@ -330,7 +334,7 @@ export abstract class EditingControls extends LitElement {
         icon=${option.icon}
         shortcut=${shortcut}
         ?active=${active}
-        ?disabled=${!this.canMark}
+        ?disabled=${!this.canMark || !!this.allowedMarks && !this.allowedMarks.includes(option.name)}
       ></ribbon-button>
     `
   }

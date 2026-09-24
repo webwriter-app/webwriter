@@ -3,6 +3,7 @@ import {afterAll, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {Schema} from "../schema"
+import {$, isWidgetShadowInteraction} from "../utility"
 import {isWidgetOptionsState} from "../widget-options"
 
 class OptionsWidget extends HTMLElement {
@@ -33,6 +34,8 @@ const installWidgets = () => {
   editor.schema = new Schema()
   editor.schema.extendWidgets([
     {tagName: "demo-widget"},
+    {tagName: "demo-note", editingConfig: {content: "p+", marks: "b i", propagateEvents: ["keydown"]}},
+    {tagName: "demo-plain", editingConfig: {content: "p+", marks: ""}},
     {tagName: "demo-options"},
   ])
   editor.features.widget.refresh()
@@ -83,6 +86,50 @@ describe("WidgetFeature", () => {
     expect(document.querySelector("demo-widget")!.getAttribute("contenteditable")).toBe("")
   })
 
+})
+
+describe("widget editing config", () => {
+  it("lets listed shadow events reach editor features", () => {
+    document.body.innerHTML = "<demo-note><p>Text</p></demo-note><demo-widget></demo-widget>"
+    const events: Record<string, Event> = {}
+    for(const tag of ["demo-note", "demo-widget"]) {
+      const host = document.querySelector(tag)!
+      const button = host.attachShadow({mode: "open"}).appendChild(document.createElement("button"))
+      for(const type of ["keydown", "keyup"]) {
+        const listener = (event: Event) => { events[`${tag}:${type}`] = event }
+        document.addEventListener(type, listener, {once: true})
+        button.dispatchEvent(new KeyboardEvent(type, {bubbles: true, composed: true}))
+      }
+    }
+    expect(isWidgetShadowInteraction(events["demo-note:keydown"], editor.schema)).toBe(false)
+    expect(isWidgetShadowInteraction(events["demo-note:keyup"], editor.schema)).toBe(true)
+    expect(isWidgetShadowInteraction(events["demo-widget:keydown"], editor.schema)).toBe(true)
+  })
+
+  it("restricts marks inside widget content", () => {
+    document.body.innerHTML = "<demo-note><p>Text</p></demo-note><p>Outside</p>"
+    const text = document.querySelector("demo-note p")!.firstChild as Text
+    $.selectRange(text, 0, text, 4)
+    const mark = editor.features.mark
+    expect(mark.getState()).toMatchObject({canMark: true, allowedMarks: ["b", "i"]})
+    expect(mark.addMark("u")).toBe(false)
+    expect(mark.setStyleMark("color", "red")).toBe(false)
+    expect(mark.toggleMark("b")).toBe(true)
+    expect(document.querySelector("demo-note p")!.innerHTML).toBe("<b>Text</b>")
+
+    const outside = document.querySelector("body > p")!.firstChild as Text
+    $.selectRange(outside, 0, outside, 3)
+    expect(mark.getState().allowedMarks).toBeUndefined()
+    expect(mark.addMark("u")).toBe(true)
+  })
+
+  it("disables marks in widgets that allow none", () => {
+    document.body.innerHTML = "<demo-plain><p>Text</p></demo-plain>"
+    const text = document.querySelector("demo-plain p")!.firstChild as Text
+    $.selectRange(text, 0, text, 4)
+    expect(editor.features.mark.getState()).toMatchObject({canMark: false, allowedMarks: []})
+    expect(editor.features.mark.addMark("b")).toBe(false)
+  })
 })
 
 describe("widget options", () => {

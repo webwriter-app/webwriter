@@ -313,6 +313,8 @@ export type MarkStateChangeDetail = {
   canMark: boolean
   /** Canonical marks found in the range or effective for the caret. */
   marks: MarkName[]
+  /** Marks a containing widget allows; absent when all marks are allowed. */
+  allowedMarks?: MarkName[]
   /** Inline style marks shared by the selection or effective at the caret. */
   styles?: StyleMarkValues
   /** Element-specific attributes shared by the selected mark wrappers. */
@@ -671,6 +673,9 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     && Array.isArray(message.detail.marks)
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
   if(!validBase || message.detail!.svgText !== undefined && typeof message.detail!.svgText !== "boolean") return false
+  const allowedMarks = message.detail!.allowedMarks
+  if(allowedMarks !== undefined && !(Array.isArray(allowedMarks)
+    && allowedMarks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark))) return false
   const styles = message.detail!.styles
   if(styles !== undefined && (!styles || typeof styles !== "object" || Array.isArray(styles) || !Object.entries(styles).every(([property, styleValue]) =>
     isStyleMarkName(property) && typeof styleValue === "string",
