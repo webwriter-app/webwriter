@@ -2221,7 +2221,7 @@ export class DomEditor extends LitElement {
         if(!pkg || !member?.insertable || local?.error) throw new Error("The requested widget/snippet is unavailable; read list_widgets again")
         if(!this.aiDocumentedPackages.has(`${pkg.name}@${pkg.version}/${local?.revision ?? "published"}`)) throw new Error("Read the widget package README before inserting it")
         let html: string
-        if(member.kind === "snippet") html = await this.packageRegistry.fetchSnippet(member)
+        if(member.kind === "snippet") html = await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
         else {
           if(!member.tagName || !(this.editorOpaque ? this.registeredWidgetTags.has(member.tagName)
             : this.editorWindow?.customElements.get(member.tagName))) throw new Error("The widget has not registered in the editor")
@@ -3412,11 +3412,16 @@ export class DomEditor extends LitElement {
     }
   }
 
+  /** Snippets are translated to the document language, else the UI's. */
+  private get documentLanguage() {
+    return this.documentHead.language || navigator.language || "en"
+  }
+
   private async insertPackageMember(member: PackageMember) {
     this.packageError = ""
     try {
       const html = member.kind === "snippet"
-        ? await this.packageRegistry.fetchSnippet(member)
+        ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
         : member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
       if(!html) throw new Error(`Package member '${member.label}' has no insertable content`)
       await this.execute({type: "insert", html})

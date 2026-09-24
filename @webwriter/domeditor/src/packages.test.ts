@@ -8,6 +8,7 @@ import {
   PACKAGE_DOCUMENTATION_MAX_LINES,
   WebWriterPackageRegistry,
   describePackageExport,
+  localizeSnippet,
   mergeEditingConfig,
   packageCdnUrl,
   packageContents,
@@ -293,6 +294,30 @@ describe("WebWriterPackageRegistry", () => {
       .toBe("https://cdn.jsdelivr.net/npm/@webwriter/demo@2.0.1/dist/widget.js")
     expect(() => packageCdnUrl("@webwriter/demo", "2.0.1", "../../outside.js")).toThrow()
     expect(() => packageCdnUrl("@webwriter/demo", "2.0.1", "./dist/../outside.js")).toThrow()
+  })
+
+  it("translates snippets with their embedded localization", () => {
+    const translations = {
+      "Hello#1": {de: "Hallo"},
+      "Hello#2": {"de-at": "Servus"},
+      "World#1": {fr: "Monde"},
+      "x#1": {de: "y"},
+    }
+    const html = `<p> Hello </p><p>Hello</p><p>World</p><math><mi>x</mi></math><script type="application/json" class="snippet-localization">${JSON.stringify(translations)}</script>`
+    expect(localizeSnippet(html, "de-DE")).toBe("<p> Hallo </p><p>Hello</p><p>World</p><math><mi>x</mi></math>")
+    expect(localizeSnippet(html, "de-AT")).toBe("<p> Hallo </p><p>Servus</p><p>World</p><math><mi>x</mi></math>")
+    expect(localizeSnippet("<p>Plain</p>", "de")).toBe("<p>Plain</p>")
+    expect(localizeSnippet('<p>Text</p><script type="application/json" class="snippet-localization">{broken</script>', "de")).toBe("<p>Text</p>")
+  })
+
+  it("fetches snippets translated to the requested language", async () => {
+    const html = `<p>Hello</p><script type="application/json" class="snippet-localization">{"Hello#1": {"de": "Hallo"}}</script>`
+    const fetcher = vi.fn(async () => new Response(html))
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch, "en")
+    const member = {id: "x", packageName: "@webwriter/demo", packageVersion: "1.0.0", exportName: "./snippets/a.html",
+      kind: "snippet", label: "A", insertable: true, htmlUrl: "https://cdn.test/a.html"} as const
+    await expect(registry.fetchSnippet(member, "de")).resolves.toBe("<p>Hallo</p>")
+    await expect(registry.fetchSnippet(member)).resolves.toBe("<p>Hello</p>")
   })
 
   it("removes active content from package snippets before insertion", () => {

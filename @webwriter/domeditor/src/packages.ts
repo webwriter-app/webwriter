@@ -423,6 +423,45 @@ async function boundedResponseText(response: Response, maximumBytes: number, sig
   return new TextDecoder().decode(bytes)
 }
 
+/** Applies the translations `@webwriter/build localize` embeds in a snippet as
+ * `<script type="application/json" class="snippet-localization">`. Keys are
+ * `<trimmed text>#<occurrence>` over the snippet's text nodes outside MathML;
+ * values map locales to translations. The script is always removed. */
+export function localizeSnippet(html: string, locale: string) {
+  const template = document.createElement("template")
+  template.innerHTML = html
+  const scripts = Array.from(template.content.querySelectorAll("script.snippet-localization"))
+  if(!scripts.length) return html
+  let translations: unknown = null
+  try { translations = JSON.parse(scripts[0].textContent ?? "null") }
+  catch { /* A malformed localization leaves the snippet untranslated. */ }
+  scripts.forEach(script => script.remove())
+  const normalizedLocale = locale.toLowerCase()
+  const language = normalizedLocale.split("-")[0]
+  const translate = (entry: unknown) => {
+    if(!isRecord(entry)) return
+    const key = Object.keys(entry).find(candidate => candidate.toLowerCase() === normalizedLocale)
+      ?? Object.keys(entry).find(candidate => candidate.toLowerCase() === language)
+    return key && typeof entry[key] === "string" ? entry[key] : undefined
+  }
+  if(isRecord(translations)) {
+    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
+    const texts: Text[] = []
+    while(walker.nextNode()) texts.push(walker.currentNode as Text)
+    const counts = new Map<string, number>()
+    for(const node of texts) {
+      if(node.parentElement?.closest("math")) continue
+      const value = node.data.trim()
+      if(!value) continue
+      const count = (counts.get(value) ?? 0) + 1
+      counts.set(value, count)
+      const translation = translate(translations[`${value}#${count}`])
+      if(translation) node.data = node.data.replace(value, translation)
+    }
+  }
+  return template.innerHTML
+}
+
 /** Removes active content before a package-provided snippet enters authored DOM. */
 export function sanitizePackageSnippet(html: string, maximumLength = 50_000_000) {
   if(html.length > maximumLength) throw new RangeError("The package snippet is too large to insert safely")
@@ -697,16 +736,18 @@ export class WebWriterPackageRegistry {
     }
   }
 
-  async fetchSnippet(member: PackageMember) {
+  /** Downloads a snippet, translated to `locale` (the document language). */
+  async fetchSnippet(member: PackageMember, locale = this.locale) {
     if(member.kind !== "snippet" || !member.htmlUrl) throw new TypeError("The package member is not a snippet")
-    let request = this.snippetCache.get(member.htmlUrl)
+    const key = `${locale}\n${member.htmlUrl}`
+    let request = this.snippetCache.get(key)
     if(!request) {
       request = this.fetcher(member.htmlUrl).then(response => {
         if(!response.ok) throw new Error(`Snippet download failed (${response.status})`)
-        return response.text().then(html => sanitizePackageSnippet(html))
+        return response.text().then(html => sanitizePackageSnippet(localizeSnippet(html, locale)))
       })
-      this.snippetCache.set(member.htmlUrl, request)
-      request.catch(() => this.snippetCache.delete(member.htmlUrl!))
+      this.snippetCache.set(key, request)
+      request.catch(() => this.snippetCache.delete(key))
     }
     return request
   }

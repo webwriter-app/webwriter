@@ -3,6 +3,7 @@ import {emptyElementHTML, InsertionMenu, type InsertionMenuItem} from "../compon
 import { $, getContainer, isElement, isText, modifierKeyDown, textPointAtOffset } from "../utility"
 import {isMediaType, mediaDefaultHTML} from "../media"
 import {createTable} from "../table"
+import {localizeSnippet} from "../packages"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 type CustomHighlightRegistry = {
@@ -409,7 +410,7 @@ export class InsertionFeature extends EditorFeature {
         const response = await fetch(item.htmlUrl)
         if(!isCurrentCommand()) return
         if(!response.ok) throw new Error(`Snippet download failed (${response.status})`)
-        html = await response.text()
+        html = localizeSnippet(await response.text(), document.documentElement.lang || navigator.language || "en")
         if(!isCurrentCommand()) return
       }
       catch {
