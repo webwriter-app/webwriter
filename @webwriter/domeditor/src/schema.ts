@@ -1139,3 +1139,22 @@ export class Schema {
       .filter(type => this.get(type)?.directlyInsertable !== false)
   }
 }
+
+/** Reports each widget definition the schema rejects, such as an invalid tag
+ * name or content expression, with the other definitions still installed. */
+export function widgetDefinitionErrors(definitions: WidgetSchemaDefinition[]) {
+  const errors: {tagName: string, message: string}[] = []
+  const withoutContent = definitions.map(definition => ({
+    ...definition,
+    editingConfig: {...definition.editingConfig, content: undefined},
+  }))
+  definitions.forEach((definition, index) => {
+    try {
+      new Schema().extendWidgets(withoutContent.map((other, otherIndex) => otherIndex === index ? definition : other))
+    }
+    catch(error) {
+      errors.push({tagName: definition.tagName, message: error instanceof Error ? error.message : String(error)})
+    }
+  })
+  return errors
+}

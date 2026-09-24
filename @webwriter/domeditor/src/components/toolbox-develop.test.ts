@@ -205,3 +205,36 @@ describe("Develop toolbox", () => {
     expect(picked).toHaveBeenCalledWith(expect.objectContaining({detail: {exportName: "./widgets/demo.*"}}))
   })
 })
+
+describe("Develop toolbox checks and tests", () => {
+  it("lists package checks and runs tests", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.developMode = true
+    toolbox.activeMenu = "Develop"
+    const pkg = {...localPackage("Alpha"), tests: [{name: "basics", scriptUrl: "http://local.test/basics.js"}, {name: "slow", scriptUrl: "http://local.test/slow.js"}]}
+    toolbox.localPackages = [pkg]
+    toolbox.localPackageWarnings = {[pkg.name]: [{code: "unknown-editing-option", path: "./widgets/demo", message: "Editing config './widgets/demo' has an unknown option 'selectable'."}]}
+    toolbox.localPackageTestResults = {
+      [`${pkg.name}/basics`]: {status: "failed", tests: [
+        {id: "1", path: ["Demo", "renders"], passed: true},
+        {id: "2", path: ["Demo", "saves"], passed: false},
+      ]},
+      [`${pkg.name}/slow`]: "running",
+    }
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')!
+    expect(drawer.querySelector(".develop-check")?.textContent).toContain("unknown option 'selectable'")
+    const [basics, slow] = drawer.querySelectorAll<HTMLElement>(".develop-test")
+    expect(basics.dataset.status).toBe("failed")
+    expect(basics.querySelector('[role="status"]')?.textContent).toBe("1/2 passed")
+    expect(basics.querySelector(".develop-check")?.textContent).toBe("Demo › saves")
+    expect(slow.querySelector("button")?.disabled).toBe(true)
+
+    const run = vi.fn()
+    toolbox.addEventListener("local-package-test-run", run)
+    basics.querySelector("button")!.click()
+    expect(run.mock.calls[0][0].detail).toEqual({name: "basics"})
+  })
+})

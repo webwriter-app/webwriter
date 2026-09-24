@@ -18,11 +18,13 @@ import {
   INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
   SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL as scopedCustomElementRegistryPolyfillUrl,
   packageMemberAction,
+  packageTestTimeout,
   WebWriterPackageRegistry,
   webWriterPackageExportName,
   withPackageExportSource,
   type PackageMember,
   type PackageExportTarget,
+  type PackageTestResult,
   type WebWriterPackage,
   type WebWriterPackageExportType,
 } from "../packages"
@@ -112,6 +114,7 @@ import {getSectionOption, isSectionElement, isSectionName, type SectionName} fro
 import {userInitials} from "../user-identity"
 import {
   normalizeLocalPackagePath,
+  type LocalPackageWarning,
 } from "../local-package"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {LocalPackageManager, type LocalPackageRecord} from "../local-package-manager"
@@ -407,6 +410,8 @@ export class DomEditor extends LitElement {
     localPackagesLoading: {attribute: false, state: true},
     localPackageError: {attribute: false, state: true},
     selectedLocalPackageName: {attribute: false, state: true},
+    localPackageRuntimeWarnings: {attribute: false, state: true},
+    localPackageTestResults: {attribute: false, state: true},
     selectedLocalPackageAutoReload: {attribute: false, state: true},
     frameRevision: {attribute: false, state: true},
     frameStarted: {attribute: false, state: true},
@@ -549,6 +554,10 @@ export class DomEditor extends LitElement {
   private localPackagesLoading = false
   private localPackageError = ""
   private selectedLocalPackageName = ""
+  /** Checks of loaded local widgets, keyed by package name. */
+  private localPackageRuntimeWarnings: Record<string, LocalPackageWarning[]> = {}
+  /** Latest test run per `<package name>/<test name>`. */
+  private localPackageTestResults: Record<string, PackageTestResult | "running"> = {}
   private selectedLocalPackageAutoReload = false
   private readonly localPackageManager = new LocalPackageManager({
     changed: packages => { this.localPackages = packages },
@@ -1657,6 +1666,7 @@ export class DomEditor extends LitElement {
       })
       void packageLoad.then(
         () => {
+          void this.inspectLocalPackageWidgets(editorWindow).catch(() => {})
           if(this.editorOpaque && this.editorWindow === editorWindow) {
             const tags = this.installedPackages.flatMap(pkg => pkg.members.flatMap(member => member.tagName ? [member.tagName] : []))
             void this.requestFrameControl("registered-tags", {tags}).then(response => {
@@ -3369,6 +3379,59 @@ export class DomEditor extends LitElement {
     }
   }
 
+  /** Static loader warnings and runtime checks of each local package. */
+  private get localPackageWarnings() {
+    const warnings: Record<string, LocalPackageWarning[]> = {}
+    for(const record of this.localPackageManager.records.values()) {
+      const name = record.package?.name
+      if(name) warnings[name] = [...record.warnings ?? [], ...this.localPackageRuntimeWarnings[name] ?? []]
+    }
+    return warnings
+  }
+
+  /** Checks the loaded widgets of local packages in the editor frame. */
+  private async inspectLocalPackageWidgets(editorWindow: Window | null) {
+    const packages = this.installedPackages.filter(pkg => [...this.localPackageManager.records.values()]
+      .some(record => record.package.name === pkg.name && record.package.version === pkg.version))
+    const tagNames = packages.flatMap(pkg => pkg.members.flatMap(member => member.kind === "widget" && member.tagName ? [member.tagName] : []))
+    if(!tagNames.length) {
+      this.localPackageRuntimeWarnings = {}
+      return
+    }
+    const results = await this.execute({type: "inspectWidgets", tagNames}) as {tagName: string, defined: boolean, unreflected: string[]}[]
+    if(this.editorWindow !== editorWindow || !Array.isArray(results)) return
+    this.localPackageRuntimeWarnings = Object.fromEntries(packages.map(pkg => [pkg.name, results.flatMap((result): LocalPackageWarning[] => {
+      if(!pkg.members.some(member => member.tagName === result.tagName)) return []
+      if(!result.defined) return [{code: "undefined-widget" as const, path: result.tagName,
+        message: `Widget '${result.tagName}' was not defined by its script.`}]
+      return result.unreflected.map(name => ({code: "unreflected-property" as const, path: result.tagName,
+        message: `Widget '${result.tagName}': property '${name}' does not reflect to its attribute, so changes to it are not saved.`}))
+    })]))
+  }
+
+  private handleLocalPackageTestRun = async (event: Event) => {
+    const testName = (event as CustomEvent<{name?: unknown}>).detail?.name
+    const pkg = this.localPackages.find(candidate => candidate.name === this.selectedLocalPackageName) ?? this.localPackages[0]
+    const test = pkg?.tests?.find(candidate => candidate.name === testName)
+    if(!pkg || !test) return
+    const key = `${pkg.name}/${test.name}`
+    if(this.localPackageTestResults[key] === "running") return
+    this.localPackageTestResults = {...this.localPackageTestResults, [key]: "running"}
+    const frameURL = (url: string) => this.editorOpaque ? frameLocalPackageURL(url, window.location.origin, editorFrameOrigin()) : url
+    let result: PackageTestResult
+    try {
+      result = await this.execute({
+        type: "runPackageTest",
+        scriptUrl: frameURL(test.scriptUrl),
+        ...(test.styleUrl ? {styleUrl: frameURL(test.styleUrl)} : {}),
+      }, {timeout: packageTestTimeout + 5_000}) as PackageTestResult
+    }
+    catch(error) {
+      result = {status: "error", tests: [], error: error instanceof Error ? error.message : String(error)}
+    }
+    this.localPackageTestResults = {...this.localPackageTestResults, [key]: result}
+  }
+
   private handleLocalPackageAutoReloadChange = (event: Event) => {
     const detail = (event as CustomEvent<{enabled?: boolean}>).detail
     const record = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
@@ -4883,7 +4946,7 @@ export class DomEditor extends LitElement {
     return error
   }
 
-  async execute(action: EditingAction, options: {signal?: AbortSignal} = {}): Promise<unknown> {
+  async execute(action: EditingAction, options: {signal?: AbortSignal, timeout?: number} = {}): Promise<unknown> {
     if(!this.isConnected) {
       throw new Error("The DOM editor component is not connected")
     }
@@ -4900,7 +4963,7 @@ export class DomEditor extends LitElement {
         this.pendingExecutions.delete(requestId)
         pending.abortCleanup?.()
         reject(new Error("The editor did not respond in time"))
-      }, executeTimeoutMs)
+      }, options.timeout ?? executeTimeoutMs)
       this.pendingExecutions.set(requestId, pending)
       if(options.signal) {
         const abort = () => {
@@ -5313,6 +5376,9 @@ export class DomEditor extends LitElement {
         .localPackageError=${this.localPackageError}
         .selectedLocalPackageName=${this.selectedLocalPackageName}
         .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
+        .localPackageWarnings=${this.localPackageWarnings}
+        .localPackageTestResults=${this.localPackageTestResults}
+        @local-package-test-run=${this.handleLocalPackageTestRun}
         ?hidden=${!this.breadcrumbVisible || this.previewActive || this.liveSessionActive}
         @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
         @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}

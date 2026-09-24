@@ -59,7 +59,8 @@ import {
   type TimedMediaResourceType,
 } from "../media"
 import {mathToolGroups, type MathSelectionState} from "../math"
-import type {WebWriterPackage} from "../packages"
+import type {PackageTestResult, WebWriterPackage} from "../packages"
+import type {LocalPackageWarning} from "../local-package"
 import {describePackageExport, webWriterPackageExportTypes} from "../packages"
 import {ribbonIcon} from "../ribbon-icons"
 import {sectionOptions, type SectionName} from "../sections"
@@ -129,6 +130,8 @@ export abstract class EditingControls extends LitElement {
     localPackageError: {type: String, attribute: "local-package-error"},
     selectedLocalPackageName: {type: String, attribute: "selected-local-package-name"},
     selectedLocalPackageAutoReload: {type: Boolean, attribute: "selected-local-package-auto-reload"},
+    localPackageWarnings: {attribute: false},
+    localPackageTestResults: {attribute: false},
     listType: {type: String, attribute: "list-type"},
     listStyle: {type: String, attribute: "list-style"},
     orderedList: {attribute: false},
@@ -198,6 +201,12 @@ export abstract class EditingControls extends LitElement {
   selectedLocalPackageName = ""
 
   selectedLocalPackageAutoReload = false
+
+  /** Loader and runtime checks per local package name. */
+  localPackageWarnings: Record<string, LocalPackageWarning[]> = {}
+
+  /** Latest test run per `<package name>/<test name>`. */
+  localPackageTestResults: Record<string, PackageTestResult | "running"> = {}
 
   listType: ListType | null = null
 
@@ -1171,8 +1180,54 @@ export abstract class EditingControls extends LitElement {
               <span class="develop-field-help">JSON keyed by “.” or an exported package member</span>
             </label>
           </section>
+
+          ${this.renderLocalPackageChecks(pkg)}
+          ${this.renderLocalPackageTests(pkg)}
         </div>` : html`<span class="develop-empty">Select a package</span>`}
       </ribbon-drawer>
+    `
+  }
+
+  protected renderLocalPackageChecks(pkg: WebWriterPackage) {
+    const warnings = (this.localPackageWarnings[pkg.name] ?? []).filter(warning => warning.code !== "missing-bundle")
+    return html`
+      <section class="develop-section" aria-labelledby="develop-check-fields">
+        <span id="develop-check-fields" class="develop-section-title">Checks</span>
+        ${warnings.length
+          ? html`<ul class="develop-checks">${warnings.map(warning => html`<li class="develop-check" data-code=${warning.code}>${warning.message}</li>`)}</ul>`
+          : html`<span class="develop-empty">No problems found</span>`}
+      </section>
+    `
+  }
+
+  protected renderLocalPackageTests(pkg: WebWriterPackage) {
+    if(!pkg.tests?.length) return nothing
+    return html`
+      <section class="develop-section" aria-labelledby="develop-test-fields">
+        <span id="develop-test-fields" class="develop-section-title">Tests</span>
+        ${pkg.tests.map(test => {
+          const result = this.localPackageTestResults[`${pkg.name}/${test.name}`]
+          const running = result === "running"
+          const summary = !result || running ? ""
+            : result.status === "timeout" ? "Timed out"
+            : result.status === "error" ? result.error ?? "Failed to run"
+            : `${result.tests.filter(item => item.passed).length}/${result.tests.length} passed`
+          const failures = result && !running ? result.tests.filter(item => !item.passed) : []
+          return html`
+            <div class="develop-test" data-status=${running ? "running" : result ? result.status : "idle"}>
+              <div class="develop-section-title-row">
+                <span class="develop-field-label">${test.name}</span>
+                <button class="develop-icon-button" type="button" ?disabled=${running}
+                  aria-label=${`Run test ${test.name}`} title="Run test"
+                  @click=${() => this.dispatchEvent(new CustomEvent("local-package-test-run", {detail: {name: test.name}, bubbles: true, composed: true}))}
+                >${ribbonIcon(running ? "Refresh" : "Preview")}</button>
+              </div>
+              ${summary ? html`<span class="develop-field-help" role="status">${summary}</span>` : nothing}
+              ${failures.length ? html`<ul class="develop-checks">${failures.map(item => html`<li class="develop-check">${item.path.join(" › ")}${item.timedOut ? " (timed out)" : ""}</li>`)}</ul>` : nothing}
+            </div>
+          `
+        })}
+      </section>
     `
   }
 

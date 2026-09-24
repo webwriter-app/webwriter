@@ -181,6 +181,25 @@ describe("widget options", () => {
   })
 })
 
+describe("widget inspection", () => {
+  it("reports undefined widgets and properties that are not saved", () => {
+    class LitLike extends HTMLElement {
+      static elementProperties = new Map<string, object>([
+        ["value", {reflect: true}],
+        ["draft", {}],
+        ["internal", {attribute: false}],
+        ["hover", {state: true}],
+      ])
+    }
+    customElements.define("demo-lit-like", LitLike)
+    const inspect = editor.getActionHandler("inspectWidgets")
+    expect(inspect({type: "inspectWidgets", tagNames: ["demo-lit-like", "demo-missing"]})).toEqual([
+      {tagName: "demo-lit-like", defined: true, unreflected: ["draft"]},
+      {tagName: "demo-missing", defined: false, unreflected: []},
+    ])
+  })
+})
+
 describe("widget data containers", () => {
   it("keeps inert data blocks of widgets and removes executable scripts", () => {
     expect(["application/json", "text/plain", "Application/LD+JSON; charset=utf-8"].every(isDataBlockType)).toBe(true)
@@ -229,6 +248,14 @@ describe("widget contract edge cases", () => {
     editor.doc.undo()
     expect(document.querySelector("#a")!.textContent).toBe("two")
     expect(document.querySelector("#b")!.textContent).toBe("one")
+  })
+
+  it("does not report base-class global attributes as unsaved", () => {
+    class LangWidget extends HTMLElement {
+      static elementProperties = new Map<string, object>([["lang", {}], ["draft", {}]])
+    }
+    customElements.define("demo-lang-widget", LangWidget)
+    expect(editor.features.widget.inspect("demo-lang-widget").unreflected).toEqual(["draft"])
   })
 
   it("rejects malformed option state from the frame", () => {

@@ -11,6 +11,9 @@ import {
 
 type Declarations = Record<string, unknown>
 
+/** Global attributes whose properties base classes write back themselves. */
+const globalAttributeProperties = new Set(["lang", "dir", "title", "hidden", "id", "slot", "contentEditable"])
+
 /** Longest time an asynchronous widget action keeps its changes in one undo step. */
 const actionUndoGroupTimeout = 10_000
 
@@ -64,6 +67,28 @@ export class WidgetFeature extends EditorFeature {
       localName: string
       name: string
     }) => this.runAction(this.#widgetAt(path, localName), name),
+    inspectWidgets: ({tagNames}: {type: "inspectWidgets", tagNames: string[]}) => (
+      tagNames.filter(tagName => typeof tagName === "string").map(tagName => this.inspect(tagName))
+    ),
+  }
+
+  /** Reports whether a widget tag is defined and which of its Lit properties
+   * read an attribute without reflecting changes back to it; such changes
+   * are not saved with the document. */
+  inspect(tagName: string) {
+    const constructor = customElements.get(tagName)
+    if(!constructor) return {tagName, defined: false, unreflected: [] as string[]}
+    let properties: unknown
+    try { properties = (constructor as unknown as {elementProperties?: unknown}).elementProperties }
+    catch { properties = undefined }
+    const unreflected = properties instanceof Map
+      ? [...properties].flatMap(([name, options]) => {
+          const declaration = (options ?? {}) as {attribute?: unknown, reflect?: unknown, state?: unknown}
+          return typeof name === "string" && !globalAttributeProperties.has(name)
+            && !declaration.state && declaration.attribute !== false && !declaration.reflect ? [name] : []
+        })
+      : []
+    return {tagName, defined: true, unreflected}
   }
 
   #locale() {

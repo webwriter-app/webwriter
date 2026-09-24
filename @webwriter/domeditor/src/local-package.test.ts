@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
 import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS} from "./packages"
 import {loadLocalPackage, localPackageWatchPaths, readLocalPackageReadme, type LocalPackageDirectory} from "./local-package"
@@ -110,6 +111,33 @@ describe("loadLocalPackage", () => {
       code: "manifest-read-failed",
       message: expect.stringContaining("Select the folder again"),
     })
+  })
+})
+
+describe("local package checks", () => {
+  it("reports editing config the editor would ignore or reject", async () => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": JSON.stringify({
+        name: "@local/demo",
+        version: "0.1.0",
+        exports: {"./widgets/demo-widget.*": "./dist/demo.*", "./widgets/nohyphen.js": "./dist/plain.js"},
+        editingConfig: {
+          ".": {moduleResolution: "import-map"},
+          "./widgets/demo-widget": {content: "p+ (", inline: "yes", selectable: true, moduleResolution: "import-map"},
+          "./widgets/missing": {label: "Missing"},
+        },
+      })},
+      directories: {dist: {files: {"demo.js": "bundle", "plain.js": "bundle"}}},
+    }), {urlFor})
+    expect(result.warnings.map(({code, path}) => [code, path])).toEqual([
+      ["invalid-editing-option", "./widgets/demo-widget"],
+      ["unknown-editing-option", "./widgets/demo-widget"],
+      ["invalid-editing-option", "./widgets/demo-widget"],
+      ["unmatched-editing-config", "./widgets/missing"],
+      ["invalid-widget", "demo-widget"],
+      ["invalid-widget", "nohyphen"],
+    ])
+    expect(result.warnings.find(warning => warning.path === "demo-widget")?.message).toContain("content expression")
   })
 })
 

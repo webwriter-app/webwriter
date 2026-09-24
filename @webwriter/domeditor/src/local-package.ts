@@ -1,14 +1,18 @@
+import {widgetDefinitionErrors} from "./schema"
 import {
+  editingConfigKey,
   localizedText,
   mergeEditingConfig,
   PACKAGE_DOCUMENTATION_MAX_BYTES,
   PackageDocumentationTooLargeError,
   packageContents,
   packageDocumentationExcerpt,
+  packageEditingConfigOptions,
   packageNameLabel,
   personLabel,
   repositoryUrl,
   resolvePackageExport,
+  type PackageContents,
   type PackageEditingConfig,
   type PackageDocumentationReadOptions,
   type PackageDocumentationResult,
@@ -30,6 +34,12 @@ export type LocalPackageWarningCode =
   | "missing-export"
   | "editing-config-unavailable"
   | "invalid-editing-config"
+  | "unknown-editing-option"
+  | "invalid-editing-option"
+  | "unmatched-editing-config"
+  | "invalid-widget"
+  | "undefined-widget"
+  | "unreflected-property"
 
 export type LocalPackageWarning = {
   code: LocalPackageWarningCode
@@ -236,6 +246,58 @@ async function fileExists(directory: LocalPackageDirectory, path: string) {
   }
 }
 
+const isLocalizedText = (value: unknown) => typeof value === "string"
+  || !!value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every(text => typeof text === "string")
+
+const optionChecks: Record<string, (value: unknown) => boolean> = {
+  label: isLocalizedText,
+  description: isLocalizedText,
+  uninsertable: value => typeof value === "boolean",
+  group: value => typeof value === "string",
+  inline: value => typeof value === "boolean",
+  content: value => typeof value === "string",
+  isolating: value => typeof value === "boolean",
+  marks: value => typeof value === "string",
+  propagateEvents: value => Array.isArray(value) && value.every(type => typeof type === "string" && type.length > 0),
+  moduleResolution: value => value === "import-map",
+}
+
+/** Checks the editing config against the options the editor reads and the
+ * package's exports, so mistakes surface in the Develop toolbox instead of
+ * being silently ignored. */
+export function editingConfigWarnings(editingConfig: PackageEditingConfig, contents: PackageContents): LocalPackageWarning[] {
+  const warnings: LocalPackageWarning[] = []
+  const memberKeys = new Set(contents.members.map(({member}) => editingConfigKey(member.exportName)))
+  for(const [key, entry] of Object.entries(editingConfig)) {
+    if(key !== "." && !memberKeys.has(key)) {
+      warnings.push({code: "unmatched-editing-config", path: key, message: `Editing config '${key}' matches no widget or snippet export.`})
+    }
+    if(!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' must be an object.`})
+      continue
+    }
+    for(const [option, value] of Object.entries(entry)) {
+      if(!(packageEditingConfigOptions as readonly string[]).includes(option)) {
+        warnings.push({code: "unknown-editing-option", path: key, message: `Editing config '${key}' has an unknown option '${option}'.`})
+      }
+      else if(option === "moduleResolution" && key !== ".") {
+        warnings.push({code: "invalid-editing-option", path: key, message: "moduleResolution is only read from the package key '.'."})
+      }
+      else if(!optionChecks[option](value)) {
+        warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' has an invalid value for '${option}'.`})
+      }
+    }
+  }
+  const widgets = contents.members.flatMap(({member}) => member.kind === "widget" && member.tagName
+    ? [{tagName: member.tagName, editingConfig: member.editingConfig ?? {}}] : [])
+  // Schema validation builds DOM nodes; it is skipped outside a browser.
+  if(typeof document === "undefined") return warnings
+  for(const {tagName, message} of widgetDefinitionErrors(widgets)) {
+    warnings.push({code: "invalid-widget", path: tagName, message: `Widget '${tagName}': ${message}`})
+  }
+  return warnings
+}
+
 /** Loads a package from a local directory without depending on browser globals. */
 export async function loadLocalPackage(directory: LocalPackageDirectory, options: LocalPackageOptions): Promise<LocalPackageLoadResult> {
   let manifestText: string
@@ -286,6 +348,7 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
   const editingConfig = mergeEditingConfig(externalConfig, manifest.editingConfig)
   const urlFor = (path: string) => options.urlFor(normalizePath(path))
   const contents = packageContents(manifest, editingConfig, urlFor, iconUrl, locale)
+  warnings.push(...editingConfigWarnings(editingConfig, contents))
   const members: PackageMember[] = []
   for(const {member, requiredPaths, inferredStylePath} of contents.members) {
     const available = await Promise.all(requiredPaths.map(path => fileExists(directory, path)))

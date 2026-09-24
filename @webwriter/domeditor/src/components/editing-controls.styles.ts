@@ -503,6 +503,31 @@ export const editingControlStyles = css`
       font-size: 0.65rem;
     }
 
+    .develop-checks {
+      display: grid;
+      gap: 0.2rem;
+      margin: 0;
+      padding-left: 1rem;
+      color: #7a4a12;
+      font-size: 0.6rem;
+      line-height: 0.85rem;
+    }
+
+    .develop-test {
+      display: grid;
+      gap: 0.15rem;
+    }
+
+    .develop-test[data-status="passed"] [role="status"] {
+      color: #2d6a3a;
+    }
+
+    .develop-test[data-status="failed"] [role="status"],
+    .develop-test[data-status="error"] [role="status"],
+    .develop-test[data-status="timeout"] [role="status"] {
+      color: #b0342c;
+    }
+
     .widget-options {
       display: grid;
       gap: 0.45rem;

@@ -427,4 +427,45 @@ describe("DependencyFeature", () => {
     expect(remoteItem.hasAttribute("contenteditable")).toBe(false)
     editor.destroy()
   })
+
+  describe("package tests", () => {
+    const start = (editor: DOMEditor, timeout?: number) => {
+      const result = editor.features.dependency.runPackageTest("https://cdn.test/tests/basics.js", undefined, timeout)
+      const frame = editor.appendix.querySelector("iframe")!
+      const token = frame.srcdoc.match(/token: "([^"]+)"/)![1]
+      const post = (detail: unknown) => window.dispatchEvent(new MessageEvent("message", {source: frame.contentWindow, data: {token, detail}}))
+      return {result, frame, post}
+    }
+
+    it("collects test-update events until the run ends", async () => {
+      const editor = new DOMEditor()
+      const {result, frame, post} = start(editor)
+      expect(frame.srcdoc).toContain('src="https://cdn.test/tests/basics.js"')
+      post({type: "beforeAll"})
+      post({type: "afterOne", id: "a", path: ["Suite", "passes"], passed: true, duration: 3})
+      post({type: "afterOne", id: "b", path: ["Suite", "fails"], passed: false, timedOut: true})
+      window.dispatchEvent(new MessageEvent("message", {source: window, data: {token: "forged", detail: {type: "afterAll"}}}))
+      post({type: "afterAll"})
+      await expect(result).resolves.toEqual({status: "failed", tests: [
+        {id: "a", path: ["Suite", "passes"], passed: true, duration: 3},
+        {id: "b", path: ["Suite", "fails"], passed: false, timedOut: true},
+      ]})
+      expect(frame.isConnected).toBe(false)
+      editor.destroy()
+    })
+
+    it("reports load errors and timeouts", async () => {
+      const editor = new DOMEditor()
+      const failed = start(editor)
+      failed.post({type: "error", message: "The test module failed to load"})
+      await expect(failed.result).resolves.toEqual({status: "error", tests: [], error: "The test module failed to load"})
+      vi.useFakeTimers()
+      const slow = start(editor, 100)
+      vi.advanceTimersByTime(100)
+      await expect(slow.result).resolves.toEqual({status: "timeout", tests: []})
+      vi.useRealTimers()
+      expect(() => editor.features.dependency.runPackageTest("javascript:alert(1)")).toThrow("HTTP")
+      editor.destroy()
+    })
+  })
 })

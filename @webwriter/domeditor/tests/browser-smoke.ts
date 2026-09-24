@@ -121,6 +121,15 @@ await check("package migrations run in an opaque sandbox", async () => {
   assert(!editor.appendix.querySelector("iframe"), "migration frames were not removed")
 })
 
+await check("package tests run in a separate frame", async () => {
+  const result = await editor.features.dependency.runPackageTest(new URL("./package-test-fixture.js", location.href).href, undefined, 5000)
+  assert(result.status === "failed", `unexpected test status: ${JSON.stringify(result)}`)
+  assert(result.tests.map(test => test.passed).join() === "true,false", `unexpected test cases: ${JSON.stringify(result.tests)}`)
+  assert(!editor.appendix.querySelector("iframe"), "the test frame was not removed")
+  const missing = await editor.features.dependency.runPackageTest(new URL("./missing-test-fixture.js", location.href).href, undefined, 5000)
+  assert(missing.status === "error", `a missing test module was not reported: ${JSON.stringify(missing)}`)
+})
+
 editor.destroy()
 const failed = checks.filter(item => item.error)
 document.documentElement.dataset.nativeSmokeStatus = failed.length ? "failed" : "passed"

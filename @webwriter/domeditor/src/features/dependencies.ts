@@ -2,10 +2,12 @@ import {appendSerializedAssets} from "../serialization"
 import { EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
-import {packageCdnUrl, packageInsertionItems, packageWidgetSchemaDefinitions, resolvePackageExport, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {packageCdnUrl, packageInsertionItems, packageTestTimeout, packageWidgetSchemaDefinitions, resolvePackageExport, WebWriterPackageRegistry, type PackageTestCase, type PackageTestResult, type WebWriterPackage} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
+
+const escapeHTMLAttribute = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;")
 
 export class DependencyFeature extends EditorFeature {
   private readonly packageRegistry = new WebWriterPackageRegistry()
@@ -17,6 +19,67 @@ export class DependencyFeature extends EditorFeature {
 
   actions = {
     [loadWidgetsMessage]: (message: LoadWidgetsMessage) => this.loadWidgets(message),
+    runPackageTest: ({scriptUrl, styleUrl}: {type: "runPackageTest", scriptUrl: string, styleUrl?: string}) => (
+      this.runPackageTest(scriptUrl, styleUrl)
+    ),
+  }
+
+  /** Runs a package's `./tests/*` module in a separate frame and collects its
+   * `test-update` events. The frame keeps test fixtures out of the edited
+   * document; like widget scripts, test code is trusted package code on the
+   * editor's origin, so local package resources resolve. */
+  runPackageTest(scriptUrl: string, styleUrl?: string, timeout = packageTestTimeout): Promise<PackageTestResult> {
+    const url = new URL(scriptUrl, runtimeDocumentBaseURL())
+    if(!/^https?:$/.test(url.protocol)) throw new TypeError("Package tests must load over HTTP(S)")
+    const nonce = escapeHTMLAttribute(this.editor.trustedScriptNonce)
+    const token = crypto.randomUUID()
+    const importMap = this.dependencyPlan?.map ? packageImportMapScript(document, this.dependencyPlan.map).outerHTML.replace("<script", `<script nonce="${nonce}"`) : ""
+    const frame = document.createElement("iframe")
+    frame.setAttribute("aria-hidden", "true")
+    frame.tabIndex = -1
+    frame.style.cssText = "position: fixed; width: 800px; height: 600px; left: -10000px; top: 0; border: 0"
+    frame.srcdoc = `<!doctype html><html><head>${importMap}
+<script nonce="${nonce}">
+for(const type of ["test-update", "error", "unhandledrejection"]) window.addEventListener(type, event => {
+  const detail = type === "test-update" ? event.detail : {type: "error", message: String(event.reason ?? event.message ?? event.error)}
+  parent.postMessage({token: "${token}", detail: JSON.parse(JSON.stringify(detail ?? null))}, self.origin)
+})
+document.addEventListener("error", event => {
+  if(event.target instanceof HTMLScriptElement) parent.postMessage({token: "${token}", detail: {type: "error", message: "The test module failed to load: " + event.target.src}}, self.origin)
+}, true)
+</script>
+${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribute(styleUrl)}">` : ""}
+<script nonce="${nonce}" type="module" src="${escapeHTMLAttribute(url.href)}"></script>
+</head><body><div id="mocha"></div></body></html>`
+    return new Promise(resolve => {
+      const tests = new Map<string, PackageTestCase>()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const finish = (status: PackageTestResult["status"], error?: string) => {
+        clearTimeout(timer)
+        window.removeEventListener("message", onMessage)
+        frame.remove()
+        const cases = [...tests.values()]
+        resolve({status: status === "passed" && cases.some(test => !test.passed) ? "failed" : status, tests: cases, ...(error ? {error} : {})})
+      }
+      const onMessage = (event: MessageEvent) => {
+        if(event.source !== frame.contentWindow || event.data?.token !== token) return
+        const detail = event.data.detail as Record<string, unknown> | null
+        if(detail?.type === "afterOne" && typeof detail.id === "string") {
+          tests.set(detail.id, {
+            id: detail.id,
+            path: Array.isArray(detail.path) ? detail.path.map(String) : [detail.id],
+            passed: detail.passed === true,
+            ...(typeof detail.duration === "number" ? {duration: detail.duration} : {}),
+            ...(detail.timedOut === true ? {timedOut: true} : {}),
+          })
+        }
+        else if(detail?.type === "afterAll") finish("passed")
+        else if(detail?.type === "error" && !tests.size) finish("error", String(detail.message))
+      }
+      window.addEventListener("message", onMessage)
+      timer = setTimeout(() => finish("timeout"), timeout)
+      this.editor.addAppendix(frame)
+    })
   }
 
   constructor(editor: DOMEditor) {

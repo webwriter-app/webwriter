@@ -76,6 +76,7 @@ const expectedSmokeChecks = [
   "SVG and MathML namespaces survive serialization",
   "document template serialization",
   "package migrations run in an opaque sandbox",
+  "package tests run in a separate frame",
 ]
 const expectedImportMapChecks = [
   "JSPM links two local ESM entries to one shared dependency",

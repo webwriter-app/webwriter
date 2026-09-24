@@ -91,6 +91,12 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
   [key: string]: unknown
 }
 
+/** Options the editor reads from an editing-config entry. */
+export const packageEditingConfigOptions = [
+  "label", "description", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents",
+  "moduleResolution",
+] as const
+
 export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>
 
 export type WebWriterPackageManifest = {
@@ -123,6 +129,25 @@ export type PackageTest = {
   scriptUrl: string
   styleUrl?: string
 }
+
+/** One test case reported through the `test-update` events of
+ * `@webwriter/build/test`. */
+export type PackageTestCase = {
+  id: string
+  path: string[]
+  passed: boolean
+  duration?: number
+  timedOut?: boolean
+}
+
+export type PackageTestResult = {
+  status: "passed" | "failed" | "timeout" | "error"
+  tests: PackageTestCase[]
+  error?: string
+}
+
+/** Longest time a package test module may run before it is stopped. */
+export const packageTestTimeout = 60_000
 
 export type PackageMember = {
   id: string
