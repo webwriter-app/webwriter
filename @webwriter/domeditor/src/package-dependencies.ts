@@ -38,7 +38,7 @@ export function isPackageImportMap(value: unknown): value is IImportMap {
 
 export function packageModuleEntries(packages: WebWriterPackage[]) {
   return [...new Set(packages
-    .filter(pkg => pkg.manifest?.webwriter?.moduleResolution === "import-map")
+    .filter(pkg => pkg.editingConfig?.["."]?.moduleResolution === "import-map")
     .flatMap(pkg => pkg.scripts))]
 }
 

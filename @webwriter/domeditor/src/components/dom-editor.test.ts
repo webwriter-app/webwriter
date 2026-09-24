@@ -940,7 +940,8 @@ describe("DomEditor iframe setup", () => {
   it("reloads the editor only when a catalog dependency check changes the import map", async () => {
     const pkg: WebWriterPackage = {
       ...demoPackage,
-      manifest: {name: demoPackage.name, version: demoPackage.version, webwriter: {moduleResolution: "import-map"}},
+      manifest: {name: demoPackage.name, version: demoPackage.version},
+      editingConfig: {".": {moduleResolution: "import-map"}},
     }
     const editor = new DomEditor()
     ;(editor as any).installedPackages = [pkg]

@@ -103,7 +103,8 @@ describe("package ribbon controls", () => {
   it("keeps dependency refresh out of package controls", async () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture()
-    pkg.manifest = {name: pkg.name, version: pkg.version, webwriter: {moduleResolution: "import-map"}}
+    pkg.manifest = {name: pkg.name, version: pkg.version}
+    pkg.editingConfig = {".": {moduleResolution: "import-map"}}
     ribbon.installedPackages = [pkg]
     document.body.append(ribbon)
     await ribbon.updateComplete

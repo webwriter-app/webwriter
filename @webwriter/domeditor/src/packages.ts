@@ -85,6 +85,9 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
   uninsertable?: boolean
+  /** On the package key ".": opts unbundled browser ESM widget entries into
+   * shared dependency resolution. */
+  moduleResolution?: "import-map"
   [key: string]: unknown
 }
 
@@ -93,8 +96,6 @@ export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>
 export type WebWriterPackageManifest = {
   name: string
   version: string
-  /** Opts unbundled browser ESM widget entries into shared dependency resolution. */
-  webwriter?: {moduleResolution?: "import-map"}
   dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   description?: string

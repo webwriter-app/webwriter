@@ -50,7 +50,8 @@ describe("DependencyFeature", () => {
   it("registers a supplied import map before opted-in widget modules and exports it", async () => {
     const pkg: WebWriterPackage = {
       ...demoPackage,
-      manifest: {name: demoPackage.name, version: demoPackage.version, webwriter: {moduleResolution: "import-map"}},
+      manifest: {name: demoPackage.name, version: demoPackage.version},
+      editingConfig: {".": {moduleResolution: "import-map"}},
     }
     const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
     const editor = new DOMEditor()

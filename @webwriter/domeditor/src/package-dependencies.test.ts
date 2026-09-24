@@ -19,7 +19,8 @@ vi.mock("@jspm/generator", () => ({
 const widgetPackage = (name: string, entry: string, esm: boolean): WebWriterPackage => ({
   name, version: "1.0.0", label: name, authors: [], keywords: [], links: {}, members: [],
   scripts: [entry], styles: [],
-  manifest: {name, version: "1.0.0", ...(esm ? {webwriter: {moduleResolution: "import-map" as const}} : {})},
+  manifest: {name, version: "1.0.0"},
+  ...(esm ? {editingConfig: {".": {moduleResolution: "import-map" as const}}} : {}),
 })
 
 beforeEach(() => { linked.entries = [] })
