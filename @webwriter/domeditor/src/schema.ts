@@ -1,5 +1,6 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
 import { $, cloneInert, columnSide, isColumnGroup, getContainer, getIndexBefore, getInertDocument } from "./utility"
+import {isWidgetDataContainer} from "./active-content"
 import {normalizeTableStructure} from "./table"
 
 /** Defers to the parent's content rule ("transparent" content model, e.g. <a>, <ins>, <slot>), optionally restricted by an own selector. */
@@ -676,9 +677,10 @@ export class Schema {
     let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
     
     if(!(nodeToCheck instanceof Element)) return true;
-    if(!rule && (content ?? Array.from(nodeToCheck.childNodes)).length) return false
-    else if(!rule && !content?.length) return true
-    const contentToCheck = content ?? Array.from(nodeToCheck.childNodes)
+    // A widget's data containers are valid under any content model.
+    const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => !isWidgetDataContainer(child))
+    if(!rule && contentToCheck.length) return false
+    else if(!rule) return true
     if(rule && "transparent" in rule) {
       const parent = nodeToCheck.parentElement
       const matchesSelector = !rule.selector || contentToCheck.every(child =>
@@ -694,6 +696,7 @@ export class Schema {
 
   /** Whether `node` is valid as the next piece of content under `rule`. Stateful: A successful match decrements the rule's min/max in place, so calling this repeatedly with the same rule object consumes it across a sequence of nodes — which is how isContentValid uses it. Elements with `contenteditable=false` are always valid. Throws for malformed rules. */
   isNodeValid(node: Node, rule=this.getContentRule(node.parentElement!)): boolean {
+    if(isWidgetDataContainer(node)) return true
     if(node instanceof Element && (this.get(node)?.replacement
       || Object.keys(this.get(node)?.requiredAttributes ?? {}).some(name => !node.hasAttribute(name)))) return false
     if(node instanceof Element && (node.getAttribute("contenteditable") === "false"

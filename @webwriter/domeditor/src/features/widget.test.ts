@@ -4,6 +4,7 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {Schema} from "../schema"
 import {$, isWidgetShadowInteraction} from "../utility"
+import {isDataBlockType, stripActiveContent} from "../active-content"
 import {isWidgetOptionsState} from "../widget-options"
 
 class OptionsWidget extends HTMLElement {
@@ -177,6 +178,29 @@ describe("widget options", () => {
     editor.doc.undo()
     expect(editor.toHTML(true)).toBe('<demo-options count="3" shuffled=""></demo-options>')
     await expect(run({type: "runWidgetAction", path: [0], localName: "demo-options", name: "missing"})).rejects.toThrow("not a method")
+  })
+})
+
+describe("widget data containers", () => {
+  it("keeps inert data blocks of widgets and removes executable scripts", () => {
+    expect(["application/json", "text/plain", "Application/LD+JSON; charset=utf-8"].every(isDataBlockType)).toBe(true)
+    expect(["", "module", "importmap", "text/javascript", "TEXT/JavaScript; charset=utf-8", "text/jscript"].some(isDataBlockType)).toBe(false)
+    const template = document.createElement("template")
+    template.innerHTML = [
+      '<demo-note><script type="application/json">{"a":1}</script><p>Text</p></demo-note>',
+      '<demo-note><script>evil()</script><script type="text/javascript;charset=utf-8">evil()</script><script type="application/json" src="x.json"></script></demo-note>',
+      '<p><script type="application/json">{}</script></p>',
+    ].join("")
+    stripActiveContent(template.content)
+    expect(template.innerHTML).toBe('<demo-note><script type="application/json">{"a":1}</script><p>Text</p></demo-note><demo-note></demo-note><p></p>')
+  })
+
+  it("accepts data containers under any content model and keeps them when pasting", () => {
+    document.body.innerHTML = '<demo-note><script type="application/json">{"a":1}</script><p>Text</p></demo-note>'
+    const widget = document.querySelector("demo-note")!
+    expect(editor.schema.isContentValid(widget)).toBe(true)
+    const {fragment} = editor.parseHTMLFragment('<demo-widget><script type="application/json">{"b":2}</script></demo-widget>', true)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<demo-widget><script type="application/json">{"b":2}</script></demo-widget>')
   })
 })
 

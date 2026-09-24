@@ -1,5 +1,30 @@
 import {isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "./element-attributes"
 
+/** MIME type essences browsers execute as classic scripts. */
+const javaScriptMimeTypes = new Set([
+  "application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
+  "text/ecmascript", "text/javascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+  "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript", "text/livescript",
+  "text/x-ecmascript", "text/x-javascript",
+])
+
+/** Whether a script `type` is an inert data block type: a MIME type that
+ * browsers never execute, such as `application/json`. */
+export function isDataBlockType(type: string) {
+  const essence = type.split(";")[0].trim().toLowerCase()
+  return /^[^\s/]+\/[^\s/]+$/.test(essence) && !javaScriptMimeTypes.has(essence)
+}
+
+/** A widget's data container: an inert `<script>` data block that is a
+ * direct child of a custom element. It is widget state, not executable
+ * content, so the editor keeps it. */
+export function isWidgetDataContainer(node: Node | null): node is HTMLScriptElement {
+  if(!(node instanceof Element) || node.localName !== "script" || node.namespaceURI !== "http://www.w3.org/1999/xhtml") return false
+  const parent = node.parentElement
+  return !!parent && (parent.localName.includes("-") || parent.hasAttribute("is"))
+    && node.hasAttribute("type") && isDataBlockType(node.getAttribute("type")!) && !node.hasAttribute("src")
+}
+
 const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import'], link[rel~='stylesheet']"
 
 export type ActiveContentStripOptions = {
@@ -26,6 +51,7 @@ export function stripActiveContent(root: ParentNode, options: ActiveContentStrip
     })
   }
   root.querySelectorAll(unsafeElementSelector).forEach(element => {
+    if(isWidgetDataContainer(element)) return
     if(options.allowStyles && (element.localName === "style" || element.matches("link[rel~=stylesheet]"))) return
     if(options.allowIframes && element.localName === "iframe") {
       try {
