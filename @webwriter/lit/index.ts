@@ -114,6 +114,38 @@ export function action<This extends LitElementWw, Args extends any[], Return>(de
   }
 }
 
+/** MIME type essences browsers execute as classic scripts. */
+const javaScriptMimeTypes = new Set([
+  "application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
+  "text/ecmascript", "text/javascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+  "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript", "text/livescript",
+  "text/x-ecmascript", "text/x-javascript",
+])
+
+/** Whether a script `type` is an inert data block type, such as `application/json`. WebWriter keeps such `<script>` children of a widget as its data containers. */
+export function isDataBlockType(type: string) {
+  const essence = type.split(";")[0].trim().toLowerCase()
+  return /^[^\s/]+\/[^\s/]+$/.test(essence) && !javaScriptMimeTypes.has(essence)
+}
+
+/** Connected widgets that follow the language of an ancestor. */
+const languageFollowers = new Set<LitElementWw>()
+let languageObserver: MutationObserver | undefined
+
+function observeLanguage(widget: LitElementWw) {
+  languageFollowers.add(widget)
+  languageObserver ??= new MutationObserver(() => languageFollowers.forEach(follower => follower.languageChanged()))
+  languageObserver.observe(widget.ownerDocument.documentElement, {attributes: true, attributeFilter: ["lang"], subtree: true})
+}
+
+function unobserveLanguage(widget: LitElementWw) {
+  languageFollowers.delete(widget)
+  if(!languageFollowers.size) {
+    languageObserver?.disconnect()
+    languageObserver = undefined
+  }
+}
+
 /**Minimal base class for a WebWriter widget implemented in Lit. Implements the core properties required by WebWriter, initializes the component when loaded and provides a Scoped Custom Element Registry (@open-wc/scoped-elements) to help with namespace conflicts when using other components in this widget. */
 export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
@@ -139,8 +171,19 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   /** Add `@lit/localize` support. This should be the return value of `configureLocalization`. */
   protected localize: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
 
-  /** [HTML global attribute] Editing state of the widget. If ="true" or ="", the widget should allow user interaction changing the widget itself. Else, prevent all such user interactions. */
-  @property({type: String, attribute: true, reflect: true}) accessor contentEditable!: string
+  /** Whether the widget is being edited: the editor marks widgets with `contenteditable`, and the document is editable while authoring. In a preview or an exported document, the widget is not editable. */
+  get editable() {
+    return this.isContentEditable
+  }
+
+  static get observedAttributes() {
+    return [...new Set([...super.observedAttributes, "contenteditable"])]
+  }
+
+  attributeChangedCallback(name: string, oldValue: string | null, value: string | null) {
+    super.attributeChangedCallback(name, oldValue, value)
+    if(name === "contenteditable") this.requestUpdate("editable")
+  }
 
   #lang: string = ""
 
@@ -148,31 +191,50 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
     return (this.#lang || (this.parentElement?.closest("[lang]") as HTMLElement)?.lang) ?? ""
   }
 
-  /** [HTML global attribute] Language of the widget, allowing presentation changes for each language.*/
-  @property({type: String, attribute: true, reflect: true})
+  /** [HTML global attribute] Language of the widget, allowing presentation changes for each language. Without its own `lang` attribute, the widget follows the nearest ancestor's, including later changes to it. Only a language set on the widget itself is written to its attribute. */
+  @property({type: String, attribute: true})
   set lang(value) {
-    this.#lang = value
-    this.localize?.setLocale(value).finally(() => this.requestUpdate("lang"))
+    this.#lang = value ?? ""
+    if(this.#lang && this.getAttribute("lang") !== this.#lang) this.setAttribute("lang", this.#lang)
+    else if(!this.#lang && this.hasAttribute("lang")) this.removeAttribute("lang")
+    this.#inheritedLang = this.#lang ? "" : this.lang
+    this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
   }
 
+  #inheritedLang = ""
+
+  /** @internal Called when a `lang` attribute in the document changes. The
+   * update is not reflected, so the inherited language never becomes an
+   * attribute of the widget. */
+  languageChanged() {
+    if(this.#lang || this.lang === this.#inheritedLang) return
+    this.#inheritedLang = this.lang
+    this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
+  }
+
+  #dataContainer(): HTMLScriptElement | null {
+    return Array.from(this.children).find((child): child is HTMLScriptElement => child instanceof HTMLScriptElement
+      && child.hasAttribute("type") && isDataBlockType(child.type) && !child.hasAttribute("src")) ?? null
+  }
+
+  /** The text of the widget's data container: its first `<script>` child with a data block type (a non-JavaScript MIME type such as `application/json`) and no `src`. The editor keeps data containers under any content model, so state stored here is saved, copied and synchronized with the widget. */
   get data() {
-    return this.querySelector(":scope > script[type]").textContent
+    return this.#dataContainer()?.textContent ?? null
   }
 
-  /** Data interface where top-level script children are treated as data containers. */
-  @property()
+  @property({attribute: false})
   set data(value) {
-    this.setData(this.dataType ?? "text/plain", value)
+    this.setData(this.dataType ?? "text/plain", value ?? "")
   }
 
   get dataType() {
-    const el: HTMLScriptElement | null = this.querySelector(":scope > script[type]") 
-    return el?.type ?? Object.getPrototypeOf(this)?.dataType
+    return this.#dataContainer()?.type ?? (this.constructor as typeof LitElementWw).dataType
   }
 
-  /** Replace the data container of the given type with a new one, which has the given value and optionally the given attributes. If no data container is found, create a new one. */
+  /** Replace the data container with a new one of the given data block type, value and optional attributes, or create it if there is none. */
   setData(type: string, value: string, attrs?: Record<string, string>) {
-    const old = this.querySelector(":scope > script[type]")
+    if(!isDataBlockType(type)) throw new TypeError(`'${type}' is not a data block type`)
+    const old = this.#dataContainer()
     const current = old? old.cloneNode(true) as HTMLScriptElement: document.createElement("script")
     current.textContent = value
     current.type = type
@@ -186,8 +248,15 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
   connectedCallback(): void {
     super.connectedCallback()
+    observeLanguage(this)
+    this.#inheritedLang = this.lang
     this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
     this.getAttributeNames().forEach(k => this.setAttribute(k, this.getAttribute(k)))
     this.addEventListener("slotchange", e => this.requestUpdate(), {passive: true})
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    unobserveLanguage(this)
   }
 }
