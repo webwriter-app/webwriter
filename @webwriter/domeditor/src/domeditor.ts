@@ -17,6 +17,7 @@ import {documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type Docum
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { WidgetFeature } from "./features/widget"
+import { MigrationFeature } from "./features/migration"
 import { TableFeature } from "./features/table"
 import { LayoutFeature } from "./features/layout"
 import { GraphicFeature } from "./features/graphic"
@@ -408,6 +409,7 @@ export class DOMEditor {
     "collaboration": new CollaborationFeature(this),
     "media": new MediaFeature(this),
     "widget": new WidgetFeature(this),
+    "migration": new MigrationFeature(this),
   } as const
 
   readonly #actionHandlers = collectFeatureActions(Object.values(this.features))

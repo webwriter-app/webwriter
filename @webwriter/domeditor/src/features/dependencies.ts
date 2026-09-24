@@ -30,6 +30,9 @@ export class DependencyFeature extends EditorFeature {
 
   get packageDependencyPlan() { return this.dependencyPlan }
 
+  /** Packages whose widgets are currently loaded. */
+  get installedPackages(): readonly WebWriterPackage[] { return this.widgetPackages }
+
   /** Resolves pinned widget-package assets and mounts them in the iframe. */
   async loadWidgets(message: LoadWidgetsMessage) {
     if(!isLoadWidgetsMessage(message)) throw new TypeError("Invalid load-widgets message")

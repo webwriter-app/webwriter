@@ -98,6 +98,29 @@ await check("document template serialization", () => {
   assert(parsed.body.textContent?.includes("Template content"), "template contents were lost")
 })
 
+await check("package migrations run in an opaque sandbox", async () => {
+  const run = editor.features.migration.runner
+  const source = `document.addEventListener("migrate", event => {
+    let isolated = "no"
+    try { parent.document.body } catch { isolated = "yes" }
+    event.target.setAttribute("version", event.detail.version)
+    event.target.setAttribute("isolated", isolated)
+  })`
+  const results = await run({packageName: "@smoke/quiz", version: "2.0.0", source, tagNames: ["smoke-quiz"],
+    items: ['<smoke-quiz answer="1"></smoke-quiz>', "<smoke-quiz></smoke-quiz>"]}, 5000)
+  assert(JSON.stringify(results) === JSON.stringify([
+    '<smoke-quiz answer="1" version="2.0.0" isolated="yes"></smoke-quiz>',
+    '<smoke-quiz version="2.0.0" isolated="yes"></smoke-quiz>',
+  ]), `unexpected migration results: ${JSON.stringify(results)}`)
+  const failure = await run({packageName: "@smoke/quiz", version: "2.0.0", source: "throw new Error('broken')", tagNames: ["smoke-quiz"], items: []}, 5000)
+    .then(() => "resolved", error => String(error))
+  assert(failure.includes("broken"), `a failing migration was not reported: ${failure}`)
+  const stalled = await run({packageName: "@smoke/quiz", version: "2.0.0", source: "await new Promise(() => {})", tagNames: ["smoke-quiz"], items: []}, 300)
+    .then(() => "resolved", error => String(error))
+  assert(stalled.includes("timed out"), `a stalled migration did not time out: ${stalled}`)
+  assert(!editor.appendix.querySelector("iframe"), "migration frames were not removed")
+})
+
 editor.destroy()
 const failed = checks.filter(item => item.error)
 document.documentElement.dataset.nativeSmokeStatus = failed.length ? "failed" : "passed"

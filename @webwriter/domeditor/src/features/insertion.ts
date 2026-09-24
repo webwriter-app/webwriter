@@ -412,6 +412,8 @@ export class InsertionFeature extends EditorFeature {
         if(!response.ok) throw new Error(`Snippet download failed (${response.status})`)
         html = localizeSnippet(await response.text(), document.documentElement.lang || navigator.language || "en")
         if(!isCurrentCommand()) return
+        html = await this.editor.features.migration.migrate(html)
+        if(!isCurrentCommand()) return
       }
       catch {
         if(isCurrentCommand()) this.close()

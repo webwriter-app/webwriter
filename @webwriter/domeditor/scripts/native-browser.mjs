@@ -75,6 +75,7 @@ const expectedSmokeChecks = [
   "Yjs remote updates and local undo",
   "SVG and MathML namespaces survive serialization",
   "document template serialization",
+  "package migrations run in an opaque sandbox",
 ]
 const expectedImportMapChecks = [
   "JSPM links two local ESM entries to one shared dependency",

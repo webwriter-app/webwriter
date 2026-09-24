@@ -642,6 +642,13 @@ export class ManipulationFeature extends EditorFeature {
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
       }
       else {
+        const html = data.getData("text/html")
+        if(html && this.editor.features.migration.needsMigration(html)) {
+          $.move(range.startContainer, range.startOffset)
+          void this.#insertMigratedClipboardContent(html)
+          dropped = true
+          return
+        }
         const fragment = this.#dataTransferToFragment(data)
         if(!fragment?.childNodes.length) return
         $.move(range.startContainer, range.startOffset)
@@ -1631,7 +1638,11 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Action handlers, addressable by action type through the editor. */
   actions = {
-    insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => this.insertHTML(html, strict),
+    insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => (
+      this.editor.features.migration.needsMigration(html)
+        ? this.#insertMigratedHTML(html, strict)
+        : this.insertHTML(html, strict)
+    ),
     delete: ({direction}: {type: "delete", direction?: "forward" | "backward"}) => {
       this.delete(direction)
     },
@@ -1798,6 +1809,11 @@ export class ManipulationFeature extends EditorFeature {
       if(ev.defaultPrevented || this.editor.features.mark.isSVGTextSelection) return
       if(["insertFromPaste", "insertFromDrop"].includes(ev.inputType)) {
         ev.preventDefault()
+        const html = ev.dataTransfer?.getData("text/html")
+        if(html && this.editor.features.migration.needsMigration(html)) {
+          void this.#insertMigratedClipboardContent(html)
+          return
+        }
         const fragment = this.#dataTransferToFragment(ev.dataTransfer)
         if(fragment) this.insertClipboardFragment(fragment)
         return
@@ -1863,6 +1879,12 @@ export class ManipulationFeature extends EditorFeature {
     },
     "paste": ev => {
       if(ev.defaultPrevented) return
+      const html = ev.clipboardData?.getData("text/html")
+      if(html && this.editor.features.migration.needsMigration(html)) {
+        ev.preventDefault()
+        void this.#insertMigratedClipboardContent(html)
+        return
+      }
       const fragment = this.#dataTransferToFragment(ev.clipboardData)
       if(fragment) {
         ev.preventDefault()
@@ -2451,6 +2473,31 @@ export class ManipulationFeature extends EditorFeature {
     else this.insertClipboardFragment(fragment)
   }
 
+  /** Runs package migrations on `html`, then restores the selection captured
+   * before they started. Returns null when that selection or the editor's
+   * editability did not survive. */
+  async #migrateAtSelection(html: string) {
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    const migrated = await this.editor.features.migration.migrate(html)
+    if(!range?.startContainer.isConnected || !range.endContainer.isConnected || this.editor.isEditingLocked) return null
+    $.selectRange(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+    return migrated
+  }
+
+  /** Lets package migrations update pasted or dropped widgets before insertion. */
+  async #insertMigratedClipboardContent(html: string) {
+    const migrated = await this.#migrateAtSelection(html)
+    if(migrated === null) return false
+    this.insertClipboardFragment(this.#clipboardContentToFragment(migrated, ""))
+    return true
+  }
+
+  async #insertMigratedHTML(html: string, strict?: boolean) {
+    const migrated = await this.#migrateAtSelection(html)
+    if(migrated !== null) this.insertHTML(migrated, strict)
+  }
+
   /** Reads clipboard data available synchronously on paste/beforeinput. */
   #dataTransferToFragment(data: DataTransfer | null) {
     if(!data) return null
@@ -2465,7 +2512,7 @@ export class ManipulationFeature extends EditorFeature {
     const items = await navigator.clipboard.read()
     const htmlItem = items.find(item => item.types.includes("text/html"))
     const textItem = items.find(item => item.types.includes("text/plain"))
-    const html = htmlItem? await (await htmlItem.getType("text/html")).text(): ""
+    const html = htmlItem? await this.editor.features.migration.migrate(await (await htmlItem.getType("text/html")).text()): ""
     const text = !html && textItem? await (await textItem.getType("text/plain")).text(): ""
     return this.#clipboardContentToFragment(html, text)
   }
