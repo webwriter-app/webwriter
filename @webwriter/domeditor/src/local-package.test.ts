@@ -26,11 +26,11 @@ const manifest = (overrides: Record<string, unknown> = {}) => JSON.stringify({
   description: "Local demo",
   exports: {
     "./icon": "./icon.svg",
-    "./widgets/demo.*": "./dist/demo.*",
+    "./widgets/demo-widget.*": "./dist/demo.*",
     "./snippets/example.html": "./snippets/example.html",
     ...overrides,
   },
-  editingConfig: {"./widgets/demo": {label: "Inline demo"}},
+  editingConfig: {"./widgets/demo-widget": {label: "Inline demo"}},
 })
 
 const urlFor = (path: string) => `http://local.test/pkg/${path}`
@@ -67,7 +67,7 @@ describe("loadLocalPackage", () => {
 
   it("uses browser, then import, then default export targets", async () => {
     const result = await loadLocalPackage(nestedDirectory({
-      files: {"package.json": manifest({"./widgets/demo.*": {browser: "./dist/browser.*", import: "./dist/import.*", default: "./dist/default.*"}}), "icon.svg": "icon"},
+      files: {"package.json": manifest({"./widgets/demo-widget.*": {browser: "./dist/browser.*", import: "./dist/import.*", default: "./dist/default.*"}}), "icon.svg": "icon"},
       directories: {dist: {files: {"browser.js": "bundle"}}},
     }), {urlFor})
     expect(result.package.scripts).toEqual(["http://local.test/pkg/dist/browser.js"])
@@ -77,7 +77,7 @@ describe("loadLocalPackage", () => {
     const result = await loadLocalPackage(directory({files: {"package.json": manifest(), "icon.svg": "icon"}}), {urlFor})
     expect(result.package.members).toEqual([])
     expect(result.warnings).toEqual(expect.arrayContaining([
-      expect.objectContaining({code: "missing-export", path: "./dist/demo.*"}),
+      expect.objectContaining({code: "missing-export", path: "dist/demo.js"}),
       expect.objectContaining({code: "missing-bundle"}),
     ]))
   })

@@ -117,6 +117,13 @@ export type PersonMetadata = string | {
   url?: string
 }
 
+/** A `./tests/*` export, run on demand in an isolated frame. */
+export type PackageTest = {
+  name: string
+  scriptUrl: string
+  styleUrl?: string
+}
+
 export type PackageMember = {
   id: string
   packageName: string
@@ -163,6 +170,9 @@ export type WebWriterPackage = {
   members: PackageMember[]
   scripts: string[]
   styles: string[]
+  /** Resolved `./migrate.js` export. It never runs in the editor document. */
+  migrationUrl?: string
+  tests?: PackageTest[]
   editingConfig?: PackageEditingConfig
   manifest?: WebWriterPackageManifest
 }
@@ -294,9 +304,10 @@ type NpmSearchResponse = {
 }
 
 const extensionPattern = /\.(?:html?|m?js|css|ts)$/i
+const scriptPattern = /\.(?:m?js|ts)$/i
 
 const titleCase = (value: string) => value
-  .replace(/^\.\/(?:widgets|snippets)\//, "")
+  .replace(/^\.\/(?:widgets|snippets|tests)\//, "")
   .replace(/\.\*$/, "")
   .replace(extensionPattern, "")
   .replaceAll(/[-_]+/g, " ")
@@ -304,9 +315,16 @@ const titleCase = (value: string) => value
 
 export const packageNameLabel = (name: string) => titleCase(name.split("/").at(-1) ?? name)
 
-const configKey = (exportName: string) => exportName
-  .replace(/\.\*$/, "")
-  .replace(extensionPattern, "")
+/** The editing-config key of an export or config entry: its subpath without
+ * a wildcard or file extension, so `./widgets/x`, `./widgets/x.*` and
+ * `./widgets/x.js` address the same member. */
+export const editingConfigKey = (name: string) => {
+  if(name === ".") return name
+  const path = name.startsWith("./") ? name : `./${name.replace(/^\/+/, "")}`
+  return path.replace(/\.\*$/, "").replace(extensionPattern, "")
+}
+
+const configKey = editingConfigKey
 
 const normalizePath = (value: string) => value.replace(/^\.\//, "")
 
@@ -414,7 +432,9 @@ export function sanitizePackageSnippet(html: string, maximumLength = 50_000_000)
   return template.innerHTML
 }
 
-function localized(value: LocalizedText | undefined, locale: string) {
+/** Resolves a localized package text for `locale`: the exact locale, then its
+ * language, then the `_` fallback. */
+export function localizedText(value: LocalizedText | undefined, locale: string) {
   if(typeof value === "string") return value
   if(!value) return
   const normalizedLocale = locale.toLowerCase()
@@ -424,13 +444,15 @@ function localized(value: LocalizedText | undefined, locale: string) {
   return exactKey && value[exactKey] || languageKey && value[languageKey] || value._
 }
 
-function personLabel(person: PersonMetadata | undefined) {
+const localized = localizedText
+
+export function personLabel(person: PersonMetadata | undefined) {
   if(typeof person === "string") return person.trim() || undefined
   if(!person) return
   return person.name?.trim() || person.username?.trim() || person.email?.trim()
 }
 
-function repositoryUrl(repository: WebWriterPackageManifest["repository"]) {
+export function repositoryUrl(repository: WebWriterPackageManifest["repository"]) {
   if(typeof repository === "string") return repository
   return repository?.url
 }
@@ -439,71 +461,125 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
+const mergeConfigValue = (base: unknown, override: unknown): unknown => {
+  if(!isRecord(base) || !isRecord(override)) return override ?? base
+  const result: Record<string, unknown> = {...base}
+  Object.entries(override).forEach(([key, value]) => {
+    result[key] = key in result ? mergeConfigValue(result[key], value) : value
+  })
+  return result
+}
+
+/** Rekeys a config by `editingConfigKey`, merging entries that address the
+ * same member in their original order. */
+export function normalizeEditingConfig(config: PackageEditingConfig | undefined): PackageEditingConfig {
+  const result: Record<string, unknown> = {}
+  Object.entries(isRecord(config) ? config : {}).forEach(([key, value]) => {
+    const normalized = editingConfigKey(key)
+    result[normalized] = normalized in result ? mergeConfigValue(result[normalized], value) : value
+  })
+  return result as PackageEditingConfig
+}
+
 /** Deeply merges editing config, with inline values taking precedence. */
 export function mergeEditingConfig(
   external: PackageEditingConfig | undefined,
   inline: PackageEditingConfig | undefined,
 ): PackageEditingConfig {
-  const merge = (base: unknown, override: unknown): unknown => {
-    if(!isRecord(base) || !isRecord(override)) return override ?? base
-    const result: Record<string, unknown> = {...base}
-    Object.entries(override).forEach(([key, value]) => {
-      result[key] = key in result ? merge(result[key], value) : value
-    })
-    return result
-  }
-  return merge(external ?? {}, inline ?? {}) as PackageEditingConfig
+  return mergeConfigValue(normalizeEditingConfig(external), normalizeEditingConfig(inline)) as PackageEditingConfig
 }
 
-function packageMember(
+/** One resolved member with the package-relative files it loads. */
+export type PackageMemberSource = {
+  member: PackageMember
+  /** Files that must exist for the member to work. */
+  requiredPaths: string[]
+  /** Stylesheet inferred from a wildcard export; it may be absent. */
+  inferredStylePath?: string
+}
+
+export type PackageContents = {
+  members: PackageMemberSource[]
+  migrationPath?: string
+  tests: Array<{name: string, scriptPath: string, inferredStylePath?: string}>
+}
+
+/** Reads the members of a manifest's `exports`. Widget exports are grouped by
+ * tag name, so a package may publish one wildcard export (`./widgets/x.*`) or
+ * separate script and stylesheet exports (`./widgets/x.js`, `./widgets/x.css`). */
+export function packageContents(
   manifest: WebWriterPackageManifest,
-  exportName: string,
-  target: string,
   editingConfig: PackageEditingConfig,
+  urlFor: (path: string) => string,
   iconUrl: string | undefined,
   locale: string,
-): PackageMember | null {
-  const isWidget = exportName.startsWith("./widgets/")
-  const isSnippet = exportName.startsWith("./snippets/")
-  if(!isWidget && !isSnippet) return null
-
-  const key = configKey(exportName)
-  const config = editingConfig[key] ?? {}
-  const identifier = key.split("/").at(-1)!
-  const label = localized(config.label, locale) ?? titleCase(identifier)
-  const base = {
-    id: `${manifest.name}@${manifest.version}:${key}`,
-    packageName: manifest.name,
-    packageVersion: manifest.version,
-    exportName,
-    label,
-    description: localized(config.description, locale),
-    insertable: config.uninsertable !== true,
-    iconUrl,
-    editingConfig: config,
+): PackageContents {
+  const members: PackageMemberSource[] = []
+  const widgets = new Map<string, {source: PackageMemberSource, scriptPath?: string, stylePath?: string, inferredStylePath?: string}>()
+  const tests = new Map<string, PackageContents["tests"][number]>()
+  let migrationPath: string | undefined
+  for(const [exportName, exportTarget] of Object.entries(manifest.exports ?? {})) {
+    const target = resolvePackageExport(exportTarget)
+    if(!target) continue
+    const key = configKey(exportName)
+    if(exportName === "./migrate.js") {
+      migrationPath = normalizePath(target)
+      continue
+    }
+    const wildcard = target.endsWith(".*")
+    const scriptPath = wildcard ? normalizePath(target.slice(0, -1) + "js") : scriptPattern.test(target) ? normalizePath(target) : undefined
+    const stylePath = wildcard ? normalizePath(target.slice(0, -1) + "css") : /\.css$/i.test(target) ? normalizePath(target) : undefined
+    if(exportName.startsWith("./tests/")) {
+      if(!scriptPath) continue
+      const name = key.slice("./tests/".length)
+      if(!tests.has(name)) tests.set(name, {name, scriptPath, ...(wildcard ? {inferredStylePath: stylePath} : {})})
+      continue
+    }
+    const isWidget = exportName.startsWith("./widgets/")
+    const isSnippet = exportName.startsWith("./snippets/")
+    if(!isWidget && !isSnippet) continue
+    const config = editingConfig[key] ?? {}
+    const base = {
+      id: `${manifest.name}@${manifest.version}:${key}`,
+      packageName: manifest.name,
+      packageVersion: manifest.version,
+      exportName,
+      label: localized(config.label, locale) ?? titleCase(key),
+      description: localized(config.description, locale),
+      insertable: config.uninsertable !== true,
+      iconUrl,
+      editingConfig: config,
+    }
+    if(isSnippet) {
+      const path = normalizePath(target)
+      members.push({member: {...base, kind: "snippet", htmlUrl: urlFor(path)}, requiredPaths: [path]})
+      continue
+    }
+    let widget = widgets.get(key)
+    if(!widget) {
+      widget = {source: {member: {...base, kind: "widget", tagName: key.split("/").at(-1)!}, requiredPaths: []}}
+      widgets.set(key, widget)
+      members.push(widget.source)
+    }
+    if(scriptPath && !widget.scriptPath) widget.scriptPath = scriptPath
+    if(stylePath && wildcard) widget.inferredStylePath ??= stylePath
+    else if(stylePath) widget.stylePath ??= stylePath
   }
-
-  if(isSnippet) {
-    return {
-      ...base,
-      kind: "snippet",
-      htmlUrl: packageCdnUrl(manifest.name, manifest.version, target),
+  for(const {source, scriptPath, stylePath, inferredStylePath} of widgets.values()) {
+    if(scriptPath) {
+      source.member.scriptUrl = urlFor(scriptPath)
+      source.requiredPaths.push(scriptPath)
+    }
+    if(stylePath) {
+      source.member.styleUrl = urlFor(stylePath)
+      source.requiredPaths.push(stylePath)
+    }
+    else if(inferredStylePath) {
+      source.member.styleUrl = urlFor(inferredStylePath)
+      source.inferredStylePath = inferredStylePath
     }
   }
-
-  const wildcard = target.endsWith(".*")
-  const scriptPath = wildcard ? target.slice(0, -1) + "js" : target
-  const stylePath = wildcard ? target.slice(0, -1) + "css" : undefined
-  const tagName = identifier.replace(/\.\*$/, "").replace(extensionPattern, "")
-  return {
-    ...base,
-    kind: "widget",
-    tagName,
-    scriptUrl: /\.(?:m?js|ts)$/i.test(scriptPath) || wildcard
-      ? packageCdnUrl(manifest.name, manifest.version, scriptPath)
-      : undefined,
-    styleUrl: stylePath ? packageCdnUrl(manifest.name, manifest.version, stylePath) : undefined,
-  }
+  return {members, ...(migrationPath ? {migrationPath} : {}), tests: [...tests.values()]}
 }
 
 function summaryPackage(summary: NpmSearchPackage): WebWriterPackage {
@@ -719,16 +795,12 @@ export class WebWriterPackageRegistry {
       packageFilesRequest,
     ])
     const editingConfig = mergeEditingConfig(externalEditingConfig, manifest.editingConfig)
-    const inferredStylePaths = new Map<string, string>()
-    const members = Object.entries(exports).flatMap(([exportName, exportTarget]) => {
-      const target = resolvePackageExport(exportTarget)
-      if(!target) return []
-      const member = packageMember(manifest, exportName, target, editingConfig, iconUrl, this.locale)
-      if(member?.kind === "widget" && member.styleUrl && target.endsWith(".*")) {
-        inferredStylePaths.set(member.styleUrl, packageListingPath(target.slice(0, -1) + "css"))
-      }
-      return member ? [member] : []
-    })
+    const urlFor = (path: string) => packageCdnUrl(manifest.name, manifest.version, path)
+    const contents = packageContents(manifest, editingConfig, urlFor, iconUrl, this.locale)
+    const members = contents.members.map(({member}) => member)
+    const inferredStylePaths = new Map(contents.members.flatMap(({member, inferredStylePath}) => (
+      member.styleUrl && inferredStylePath ? [[member.styleUrl, packageListingPath(inferredStylePath)] as const] : []
+    )))
     const globalConfig = editingConfig["."] ?? {}
     const manifestAuthors = [manifest.author, ...(manifest.contributors ?? [])]
       .map(personLabel)
@@ -754,6 +826,12 @@ export class WebWriterPackageRegistry {
       scripts: [...new Set(members.flatMap(member => member.scriptUrl ? [member.scriptUrl] : []))],
       styles: [...new Set(members.flatMap(member => member.styleUrl ? [member.styleUrl] : []))]
         .filter(style => !packageFiles || !inferredStylePaths.has(style) || packageFiles.has(inferredStylePaths.get(style)!)),
+      ...(contents.migrationPath ? {migrationUrl: urlFor(contents.migrationPath)} : {}),
+      ...(contents.tests.length ? {tests: contents.tests.map(test => ({
+        name: test.name,
+        scriptUrl: urlFor(test.scriptPath),
+        ...(test.inferredStylePath ? {styleUrl: urlFor(test.inferredStylePath)} : {}),
+      }))} : {}),
       editingConfig,
       manifest: {...manifest},
     } satisfies WebWriterPackage

@@ -1,8 +1,13 @@
 import {
+  localizedText,
   mergeEditingConfig,
   PACKAGE_DOCUMENTATION_MAX_BYTES,
   PackageDocumentationTooLargeError,
+  packageContents,
   packageDocumentationExcerpt,
+  packageNameLabel,
+  personLabel,
+  repositoryUrl,
   resolvePackageExport,
   type PackageEditingConfig,
   type PackageDocumentationReadOptions,
@@ -80,7 +85,6 @@ type LocalPackageOptions = {
   locale?: string
 }
 
-const extensionPattern = /\.(?:html?|m?js|css|ts)$/i
 const scopedPackageNamePattern = /^@[^/\s]+\/[^/\s]+$/
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 /** Normalizes a package-relative path and rejects traversal or URL-like paths. */
@@ -96,28 +100,6 @@ export function normalizeLocalPackagePath(value: string) {
 }
 
 const normalizePath = normalizeLocalPackagePath
-const configKey = (value: string) => value.replace(/\.\*$/, "").replace(extensionPattern, "")
-const titleCase = (value: string) => value
-  .replace(/^\.\/(?:widgets|snippets)\//, "")
-  .replace(/\.\*$/, "")
-  .replace(extensionPattern, "")
-  .replaceAll(/[-_]+/g, " ")
-  .replace(/\b\w/g, letter => letter.toUpperCase())
-
-const localized = (value: string | Record<string, string> | undefined, locale: string) => {
-  if(typeof value === "string") return value
-  if(!value) return
-  const normalized = locale.toLowerCase()
-  const exact = Object.keys(value).find(key => key.toLowerCase() === normalized)
-  const language = normalized.split("-")[0]
-  const languageKey = Object.keys(value).find(key => key.toLowerCase() === language)
-  return (exact && value[exact]) || (languageKey && value[languageKey]) || value._
-}
-
-const personLabel = (person: WebWriterPackageManifest["author"]) => {
-  if(typeof person === "string") return person.trim() || undefined
-  return person?.name?.trim() || person?.username?.trim() || person?.email?.trim()
-}
 
 const localReadmeCandidates = ["README.md", "readme.md", "README.markdown", "readme.markdown", "README.txt"]
 
@@ -254,45 +236,6 @@ async function fileExists(directory: LocalPackageDirectory, path: string) {
   }
 }
 
-function memberFor(
-  manifest: WebWriterPackageManifest,
-  exportName: string,
-  target: string,
-  editingConfig: PackageEditingConfig,
-  iconUrl: string | undefined,
-  urlFor: LocalResourceUrlBuilder,
-  locale: string,
-): PackageMember | null {
-  const isWidget = exportName.startsWith("./widgets/")
-  const isSnippet = exportName.startsWith("./snippets/")
-  if(!isWidget && !isSnippet) return null
-  const key = configKey(exportName)
-  const config = editingConfig[key] ?? {}
-  const base = {
-    id: `${manifest.name}@${manifest.version}:${key}`,
-    packageName: manifest.name,
-    packageVersion: manifest.version,
-    exportName,
-    label: localized(config.label, locale) ?? titleCase(key),
-    description: localized(config.description, locale),
-    insertable: config.uninsertable !== true,
-    iconUrl,
-    editingConfig: config,
-  }
-  if(isSnippet) return {...base, kind: "snippet", htmlUrl: urlFor(normalizePath(target))}
-  const wildcard = target.endsWith(".*")
-  const scriptPath = wildcard ? target.slice(0, -1) + "js" : target
-  const stylePath = wildcard ? target.slice(0, -1) + "css" : undefined
-  const tagName = key.split("/").at(-1)!.replace(extensionPattern, "")
-  return {
-    ...base,
-    kind: "widget",
-    tagName,
-    scriptUrl: /\.(?:m?js|ts)$/i.test(scriptPath) || wildcard ? urlFor(normalizePath(scriptPath)) : undefined,
-    styleUrl: stylePath ? urlFor(normalizePath(stylePath)) : undefined,
-  }
-}
-
 /** Loads a package from a local directory without depending on browser globals. */
 export async function loadLocalPackage(directory: LocalPackageDirectory, options: LocalPackageOptions): Promise<LocalPackageLoadResult> {
   let manifestText: string
@@ -341,42 +284,42 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
     }
   }
   const editingConfig = mergeEditingConfig(externalConfig, manifest.editingConfig)
+  const urlFor = (path: string) => options.urlFor(normalizePath(path))
+  const contents = packageContents(manifest, editingConfig, urlFor, iconUrl, locale)
   const members: PackageMember[] = []
-  for(const [exportName, targetValue] of Object.entries(exports)) {
-    const target = resolvePackageExport(targetValue)
-    if(!target) continue
-    const member = memberFor(manifest, exportName, target, editingConfig, iconUrl, options.urlFor, locale)
-    if(!member) continue
-    const requiredPaths = member.kind === "widget"
-      ? [member.scriptUrl && normalizePath(target.endsWith(".*") ? target.slice(0, -1) + "js" : target)].filter(Boolean) as string[]
-      : [normalizePath(target)]
+  for(const {member, requiredPaths, inferredStylePath} of contents.members) {
     const available = await Promise.all(requiredPaths.map(path => fileExists(directory, path)))
-    if(available.some(found => !found)) {
-      warnings.push({code: "missing-export", path: target, message: `Configured package export is missing: ${target}`})
+    const missing = requiredPaths.filter((_, index) => !available[index])
+    if(missing.length) {
+      missing.forEach(path => warnings.push({code: "missing-export", path, message: `Configured package export is missing: ${path}`}))
       continue
     }
-    if(member.kind === "widget" && member.styleUrl && target.endsWith(".*")) {
-      const stylePath = normalizePath(target.slice(0, -1) + "css")
-      if(!await fileExists(directory, stylePath)) member.styleUrl = undefined
-    }
+    if(inferredStylePath && !await fileExists(directory, inferredStylePath)) member.styleUrl = undefined
     members.push(member)
   }
   if(!members.length) warnings.push({code: "missing-bundle", message: "The package does not contain a usable widget or snippet bundle yet."})
+  const tests = await Promise.all(contents.tests.map(async test => ({
+    name: test.name,
+    scriptUrl: urlFor(test.scriptPath),
+    ...(test.inferredStylePath && await fileExists(directory, test.inferredStylePath) ? {styleUrl: urlFor(test.inferredStylePath)} : {}),
+  })))
   const globalConfig = editingConfig["."] ?? {}
   const authors = [manifest.author, ...(manifest.contributors ?? [])].map(personLabel).filter((value): value is string => Boolean(value))
   const pkg: WebWriterPackage = {
     name: manifest.name,
     version: manifest.version,
-    label: localized(globalConfig.label, locale) ?? titleCase(manifest.name.split("/").at(-1) ?? manifest.name),
-    description: localized(globalConfig.description, locale) ?? manifest.description,
+    label: localizedText(globalConfig.label, locale) ?? packageNameLabel(manifest.name),
+    description: localizedText(globalConfig.description, locale) ?? manifest.description,
     iconUrl,
     authors: [...new Set(authors)],
     license: manifest.license,
     keywords: manifest.keywords ?? [],
-    links: {homepage: manifest.homepage, repository: typeof manifest.repository === "string" ? manifest.repository : manifest.repository?.url},
+    links: {homepage: manifest.homepage, repository: repositoryUrl(manifest.repository)},
     members,
     scripts: [...new Set(members.flatMap(member => member.scriptUrl ? [member.scriptUrl] : []))],
     styles: [...new Set(members.flatMap(member => member.styleUrl ? [member.styleUrl] : []))],
+    ...(contents.migrationPath && await fileExists(directory, contents.migrationPath) ? {migrationUrl: urlFor(contents.migrationPath)} : {}),
+    ...(tests.length ? {tests} : {}),
     editingConfig,
     manifest: {...manifest},
   }

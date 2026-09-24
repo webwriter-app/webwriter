@@ -154,7 +154,10 @@ export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessag
       && Array.isArray(pkg.styles)
       && pkg.members.every(isPackageMember)
       && pkg.scripts.every(script => typeof script === "string")
-      && pkg.styles.every(style => typeof style === "string"),
+      && pkg.styles.every(style => typeof style === "string")
+      && isOptionalString(pkg.migrationUrl)
+      && (pkg.tests === undefined || Array.isArray(pkg.tests) && pkg.tests.every(test => !!test && typeof test === "object"
+        && typeof test.name === "string" && typeof test.scriptUrl === "string" && isOptionalString(test.styleUrl))),
     ))
 }
 

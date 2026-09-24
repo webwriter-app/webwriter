@@ -8,7 +8,9 @@ import {
   PACKAGE_DOCUMENTATION_MAX_LINES,
   WebWriterPackageRegistry,
   describePackageExport,
+  mergeEditingConfig,
   packageCdnUrl,
+  packageContents,
   packageInsertionItems,
   packageWidgetSchemaDefinitions,
   sanitizePackageSnippet,
@@ -297,6 +299,60 @@ describe("WebWriterPackageRegistry", () => {
     const result = sanitizePackageSnippet('<style>body{display:none}</style><link rel="stylesheet"><p onclick="alert(1)" style="color: red">Safe</p><script>alert(2)</script><a href="javascript:alert(3)" srcdoc="<script>evil()</script>" style="background:url(javascript:evil())">link</a><img src="data:image/svg+xml,<svg onload=evil()>" alt="image"><template><script>later()</script><style>p{display:none}</style><span onmouseover="later()">template</span></template>')
     expect(result).toBe('<p style="color: red">Safe</p><a>link</a><img alt="image"><template><span>template</span></template>')
     expect(() => sanitizePackageSnippet("x".repeat(10), 5)).toThrow("too large")
+  })
+})
+
+describe("package contents", () => {
+  const manifest = (exports: Record<string, string>) => ({name: "@webwriter/demo", version: "1.0.0", exports})
+  const urlFor = (path: string) => `https://cdn.test/${path}`
+
+  it("groups separate script and stylesheet exports of one widget", () => {
+    const contents = packageContents(manifest({
+      "./widgets/demo-widget.js": "./dist/demo-widget.js",
+      "./widgets/demo-widget.css": "./dist/demo-widget.css",
+      "./widgets/plain-widget": "./dist/plain.mjs",
+    }), {}, urlFor, undefined, "en")
+    expect(contents.members.map(({member, requiredPaths, inferredStylePath}) => ({
+      tag: member.tagName, script: member.scriptUrl, style: member.styleUrl, requiredPaths, inferredStylePath,
+    }))).toEqual([
+      {tag: "demo-widget", script: "https://cdn.test/dist/demo-widget.js", style: "https://cdn.test/dist/demo-widget.css",
+        requiredPaths: ["dist/demo-widget.js", "dist/demo-widget.css"], inferredStylePath: undefined},
+      {tag: "plain-widget", script: "https://cdn.test/dist/plain.mjs", style: undefined,
+        requiredPaths: ["dist/plain.mjs"], inferredStylePath: undefined},
+    ])
+  })
+
+  it("prefers an explicit stylesheet over one inferred from a wildcard", () => {
+    const [{member, inferredStylePath}] = packageContents(manifest({
+      "./widgets/demo-widget.*": "./dist/demo-widget.*",
+      "./widgets/demo-widget.css": "./styles/demo.css",
+    }), {}, urlFor, undefined, "en").members
+    expect(member.styleUrl).toBe("https://cdn.test/styles/demo.css")
+    expect(inferredStylePath).toBeUndefined()
+  })
+
+  it("resolves the migration script and tests without loading them as widgets", () => {
+    const contents = packageContents(manifest({
+      "./migrate.js": "./dist/migrate.js",
+      "./tests/basics.*": "./dist/tests/basics.*",
+      "./widgets/demo-widget.*": "./dist/demo-widget.*",
+    }), {}, urlFor, undefined, "en")
+    expect(contents.migrationPath).toBe("dist/migrate.js")
+    expect(contents.tests).toEqual([{name: "basics", scriptPath: "dist/tests/basics.js", inferredStylePath: "dist/tests/basics.css"}])
+    expect(contents.members.map(({member}) => member.tagName)).toEqual(["demo-widget"])
+  })
+
+  it("addresses editing config entries with or without an export extension", () => {
+    const config = mergeEditingConfig(
+      {"./widgets/demo-widget.*": {label: "External", group: "flow"}, "snippets/example.html": {label: "Snippet"}},
+      {"./widgets/demo-widget.js": {label: "Inline"}},
+    )
+    expect(config).toEqual({
+      "./widgets/demo-widget": {label: "Inline", group: "flow"},
+      "./snippets/example": {label: "Snippet"},
+    })
+    const [widget] = packageContents(manifest({"./widgets/demo-widget.*": "./dist/demo-widget.*"}), config, urlFor, undefined, "en").members
+    expect(widget.member.label).toBe("Inline")
   })
 })
 

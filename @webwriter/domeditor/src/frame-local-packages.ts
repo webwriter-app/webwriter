@@ -20,6 +20,12 @@ export function framePackages(packages: WebWriterPackage[], appOrigin: string, f
     iconUrl: pkg.iconUrl && rewrite(pkg.iconUrl),
     scripts: pkg.scripts.map(rewrite),
     styles: pkg.styles.map(rewrite),
+    ...(pkg.migrationUrl ? {migrationUrl: rewrite(pkg.migrationUrl)} : {}),
+    ...(pkg.tests ? {tests: pkg.tests.map(test => ({
+      ...test,
+      scriptUrl: rewrite(test.scriptUrl),
+      ...(test.styleUrl ? {styleUrl: rewrite(test.styleUrl)} : {}),
+    }))} : {}),
     members: pkg.members.map(member => ({
       ...member,
       iconUrl: member.iconUrl && rewrite(member.iconUrl),
