@@ -481,7 +481,8 @@ export function localizeSnippet(html: string, locale: string) {
       const count = (counts.get(value) ?? 0) + 1
       counts.set(value, count)
       const translation = translate(translations[`${value}#${count}`])
-      if(translation) node.data = node.data.replace(value, translation)
+      // A replacer function keeps "$&" and similar sequences literal.
+      if(translation) node.data = node.data.replace(value, () => translation)
     }
   }
   return template.innerHTML

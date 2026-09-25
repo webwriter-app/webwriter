@@ -149,6 +149,8 @@ function markerData(kind: CommentMarkerKind, id: string, text = "", metadata?: C
 /** Plain-text annotations represented entirely by authored DOM Comment nodes. */
 export class CommentFeature extends EditorFeature {
   private observer: MutationObserver | null = null
+  /** Parsed markers, valid until the observer records a body mutation. */
+  private cachedMarkers: {node: Comment, marker: CommentMarker}[] | null = null
   private stateRefreshQueued = false
   private highlighting = true
   private paneOpen = false
@@ -176,7 +178,10 @@ export class CommentFeature extends EditorFeature {
     super.enable()
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
-      this.observer = new FrameMutationObserver(() => this.queueStateRefresh())
+      this.observer = new FrameMutationObserver(() => {
+        this.cachedMarkers = null
+        this.queueStateRefresh()
+      })
       try {
         this.observer.observe(document.body, {childList: true, characterData: true, subtree: true})
       }
@@ -197,6 +202,7 @@ export class CommentFeature extends EditorFeature {
     if(!this.isEnabled) return
     this.observer?.disconnect()
     this.observer = null
+    this.cachedMarkers = null
     window.removeEventListener("resize", this.repositionCommentUI)
     window.removeEventListener("scroll", this.repositionCommentUI, true)
     this.highlightRegistry()?.delete(commentHighlightName)
@@ -396,6 +402,13 @@ export class CommentFeature extends EditorFeature {
   }
 
   private markers() {
+    // Selection and scroll repositioning read markers far more often than
+    // they change. Records not yet delivered invalidate the cache here.
+    if(this.observer?.takeRecords().length) {
+      this.cachedMarkers = null
+      this.queueStateRefresh()
+    }
+    if(this.cachedMarkers) return this.cachedMarkers
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT)
     const markers: {node: Comment, marker: CommentMarker}[] = []
     while(walker.nextNode()) {
@@ -403,6 +416,7 @@ export class CommentFeature extends EditorFeature {
       const marker = parseCommentMarker(node)
       if(marker) markers.push({node, marker})
     }
+    if(this.observer) this.cachedMarkers = markers
     return markers
   }
 

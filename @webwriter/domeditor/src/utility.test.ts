@@ -10,7 +10,7 @@ import {
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getZPos, getStaticCoords,
   isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker,
-  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset
+  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript
 } from "./utility"
 import { Schema } from "./schema"
 
@@ -31,6 +31,20 @@ function setBody(html: string) {
 function firstText(parent: Element | null = document.body.firstElementChild) {
   return parent!.firstChild as Text
 }
+
+describe("createInertScript()", () => {
+  it("creates detached HTML and SVG scripts owned by the requested document", () => {
+    const html = createInertScript(document)
+    const svg = createInertScript(document, "http://www.w3.org/2000/svg")
+    expect(html.ownerDocument).toBe(document)
+    expect(html.namespaceURI).toBe("http://www.w3.org/1999/xhtml")
+    expect(html.parentNode).toBeNull()
+    expect(svg.ownerDocument).toBe(document)
+    expect(svg.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    expect(svg.localName).toBe("script")
+    expect(svg.parentNode).toBeNull()
+  })
+})
 
 describe("contentful widget boundaries", () => {
   it("uses declared content even when empty, preserving unknown and contentless widget boundaries", () => {

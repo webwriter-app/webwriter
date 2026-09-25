@@ -292,6 +292,15 @@ describe("DOMEditor stylesheets", () => {
     expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "false")
   })
 
+  it("keeps data URLs in offline CSS as authored", async () => {
+    document.body.innerHTML = `<p style="background-image: url('data:image/svg+xml;utf8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot;></svg>')">x</p>`
+    const style = document.querySelector("p")!.getAttribute("style")
+    const saved = await editor.serializeHTML(true)
+    const paragraph = new DOMParser().parseFromString(saved, "text/html").querySelector("p")!
+    expect(paragraph.getAttribute("style")).toBe(style)
+    expect(paragraph.attributes).toHaveLength(1)
+  })
+
   it("unwraps every form element and preserves allowed nested content", () => {
     const {fragment} = editor.parseHTMLFragment('<form><fieldset><legend>Title</legend><p>before <label><em>label</em></label><datalist><option value="choice"></option></datalist><selectedcontent>selected</selectedcontent> after</p></fieldset></form>', true)
     expect(fragment.textContent).toBe("Titlebefore labelchoiceselected after")
@@ -452,7 +461,7 @@ describe("widget shadow interactions", () => {
     widget.remove()
   })
 
-  it("keeps inactive widget scrolls from reaching the widget while the editor observes them", () => {
+  it("keeps inactive widget scrolls from reaching the widget while the editor observes them", async () => {
     const widget = document.createElement("scrolling-widget")
     const scroller = document.createElement("div")
     widget.attachShadow({mode: "open"}).append(scroller)
@@ -462,6 +471,8 @@ describe("widget shadow interactions", () => {
     scroller.addEventListener("scroll", widgetScroll)
 
     scroller.dispatchEvent(new Event("scroll", {bubbles: true, composed: true}))
+    // Presence is repositioned once per frame.
+    await new Promise(resolve => requestAnimationFrame(resolve))
 
     expect(renderPresence).toHaveBeenCalled()
     expect(widgetScroll).not.toHaveBeenCalled()

@@ -490,8 +490,10 @@ export class StateFeature extends EditorFeature {
 
   private replaceDocument(html: string) {
     const parsed = new DOMParser().parseFromString(checkedAIHTML(html), "text/html")
-    const incoming = document.createDocumentFragment()
-    incoming.append(...Array.from(parsed.body.childNodes, node => document.importNode(node, true)))
+    // Keep the proposal inert until it is sanitized.
+    const inert = getInertDocument()
+    const incoming = inert.createDocumentFragment()
+    incoming.append(...Array.from(parsed.body.childNodes, node => inert.importNode(node, true)))
     const {fragment, removedUnsafeItems} = this.editor.prepareHTMLFragment(incoming)
     const nodes = Array.from(fragment.childNodes)
     if(!canPlaceLayouts(nodes, document.body, document.body)) throw new Error("Layouts can only appear at the document top level")

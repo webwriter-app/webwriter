@@ -3,6 +3,9 @@ import {editorFrameControlMessage, isInitializeEditorMessage} from "./editor-bri
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
 import {isWidgetShadowInteraction, pathFromNode} from "./utility"
 
+/** Shortest time between two document snapshots posted to the host. */
+const snapshotInterval = 250
+
 type SelectionBookmark = {
   anchorNode: Node
   anchorOffset: number
@@ -31,14 +34,22 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   }
   if(settings.language) document.documentElement.lang = settings.language
   setMotion(settings.disableAnimations === true)
-  let queued = false
+  // Serializing the document here and parsing it in the host costs time in
+  // proportion to its size. Post the first change at once, then at most one
+  // snapshot per interval while changes continue.
+  let pending = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const flushSnapshot = () => {
+    timer = null
+    if(!pending) return
+    pending = false
+    post({type: "editor-frame-snapshot", html: snapshot()})
+    timer = setTimeout(flushSnapshot, snapshotInterval)
+  }
   const publishSnapshot = () => {
-    if(queued) return
-    queued = true
-    queueMicrotask(() => {
-      queued = false
-      post({type: "editor-frame-snapshot", html: snapshot()})
-    })
+    if(pending) return
+    pending = true
+    if(timer === null) queueMicrotask(flushSnapshot)
   }
   const observer = new MutationObserver(publishSnapshot)
   observer.observe(document.documentElement, {attributes: true, characterData: true, childList: true, subtree: true})

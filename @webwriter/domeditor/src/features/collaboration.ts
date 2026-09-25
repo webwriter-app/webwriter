@@ -19,28 +19,38 @@ type CaretLayout = {
  * editor appendix using the viewport rectangle returned by the same DOM Range
  * APIs the browser uses for the native caret. */
 export class CollaborationFeature extends EditorFeature {
+  readonly #carets = new Map<number, HTMLElement>()
+  #frame: number | null = null
   readonly #handleAwarenessChange = () => this.renderPresence(true)
-  readonly #handleSharedChange = () => this.renderPresence()
-  readonly #handleLayoutChange = () => this.renderPresence()
+  /** Document edits and scrolling can occur many times per frame. */
+  readonly #scheduleRender = () => {
+    if(this.#frame === null) this.#frame = requestAnimationFrame(() => {
+      this.#frame = null
+      this.renderPresence()
+    })
+  }
 
   enable() {
     if(this.isEnabled) return
     super.enable()
     this.editor.doc.awareness.on("change", this.#handleAwarenessChange)
-    this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
-    window.addEventListener("resize", this.#handleLayoutChange)
-    document.addEventListener("scroll", this.#handleLayoutChange, true)
+    this.editor.doc.doc.on("afterTransaction", this.#scheduleRender)
+    window.addEventListener("resize", this.#scheduleRender)
+    document.addEventListener("scroll", this.#scheduleRender, true)
     this.renderPresence(true)
   }
 
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.awareness.off("change", this.#handleAwarenessChange)
-    this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
-    window.removeEventListener("resize", this.#handleLayoutChange)
-    document.removeEventListener("scroll", this.#handleLayoutChange, true)
+    this.editor.doc.doc.off("afterTransaction", this.#scheduleRender)
+    window.removeEventListener("resize", this.#scheduleRender)
+    document.removeEventListener("scroll", this.#scheduleRender, true)
+    if(this.#frame !== null) cancelAnimationFrame(this.#frame)
+    this.#frame = null
     this.editor.postPresence([])
-    this.editor.appendix.querySelectorAll(".◆presence-caret").forEach(caret => caret.remove())
+    this.#carets.forEach(caret => caret.remove())
+    this.#carets.clear()
     super.disable()
   }
 
@@ -56,8 +66,6 @@ export class CollaborationFeature extends EditorFeature {
     const usersByClientId = new Map(users.map(user => [user.clientId, user]))
     if(notify) this.editor.postPresence(users)
     const carets: CaretLayout[] = []
-
-    this.editor.appendix.querySelectorAll(".◆presence-caret").forEach(caret => caret.remove())
 
     for(const [clientId, state] of states) {
       if(!state.selection) continue
@@ -94,10 +102,20 @@ export class CollaborationFeature extends EditorFeature {
       })
     }
 
+    // Reuse each client's caret element instead of rebuilding the appendix.
+    const rendered = new Set(carets.map(caret => caret.clientId))
+    this.#carets.forEach((element, clientId) => {
+      if(rendered.has(clientId) && element.isConnected) return
+      element.remove()
+      this.#carets.delete(clientId)
+    })
     carets.forEach(caret => {
-      const element = document.createElement("div")
+      const existing = this.#carets.get(caret.clientId)
+      const element = existing ?? document.createElement("div")
       const isElementSelection = caret.elementSelection !== undefined
       const isGapCaret = caret.gapPlacement !== undefined
+      element.className = ""
+      element.removeAttribute("style")
       element.classList.add(
         "◆",
         "◆editor-only",
@@ -132,15 +150,17 @@ export class CollaborationFeature extends EditorFeature {
       element.style.left = `${caret.rect.left}px`
       element.style.top = `${caret.rect.top}px`
 
-      const label = document.createElement("span")
+      const label = element.querySelector("span") ?? document.createElement("span")
       label.classList.add("◆", "◆editor-only", "◆presence-caret-label")
       label.setAttribute(
         "part",
         `presence-caret-label${isElementSelection ? " presence-element-selection-label" : isGapCaret ? " presence-gap-caret-label" : ""}`,
       )
       label.textContent = caret.initials
+      if(existing) return
       element.append(label)
       this.editor.addAppendix(element)
+      this.#carets.set(caret.clientId, element)
     })
   }
 

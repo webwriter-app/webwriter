@@ -369,6 +369,22 @@ describe("StateFeature", () => {
     editor.destroy()
   })
 
+  it("keeps a proposed document inert until it is sanitized", () => {
+    document.body.innerHTML = "<p>Before</p>"
+    const editor = new DOMEditor()
+    try {
+      const prepare = vi.spyOn(editor, "prepareHTMLFragment")
+      editor.getActionHandler("replaceAIDocument")({
+        type: "replaceAIDocument",
+        html: "<p>After</p><object><img src=\"https://example.com/tracker.png\"></object>",
+      })
+      // A document without a browsing context neither upgrades widgets nor loads resources.
+      expect(prepare.mock.calls[0][0].ownerDocument.defaultView).toBeNull()
+      expect(editor.toHTML(true)).toBe("<p>After</p>")
+    }
+    finally { editor.destroy() }
+  })
+
   it("reads and safely replaces the current selection", () => {
     document.body.innerHTML = "<p>Hello world</p>"
     const editor = new DOMEditor()

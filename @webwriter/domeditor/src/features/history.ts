@@ -201,7 +201,7 @@ export class HistoryFeature extends EditorFeature {
   }
 
   #recordCheckpoint(label?: string) {
-    const source = this.editor.toHTML()
+    const source = this.#source()
     const matchingCheckpoint = this.#checkpoints.toArray().reverse().find(checkpoint => checkpoint.source === source)
     if(matchingCheckpoint) {
       const previousCheckpointId = this.#currentCheckpointId
@@ -271,6 +271,12 @@ export class HistoryFeature extends EditorFeature {
     return state
   }
 
+  /** Checkpoints hold the authored document without the runtime assets
+   * added for detached copies, which the live editor must not load. */
+  #source() {
+    return this.editor.toHTML(false, false)
+  }
+
   #applySource(source: string) {
     const restored = new DOMParser().parseFromString(source, "text/html")
     this.#replaceAttributes(document.documentElement, restored.documentElement)
@@ -313,7 +319,7 @@ export class HistoryFeature extends EditorFeature {
     if(!checkpoint) throw new Error("That version is no longer available")
     if(checkpointId === this.#currentCheckpointId) return this.clearPreview()
     if(!this.#previewCheckpointId) {
-      this.#previewCurrentSource = this.editor.toHTML()
+      this.#previewCurrentSource = this.#source()
       this.editor.doc.pauseDOMSync()
       this.editor.lockEditing(this)
     }
@@ -334,7 +340,7 @@ export class HistoryFeature extends EditorFeature {
 
   #synchronizeCurrentCheckpoint() {
     if(this.#previewCheckpointId) return null
-    const source = this.editor.toHTML()
+    const source = this.#source()
     const checkpoints = this.#checkpoints.toArray()
     let checkpointId: string | null = null
     for(let index = checkpoints.length - 1; index >= 0; index--) {

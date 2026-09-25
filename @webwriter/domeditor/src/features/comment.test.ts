@@ -332,6 +332,25 @@ describe("CommentFeature highlights and threads", () => {
     pane.querySelector<HTMLButtonElement>('[aria-label="Close comment threads"]')!.click()
   })
 
+  it("reuses parsed comment markers until the document changes", () => {
+    const paragraph = setContent("<p>abcd</p>")
+    $.move(paragraph.firstChild!, 2)
+    feature.toggleComment("Cached")
+    document.dispatchEvent(new Event("selectionchange"))
+    const walkers = vi.spyOn(document, "createTreeWalker")
+    const commentWalks = () => walkers.mock.calls.filter(([, filter]) => filter === NodeFilter.SHOW_COMMENT).length
+    for(let index = 0; index < 5; index++) {
+      window.dispatchEvent(new Event("scroll"))
+      document.dispatchEvent(new Event("selectionchange"))
+    }
+    expect(commentWalks()).toBe(0)
+    expect(editor.appendix.querySelector(".◆comment-bauble")).not.toBeNull()
+    paragraph.append(document.createComment("unrelated"))
+    window.dispatchEvent(new Event("scroll"))
+    expect(commentWalks()).toBe(1)
+    walkers.mockRestore()
+  })
+
   it("groups replies to a node comment without adding authored UI elements", () => {
     const paragraph = setContent("<p>abcd</p>")
     $.move(paragraph.firstChild!, 2)

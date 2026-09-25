@@ -3,7 +3,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import "happy-dom"
 import '@testing-library/jest-dom/vitest'
 
+import * as Y from "yjs"
 import { DOMEditor } from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import { $, htmlToFragment } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
@@ -34,6 +36,37 @@ beforeEach(async () => {
 
 
 afterEach(() => editor.destroy())
+
+describe("column group cleanup", () => {
+  const groupHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div><p>outside</p>'
+  const mutationsDelivered = () => new Promise<void>(resolve => setTimeout(resolve))
+
+  it("leaves a group emptied by a remote update to the client that edited it", async () => {
+    document.body.innerHTML = groupHTML
+    $.move(document.body.lastElementChild!.firstChild!, 1)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+    const group = sharedDOMBody(remote).get(0) as Y.XmlElement
+    remote.transact(() => group.delete(1, 1))
+    Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
+    await mutationsDelivered()
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(document.querySelector(".ww-column-group")?.children).toHaveLength(1)
+    remote.destroy()
+  })
+
+  it("unwraps a group emptied by a local edit", async () => {
+    document.body.innerHTML = groupHTML
+    $.move(document.body.lastElementChild!.firstChild!, 1)
+    await mutationsDelivered()
+    document.querySelector(".ww-column-right")!.remove()
+    await mutationsDelivered()
+    expect(document.querySelector(".ww-column-group")).toBeNull()
+    expectBodyToBe("<p>left</p><p>outside</p>")
+  })
+})
 
 describe("column insertion", () => {
   it.each(["p", "h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
@@ -767,6 +800,26 @@ describe("heading groups", () => {
     expectBodyToBe('<hgroup data-origin="remote"><p>Eyebrow</p><h3 id="title"><em>Title</em></h3><x-note></x-note><p>Deck</p></hgroup>')
     expect($.anchor).toBe(document.querySelector("em")!.firstChild)
     expect($.anchorOffset).toBe(2)
+  })
+
+  it("keeps a caret in the heading's own text when changing its level", () => {
+    document.body.innerHTML = "<hgroup><h2>Heading</h2><p>Deck</p></hgroup>"
+    const text = document.querySelector("h2")!.firstChild!
+    $.move(text, 5)
+    // Moving the children collapses live ranges inside them to the old heading.
+    const append = Element.prototype.append
+    vi.spyOn(Element.prototype, "append").mockImplementation(function(this: Element, ...nodes) {
+      const selection = document.getSelection()!
+      const collapses = nodes.some(node => node instanceof Node && node.contains(selection.anchorNode))
+      const parent = selection.anchorNode?.parentNode
+      append.apply(this, nodes)
+      if(collapses && parent) selection.setPosition(parent, 0)
+    })
+    editor.features.manipulation.setHeadingGroupLevel("h3")
+    vi.mocked(Element.prototype.append).mockRestore()
+    expect(document.querySelector("h3")!.firstChild).toBe(text)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(5)
   })
 
   it("adds supporting paragraphs on either side without rebuilding unrelated content", () => {
@@ -2932,6 +2985,8 @@ describe("unified content transfer", () => {
   it("positions the idle node drag surface only after geometry invalidation and cleans up observers", () => {
     document.body.innerHTML = "<p>source</p>"
     const source = document.body.firstElementChild!
+    // Presence carets also redraw on resize; count only the drag surface's frames.
+    editor.features.collaboration.disable()
     const callbacks = new Map<number, FrameRequestCallback>()
     let nextFrame = 0
     const requestFrame = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
@@ -2958,6 +3013,7 @@ describe("unified content transfer", () => {
     window.dispatchEvent(new Event("resize"))
     expect(requestFrame).toHaveBeenCalledTimes(2)
     editor.features.manipulation.enable()
+    editor.features.collaboration.enable()
   })
 
   it.each(["dragend", "dragleave", "disable"])("cleans up the drop indicator and handles %s", ending => {

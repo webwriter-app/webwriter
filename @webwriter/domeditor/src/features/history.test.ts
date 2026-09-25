@@ -283,4 +283,13 @@ describe("collaborative version history", () => {
     expect(editor.toHTML()).not.toContain("version-history")
     remote.destroy()
   })
+
+  it("records checkpoints without the runtime assets added to detached copies", async () => {
+    const assets = vi.spyOn(editor.features.dependency, "appendSerializedAssets")
+    document.querySelector("p")!.textContent = "Changed"
+    await mutationsDelivered()
+    const state = editor.features.history.actions.getVersionHistory({type: "getVersionHistory"})
+    expect(state.checkpoints).toHaveLength(2)
+    expect(assets).not.toHaveBeenCalled()
+  })
 })

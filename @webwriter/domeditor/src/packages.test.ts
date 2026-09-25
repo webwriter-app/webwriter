@@ -308,6 +308,8 @@ describe("WebWriterPackageRegistry", () => {
     expect(localizeSnippet(html, "de-AT")).toBe("<p> Hallo </p><p>Servus</p><p>World</p><math><mi>x</mi></math>")
     expect(localizeSnippet("<p>Plain</p>", "de")).toBe("<p>Plain</p>")
     expect(localizeSnippet('<p>Text</p><script type="application/json" class="snippet-localization">{broken</script>', "de")).toBe("<p>Text</p>")
+    const priced = `<p>Price</p><script type="application/json" class="snippet-localization">${JSON.stringify({"Price#1": {de: "Preis: $& netto $$"}})}</script>`
+    expect(localizeSnippet(priced, "de")).toBe("<p>Preis: $&amp; netto $$</p>")
   })
 
   it("fetches snippets translated to the requested language", async () => {

@@ -1321,6 +1321,15 @@ export function getInertDocument(node: Node = document) {
   return inert
 }
 
+/** Creates an HTML or SVG script element that never executes. The HTML
+ * fragment parser marks scripts as already started, which adoption and
+ * cloning retain, so later `src` or text changes cannot run it either. */
+export function createInertScript(document: Document, namespace: string | null = "http://www.w3.org/1999/xhtml") {
+  const template = getInertDocument(document).createElement("template")
+  template.innerHTML = namespace === SVG_NAMESPACE ? "<svg><script></script></svg>" : "<script></script>"
+  return document.adoptNode(template.content.querySelector("script")!)
+}
+
 /** Copies authored DOM without running custom-element constructors. Inserting
  * the result into the live document upgrades its widgets when needed. */
 export function cloneInert<T extends Node>(node: T, deep=false): T {

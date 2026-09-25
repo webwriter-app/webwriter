@@ -1,7 +1,8 @@
 import * as Y from "yjs"
 import {Awareness} from "y-protocols/awareness"
-import {WebsocketProvider} from "y-websocket"
-import {isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
+import {messageSync, WebsocketProvider} from "y-websocket"
+import {createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
+import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
@@ -239,6 +240,14 @@ export class SharedDOMDoc {
         disableBc: true,
         connect: false,
       })
+      // Commit queued local DOM edits in their own transaction before a
+      // remote update opens one; otherwise they would carry the provider's
+      // origin, which the provider never broadcasts.
+      const handleSyncMessage = this.provider.messageHandlers[messageSync]
+      this.provider.messageHandlers[messageSync] = (...args) => {
+        this.#commitPendingDOMChanges()
+        handleSyncMessage(...args)
+      }
       this.provider.on("sync", (synced: boolean) => {
         if(!synced || !this.#awaitingInitialSync) return
         this.#awaitingInitialSync = false
@@ -635,11 +644,16 @@ export class SharedDOMDoc {
       return
     }
     const containers = new Set(relevant.filter(record => record.type === "childList").map(record => record.target))
+    // Containers revisit only retained children whose subtree has records.
+    const changed = new Set<Node>()
+    for(const record of relevant) {
+      for(let node: Node | null = record.target; node && !changed.has(node); node = node.parentNode) changed.add(node)
+    }
     for(const node of containers) {
       if([...containers].some(parent => parent !== node && parent.contains(node))) continue
       const yNode = this.#xmlNodes.get(node)
       if(isElement(node) && yNode instanceof Y.XmlElement && this.#isSelectionNode(yNode)) {
-        this.#reconcileYElement(node, yNode)
+        this.#reconcileYElement(node, yNode, changed)
       }
     }
     for(const node of new Set(relevant.filter(record => record.type !== "childList").map(record => record.target))) {
@@ -744,6 +758,8 @@ export class SharedDOMDoc {
       undoManager.destroy()
       throw new Error("Cannot capture a DOM change while DOM synchronization is paused")
     }
+    // Earlier edits are not part of the captured change.
+    this.#commitPendingDOMChanges()
     this.stopObserve()
     try {
       const result = change()
@@ -879,6 +895,7 @@ export class SharedDOMDoc {
   undoCapturedChange(changeId: string) {
     const undoManager = this.#capturedChanges.get(changeId)
     if(!undoManager) return false
+    this.#commitPendingDOMChanges()
     undoManager.undo()
     undoManager.destroy()
     this.#capturedChanges.delete(changeId)
@@ -886,10 +903,12 @@ export class SharedDOMDoc {
   }
 
   undo() {
+    this.#commitPendingDOMChanges()
     this.#undoManager.undo()
   }
 
   redo() {
+    this.#commitPendingDOMChanges()
     this.#undoManager.redo()
   }
 
@@ -914,11 +933,20 @@ export class SharedDOMDoc {
     this.syncFromDOM(this.#domOrigin, mutations)
   }
 
-  readonly #flushPendingDOMChanges = (transaction: Y.Transaction) => {
-    if(!this.#isObserving || this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync
-      || transaction.origin === this.#domOrigin || transaction.origin === this.#remoteReactionOrigin) return
+  /** Commits queued DOM records as a local transaction. Call this before
+   * starting any other transaction: once one is open, the records can only
+   * join it and inherit its origin. */
+  #commitPendingDOMChanges() {
+    if(!this.#isObserving || this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
     const pending = this.#observer.takeRecords()
-    if(pending.length) this.syncFromDOM(this.#domOrigin, pending)
+    if(pending.some(record => this.#isRelevantMutation(record))) this.syncFromDOM(this.#domOrigin, pending)
+  }
+
+  /** Fallback for transactions started elsewhere: joining keeps concurrent
+   * DOM edits from being overwritten, although they take its origin. */
+  readonly #flushPendingDOMChanges = (transaction: Y.Transaction) => {
+    if(transaction.origin === this.#domOrigin || transaction.origin === this.#remoteReactionOrigin) return
+    this.#commitPendingDOMChanges()
   }
 
   readonly #handleYChanges = (events: Y.YEvent<YXmlNode>[], transaction: Y.Transaction) => {
@@ -964,7 +992,7 @@ export class SharedDOMDoc {
         }
         else if(html.hasAttribute("lang")) html.removeAttribute("lang")
       }
-      this.writeSelection()
+      if(this.#hasDocumentFocus()) this.writeSelection()
       // Drop MutationRecords caused by applying the shared tree. A custom
       // element may have synchronously changed its own light DOM while being
       // connected; reconcile once in the other direction to capture that.
@@ -993,14 +1021,23 @@ export class SharedDOMDoc {
       if(!this.#isCompatiblePair(node, target) && target !== this.#body && target !== this.#documentHead) {
         const parent = target.parent
         const parentNode = parent && this.#nodes.get(parent as YXmlNode)
-        if(parent instanceof Y.XmlElement && isElement(parentNode)) this.#reconcileDOMElement(parent, parentNode)
+        if(parent instanceof Y.XmlElement && isElement(parentNode)) this.#reconcileDOMElement(parent, parentNode, false)
       }
-      else if(event instanceof Y.YXmlEvent && event.changes.delta.length) this.#reconcileDOMElement(target, node)
+      else if(event instanceof Y.YXmlEvent && event.changes.delta.length) this.#reconcileDOMElement(target, node, false)
       else this.#copyYAttributesToDOM(target, node)
       this.#restoreControlState(node)
     }
     const control = (isElement(node) ? node : node.parentElement)?.closest("select, textarea")
     if(control) this.#restoreControlState(control)
+  }
+
+  /** Whether the authored document, not a form control, widget shadow tree
+   * or the editor's shadow appendix, holds focus. The stored selection is
+   * stale while the user types elsewhere and must not reclaim focus. */
+  #hasDocumentFocus() {
+    const active = this.#document.activeElement
+    if(active && active !== this.#document.body && active !== this.#document.documentElement && active !== this.root) return false
+    return !active?.shadowRoot?.activeElement
   }
 
   #isSelectionNode(node: YXmlNode) {
@@ -1207,7 +1244,11 @@ export class SharedDOMDoc {
     let element: Element
     try {
       const qualifiedName = yNode.getAttribute(INTERNAL_QUALIFIED_NAME) ?? yNode.nodeName
-      element = explicitNamespace !== undefined || qualifiedName !== yNode.nodeName
+      // Authored scripts are kept for serialization only. A created script
+      // would run under the editor frame's 'strict-dynamic' policy.
+      element = qualifiedName === "script" && (namespace === "http://www.w3.org/1999/xhtml" || namespace === SVG_NAMESPACE)
+        ? createInertScript(this.#document, namespace)
+        : explicitNamespace !== undefined || qualifiedName !== yNode.nodeName
         ? this.#document.createElementNS(namespace, qualifiedName)
         : this.#document.createElement(yNode.nodeName)
     }
@@ -1259,12 +1300,12 @@ export class SharedDOMDoc {
       const attribute = this.#decodeYAttribute(name)
       return attribute && !excluded.includes(attribute.name) ? [{...attribute, value: String(value)}] : []
     })
-    const desiredNames = new Set(decodedAttributes.map(attribute => this.#domAttributeKey(attribute)))
+    const desiredNames = new Set(decodedAttributes.map(attribute => this.#encodeDOMAttribute(attribute)))
 
     for(const attribute of Array.from(element.attributes)) {
       const name = attribute.name
       if(this.#isIgnoredAttribute(name, element) || name.toLowerCase() === "class" || excluded.includes(name)) continue
-      if(!desiredNames.has(this.#domAttributeKey(attribute))) element.removeAttributeNS(attribute.namespaceURI, attribute.localName)
+      if(!desiredNames.has(this.#encodeDOMAttribute(attribute))) element.removeAttributeNS(attribute.namespaceURI, attribute.localName)
     }
     decodedAttributes.forEach(attribute => {
       try {
@@ -1287,7 +1328,7 @@ export class SharedDOMDoc {
     else if(element.hasAttribute("class")) element.removeAttribute("class")
   }
 
-  #encodeDOMAttribute(attribute: Attr) {
+  #encodeDOMAttribute(attribute: DOMAttribute | Attr) {
     if(attribute.namespaceURI !== null) {
       return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
     }
@@ -1325,18 +1366,6 @@ export class SharedDOMDoc {
     return {namespaceURI: null, name}
   }
 
-  #domAttributeKey(attribute: DOMAttribute | Attr) {
-    if(attribute.namespaceURI !== null) {
-      return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
-    }
-    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE || attribute.name === INTERNAL_QUALIFIED_NAME ||
-      attribute.name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX) ||
-      attribute.name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
-      return `${INTERNAL_USER_ATTRIBUTE_PREFIX}${encodeURIComponent(attribute.name)}`
-    }
-    return attribute.name
-  }
-
   #reconcileYText(domText: Text, yText: Y.XmlText) {
     this.#addNodePair(domText, yText)
     this.#updateYText(yText, domText.data)
@@ -1372,7 +1401,7 @@ export class SharedDOMDoc {
     }
   }
 
-  #reconcileYElement(domElement: Element, yElement: Y.XmlElement) {
+  #reconcileYElement(domElement: Element, yElement: Y.XmlElement, changed?: ReadonlySet<Node>) {
     this.#addNodePair(domElement, yElement)
     this.#copyDOMAttributesToY(domElement, yElement)
 
@@ -1401,9 +1430,11 @@ export class SharedDOMDoc {
 
     domChildren.forEach((domChild, index) => {
       const yChild = desiredYChildren[index]
+      // Created children already mirror their DOM subtree.
+      if(changed && (!retained.has(yChild) || !changed.has(domChild))) return
       if(isText(domChild) && yChild instanceof Y.XmlText) this.#reconcileYText(domChild, yChild)
       else if(isComment(domChild) && this.#isYComment(yChild)) this.#reconcileYComment(domChild, yChild)
-      else if(isElement(domChild) && yChild instanceof Y.XmlElement) this.#reconcileYElement(domChild, yChild)
+      else if(isElement(domChild) && yChild instanceof Y.XmlElement) this.#reconcileYElement(domChild, yChild, changed)
     })
   }
 
@@ -1419,7 +1450,9 @@ export class SharedDOMDoc {
     if(domComment.data !== value) domComment.data = value
   }
 
-  #reconcileDOMElement(yElement: Y.XmlElement, domElement: Element) {
+  /** A shallow pass leaves retained children to the events of their own
+   * changes; created children already mirror their Y subtree. */
+  #reconcileDOMElement(yElement: Y.XmlElement, domElement: Element, deep = true) {
     this.#addNodePair(domElement, yElement)
     this.#copyYAttributesToDOM(yElement, domElement)
 
@@ -1445,7 +1478,7 @@ export class SharedDOMDoc {
       .filter(child => this.#isSyncableNode(child) && !desiredSet.has(child))
       .forEach(child => child.remove())
 
-    renderableChildren.forEach(({yChild, domChild}) => {
+    if(deep) renderableChildren.forEach(({yChild, domChild}) => {
       if(yChild instanceof Y.XmlText && isText(domChild)) this.#reconcileDOMText(yChild, domChild)
       else if(this.#isYComment(yChild) && isComment(domChild)) this.#reconcileDOMComment(yChild, domChild)
       else if(yChild instanceof Y.XmlElement && isElement(domChild)) this.#reconcileDOMElement(yChild, domChild)

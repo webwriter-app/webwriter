@@ -1187,9 +1187,11 @@ export class DOMEditor {
     return root
   }
 
-  toHTML(innerBody=false) {
+  /** `runtimeAssets` adds the widget runtime a detached document needs; the
+   * live editor loads its own. */
+  toHTML(innerBody=false, runtimeAssets=true) {
     const root = this.cleanDocumentClone()
-    if(!innerBody) this.features.dependency.appendSerializedAssets(root)
+    if(!innerBody && runtimeAssets) this.features.dependency.appendSerializedAssets(root)
     if(innerBody) return root.body.innerHTML
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
   }
@@ -1435,7 +1437,9 @@ export class DOMEditor {
     // Tokenization handles escapes, comments, quoted parentheses and modern
     // @import qualifiers without normalizing any unrelated authored CSS.
     const tokens = tokenizeCSS({css}).filter(token => ![TokenType.Whitespace, TokenType.Comment, TokenType.EOF].includes(token[0]))
-    const replacements: Array<Promise<{start: number, end: number, value: string}>> = []
+    const replacements: Array<Promise<{start: number, end: number, value: string} | null>> = []
+    // Token values are unescaped; quote them again for a CSS string.
+    const cssURL = (value: string) => `url("${value.replace(/[\\"\n\r\f]/g, character => `\\${character.charCodeAt(0).toString(16)} `)}")`
     const functions: string[] = []
     for(let index = 0; index < tokens.length; index++) {
       let token = tokens[index]
@@ -1460,7 +1464,11 @@ export class DOMEditor {
         const start = token[2]
         const url = value
         replacements.push((async () => {
-          if(!isImport) return {start, end, value: `url("${await this.resourceDataURL(url, base)}")`}
+          if(!isImport) {
+            const data = await this.resourceDataURL(url, base)
+            // Data and fragment URLs stay as authored.
+            return data === url ? null : {start, end, value: cssURL(data)}
+          }
           const href = this.resolvedResourceURL(url, base)
           let imported = ""
           if(!ancestors.has(href)) {
@@ -1471,7 +1479,7 @@ export class DOMEditor {
             }
           }
           const data = await this.blobDataURL(new Blob([imported], {type: "text/css"}))
-          return {start, end, value: `url("${data}")`}
+          return {start, end, value: cssURL(data)}
         })())
       }
       else if(token[0] === TokenType.Function) functions.push(token[4].value.toLowerCase())
@@ -1480,7 +1488,9 @@ export class DOMEditor {
     }
     const resolved = await Promise.all(replacements)
     let result = css
-    resolved.reverse().forEach(({start, end, value}) => { result = result.slice(0, start) + value + result.slice(end) })
+    resolved.reverse().forEach(replacement => {
+      if(replacement) result = result.slice(0, replacement.start) + replacement.value + result.slice(replacement.end)
+    })
     return result
   }
 

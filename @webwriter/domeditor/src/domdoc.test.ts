@@ -2,6 +2,10 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
+import {messageSync} from "y-websocket"
+import * as encoding from "lib0/encoding"
+import * as decoding from "lib0/decoding"
+import * as syncProtocol from "y-protocols/sync"
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
 
 const sharedDocs: SharedDOMDoc[] = []
@@ -143,6 +147,65 @@ describe("SharedDOMDoc initialization", () => {
     expect(local.root.title).toBe("remote title")
     Y.applyUpdate(remote.shared.doc, Y.encodeStateAsUpdate(local.shared.doc), "remote-client")
     expect(remote.root.innerHTML).toBe(local.root.innerHTML)
+  })
+
+  it("commits pending DOM edits under the local origin before a provider applies a sync message", () => {
+    const source = createShared("<p>before</p>")
+    const ydoc = new Y.Doc()
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(source.shared.doc))
+    const root = document.createElement("main")
+    const shared = new SharedDOMDoc("ws://localhost:1234", "room", [], ["◆"], {root, ydoc, connect: false})
+    sharedDocs.push(shared)
+    const provider = shared.provider!
+    const remote = cloneShared(shared)
+    remote.root.title = "remote title"
+    remote.shared.syncFromDOM()
+    // The provider broadcasts every update except those it applied itself.
+    const broadcast: Uint8Array[] = []
+    shared.doc.on("update", (update: Uint8Array, origin: unknown) => { if(origin !== provider) broadcast.push(update) })
+
+    root.firstElementChild!.textContent = "pending local content"
+    const message = encoding.createEncoder()
+    syncProtocol.writeUpdate(message, Y.encodeStateAsUpdate(remote.shared.doc))
+    provider.messageHandlers[messageSync](encoding.createEncoder(), decoding.createDecoder(encoding.toUint8Array(message)), provider, true, messageSync)
+
+    expect(root.title).toBe("remote title")
+    expect(root.firstElementChild!.textContent).toBe("pending local content")
+    const peer = cloneShared(source.shared)
+    broadcast.forEach(update => Y.applyUpdate(peer.shared.doc, update, "remote-client"))
+    expect(peer.root.firstElementChild!.textContent).toBe("pending local content")
+    shared.undo()
+    expect(root.firstElementChild!.textContent).toBe("before")
+  })
+
+  it("undoes a pending DOM edit as its own step", async () => {
+    const {root, shared} = createShared("<p>one</p>")
+    root.firstElementChild!.textContent = "two"
+    await mutationsDelivered()
+    shared.stopCapturing()
+    root.firstElementChild!.textContent = "three"
+    shared.undo()
+    expect(root.firstElementChild!.textContent).toBe("two")
+    shared.undo()
+    expect(root.firstElementChild!.textContent).toBe("one")
+  })
+
+  it("reconciles a new top-level block without revisiting unrelated siblings", async () => {
+    const {root, shared} = createShared('<p class="authored">text</p>'.repeat(100))
+    const unrelated = shared.body.get(99) as Y.XmlElement
+    const children = vi.spyOn(unrelated, "toArray")
+    const attributes = vi.spyOn(unrelated, "getAttributes")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "new"
+    root.firstElementChild!.after(paragraph)
+    root.firstElementChild!.firstChild!.textContent = "typed"
+    await mutationsDelivered()
+    expect(shared.body.get(0).toString()).toContain("typed")
+    expect(shared.body.get(1).toString()).toContain("new")
+    shared.doc.transact(() => shared.body.insert(0, [new Y.XmlElement("hr")]), "remote-client")
+    expect(root.firstElementChild!.localName).toBe("hr")
+    expect(children).not.toHaveBeenCalled()
+    expect(attributes).not.toHaveBeenCalled()
   })
 
   it("continues observing templates inserted immediately before a remote update", async () => {
@@ -823,6 +886,43 @@ describe("relative selections and history", () => {
     expect(document.querySelector("p")!.textContent).toBe("XHello")
     expect(document.getSelection()!.anchorNode).toBe(text)
     expect(document.getSelection()!.anchorOffset).toBe(4)
+  })
+
+  it("leaves the selection alone after remote edits while another element has focus", () => {
+    document.body.innerHTML = "<p>Hello</p><input>"
+    const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"])
+    sharedDocs.push(shared)
+    const text = document.querySelector("p")!.firstChild as Text
+    document.getSelection()!.setPosition(text, 3)
+    shared.updateLocalSelection()
+    const yText = (shared.body.firstChild as Y.XmlElement).firstChild as Y.XmlText
+    const input = document.querySelector("input")!
+    const write = vi.spyOn(shared, "writeSelection")
+
+    input.focus()
+    shared.doc.transact(() => yText.insert(0, "X"), "remote-client")
+    expect(document.querySelector("p")!.textContent).toBe("XHello")
+    expect(write).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(input)
+
+    input.blur()
+    shared.doc.transact(() => yText.insert(0, "Y"), "remote-client")
+    expect(write).toHaveBeenCalledOnce()
+  })
+
+  it("renders shared HTML and SVG scripts without creating executable elements", () => {
+    const {shared} = createShared('<script src="https://example.com/a.js"></script><svg><script href="https://example.com/b.js"></script></svg>')
+    // Happy DOM cannot run scripts; a script from createElement() would run
+    // in a browser, while the fragment parser marks it as already started.
+    const createElement = vi.spyOn(document, "createElement")
+    const peer = cloneShared(shared)
+    const [html, svg] = peer.root.querySelectorAll("script")
+    expect(html.namespaceURI).toBe("http://www.w3.org/1999/xhtml")
+    expect(html.getAttribute("src")).toBe("https://example.com/a.js")
+    expect(svg.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    expect(svg.getAttribute("href")).toBe("https://example.com/b.js")
+    expect(html.ownerDocument).toBe(document)
+    expect(createElement.mock.calls.some(([name]) => name === "script")).toBe(false)
   })
 
   it("undoes and redoes compound direct DOM mutations in both DOM and Yjs", async () => {

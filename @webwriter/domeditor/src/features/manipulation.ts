@@ -1,3 +1,4 @@
+import type {Transaction} from "yjs"
 import {authoredLayoutKind, canPlaceLayouts, canBecomeLayout} from "../layouts"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
@@ -217,30 +218,70 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private columnObserver: MutationObserver | null = null
+  /** Groups changed by local edits. Every client receives remote edits, so
+   * unwrapping in reaction to them would duplicate the moved children. */
+  private readonly columnCleanupCandidates = new Set<Element>()
+
+  private renderingRemoteChanges = false
+  /** Keeps local records queued before a remote update, then ignores the
+   * records of rendering that update. */
+  private readonly beginRemoteChanges = (transaction: Transaction) => {
+    if(transaction.local) return
+    this.collectColumnCandidates(this.columnObserver?.takeRecords() ?? [])
+    this.renderingRemoteChanges = true
+  }
+  private readonly endRemoteChanges = (transaction: Transaction) => {
+    if(transaction.local) return
+    this.columnObserver?.takeRecords()
+    this.renderingRemoteChanges = false
+  }
+
+  private collectColumnCandidates(records: MutationRecord[]) {
+    const placement = (classes: string) => classes.split(/\s+/).filter(name => /^(ww-column-(group|left|middle|right|three))$/.test(name)).sort().join(" ")
+    for(const record of records) {
+      if(record.type !== "childList" && placement(record.oldValue ?? "") === placement((record.target as Element).getAttribute("class") ?? "")) continue
+      const target = record.target instanceof Element ? record.target : record.target.parentElement
+      const group = target?.closest(".ww-column-group")
+      if(group) this.columnCleanupCandidates.add(group)
+      record.addedNodes.forEach(node => {
+        if(!(node instanceof Element)) return
+        if(node.matches(".ww-column-group")) this.columnCleanupCandidates.add(node)
+        node.querySelectorAll(".ww-column-group").forEach(nested => this.columnCleanupCandidates.add(nested))
+      })
+    }
+  }
 
   enable() {
     if(this.isEnabled) return
     super.enable()
-    this.columnObserver = new MutationObserver(records => {
-      const placement = (classes: string) => classes.split(/\s+/).filter(name => /^(ww-column-(group|left|middle|right|three))$/.test(name)).sort().join(" ")
-      if(records.some(record => record.type === "childList" || placement(record.oldValue ?? "") !== placement((record.target as Element).getAttribute("class") ?? ""))) this.cleanupColumnGroups()
-    })
+    this.columnObserver = new MutationObserver(records => this.cleanupColumnGroups(records))
     this.columnObserver.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["class"], attributeOldValue: true})
+    this.editor.doc.doc.on("beforeTransaction", this.beginRemoteChanges)
+    this.editor.doc.doc.on("afterTransaction", this.endRemoteChanges)
   }
 
   /** Unwrap abandoned single-sided groups without rebuilding their content. */
-  cleanupColumnGroups() {
+  cleanupColumnGroups(records?: MutationRecord[]) {
+    if(this.renderingRemoteChanges) return
+    this.collectColumnCandidates(records ?? this.columnObserver?.takeRecords() ?? [])
     if(!this.isEnabled || this.editor.isEditingLocked) return
-    for(const group of Array.from(getDocumentRoot().querySelectorAll(".ww-column-group"))) {
-      if(!isColumnGroup(group) || !group.isConnected || atomicEditingContainer(group, this.editor.schema)) continue
+    for(const group of Array.from(this.columnCleanupCandidates)) {
+      if(!isColumnGroup(group) || !group.isConnected || !getDocumentRoot().contains(group) || atomicEditingContainer(group, this.editor.schema)) {
+        this.columnCleanupCandidates.delete(group)
+        continue
+      }
       const empty = columnSides(group).filter(side => !Array.from(group.children).some(child => columnSide(child) === side))
-      if(!empty.length) continue
+      if(!empty.length) {
+        this.columnCleanupCandidates.delete(group)
+        continue
+      }
       const selection = document.getSelection()
       const affinity = $.columnGap
       // A bare group boundary has no unambiguous side; retain it while editing.
       const selectedEmpty = affinity?.group === group ? empty.includes(affinity.side)
         : selection?.anchorNode === group || selection?.focusNode === group
       if(this.editor.features.selection.selectedSectionElement === group || selectedEmpty || selection?.rangeCount && !selection.isCollapsed && selection.getRangeAt(0).intersectsNode(group)) continue
+      this.columnCleanupCandidates.delete(group)
       const parent = group.parentNode!
       const index = Array.from(parent.childNodes).indexOf(group)
       const endpoint = (node: Node | null, offset: number) => {
@@ -270,6 +311,10 @@ export class ManipulationFeature extends EditorFeature {
   disable() {
     this.columnObserver?.disconnect()
     this.columnObserver = null
+    this.columnCleanupCandidates.clear()
+    this.renderingRemoteChanges = false
+    this.editor.doc.doc.off("beforeTransaction", this.beginRemoteChanges)
+    this.editor.doc.doc.off("afterTransaction", this.endRemoteChanges)
     this.endNodeDrag(false)
     super.disable()
   }
@@ -746,21 +791,24 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     if(heading.localName === level) return
+    // Read the selection first: moving the children collapses live ranges
+    // inside them to the old heading.
+    const selection = document.getSelection()
+    const saved = selection?.anchorNode && selection.focusNode
+      && (heading.contains(selection.anchorNode) || heading.contains(selection.focusNode))
+      ? {anchorNode: selection.anchorNode, anchorOffset: selection.anchorOffset, focusNode: selection.focusNode, focusOffset: selection.focusOffset}
+      : null
     const replacement = document.createElement(level)
     this.copyAuthoredAttributes(heading, replacement)
     replacement.append(...Array.from(heading.childNodes))
-    const selection = document.getSelection()
-    const anchorWasHeading = selection?.anchorNode === heading
-    const focusWasHeading = selection?.focusNode === heading
-    const anchorOffset = selection?.anchorOffset ?? 0
-    const focusOffset = selection?.focusOffset ?? 0
     heading.replaceWith(replacement)
-    if(selection && (anchorWasHeading || focusWasHeading)) {
-      const anchorNode = anchorWasHeading ? replacement : selection.anchorNode
-      const focusNode = focusWasHeading ? replacement : selection.focusNode
-      if(anchorNode && focusNode) selection.setBaseAndExtent(
-        anchorNode, Math.min(anchorOffset, anchorNode.childNodes.length),
-        focusNode, Math.min(focusOffset, focusNode.childNodes.length),
+    if(selection && saved) {
+      const anchorNode = saved.anchorNode === heading ? replacement : saved.anchorNode
+      const focusNode = saved.focusNode === heading ? replacement : saved.focusNode
+      const length = (node: Node) => node instanceof CharacterData ? node.length : node.childNodes.length
+      if(anchorNode.isConnected && focusNode.isConnected) selection.setBaseAndExtent(
+        anchorNode, Math.min(saved.anchorOffset, length(anchorNode)),
+        focusNode, Math.min(saved.focusOffset, length(focusNode)),
       )
     }
   }

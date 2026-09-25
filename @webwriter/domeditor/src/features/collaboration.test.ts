@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, beforeEach, describe, expect, it} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates} from "y-protocols/awareness"
 import {DOMEditor} from "../domeditor"
@@ -408,6 +408,22 @@ describe("collaboration presence", () => {
     expect(selection.focusNode).toBe(text)
     expect(selection.focusOffset).toBe(4)
     expect(editor.appendix.querySelector(`.◆presence-caret[data-client-id="${remoteClientId}"]`)).not.toBeNull()
+  })
+
+  it("reuses a remote caret and repositions it once per frame", async () => {
+    const remoteClientId = addRemoteUser()
+    const selector = `.◆presence-caret[data-client-id="${remoteClientId}"]`
+    const caret = editor.appendix.querySelector(selector)
+    const render = vi.spyOn(editor.features.collaboration, "renderPresence")
+    for(let index = 0; index < 3; index++) {
+      document.dispatchEvent(new Event("scroll"))
+      window.dispatchEvent(new Event("resize"))
+    }
+    expect(render).not.toHaveBeenCalled()
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    expect(render).toHaveBeenCalledOnce()
+    expect(editor.appendix.querySelector(selector)).toBe(caret)
+    expect(editor.appendix.querySelectorAll(".◆presence-caret")).toHaveLength(1)
   })
 
   it("removes departed users and their virtual carets", () => {
