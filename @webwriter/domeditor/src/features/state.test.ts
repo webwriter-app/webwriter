@@ -440,6 +440,47 @@ describe("StateFeature", () => {
     }
   })
 
+  it("uses a capture-selected widget as the HTML root despite a stale native caret", () => {
+    document.body.innerHTML = '<p></p><section><ww-graph nodes="3"></ww-graph></section>'
+    const editor = new DOMEditor()
+    const widget = document.querySelector("ww-graph")!
+    // Focus inside a widget captures it while the native caret stays behind.
+    document.getSelection()!.setPosition(document.querySelector("p")!, 0)
+    editor.features.selection.captureElement(widget, {preserveNativeSelection: true})
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+
+    const result = editor.getActionHandler("beginHTMLSelectionEdit")({
+      type: "beginHTMLSelectionEdit",
+      path: [0],
+    }) as {html: string}
+
+    expect(result.html).toBe('<ww-graph nodes="3"></ww-graph>')
+    expect(result.html).not.toContain("◆")
+    editor.getActionHandler("setHTMLSelectionEditPending")({type: "setHTMLSelectionEditPending", pending: true})
+    editor.getActionHandler("applyHTMLSelectionEdit")({
+      type: "applyHTMLSelectionEdit",
+      html: '<ww-graph nodes="4"></ww-graph>',
+    })
+    expect(editor.toHTML(true)).toBe('<p></p><section><ww-graph nodes="4"></ww-graph></section>')
+    editor.destroy()
+  })
+
+  it("uses a selected section as the HTML root although the native caret stays inside it", () => {
+    document.body.innerHTML = "<p>Before</p><section><h2>Title</h2><p>Body</p></section>"
+    const editor = new DOMEditor()
+    const section = document.querySelector("section")!
+    document.getSelection()!.setPosition(section.querySelector("p")!.firstChild!, 2)
+    expect(editor.features.selection.selectSectionElement(section)).toBe(true)
+
+    const result = editor.getActionHandler("beginHTMLSelectionEdit")({
+      type: "beginHTMLSelectionEdit",
+    }) as {html: string}
+
+    expect(result.html).toBe("<section><h2>Title</h2><p>Body</p></section>")
+    editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
+    editor.destroy()
+  })
+
   it("uses the host selection path when focus leaves only an empty body selection", () => {
     document.body.innerHTML = "<p>First</p><section><p>Selected</p></section>"
     const editor = new DOMEditor()

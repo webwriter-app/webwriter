@@ -353,6 +353,15 @@ export class StateFeature extends EditorFeature {
   }
 
   private selectedHTMLRange(fallbackPath?: number[]) {
+    // Captured widgets and selected sections are owned independently of the
+    // native range, which may still hold a caret beside or inside them.
+    const {captureSelectedElement, selectedSectionElement} = this.editor.features.selection
+    const owned = captureSelectedElement ?? selectedSectionElement
+    if(owned) {
+      const range = document.createRange()
+      range.selectNode(owned)
+      return range
+    }
     const selection = document.getSelection()
     const hasSelection = Boolean(selection?.rangeCount && selection.anchorNode
       && document.body.contains(selection.anchorNode))
