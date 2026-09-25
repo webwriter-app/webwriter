@@ -2038,13 +2038,84 @@ describe("DomEditor.execute()", () => {
     expect((editor as any).htmlSource).toBe(formatted)
     expect((editor as any).htmlOriginalSource).toBe(formatted)
     expect((editor as any).htmlPending).toBe(false)
+    await editor.updateComplete
+    const input = editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
     const draft = '<div><p>Edited'
-    ;(editor as any).handleHTMLSourceChange(new CustomEvent("html-source-change", {detail: {value: draft}}))
+    input.value = draft
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
     expect((editor as any).htmlSource).toBe(draft)
     expect((editor as any).htmlPending).toBe(true)
     expect(execute).toHaveBeenCalledWith({type: "setHTMLSelectionEditPending", pending: true})
-    ;(editor as any).handleHTMLSourceChange(new CustomEvent("html-source-change", {detail: {value: formatted}}))
+    input.value = formatted
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
     expect((editor as any).htmlPending).toBe(false)
+  })
+
+  it("shows the HTML view as a wrapping five-line row below the editor and toolbox", async () => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
+    const root = editor.shadowRoot!
+    const panel = root.querySelector<HTMLElement>(".html-source-panel")!
+    expect(panel.previousElementSibling?.localName).toBe("dom-editor-toolbox")
+    expect(getComputedStyle(panel).gridRow).toBe("4")
+    expect(getComputedStyle(panel).gridColumn).toBe("1 / -1")
+    expect(panel.inert).toBe(true)
+    expect(getComputedStyle(panel).gridTemplateRows).toBe("0fr")
+    expect(getComputedStyle(panel).transition).toContain("grid-template-rows")
+    await (editor as any).setHTMLMode(true)
+    await editor.updateComplete
+    expect(panel.inert).toBe(false)
+    expect(panel.getAttribute("aria-hidden")).toBe("false")
+    expect(getComputedStyle(panel).gridTemplateRows).toBe("1fr")
+    expect(panel.textContent).not.toContain("Selected HTML")
+    expect(getComputedStyle(root.querySelector(".html-source-field")!).height).toContain("5 * 18px")
+    const input = root.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    const highlight = root.querySelector<HTMLElement>(".html-source-highlight")!
+    expect(input.value).toBe("<p>Hello</p>")
+    expect(input.getAttribute("wrap")).toBeNull()
+    for(const element of [input, highlight]) {
+      expect(getComputedStyle(element).whiteSpace).toBe("pre-wrap")
+      expect(getComputedStyle(element).overflowWrap).toBe("anywhere")
+      expect(getComputedStyle(element).overflowX).toBe("hidden")
+    }
+    await (editor as any).setHTMLMode(false)
+    await editor.updateComplete
+    expect(root.querySelector(".html-source-panel")).toBe(panel)
+    expect(panel.inert).toBe(true)
+    expect(panel.getAttribute("aria-hidden")).toBe("true")
+  })
+
+  it("refreshes HTML source colors on input and external updates without replacing the textarea", async () => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue({html: '<p title="hello">Text</p>'} as any)
+    await (editor as any).setHTMLMode(true)
+    await editor.updateComplete
+    const root = editor.shadowRoot!
+    const input = root.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    const highlight = root.querySelector<HTMLElement>(".html-source-highlight")!
+    expect(highlight.textContent).toBe('<p title="hello">Text</p>\n')
+    expect(highlight.querySelector(".attribute")?.textContent).toBe("title")
+    input.focus()
+    input.value = '<my-widget label="unfinished'
+    input.setSelectionRange(12, 12)
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, isComposing: true}))
+    await editor.updateComplete
+    expect(root.querySelector(".html-source-input")).toBe(input)
+    expect(root.activeElement).toBe(input)
+    expect(input.selectionStart).toBe(12)
+    expect(highlight.textContent).toBe(input.value + "\n")
+    expect(highlight.querySelector(".value")?.textContent).toBe('"unfinished')
+    input.scrollTop = 24
+    input.scrollLeft = 40
+    input.dispatchEvent(new Event("scroll"))
+    expect(highlight.scrollTop).toBe(24)
+    expect(highlight.scrollLeft).toBe(40)
+    ;(editor as any).htmlSource = '<img src=x onerror="alert(1)">\n'
+    await editor.updateComplete
+    expect(input.value).toBe((editor as any).htmlSource)
+    expect(highlight.textContent).toBe((editor as any).htmlSource + "\n")
+    expect(highlight.querySelector("img")).toBeNull()
+    expect(highlight.getAttribute("aria-hidden")).toBe("true")
   })
 
   it("posts an action and resolves with the completion result", async () => {

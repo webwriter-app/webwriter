@@ -61,40 +61,6 @@ describe("toolbox", () => {
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!.value).toBe("250")
   })
 
-  it("refreshes source colors on input and external updates without replacing the textarea", async () => {
-    const toolbox = await mountToolbox()
-    toolbox.htmlMode = true
-    toolbox.activeTool = "Edit"
-    toolbox.htmlSource = '<p title="hello">Text</p>'
-    await toolbox.updateComplete
-    const root = toolbox.shadowRoot!
-    const input = root.querySelector<HTMLTextAreaElement>(".html-source-input")!
-    const highlight = root.querySelector<HTMLElement>(".html-source-highlight")!
-    expect(highlight.textContent).toBe(toolbox.htmlSource + "\n")
-    expect(highlight.querySelector(".attribute")?.textContent).toBe("title")
-    input.focus()
-    input.value = '<my-widget label="unfinished'
-    input.setSelectionRange(12, 12)
-    input.dispatchEvent(new InputEvent("input", {bubbles: true, isComposing: true}))
-    await toolbox.updateComplete
-    expect(root.querySelector(".html-source-input")).toBe(input)
-    expect(root.activeElement).toBe(input)
-    expect(input.selectionStart).toBe(12)
-    expect(highlight.textContent).toBe(input.value + "\n")
-    expect(highlight.querySelector(".value")?.textContent).toBe('"unfinished')
-    input.scrollTop = 24
-    input.scrollLeft = 40
-    input.dispatchEvent(new Event("scroll"))
-    expect(highlight.scrollTop).toBe(24)
-    expect(highlight.scrollLeft).toBe(40)
-    toolbox.htmlSource = '<img src=x onerror="alert(1)">\n'
-    await toolbox.updateComplete
-    expect(input.value).toBe(toolbox.htmlSource)
-    expect(highlight.textContent).toBe(toolbox.htmlSource + "\n")
-    expect(highlight.querySelector("img")).toBeNull()
-    expect(highlight.getAttribute("aria-hidden")).toBe("true")
-  })
-
   it("hides Style by default and closes its panel when disabled", async () => {
     expect(new DomEditorToolbox().showStyleToolbox).toBe(false)
     const toolbox = await mountToolbox(false)
@@ -237,7 +203,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("94px")
   })
 
-  it("keeps an HTML toggle at the bottom of Edit and doubles the toolbox width in HTML mode", async () => {
+  it("keeps an HTML toggle at the bottom of Edit and the visual tools beside the HTML view", async () => {
     const toolbox = await mountToolbox()
     toolButton(toolbox, "Edit").click()
     await toolbox.updateComplete
@@ -254,30 +220,22 @@ describe("toolbox", () => {
     expect(requestedMode).toBe(true)
 
     toolbox.htmlMode = true
-    toolbox.htmlSource = "<p>Hello</p>"
     await toolbox.updateComplete
-    const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
-    const input = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
-    expect(getComputedStyle(toolbox).width).toBe("400px")
-    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0"])
-    expect(getComputedStyle(pane).width).toBe("100%")
-    expect(input.value).toBe("<p>Hello</p>")
-    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).toBeNull()
-
-    let source = ""
-    toolbox.addEventListener("html-source-change", event => {
-      source = (event as CustomEvent<{value: string}>).detail.value
-    })
-    input.value = "<p>Changed</p>"
-    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
-    expect(source).toBe("<p>Changed</p>")
+    const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
+    expect(getComputedStyle(toolbox).width).toBe("216px")
+    expect(toolbox.shadowRoot!.querySelector(".html-source-input")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).not.toBeNull()
+    expect(content.inert).toBe(false)
 
     toolbox.htmlPending = true
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".html-source-status")?.textContent).toBe("Pending change")
+    expect(content.inert).toBe(true)
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-mode-toggle")!.disabled).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector(".html-source-action.apply")).not.toBeNull()
+    const actions = toolbox.shadowRoot!.querySelector<HTMLElement>(".html-source-actions")!
+    expect(actions.parentElement?.classList.contains("html-mode-anchor")).toBe(true)
+    expect(getComputedStyle(actions).position).toBe("absolute")
+    expect(getComputedStyle(actions).bottom).toContain("100% +")
+    expect(actions.querySelector(".html-source-action.apply")).not.toBeNull()
     toolbox.selectTool("Style")
     expect(toolbox.activeTool).toBe("Edit")
   })
@@ -304,7 +262,7 @@ describe("toolbox", () => {
     expect(toolbox.activeTool).toBe("Edit")
     expect(toolbox.activeMenu).toBe("Develop")
     expect(develop.getAttribute("aria-pressed")).toBe("true")
-    expect(getComputedStyle(toolbox).width).toBe("400px")
+    expect(getComputedStyle(toolbox).width).toBe("216px")
     expect(request).toHaveBeenCalledTimes(1)
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector("document-head-editor")).toBeNull()
@@ -321,23 +279,31 @@ describe("toolbox", () => {
     expect(request).toHaveBeenCalledTimes(2)
     html.click()
     await toolbox.updateComplete
-    expect(toolbox.developMode).toBe(false)
+    expect(toolbox.developMode).toBe(true)
     expect(toolbox.htmlMode).toBe(true)
-    expect(toolbox.activeMenu).toBe("Edit")
-    expect(toolbox.shadowRoot!.querySelector(".html-source-input")).not.toBeNull()
+    expect(toolbox.activeMenu).toBe("Develop")
+    expect(html.getAttribute("aria-pressed")).toBe("true")
+    expect(develop.getAttribute("aria-pressed")).toBe("true")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
 
     toolbox.htmlPending = true
     await toolbox.updateComplete
     expect(develop.disabled).toBe(true)
     develop.click()
-    expect(toolbox.developMode).toBe(false)
+    expect(toolbox.developMode).toBe(true)
     toolbox.htmlPending = false
     await toolbox.updateComplete
     develop.click()
     await toolbox.updateComplete
+    expect(toolbox.htmlMode).toBe(true)
+    expect(toolbox.developMode).toBe(false)
+    expect(toolbox.activeMenu).toBe("Edit")
+    develop.click()
+    await toolbox.updateComplete
+    html.click()
+    await toolbox.updateComplete
     expect(toolbox.htmlMode).toBe(false)
     expect(toolbox.developMode).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector(".html-source-input")).toBeNull()
 
     toolbox.selectTool("Style")
     await toolbox.updateComplete

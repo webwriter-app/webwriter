@@ -1,6 +1,4 @@
 import {css, html} from "lit"
-import {guard} from "lit/directives/guard.js"
-import {tokenizeHTMLSource} from "./html-source-highlight"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
@@ -39,9 +37,7 @@ export class DomEditorToolbox extends EditingControls {
     documentHeadAttributeEditorId: {state: true},
     htmlMode: {type: Boolean, attribute: "html-mode", reflect: true},
     developMode: {type: Boolean, attribute: "develop-mode", reflect: true},
-    htmlSource: {type: String, attribute: false},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
-    htmlSourceError: {type: String, attribute: false},
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
   }
@@ -85,14 +81,6 @@ export class DomEditorToolbox extends EditingControls {
 
     :host([active-tool]) {
       width: 216px;
-    }
-
-    :host([html-mode]) {
-      width: 400px;
-    }
-
-    :host([develop-mode]) {
-      width: 400px;
     }
 
     :host([hidden]) {
@@ -334,98 +322,6 @@ export class DomEditorToolbox extends EditingControls {
       flex-basis: auto;
     }
 
-    .html-source-editor {
-      box-sizing: border-box;
-      display: flex;
-      flex: 1 1 auto;
-      flex-direction: column;
-      min-height: 0;
-      padding: 0.65rem;
-    }
-
-    .html-source-heading {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin: 0 0 0.45rem;
-      color: #52606d;
-      font-size: 0.72rem;
-      font-weight: 600;
-    }
-
-    .html-source-status {
-      color: #0f766e;
-      font-weight: 500;
-    }
-
-    .html-source-field {
-      position: relative;
-      flex: 1 1 auto;
-      min-height: 8rem;
-      background: #fafafa;
-      border-radius: 0.35rem;
-    }
-
-    .html-source-input,
-    .html-source-highlight {
-      box-sizing: border-box;
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0.65rem;
-      border: 1px solid #c7ccd1;
-      border-radius: 0.35rem;
-      outline: none;
-      color: #1f2937;
-      background: transparent;
-      font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
-      letter-spacing: normal;
-      white-space: pre;
-      overflow: auto;
-      scrollbar-gutter: stable;
-      resize: none;
-      tab-size: 2;
-    }
-
-    .html-source-highlight {
-      pointer-events: none;
-      overflow: hidden;
-    }
-
-    .html-source-input {
-      color: transparent;
-      caret-color: #1f2937;
-    }
-
-    .html-source-input::selection {
-      color: #1f2937;
-      background: #bfdbfe;
-    }
-
-    .html-source-highlight .tag { color: #155e9b; }
-    .html-source-highlight .attribute { color: #854d0e; }
-    .html-source-highlight .value { color: #166534; }
-    .html-source-highlight .comment { color: #667085; }
-    .html-source-highlight .entity { color: #7e22ce; }
-
-    @media (forced-colors: active) {
-      .html-source-input { color: CanvasText; caret-color: auto; }
-      .html-source-highlight { visibility: hidden; }
-    }
-
-    .html-source-input:focus {
-      border-color: #6388ad;
-      box-shadow: 0 0 0 2px rgb(57 119 199 / 14%);
-    }
-
-    .html-source-error {
-      margin: 0.45rem 0 0;
-      color: #b42318;
-      font-size: 0.7rem;
-    }
-
     .document-layout-controls {
       grid-column: 1 / -1;
       box-sizing: border-box;
@@ -538,10 +434,40 @@ export class DomEditorToolbox extends EditingControls {
       height: 15px;
     }
 
+    .html-mode-anchor {
+      position: relative;
+      display: inline-flex;
+    }
+
+    /* Speech bubble above the HTML toggle, so the footer never has to fit it. */
     .html-source-actions {
+      position: absolute;
+      bottom: calc(100% + 5px);
+      left: 0;
+      z-index: 5;
       display: flex;
       gap: 0.2rem;
-      margin-left: auto;
+      padding: 0.3rem;
+      border: 1px solid #a8a8a8;
+      border-radius: 0.35rem;
+      background: #fafafa;
+      box-shadow: 0 0.2rem 0.6rem rgb(31 41 55 / 16%);
+      white-space: nowrap;
+    }
+
+    .html-source-actions::before,
+    .html-source-actions::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: calc(2.25rem - 7px);
+      border: 7px solid transparent;
+      border-top-color: #a8a8a8;
+    }
+
+    .html-source-actions::after {
+      margin-top: -1px;
+      border-top-color: #fafafa;
     }
 
     .html-source-action.apply {
@@ -575,9 +501,7 @@ export class DomEditorToolbox extends EditingControls {
   private documentHeadAttributeEditorId = ""
   htmlMode = false
   developMode = false
-  htmlSource = ""
   htmlPending = false
-  htmlSourceError = ""
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
   documentLayoutError = ""
 
@@ -783,8 +707,6 @@ export class DomEditorToolbox extends EditingControls {
 
   private toggleHTMLMode() {
     if(this.htmlPending) return
-    this.developMode = false
-    this.activeMenu = "Edit"
     this.dispatchEvent(new CustomEvent<{enabled: boolean}>("html-mode-change", {
       detail: {enabled: !this.htmlMode},
       bubbles: true,
@@ -796,81 +718,36 @@ export class DomEditorToolbox extends EditingControls {
     if(this.htmlPending) return
     this.developMode = !this.developMode
     this.activeMenu = this.developMode ? "Develop" : "Edit"
-    if(this.htmlMode) {
-      this.dispatchEvent(new CustomEvent<{enabled: boolean}>("html-mode-change", {
-        detail: {enabled: false},
-        bubbles: true,
-        composed: true,
-      }))
-    }
-  }
-
-  private changeHTMLSource(event: Event) {
-    const value = (event.currentTarget as HTMLTextAreaElement).value
-    this.htmlSource = value
-    this.dispatchEvent(new CustomEvent<{value: string}>("html-source-change", {
-      detail: {value},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  private syncHTMLSourceScroll(input: HTMLTextAreaElement) {
-    const highlight = input.previousElementSibling as HTMLElement
-    highlight.scrollTop = input.scrollTop
-    highlight.scrollLeft = input.scrollLeft
-  }
-
-  private renderHTMLSourceEditor() {
-    return html`
-      <section class="html-source-editor" aria-label="Selected HTML source">
-        <div class="html-source-heading">
-          <span>Selected HTML</span>
-          ${this.htmlPending ? html`<span class="html-source-status">Pending change</span>` : ""}
-        </div>
-        <div class="html-source-field">
-          <pre class="html-source-highlight" aria-hidden="true">${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}${"\n"}</pre>
-          <textarea
-            class="html-source-input"
-            aria-label="Selected HTML"
-            .value=${this.htmlSource}
-            spellcheck="false"
-            wrap="off"
-            @input=${this.changeHTMLSource}
-            @scroll=${(event: Event) => this.syncHTMLSourceScroll(event.currentTarget as HTMLTextAreaElement)}
-          ></textarea>
-        </div>
-        ${this.htmlSourceError ? html`<p class="html-source-error" role="alert">${this.htmlSourceError}</p>` : ""}
-      </section>
-    `
   }
 
   private renderEditModeFooter() {
     return html`
       <footer class="edit-mode-footer">
-        <button
-          class="edit-mode-toggle html-mode-toggle"
-          type="button"
-          aria-label=${this.htmlMode ? "Show visual editing tools" : "Edit selection as HTML"}
-          title=${this.htmlMode ? "Visual editing" : "Edit HTML"}
-          aria-pressed=${this.htmlMode}
-          ?disabled=${this.htmlPending}
-          @click=${this.toggleHTMLMode}
-        >${ribbonIcon("Code")}<span>HTML</span></button>
-        ${this.htmlMode && this.htmlPending ? html`
-          <div class="html-source-actions">
-            <button
-              class="html-source-action discard"
-              type="button"
-              @click=${() => this.dispatchEvent(new CustomEvent("html-source-discard", {bubbles: true, composed: true}))}
-            >${ribbonIcon("Reject")}<span>Discard</span></button>
-            <button
-              class="html-source-action apply"
-              type="button"
-              @click=${() => this.dispatchEvent(new CustomEvent("html-source-apply", {bubbles: true, composed: true}))}
-            >${ribbonIcon("Accept")}<span>Apply</span></button>
-          </div>
-        ` : ""}
+        <span class="html-mode-anchor">
+          <button
+            class="edit-mode-toggle html-mode-toggle"
+            type="button"
+            aria-label=${this.htmlMode ? "Show visual editing tools" : "Edit selection as HTML"}
+            title=${this.htmlMode ? "Visual editing" : "Edit HTML"}
+            aria-pressed=${this.htmlMode}
+            ?disabled=${this.htmlPending}
+            @click=${this.toggleHTMLMode}
+          >${ribbonIcon("Code")}<span>HTML</span></button>
+          ${this.htmlMode && this.htmlPending ? html`
+            <div class="html-source-actions" role="group" aria-label="Pending HTML change">
+              <button
+                class="html-source-action discard"
+                type="button"
+                @click=${() => this.dispatchEvent(new CustomEvent("html-source-discard", {bubbles: true, composed: true}))}
+              >${ribbonIcon("Reject")}<span>Discard</span></button>
+              <button
+                class="html-source-action apply"
+                type="button"
+                @click=${() => this.dispatchEvent(new CustomEvent("html-source-apply", {bubbles: true, composed: true}))}
+              >${ribbonIcon("Accept")}<span>Apply</span></button>
+            </div>
+          ` : ""}
+        </span>
         <button
           class="edit-mode-toggle develop-mode-toggle"
           type="button"
@@ -895,11 +772,7 @@ export class DomEditorToolbox extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
-    if(changed.has("htmlSource")) {
-      const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
-      if(input) this.syncHTMLSourceScroll(input)
-    }
-    if(this.activeTool !== "Edit" || !this.documentSelected || this.htmlMode || this.developMode) {
+    if(this.activeTool !== "Edit" || !this.documentSelected || this.developMode) {
       this.documentHeadAttributeEditorId = ""
     }
     if(changed.has("activeTool")) {
@@ -991,11 +864,9 @@ export class DomEditorToolbox extends EditingControls {
           aria-label=${this.activeTool ? `${this.activeTool} tools` : "Toolbox"}
           ?hidden=${this.activeTool === null}
         >
-          <div class="toolbox-pane-content" ?inert=${this.historyState.preview !== null && this.activeTool !== "Review"}>
-            ${this.activeTool === "Edit" && !this.htmlMode && !this.developMode ? this.renderUniversalStyleDrawer() : ""}
-            ${this.activeTool === "Edit" && this.htmlMode && !this.developMode
-              ? this.renderHTMLSourceEditor()
-              : this.activeTool ? this.renderDrawers() : ""}
+          <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
+            ${this.activeTool === "Edit" && !this.developMode ? this.renderUniversalStyleDrawer() : ""}
+            ${this.activeTool ? this.renderDrawers() : ""}
           </div>
           ${this.activeTool === "Edit" ? this.renderEditModeFooter() : ""}
         </aside>

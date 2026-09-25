@@ -1,6 +1,7 @@
 import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
-import {indentHTMLSource} from "./html-source-highlight"
-import { LitElement, css, html, nothing } from "lit"
+import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
+import { LitElement, css, html, nothing, type PropertyValues } from "lit"
+import {guard} from "lit/directives/guard.js"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
@@ -657,7 +658,7 @@ export class DomEditor extends LitElement {
       box-sizing: border-box;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
       width: 100%;
       height: 100%;
       border: 0.5px solid #a8a8a8;
@@ -740,8 +741,96 @@ export class DomEditor extends LitElement {
 
     ${layoutPreviewStyles}
 
-    .templates-panel {
+    .html-source-panel {
       grid-row: 4;
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: var(--ww-ui-transition, grid-template-rows 180ms ease);
+    }
+    .html-source-panel[inert] { grid-template-rows: 0fr; }
+    .html-source-clip { min-width: 0; min-height: 0; overflow: hidden; }
+
+    .html-source-editor {
+      box-sizing: border-box;
+      padding: 0.45rem 0.65rem;
+      border-top: 1px solid #c8c8c8;
+      background: #f2f2f2;
+    }
+
+    .html-source-field {
+      position: relative;
+      /* Five lines of code plus the textarea padding and border. */
+      height: calc(5 * 18px + 2 * 0.45rem + 2px);
+      border-radius: 0.35rem;
+      background: #fafafa;
+    }
+
+    .html-source-input,
+    .html-source-highlight {
+      box-sizing: border-box;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0.45rem 0.65rem;
+      border: 1px solid #c7ccd1;
+      border-radius: 0.35rem;
+      outline: none;
+      color: #1f2937;
+      background: transparent;
+      font: 12px/18px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: normal;
+      /* The highlight must wrap exactly like the textarea above it. */
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+      resize: none;
+      tab-size: 2;
+    }
+
+    .html-source-highlight {
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .html-source-input {
+      color: transparent;
+      caret-color: #1f2937;
+    }
+
+    .html-source-input::selection {
+      color: #1f2937;
+      background: #bfdbfe;
+    }
+
+    .html-source-highlight .tag { color: #155e9b; }
+    .html-source-highlight .attribute { color: #854d0e; }
+    .html-source-highlight .value { color: #166534; }
+    .html-source-highlight .comment { color: #667085; }
+    .html-source-highlight .entity { color: #7e22ce; }
+
+    @media (forced-colors: active) {
+      .html-source-input { color: CanvasText; caret-color: auto; }
+      .html-source-highlight { visibility: hidden; }
+    }
+
+    .html-source-input:focus {
+      border-color: #6388ad;
+      box-shadow: 0 0 0 2px rgb(57 119 199 / 14%);
+    }
+
+    .html-source-error {
+      margin: 0.35rem 0 0;
+      color: #b42318;
+      font: 0.7rem system-ui, sans-serif;
+    }
+
+    .templates-panel {
+      grid-row: 5;
       grid-column: 1 / -1;
       display: grid;
       grid-template-rows: 1fr;
@@ -4173,8 +4262,9 @@ export class DomEditor extends LitElement {
         // The iframe may have replaced a clean source session after a remote
         // selection change; leaving the visual mode must still succeed.
       }
+      // Keep the source visible while the HTML view collapses; it is reset
+      // when the view opens again.
       this.htmlMode = false
-      this.htmlSource = ""
       this.htmlOriginalSource = ""
       this.htmlSourceError = ""
       return
@@ -4221,9 +4311,9 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private handleHTMLSourceChange = (event: Event) => {
-    const value = (event as CustomEvent<{value?: unknown}>).detail?.value
-    if(typeof value !== "string" || !this.htmlMode) return
+  private handleHTMLSourceInput = (event: Event) => {
+    const value = (event.currentTarget as HTMLTextAreaElement).value
+    if(!this.htmlMode) return
     const pending = value !== this.htmlOriginalSource
     const pendingChanged = pending !== this.htmlPending
     this.htmlSource = value
@@ -4234,6 +4324,43 @@ export class DomEditor extends LitElement {
       this.htmlPending = !pending
       this.htmlSourceError = error instanceof Error ? error.message : String(error)
     })
+  }
+
+  private syncHTMLSourceScroll(input: HTMLTextAreaElement) {
+    const highlight = input.previousElementSibling as HTMLElement
+    highlight.scrollTop = input.scrollTop
+    highlight.scrollLeft = input.scrollLeft
+  }
+
+  private renderHTMLSourceEditor() {
+    return html`
+      <div class="html-source-panel" ?inert=${!this.htmlMode} aria-hidden=${String(!this.htmlMode)}>
+        <div class="html-source-clip">
+          <section class="html-source-editor" aria-label="Selected HTML source">
+            <div class="html-source-field">
+              <pre class="html-source-highlight" aria-hidden="true">${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}${"\n"}</pre>
+              <textarea
+                class="html-source-input"
+                aria-label="Selected HTML"
+                .value=${this.htmlSource}
+                spellcheck="false"
+                @input=${this.handleHTMLSourceInput}
+                @scroll=${(event: Event) => this.syncHTMLSourceScroll(event.currentTarget as HTMLTextAreaElement)}
+              ></textarea>
+            </div>
+            ${this.htmlSourceError ? html`<p class="html-source-error" role="alert">${this.htmlSourceError}</p>` : ""}
+          </section>
+        </div>
+      </div>
+    `
+  }
+
+  protected updated(changed: PropertyValues) {
+    super.updated(changed)
+    if(changed.has("htmlSource")) {
+      const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
+      if(input) this.syncHTMLSourceScroll(input)
+    }
   }
 
   private handleHTMLSourceApply = () => {
@@ -4477,7 +4604,7 @@ export class DomEditor extends LitElement {
 
   private stylesVisible() {
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    return toolbox?.activeTool === "Style" || toolbox?.activeTool === "Edit" && !toolbox.htmlMode && !toolbox.developMode
+    return toolbox?.activeTool === "Style" || toolbox?.activeTool === "Edit" && !toolbox.developMode
       || this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.activeMenu === "Style"
   }
 
@@ -5367,9 +5494,7 @@ export class DomEditor extends LitElement {
         .documentHead=${this.documentHead}
         @document-head-action=${this.handleDocumentHeadAction}
         .htmlMode=${this.htmlMode}
-        .htmlSource=${this.htmlSource}
         .htmlPending=${this.htmlPending}
-        .htmlSourceError=${this.htmlSourceError}
         .table=${this.tableSelection}
         .localPackages=${this.localPackages}
         .localPackagesLoading=${this.localPackagesLoading}
@@ -5392,10 +5517,10 @@ export class DomEditor extends LitElement {
         @toolbox-change=${this.handleToolboxChange}
         @document-layout-change=${this.handleDocumentLayoutChange}
         @html-mode-change=${this.handleHTMLModeChange}
-        @html-source-change=${this.handleHTMLSourceChange}
         @html-source-apply=${this.handleHTMLSourceApply}
         @html-source-discard=${this.handleHTMLSourceDiscard}
       ></dom-editor-toolbox>
+      ${this.breadcrumbVisible && !this.previewActive && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
       ${this.previewActive || this.liveSessionActive ? "" : html`
         <div class="templates-panel" ?inert=${this.templatesDismissed} aria-hidden=${String(this.templatesDismissed)}>
           <div class="templates-clip">
