@@ -1,38 +1,69 @@
 # Widget packages
 
-The interface between a widget package and the domeditor.
+What a widget package needs to work in the domeditor, and what it can configure.
 
-## Discovery
+## Minimal widget
 
-- npm name scoped `@webwriter/…`, `keywords` includes `webwriter-widget`.
-- Loaded from jsDelivr at the exact published version (`cdn.jsdelivr.net/npm/<name>@<version>/<path>`).
-- Local packages (Develop toolbox) require a scoped `name` and a SemVer `version`.
-- README (`README.md`, `.markdown`, `.txt`) is shown to users and to the AI (`list_widgets`).
+```jsonc
+// package.json
+{
+  "name": "@webwriter/hello",
+  "version": "1.0.0",
+  "keywords": ["webwriter-widget"],
+  "exports": {"./widgets/ww-hello.js": "./ww-hello.js"}
+}
+```
+
+```js
+// ww-hello.js
+class WwHello extends HTMLElement {
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = "<p>Hello, <slot></slot>!</p>"
+  }
+}
+
+if(!customElements.get("ww-hello")) customElements.define("ww-hello", WwHello)
+```
+
+Required:
+
+- a scoped `name` (`@webwriter/…`) and a SemVer `version`;
+- the keyword `webwriter-widget`;
+- one `./widgets/<tag-name>.js` export whose script defines `<tag-name>`.
+
+Publish it to npm and `<ww-hello>` appears in the insertion menu. To try a package before publishing, open its folder in the Develop toolbox.
+
+Everything below is optional.
 
 ## `package.json` fields
 
 | Field | Use |
 |---|---|
-| `name`, `version` | Required. Package identity and CDN path. |
+| `name`, `version` | Required. Package identity. |
 | `exports` | Package members, see below. |
-| `editingConfig` | Inline editing config. Deep-merged over `./editing-config.json`; inline wins. |
-| `description`, `keywords`, `author`, `contributors`, `license`, `homepage`, `repository` | Package card metadata. |
-| `customElements` | Path to a custom elements manifest. Metadata only. |
+| `editingConfig` | How members behave in the editor, see Editing config. Deep-merged over `./editing-config.json`; inline wins. |
+| `dependencies`, `peerDependencies` | Packages the widgets import by bare specifier, shared between widget packages. |
+| `prebuiltDependencies` | Dependencies bundled into the package instead of shared, see Building. |
+| `description`, `keywords`, `author`, `contributors`, `license`, `homepage`, `repository` | Shown on the package card. |
+| `customElements` | Path to a custom elements manifest. |
 
-Export targets may be strings or condition objects. Resolution order: `browser` → `import` → `default`. `source` is the Develop toolbox's source path.
+A `README.md` (or `.markdown`, `.txt`) is shown to users and to the AI assistant.
+
+Export targets may be strings or condition objects (`browser`, `import`, `default`, in that order). `source` points the Develop toolbox and `@webwriter/build` to the source file.
 
 ## Exports
 
 | Key | Target | Effect |
 |---|---|---|
-| `./widgets/<tag-name>.*` | `path/<tag-name>.*` | Loads `<path>.js` (module) and `<path>.css` if published. Tag name = key basename. |
-| `./widgets/<tag-name>.js`, `./widgets/<tag-name>` | `path/file.js` | Loads the widget's script. |
-| `./widgets/<tag-name>.css` | `path/file.css` | Loads the widget's stylesheet. Takes precedence over one inferred from `.*`. |
-| `./snippets/<name>.html` | `path/file.html` | Insertable HTML, translated to the document language. Active content is stripped. |
+| `./widgets/<tag-name>.*` | `path/<tag-name>.*` | Widget with script `<path>.js` and, if published, stylesheet `<path>.css`. |
+| `./widgets/<tag-name>.js`, `./widgets/<tag-name>` | `path/file.js` | Widget script. |
+| `./widgets/<tag-name>.css` | `path/file.css` | Widget stylesheet. Overrides one from `.*`. |
+| `./snippets/<name>.html` | `path/file.html` | Insertable HTML. Active content (scripts, event handlers, styles) is removed. |
 | `./icon` | `path/icon.svg` | Package and member icon. |
-| `./editing-config.json` | `path/file.json` | External editing config. |
-| `./migrate.js` | `path/file.js` | Migration of inserted content, see Runtime. |
-| `./tests/<name>.*`, `./tests/<name>.js` | `path/file.*` | Test module, run from the Develop toolbox. |
+| `./editing-config.json` | `path/file.json` | Editing config in a separate file. |
+| `./migrate.js` | `path/file.js` | Updates content from older versions, see Migrations. |
+| `./tests/<name>.*`, `./tests/<name>.js` | `path/file.*` | Tests, run from the Develop toolbox. |
 | `./themes/<name>.html` | | Listed in the Develop toolbox. |
 | `./custom-elements.json` | | Listed in the Develop toolbox. |
 
@@ -53,51 +84,70 @@ Keyed by export name with or without extension (`./widgets/ww-quiz`, `./widgets/
 | `isolating` | `boolean` | `true` | Editing does not split or join across the widget boundary. |
 | `marks` | `string` | `"_"` | Space-separated marks formatting commands may apply in the content (`b i a`, `span` for text styles); `""` none, `"_"` all. |
 | `propagateEvents` | `string[]` | `[]` | Event types from the widget's shadow DOM that the editor still handles, e.g. `["keydown"]` for shortcuts. |
-| `moduleResolution` | `"import-map"` | | On `.` only. Bare imports in unbundled ESM widgets resolve via one shared import map (jspm). Omit for bundled widgets. |
 
 `LocalizedText`: a string or `{"en": "…", "de": "…", "_": "fallback"}`. Matches the exact locale, then the language, then `_`.
 
-Content expressions: node names (`p`, `ww-option`) and groups (`flow`, `phrasing`, `heading`, `widget`, `widgetinline`, custom groups); `a b` sequence, `a | b` choice, `(…)` grouping, `?`, `*`, `+`, `{n}`, `{n,}`, `{n,m}`.
+Content expressions: node names (`p`, `ww-option`) and groups (`flow`, `phrasing`, `heading`, `widget`, `widgetinline`, custom groups); `a b` sequence, `a | b` choice, `(…)` grouping, `?`, `*`, `+`, `{n}`, `{n,}`, `{n,m}`. Children with `contenteditable="false"` are always allowed.
 
-## Runtime
+## Widget script
 
-- Package scripts and styles load in the editor frame as `<script type="module">` / `<link>` with the frame nonce. Exports include them only if the document uses their tag.
-- Document state is the light DOM: attributes and children are saved, synchronized and undone. Shadow DOM and properties are not.
-- Data containers: `<script>` children of a widget with a non-JavaScript MIME type (e.g. `application/json`) and no `src`. Kept under any content model and when copied or pasted.
-- While editing, the editor sets `contenteditable=""` on each widget without its own `contenteditable`. Preview and export omit it. Use `:host([contenteditable])` or `this.isContentEditable`.
-- `lang` is inherited from the nearest ancestor with `lang`. Watch ancestors for changes to the document language.
-- Printing: use `@media print` and the `beforeprint` / `afterprint` window events.
-- Events inside the widget's shadow DOM are ignored by the editor, except `propagateEvents`. Changes to light-DOM attributes or children are observed.
-- Elements with `contenteditable="false"` always satisfy content expressions.
-- `contenteditable`, `spellcheck`, `data-webwriter-editor-only` and classes starting with `◆` are editor-only and excluded from saved HTML.
+| To | Do |
+|---|---|
+| Save state | Store it in attributes or light-DOM children. They are saved, shared with collaborators and undoable; properties and shadow DOM are not. |
+| Save structured data | Add a `<script type="application/json">` child (any non-JavaScript type, no `src`). It is kept under any content model. |
+| Keep UI out of the document | Render it in the shadow DOM. Its events do not reach the editor, except `propagateEvents`. |
+| Tell editing from use | `:host([contenteditable])` in CSS, `this.isContentEditable` in script. |
+| React to changes | `attributeChangedCallback` or a `MutationObserver`; changes may come from the editor, collaborators or undo. |
+| Follow the document language | Read `lang` from the nearest ancestor with `lang` and watch it for changes. |
+| Adapt to printing | `@media print`, `beforeprint` and `afterprint`. |
+| Keep an element out of saved HTML | Mark it `data-webwriter-editor-only`. |
+
+`contenteditable`, `spellcheck` and classes starting with `◆` belong to the editor and are never saved.
 
 ### Options and actions
 
-The Widget drawer edits the selected widget's declared options and runs its actions. Declarations are read from the instance (`widget.options`, `widget.actions`), else from the class (`static options`, `static actions`).
+Declare them on the class (`static options`, `static actions`) or the instance (`options`, `actions`) and the Widget drawer offers them for the selected widget.
 
 | Declaration | Fields |
 |---|---|
 | Option | `type` (`Boolean`, `String`, `Number`, `Object`, `Array`, or `"boolean"`, `"string"`, `"number"`, `"date"`, `"datetime-local"`, `"email"`, `"password"`, `"tel"`, `"time"`, `"url"`, `"color"`, `"select"`, `"object"`, `"array"`), `attribute` (name or `false`), `label`, `description`, `placeholder`, `multiline`, `min`, `max`, `step`, `pattern`, `minlength`, `maxlength`, `swatches`, `multiple`, `options` (`[{value, label, description}]`) |
 | Action | `label`, `description` |
 
-- An option is written to its attribute (default: lowercased name) as Lit's converters read it: booleans as presence, objects, arrays and multiple selections as JSON. `attribute: false` sets the property.
-- An action is a method; its DOM changes form one undo step (async: until settled, max. 10 s).
+An option is written to its attribute (default: lowercased name) as Lit reads it: booleans as presence, objects, arrays and multiple selections as JSON. With `attribute: false` it sets the property and is not saved. An action is a method of the same name; its changes are undone in one step.
 
-### Migrations
+## Dependencies and building
 
-`./migrate.js` is a module that listens for `migrate` events on `document`. Before inserting pasted, dropped or snippet content, the editor runs it in an opaque-origin sandbox on each outermost widget of the package and dispatches `migrate` on every widget of the package, with `event.detail = {packageName, version}` (installed version). The listener updates or replaces `event.target`; the source version must be read from the element. Results are discarded after an error, after 3 s, or if no element remains.
+Import dependencies by bare specifier (`import {LitElement} from "lit"`) and declare them in `dependencies`. Compatible versions are shared by all widget packages in a document.
 
-### Tests
+Build with `@webwriter/build` (`npx @webwriter/build`, `dev` for development, `preview <tag-name>` to serve one widget). It bundles the `./widgets/*` exports from their `source` and keeps dependencies as bare imports.
 
-A `./tests/*` module runs in a separate frame and reports through `test-update` window events (`@webwriter/build/test`): `beforeAll`, `beforeOne`, `afterOne` (`id`, `path`, `passed`, `duration`, `timedOut`), `afterAll`. Runs stop after 60 s.
+| Dependency | Built as |
+|---|---|
+| Shared (default) | Left to the import map. |
+| Prebuilt | Bundled into the package. Required for packages not usable in the browser as published (e.g. CommonJS); proposed for packages loading ≥ 200 modules. |
+| Declaring `"sideEffects": false` | Only the modules actually imported are loaded, in the editor and in saved documents. For other packages, the build suggests narrower imports when they would halve the modules loaded. |
 
-### Snippet translations
+| Option | Effect |
+|---|---|
+| `prebuiltDependencies` | Declares the prebuilt dependencies. Without it, the build proposes them and saves the confirmed answer. |
+| `--yes` | Confirms the proposal. |
+| `--prebuild-threshold=<modules>` | Changes the threshold (default 200) and proposes again. |
 
-`<script type="application/json" class="snippet-localization">` maps `<trimmed text>#<occurrence>` to `{<locale>: <translation>}` for the snippet's text outside MathML (written by `@webwriter/build localize`). The document language selects the translation; the script is removed on insertion.
+## Migrations
 
-### Develop checks
+Export `./migrate.js` to update content from an older package version when it is pasted, dropped or inserted from a snippet. Listen for `migrate` on `document` and update or replace `event.target`; `event.detail` holds `{packageName, version}` of the installed version, so read the old version from the element. The script runs in a sandbox, not in the document, and must finish within 3 s.
 
-Local packages are checked for unknown or invalid editing-config options, config keys matching no export, invalid tag names and content expressions, widgets their script does not define, and Lit properties that read an attribute without reflecting changes back (not saved).
+## Tests
+
+Export `./tests/<name>.*` modules written with `@webwriter/build/test` and run them from the Develop toolbox (max. 60 s).
+
+## Snippet translations
+
+Run `@webwriter/build localize` to add translations to snippets. The document language selects them on insertion.
+
+## Develop checks
+
+The Develop toolbox reports unknown or invalid editing-config options, config keys matching no export, invalid tag names and content expressions, widgets their script does not define, and Lit properties that are not reflected to attributes (not saved).
 
 ## `package.json` example
 
@@ -115,7 +165,8 @@ Local packages are checked for unknown or invalid editing-config options, config
   ],
   "author": "Jane Doe",
   "license": "MIT",
-  "dependencies": {"lit": "^3.0.0"},
+  "dependencies": {"lit": "^3.0.0", "@shoelace-style/shoelace": "^2.20.0", "drawflow": "^0.0.60"},
+  "prebuiltDependencies": ["drawflow"],         // CommonJS: bundled, not shared
   "exports": {
     "./widgets/ww-quiz.*": {                     // defines <ww-quiz>
       "source": "./src/widgets/ww-quiz.ts",      // Develop toolbox source
@@ -131,8 +182,7 @@ Local packages are checked for unknown or invalid editing-config options, config
   },
   "editingConfig": {
     ".": {
-      "label": {"en": "Quiz", "de": "Quiz"},     // package label
-      "moduleResolution": "import-map"           // only for unbundled ESM
+      "label": {"en": "Quiz", "de": "Quiz"}      // package label
     },
     "./widgets/ww-quiz": {
       "label": {"_": "Quiz", "de": "Quiz"},
