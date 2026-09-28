@@ -78,6 +78,13 @@ await check("esbuild-wasm bundles the resolved graph for offline execution", asy
   }
 })
 
+await check("offline bundling leaves out unused modules of side-effect-free packages", async () => {
+  const pure = new URL("pure-fixture@1.0.0/", root).href
+  const {js} = await bundleOfflineModules([new URL("pure-entry.js", root).href], {imports: {"webwriter-pure-fixture": `${pure}index.js`}}, location.href)
+  if(!js.includes("used-export")) throw new Error("The offline bundle lost the used export")
+  if(js.includes("webwriterUnusedEvaluated")) throw new Error("The offline bundle kept an unused module of a package declaring sideEffects: false")
+})
+
 await check("offline bundling runs under the editor frame CSP", async () => {
   if(!map) throw new Error("JSPM did not provide a map")
   const nonce = crypto.randomUUID()

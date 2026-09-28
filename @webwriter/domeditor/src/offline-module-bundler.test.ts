@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest"
-import {resolveOfflineModule} from "./offline-module-bundler"
+import {packageFileSideEffects, resolveOfflineModule} from "./offline-module-bundler"
 
 const base = "https://editor.example/document.html"
 const map = {
@@ -24,5 +24,21 @@ describe("offline import-map resolution", () => {
   it("resolves relative URLs against each importing module and rejects unknown bare names", () => {
     expect(resolveOfflineModule("./helper.js", "https://cdn.example/widget-old/main.js", map, base)).toBe("https://cdn.example/widget-old/helper.js")
     expect(() => resolveOfflineModule("missing", "https://cdn.example/widget-old/main.js", map, base)).toThrow("cannot resolve module")
+  })
+})
+
+describe("package side effects", () => {
+  it("reads false, file patterns and undeclared side effects like bundlers do", () => {
+    expect(packageFileSideEffects(false, "debounce.js")).toBe(false)
+    expect(packageFileSideEffects(undefined, "index.js")).toBeUndefined()
+    expect(packageFileSideEffects(true, "index.js")).toBeUndefined()
+    // A pattern without a slash matches the file name in any directory.
+    expect(packageFileSideEffects(["*.css"], "dist/themes/light.css")).toBe(true)
+    expect(packageFileSideEffects(["*.css"], "dist/index.js")).toBe(false)
+    expect(packageFileSideEffects(["./src/polyfill.js"], "src/polyfill.js")).toBe(true)
+    expect(packageFileSideEffects(["./src/polyfill.js"], "polyfill.js")).toBe(false)
+    expect(packageFileSideEffects(["dist/**/register-*.js"], "dist/a/b/register-button.js")).toBe(true)
+    expect(packageFileSideEffects(["dist/**/register-*.js"], "dist/a/button.js")).toBe(false)
+    expect(packageFileSideEffects(["dist/component?.js"], "dist/component1.js")).toBe(true)
   })
 })

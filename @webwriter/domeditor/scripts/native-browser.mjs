@@ -84,6 +84,7 @@ const expectedImportMapChecks = [
   "nonce CSP permits the editor's import map and module graph",
   "esbuild-wasm bundles the resolved graph for offline execution",
   "offline bundling runs under the editor frame CSP",
+  "offline bundling leaves out unused modules of side-effect-free packages",
 ]
 let reportResult
 const resultPromise = new Promise(resolve => { reportResult = resolve })
@@ -93,9 +94,10 @@ const resultPlugin = {
     server.middlewares.use((request, response, next) => {
       if(request.url?.startsWith("/tests/import-map-fixture/")) {
         const name = request.url.slice("/tests/import-map-fixture/".length).split("?")[0]
-        if(!["a.js", "b.js", "shared.js"].includes(name)) return next()
-        void readFile(new URL(`../tests/import-map-fixture/${name}`, import.meta.url)).then(source => {
-          response.setHeader("Content-Type", "text/javascript; charset=utf-8")
+        const fixtures = ["a.js", "b.js", "shared.js", "pure-entry.js", ...["package.json", "index.js", "used.js", "unused.js"].map(file => `pure-fixture@1.0.0/${file}`)]
+        if(!fixtures.includes(decodeURIComponent(name))) return next()
+        void readFile(new URL(`../tests/import-map-fixture/${decodeURIComponent(name)}`, import.meta.url)).then(source => {
+          response.setHeader("Content-Type", name.endsWith(".json") ? "application/json" : "text/javascript; charset=utf-8")
           response.end(source)
         }, next)
         return

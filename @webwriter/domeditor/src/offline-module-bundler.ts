@@ -1,6 +1,36 @@
 import type {IImportMap} from "@jspm/import-map"
+import {fetchNpmFile} from "./npm-files"
 
 let esbuildReady: Promise<void> | null = null
+
+const globPattern = (glob: string) => new RegExp("^" + glob
+  .replace(/^\.\//, "")
+  .replace(/^(?![^/]*\/)/, "**/") // A pattern without a slash matches the file name at any depth
+  .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+  .replace(/\*\*\/|\*\*|\*|\?/g, token => ({"**/": "(?:.*/)?", "**": ".*", "*": "[^/]*", "?": "[^/]"})[token]!) + "$")
+
+/** Whether a module may have side effects according to its package's `sideEffects` field: `false` for none,
+ * or patterns (relative to the package) of the files that do. Undefined when the package does not declare it. */
+export function packageFileSideEffects(sideEffects: unknown, subpath: string) {
+  if(sideEffects === false) return false
+  if(Array.isArray(sideEffects)) return sideEffects.some(pattern => typeof pattern === "string" && globPattern(pattern).test(subpath))
+  return undefined
+}
+
+const packageManifests = new Map<string, Promise<{sideEffects?: unknown} | undefined>>()
+
+/** The `sideEffects` of a module in a published package, found from the `<name>@<version>/` segment of its URL
+ * (as on jsDelivr), so that esbuild can drop the unused modules of packages that declare none. */
+async function moduleSideEffects(url: string) {
+  const [, root, subpath] = new URL(url).href.match(/^(.*?\/(?:@[^/@]+\/)?[^/@]+@[^/]+\/)([^?#]*)/) ?? []
+  if(!root) return undefined
+  let manifest = packageManifests.get(root)
+  if(!manifest) {
+    manifest = fetchNpmFile(`${root}package.json`).then(response => response.ok ? response.json() : undefined).catch(() => undefined)
+    packageManifests.set(root, manifest)
+  }
+  return packageFileSideEffects((await manifest)?.sideEffects, subpath)
+}
 
 /** Resolve the generated map's exact and prefix entries in the importing
  * module's scope. The JSPM map utility cannot load in an about:srcdoc realm. */
@@ -30,7 +60,8 @@ export function resolveOfflineModule(specifier: string, importer: string, map: I
   throw new Error(`Offline export cannot resolve module '${specifier}' imported from ${importer}`)
 }
 
-/** Loaded only for an offline export containing an ESM dependency graph. */
+/** Loaded only for an offline export containing an ESM dependency graph. Modules of packages declaring
+ * `"sideEffects": false` are left out when none of their exports are used, as bundlers do. */
 export async function bundleOfflineModules(entries: string[], map: IImportMap, baseUrl: string) {
   // srcdoc documents can report about:srcdoc as their base URL. The entry
   // module still provides an absolute HTTP base for the portable import map.
@@ -60,11 +91,12 @@ export async function bundleOfflineModules(entries: string[], map: IImportMap, b
     plugins: [{
       name: "resolved-http-modules",
       setup(build) {
-        build.onResolve({filter: /.*/}, args => {
+        build.onResolve({filter: /.*/}, async args => {
           const parent = /^https?:/.test(args.importer) ? args.importer : resolutionBase
           const url = resolveOfflineModule(args.path, parent, map, resolutionBase)
           if(!/^https?:$/.test(new URL(url).protocol)) throw new Error(`Offline export cannot bundle module URL: ${url}`)
-          return {path: url, namespace: "webwriter-http"}
+          // Widget entries always run: loading them registers their elements.
+          return {path: url, namespace: "webwriter-http", sideEffects: entries.includes(url) ? undefined : await moduleSideEffects(url)}
         })
         build.onLoad({filter: /.*/, namespace: "webwriter-http"}, async args => {
           const response = await fetch(args.path)
