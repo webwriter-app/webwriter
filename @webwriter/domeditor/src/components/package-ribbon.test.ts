@@ -104,7 +104,6 @@ describe("package ribbon controls", () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture()
     pkg.manifest = {name: pkg.name, version: pkg.version}
-    pkg.editingConfig = {".": {moduleResolution: "import-map"}}
     ribbon.installedPackages = [pkg]
     document.body.append(ribbon)
     await ribbon.updateComplete

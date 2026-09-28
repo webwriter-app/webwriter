@@ -122,8 +122,7 @@ describe("local package checks", () => {
         version: "0.1.0",
         exports: {"./widgets/demo-widget.*": "./dist/demo.*", "./widgets/nohyphen.js": "./dist/plain.js"},
         editingConfig: {
-          ".": {moduleResolution: "import-map"},
-          "./widgets/demo-widget": {content: "p+ (", inline: "yes", selectable: true, moduleResolution: "import-map"},
+          "./widgets/demo-widget": {content: "p+ (", inline: "yes", selectable: true},
           "./widgets/missing": {label: "Missing"},
         },
       })},
@@ -132,7 +131,6 @@ describe("local package checks", () => {
     expect(result.warnings.map(({code, path}) => [code, path])).toEqual([
       ["invalid-editing-option", "./widgets/demo-widget"],
       ["unknown-editing-option", "./widgets/demo-widget"],
-      ["invalid-editing-option", "./widgets/demo-widget"],
       ["unmatched-editing-config", "./widgets/missing"],
       ["invalid-widget", "demo-widget"],
       ["invalid-widget", "nohyphen"],

@@ -47,11 +47,10 @@ afterEach(() => {
 })
 
 describe("DependencyFeature", () => {
-  it("registers a supplied import map before opted-in widget modules and exports it", async () => {
+  it("registers a supplied import map before widget modules and exports it", async () => {
     const pkg: WebWriterPackage = {
       ...demoPackage,
       manifest: {name: demoPackage.name, version: demoPackage.version},
-      editingConfig: {".": {moduleResolution: "import-map"}},
     }
     const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
     const editor = new DOMEditor()
@@ -122,6 +121,7 @@ describe("DependencyFeature", () => {
     let settled = false
     const pending = editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
     }).then(() => { settled = true })
@@ -145,6 +145,7 @@ describe("DependencyFeature", () => {
     const editor = new DOMEditor()
     const pending = editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
     })
@@ -183,6 +184,7 @@ describe("DependencyFeature", () => {
     let settled = false
     const pending = editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: cachedPackage.name, version: cachedPackage.version}],
       packages: [cachedPackage],
     }).then(() => { settled = true })
@@ -204,6 +206,7 @@ describe("DependencyFeature", () => {
     const editor = new DOMEditor()
     const first = editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
     })
@@ -223,6 +226,7 @@ describe("DependencyFeature", () => {
 
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: "@webwriter/demo", version: "1.2.3"}],
     })
 
@@ -252,6 +256,7 @@ describe("DependencyFeature", () => {
 
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
     })
@@ -287,6 +292,7 @@ describe("DependencyFeature", () => {
     const editor = new DOMEditor()
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: pkg.name, version: pkg.version}],
       packages: [pkg],
     })
@@ -318,6 +324,7 @@ describe("DependencyFeature", () => {
     const editor = new DOMEditor()
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
     })
@@ -343,6 +350,7 @@ describe("DependencyFeature", () => {
 
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: localPackage.name, version: localPackage.version}],
       packages: [localPackage],
     })
@@ -367,6 +375,7 @@ describe("DependencyFeature", () => {
 
     await expect(editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: localPackage.name, version: localPackage.version}],
       packages: [localPackage],
     })).rejects.toThrow("Local package script failed to load")
@@ -385,6 +394,7 @@ describe("DependencyFeature", () => {
     const editor = new DOMEditor()
     const pending = editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: localPackage.name, version: localPackage.version}],
       packages: [localPackage],
     })
@@ -402,6 +412,7 @@ describe("DependencyFeature", () => {
 
     await editor.getActionHandler(loadWidgetsMessage)({
       type: loadWidgetsMessage,
+      importMap: {},
       widgets: [{name: "@webwriter/demo", version: "1.2.3"}],
     })
 

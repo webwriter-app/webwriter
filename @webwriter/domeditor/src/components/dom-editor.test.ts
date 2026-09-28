@@ -23,6 +23,12 @@ import {
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import * as packageDependencies from "../package-dependencies"
+
+// Linking the installed widget scripts would trace them on the CDN. Tests resolve an empty map at once.
+vi.mock("../package-dependencies", async importOriginal => ({
+  ...await importOriginal<typeof import("../package-dependencies")>(),
+  resolvePackageDependencies: vi.fn(async(packages: WebWriterPackage[]) => ({entries: packages.flatMap(pkg => pkg.scripts), map: {}})),
+}))
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
@@ -902,12 +908,14 @@ describe("DomEditor iframe setup", () => {
     expect(search).toHaveBeenCalledTimes(1)
     expect((editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages).toEqual([demoPackage])
 
-    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+    // Widget scripts load after their import map is resolved.
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: loadWidgetsMessage,
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
+      importMap: {},
       requestId: expect.any(String),
-    }), window.location.origin)
+    }), window.location.origin))
   })
 
   it("refreshes an already requested package catalog and ignores duplicate in-flight requests", async () => {
@@ -941,7 +949,6 @@ describe("DomEditor iframe setup", () => {
     const pkg: WebWriterPackage = {
       ...demoPackage,
       manifest: {name: demoPackage.name, version: demoPackage.version},
-      editingConfig: {".": {moduleResolution: "import-map"}},
     }
     const editor = new DomEditor()
     ;(editor as any).installedPackages = [pkg]
@@ -1065,12 +1072,12 @@ describe("DomEditor iframe setup", () => {
 
     iframe.dispatchEvent(new Event("load"))
 
-    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: loadWidgetsMessage,
       widgets: [{name: "@webwriter/demo", version: "1.0.0"}],
       packages: [demoPackage],
       requestId: expect.any(String),
-    }), window.location.origin)
+    }), window.location.origin))
     const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
     expect(srcdoc).toMatch(new RegExp(`<script class="◆ ◆editor-only" nonce="[^"]+" type="application/json" src="${polyfillUrl.replaceAll(".", "\\.")}"></script>`))
     expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))

@@ -85,16 +85,12 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
   uninsertable?: boolean
-  /** On the package key ".": opts unbundled browser ESM widget entries into
-   * shared dependency resolution. */
-  moduleResolution?: "import-map"
   [key: string]: unknown
 }
 
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
   "label", "description", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents",
-  "moduleResolution",
 ] as const
 
 export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>

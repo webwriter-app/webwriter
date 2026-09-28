@@ -14,7 +14,7 @@ const sharedUrl = new URL("shared.js", root).href
 const packages: WebWriterPackage[] = entries.map((entry, index) => ({
   name: `@webwriter/import-map-fixture-${index}`, version: "1.0.0", label: `Fixture ${index}`,
   authors: [], keywords: [], links: {}, members: [], scripts: [entry], styles: [],
-  manifest: {name: `@webwriter/import-map-fixture-${index}`, version: "1.0.0", webwriter: {moduleResolution: "import-map"}},
+  manifest: {name: `@webwriter/import-map-fixture-${index}`, version: "1.0.0"},
 }))
 let map: Awaited<ReturnType<typeof resolvePackageDependencies>>["map"]
 

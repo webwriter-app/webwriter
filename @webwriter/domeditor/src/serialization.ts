@@ -2,7 +2,7 @@ import canvasViewerSource from "./canvas-viewer.js?raw"
 import {documentLayoutMode} from "./document-layout"
 import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, type WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
-import {packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
+import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
 
 export const originalURLAttribute = (name: string) => `data-webwriter-original-${name.replace(":", "-")}`
 export const originalPackageEntriesAttribute = "data-webwriter-original-package-entries"
@@ -103,7 +103,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     ...packages.flatMap(pkg => pkg.scripts.map(url => ({url, isScript: true}))),
   ].filter(asset => required.has(resourceKey(asset.url)))
   const moduleEntries = new Set(packageModuleEntries(packages).map(resourceKey))
-  if(importMap && assets.some(asset => asset.isScript && moduleEntries.has(resourceKey(asset.url)))) {
+  if(hasImportMapEntries(importMap) && assets.some(asset => asset.isScript && moduleEntries.has(resourceKey(asset.url)))) {
     head.prepend(packageImportMapScript(root, importMap))
   }
   const needsPolyfill = assets.some(asset => asset.isScript)

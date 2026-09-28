@@ -259,7 +259,6 @@ const optionChecks: Record<string, (value: unknown) => boolean> = {
   isolating: value => typeof value === "boolean",
   marks: value => typeof value === "string",
   propagateEvents: value => Array.isArray(value) && value.every(type => typeof type === "string" && type.length > 0),
-  moduleResolution: value => value === "import-map",
 }
 
 /** Checks the editing config against the options the editor reads and the
@@ -279,9 +278,6 @@ export function editingConfigWarnings(editingConfig: PackageEditingConfig, conte
     for(const [option, value] of Object.entries(entry)) {
       if(!(packageEditingConfigOptions as readonly string[]).includes(option)) {
         warnings.push({code: "unknown-editing-option", path: key, message: `Editing config '${key}' has an unknown option '${option}'.`})
-      }
-      else if(option === "moduleResolution" && key !== ".") {
-        warnings.push({code: "invalid-editing-option", path: key, message: "moduleResolution is only read from the package key '.'."})
       }
       else if(!optionChecks[option](value)) {
         warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' has an invalid value for '${option}'.`})

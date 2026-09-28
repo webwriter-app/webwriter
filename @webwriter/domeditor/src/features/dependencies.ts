@@ -115,7 +115,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     )))
     if(sequence !== this.widgetLoadSequence) return
     const entries = packageModuleEntries(packages)
-    if(entries.length && !message.importMap) throw new Error("Import-map packages require a resolved map before widget loading")
+    if(entries.length && !message.importMap) throw new Error("Widget scripts require a resolved import map before loading")
     const plan: PackageDependencyPlan = {entries, map: message.importMap ?? null}
     globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages)
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
