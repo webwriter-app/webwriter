@@ -15,7 +15,7 @@ import {createInterface} from "readline/promises"
 const exec = promisify(execSync)
 
 
-async function confirm(prompt="Do you want to continue?") {
+export async function confirm(prompt="Do you want to continue?") {
   const interf = createInterface({
     input: process.stdin,
     output: process.stdout

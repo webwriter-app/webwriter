@@ -4,29 +4,275 @@ import * as esbuild from "esbuild"
 import * as fs from "fs"
 import * as path from "path"
 import * as process from "process"
-import {localize} from "./localize.js"
+import {confirm, localize} from "./localize.js"
 import {document} from "./document.js"
 import 'dotenv/config'
 import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
 import { inlineWorkerPlugin } from "@aidenlx/esbuild-plugin-inline-worker"
 
-const scriptExtensions = [".js", ".mjs", ".cjs"]
+const packageNameOf = specifier => specifier.split("/").slice(0, specifier.startsWith("@")? 2: 1).join("/")
+const isJavaScript = file => /\.[mc]?js$/.test(file)
 
-// Plugin to only resolve internal dependencies and non-ES-Module files
-// Disabled for now - CJS cross-compatibility issues
-const widgetPlugin = pkg => ({
-  name: "esbuild-plugin-webwriter-widget",
+// The manifest of the package containing a file inside `node_modules`
+const manifests = new Map()
+function owningManifest(file) {
+  const root = file.match(/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/)?.[1]
+  if(!root) return undefined
+  if(!manifests.has(root)) {
+    try { manifests.set(root, JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))) }
+    catch { manifests.set(root, {}) }
+  }
+  return manifests.get(root)
+}
+
+// Why the browser cannot load a dependency module as published on the CDN, where the import map resolves bare imports like esbuild does, but relative imports are fetched as plain URLs
+function cdnProblem(file, input) {
+  if(input.format === "cjs") return "is CommonJS"
+  if(!/\.m?js$/.test(file)) return "is not a JavaScript module"
+  const manifest = owningManifest(file)
+  const declared = {...manifest?.dependencies, ...manifest?.peerDependencies, ...manifest?.optionalDependencies}
+  for(const {path: target, kind, original} of input.imports) {
+    if(kind.startsWith("require")) return `calls require("${original}")`
+    if(original === undefined || /^[a-z][a-z0-9+.-]*:/i.test(original)) continue
+    if(/^\.{0,2}\//.test(original)) {
+      if(path.resolve(path.dirname(file), original) !== path.resolve(target)) return `imports "${original}", which only a bundler resolves`
+    }
+    else if(packageNameOf(original) !== manifest?.name && !(packageNameOf(original) in declared)) return `imports "${packageNameOf(original)}" without declaring it`
+  }
+}
+
+// For each declared dependency, from the complete module graph: how many modules the browser loads for it from the CDN at startup (up to other declared dependencies, which are analysed on their own), the first module the browser cannot load as published, the declared dependencies it reaches and those it `require`s, and whether it is imported from its package root
+async function analyzeDependencies(config, deps, assetExtensions) {
+  const analysis = new Map(deps.map(dep => [dep, {modules: new Set(), problem: undefined, reaches: new Set(), requires: new Set(), rootImported: false, seen: new Set()}]))
+  let metafile
+  try { ({metafile} = await esbuild.build({...config, write: false, metafile: true, logLevel: "silent"})) }
+  catch { return analysis } // The actual build reports the errors
+  const {inputs} = metafile
+  const dependencyOf = file => deps.find(dep => owningManifest(file)?.name === dep)
+  const problems = new Map()
+  const problemOf = file => {
+    if(!problems.has(file)) problems.set(file, file.includes("node_modules") && inputs[file]? cdnProblem(file, inputs[file]): undefined)
+    return problems.get(file)
+  }
+  for(const [file, input] of Object.entries(inputs)) for(const {path: target, kind, original} of input.imports) {
+    const dep = original && deps.find(dep => original === dep || original.startsWith(dep + "/"))
+    if(!dep || kind.startsWith("require") || dependencyOf(file) === dep || assetExtensions.includes(path.posix.extname(original.slice(dep.length)))) continue
+    const entry = analysis.get(dep)
+    entry.rootImported ||= original === dep
+    // Everything the dependency reaches counts towards problems, modules loaded at startup towards its size
+    const stack = [[target, kind !== "dynamic-import"]]
+    while(stack.length) {
+      const [current, atStartup] = stack.pop()
+      if(entry.seen.has(current + atStartup)) continue
+      entry.seen.add(current + atStartup)
+      const owner = dependencyOf(current)
+      if(owner && owner !== dep) { entry.reaches.add(owner); continue }
+      entry.problem ??= problemOf(current) && `${current} ${problemOf(current)}`
+      if(atStartup && isJavaScript(current)) entry.modules.add(current)
+      for(const next of inputs[current]?.imports ?? []) {
+        if(!inputs[next.path]) continue
+        const nextOwner = dependencyOf(next.path)
+        if(next.kind.startsWith("require") && nextOwner && nextOwner !== dep) entry.requires.add(nextOwner)
+        stack.push([next.path, atStartup && next.kind !== "dynamic-import"])
+      }
+    }
+  }
+  return analysis
+}
+
+// Adds the declared dependencies that must be prebuilt along with `prebuilt`: shared ones that reach a prebuilt one would load their own copy from the CDN, and a shared one that a prebuilt dependency `require`s would be bundled a second time
+function closePrebuilt(prebuilt, analysis) {
+  for(let changed = true; changed;) {
+    changed = false
+    for(const [dep, {reaches}] of analysis) {
+      const via = !prebuilt.has(dep) && [...reaches].find(other => prebuilt.has(other))
+      if(via) { prebuilt.set(dep, `imports ${via}, which is prebuilt`); changed = true }
+    }
+    for(const dep of [...prebuilt.keys()]) for(const required of analysis.get(dep).requires) if(!prebuilt.has(required)) {
+      prebuilt.set(required, `required by ${dep}, which is prebuilt`)
+      changed = true
+    }
+  }
+  return prebuilt
+}
+
+// Confirms a proposal on the command line. Without a terminal and without `--yes`, it applies to the current build only (undefined).
+async function confirmProposal(question, yes) {
+  if(yes) return true
+  if(!process.stdin.isTTY) {
+    console.log(`Applying this for this build only. Confirm interactively or pass --yes to save it in package.json.`)
+    return undefined
+  }
+  return confirm(question)
+}
+
+function savePackageField(pkg, field, value) {
+  const source = fs.readFileSync("./package.json", "utf8")
+  const indent = source.match(/^[ \t]+(?=")/m)?.[0] ?? 2
+  pkg[field] = value
+  fs.writeFileSync("./package.json", JSON.stringify({...JSON.parse(source), [field]: value}, undefined, indent) + (source.endsWith("\n")? "\n": ""), "utf8")
+}
+
+function declaredDependencies(pkg, field) {
+  const declared = pkg[field]
+  if(declared !== undefined && (!Array.isArray(declared) || declared.some(dep => typeof dep !== "string"))) {
+    console.error(`"${field}" in package.json must be an array of dependency names`)
+    process.exit(1)
+  }
+  return declared
+}
+
+// Which declared dependencies are prebuilt into the package instead of shared through the import map. `prebuiltDependencies` in package.json declares them; without it (or with an explicit threshold), they are proposed from the analysis, confirmed on the command line and saved there. Sizes are judged as if root imports were cherry-picked (`estimated`), since the developer is warned to do so.
+async function choosePrebuilt(pkg, analysis, estimated, {threshold, thresholdGiven, yes}) {
+  const required = closePrebuilt(new Map([...analysis].filter(([, {problem}]) => problem).map(([dep, {problem}]) => [dep, problem])), analysis)
+  const declared = declaredDependencies(pkg, "prebuiltDependencies")
+  if(declared !== undefined && !thresholdGiven) {
+    for(const dep of declared) if(!analysis.has(dep)) console.warn(`Ignoring "${dep}" in "prebuiltDependencies": it is not in "dependencies" or "peerDependencies"`)
+    const prebuilt = closePrebuilt(new Map(declared.filter(dep => analysis.has(dep)).map(dep => [dep, "declared"])), analysis)
+    for(const [dep, reason] of [...required, ...prebuilt]) if(!declared.includes(dep)) {
+      console.warn(`Prebuilding ${dep}, which is missing from "prebuiltDependencies": ${reason}`)
+      prebuilt.set(dep, reason)
+    }
+    return prebuilt
+  }
+  const proposal = closePrebuilt(new Map([...required, ...[...analysis]
+    .filter(([dep]) => !required.has(dep) && estimated.get(dep).modules.size >= threshold)
+    .map(([dep, {modules, rootImported}]) => [dep, `loads ${estimated.get(dep).modules.size} modules from the CDN (threshold ${threshold})${rootImported? "; it is imported from its package root, so importing only the parts used may load fewer": ""}`])]), analysis)
+  if(!proposal.size) return proposal
+  const width = Math.max(...[...proposal.keys()].map(dep => dep.length))
+  console.log(`\nThese dependencies can be prebuilt into this package instead of being shared with other packages through the import map:`)
+  for(const [dep, reason] of proposal) console.log(`  ${dep.padEnd(width)}  ${required.has(dep)? "required, ": ""}${reason}`)
+  const accepted = await confirmProposal(`Prebuild them and save them as "prebuiltDependencies" in package.json?`, yes)
+  if(accepted === undefined) return proposal
+  if(!accepted && required.size) console.log(`Saving only the dependencies that must be prebuilt.`)
+  const prebuilt = accepted? proposal: required
+  savePackageField(pkg, "prebuiltDependencies", [...prebuilt.keys()].sort())
+  return prebuilt
+}
+
+// Where each name exported from a dependency's package root is defined, as a package subpath the browser can import: from the Custom Elements Manifest of web-component libraries (e.g. SlButton in @shoelace-style/shoelace/dist/components/button/button.js), and from the root module's `export {…} from` re-exports (e.g. debounce in lodash-es/debounce.js)
+const cherryPickMaps = new Map()
+async function cherryPickMap(dep, resolveDir, build) {
+  // Lookups bypass `sharedDependenciesPlugin`, which would report the package as external
+  const resolve = specifier => build.resolve(specifier, {kind: "import-statement", resolveDir, pluginData: {webwriterLookup: true}})
+  const root = await resolve(dep)
+  if(root.errors.length || root.external || !path.isAbsolute(root.path)) return undefined
+  if(cherryPickMaps.has(root.path)) return cherryPickMaps.get(root.path)
+  const packageDir = root.path.match(/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/)?.[1]
+  const candidates = new Map()
+  const customElements = packageDir && owningManifest(root.path)?.customElements
+  if(typeof customElements === "string") {
+    try {
+      const manifestPath = path.join(packageDir, customElements)
+      for(const module of JSON.parse(fs.readFileSync(manifestPath, "utf8")).modules ?? []) for(const exported of module.exports ?? []) {
+        const name = exported.kind === "js" && exported.declaration?.name
+        const file = [path.join(path.dirname(manifestPath), module.path), path.join(packageDir, module.path)].find(file => fs.existsSync(file))
+        if(name && file && !candidates.has(name)) candidates.set(name, {file, name: exported.name})
+      }
+    }
+    catch { /* Without a readable manifest, only re-exports are mapped. */ }
+  }
+  for(const [, list, from] of fs.readFileSync(root.path, "utf8").matchAll(/export\s*\{([^}]*)\}\s*from\s*["'](\.[^"']+)["']/g)) {
+    for(const specifier of list.split(",").map(part => part.trim()).filter(Boolean)) {
+      const [imported, exported = imported] = specifier.split(/\s+as\s+/)
+      if(exported !== "default" && !candidates.has(exported)) candidates.set(exported, {file: path.resolve(path.dirname(root.path), from), name: imported})
+    }
+  }
+  const map = new Map()
+  if(packageDir) for(const [name, {file, name: imported}] of candidates) {
+    const specifier = `${dep}/${path.relative(packageDir, file).split(path.sep).join("/")}`
+    const resolved = await resolve(specifier)
+    if(!resolved.errors.length && path.resolve(resolved.path) === path.resolve(file)) map.set(name, {specifier, name: imported})
+  }
+  cherryPickMaps.set(root.path, map)
+  return map
+}
+
+// Plugin that records the package's own named imports from dependency roots in `report`: per dependency, the module defining each imported name (see `cherryPickMap`) and where the imports are. Imports of the dependencies in `treeShaken` are rewritten to those modules, which tree-shakes shared dependencies: the browser only loads what is imported. Built outputs do so for dependencies declaring `"sideEffects": false`; the other dependencies are only rewritten to estimate what changing their imports would save.
+const rootImportsPlugin = (deps, report, treeShaken) => ({
+  name: "esbuild-plugin-webwriter-root-imports",
   setup(build) {
-    const deps = Object.keys(pkg?.dependencies ?? {})
-    build.onResolve({filter: /.*$/}, args => {
-      const isDependency = deps.some(dep => args.path.startsWith(dep))
-      const isScript = scriptExtensions.some(ext => args.path.endsWith(ext))
-      const isBare = !args.path.split("/").at(-1)?.includes(".")
-      const isLocal = !args.path.split("/").at(-1)?.includes(".")
-      return {external: isDependency && (isScript || isBare)}
+    const loaders = {".ts": "ts", ".mts": "ts", ".cts": "ts", ".tsx": "tsx", ".js": "js", ".mjs": "js", ".cjs": "js", ".jsx": "jsx"}
+    build.onLoad({filter: /\.[mc]?[jt]sx?$/}, async args => {
+      if(args.namespace !== "file" || /node_modules|\.d\.[mc]?ts$/.test(args.path)) return
+      const source = await fs.promises.readFile(args.path, "utf8")
+      if(!deps.some(dep => source.includes(dep))) return
+      let contents = "", last = 0
+      for(const match of source.matchAll(/\b(import|export)(\s+type)?\s*\{([^}]*)\}\s*from\s*(["'])([^"']+)\4\s*;?/g)) {
+        const [statement, keyword, typeOnly, list, , dep] = match
+        if(typeOnly || !deps.includes(dep)) continue
+        const map = await cherryPickMap(dep, path.dirname(args.path), build)
+        const parts = list.split(",").map(part => part.trim()).filter(part => part && !part.startsWith("type ")).map(part => {
+          const [imported, local = imported] = part.split(/\s+as\s+/).map(name => name.trim())
+          return {imported, local, target: map?.get(imported)}
+        })
+        const entry = report.get(dep) ?? report.set(dep, {names: new Map(), locations: new Set()}).get(dep)
+        for(const part of parts) entry.names.set(part.imported, part.target)
+        entry.locations.add(`${path.relative(".", args.path).split(path.sep).join("/")}:${source.slice(0, match.index).split("\n").length}`)
+        if(!treeShaken.has(dep) || !parts.some(part => part.target)) continue
+        const rest = parts.filter(part => !part.target)
+        contents += source.slice(last, match.index) + [
+          ...parts.filter(part => part.target).map(({target, local}) => `${keyword} {${target.name} as ${local}} from ${JSON.stringify(target.specifier)};`),
+          ...(rest.length? [`${keyword} {${rest.map(({imported, local}) => imported === local? imported: `${imported} as ${local}`).join(", ")}} from ${JSON.stringify(dep)};`]: []),
+        ].join(" ")
+        last = match.index + statement.length
+      }
+      if(last) return {contents: contents + source.slice(last), loader: loaders[path.extname(args.path)]}
     })
   }
 })
+
+// Reports tree-shaken root imports and warns about the other named imports from dependency roots when importing each name from the module defining it would at least halve the modules loaded, with the imports to use instead
+function warnCherryPickable(report, analysis, estimated, treeShaken) {
+  for(const [dep, {names, locations}] of report) {
+    const before = analysis.get(dep).modules.size, after = estimated.get(dep).modules.size
+    const separate = [...names].filter(([, target]) => target), rest = [...names].filter(([, target]) => !target).map(([name]) => name)
+    if(treeShaken.has(dep)) {
+      if(separate.length) console.log(`Tree-shaking imports from the root of ${dep}, which declares "sideEffects": false: ${separate.length} names from their own modules${rest.length? `, ${rest.join(", ")} from the root`: ""}.`)
+      continue
+    }
+    if(!separate.length || after > before / 2) continue
+    console.warn([
+      `\n${dep} is imported from its package root, which loads ${before} modules from the CDN. Importing each name from the module defining it would load ${after}${rest.length? ` (the root is still needed for ${rest.join(", ")})`: ""}:`,
+      ...separate.map(([name, {specifier, name: exported}]) => `  import ${exported === "default"? name: exported === name? `{${name}}`: `{${exported} as ${name}}`} from "${specifier}"`),
+      `Imported from the root in ${[...locations].slice(0, 5).join(", ")}${locations.size > 5? ` and ${locations.size - 5} more`: ""}.`,
+      `Unlike its root, these modules do not load the rest of the package, e.g. registrations of components that are not imported. ${dep} does not declare "sideEffects": false, so the build does not change the imports itself.`,
+    ].join("\n"))
+  }
+}
+
+// Whether a dependency may have side effects on import, i.e. does not declare `"sideEffects": false`
+function hasSideEffects(dep) {
+  for(let dir = path.resolve("."); ; dir = path.dirname(dir)) {
+    const file = path.join(dir, "node_modules", dep, "package.json")
+    if(fs.existsSync(file)) {
+      try { return JSON.parse(fs.readFileSync(file, "utf8")).sideEffects !== false }
+      catch { return true }
+    }
+    if(path.dirname(dir) === dir) return true
+  }
+}
+
+// Plugin to leave JavaScript imports of shared dependencies to the browser's import map, bundling everything else (internal code, prebuilt and undeclared packages, dependency assets such as CSS, `require` calls)
+const sharedDependenciesPlugin = (shared, assetExtensions) => ({
+  name: "esbuild-plugin-webwriter-shared-dependencies",
+  setup(build) {
+    build.onResolve({filter: /^[^./]/}, args => {
+      const dep = packageNameOf(args.path)
+      if(args.pluginData?.webwriterLookup) return
+      if(shared.includes(dep) && !args.kind.startsWith("require") && !assetExtensions.includes(path.posix.extname(args.path.slice(dep.length)))) return {external: true}
+    })
+  }
+})
+
+// Chunks shared by the package's entries go next to them, e.g. to `dist/chunks` for `dist/widgets/...` and `dist/tests/...`
+function chunkNames(entryPoints) {
+  const dirs = entryPoints.map(({out}) => path.resolve(path.dirname(out)))
+  let common = dirs[0] ?? path.resolve("dist")
+  for(const dir of dirs) while(!(dir + path.sep).startsWith(common + path.sep)) common = path.dirname(common)
+  if(["widgets", "tests"].includes(path.basename(common))) common = path.dirname(common)
+  return path.relative(".", path.join(common, "chunks", "[name]-[hash]")).split(path.sep).join("/")
+}
 
 const wasmPlugin = {
   name: 'wasm',
@@ -107,7 +353,6 @@ async function main() {
     plugins: [
       esbuildPluginInlineImport(),
       // wasmPlugin()
-      // widgetPlugin(pkg)
     ],
     entryPoints: buildableKeys.map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source})),
     outdir: ".",
@@ -158,8 +403,32 @@ async function main() {
     }
   }
 
-  const config = {...baseConfig, plugins: [
+  // Widgets load their dependencies through the editor's import map. Shared dependencies stay imports and are loaded from the CDN as published; prebuilt ones are bundled into this package, with code used by several of its widgets split into chunks once. Workers and the standalone preview have no import map, so they stay fully bundled.
+  const args = process.argv.slice(2)
+  const thresholdArg = args.find(arg => arg === "--prebuild-threshold" || arg.startsWith("--prebuild-threshold="))
+  const thresholdValue = thresholdArg?.includes("=")? thresholdArg.slice(thresholdArg.indexOf("=") + 1): thresholdArg && args[args.indexOf(thresholdArg) + 1]
+  const threshold = thresholdArg? Number(thresholdValue): 200
+  if(!(threshold >= 0)) {
+    console.error(`--prebuild-threshold expects a number of modules, got "${thresholdValue}"`)
+    process.exit(1)
+  }
+  let packageConfig = {}
+  if(!isPreview) {
+    const deps = Object.keys({...pkg?.dependencies, ...pkg?.peerDependencies})
+    const assetExtensions = [".css", ...Object.keys(baseConfig.loader)]
+    const entryPoints = [...testKeys, ...buildableKeys].map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source}))
+    const report = new Map()
+    const treeShaken = new Set(deps.filter(dep => !hasSideEffects(dep)))
+    const analyze = rewritten => analyzeDependencies({...baseConfig, entryPoints, plugins: [...baseConfig.plugins, rootImportsPlugin(deps, report, rewritten), inlineWorkerPlugin({buildOptions: () => baseConfig})]}, deps, assetExtensions)
+    const analysis = await analyze(treeShaken)
+    const estimated = [...report].some(([dep, {names}]) => !treeShaken.has(dep) && [...names.values()].some(Boolean))? await analyze(new Set(deps)): analysis
+    warnCherryPickable(report, analysis, estimated, treeShaken)
+    const prebuilt = await choosePrebuilt(pkg, analysis, estimated, {threshold, thresholdGiven: !!thresholdArg, yes: force})
+    packageConfig = {splitting: true, chunkNames: chunkNames(entryPoints), plugins: [rootImportsPlugin(deps, new Map(), treeShaken), sharedDependenciesPlugin(deps.filter(dep => !prebuilt.has(dep)), assetExtensions)]}
+  }
+  const config = {...baseConfig, ...packageConfig, plugins: [
     ...baseConfig.plugins,
+    ...(packageConfig.plugins ?? []),
     inlineWorkerPlugin({watch: isDev, buildOptions: () => baseConfig})
   ]}
 
