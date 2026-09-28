@@ -1,9 +1,9 @@
 import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
 import {stripActiveContent} from "./active-content"
+import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT} from "./npm-files"
 
+export {JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT}
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
-export const NPM_REGISTRY_ENDPOINT = "https://registry.npmjs.org"
-export const JSDELIVR_NPM_ENDPOINT = "https://cdn.jsdelivr.net/npm"
 export const SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL = `${JSDELIVR_NPM_ENDPOINT}/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js`
 export const JSDELIVR_PACKAGE_FILES_ENDPOINT = "https://data.jsdelivr.com/v1/package"
 export const WEBWRITER_PACKAGE_QUERY = "scope:webwriter keywords:webwriter-widget"
@@ -768,7 +768,7 @@ export class WebWriterPackageRegistry {
     const key = `${locale}\n${member.htmlUrl}`
     let request = this.snippetCache.get(key)
     if(!request) {
-      request = this.fetcher(member.htmlUrl).then(response => {
+      request = fetchNpmFile(member.htmlUrl, {}, this.fetcher).then(response => {
         if(!response.ok) throw new Error(`Snippet download failed (${response.status})`)
         return response.text().then(html => sanitizePackageSnippet(localizeSnippet(html, locale)))
       })
@@ -820,9 +820,7 @@ export class WebWriterPackageRegistry {
     const files = await this.fetchPackageFiles(name, version, signal)
     for(const path of readmePathCandidates(files)) {
       throwIfAborted(signal)
-      const readmeResponse = signal
-        ? await this.fetcher(packageCdnUrl(name, version, path), {signal})
-        : await this.fetcher(packageCdnUrl(name, version, path))
+      const readmeResponse = await fetchNpmFile(packageCdnUrl(name, version, path), signal ? {signal} : {}, this.fetcher)
       if(readmeResponse.status === 404) continue
       if(!readmeResponse.ok) throw new Error(`Package documentation failed (${readmeResponse.status})`)
       return {path, markdown: await boundedResponseText(readmeResponse, PACKAGE_DOCUMENTATION_MAX_BYTES, signal)}
@@ -844,7 +842,7 @@ export class WebWriterPackageRegistry {
     const externalEditingConfigRequest = (async() => {
       if(!editingConfigPath) return
       try {
-        const configResponse = await this.fetcher(packageCdnUrl(manifest.name, manifest.version, editingConfigPath))
+        const configResponse = await fetchNpmFile(packageCdnUrl(manifest.name, manifest.version, editingConfigPath), {}, this.fetcher)
         if(configResponse.ok) return await configResponse.json() as PackageEditingConfig
       }
       catch {

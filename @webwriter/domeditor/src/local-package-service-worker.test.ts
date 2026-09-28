@@ -59,4 +59,47 @@ describe("local package service worker startup", () => {
       vi.unstubAllGlobals()
     }
   })
+
+  it("answers a failed jsDelivr package file from a mirror under its jsDelivr URL", async () => {
+    vi.resetModules()
+    const listeners = new Map<string, EventListener>()
+    const addEventListener = vi.spyOn(globalThis, "addEventListener").mockImplementation(((type: string, listener: EventListenerOrEventListenerObject) => {
+      listeners.set(type, listener as EventListener)
+    }) as typeof globalThis.addEventListener)
+    const store = {getAll() {
+      const request: {result: unknown[], onsuccess?: () => void} = {result: []}
+      queueMicrotask(() => request.onsuccess?.())
+      return request
+    }}
+    const database = {objectStoreNames: {contains: () => true}, transaction: () => ({objectStore: () => store}), close: vi.fn()}
+    vi.stubGlobal("indexedDB", {open() {
+      const request: {result: typeof database, onsuccess?: () => void} = {result: database}
+      queueMicrotask(() => request.onsuccess?.())
+      return request
+    }})
+    const fetches: string[] = []
+    vi.stubGlobal("fetch", vi.fn(async(url: string) => {
+      fetches.push(url)
+      return url.startsWith("https://cdn.jsdelivr.net/") ? new Response(null, {status: 503})
+        : new Response("export default 1", {headers: {"content-type": "text/javascript"}})
+    }))
+    try {
+      await import("./local-package-service-worker")
+      const respondWith = vi.fn()
+      const url = "https://cdn.jsdelivr.net/npm/lit@3.3.3/index.js"
+      listeners.get("fetch")!({request: new Request(url), respondWith} as unknown as Event)
+      const response: Response = await respondWith.mock.calls[0][0]
+      expect(await response.text()).toBe("export default 1")
+      expect(response.url).toBe("")
+      expect(fetches).toEqual([url, "https://unpkg.com/lit@3.3.3/index.js"])
+
+      const other = vi.fn()
+      listeners.get("fetch")!({request: new Request("https://example.test/app.js"), respondWith: other} as unknown as Event)
+      expect(other).not.toHaveBeenCalled()
+    }
+    finally {
+      addEventListener.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
 })

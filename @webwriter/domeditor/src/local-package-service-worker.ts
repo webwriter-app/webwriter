@@ -5,6 +5,7 @@ import {
   type LocalPackageDirectoryHandle,
 } from "./local-package-worker"
 import type {LocalPackageWorkerMessage} from "./local-package-worker-protocol"
+import {fetchNpmFile, npmMirrorUrls} from "./npm-files"
 import {
   clearLocalPackageDirectories,
   isLocalPackageDirectoryHandle,
@@ -128,4 +129,9 @@ worker.addEventListener("fetch", event => {
     }),
   )
   if(response) event.respondWith(response)
+  // Published package files come from jsDelivr, or from a mirror when jsDelivr fails. The answer keeps
+  // the jsDelivr URL, so import-map scopes and relative imports of the module are unchanged.
+  else if(event.request.method === "GET" && npmMirrorUrls(event.request.url).length) {
+    event.respondWith(fetchNpmFile(event.request.url, {mode: "cors", credentials: "omit"}))
+  }
 })
