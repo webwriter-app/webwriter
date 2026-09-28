@@ -4,7 +4,7 @@ import {mkdir, readFile, readdir, rename, rm, writeFile} from "node:fs/promises"
 import {dirname, extname, join, resolve} from "node:path"
 import {fileURLToPath, pathToFileURL} from "node:url"
 import OpenAI from "openai"
-import WebSocketPackage from "ws"
+import * as WebSocketPackage from "ws"
 import {setupWSConnection, getYDoc, docs} from "@y/websocket-server/utils"
 import * as decoding from "lib0/decoding"
 import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
@@ -15,7 +15,8 @@ const defaultDataDirectory = join(projectRoot, ".webwriter-dev")
 const maximumBodySize = 25 * 1024 * 1024
 const maximumWebSocketPayload = 8 * 1024 * 1024
 const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"])
-const WebSocketServer = WebSocketPackage.WebSocketServer ?? WebSocketPackage.Server
+// ws exports the server by name from its ES module wrapper; its CommonJS entry attaches it to the default export.
+const WebSocketServer = WebSocketPackage.WebSocketServer ?? WebSocketPackage.default?.WebSocketServer ?? WebSocketPackage.default?.Server
 
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value)
 

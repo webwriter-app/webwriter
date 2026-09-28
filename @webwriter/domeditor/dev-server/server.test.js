@@ -333,8 +333,8 @@ describe("development server", () => {
         })
       })
       socket.send(payload)
-      // ws enforces maxPayload by destroying the socket; the client sees 1006.
-      await expect(closed).resolves.toBe(1006)
+      // ws enforces maxPayload by closing with 1009 (message too big).
+      await expect(closed).resolves.toBe(1009)
     }
 
     const generic = await openWebSocket(`${websocketUrl}/oversized-generic`)
