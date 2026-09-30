@@ -100,13 +100,29 @@ Namespaces, comments, and processing instructions are preserved. XML must be
 well formed and cannot contain a closing `script` tag inside an HTML data block.
 
 The document runtime owns all connections. `POST /api/widget-data/resolve` accepts
-`{document, widget, mode, format}` and returns an opaque `{room, token}` for the
+`{document, widget, mode, format, documentRoom?, groupingRevision?}` and returns an opaque `{room, token}` for the
 WebSocket provider. The development server's `resolveWidgetDataIdentity(request,
 scope)` option must authorize the requested document/widget and return
 `{userId, groupId?}`, optionally with `namespaceId` and `sessionId`. Client-supplied
 user/group IDs are ignored. The default loopback server identifies everyone as
 `local-development` and has no group assignment; applications supply their own
 trusted identity resolver. Network state persists under `.webwriter-dev/widget-data/`.
+
+The toolbox Share switch exposes grouping rules for widgets with `sharedData: true`.
+Rules live in a native direct-child processing instruction (`ww-grouping`,
+percent-encoded JSON), synchronized with the authored document and preserved in
+HTML exports/imports. The server reads this declaration from `documentRoom`,
+never from caller-supplied rules. `groupingRevision` prevents resolving stale rules.
+`resolveWidgetGroupingContext(request, {document, widget, documentRoom, identity})`
+supplies trusted participants, roles, cohorts, groups and groupings; `canManage: true`
+permits roster access through `GET /api/widget-grouping/context`. Its default is a
+single local developer. Automatic allocation, manual membership and existing
+groupings use this roster; generated definitions persist under
+`.webwriter-dev/widget-grouping/`. The optional `onWidgetGroupsFormed(request,
+{document, widget, identity, rules, result})` hook can integrate a provider's group
+catalogue, including the declared group messaging setting. Reconfigured rules or
+changed membership get isolated data rooms. Turning Share off keeps the rules;
+removing grouping returns the widget to everyone sharing.
 
 For offline use, pass `widgetData: {documentId, userId}` to `DOMEditor` for stable
 local-storage scopes. Otherwise each editor gets a distinct document identity,

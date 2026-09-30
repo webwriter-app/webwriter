@@ -5,12 +5,15 @@ import {join} from "node:path"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {WebsocketProvider} from "y-websocket"
+import {docs, getYDoc} from "@y/websocket-server/utils"
 import WebSocketPackage from "ws"
 import {createDevServer} from "./server.mjs"
+import {defaultGroupingRules, groupingTarget} from "../src/widget-grouping.js"
 
 let developmentServer
 let baseUrl
 let upstreamFetch
+let widgetGroupsFormed
 
 const request = async (path, init) => {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -42,9 +45,42 @@ const closeWebSocket = socket => new Promise(resolve => {
   socket.close()
 })
 
+const groupingRules = () => {
+  const rules = defaultGroupingRules("server-grouping-test")
+  rules.method = "manual"
+  rules.grouping = "new"
+  rules.manualGroups = [
+    {id: "group-a", name: "A", members: ["ada", "amy"]},
+    {id: "group-b", name: "B", members: ["lin"]},
+  ]
+  return rules
+}
+
+const writeWidgetGrouping = (documentRoom, widgetId, declaration) => {
+  const serverDocument = getYDoc(documentRoom)
+  const document = new Y.Doc()
+  Y.applyUpdate(document, Y.encodeStateAsUpdate(serverDocument))
+  const body = document.getXmlElement("body")
+  let widget = body.toArray().find(node => node instanceof Y.XmlElement && node.getAttribute("id") === widgetId)
+  if(!widget) {
+    widget = new Y.XmlElement("ww-poll")
+    widget.setAttribute("id", widgetId)
+    body.insert(body.length, [widget])
+  }
+  const instruction = new Y.XmlElement("domeditor-comment")
+  instruction.setAttribute("__domeditor_node_kind", "processing-instruction")
+  instruction.setAttribute("__domeditor_processing_instruction_target", groupingTarget)
+  instruction.insert(0, [new Y.XmlText(declaration)])
+  widget.delete(0, widget.length)
+  widget.insert(0, [instruction])
+  Y.applyUpdate(serverDocument, Y.encodeStateAsUpdate(document))
+  document.destroy()
+}
+
 beforeEach(async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "webwriter-dev-server-"))
   upstreamFetch = vi.fn().mockRejectedValue(new Error("Unexpected upstream inference request"))
+  widgetGroupsFormed = vi.fn()
   developmentServer = await createDevServer({
     port: 0,
     vite: false,
@@ -54,6 +90,18 @@ beforeEach(async () => {
       userId: request.headers["x-test-user"] ?? "local-development",
       ...(request.headers["x-test-group"] ? {groupId: request.headers["x-test-group"]} : {}),
     }),
+    resolveWidgetGroupingContext: request => ({
+      canManage: request.headers["x-test-manage"] === "yes",
+      participants: [
+        {id: "ada", firstName: "Ada", active: true, roles: [], cohorts: [], groups: [], groupings: []},
+        {id: "amy", firstName: "Amy", active: true, roles: [], cohorts: [], groups: [], groupings: []},
+        {id: "lin", firstName: "Lin", active: true, roles: [], cohorts: [], groups: [], groupings: []},
+        ...(request.headers["x-test-roster"] === "expanded" ? [{id: "zoe", firstName: "Zoe", active: true, roles: [], cohorts: [], groups: [], groupings: []}] : []),
+      ].map(person => request.headers["x-test-owned-group"] && person.id === "ada"
+        ? {...person, groups: [request.headers["x-test-owned-group"]]} : person),
+      groups: [], groupings: [], roles: [], cohorts: [],
+    }),
+    onWidgetGroupsFormed: (...args) => widgetGroupsFormed(...args),
   })
   baseUrl = (await developmentServer.listen()).url
 })
@@ -410,6 +458,152 @@ describe("development server", () => {
     await vi.waitFor(() => expect(restored.getMap("widget-data").get("answer")).toBe("saved"))
     restoredProvider.destroy()
     restored.destroy()
+  })
+
+  it("resolves group rooms from the authoritative shared PI and protects grouping context", async () => {
+    const document = "lesson-grouping"
+    const documentRoom = "room-grouping-document"
+    const widget = "poll-one"
+    const rules = groupingRules()
+    const declaration = encodeURIComponent(JSON.stringify(rules))
+    writeWidgetGrouping(documentRoom, widget, declaration)
+
+    const deniedContext = await request(`/api/widget-grouping/context?document=${document}&widget=${widget}&room=${documentRoom}`)
+    expect(deniedContext.response.status).toBe(403)
+    const context = await request(`/api/widget-grouping/context?document=${document}&widget=${widget}&room=${documentRoom}`, {
+      headers: {"X-Test-Manage": "yes"},
+    })
+    expect(context.response.status).toBe(200)
+    expect(context.value).toEqual(expect.objectContaining({canManage: true, participants: expect.arrayContaining([expect.objectContaining({id: "ada"})])}))
+    expect(context.value.groups).toEqual(expect.arrayContaining([expect.objectContaining({name: "A"}), expect.objectContaining({name: "B"})]))
+    expect(context.value.groupings).toEqual(expect.arrayContaining([expect.objectContaining({name: "Grouping"})]))
+    const savedGroupingId = context.value.groupings.find(grouping => grouping.name === "Grouping").id
+    const formed = widgetGroupsFormed.mock.calls[0][1].result
+    expect(context.value.groups.map(group => group.id)).toContain(formed.groups[0].id)
+    expect(context.value.groupings.map(grouping => grouping.id)).toContain(formed.grouping.id)
+
+    const resolve = (user, groupingRevision = declaration) => request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {"X-Test-User": user},
+      body: JSON.stringify({document, documentRoom, widget, mode: "group", groupingRevision}),
+    })
+    const ada = await resolve("ada")
+    const amy = await resolve("amy")
+    const lin = await resolve("lin")
+    expect(ada.response.status).toBe(200)
+    expect(amy.value.room).toBe(ada.value.room)
+    expect(lin.response.status).toBe(200)
+    expect(ada.value.room).not.toBe(lin.value.room)
+    expect((await resolve("unknown")).response.status).toBe(403)
+
+    const revisedRules = {...rules, seed: "reconfigured-seed"}
+    const revisedDeclaration = encodeURIComponent(JSON.stringify(revisedRules))
+    writeWidgetGrouping(documentRoom, widget, revisedDeclaration)
+    expect((await resolve("ada")).response.status).toBe(409)
+    const revisedAda = await resolve("ada", revisedDeclaration)
+    expect(revisedAda.response.status).toBe(200)
+    expect(revisedAda.value.room).not.toBe(ada.value.room)
+    const revisedGroupingId = widgetGroupsFormed.mock.calls.at(-1)[1].result.grouping.id
+    const reuseRules = defaultGroupingRules("reuse-grouping")
+    reuseRules.method = "existing"
+    reuseRules.grouping = "existing"
+    reuseRules.groupingId = savedGroupingId
+    reuseRules.existingGroupingId = savedGroupingId
+    const reuseDeclaration = encodeURIComponent(JSON.stringify(reuseRules))
+    const reuseWidget = "poll-two"
+    writeWidgetGrouping(documentRoom, reuseWidget, reuseDeclaration)
+    const reused = await request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {"X-Test-User": "ada"},
+      body: JSON.stringify({document, documentRoom, widget: reuseWidget, mode: "group", groupingRevision: reuseDeclaration}),
+    })
+    expect(reused.response.status).toBe(200)
+    expect(reused.value.room).toBeTruthy()
+    const appendRules = defaultGroupingRules("append-groups")
+    appendRules.number = 1
+    appendRules.grouping = "existing"
+    appendRules.groupingId = revisedGroupingId
+    const appendDeclaration = encodeURIComponent(JSON.stringify(appendRules))
+    const appendWidget = "poll-three"
+    writeWidgetGrouping(documentRoom, appendWidget, appendDeclaration)
+    const appended = await request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {"X-Test-User": "ada"},
+      body: JSON.stringify({document, documentRoom, widget: appendWidget, mode: "group", groupingRevision: appendDeclaration}),
+    })
+    expect(appended.response.status).toBe(200)
+    const appendedContext = await request(`/api/widget-grouping/context?document=${document}&widget=${appendWidget}&room=${documentRoom}`, {
+      headers: {"X-Test-Manage": "yes"},
+    })
+    expect(appendedContext.value.groupings.find(grouping => grouping.id === revisedGroupingId).groups).toHaveLength(5)
+    expect((await request("/api/widget-data/resolve", {
+      method: "POST",
+      body: JSON.stringify({document, documentRoom, widget: "missing-widget", mode: "group", groupingRevision: revisedDeclaration}),
+    })).response.status).toBe(409)
+
+    const automaticRules = defaultGroupingRules("stable-grouping")
+    automaticRules.allocateBy = "firstname"
+    const automaticDeclaration = encodeURIComponent(JSON.stringify(automaticRules))
+    const rosterRoom = "room-grouping-roster"
+    writeWidgetGrouping(rosterRoom, widget, automaticDeclaration)
+    const resolveWithRoster = headers => request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {"X-Test-User": "ada", ...headers},
+      body: JSON.stringify({document, documentRoom: rosterRoom, widget, mode: "group", groupingRevision: automaticDeclaration}),
+    })
+    const originalRosterRoom = await resolveWithRoster({})
+    const expandedRosterRoom = await resolveWithRoster({"X-Test-Roster": "expanded"})
+    expect(expandedRosterRoom.value.room).not.toBe(originalRosterRoom.value.room)
+
+    const ignoreRules = defaultGroupingRules("ignore-repeat")
+    ignoreRules.ignoreGrouped = true
+    ignoreRules.allocateBy = "firstname"
+    const ignoreDeclaration = encodeURIComponent(JSON.stringify(ignoreRules))
+    const ignoreWidget = "poll-ignore"
+    const ignoreRoom = "room-grouping-ignore"
+    writeWidgetGrouping(ignoreRoom, ignoreWidget, ignoreDeclaration)
+    const resolveIgnoringGrouped = headers => request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {"X-Test-User": "ada", ...headers},
+      body: JSON.stringify({document, documentRoom: ignoreRoom, widget: ignoreWidget, mode: "group", groupingRevision: ignoreDeclaration}),
+    })
+    const ignoreFirst = await resolveIgnoringGrouped({})
+    const ignoreSecond = await resolveIgnoringGrouped({})
+    const ownGroupId = widgetGroupsFormed.mock.calls.at(-1)[1].result.assignments.ada
+    const ignoreWithProviderMembership = await resolveIgnoringGrouped({"X-Test-Owned-Group": ownGroupId})
+    expect(ignoreFirst.response.status).toBe(200)
+    expect(ignoreSecond.response.status).toBe(200)
+    expect(ignoreSecond.value.room).toBe(ignoreFirst.value.room)
+    expect(ignoreWithProviderMembership.response.status).toBe(200)
+    expect(ignoreWithProviderMembership.value.room).toBe(ignoreFirst.value.room)
+
+    const {dataDirectory} = developmentServer
+    await developmentServer.close()
+    const oldDocument = docs.get(documentRoom)
+    docs.delete(documentRoom)
+    oldDocument?.destroy()
+    developmentServer = await createDevServer({
+      port: 0,
+      vite: false,
+      dataDirectory,
+      resolveWidgetDataIdentity: request => ({userId: request.headers["x-test-user"] ?? "local-development"}),
+      resolveWidgetGroupingContext: request => ({
+        canManage: request.headers["x-test-manage"] === "yes",
+        participants: [
+          {id: "ada", firstName: "Ada", active: true, roles: [], cohorts: [], groups: [], groupings: []},
+          {id: "amy", firstName: "Amy", active: true, roles: [], cohorts: [], groups: [], groupings: []},
+          {id: "lin", firstName: "Lin", active: true, roles: [], cohorts: [], groups: [], groupings: []},
+        ],
+        groups: [], groupings: [], roles: [], cohorts: [],
+      }),
+    })
+    baseUrl = (await developmentServer.listen()).url
+    const restoredContext = await request(`/api/widget-grouping/context?document=${document}&widget=${widget}&room=${documentRoom}`, {
+      headers: {"X-Test-Manage": "yes"},
+    })
+    expect(restoredContext.response.status).toBe(200)
+    expect(restoredContext.value.groups).toEqual(expect.arrayContaining([expect.objectContaining({name: "A"}), expect.objectContaining({name: "B"})]))
+    expect(restoredContext.value.groupings).toEqual(expect.arrayContaining([expect.objectContaining({name: "Grouping"})]))
   })
 
   it("survives a malformed close frame from a collaboration client", async () => {

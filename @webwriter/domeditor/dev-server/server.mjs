@@ -9,6 +9,7 @@ import {setupWSConnection, getYDoc, docs} from "@y/websocket-server/utils"
 import * as Y from "yjs"
 import * as decoding from "lib0/decoding"
 import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
+import {formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
 
 const serverDirectory = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(serverDirectory, "..")
@@ -74,6 +75,35 @@ const safeId = value => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]
 // Scoped IDs are hashed into room names; preserve valid authored Unicode IDs.
 const safeScopeId = value => typeof value === "string" && value.length > 0 && value.length <= 1024 && !/[\u0000-\u001f\u007f]/.test(value)
 const safeSessionToken = value => typeof value === "string" && /^[A-Za-z0-9_-]{24,256}$/.test(value)
+const widgetNodeKind = "__domeditor_node_kind"
+const widgetProcessingInstructionTarget = "__domeditor_processing_instruction_target"
+const widgetProcessingInstructionKind = "processing-instruction"
+const isYMap = value => value?.constructor?.name === "YMap" && typeof value.get === "function"
+const isYXmlElement = value => value?.constructor?.name === "YXmlElement"
+  && typeof value.getAttribute === "function" && typeof value.toArray === "function"
+
+const widgetGroupingDeclaration = (documentId, widgetId) => {
+  const document = getYDoc(documentId)
+  const mirror = document.getMap("domeditor").get("document")
+  const body = isYMap(mirror) ? mirror.get("body") : document.getXmlElement("body")
+  if(!isYXmlElement(body)) return null
+  const elements = []
+  const visit = node => {
+    if(!isYXmlElement(node)) return
+    if(node.getAttribute(widgetNodeKind) !== widgetProcessingInstructionKind
+      && node.getAttribute("id") === widgetId) elements.push(node)
+    if(node.getAttribute(widgetNodeKind) !== widgetProcessingInstructionKind) node.toArray().forEach(visit)
+  }
+  body.toArray().forEach(visit)
+  if(elements.length > 1) throw Object.assign(new Error("Widget ID is ambiguous in the shared document"), {status: 409})
+  const widget = elements[0]
+  if(!widget) return null
+  const instructions = widget.toArray().filter(node => isYXmlElement(node)
+    && node.getAttribute(widgetNodeKind) === widgetProcessingInstructionKind
+    && node.getAttribute(widgetProcessingInstructionTarget) === groupingTarget)
+  if(instructions.length > 1) throw Object.assign(new Error("Widget has multiple grouping declarations"), {status: 409})
+  return instructions.length ? instructions[0].toArray().map(child => child.toString()).join("") : null
+}
 
 const documentInput = (value, previous = {}) => {
   if(!isRecord(value)) throw Object.assign(new Error("Document must be a JSON object"), {status: 400})
@@ -254,10 +284,12 @@ export async function createDevServer(options = {}) {
   const documentsDirectory = join(dataDirectory, "documents")
   const providerStatePath = join(dataDirectory, "providers.json")
   const widgetDataDirectory = join(dataDirectory, "widget-data")
+  const widgetGroupingDirectory = join(dataDirectory, "widget-grouping")
   const fetchImplementation = options.fetch ?? globalThis.fetch
   const useVite = options.vite !== false
   await mkdir(documentsDirectory, {recursive: true})
   await mkdir(widgetDataDirectory, {recursive: true})
+  await mkdir(widgetGroupingDirectory, {recursive: true})
 
   // Seed editable copies once; restarting must preserve saved changes.
   for(const [id, title, filename] of [
@@ -294,7 +326,113 @@ export async function createDevServer(options = {}) {
   const widgetDataWrites = new Map()
   const widgetDataCapabilityLifetime = 60 * 60 * 1000
   const resolveWidgetDataIdentity = options.resolveWidgetDataIdentity ?? (() => ({userId: "local-development"}))
+  const resolveWidgetGroupingContext = options.resolveWidgetGroupingContext ?? (() => ({
+    canManage: true,
+    participants: [{id: "local-development", active: true, roles: [], cohorts: [], groups: [], groupings: []}],
+    groups: [],
+    groupings: [],
+    roles: [],
+    cohorts: [],
+  }))
+  const onWidgetGroupsFormed = options.onWidgetGroupsFormed
   const widgetDataRoom = scope => `widget-data-${createHash("sha256").update(JSON.stringify(scope)).digest("hex")}`
+  const widgetGroupingScope = (document, documentRoom, identity) => ({
+    document,
+    documentRoom,
+    ...(identity.namespaceId ? {namespace: identity.namespaceId} : {}),
+    ...(identity.sessionId ? {session: identity.sessionId} : {}),
+  })
+  const widgetGroupingRegistryPath = scope => join(widgetGroupingDirectory, `${createHash("sha256").update(JSON.stringify(scope)).digest("hex")}.json`)
+  const loadWidgetGroupingRegistry = async scope => {
+    const registry = await readJSONFile(widgetGroupingRegistryPath(scope), null)
+    if(!isRecord(registry) || !isRecord(registry.widgets)) return {version: 1, scope, widgets: {}, groups: {}, groupings: {}, widgetGroupOwners: {}}
+    return {
+      ...registry,
+      groups: isRecord(registry.groups) ? registry.groups : {},
+      groupings: isRecord(registry.groupings) ? registry.groupings : {},
+      widgetGroupOwners: isRecord(registry.widgetGroupOwners) ? registry.widgetGroupOwners : {},
+    }
+  }
+  let widgetGroupingWriteQueue = Promise.resolve()
+  const persistWidgetGroupingTransaction = async (scope, widget, rules, result, context) => {
+    const registry = await loadWidgetGroupingRegistry(scope)
+    const prefix = createHash("sha256").update(JSON.stringify({scope, widget})).digest("hex")
+    const groupIds = new Map(result.groups.map(group => [group.id, rules.method === "existing" ? group.id
+      : `widget-group-${createHash("sha256").update(`${prefix}:${group.id}`).digest("hex")}`]))
+    const groups = result.groups.map(group => ({...group, id: groupIds.get(group.id)}))
+    const assignments = Object.fromEntries(Object.entries(result.assignments).map(([user, groupId]) => [user, groupIds.get(groupId)]))
+    const grouping = result.grouping.mode === "new"
+      ? {...result.grouping, id: `widget-grouping-${createHash("sha256").update(`${prefix}:${result.grouping.id}`).digest("hex")}`}
+      : result.grouping
+    const record = {
+      rules,
+      fingerprint: createHash("sha256").update(JSON.stringify({rules, groups})).digest("hex"),
+      groups,
+      assignments,
+      grouping,
+      messaging: rules.messaging,
+    }
+    const before = JSON.stringify(registry)
+    registry.widgets[widget] = record
+    if(rules.method !== "existing") {
+      for(const group of groups) {
+        registry.groups[group.id] = group
+        registry.widgetGroupOwners[group.id] = widget
+      }
+    }
+    if(grouping.mode === "new") {
+      registry.groupings[grouping.id] = {id: grouping.id, name: grouping.name, groups: groups.map(group => group.id)}
+    }
+    else if(grouping.mode === "existing" && rules.method !== "existing") {
+      const savedGrouping = registry.groupings[grouping.id]
+        ?? context.groupings.find(candidate => candidate.id === grouping.id)
+      registry.groupings[grouping.id] = {
+        id: grouping.id,
+        name: grouping.name,
+        groups: [...new Set([...(savedGrouping?.groups ?? []), ...groups.map(group => group.id)])],
+      }
+    }
+    if(JSON.stringify(registry) === before) return {registry, record, changed: false, materializedResult: {groups, assignments, grouping}}
+    await atomicJSONWrite(widgetGroupingRegistryPath(scope), registry)
+    return {registry, record, changed: true, materializedResult: {groups, assignments, grouping}}
+  }
+  const formationContext = (context, registry, widget, rules) => {
+    if(rules.method !== "automatic" || !rules.ignoreGrouped) return context
+    const ownedGroups = new Set(Object.entries(registry.widgetGroupOwners ?? [])
+      .filter(([, owner]) => owner === widget).map(([groupId]) => groupId))
+    const explicitGroups = new Set(rules.sourceGroupId ? [rules.sourceGroupId] : [])
+    if(rules.sourceGroupingId) {
+      const source = context.groupings.find(grouping => grouping.id === rules.sourceGroupingId)
+      for(const groupId of source?.groups ?? []) explicitGroups.add(groupId)
+    }
+    return {
+      ...context,
+      groups: context.groups.filter(group => !ownedGroups.has(group.id) || explicitGroups.has(group.id)),
+      participants: context.participants.map(person => ({
+        ...person,
+        groups: (person.groups ?? []).filter(groupId => !ownedGroups.has(groupId) || explicitGroups.has(groupId)),
+      })),
+    }
+  }
+  const persistWidgetGrouping = (scope, widget, rules, result, context) => {
+    const transaction = widgetGroupingWriteQueue.then(() => persistWidgetGroupingTransaction(scope, widget, rules, result, context))
+    widgetGroupingWriteQueue = transaction.catch(() => {})
+    return transaction
+  }
+  const mergeWidgetGroupingCatalogue = (context, registry) => {
+    const groupsById = new Map(Object.values(registry?.groups ?? {}).map(group => [group.id, group]))
+    const groupingsById = new Map(Object.values(registry?.groupings ?? {}).map(grouping => [grouping.id, grouping]))
+    for(const group of context.groups ?? []) groupsById.set(group.id, group)
+    for(const grouping of context.groupings ?? []) {
+      const saved = groupingsById.get(grouping.id)
+      groupingsById.set(grouping.id, saved ? {
+        ...saved,
+        ...grouping,
+        groups: [...new Set([...(saved.groups ?? []), ...(grouping.groups ?? [])])],
+      } : grouping)
+    }
+    return {...context, groups: [...groupsById.values()], groupings: [...groupingsById.values()]}
+  }
   const widgetDataPath = room => join(widgetDataDirectory, `${room}.bin`)
   const ensureWidgetDataDocument = async room => {
     if(widgetDataDocuments.has(room)) return widgetDataDocuments.get(room)
@@ -409,6 +547,46 @@ export async function createDevServer(options = {}) {
         return
       }
 
+      if(path === "/api/widget-grouping/context" && request.method === "GET") {
+        const document = url.searchParams.get("document")
+        const widget = url.searchParams.get("widget")
+        const requestedDocumentRoom = url.searchParams.get("room")
+        if(!safeScopeId(document) || !safeScopeId(widget)) return apiError(response, 400, "Document and widget are required")
+        if(requestedDocumentRoom !== null && !safeScopeId(requestedDocumentRoom)) return apiError(response, 400, "Invalid document room")
+        const identity = await resolveWidgetDataIdentity(request, {document, widget, documentRoom: requestedDocumentRoom, mode: "group", format: "json"})
+        if(!isRecord(identity) || !safeScopeId(identity.userId)
+          || identity.documentRoom !== undefined && !safeScopeId(identity.documentRoom)) return apiError(response, 401, "A valid authenticated user identity is required")
+        const documentRoom = identity.documentRoom ?? requestedDocumentRoom ?? document
+        let context = await resolveWidgetGroupingContext(request, {document, widget, documentRoom, identity})
+        if(!isRecord(context) || context.canManage !== true) return apiError(response, 403, "Widget grouping management is not authorized")
+        if(!Array.isArray(context.participants) || !Array.isArray(context.groups) || !Array.isArray(context.groupings)) {
+          return apiError(response, 503, "Widget grouping context is unavailable")
+        }
+        const registryScope = widgetGroupingScope(document, documentRoom, identity)
+        let registry = await loadWidgetGroupingRegistry(registryScope)
+        context = mergeWidgetGroupingCatalogue(context, registry)
+        const declaration = widgetGroupingDeclaration(documentRoom, widget)
+        if(declaration !== null) {
+          let rules
+          try {
+            rules = validateGroupingRules(JSON.parse(decodeURIComponent(declaration)))
+          }
+          catch(error) {
+            return apiError(response, 400, error instanceof Error ? error.message : "Invalid widget grouping declaration")
+          }
+          const currentContext = formationContext(context, registry, widget, rules)
+          const result = formWidgetGroups(rules, currentContext)
+          const persisted = await persistWidgetGrouping(registryScope, widget, rules, result, currentContext)
+          registry = persisted.registry
+          if(persisted.changed && typeof onWidgetGroupsFormed === "function") {
+            await onWidgetGroupsFormed(request, {document, widget, identity, rules, result: persisted.materializedResult})
+          }
+          context = mergeWidgetGroupingCatalogue(context, registry)
+        }
+        json(response, 200, context)
+        return
+      }
+
       if(path === "/api/widget-data/resolve" && request.method === "POST") {
         const input = await readJSON(request)
         if(!isRecord(input) || !safeScopeId(input.document) || !safeScopeId(input.widget)
@@ -417,28 +595,68 @@ export async function createDevServer(options = {}) {
           return apiError(response, 400, "Document, widget, and a valid widget-data mode are required")
         }
         const format = input.format ?? "json"
+        if(input.documentRoom !== undefined && !safeScopeId(input.documentRoom)) return apiError(response, 400, "Invalid document room")
         const identity = await resolveWidgetDataIdentity(request, {
           document: input.document,
           widget: input.widget,
+          documentRoom: input.documentRoom,
           mode: input.mode,
           format,
         })
         if(!isRecord(identity) || !safeScopeId(identity.userId)
           || identity.groupId !== undefined && !safeScopeId(identity.groupId)
           || identity.namespaceId !== undefined && !safeScopeId(identity.namespaceId)
-          || identity.sessionId !== undefined && !safeScopeId(identity.sessionId)) {
+          || identity.sessionId !== undefined && !safeScopeId(identity.sessionId)
+          || identity.documentRoom !== undefined && !safeScopeId(identity.documentRoom)) {
           return apiError(response, 401, "A valid authenticated user identity is required")
         }
-        if(input.mode === "group" && !identity.groupId) return apiError(response, 403, "The authenticated user has no group assignment")
+        const documentRoom = identity.documentRoom ?? input.documentRoom ?? input.document
+        let resolvedGroupId = identity.groupId
+        let groupingConfig
+        if(input.mode === "group") {
+          const declaration = widgetGroupingDeclaration(documentRoom, input.widget)
+          if(input.groupingRevision !== undefined
+            && (typeof input.groupingRevision !== "string" || input.groupingRevision !== declaration)) {
+            return apiError(response, 409, "Widget grouping changed; retry with the current declaration")
+          }
+          if(declaration !== null) {
+            let rules
+            try {
+              rules = validateGroupingRules(JSON.parse(decodeURIComponent(declaration)))
+            }
+            catch(error) {
+              return apiError(response, 400, error instanceof Error ? error.message : "Invalid widget grouping declaration")
+            }
+            let context = await resolveWidgetGroupingContext(request, {document: input.document, widget: input.widget, documentRoom, identity})
+            if(!isRecord(context) || !Array.isArray(context.participants) || !Array.isArray(context.groups)
+              || !Array.isArray(context.groupings)) {
+              return apiError(response, 503, "Widget grouping context is unavailable")
+            }
+            const registryScope = widgetGroupingScope(input.document, documentRoom, identity)
+            const registry = await loadWidgetGroupingRegistry(registryScope)
+            context = mergeWidgetGroupingCatalogue(context, registry)
+            const currentContext = formationContext(context, registry, input.widget, rules)
+            const result = formWidgetGroups(rules, currentContext)
+            resolvedGroupId = result.assignments[identity.userId]
+            if(!resolvedGroupId) return apiError(response, 403, "The authenticated user has no assignment in this widget grouping")
+            groupingConfig = createHash("sha256").update(JSON.stringify({rules, groups: result.groups})).digest("hex")
+            const persisted = await persistWidgetGrouping(registryScope, input.widget, rules, result, currentContext)
+            if(persisted.changed && typeof onWidgetGroupsFormed === "function") {
+              await onWidgetGroupsFormed(request, {document: input.document, widget: input.widget, identity, rules, result: persisted.materializedResult})
+            }
+          }
+          if(!resolvedGroupId) return apiError(response, 403, "The authenticated user has no group assignment")
+        }
         const scope = {
           document: input.document,
+          documentRoom,
           widget: input.widget,
           mode: input.mode,
           format,
           ...(identity.namespaceId ? {namespace: identity.namespaceId} : {}),
           ...(identity.sessionId ? {session: identity.sessionId} : {}),
           ...(input.mode === "individual" ? {user: identity.userId} : {}),
-          ...(input.mode === "group" ? {group: identity.groupId} : {}),
+          ...(input.mode === "group" ? {group: resolvedGroupId, ...(groupingConfig ? {groupingConfig} : {})} : {}),
         }
         const room = widgetDataRoom(scope)
         const token = randomUUID().replaceAll("-", "")
