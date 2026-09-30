@@ -201,13 +201,17 @@ export class SelectionFeature extends EditorFeature {
     if(!preserveNativeSelection) {
       if(element.localName.includes("-") || element.hasAttribute("is")) {
         // Capture owns the widget independently of the native range. Spanning
-        // the host can also select all of its rendered shadow text on insertion.
-        const parent = element.parentNode!
-        document.getSelection()?.setPosition(parent, Array.from(parent.childNodes).indexOf(element))
+        // the host can also select its light or rendered shadow text.
+        this.#collapseBeforeCapturedWidget(element)
       }
       else $.selectElement(element, false)
     }
     this.processSelection()
+  }
+
+  #collapseBeforeCapturedWidget(widget: Element) {
+    const parent = widget.parentNode
+    if(parent) document.getSelection()?.setPosition(parent, Array.from(parent.childNodes).indexOf(widget))
   }
 
   selectElement(element: Element) {
@@ -917,7 +921,7 @@ export class SelectionFeature extends EditorFeature {
         && $.selectedElement === widget
       if(selectCapture) {
         this.#capturedElement = widget
-        $.selectElement(widget, false)
+        this.#collapseBeforeCapturedWidget(widget)
       }
       else {
         this.#releaseCaptureSelection()
@@ -928,12 +932,10 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     this.#capturedElement = widget
-    // Pointerdown happens before the widget establishes its own focus/caret,
-    // so it is safe to establish the outer atomic node range here. Later
-    // focus, keyboard, and input events must not rewrite shadow selection.
-    if(event.type === "pointerdown" && !($.isElementSelection && $.selectedElement === widget)) {
-      $.selectElement(widget, false)
-    }
+    // Pointerdown happens before the widget establishes its own focus/caret.
+    // Keep capture on the host without selecting its light or shadow text;
+    // later widget focus, keyboard, and input events own their native selection.
+    if(event.type === "pointerdown") this.#collapseBeforeCapturedWidget(widget)
     this.processSelection()
     this.editor.postSelectionPath()
   }

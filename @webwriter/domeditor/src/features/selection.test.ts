@@ -1724,6 +1724,8 @@ describe("document listeners", () => {
     target.dispatchEvent(event)
 
     expect(feature.captureSelectedWidget).toBe(widget)
+    expect(document.getSelection()?.isCollapsed).toBe(true)
+    expect(document.getSelection()?.toString()).toBe("")
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
     expect(feature.isInDragSelection).toBe(false)
     expect(event.defaultPrevented).toBe(false)
@@ -1732,6 +1734,25 @@ describe("document listeners", () => {
     target.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
     expect(feature.captureSelectedWidget).toBe(widget)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
+  })
+  it.each(["light", "slotted", "open", "closed"] as const)("does not select %s widget text when capturing its interaction", kind => {
+    const widget = document.createElement("interactive-widget")
+    const text = document.createElement("span")
+    text.textContent = "Widget text"
+    if(kind === "light" || kind === "slotted") widget.append(text)
+    if(kind === "open" || kind === "closed") widget.attachShadow({mode: kind}).append(text)
+    if(kind === "slotted") widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    appendToBody(widget)
+    $.selectElement(widget)
+    feature.processSelection()
+
+    text.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+
+    const selection = document.getSelection()!
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(selection.isCollapsed).toBe(true)
+    expect(selection.anchorNode).toBe(widget.parentNode)
+    expect(selection.toString()).toBe("")
   })
   it("capture-selects a widget without starting an editor drag from its shadow DOM", () => {
     const widget = document.createElement("interactive-widget")
@@ -1746,7 +1767,7 @@ describe("document listeners", () => {
     expect(event.defaultPrevented).toBe(false)
     expect(feature.isInDragSelection).toBe(false)
     button.focus()
-    expect($.selectedElement).toBe(widget)
+    expect(feature.captureSelectedWidget).toBe(widget)
     expect(widget).toHaveClass("◆element-selected")
     expect(widget).toHaveClass("◆element-capture-selected")
     expect(feature.isCaptureSelection).toBe(true)
@@ -1811,7 +1832,7 @@ describe("document listeners", () => {
 
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
 
-    expect($.selectedElement).toBe(widget)
+    expect(feature.captureSelectedWidget).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
   })
   it("keeps capture when a widget control projects the native selection to the gap above it", () => {
@@ -2145,7 +2166,7 @@ describe("document listeners", () => {
 
     expect(event.defaultPrevented).toBe(false)
     expect(feature.isCaptureSelection).toBe(true)
-    expect($.selectedElement).toBe(widget)
+    expect(feature.captureSelectedWidget).toBe(widget)
     expect(widget).toHaveClass("◆element-capture-selected")
   })
   it("shows the gap before the first body element on ArrowUp", () => {

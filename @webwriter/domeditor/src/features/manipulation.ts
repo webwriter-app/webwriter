@@ -1480,6 +1480,7 @@ export class ManipulationFeature extends EditorFeature {
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment) {
     if(!this.editor.features.slides.allowsSelection()) return
+    this.selectCapturedElementForInsertion()
     if(this.insertFloat(fragment)) return
     for(const math of Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
@@ -2009,6 +2010,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.editor.features.slides.allowsSelection()) return
     const insertionContainer = node ? getContainer($.range.startContainer) : null
     if(node && !canPlaceLayouts([node], insertionContainer === getDocumentRoot() ? insertionContainer : $.isGapSelection ? $.range.startContainer : insertionContainer!.parentNode!)) return
+    if(node) this.selectCapturedElementForInsertion()
     if(node && this.insertFloat(node)) return
     if(!node && this.ensureTextBlock()) {
       return
@@ -2077,6 +2079,14 @@ export class ManipulationFeature extends EditorFeature {
         this.editor.postSelectionPath(true)
       }
     })
+  }
+
+  /** Capture is an editor selection while the native range stays collapsed
+   * outside the widget. Promote it to a node range when insertion executes so
+   * the existing placement paths replace the captured host. */
+  private selectCapturedElementForInsertion() {
+    const captured = this.editor.features.selection.captureSelectedElement
+    if(captured) this.editor.features.selection.selectElement(captured)
   }
 
   /** Deletes content at the selection. A selection in an empty container

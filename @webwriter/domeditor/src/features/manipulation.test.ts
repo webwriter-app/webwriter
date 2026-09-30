@@ -531,6 +531,31 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
     expectBodyToBe("<webwriter-demo></webwriter-demo>")
   })
+  it.each(["node", "HTML"] as const)("replaces a capture-selected widget through %s insertion", kind => {
+    document.body.innerHTML = "<p>before</p><opaque-widget><span>Authored fallback</span></opaque-widget><p>after</p>"
+    const widget = document.querySelector("opaque-widget")!
+    widget.attachShadow({mode: "open"}).innerHTML = "<span>Rendered label</span>"
+    editor.features.selection.captureElement(widget)
+    expect(document.getSelection()?.isCollapsed).toBe(true)
+
+    if(kind === "node") editor.features.manipulation.insert(document.createElement("replacement-widget"))
+    else editor.features.manipulation.insertHTML("<replacement-widget></replacement-widget>")
+
+    expect(widget.isConnected).toBe(false)
+    expectBodyToBe("<p>before</p><replacement-widget></replacement-widget><p>after</p>")
+    expect(editor.features.selection.captureSelectedElement?.localName).toBe("replacement-widget")
+  })
+  it("replaces a capture-selected inline widget without changing surrounding text", () => {
+    editor.schema.extendWidgets([{tagName: "opaque-widget", editingConfig: {inline: true, group: "phrasing"}}])
+    document.body.innerHTML = "<p>before<opaque-widget>fallback</opaque-widget>after</p>"
+    const widget = document.querySelector("opaque-widget")!
+    editor.features.selection.captureElement(widget)
+
+    editor.features.manipulation.insertHTML("<em>new</em>")
+
+    expect(widget.isConnected).toBe(false)
+    expectBodyToBe("<p>before<em>new</em>after</p>")
+  })
   it.each(["empty paragraph", "gap", "block split", "inline", "HTML", "paste"])("element-selects a contentful widget inserted through %s", async context => {
     editor.schema.extendWidgets([{
       tagName: "webwriter-demo",
