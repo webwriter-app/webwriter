@@ -538,7 +538,7 @@ export class Schema {
     else if(node.nodeType === Node.TEXT_NODE) {
       return "#text"
     }
-    else if(node.nodeType === Node.COMMENT_NODE) {
+    else if(node.nodeType === Node.COMMENT_NODE || node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
       return "#comment"
     }
     else {
@@ -683,7 +683,7 @@ export class Schema {
     
     if(!(nodeToCheck instanceof Element)) return true;
     // A widget's data containers are valid under any content model.
-    const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => !isWidgetDataContainer(child))
+    const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => child.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(child))
     if(!rule && contentToCheck.length) return false
     else if(!rule) return true
     if(rule && "transparent" in rule) {
@@ -701,7 +701,7 @@ export class Schema {
 
   /** Whether `node` is valid as the next piece of content under `rule`. Stateful: A successful match decrements the rule's min/max in place, so calling this repeatedly with the same rule object consumes it across a sequence of nodes — which is how isContentValid uses it. Elements with `contenteditable=false` are always valid. Throws for malformed rules. */
   isNodeValid(node: Node, rule=this.getContentRule(node.parentElement!)): boolean {
-    if(isWidgetDataContainer(node)) return true
+    if(node.nodeType === Node.PROCESSING_INSTRUCTION_NODE || isWidgetDataContainer(node)) return true
     if(node instanceof Element && (this.get(node)?.replacement
       || Object.keys(this.get(node)?.requiredAttributes ?? {}).some(name => !node.hasAttribute(name)))) return false
     if(node instanceof Element && (node.getAttribute("contenteditable") === "false"

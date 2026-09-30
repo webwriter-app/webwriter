@@ -13,6 +13,8 @@ const INTERNAL_USER_ATTRIBUTE_PREFIX = "__domeditor_user_attribute__"
 const INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX = "__domeditor_namespaced_attribute__"
 const COMMENT_NODE_NAME = "domeditor-comment"
 const COMMENT_NODE_KIND = "comment"
+const PROCESSING_INSTRUCTION_NODE_KIND = "processing-instruction"
+const PROCESSING_INSTRUCTION_TARGET = "__domeditor_processing_instruction_target"
 const INITIALIZED_KEY = "initialized"
 const HEAD_INITIALIZED_KEY = "head-initialized"
 const LANGUAGE_INITIALIZED_KEY = "language-initialized"
@@ -539,6 +541,7 @@ export class SharedDOMDoc {
 
   relativePositionFromDOMPoint(node: Node, offset = 0) {
     if(node !== this.root && !this.root.contains(node)) return null
+    if(this.#isProcessingInstruction(node)) return null
     const yNode = this.#xmlNodes.get(node)
     if(!yNode) return null
     const normalizedOffset = this.#domSelectionOffset(node, offset)
@@ -684,6 +687,7 @@ export class SharedDOMDoc {
       if(isElement(node) && yNode instanceof Y.XmlElement) this.#copyDOMAttributesToY(node, yNode)
       else if(isText(node) && yNode instanceof Y.XmlText) this.#reconcileYText(node, yNode)
       else if(isComment(node) && this.#isYComment(yNode)) this.#reconcileYComment(node, yNode)
+      else if(this.#isProcessingInstruction(node) && this.#isYProcessingInstruction(yNode)) this.#reconcileYProcessingInstruction(node, yNode)
     }
   }
 
@@ -706,6 +710,7 @@ export class SharedDOMDoc {
   domToYxmlNode(node: Element): Y.XmlElement
   domToYxmlNode(node: Text): Y.XmlText
   domToYxmlNode(node: Comment): Y.XmlElement
+  domToYxmlNode(node: ProcessingInstruction): Y.XmlElement
   domToYxmlNode(node: Node): YXmlNode | null
   domToYxmlNode(node: Node = this.root): YXmlNode | null {
     if(isDocument(node)) return this.#createYNode(node.body, false) as Y.XmlElement
@@ -1042,11 +1047,12 @@ export class SharedDOMDoc {
     }
     if(!this.#isSelectionNode(target)) return
     // A comment's text is stored inside its Y element without a separate DOM node.
-    if(target.parent && this.#isYComment(target.parent as YXmlNode)) target = target.parent as YXmlNode
+    if(target.parent && (this.#isYComment(target.parent as YXmlNode) || this.#isYProcessingInstruction(target.parent as YXmlNode))) target = target.parent as YXmlNode
     const node = this.#nodes.get(target)
     if(!node) return // An inserted ancestor is rendered by its parent's event.
     if(isText(node) && target instanceof Y.XmlText) this.#reconcileDOMText(target, node)
     else if(isComment(node) && this.#isYComment(target)) this.#reconcileDOMComment(target, node)
+    else if(this.#isProcessingInstruction(node) && this.#isYProcessingInstruction(target)) this.#reconcileDOMProcessingInstruction(target, node)
     else if(isElement(node) && target instanceof Y.XmlElement) {
       if(!this.#isCompatiblePair(node, target) && target !== this.#body && target !== this.#documentHead) {
         const parent = target.parent
@@ -1188,16 +1194,26 @@ export class SharedDOMDoc {
   }
 
   #isSyncableNode(node: Node) {
-    return (isElement(node) || isText(node) || isComment(node)) && !this.#isInsideIgnoredElement(node)
+    return (isElement(node) || isText(node) || isComment(node) || this.#isProcessingInstruction(node)) && !this.#isInsideIgnoredElement(node)
   }
+
+  #isProcessingInstruction(node: Node): node is ProcessingInstruction { return node.nodeType === 7 }
 
   #isYComment(node: YXmlNode): node is Y.XmlElement {
     return node instanceof Y.XmlElement && node.getAttribute(INTERNAL_NODE_KIND) === COMMENT_NODE_KIND
   }
 
+  #isYProcessingInstruction(node: YXmlNode): node is Y.XmlElement {
+    return node instanceof Y.XmlElement && node.getAttribute(INTERNAL_NODE_KIND) === PROCESSING_INSTRUCTION_NODE_KIND
+  }
+
   #isCompatiblePair(domNode: Node, yNode: YXmlNode) {
     if(isText(domNode)) return yNode instanceof Y.XmlText
     if(isComment(domNode)) return this.#isYComment(yNode)
+    if(this.#isProcessingInstruction(domNode)) {
+      return this.#isYProcessingInstruction(yNode)
+        && yNode.getAttribute(PROCESSING_INSTRUCTION_TARGET) === domNode.target
+    }
     if(!isElement(domNode) || !(yNode instanceof Y.XmlElement) || this.#isYComment(yNode)) return false
     const namespace = yNode.hasAttribute(INTERNAL_NAMESPACE)
       ? (yNode.getAttribute(INTERNAL_NAMESPACE) || null)
@@ -1225,6 +1241,14 @@ export class SharedDOMDoc {
       yComment.insert(0, [yText])
       if(addPair) this.#addNodePair(node, yComment)
       return yComment
+    }
+    if(this.#isProcessingInstruction(node)) {
+      const yNode = new Y.XmlElement(COMMENT_NODE_NAME)
+      yNode.setAttribute(INTERNAL_NODE_KIND, PROCESSING_INSTRUCTION_NODE_KIND)
+      yNode.setAttribute(PROCESSING_INSTRUCTION_TARGET, node.target)
+      yNode.insert(0, [new Y.XmlText(node.data)])
+      if(addPair) this.#addNodePair(node, yNode)
+      return yNode
     }
     if(!isElement(node) || this.#isInsideIgnoredElement(node)) return null
 
@@ -1265,6 +1289,16 @@ export class SharedDOMDoc {
       const comment = this.#document.createComment(yNode.toArray().map(child => child.toString()).join(""))
       if(addPair) this.#addNodePair(comment, yNode)
       return comment
+    }
+    if(this.#isYProcessingInstruction(yNode)) {
+      const target = yNode.getAttribute(PROCESSING_INSTRUCTION_TARGET)
+      if(typeof target !== "string" || !target) return null
+      try {
+        const instruction = this.#document.createProcessingInstruction(target, yNode.toArray().map(child => child.toString()).join(""))
+        if(addPair) this.#addNodePair(instruction, yNode)
+        return instruction
+      }
+      catch { return null }
     }
 
     const explicitNamespace = yNode.hasAttribute(INTERNAL_NAMESPACE)
@@ -1434,6 +1468,18 @@ export class SharedDOMDoc {
     }
   }
 
+  #reconcileYProcessingInstruction(dom: ProcessingInstruction, yNode: Y.XmlElement) {
+    this.#addNodePair(dom, yNode)
+    yNode.setAttribute(PROCESSING_INSTRUCTION_TARGET, dom.target)
+    let text = yNode.firstChild
+    if(!(text instanceof Y.XmlText)) {
+      if(yNode.length) yNode.delete(0, yNode.length)
+      text = new Y.XmlText(dom.data)
+      yNode.insert(0, [text])
+    }
+    else this.#updateYText(text, dom.data)
+  }
+
   #reconcileYElement(domElement: Element, yElement: Y.XmlElement, changed?: ReadonlySet<Node>) {
     this.#addNodePair(domElement, yElement)
     this.#copyDOMAttributesToY(domElement, yElement)
@@ -1468,6 +1514,7 @@ export class SharedDOMDoc {
       if(changed && (!retained.has(yChild) || !changed.has(domChild))) return
       if(isText(domChild) && yChild instanceof Y.XmlText) this.#reconcileYText(domChild, yChild)
       else if(isComment(domChild) && this.#isYComment(yChild)) this.#reconcileYComment(domChild, yChild)
+      else if(this.#isProcessingInstruction(domChild) && this.#isYProcessingInstruction(yChild)) this.#reconcileYProcessingInstruction(domChild, yChild)
       else if(isElement(domChild) && yChild instanceof Y.XmlElement) this.#reconcileYElement(domChild, yChild, changed)
     })
   }
@@ -1483,6 +1530,13 @@ export class SharedDOMDoc {
     this.#addNodePair(domComment, yComment)
     const value = yComment.toArray().map(child => child.toString()).join("")
     if(domComment.data !== value) domComment.data = value
+  }
+
+  #reconcileDOMProcessingInstruction(yNode: Y.XmlElement, dom: ProcessingInstruction) {
+    if(yNode.getAttribute(PROCESSING_INSTRUCTION_TARGET) !== dom.target) return
+    this.#addNodePair(dom, yNode)
+    const value = yNode.toArray().map(child => child.toString()).join("")
+    if(dom.data !== value) dom.data = value
   }
 
   /** A shallow pass leaves retained children to the events of their own
@@ -1517,6 +1571,7 @@ export class SharedDOMDoc {
     if(deep) renderableChildren.forEach(({yChild, domChild}) => {
       if(yChild instanceof Y.XmlText && isText(domChild)) this.#reconcileDOMText(yChild, domChild)
       else if(this.#isYComment(yChild) && isComment(domChild)) this.#reconcileDOMComment(yChild, domChild)
+      else if(this.#isYProcessingInstruction(yChild) && this.#isProcessingInstruction(domChild)) this.#reconcileDOMProcessingInstruction(yChild, domChild)
       else if(yChild instanceof Y.XmlElement && isElement(domChild)) this.#reconcileDOMElement(yChild, domChild)
     })
     this.#restoreControlState(domElement)

@@ -571,6 +571,34 @@ describe("DOM to Yjs synchronization", () => {
     expect(peerRoot.innerHTML).toBe("<p>A</p><!--middle--><!--after-->")
   })
 
+  it("mirrors processing instructions inside custom elements, including remote edits and undo", async () => {
+    const {root, shared} = createShared("")
+    const widget = document.createElement("ww-card")
+    const instruction = document.createProcessingInstruction("ww-grouping", "group one")
+    widget.append(instruction)
+    root.append(widget)
+    await mutationsDelivered()
+
+    const peer = cloneShared(shared).root
+    const peerInstruction = peer.querySelector("ww-card")!.firstChild as ProcessingInstruction
+    expect(peerInstruction.nodeType).toBe(7)
+    expect(peerInstruction.target).toBe("ww-grouping")
+    expect(peerInstruction.data).toBe("group one")
+
+    instruction.data = "group two"
+    await mutationsDelivered()
+    expect((cloneShared(shared).root.querySelector("ww-card")!.firstChild as ProcessingInstruction).data).toBe("group two")
+    shared.stopCapturing()
+    instruction.remove()
+    await mutationsDelivered()
+    shared.undo()
+    expect(root.querySelector("ww-card")!.firstChild?.nodeType).toBe(7)
+    shared.redo()
+    expect(root.querySelector("ww-card")!.firstChild).toBeNull()
+    expect(widget.innerHTML).toBe("")
+    expect(widget.outerHTML).toBe("<ww-card></ww-card>")
+  })
+
   it("does not create updates for editor marker-only class mutations", async () => {
     const {root, shared} = createShared('<p class="content">A</p>')
     const updates = vi.fn()

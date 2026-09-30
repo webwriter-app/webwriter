@@ -1,3 +1,4 @@
+import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
 import {collectFeatureActions} from "./features"
 import {CollaborationFeature} from "./features/collaboration"
@@ -600,6 +601,7 @@ export class DOMEditor {
   }
 
   constructor(options: DOMEditorOptions = {}) {
+    hydrateWidgetGroupings(document)
     this.#bridgeNonce = options.bridgeNonce ?? globalThis.crypto?.randomUUID?.() ?? `bridge-${Date.now()}-${Math.random()}`
     this.#bridgeOrigin = options.bridgeOrigin && options.bridgeOrigin !== "null"
       ? options.bridgeOrigin
@@ -1189,6 +1191,7 @@ export class DOMEditor {
   private cleanDocumentClone(data: "defaults" | "current" = "defaults") {
     if(data === "current") this.doc.widgetData.sync()
     const root = document.cloneNode(true) as Document
+    restoreWidgetGroupingClones(document, root)
     this.doc.widgetData.writeDefaults(root, data === "current")
     this.clearEditingArtifacts(root)
     return root
@@ -1199,8 +1202,9 @@ export class DOMEditor {
   toHTML(innerBody=false, runtimeAssets=true, data: "defaults" | "current" = "defaults") {
     const root = this.cleanDocumentClone(data)
     if(!innerBody && runtimeAssets) this.features.dependency.appendSerializedAssets(root)
-    if(innerBody) return root.body.innerHTML
-    return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
+    const serialize = prepareWidgetGroupingsForSerialization(root)
+    if(innerBody) return serialize(root.body.innerHTML)
+    return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
   }
 
   /** Serializes the authored document. Offline mode embeds declared resources
@@ -1212,7 +1216,8 @@ export class DOMEditor {
       await this.bundleOfflinePackageModules(root)
       await this.inlineExternalResources(root)
     }
-    return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
+    const serialize = prepareWidgetGroupingsForSerialization(root)
+    return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
   }
 
   private async bundleOfflinePackageModules(root: Document) {
@@ -1510,7 +1515,8 @@ export class DOMEditor {
     const text = innerText ?? plainTextFromDOM(fragment, element => this.schema.isBlock(element))
     const container = fragment.ownerDocument.createElement("div")
     container.append(fragment)
-    const html = container.innerHTML
+    const serialize = prepareWidgetGroupingsForSerialization(container)
+    const html = serialize(container.innerHTML)
     return {html, text}
   }
 
@@ -1545,6 +1551,7 @@ export class DOMEditor {
    * strip styling, excluded marks, and section wrappers and canonize aliases; explicit HTML
    * edits retain authored structure and styles. */
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false) {
+    hydrateWidgetGroupings(fragment)
     // Convert PRE after transfer sanitization so its whitespace styles survive.
     this.schema.enforceMedia(fragment, false)
     this.clearEditingArtifacts(fragment)
