@@ -130,6 +130,38 @@ await check("package tests run in a separate frame", async () => {
   assert(missing.status === "error", `a missing test module was not reported: ${JSON.stringify(missing)}`)
 })
 
+await check("native widget grouping dialog and processing instruction roundtrip", async () => {
+  const [{WidgetGroupingDialog}, {defaultGroupingRules}, {writeWidgetGrouping, readWidgetGrouping}] = await Promise.all([
+    import("../src/components/widget-grouping-dialog"), import("../src/widget-grouping.js"), import("../src/widget-grouping-dom"),
+  ])
+  const rules = {...defaultGroupingRules("browser"), method: "manual" as const,
+    manualGroups: [{id: "manual", name: "Partners", members: ["ada"]}]}
+  const dialog = new WidgetGroupingDialog()
+  editor.appendix.append(dialog)
+  try {
+    const decision = dialog.show(rules, async () => ({canManage: true,
+      participants: [{id: "ada", firstName: "Ada"}, {id: "lin", firstName: "Lin"}], groups: [], groupings: []}))
+    await new Promise(requestAnimationFrame)
+    await dialog.updateComplete
+    assert(dialog.shadowRoot!.querySelector("dialog")!.open, "native grouping dialog did not open")
+    const members = dialog.shadowRoot!.querySelector<HTMLSelectElement>("select[multiple]")!
+    assert(members.selectedOptions.length === 1 && members.selectedOptions[0].value === "ada", "saved manual members were not preset")
+    dialog.shadowRoot!.querySelector<HTMLButtonElement>("button.primary")!.click()
+    const saved = await decision
+    assert(saved?.manualGroups[0].members[0] === "ada", "native form submission did not save grouping")
+    editor.schema.extendWidgets([{tagName: "smoke-sharing", editingConfig: {sharedData: true}}])
+    const widget = document.createElement("smoke-sharing")
+    document.body.append(widget)
+    writeWidgetGrouping(widget, saved!)
+    assert(widget.lastChild!.nodeType === Node.PROCESSING_INSTRUCTION_NODE, "grouping is not a native processing instruction")
+    const exported = editor.toHTML(true)
+    assert(exported.includes("<?ww-grouping "), "native instruction was lost from HTML export")
+    const imported = editor.parseHTMLFragment(exported).fragment.querySelector("smoke-sharing")!
+    assert(readWidgetGrouping(imported)?.manualGroups[0].name === "Partners", "grouping was not hydrated on HTML import")
+  }
+  finally { dialog.remove() }
+})
+
 editor.destroy()
 const failed = checks.filter(item => item.error)
 document.documentElement.dataset.nativeSmokeStatus = failed.length ? "failed" : "passed"

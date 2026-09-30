@@ -1,3 +1,6 @@
+import "./widget-grouping-dialog"
+import type {WidgetGroupingDialog} from "./widget-grouping-dialog"
+import type {WidgetGroupingContext} from "../widget-grouping.js"
 import {css, html} from "lit"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
@@ -23,6 +26,44 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * commands, selection preservation, and specialized editors keep one event
  * contract. */
 export class DomEditorToolbox extends EditingControls {
+  private renderWidgetSharing() {
+    const state = this.widgetOptions
+    if(!state?.sharing) return ""
+    const {sharing} = state
+    const reference = {path: [...state.path], localName: state.localName, widgetId: sharing.widgetId}
+    const grouping = sharing.grouping
+    const summary = grouping?.method === "existing" ? "Existing grouping"
+      : grouping?.method === "manual" ? `${grouping.manualGroups.length} groups · manual`
+      : grouping ? `${grouping.number} ${grouping.groupBy === "groups" ? "groups" : "members per group"} · ${grouping.allocateBy === "random" ? "random" : "ordered"}` : ""
+    return html`
+      <section class="widget-sharing" aria-label="Sharing">
+        <label class="share-toggle"><span>Share</span><input type="checkbox" role="switch"
+          .checked=${sharing.mode !== "individual"}
+          @change=${(event: Event) => this.dispatchEvent(new CustomEvent("widget-sharing-change", {bubbles: true, composed: true,
+            detail: {...reference, enabled: (event.target as HTMLInputElement).checked}}))}></label>
+        ${sharing.mode === "individual" ? "" : grouping ? html`
+          <div class="grouping-card">
+            <button class="grouping-summary" @click=${() => this.configureWidgetGrouping(reference, grouping)}>
+              <strong>${grouping.groupingName || "Grouping"}</strong><span>${summary}</span>
+            </button>
+            <button class="grouping-remove" aria-label="Remove grouping" title="Remove grouping"
+              @click=${() => this.dispatchEvent(new CustomEvent("widget-grouping-change", {bubbles: true, composed: true, detail: {...reference, grouping: null}}))}>${ribbonIcon("Reject")}</button>
+          </div>
+        ` : html`<button class="add-grouping" @click=${() => this.configureWidgetGrouping(reference, null)}>Add grouping</button>`}
+        ${sharing.error ? html`<p role="alert">${sharing.error}</p>` : ""}
+      </section>
+    `
+  }
+
+  private async configureWidgetGrouping(reference: {path: number[], localName: string, widgetId: string}, grouping: import("../widget-grouping.js").WidgetGroupingRules | null) {
+    const dialog = this.shadowRoot?.querySelector<WidgetGroupingDialog>("widget-grouping-dialog")
+    if(!dialog) return
+    const result = await dialog.show(grouping, () => new Promise<WidgetGroupingContext>((resolve, reject) => {
+      this.dispatchEvent(new CustomEvent("widget-grouping-context", {bubbles: true, composed: true, detail: {...reference, resolve, reject}}))
+    }))
+    if(result !== undefined) this.dispatchEvent(new CustomEvent("widget-grouping-change", {bubbles: true, composed: true, detail: {...reference, grouping: result}}))
+  }
+
   protected renderGraphicDrawer() {
     return super.renderGraphicDrawer(true)
   }
@@ -44,6 +85,21 @@ export class DomEditorToolbox extends EditingControls {
 
   static styles = css`
     ${EditingControls.styles}
+
+    .widget-sharing {padding: .75rem; display: grid; gap: .5rem; border-bottom: 1px solid var(--sl-color-neutral-200, #ddd)}
+    .share-toggle {display: flex; justify-content: space-between; align-items: center; font-size: .875rem}
+    .share-toggle input {appearance: none; position: relative; width: 2rem; height: 1.125rem; margin: 0; background: var(--sl-color-neutral-300, #ccc); border: 1px solid transparent; border-radius: 1rem; cursor: pointer}
+    .share-toggle input::before {content: ""; position: absolute; width: .875rem; height: .875rem; left: .0625rem; top: .0625rem; border-radius: 50%; background: white; transition: transform .12s}
+    .share-toggle input:checked {background: var(--sl-color-primary-600, #5267df)}
+    .share-toggle input:checked::before {transform: translateX(.875rem)}
+    .share-toggle input:focus-visible {outline: 2px solid var(--sl-color-primary-600, #5267df); outline-offset: 2px}
+    @media (prefers-reduced-motion: reduce) {.share-toggle input::before {transition: none}}
+    .grouping-card {position: relative; border: 1px solid var(--sl-color-neutral-200, #ddd); border-radius: .4rem; overflow: hidden}
+    .grouping-summary {display: grid; gap: .25rem; padding: .65rem 2rem .65rem .65rem; width: 100%; text-align: left; background: transparent; border: 0; cursor: pointer; color: inherit}
+    .grouping-summary span {font-size: .75rem; color: var(--sl-color-neutral-600, #666)}
+    .grouping-remove {position: absolute; top: .2rem; right: .2rem; padding: .2rem; border: 0; background: transparent; cursor: pointer; color: inherit}
+    .grouping-remove svg {width: 1rem; height: 1rem}
+    .add-grouping {padding: .5rem; background: transparent; color: inherit; border: 1px solid var(--sl-color-neutral-300, #ccc); border-radius: .4rem; cursor: pointer}
 
     .history-timeline {
       flex-direction: column;
@@ -856,6 +912,7 @@ export class DomEditorToolbox extends EditingControls {
             })}
           </div>
         </div>
+        <widget-grouping-dialog></widget-grouping-dialog>
         <aside
           id="toolbox-pane"
           class="toolbox-pane"
@@ -866,6 +923,7 @@ export class DomEditorToolbox extends EditingControls {
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
             ${this.activeTool === "Edit" && !this.developMode ? this.renderUniversalStyleDrawer() : ""}
+            ${this.activeTool === "Edit" && !this.developMode ? this.renderWidgetSharing() : ""}
             ${this.activeTool ? this.renderDrawers() : ""}
           </div>
           ${this.activeTool === "Edit" ? this.renderEditModeFooter() : ""}

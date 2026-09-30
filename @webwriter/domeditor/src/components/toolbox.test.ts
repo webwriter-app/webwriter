@@ -856,3 +856,35 @@ describe("widget options drawer", () => {
     expect(actions).toEqual([{name: "reset"}])
   })
 })
+
+describe("widget sharing toolbox", () => {
+  it("places Share after style options, toggles sharing and removes a grouping", async () => {
+    const {defaultGroupingRules} = await import("../widget-grouping.js")
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Edit")
+    toolbox.elementAttributes = {path: [0], localName: "my-widget", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Widget", attributes: {}}
+    toolbox.widgetOptions = {path: [0], localName: "my-widget", options: [], actions: [], sharing: {widgetId: "widget", mode: "individual", grouping: null}}
+    await toolbox.updateComplete
+    const controls = toolbox.shadowRoot!.querySelector(".toolbox-pane-content")!
+    const style = controls.querySelector('ribbon-drawer[label="Style"]')!
+    const sharing = controls.querySelector(".widget-sharing")!
+    expect(style.compareDocumentPosition(sharing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const listener = vi.fn()
+    toolbox.addEventListener("widget-sharing-change", listener)
+    const toggle = sharing.querySelector<HTMLInputElement>('input[role="switch"]')!
+    expect(toggle.checked).toBe(false)
+    toggle.checked = true; toggle.dispatchEvent(new Event("change"))
+    expect(listener.mock.calls[0][0].detail).toEqual({path: [0], localName: "my-widget", widgetId: "widget", enabled: true})
+    toolbox.widgetOptions = {...toolbox.widgetOptions, sharing: {widgetId: "widget", mode: "all", grouping: null}}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".add-grouping")?.textContent).toBe("Add grouping")
+    toolbox.widgetOptions = {...toolbox.widgetOptions, sharing: {widgetId: "widget", mode: "group", grouping: defaultGroupingRules("card")}}
+    const removed = vi.fn(); toolbox.addEventListener("widget-grouping-change", removed)
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".grouping-summary")?.textContent).toContain("members per group")
+    expect(toolbox.shadowRoot!.querySelector(".add-grouping")).toBeNull()
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Remove grouping"]')!.click()
+    expect(removed.mock.calls[0][0].detail.grouping).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector("widget-grouping-dialog")).not.toBeNull()
+  })
+})

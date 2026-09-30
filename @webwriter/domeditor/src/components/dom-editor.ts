@@ -4154,6 +4154,25 @@ export class DomEditor extends LitElement {
     })
   }
 
+  private handleWidgetSharingChange = (event: Event) => {
+    const detail = (event as CustomEvent).detail
+    if(!detail || !Array.isArray(detail.path) || typeof detail.localName !== "string" || typeof detail.widgetId !== "string") return
+    void this.execute({type: "setWidgetSharing", path: detail.path, localName: detail.localName, widgetId: detail.widgetId, enabled: detail.enabled === true})
+  }
+
+  private handleWidgetGroupingChange = (event: Event) => {
+    const detail = (event as CustomEvent).detail
+    if(!detail || !Array.isArray(detail.path) || typeof detail.localName !== "string" || typeof detail.widgetId !== "string") return
+    void this.execute({type: "setWidgetGrouping", path: detail.path, localName: detail.localName, widgetId: detail.widgetId, grouping: detail.grouping})
+  }
+
+  private handleWidgetGroupingContext = (event: Event) => {
+    const detail = (event as CustomEvent).detail
+    if(!detail || typeof detail.resolve !== "function" || typeof detail.reject !== "function") return
+    void this.execute({type: "readWidgetGroupingContext", path: detail.path, localName: detail.localName, widgetId: detail.widgetId})
+      .then(detail.resolve, detail.reject)
+  }
+
   private handleWidgetAction = (event: Event) => {
     const name = (event as CustomEvent<{name?: unknown}>).detail?.name
     const widget = this.widgetOptions
@@ -5344,6 +5363,9 @@ export class DomEditor extends LitElement {
       "element-attribute-change": this.handleElementAttributeChange.bind(this),
       "widget-option-change": this.handleWidgetOptionChange.bind(this),
       "widget-action": this.handleWidgetAction.bind(this),
+      "widget-sharing-change": this.handleWidgetSharingChange,
+      "widget-grouping-change": this.handleWidgetGroupingChange,
+      "widget-grouping-context": this.handleWidgetGroupingContext,
       "media-type-change": this.handleMediaTypeChange.bind(this),
       "dialog-attribute-change": this.handleDialogAttributeChange.bind(this),
       "table-insert": this.handleTableInsert.bind(this),

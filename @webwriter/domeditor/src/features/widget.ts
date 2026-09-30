@@ -1,3 +1,5 @@
+import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
+import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
 import {EditorFeature} from "."
 import {isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
 import {isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
@@ -71,6 +73,15 @@ export class WidgetFeature extends EditorFeature {
       localName: string
       name: string
     }) => this.runAction(this.#widgetAt(path, localName), name),
+    setWidgetSharing: ({path, localName, widgetId, enabled}: {
+      type: "setWidgetSharing", path: number[], localName: string, widgetId: string, enabled: boolean,
+    }) => this.setSharing(this.#sharingWidget(path, localName, widgetId), enabled),
+    setWidgetGrouping: ({path, localName, widgetId, grouping}: {
+      type: "setWidgetGrouping", path: number[], localName: string, widgetId: string, grouping: WidgetGroupingRules | null,
+    }) => this.setGrouping(this.#sharingWidget(path, localName, widgetId), grouping),
+    readWidgetGroupingContext: ({path, localName, widgetId}: {
+      type: "readWidgetGroupingContext", path: number[], localName: string, widgetId: string,
+    }) => this.readGroupingContext(this.#sharingWidget(path, localName, widgetId)),
     inspectWidgets: ({tagNames}: {type: "inspectWidgets", tagNames: string[]}) => (
       tagNames.filter(tagName => typeof tagName === "string").map(tagName => this.inspect(tagName))
     ),
@@ -141,8 +152,56 @@ export class WidgetFeature extends EditorFeature {
     const actions = Object.entries(this.#declarations(widget, "actions"))
       .filter(([name]) => typeof (widget as unknown as Record<string, unknown>)[name] === "function")
       .map(([name, declaration]) => widgetActionState(name, declaration, locale))
-    if(!options.length && !actions.length) return null
-    return {path: pathFromNode(document.body, widget) ?? [], localName: widget.localName, options, actions}
+    const supported = this.editor.schema.get(widget)?.sharedData === true
+    if(!options.length && !actions.length && !supported) return null
+    let grouping: WidgetGroupingRules | null = null, error: string | undefined
+    if(supported) {
+      try { grouping = readWidgetGrouping(widget) }
+      catch(reason) { error = reason instanceof Error ? reason.message : String(reason) }
+    }
+    const mode = !widget.hasAttribute("shared") ? "individual" : widget.getAttribute("shared") === "group" ? "group" : "all"
+    return {path: pathFromNode(document.body, widget) ?? [], localName: widget.localName, options, actions,
+      ...(supported ? {sharing: {widgetId: widget.id, mode, grouping, ...(error ? {error} : {})}} : {})}
+  }
+
+  #sharingWidget(path: number[], localName: string, widgetId: string) {
+    const widget = this.#widgetAt(path, localName)
+    if(widget.id !== widgetId || !this.editor.schema.get(widget)?.sharedData) throw new Error("The shared widget changed before the change could be applied")
+    return widget
+  }
+
+  setSharing(widget: Element, enabled: boolean) {
+    if(this.editor.isEditingLocked) return false
+    if(enabled) widget.setAttribute("shared", readWidgetGrouping(widget) ? "group" : "")
+    else widget.removeAttribute("shared")
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  setGrouping(widget: Element, grouping: WidgetGroupingRules | null) {
+    if(this.editor.isEditingLocked) return false
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      writeWidgetGrouping(widget, grouping)
+      if(widget.hasAttribute("shared")) widget.setAttribute("shared", grouping ? "group" : "")
+      this.editor.doc.syncFromDOM()
+    }
+    finally { end() }
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  async readGroupingContext(widget: Element): Promise<WidgetGroupingContext> {
+    const data = this.editor.doc.widgetData
+    if(!data.serverUrl) throw new Error("Offline: connect the document to load its participant roster")
+    const endpoint = new URL("/api/widget-grouping/context", data.serverUrl.replace(/^ws/, "http"))
+    endpoint.searchParams.set("document", data.documentId)
+    endpoint.searchParams.set("widget", widget.id)
+    if(data.sessionId) endpoint.searchParams.set("room", data.sessionId)
+    const response = await fetch(endpoint, {credentials: "include"})
+    if(response.status === 403) return {canManage: false, participants: [], groups: [], groupings: []}
+    if(!response.ok) throw new Error(`Could not load the participant roster (${response.status})`)
+    return await response.json() as WidgetGroupingContext
   }
 
   /** Writes an option to the widget's reflected attribute, so the change is

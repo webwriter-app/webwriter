@@ -1,3 +1,4 @@
+import {validateGroupingRules, type WidgetGroupingRules} from "./widget-grouping.js"
 import {localizedText, type LocalizedText} from "./packages"
 
 /** JSON-compatible option value, as shown and edited by the options panel. */
@@ -46,6 +47,7 @@ export type WidgetOptionsState = {
   localName: string
   options: WidgetOptionState[]
   actions: WidgetActionState[]
+  sharing?: {widgetId: string, mode: "individual" | "all" | "group", grouping: WidgetGroupingRules | null, error?: string}
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -151,6 +153,14 @@ const isOptionValue = (value: unknown, depth = 0): boolean => {
 
 export function isWidgetOptionsState(value: unknown): value is WidgetOptionsState {
   if(!isRecord(value)) return false
+  if(value.sharing !== undefined) {
+    const sharing = value.sharing
+    if(!isRecord(sharing) || typeof sharing.widgetId !== "string"
+      || !["individual", "all", "group"].includes(sharing.mode as string)
+      || sharing.error !== undefined && typeof sharing.error !== "string") return false
+    try { if(sharing.grouping !== null) validateGroupingRules(sharing.grouping) }
+    catch { return false }
+  }
   return Array.isArray(value.path) && value.path.every(index => Number.isInteger(index) && index >= 0)
     && typeof value.localName === "string"
     && Array.isArray(value.options) && value.options.every(option => isRecord(option)

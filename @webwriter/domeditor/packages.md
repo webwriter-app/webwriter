@@ -119,6 +119,8 @@ Use `application/json` or `application/xml`. Read/write `script.textContent`; li
 
 No `shared` means individual data; `shared` means everyone; `shared="group"` uses the server-assigned group. Switching loads the destination's existing state or defaults, without copying answers. JSON object fields merge recursively; scalars and arrays are replaced atomically. XML root attributes merge separately; child lists are replaced atomically. Normal exports retain defaults, not participant answers. Keep temporary UI state in properties/shadow DOM.
 
+The toolbox’s **Share** switch sets `shared`; its grouping dialog saves a direct `<?ww-grouping …?>` child with encoded JSON rules. The server assigns participants from its trusted roster. Treat this instruction as opaque metadata and preserve it when updating widget children. Turning Share off retains the rules; removing the grouping returns to everyone sharing.
+
 ### Options and actions
 
 Declare them on the class (`static options`, `static actions`) or the instance (`options`, `actions`) and the Widget drawer offers them for the selected widget.

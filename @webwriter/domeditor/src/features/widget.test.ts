@@ -365,3 +365,81 @@ describe("widget contract edge cases", () => {
     expect(isWidgetOptionsState(state)).toBe(true)
   })
 })
+
+describe("widget sharing controls", () => {
+  it("offers sharing without widget options, retains rules while off and removes grouping independently", async () => {
+    const {defaultGroupingRules} = await import("../widget-grouping.js")
+    const {readWidgetGrouping} = await import("../widget-grouping-dom")
+    editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
+    document.body.innerHTML = '<p>Before</p><demo-widget id="shared-widget"><script slot="data" type="application/json">{}</script></demo-widget>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("demo-widget")!
+    const reference = {path: [1], localName: "demo-widget", widgetId: widget.id}
+    expect(editor.features.widget.getOptionsState([document.body, widget])?.sharing?.mode).toBe("individual")
+    const share = editor.getActionHandler("setWidgetSharing"), group = editor.getActionHandler("setWidgetGrouping")
+    share({type: "setWidgetSharing", ...reference, enabled: true})
+    expect(widget.getAttribute("shared")).toBe("")
+    const rules = defaultGroupingRules("stable")
+    group({type: "setWidgetGrouping", ...reference, grouping: rules})
+    expect(widget.getAttribute("shared")).toBe("group")
+    expect(widget.lastChild?.nodeType).toBe(7)
+    expect(readWidgetGrouping(widget)).toEqual(rules)
+    const state = editor.features.widget.getOptionsState([document.body, widget])!
+    expect(isWidgetOptionsState(state)).toBe(true)
+    expect(isWidgetOptionsState({...state, sharing: {...state.sharing, grouping: {version: 99}}})).toBe(false)
+    share({type: "setWidgetSharing", ...reference, enabled: false})
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(readWidgetGrouping(widget)).toEqual(rules)
+    share({type: "setWidgetSharing", ...reference, enabled: true})
+    expect(widget.getAttribute("shared")).toBe("group")
+    group({type: "setWidgetGrouping", ...reference, grouping: null})
+    expect(widget.getAttribute("shared")).toBe("")
+    expect(readWidgetGrouping(widget)).toBeNull()
+  })
+
+  it("undoes and redoes grouping rules and sharing mode together", async () => {
+    const {defaultGroupingRules} = await import("../widget-grouping.js")
+    const {readWidgetGrouping} = await import("../widget-grouping-dom")
+    editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
+    document.body.innerHTML = '<demo-widget id="undo-sharing" shared></demo-widget>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const widget = document.querySelector("demo-widget")!
+    editor.getActionHandler("setWidgetGrouping")({type: "setWidgetGrouping", path: [0], localName: widget.localName,
+      widgetId: widget.id, grouping: defaultGroupingRules("undo")})
+    editor.doc.undo()
+    expect(widget.getAttribute("shared")).toBe("")
+    expect(readWidgetGrouping(widget)).toBeNull()
+    editor.doc.redo()
+    expect(widget.getAttribute("shared")).toBe("group")
+    expect(readWidgetGrouping(widget)?.seed).toBe("undo")
+  })
+
+  it("rejects a replaced widget while a grouping dialog is open", () => {
+    editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
+    document.body.innerHTML = '<demo-widget id="replacement"></demo-widget>'
+    const action = editor.getActionHandler("setWidgetSharing")
+    expect(() => action({type: "setWidgetSharing", path: [0], localName: "demo-widget", widgetId: "original", enabled: true})).toThrow("changed")
+    expect(document.querySelector("demo-widget")?.hasAttribute("shared")).toBe(false)
+  })
+
+  it("preserves a native grouping instruction in document and clipboard exports and import", async () => {
+    const {defaultGroupingRules} = await import("../widget-grouping.js")
+    const {writeWidgetGrouping, readWidgetGrouping} = await import("../widget-grouping-dom")
+    editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
+    document.body.innerHTML = '<demo-widget id="portable" shared="group"><script type="application/json" slot="data">{}</script></demo-widget>'
+    const widget = document.querySelector("demo-widget")!
+    const rules = defaultGroupingRules("export")
+    writeWidgetGrouping(widget, rules)
+    const html = editor.toHTML(true)
+    expect(html).toContain("<?ww-grouping ")
+    expect(editor.toHTML(false, false)).toContain("<html")
+    const imported = editor.parseHTMLFragment(html).fragment
+    expect(readWidgetGrouping(imported.querySelector("demo-widget")!)).toEqual(rules)
+    expect(imported.querySelector("demo-widget")?.lastChild?.nodeType).toBe(7)
+    const clipboard = editor.serializeClipboardFragment(imported)
+    expect(clipboard.html).toContain("<?ww-grouping ")
+    expect(clipboard.html).not.toContain("◆")
+    expect(editor.schema.isContentValid(widget)).toBe(true)
+  })
+})
