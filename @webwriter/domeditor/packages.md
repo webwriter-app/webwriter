@@ -84,6 +84,7 @@ Keyed by export name with or without extension (`./widgets/ww-quiz`, `./widgets/
 | `isolating` | `boolean` | `true` | Editing does not split or join across the widget boundary. |
 | `marks` | `string` | `"_"` | Space-separated marks formatting commands may apply in the content (`b i a`, `span` for text styles); `""` none, `"_"` all. |
 | `propagateEvents` | `string[]` | `[]` | Event types from the widget's shadow DOM that the editor still handles, e.g. `["keydown"]` for shortcuts. |
+| `sharedData` | `boolean` | `false` | Enables scoped, persistent state in a direct `script[slot="data"]` child. |
 
 `LocalizedText`: a string or `{"en": "…", "de": "…", "_": "fallback"}`. Matches the exact locale, then the language, then `_`.
 
@@ -93,8 +94,8 @@ Content expressions: node names (`p`, `ww-option`) and groups (`flow`, `phrasing
 
 | To | Do |
 |---|---|
-| Save state | Store it in attributes or light-DOM children. They are saved, shared with collaborators and undoable; properties and shadow DOM are not. |
-| Save structured data | Add a `<script type="application/json">` child (any non-JavaScript type, no `src`). It is kept under any content model. |
+| Save settings | Reflect them to attributes. Authored attributes and light-DOM children are saved, shared and undoable. |
+| Persist interaction state | Use scoped widget data below. Properties and shadow DOM remain local and are not saved. |
 | Keep UI out of the document | Render it in the shadow DOM. Its events do not reach the editor, except `propagateEvents`. |
 | Tell editing from use | `:host([contenteditable])` in CSS, `this.isContentEditable` in script. |
 | React to changes | `attributeChangedCallback` or a `MutationObserver`; changes may come from the editor, collaborators or undo. |
@@ -103,6 +104,20 @@ Content expressions: node names (`p`, `ww-option`) and groups (`flow`, `phrasing
 | Keep an element out of saved HTML | Mark it `data-webwriter-editor-only`. |
 
 `contenteditable`, `spellcheck` and classes starting with `◆` belong to the editor and are never saved.
+
+### Scoped widget data
+
+Set `sharedData: true` in the widget's editing-config entry and provide one direct data block, with defaults and no `src`:
+
+```html
+<ww-quiz shared="group">
+  <script type="application/json" slot="data">{"answers":{}}</script>
+</ww-quiz>
+```
+
+Use `application/json` or `application/xml`. Read/write `script.textContent`; listen for bubbling `datachange` on the block or widget to render accepted local changes and remote merges. Wait for the initial event before writing. Invalid data emits `dataerror` (`detail.message`) without changing persisted state. The document runtime handles networking, persistence and undo.
+
+No `shared` means individual data; `shared` means everyone; `shared="group"` uses the server-assigned group. Switching loads the destination's existing state or defaults, without copying answers. JSON object fields merge recursively; scalars and arrays are replaced atomically. XML root attributes merge separately; child lists are replaced atomically. Normal exports retain defaults, not participant answers. Keep temporary UI state in properties/shadow DOM.
 
 ### Options and actions
 

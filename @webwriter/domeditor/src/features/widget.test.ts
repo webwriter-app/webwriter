@@ -282,6 +282,23 @@ describe("widget inspection", () => {
 })
 
 describe("widget data containers", () => {
+  it("declares scoped data support and exports defaults unless a participant snapshot is requested", async () => {
+    editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
+    document.body.innerHTML = '<demo-widget id="data-export"><script type="application/json" slot="data">{"answer":null}</script></demo-widget>'
+    editor.features.widget.refresh()
+    const block = document.querySelector("script")!
+    block.textContent = '{"answer":"participant"}'
+    editor.doc.syncFromDOM()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(editor.schema.get(document.querySelector("demo-widget")!)?.sharedData).toBe(true)
+    expect(editor.toHTML(true)).toContain('{"answer":null}')
+    expect(editor.toHTML(true)).not.toContain("participant")
+    expect(editor.toHTML(true, false, "current")).toContain("participant")
+    const fragment = document.createDocumentFragment()
+    fragment.append(document.querySelector("demo-widget")!.cloneNode(true))
+    expect(editor.serializeClipboardFragment(fragment).html).not.toContain("participant")
+  })
+
   it("keeps inert data blocks of widgets and removes executable scripts", () => {
     expect(["application/json", "text/plain", "Application/LD+JSON; charset=utf-8"].every(isDataBlockType)).toBe(true)
     expect(["", "module", "importmap", "text/javascript", "TEXT/JavaScript; charset=utf-8", "text/jscript"].some(isDataBlockType)).toBe(false)

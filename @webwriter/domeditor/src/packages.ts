@@ -90,7 +90,7 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
 
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
-  "label", "description", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents",
+  "label", "description", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
 ] as const
 
 export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>

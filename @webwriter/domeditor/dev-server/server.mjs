@@ -1,11 +1,12 @@
 import {createServer as createHTTPServer} from "node:http"
-import {randomUUID} from "node:crypto"
+import {createHash, randomUUID} from "node:crypto"
 import {mkdir, readFile, readdir, rename, rm, writeFile} from "node:fs/promises"
 import {dirname, extname, join, resolve} from "node:path"
 import {fileURLToPath, pathToFileURL} from "node:url"
 import OpenAI from "openai"
 import * as WebSocketPackage from "ws"
 import {setupWSConnection, getYDoc, docs} from "@y/websocket-server/utils"
+import * as Y from "yjs"
 import * as decoding from "lib0/decoding"
 import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
 
@@ -70,6 +71,8 @@ const readJSONFile = async (path, fallback) => {
 }
 
 const safeId = value => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(value)
+// Scoped IDs are hashed into room names; preserve valid authored Unicode IDs.
+const safeScopeId = value => typeof value === "string" && value.length > 0 && value.length <= 1024 && !/[\u0000-\u001f\u007f]/.test(value)
 const safeSessionToken = value => typeof value === "string" && /^[A-Za-z0-9_-]{24,256}$/.test(value)
 
 const documentInput = (value, previous = {}) => {
@@ -211,6 +214,7 @@ const applyCors = (request, response) => {
   const origin = request.headers.origin
   if(typeof origin === "string" && isAllowedOrigin(origin)) {
     response.setHeader("Access-Control-Allow-Origin", origin)
+    response.setHeader("Access-Control-Allow-Credentials", "true")
     response.setHeader("Vary", "Origin")
     response.setHeader("Access-Control-Allow-Headers", "Content-Type")
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
@@ -249,9 +253,11 @@ export async function createDevServer(options = {}) {
   const dataDirectory = resolve(options.dataDirectory ?? process.env.WEBWRITER_DEV_DATA_DIR ?? defaultDataDirectory)
   const documentsDirectory = join(dataDirectory, "documents")
   const providerStatePath = join(dataDirectory, "providers.json")
+  const widgetDataDirectory = join(dataDirectory, "widget-data")
   const fetchImplementation = options.fetch ?? globalThis.fetch
   const useVite = options.vite !== false
   await mkdir(documentsDirectory, {recursive: true})
+  await mkdir(widgetDataDirectory, {recursive: true})
 
   // Seed editable copies once; restarting must preserve saved changes.
   for(const [id, title, filename] of [
@@ -283,6 +289,48 @@ export async function createDevServer(options = {}) {
 
   let viteServer
   const liveSessionTokens = new Map()
+  const widgetDataCapabilities = new Map()
+  const widgetDataDocuments = new Map()
+  const widgetDataWrites = new Map()
+  const widgetDataCapabilityLifetime = 60 * 60 * 1000
+  const resolveWidgetDataIdentity = options.resolveWidgetDataIdentity ?? (() => ({userId: "local-development"}))
+  const widgetDataRoom = scope => `widget-data-${createHash("sha256").update(JSON.stringify(scope)).digest("hex")}`
+  const widgetDataPath = room => join(widgetDataDirectory, `${room}.bin`)
+  const ensureWidgetDataDocument = async room => {
+    if(widgetDataDocuments.has(room)) return widgetDataDocuments.get(room)
+    const initializing = (async () => {
+      const document = getYDoc(room)
+      try {
+        const update = await readFile(widgetDataPath(room))
+        Y.applyUpdate(document, new Uint8Array(update))
+      }
+      catch(error) {
+        if(error?.code !== "ENOENT") {
+          docs.delete(room)
+          document.destroy()
+          throw error
+        }
+      }
+      document.on("update", () => {
+        const previous = widgetDataWrites.get(room) ?? Promise.resolve()
+        const next = previous.then(async () => {
+          const temporaryPath = `${widgetDataPath(room)}.${randomUUID()}.tmp`
+          await writeFile(temporaryPath, Y.encodeStateAsUpdate(document), {mode: 0o600})
+          await rename(temporaryPath, widgetDataPath(room))
+        })
+        widgetDataWrites.set(room, next.catch(() => {}))
+      })
+      return document
+    })()
+    widgetDataDocuments.set(room, initializing)
+    try {
+      return await initializing
+    }
+    catch(error) {
+      if(widgetDataDocuments.get(room) === initializing) widgetDataDocuments.delete(room)
+      throw error
+    }
+  }
   const websocketServer = new WebSocketServer({noServer: true, maxPayload: maximumWebSocketPayload})
   websocketServer.on("connection", (socket, request) => {
     // A stale browser connection can produce a malformed frame after wake.
@@ -358,6 +406,49 @@ export async function createDevServer(options = {}) {
           adminUrl: `${origin}/admin`,
           capabilities: ["documents", "collaboration", "inference", "providers"],
         })
+        return
+      }
+
+      if(path === "/api/widget-data/resolve" && request.method === "POST") {
+        const input = await readJSON(request)
+        if(!isRecord(input) || !safeScopeId(input.document) || !safeScopeId(input.widget)
+          || !["individual", "all", "group"].includes(input.mode)
+          || input.format !== undefined && !["json", "xml"].includes(input.format)) {
+          return apiError(response, 400, "Document, widget, and a valid widget-data mode are required")
+        }
+        const format = input.format ?? "json"
+        const identity = await resolveWidgetDataIdentity(request, {
+          document: input.document,
+          widget: input.widget,
+          mode: input.mode,
+          format,
+        })
+        if(!isRecord(identity) || !safeScopeId(identity.userId)
+          || identity.groupId !== undefined && !safeScopeId(identity.groupId)
+          || identity.namespaceId !== undefined && !safeScopeId(identity.namespaceId)
+          || identity.sessionId !== undefined && !safeScopeId(identity.sessionId)) {
+          return apiError(response, 401, "A valid authenticated user identity is required")
+        }
+        if(input.mode === "group" && !identity.groupId) return apiError(response, 403, "The authenticated user has no group assignment")
+        const scope = {
+          document: input.document,
+          widget: input.widget,
+          mode: input.mode,
+          format,
+          ...(identity.namespaceId ? {namespace: identity.namespaceId} : {}),
+          ...(identity.sessionId ? {session: identity.sessionId} : {}),
+          ...(input.mode === "individual" ? {user: identity.userId} : {}),
+          ...(input.mode === "group" ? {group: identity.groupId} : {}),
+        }
+        const room = widgetDataRoom(scope)
+        const token = randomUUID().replaceAll("-", "")
+        const now = Date.now()
+        for(const [capability, value] of widgetDataCapabilities) {
+          if(value.expiresAt <= now) widgetDataCapabilities.delete(capability)
+        }
+        if(widgetDataCapabilities.size >= 10_000) return apiError(response, 503, "Too many active widget-data capabilities")
+        widgetDataCapabilities.set(token, {room, expiresAt: now + widgetDataCapabilityLifetime})
+        json(response, 200, {room, token})
         return
       }
 
@@ -548,6 +639,19 @@ export async function createDevServer(options = {}) {
     const requestUrl = new URL(request.url || "/", requestOrigin(request))
     const room = requestUrl.pathname.replace(/^\/+/, "")
     let liveSession
+    if(room.startsWith("widget-data-")) {
+      const token = requestUrl.searchParams.get("token")
+      const capability = widgetDataCapabilities.get(token)
+      if(!capability || capability.room !== room || capability.expiresAt <= Date.now()) {
+        if(capability?.expiresAt <= Date.now()) widgetDataCapabilities.delete(token)
+        socket.destroy()
+        return
+      }
+      void ensureWidgetDataDocument(room).then(() => {
+        websocketServer.handleUpgrade(request, socket, head, webSocket => websocketServer.emit("connection", webSocket, request))
+      }).catch(() => socket.destroy())
+      return
+    }
     if(room.startsWith("live-session-")) {
       const token = requestUrl.searchParams.get("token")
       const role = requestUrl.searchParams.get("role")
@@ -614,6 +718,15 @@ export async function createDevServer(options = {}) {
       for(const client of websocketServer.clients) client.terminate()
       await new Promise(resolveClose => websocketServer.close(() => resolveClose()))
       await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()))
+      await Promise.allSettled(widgetDataWrites.values())
+      const widgetDocuments = await Promise.allSettled(widgetDataDocuments.values())
+      for(const result of widgetDocuments) {
+        if(result.status !== "fulfilled") continue
+        const document = result.value
+        if(docs.get(document.name) === document) docs.delete(document.name)
+        document.destroy()
+      }
+      widgetDataDocuments.clear()
       await viteServer?.close()
     },
   }

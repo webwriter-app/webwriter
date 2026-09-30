@@ -1,5 +1,5 @@
 // @vitest-environment node
-import {mkdtemp} from "node:fs/promises"
+import {mkdtemp, readFile} from "node:fs/promises"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
@@ -14,8 +14,8 @@ let upstreamFetch
 
 const request = async (path, init) => {
   const response = await fetch(`${baseUrl}${path}`, {
-    headers: {"Content-Type": "application/json"},
     ...init,
+    headers: {"Content-Type": "application/json", ...init?.headers},
   })
   const value = response.status === 204 ? null : await response.json()
   return {response, value}
@@ -45,7 +45,16 @@ const closeWebSocket = socket => new Promise(resolve => {
 beforeEach(async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "webwriter-dev-server-"))
   upstreamFetch = vi.fn().mockRejectedValue(new Error("Unexpected upstream inference request"))
-  developmentServer = await createDevServer({port: 0, vite: false, dataDirectory, fetch: (...args) => upstreamFetch(...args)})
+  developmentServer = await createDevServer({
+    port: 0,
+    vite: false,
+    dataDirectory,
+    fetch: (...args) => upstreamFetch(...args),
+    resolveWidgetDataIdentity: request => ({
+      userId: request.headers["x-test-user"] ?? "local-development",
+      ...(request.headers["x-test-group"] ? {groupId: request.headers["x-test-group"]} : {}),
+    }),
+  })
   baseUrl = (await developmentServer.listen()).url
 })
 
@@ -295,6 +304,112 @@ describe("development server", () => {
       left.destroy()
       right.destroy()
     }
+  })
+
+  it("resolves widget-data rooms from server identity and persists their Yjs state", async () => {
+    const frameOrigin = "http://localhost:5173"
+    const preflight = await fetch(`${baseUrl}/api/widget-data/resolve`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: frameOrigin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+    })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get("access-control-allow-origin")).toBe(frameOrigin)
+    expect(preflight.headers.get("access-control-allow-credentials")).toBe("true")
+    const credentialedResolve = await request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {Origin: frameOrigin},
+      body: JSON.stringify({document: "lesson-1", widget: "poll", mode: "individual"}),
+    })
+    expect(credentialedResolve.response.status).toBe(200)
+    const invalidBody = await request("/api/widget-data/resolve", {
+      method: "POST",
+      body: JSON.stringify(["not", "an", "object"]),
+    })
+    expect(invalidBody.response.status).toBe(400)
+
+    const resolved = await request("/api/widget-data/resolve", {
+      method: "POST",
+      body: JSON.stringify({document: "lesson-1", widget: "poll", mode: "individual", user: "forged", group: "forged"}),
+    })
+    expect(resolved.response.status).toBe(200)
+    expect(resolved.value.room).toMatch(/^widget-data-[a-f0-9]{64}$/)
+    expect(resolved.value.token).toMatch(/^[a-f0-9]{32}$/)
+    const forged = await request("/api/widget-data/resolve", {
+      method: "POST",
+      body: JSON.stringify({document: "lesson-1", widget: "poll", mode: "group", group: "forged"}),
+    })
+    expect(forged.response.status).toBe(403)
+
+    const resolveFor = async (mode, user, group) => (await request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {"X-Test-User": user, ...(group ? {"X-Test-Group": group} : {})},
+      body: JSON.stringify({document: "lesson-1", widget: "poll", mode}),
+    })).value
+    const individualAda = await resolveFor("individual", "ada")
+    const individualLin = await resolveFor("individual", "lin")
+    expect(individualAda.room).not.toBe(individualLin.room)
+    const xmlAda = await request("/api/widget-data/resolve", {
+      method: "POST",
+      headers: {"X-Test-User": "ada"},
+      body: JSON.stringify({document: "lesson-1", widget: "poll", mode: "individual", format: "xml"}),
+    })
+    expect(xmlAda.value.room).not.toBe(individualAda.room)
+    expect((await request("/api/widget-data/resolve", {
+      method: "POST",
+      body: JSON.stringify({document: "lesson-1", widget: "poll", mode: "individual", format: "yaml"}),
+    })).response.status).toBe(400)
+    const groupAda = await resolveFor("group", "ada", "group-a")
+    const groupLin = await resolveFor("group", "lin", "group-a")
+    const groupSam = await resolveFor("group", "sam", "group-b")
+    expect(groupAda.room).toBe(groupLin.room)
+    expect(groupAda.room).not.toBe(groupSam.room)
+    const allAda = await resolveFor("all", "ada", "group-a")
+    const allSam = await resolveFor("all", "sam", "group-b")
+    expect(allAda.room).toBe(allSam.room)
+
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const {dataDirectory} = developmentServer
+    const document = new Y.Doc()
+    const provider = new WebsocketProvider(websocketUrl, resolved.value.room, document, {
+      WebSocketPolyfill: WebSocketPackage, disableBc: true, params: {token: resolved.value.token},
+    })
+    await expect(openWebSocket(`${websocketUrl}/${individualAda.room}?token=${resolved.value.token}`)).rejects.toBeInstanceOf(Error)
+    await vi.waitFor(() => expect(provider.wsconnected).toBe(true))
+    document.getMap("widget-data").set("answer", "saved")
+    await vi.waitFor(async () => expect((await readFile(join(dataDirectory, "widget-data", `${resolved.value.room}.bin`))).length).toBeGreaterThan(0))
+    provider.destroy()
+    document.destroy()
+    await vi.waitFor(() => expect(provider.wsconnected).toBe(false))
+
+    const reconnectDocument = new Y.Doc()
+    const reconnectProvider = new WebsocketProvider(websocketUrl, resolved.value.room, reconnectDocument, {
+      WebSocketPolyfill: WebSocketPackage, disableBc: true, params: {token: resolved.value.token},
+    })
+    await vi.waitFor(() => expect(reconnectProvider.wsconnected).toBe(true))
+    await vi.waitFor(() => expect(reconnectDocument.getMap("widget-data").get("answer")).toBe("saved"))
+    reconnectProvider.destroy()
+    reconnectDocument.destroy()
+
+    await developmentServer.close()
+    developmentServer = await createDevServer({port: 0, vite: false, dataDirectory})
+    baseUrl = (await developmentServer.listen()).url
+    const afterRestart = await request("/api/widget-data/resolve", {
+      method: "POST",
+      body: JSON.stringify({document: "lesson-1", widget: "poll", mode: "individual"}),
+    })
+    expect(afterRestart.value.room).toBe(resolved.value.room)
+    const restored = new Y.Doc()
+    const restoredProvider = new WebsocketProvider(baseUrl.replace(/^http/, "ws"), afterRestart.value.room, restored, {
+      WebSocketPolyfill: WebSocketPackage, disableBc: true, params: {token: afterRestart.value.token},
+    })
+    await vi.waitFor(() => expect(restoredProvider.wsconnected).toBe(true))
+    await vi.waitFor(() => expect(restored.getMap("widget-data").get("answer")).toBe("saved"))
+    restoredProvider.destroy()
+    restored.destroy()
   })
 
   it("survives a malformed close frame from a collaboration client", async () => {

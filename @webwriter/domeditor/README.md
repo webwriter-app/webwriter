@@ -60,3 +60,67 @@ Import maps resolve JavaScript modules only. Export widget CSS separately, for e
 ## Formula editing
 
 Insert **Formula**, then type directly in the formula or use the **Formula** edit toolbox. Existing native MathML formulas can be edited by clicking their contents. See [Formula editing](docs/formula-editing.md) for shortcuts and supported structures.
+
+## Scoped widget data
+
+Widgets opt in through `sharedData: true` in their package editing-config entry.
+Keep settings in attributes and persistent interaction state in one direct child
+data block:
+
+```html
+<ww-exercise id="exercise-a" shared="group">
+  <script type="application/json" slot="data">{"answers":{}}</script>
+</ww-exercise>
+```
+
+Without `shared`, data belongs to the current user; `shared` (an empty value)
+shares with everyone in the document; `shared="group"` uses the authenticated
+user's server-assigned group. This is an enumerated attribute: `shared="false"`
+is invalid. Unknown modes report `dataerror`. Scope changes retain the old
+scope's persisted state and load the destination; they never copy participant
+answers into another scope. An unused scope starts with the authored defaults.
+
+Widget code reads and writes `script.textContent` and listens for the bubbling
+`datachange` event on that script or its host. Its `detail.mode` identifies the
+active scope. Initial delivery and subsequent local/remote changes are notified
+after a complete snapshot has been installed. Treat the block as unavailable
+until its initial `datachange` when connecting to a server: writes during initial
+connection are discarded. Invalid data reports a bubbling `dataerror` with
+`detail.message` and leaves the last accepted shared value intact. Widget
+observers should render shared state without writing it back as a side effect.
+Transient UI state remains in widget properties or shadow DOM.
+
+JSON objects merge recursively by property; scalar values and arrays are atomic
+assignments. Strings are atomic, not collaborative text. Conflicting writes to
+one value converge to Yjs's chosen winner; numeric assignments do not implement
+an additive counter. An empty JSON block starts with `{}`. JSON property names,
+including `__proto__`, remain data. `application/xml` is also supported: root
+attributes merge separately; ordered child lists are atomic replacements.
+Namespaces, comments, and processing instructions are preserved. XML must be
+well formed and cannot contain a closing `script` tag inside an HTML data block.
+
+The document runtime owns all connections. `POST /api/widget-data/resolve` accepts
+`{document, widget, mode, format}` and returns an opaque `{room, token}` for the
+WebSocket provider. The development server's `resolveWidgetDataIdentity(request,
+scope)` option must authorize the requested document/widget and return
+`{userId, groupId?}`, optionally with `namespaceId` and `sessionId`. Client-supplied
+user/group IDs are ignored. The default loopback server identifies everyone as
+`local-development` and has no group assignment; applications supply their own
+trusted identity resolver. Network state persists under `.webwriter-dev/widget-data/`.
+
+For offline use, pass `widgetData: {documentId, userId}` to `DOMEditor` for stable
+local-storage scopes. Otherwise each editor gets a distinct document identity,
+retained in editor snapshots across iframe replacement. Without storage access,
+state remains in memory. Group
+mode requires a resolver. A custom `widgetData.resolve(scope)` can return
+`{doc, ready?, destroy?}` to reuse an application's authorized Yjs transport;
+`ready` must resolve once the existing scope has loaded. The resolver owns
+identity and group routing. `destroy` releases its connection when the binding
+ends. Widgets with copied IDs receive fresh identities and authored defaults.
+
+Participant payloads are excluded from the shared body mirror and normal HTML
+exports and clipboard copies, which retain authored defaults. Explicit snapshots
+use `editor.toHTML(false, true, "current")` or
+`editor.serializeHTML(false, "current")`. Scoped data edits participate in
+undo/redo; scoped persistence survives normal editor snapshots/iframe replacement
+through the server or local storage. No additional dependencies are required.

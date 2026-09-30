@@ -88,10 +88,14 @@ export type SchemaEntry = {
   marks?: string[]
   /** Events from this widget's shadow tree that editor features still handle. */
   propagateEvents?: string[]
+  /** Uses a scoped, persistent script[slot=data] payload. */
+  sharedData?: boolean
 }
 
 /** The editing-config fields that affect a widget's document-schema entry. */
 export type WidgetEditingConfig = {
+  /** Uses a single script[slot=data] as scoped, persistent widget state. */
+  sharedData?: boolean
   group?: string
   inline?: boolean
   isolating?: boolean
@@ -413,6 +417,7 @@ export class Schema {
         inseperable: editingConfig.isolating ?? true,
         ...(marks ? {marks} : {}),
         ...(propagateEvents.length ? {propagateEvents} : {}),
+        ...(editingConfig.sharedData === true ? {sharedData: true} : {}),
       } satisfies SchemaEntry]
     }))
     this.extend(extension)

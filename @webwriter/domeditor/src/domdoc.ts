@@ -4,6 +4,7 @@ import {messageSync, WebsocketProvider} from "y-websocket"
 import {createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
 import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
+import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, type WidgetDataOptions} from "./widget-data"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
 const INTERNAL_NAMESPACE = "__domeditor_namespace"
@@ -76,6 +77,8 @@ export type DOMChangePreview = {
 }
 
 export type SharedDOMDocOptions = {
+  widgetData?: WidgetDataOptions
+  supportsWidgetData?: (widget: Element) => boolean
   root?: HTMLElement
   ydoc?: Y.Doc
   awareness?: Awareness
@@ -138,6 +141,7 @@ function longestOrderedSubset<T>(current: T[], desired: T[]) {
  * changes (innerHTML, normalize(), node moves, attributes, and comments).
  */
 export class SharedDOMDoc {
+  readonly widgetData: WidgetDataBindings
   readonly doc: Y.Doc
   readonly awareness: Awareness
   readonly provider?: WebsocketProvider
@@ -183,6 +187,8 @@ export class SharedDOMDoc {
     this.root = options.root ?? document.body
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
+    this.widgetData = new WidgetDataBindings(this.root, options.supportsWidgetData ?? (() => false), options.widgetData, serverUrl, sessionId)
+    this.widgetData.sync()
     this.#metadata = this.doc.getMap("domeditor")
     const mirror = this.#metadata.get(SHARED_DOCUMENT_KEY)
     this.#body = sharedDOMBody(this.doc)
@@ -219,6 +225,7 @@ export class SharedDOMDoc {
     this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
       trackedOrigins: new Set([this.#domOrigin]),
     })
+    stampUndo(this.#undoManager)
 
     const DocumentMutationObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
     this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
@@ -326,6 +333,7 @@ export class SharedDOMDoc {
     if(this.#undoManager) {
       this.#undoManager.destroy()
       this.#undoManager = new Y.UndoManager(this.#undoScopes(), {trackedOrigins: new Set([this.#domOrigin])})
+      stampUndo(this.#undoManager)
     }
   }
 
@@ -372,6 +380,7 @@ export class SharedDOMDoc {
     const selection = this.#relativeSelection
     return {
       update: Array.from(Y.encodeStateAsUpdate(this.doc)),
+      widgetDataDocumentId: this.widgetData.options.documentId,
       ...(selection ? {
         selection: {
           anchor: Y.relativePositionToJSON(selection.anchor),
@@ -596,6 +605,7 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[]) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
+    this.widgetData.sync()
     const records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
     this.doc.transact(() => {
       if(records) this.#reconcileMutations(records)
@@ -713,6 +723,7 @@ export class SharedDOMDoc {
 
   stopCapturing() {
     this.#undoManager.stopCapturing()
+    this.widgetData.stopCapturing()
   }
 
   /** Keep an interactive DOM edit in one undo item even when the pointer
@@ -726,6 +737,7 @@ export class SharedDOMDoc {
       this.stopCapturing()
       this.#undoGroupTimeout = this.#undoManager.captureTimeout
       this.#undoManager.captureTimeout = Infinity
+      this.widgetData.startUndoGroup()
     }
     let ended = false
     return () => {
@@ -735,6 +747,7 @@ export class SharedDOMDoc {
       finally {
         if(--this.#undoGroupDepth === 0) {
           this.#undoManager.captureTimeout = this.#undoGroupTimeout
+          this.widgetData.endUndoGroup()
           this.stopCapturing()
         }
       }
@@ -904,17 +917,26 @@ export class SharedDOMDoc {
 
   undo() {
     this.#commitPendingDOMChanges()
-    this.#undoManager.undo()
+    this.#historyManager("undo").undo()
   }
 
   redo() {
     this.#commitPendingDOMChanges()
-    this.#undoManager.redo()
+    this.#historyManager("redo").redo()
+  }
+
+  #historyManager(kind: "undo" | "redo") {
+    const data = this.widgetData.history(kind)
+    const stack = kind === "undo" ? this.#undoManager.undoStack : this.#undoManager.redoStack
+    const dataStack = data && (kind === "undo" ? data.undoStack : data.redoStack)
+    return data && Number(dataStack?.at(-1)?.meta.get(widgetDataHistoryTime) ?? 0) > Number(stack.at(-1)?.meta.get(widgetDataHistoryTime) ?? 0)
+      ? data : this.#undoManager
   }
 
   destroy() {
     this.#activeDOMPreview?.reject()
     this.stopObserve()
+    this.widgetData.destroy()
     this.doc.off("beforeTransaction", this.#flushPendingDOMChanges)
     this.#metadata.unobserve(this.#handleMirrorChange)
     this.#body.unobserveDeep(this.#handleYChanges)
@@ -1002,6 +1024,7 @@ export class SharedDOMDoc {
       this.#isWritingToDOM = false
     }
     this.syncFromDOM(this.#remoteReactionOrigin, reactions)
+    this.widgetData.sync()
   }
 
   #renderYChange(event: Y.YEvent<YXmlNode>) {
@@ -1213,7 +1236,9 @@ export class SharedDOMDoc {
         yElement.setAttribute(this.#encodeDOMAttribute(attribute), attribute.value)
       }
     }
-    const children = Array.from(childContainer(node).childNodes).flatMap(child => {
+    const children = this.widgetData.isBlock(node)
+      ? [new Y.XmlText(this.widgetData.defaults(node))]
+      : Array.from(childContainer(node).childNodes).flatMap(child => {
       const yChild = this.#createYNode(child, addPair)
       return yChild ? [yChild as Y.XmlElement | Y.XmlText] : []
     })
@@ -1367,6 +1392,7 @@ export class SharedDOMDoc {
   }
 
   #reconcileYText(domText: Text, yText: Y.XmlText) {
+    if(domText.parentNode && this.widgetData.isBlock(domText.parentNode)) return
     this.#addNodePair(domText, yText)
     this.#updateYText(yText, domText.data)
   }
@@ -1404,6 +1430,7 @@ export class SharedDOMDoc {
   #reconcileYElement(domElement: Element, yElement: Y.XmlElement, changed?: ReadonlySet<Node>) {
     this.#addNodePair(domElement, yElement)
     this.#copyDOMAttributesToY(domElement, yElement)
+    if(this.widgetData.isBlock(domElement)) return
 
     const domChildren = Array.from(childContainer(domElement).childNodes).filter(child => this.#isSyncableNode(child))
     const currentYChildren = yElement.toArray() as YXmlNode[]
@@ -1439,6 +1466,7 @@ export class SharedDOMDoc {
   }
 
   #reconcileDOMText(yText: Y.XmlText, domText: Text) {
+    if(domText.parentNode && this.widgetData.isBlock(domText.parentNode)) return
     this.#addNodePair(domText, yText)
     const value = yText.toString()
     if(domText.data !== value) domText.data = value
@@ -1455,6 +1483,7 @@ export class SharedDOMDoc {
   #reconcileDOMElement(yElement: Y.XmlElement, domElement: Element, deep = true) {
     this.#addNodePair(domElement, yElement)
     this.#copyYAttributesToDOM(yElement, domElement)
+    if(this.widgetData.isBlock(domElement)) return
 
     const container = childContainer(domElement)
     const yChildren = yElement.toArray() as YXmlNode[]

@@ -37,6 +37,7 @@ export class WidgetFeature extends EditorFeature {
       if(this.isWidget(element)) this.#connectWidget(element)
       else this.#unmarkEditable(element)
     })
+    this.editor.doc.widgetData.sync()
   }
 
   /** IDs are authored state and survive removal and reconnection.

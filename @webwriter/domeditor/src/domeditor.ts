@@ -322,6 +322,7 @@ const appendixStylesheet = createStylesheet(`
  */
 
 export type DOMEditorOptions = {
+  widgetData?: import("./widget-data").WidgetDataOptions
   syncUrl?: string
   initialState?: EditorStateSnapshot
   bridgeNonce?: string
@@ -650,11 +651,15 @@ export class DOMEditor {
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
+          widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
+          supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
         })
       }
       else {
         this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
+          widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
+          supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
         })
       }
@@ -1181,16 +1186,18 @@ export class DOMEditor {
     finally { end() }
   }
 
-  private cleanDocumentClone() {
+  private cleanDocumentClone(data: "defaults" | "current" = "defaults") {
+    if(data === "current") this.doc.widgetData.sync()
     const root = document.cloneNode(true) as Document
+    this.doc.widgetData.writeDefaults(root, data === "current")
     this.clearEditingArtifacts(root)
     return root
   }
 
   /** `runtimeAssets` adds the widget runtime a detached document needs; the
    * live editor loads its own. */
-  toHTML(innerBody=false, runtimeAssets=true) {
-    const root = this.cleanDocumentClone()
+  toHTML(innerBody=false, runtimeAssets=true, data: "defaults" | "current" = "defaults") {
+    const root = this.cleanDocumentClone(data)
     if(!innerBody && runtimeAssets) this.features.dependency.appendSerializedAssets(root)
     if(innerBody) return root.body.innerHTML
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
@@ -1198,8 +1205,8 @@ export class DOMEditor {
 
   /** Serializes the authored document. Offline mode embeds declared resources
    * and fails explicitly when dependencies cannot be made self-contained. */
-  async serializeHTML(offline=false) {
-    const root = this.cleanDocumentClone()
+  async serializeHTML(offline=false, data: "defaults" | "current" = "defaults") {
+    const root = this.cleanDocumentClone(data)
     this.features.dependency.appendSerializedAssets(root)
     if(offline) {
       await this.bundleOfflinePackageModules(root)
@@ -1497,6 +1504,7 @@ export class DOMEditor {
   /** Produces the two clipboard flavors from one cleaned selection clone so
    * native and programmatic copy cannot diverge or leak editing markers. */
   serializeClipboardFragment(fragment: DocumentFragment, innerText?: string) {
+    this.doc.widgetData.writeDefaults(fragment)
     this.schema.enforceMedia(fragment)
     this.clearEditingArtifacts(fragment)
     const text = innerText ?? plainTextFromDOM(fragment, element => this.schema.isBlock(element))
