@@ -187,8 +187,6 @@ export class SharedDOMDoc {
     this.root = options.root ?? document.body
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
-    this.widgetData = new WidgetDataBindings(this.root, options.supportsWidgetData ?? (() => false), options.widgetData, serverUrl, sessionId)
-    this.widgetData.sync()
     this.#metadata = this.doc.getMap("domeditor")
     const mirror = this.#metadata.get(SHARED_DOCUMENT_KEY)
     this.#body = sharedDOMBody(this.doc)
@@ -196,6 +194,12 @@ export class SharedDOMDoc {
     this.#documentHead = this.#headRoot ? mirror instanceof Y.Map ? mirror.get("head") : this.doc.getXmlElement("document-head") : null
     this.#documentAttributes = this.#headRoot ? mirror instanceof Y.Map ? mirror.get("attributes") : this.doc.getXmlElement("document-attributes") : null
     this.#headMetadata = mirror instanceof Y.Map ? mirror.get("metadata") : this.doc.getMap("head")
+    if(this.#documentAttributes) {
+      const html = this.#document.documentElement
+      html.id = this.#documentAttributes.getAttribute("id") || html.id || `ww${crypto.randomUUID()}`
+    }
+    this.widgetData = new WidgetDataBindings(this.root, options.supportsWidgetData ?? (() => false), options.widgetData, serverUrl, sessionId)
+    this.widgetData.sync()
     this.#awaitingInitialSync = Boolean(this.serverUrl && this.sessionId && !mirror
       && this.#metadata.get(INITIALIZED_KEY) !== true && this.#body.length === 0
       && Object.keys(this.#body.getAttributes()).length === 0)
@@ -308,6 +312,9 @@ export class SharedDOMDoc {
         this.#metadata.set(ROOT_INITIALIZED_KEY, true)
         this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes, ["lang"])
       }
+      if(this.#documentAttributes && !this.#documentAttributes.getAttribute("id")) {
+        this.#documentAttributes.setAttribute("id", this.#document.documentElement.id || `ww${crypto.randomUUID()}`)
+      }
     }, this.#initialOrigin)
     if(!deferRendering && (hasSharedDOM || hasSharedHead || hasSharedLanguage || hasSharedAttributes)) this.#writeYToDOM()
   }
@@ -380,7 +387,7 @@ export class SharedDOMDoc {
     const selection = this.#relativeSelection
     return {
       update: Array.from(Y.encodeStateAsUpdate(this.doc)),
-      widgetDataDocumentId: this.widgetData.options.documentId,
+      widgetDataDocumentId: this.widgetData.documentId,
       ...(selection ? {
         selection: {
           anchor: Y.relativePositionToJSON(selection.anchor),

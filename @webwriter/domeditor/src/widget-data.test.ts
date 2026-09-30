@@ -40,6 +40,34 @@ afterEach(() => {
 })
 
 describe("scoped widget data", () => {
+  it("uses the authored document ID and rebinds data when that identity changes", () => {
+    const owner = document.implementation.createHTMLDocument("")
+    owner.body.innerHTML = html()
+    const requests: WidgetDataRequest[] = []
+    const docs: Y.Doc[] = []
+    const shared = new SharedDOMDoc(undefined, undefined, [], ["◆"], {
+      root: owner.body,
+      supportsWidgetData: supports,
+      widgetData: {resolve: request => {
+        requests.push(request)
+        const doc = new Y.Doc()
+        docs.push(doc)
+        return {doc}
+      }},
+    })
+    cleanups.push(() => { shared.destroy(); docs.forEach(doc => doc.destroy()) })
+    expect(requests[0].document).toBe(owner.documentElement.id)
+    const block = owner.body.querySelector("script")!
+    block.textContent = '{"answer":"previous-document"}'
+    shared.syncFromDOM()
+    owner.documentElement.id = `ww${crypto.randomUUID()}`
+    shared.syncFromDOM()
+    expect(requests).toHaveLength(2)
+    expect(requests[1].document).toBe(owner.documentElement.id)
+    expect(block.textContent).toBe('{"a":1,"b":1}')
+    expect(shared.snapshot().widgetDataDocumentId).toBe(owner.documentElement.id)
+  })
+
   it("keeps individual data out of the body mirror and normal exports", async () => {
     const peer = create()
     const events = vi.fn()

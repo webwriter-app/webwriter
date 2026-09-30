@@ -9,6 +9,7 @@ afterEach(() => {
   document.body.removeAttribute("spellcheck")
   document.body.inert = false
   document.designMode = "off"
+  document.documentElement.removeAttribute("id")
 })
 
 describe("DOMEditor lifecycle", () => {
@@ -27,6 +28,65 @@ describe("DOMEditor lifecycle", () => {
 
     expect(slot.isConnected).toBe(true)
     expect(document.body.contains(authored)).toBe(true)
+  })
+
+  it("assigns a persistent UUIDv4 document ID to the html element", () => {
+    const editor = new DOMEditor()
+    const id = document.documentElement.id
+    try {
+      expect(id).toMatch(/^ww[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+      expect(editor.toHTML()).toContain(`<html id="${id}"`)
+      expect(editor.doc.widgetData.documentId).toBe(id)
+      expect(editor.doc.snapshot().widgetDataDocumentId).toBe(id)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      document.body.querySelector("p")!.textContent = "Edited"
+      editor.doc.syncFromDOM()
+      editor.doc.undo()
+      expect(document.documentElement.id).toBe(id)
+      editor.doc.redo()
+      expect(document.documentElement.id).toBe(id)
+    }
+    finally {
+      editor.destroy()
+    }
+    const reopened = new DOMEditor()
+    try {
+      expect(document.documentElement.id).toBe(id)
+    }
+    finally {
+      reopened.destroy()
+    }
+  })
+
+  it("preserves an authored document ID", () => {
+    document.documentElement.id = `ww${crypto.randomUUID()}`
+    const id = document.documentElement.id
+    const editor = new DOMEditor()
+    try {
+      expect(document.documentElement.id).toBe(id)
+      expect(editor.doc.widgetData.documentId).toBe(id)
+    }
+    finally {
+      editor.destroy()
+    }
+  })
+
+  it("restores the document ID from a shared snapshot instead of the host ID", () => {
+    const original = new DOMEditor()
+    const id = document.documentElement.id
+    const snapshot = original.doc.snapshot()
+    original.destroy()
+    document.documentElement.id = "stale-host-id"
+    const restored = new DOMEditor({initialState: snapshot})
+    try {
+      expect(document.documentElement.id).toBe(id)
+      expect(restored.doc.widgetData.documentId).toBe(id)
+      expect(restored.toHTML()).toContain(`id="${id}"`)
+    }
+    finally {
+      restored.destroy()
+    }
   })
 
   it("restores host document state and removes owned appendix elements exactly once", () => {

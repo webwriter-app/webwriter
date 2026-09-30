@@ -10,7 +10,7 @@ export type WidgetDataConnection = {
   destroy?: () => void
 }
 export type WidgetDataOptions = {
-  /** Stable identity for offline persistence and corresponding document instances. */
+  /** Override the persistence identity; defaults to the authored HTML document's ID. */
   documentId?: string
   /** Offline identity only. Network identities are resolved by the server. */
   userId?: string
@@ -140,6 +140,7 @@ export class WidgetDataBindings {
   #destroyed = false
   #grouping = false
   readonly #captureTimeouts = new WeakMap<Y.UndoManager, number>()
+  readonly #fallbackDocumentId: string
 
   constructor(
     readonly root: HTMLElement,
@@ -148,7 +149,14 @@ export class WidgetDataBindings {
     readonly serverUrl?: string,
     readonly sessionId?: string,
   ) {
-    this.options = {...options, documentId: options.documentId ?? sessionId ?? crypto.randomUUID()}
+    this.options = {...options}
+    this.#fallbackDocumentId = sessionId ?? crypto.randomUUID()
+  }
+
+  get documentId() {
+    return this.options.documentId
+      ?? (this.root === this.root.ownerDocument.body ? this.root.ownerDocument.documentElement.id || undefined : undefined)
+      ?? this.#fallbackDocumentId
   }
 
   isBlock(node: Node): node is HTMLScriptElement {
@@ -197,7 +205,7 @@ export class WidgetDataBindings {
           this.#error(block, new TypeError("Unknown widget sharing mode")); continue
         }
         const mode: WidgetDataMode = shared === null ? "individual" : shared === "group" ? "group" : "all"
-        const key = `${widget.id}:${mode}:${block.type}`
+        const key = `${this.documentId}:${widget.id}:${mode}:${block.type}`
         let binding = this.#bindings.get(block)
         if(binding && binding.key !== key) {
           this.#dispose(binding); this.#bindings.delete(block); binding = undefined
@@ -212,7 +220,7 @@ export class WidgetDataBindings {
             binding = {block, widget, key, mode, format: block.type, defaults: block.type === "application/json" ? portable : defaults, before, ready: false, disposed: false}
             this.#defaults.set(block, {format: block.type, text: binding.defaults})
             this.#bindings.set(block, binding)
-            const request: WidgetDataRequest = {document: this.options.documentId ?? this.sessionId ?? "offline", widget: widget.id, mode, format: block.type === "application/json" ? "json" : "xml"}
+            const request: WidgetDataRequest = {document: this.documentId, widget: widget.id, mode, format: block.type === "application/json" ? "json" : "xml"}
             const connection = this.options.resolve?.(request) ?? (this.serverUrl && this.sessionId ? this.#network(request, binding) : this.#offline(request))
             if(connection instanceof Promise) void connection.then(value => this.#connect(binding!, value)).catch(error => { if(!binding!.disposed) this.#error(block, error) })
             else this.#connect(binding, connection)

@@ -59,6 +59,50 @@ afterEach(() => {
 })
 
 describe("SharedDOMDoc initialization", () => {
+  it("gives independent documents distinct IDs and preserves them on remote clones", () => {
+    const left = createDocumentShared("", "<p>Left</p>")
+    const right = createDocumentShared("", "<p>Right</p>")
+    const id = left.owner.documentElement.id
+    expect(id).toMatch(/^ww[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(right.owner.documentElement.id).not.toBe(id)
+    const clone = cloneDocumentShared(left.shared)
+    expect(clone.owner.documentElement.id).toBe(id)
+    expect(clone.shared.widgetData.documentId).toBe(id)
+  })
+
+  it("elects one document ID when independent clients merge", () => {
+    const left = createDocumentShared("", "<p>Same</p>")
+    const right = createDocumentShared("", "<p>Same</p>")
+    const ids = [left.owner.documentElement.id, right.owner.documentElement.id]
+    const leftUpdate = Y.encodeStateAsUpdate(left.shared.doc)
+    const rightUpdate = Y.encodeStateAsUpdate(right.shared.doc)
+    Y.applyUpdate(left.shared.doc, rightUpdate, "remote")
+    Y.applyUpdate(right.shared.doc, leftUpdate, "remote")
+    expect(ids).toContain(left.owner.documentElement.id)
+    expect(right.owner.documentElement.id).toBe(left.owner.documentElement.id)
+    expect(left.shared.widgetData.documentId).toBe(left.owner.documentElement.id)
+    expect(right.shared.widgetData.documentId).toBe(left.owner.documentElement.id)
+  })
+
+  it("assigns a document ID after joining a legacy room without one", () => {
+    const legacy = new Y.Doc()
+    try {
+      legacy.getMap("domeditor").set("initialized", true)
+      legacy.getMap("domeditor").set("root-attributes-initialized", true)
+      legacy.getXmlElement("body").push([new Y.XmlElement("p")])
+      const owner = document.implementation.createHTMLDocument("")
+      const joining = new SharedDOMDoc("ws://localhost:1234", "legacy-document-id", [], ["◆"], {root: owner.body, connect: false})
+      sharedDocs.push(joining)
+      Y.applyUpdate(joining.doc, Y.encodeStateAsUpdate(legacy), "room-sync")
+      joining.provider!.emit("sync", [true])
+      expect(owner.documentElement.id).toMatch(/^ww[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+      expect(cloneDocumentShared(joining).owner.documentElement.id).toBe(owner.documentElement.id)
+    }
+    finally {
+      legacy.destroy()
+    }
+  })
+
   it.each(["<p></p>", "<p>same</p>"])("elects one initial tree when independent clients merge %s", html => {
     const left = createShared(html)
     const right = createShared(html)
