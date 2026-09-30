@@ -1,8 +1,9 @@
+import {widgetGroupingRevision} from "./widget-grouping-dom"
 import * as Y from "yjs"
 import {messageSync, WebsocketProvider} from "y-websocket"
 
 export type WidgetDataMode = "individual" | "all" | "group"
-export type WidgetDataRequest = {document: string, widget: string, mode: WidgetDataMode, format: "json" | "xml"}
+export type WidgetDataRequest = {document: string, widget: string, mode: WidgetDataMode, format: "json" | "xml", documentRoom?: string, groupingRevision?: string}
 export type WidgetDataConnection = {
   doc: Y.Doc
   ready?: Promise<void>
@@ -205,7 +206,8 @@ export class WidgetDataBindings {
           this.#error(block, new TypeError("Unknown widget sharing mode")); continue
         }
         const mode: WidgetDataMode = shared === null ? "individual" : shared === "group" ? "group" : "all"
-        const key = `${this.documentId}:${widget.id}:${mode}:${block.type}`
+        const groupingRevision = mode === "group" ? widgetGroupingRevision(widget) : undefined
+        const key = `${this.documentId}:${widget.id}:${mode}:${block.type}:${groupingRevision ?? ""}`
         let binding = this.#bindings.get(block)
         if(binding && binding.key !== key) {
           this.#dispose(binding); this.#bindings.delete(block); binding = undefined
@@ -220,7 +222,7 @@ export class WidgetDataBindings {
             binding = {block, widget, key, mode, format: block.type, defaults: block.type === "application/json" ? portable : defaults, before, ready: false, disposed: false}
             this.#defaults.set(block, {format: block.type, text: binding.defaults})
             this.#bindings.set(block, binding)
-            const request: WidgetDataRequest = {document: this.documentId, widget: widget.id, mode, format: block.type === "application/json" ? "json" : "xml"}
+            const request: WidgetDataRequest = {document: this.documentId, widget: widget.id, mode, format: block.type === "application/json" ? "json" : "xml", ...(this.sessionId ? {documentRoom: this.sessionId} : {}), ...(groupingRevision ? {groupingRevision} : {})}
             const connection = this.options.resolve?.(request) ?? (this.serverUrl && this.sessionId ? this.#network(request, binding) : this.#offline(request))
             if(connection instanceof Promise) void connection.then(value => this.#connect(binding!, value)).catch(error => { if(!binding!.disposed) this.#error(block, error) })
             else this.#connect(binding, connection)
@@ -301,7 +303,13 @@ export class WidgetDataBindings {
   async #network(request: WidgetDataRequest, binding: Binding): Promise<WidgetDataConnection> {
     const endpoint = new URL("/api/widget-data/resolve", this.serverUrl!.replace(/^ws/, "http"))
     const resolveScope = async () => {
-      const response = await fetch(endpoint, {method: "POST", credentials: "include", headers: {"Content-Type": "application/json"}, body: JSON.stringify(request)})
+      let response: Response
+      for(let attempt = 0; ; attempt++) {
+        if(binding.disposed) throw new Error("Widget data binding was removed")
+        response = await fetch(endpoint, {method: "POST", credentials: "include", headers: {"Content-Type": "application/json"}, body: JSON.stringify(request)})
+        if(response.status !== 409 || attempt >= 8) break
+        await new Promise(resolve => setTimeout(resolve, Math.min(100 * 2 ** attempt, 1000)))
+      }
       if(!response.ok) throw new Error(`Widget data scope could not be resolved (${response.status})`)
       const result = await response.json()
       if(typeof result.room !== "string" || !result.room.startsWith("widget-data-") || typeof result.token !== "string") throw new TypeError("Invalid widget data connection")

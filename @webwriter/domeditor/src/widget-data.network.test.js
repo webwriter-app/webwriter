@@ -89,4 +89,41 @@ describe("networked widget data", () => {
     first.doc.syncFromDOM()
     await waitForValue(second.root, {left: 0, right: 0})
   }, 20000)
+  it("uses authored grouping instructions over the document connection and isolates reconfiguration", async () => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), "domeditor-grouping-network-"))
+    vi.stubGlobal("WebSocket", WebSocket)
+    const [{SharedDOMDoc}, {createDevServer}, {defaultGroupingRules}, {writeWidgetGrouping}] = await Promise.all([
+      import("./domdoc"), import("../dev-server/server.mjs"), import("./widget-grouping.js"), import("./widget-grouping-dom"),
+    ])
+    const server = await createDevServer({port: 0, vite: false, dataDirectory})
+    cleanups.push(async () => { await server.close(); await rm(dataDirectory, {recursive: true, force: true}) })
+    const {url} = await server.listen()
+    cleanups.push(() => vi.unstubAllGlobals())
+    const root = document.createElement("main")
+    root.innerHTML = markup
+    const widget = root.querySelector("test-widget")
+    widget.setAttribute("shared", "group")
+    const rules = defaultGroupingRules("network-group")
+    writeWidgetGrouping(widget, rules)
+    const initial = waitForDataChange(root)
+    const doc = new SharedDOMDoc(url.replace(/^http/, "ws"), "group-document-room", [], ["◆"], {
+      root, supportsWidgetData: element => element.localName === "test-widget",
+      widgetData: {documentId: "group-document-id"},
+    })
+    cleanups.push(() => doc.destroy())
+    await initial
+    expect(widget.lastChild.nodeType).toBe(7)
+    block(root).textContent = '{"left":7,"right":0}'
+    doc.syncFromDOM()
+    await waitForValue(root, {left: 7, right: 0})
+    const changed = waitForDataChange(root)
+    writeWidgetGrouping(widget, {...rules, seed: "new-membership"})
+    doc.syncFromDOM()
+    await changed
+    await waitForValue(root, {left: 0, right: 0})
+    const context = await fetch(`${url}/api/widget-grouping/context?document=group-document-id&widget=widget&room=group-document-room`)
+    expect(context.status).toBe(200)
+    expect((await context.json()).participants[0].id).toBe("local-development")
+  }, 20000)
+
 })
