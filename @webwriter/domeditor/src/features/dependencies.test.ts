@@ -429,9 +429,9 @@ describe("DependencyFeature", () => {
     remoteItem.append(document.createElement("p"))
     widget.append(remoteItem)
     await new Promise<void>(resolve => setTimeout(resolve))
-    // Only the editor's own marker is added; authored values stay unchanged.
+    // Widgets receive IDs; authored editing values stay unchanged.
     expect(remoteItem.getAttribute("contenteditable")).toBe("")
-    expect(editor.toHTML(true)).toBe('<webwriter-demo contenteditable="false"><webwriter-demo-item contenteditable="plaintext-only"><p>Nested text</p></webwriter-demo-item><webwriter-demo-item><p></p></webwriter-demo-item></webwriter-demo>')
+    expect(editor.toHTML(true)).toBe(`<webwriter-demo contenteditable="false" id="${widget.id}"><webwriter-demo-item contenteditable="plaintext-only" id="${item.id}"><p>Nested text</p></webwriter-demo-item><webwriter-demo-item id="${remoteItem.id}"><p></p></webwriter-demo-item></webwriter-demo>`)
 
     await editor.getActionHandler(loadWidgetsMessage)({type: loadWidgetsMessage, widgets: []})
     expect(editor.schema.get("webwriter-demo")).toBeUndefined()

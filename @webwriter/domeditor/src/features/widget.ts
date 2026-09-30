@@ -29,20 +29,23 @@ export class WidgetFeature extends EditorFeature {
     return groups.includes("widget") || groups.includes("widgetinline")
   }
 
-  /** Marks every installed widget in the authored body as editable. Call
+  /** Assigns missing widget IDs and marks installed widgets as editable. Call
    * after the schema changes. */
   refresh() {
     if(!this.isEnabled) return
     document.body.querySelectorAll("*").forEach(element => {
-      if(this.isWidget(element)) this.#markEditable(element)
+      if(this.isWidget(element)) this.#connectWidget(element)
       else this.#unmarkEditable(element)
     })
   }
 
-  /** Widgets observe `contenteditable` (or `isContentEditable`) to switch
+  /** IDs are authored state and survive removal and reconnection.
+   * Widgets observe `contenteditable` (or `isContentEditable`) to switch
    * into their editing presentation. An authored value is left untouched. */
-  #markEditable(element: Element) {
-    if(!this.isWidget(element) || element.hasAttribute("contenteditable")) return
+  #connectWidget(element: Element) {
+    if(!document.body.contains(element) || !this.isWidget(element)) return
+    if(!element.id) element.id = `ww${crypto.randomUUID()}`
+    if(element.hasAttribute("contenteditable")) return
     element.classList.add("◆", widgetEditableMarker)
     element.setAttribute("contenteditable", "")
   }
@@ -201,8 +204,8 @@ export class WidgetFeature extends EditorFeature {
     for(const record of records) {
       record.addedNodes.forEach(node => {
         if(!(node instanceof Element) || !document.body.contains(node)) return
-        this.#markEditable(node)
-        node.querySelectorAll("*").forEach(element => this.#markEditable(element))
+        this.#connectWidget(node)
+        node.querySelectorAll("*").forEach(element => this.#connectWidget(element))
       })
     }
   }

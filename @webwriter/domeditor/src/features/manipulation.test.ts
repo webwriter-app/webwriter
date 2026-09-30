@@ -166,6 +166,7 @@ describe("widget-safe validation and transfer", () => {
   function content() {
     editor.schema.extendWidgets([{tagName: "manipulation-probe-widget"}])
     document.body.innerHTML = '<p>before</p><manipulation-probe-widget></manipulation-probe-widget><p>after</p>'
+    editor.features.widget.refresh()
     const widget = document.querySelector("manipulation-probe-widget")!
     const before = document.body.firstElementChild!.firstChild!
     return {widget, before}
@@ -218,6 +219,7 @@ describe("widget-safe validation and transfer", () => {
     const item = write.mock.calls[0][0][0]
     const html = await (await item.getType("text/html")).text()
     expect(html).toContain("<manipulation-probe-widget")
+    expect(html).toContain(`id="${widget.id}"`)
     expect(html).not.toContain("◆")
     expect(widget.isConnected).toBe(operation === "copy")
   })

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {afterAll, beforeEach, describe, expect, it, vi} from "vitest"
+import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {Schema} from "../schema"
@@ -55,6 +56,86 @@ beforeEach(() => {
 afterAll(() => editor.destroy())
 
 describe("WidgetFeature", () => {
+  it("assigns distinct UUIDv4 IDs to connected widgets, including nested and inline widgets", async () => {
+    editor.schema.extendWidgets([{tagName: "demo-inline", editingConfig: {inline: true}}])
+    document.body.innerHTML = '<section><!--keep--><demo-note><p><demo-inline id=""></demo-inline></p></demo-note><unknown-element></unknown-element></section>'
+    editor.features.widget.refresh()
+    const inserted = document.createElement("demo-widget")
+    expect(inserted.id).toBe("")
+    document.querySelector("section")!.append(inserted)
+    await new Promise(resolve => setTimeout(resolve))
+
+    const widgets = [...document.querySelectorAll("demo-note, demo-inline, demo-widget")]
+    const ids = widgets.map(widget => widget.id)
+    ids.forEach(id => expect(id).toMatch(/^ww[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/))
+    expect(new Set(ids).size).toBe(3)
+    expect(document.querySelector("unknown-element")!.hasAttribute("id")).toBe(false)
+    expect(document.querySelector("section")!.hasAttribute("id")).toBe(false)
+    ids.forEach(id => {
+      expect(editor.toHTML(true)).toContain(`id="${id}"`)
+      expect(sharedHTML()).toContain(`id="${id}"`)
+    })
+  })
+
+  it("preserves IDs through refresh, reconnection, disabling, and undo/redo", async () => {
+    document.body.innerHTML = '<demo-widget></demo-widget><demo-options id="authored-id"></demo-options>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("demo-widget")!
+    const id = widget.id
+    widget.remove()
+    await new Promise(resolve => setTimeout(resolve))
+    document.body.append(widget)
+    await new Promise(resolve => setTimeout(resolve))
+    editor.features.widget.refresh()
+    editor.features.widget.disable()
+    expect(widget.id).toBe(id)
+    editor.features.widget.enable()
+    expect(widget.id).toBe(id)
+    expect(document.querySelector("demo-options")!.id).toBe("authored-id")
+
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    widget.remove()
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(document.querySelector("demo-widget")!.id).toBe(id)
+    editor.doc.redo()
+    expect(document.querySelector("demo-widget")).toBeNull()
+  })
+
+  it("ignores widgets removed before the connection observer runs and widgets in shadow DOM", async () => {
+    const removed = document.createElement("demo-widget")
+    document.body.append(removed)
+    removed.remove()
+    const host = document.createElement("demo-widget")
+    const internal = host.attachShadow({mode: "open"}).appendChild(document.createElement("demo-widget"))
+    document.body.append(host)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(removed.id).toBe("")
+    expect(internal.id).toBe("")
+    expect(host.id).toMatch(/^ww[0-9a-f]/)
+  })
+
+  it("preserves widget IDs received through collaboration", async () => {
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const widget = new Y.XmlElement("demo-widget")
+      const id = `ww${crypto.randomUUID()}`
+      widget.setAttribute("id", id)
+      sharedDOMBody(remote).push([widget])
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+      await new Promise(resolve => setTimeout(resolve))
+      expect(document.querySelector("demo-widget")!.id).toBe(id)
+      expect(sharedHTML()).toContain(`id="${id}"`)
+    }
+    finally {
+      remote.destroy()
+    }
+  })
+
   it("marks installed widgets as editable without authoring the attribute", async () => {
     document.body.innerHTML = '<demo-widget answer="1"></demo-widget><unknown-element></unknown-element><p>Text</p>'
     editor.features.widget.refresh()
@@ -67,7 +148,7 @@ describe("WidgetFeature", () => {
     await new Promise(resolve => setTimeout(resolve))
     expect(inserted.getAttribute("contenteditable")).toBe("")
 
-    expect(editor.toHTML(true)).toBe('<demo-widget answer="1"></demo-widget><unknown-element></unknown-element><p>Text</p><demo-widget></demo-widget>')
+    expect(editor.toHTML(true)).toBe(`<demo-widget answer="1" id="${widget.id}"></demo-widget><unknown-element></unknown-element><p>Text</p><demo-widget id="${inserted.id}"></demo-widget>`)
     expect(sharedHTML()).not.toContain("contenteditable")
   })
 
@@ -75,7 +156,7 @@ describe("WidgetFeature", () => {
     document.body.innerHTML = '<demo-widget contenteditable="false"></demo-widget>'
     editor.features.widget.refresh()
     expect(document.querySelector("demo-widget")!.getAttribute("contenteditable")).toBe("false")
-    expect(editor.toHTML(true)).toBe('<demo-widget contenteditable="false"></demo-widget>')
+    expect(editor.toHTML(true)).toBe(`<demo-widget contenteditable="false" id="${document.querySelector("demo-widget")!.id}"></demo-widget>`)
   })
 
   it("removes the attribute when the editor is disabled", () => {
@@ -169,14 +250,14 @@ describe("widget options", () => {
   })
 
   it("runs an action as one undo step", async () => {
-    document.body.innerHTML = '<demo-options count="3" shuffled></demo-options>'
+    document.body.innerHTML = '<demo-options count="3" shuffled id="existing-id"></demo-options>'
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const run = editor.getActionHandler("runWidgetAction")
     await expect(run({type: "runWidgetAction", path: [0], localName: "demo-options", name: "reset"})).resolves.toBe(true)
-    expect(editor.toHTML(true)).toBe('<demo-options count="0"></demo-options>')
+    expect(editor.toHTML(true)).toBe('<demo-options count="0" id="existing-id"></demo-options>')
     editor.doc.undo()
-    expect(editor.toHTML(true)).toBe('<demo-options count="3" shuffled=""></demo-options>')
+    expect(editor.toHTML(true)).toBe('<demo-options count="3" id="existing-id" shuffled=""></demo-options>')
     await expect(run({type: "runWidgetAction", path: [0], localName: "demo-options", name: "missing"})).rejects.toThrow("not a method")
   })
 })
@@ -229,7 +310,7 @@ describe("widget contract edge cases", () => {
     editor.features.widget.refresh()
     document.querySelector("demo-widget")!.setAttribute("contenteditable", "false")
     expect(sharedHTML()).toContain('contenteditable="false"')
-    expect(editor.toHTML(true)).toBe('<demo-widget contenteditable="false"></demo-widget>')
+    expect(editor.toHTML(true)).toBe(`<demo-widget id="${document.querySelector("demo-widget")!.id}" contenteditable="false"></demo-widget>`)
   })
 
   it("keeps separate undo steps after overlapping groups end out of order", async () => {

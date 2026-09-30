@@ -125,7 +125,7 @@ describe("MigrationFeature", () => {
     range.setStart(paragraph, 1)
     selection.addRange(range)
     await editor.getActionHandler("insert")({type: "insert", html: '<ww-quiz answer="1"></ww-quiz>'})
-    expect(editor.toHTML(true)).toContain('<ww-quiz solution="1"></ww-quiz>')
+    expect(editor.toHTML(true)).toContain(`<ww-quiz solution="1" id="${document.querySelector("ww-quiz")!.id}"></ww-quiz>`)
   })
 })
 
