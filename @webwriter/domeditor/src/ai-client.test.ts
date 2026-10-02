@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {describe, expect, it, vi} from "vitest"
 import {aiProposalSummary, completeAIConversation, listAIModels, requestsReadOnlyAI} from "./ai-client"
+import {aiTools} from "./ai-tools"
 import {createAIProvider} from "./ai-provider"
 
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
@@ -9,6 +10,148 @@ const response = (value: unknown, status = 200) => new Response(JSON.stringify(v
 })
 
 describe("OpenAI-compatible AI client", () => {
+  it.each(["fetch", "body"])("times out a stalled provider %s and aborts its request", async stage => {
+    vi.useFakeTimers()
+    try {
+      const stalled = new Promise<never>(() => {})
+      const fetch = vi.fn().mockResolvedValue({ok: true, headers: new Headers(), text: () => stalled})
+      if(stage === "fetch") fetch.mockReturnValue(stalled)
+      const request = listAIModels(createAIProvider("ollama"), undefined, undefined, fetch)
+      const failure = expect(request).rejects.toThrow("did not respond within two minutes")
+      await vi.advanceTimersByTimeAsync(120_000)
+      await failure
+      expect(fetch.mock.calls[0][1].signal.aborted).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("bounds a stuck editor context request before contacting the provider", async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = vi.fn()
+      const toolHandler = vi.fn().mockReturnValue(new Promise(() => {}))
+      const request = completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler})
+      const failure = expect(request).rejects.toThrow("editor did not finish read editor capabilities")
+      await vi.advanceTimersByTimeAsync(30_000)
+      await failure
+      expect(toolHandler.mock.calls[0][1].signal.aborted).toBe(true)
+      expect(fetch).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("bounds the entire turn even when individual provider requests keep completing", async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = vi.fn().mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(response({choices: [{message: {content: "Still planning"}}]})), 100_000)))
+      const request = completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch,
+        toolHandler: vi.fn().mockResolvedValue({})})
+      const failure = expect(request).rejects.toThrow("exceeded five minutes")
+      await vi.advanceTimersByTimeAsync(300_000)
+      await failure
+      expect(fetch).toHaveBeenCalledTimes(3)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("stops promptly even when a provider ignores cancellation", async () => {
+    const controller = new AbortController()
+    const fetch = vi.fn().mockReturnValue(new Promise(() => {}))
+    const request = completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch,
+      toolHandler: vi.fn().mockResolvedValue({}), signal: controller.signal})
+    const failure = expect(request).rejects.toMatchObject({name: "AbortError"})
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    controller.abort()
+    await failure
+    expect(fetch.mock.calls[0][1].signal.aborted).toBe(true)
+  })
+
+  it("reports each provider step and tool instead of an indefinite working label", async () => {
+    const onProgress = vi.fn()
+    await completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], readOnly: true,
+      fetch: vi.fn().mockResolvedValue(response({choices: [{message: {content: "Done"}}]})), toolHandler: vi.fn().mockResolvedValue({}), onProgress})
+    expect(onProgress.mock.calls.map(([message]) => message)).toEqual(["Using read editor capabilities…", "Waiting for test (step 1 of 8)…"])
+  })
+
+  it("advertises the original focused tools and prefers available widgets", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({choices: [{message: {content: "Done"}}]}))
+    await completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "medium", messages: [], readOnly: true,
+      fetch, toolHandler: vi.fn().mockResolvedValue({})})
+    const body = JSON.parse(fetch.mock.calls[0][1].body)
+    expect(body.stream).toBe(true)
+    expect(body.messages[0].content).toContain("Prefer a suitable available widget over a static SVG or image")
+    expect(body.messages[0].content).toContain("use an automaton widget for an automaton")
+    expect(body.messages[0].content).toContain("Always read the exact package README")
+    expect(body.messages[0].content).toContain("inserting an empty widget does not fulfill")
+    expect(aiTools.map(tool => tool.function.name)).toEqual([
+      "read_editor_capabilities", "read_current_document", "read_current_selection", "inspect_elements", "list_widgets", "read_widget_documentation", "queue_document_change",
+    ])
+  })
+
+  it.each(["old backend", "unsupported streaming"])("falls back to JSON for %s", async kind => {
+    const fetch = vi.fn().mockResolvedValueOnce(kind === "old backend" ? response({controller: {}}) : response({error: {message: "stream is not supported"}}, 400))
+      .mockResolvedValueOnce(response({choices: [{message: {content: "Done"}}]}))
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], readOnly: true,
+      fetch, toolHandler: vi.fn().mockResolvedValue({})})).resolves.toBe("Done")
+    expect(JSON.parse(fetch.mock.calls[0][1].body).stream).toBe(true)
+    expect(JSON.parse(fetch.mock.calls[1][1].body).stream).toBe(false)
+  })
+
+  it("assembles fragmented streamed tool arguments and preserves private reasoning", async () => {
+    const events = [
+      ': keep-alive\r\n\r\n',
+      'data: ' + JSON.stringify({choices: [{index: 0, delta: {reasoning_content: "Private reasoning"}}]}) + '\n\n',
+      'data: ' + JSON.stringify({choices: [{index: 0, delta: {tool_calls: [{index: 0, id: "read-1", function: {name: "read_current_document", arguments: '{"mode":'}}]}}]}) + '\n\n',
+      'data: ' + JSON.stringify({choices: [{index: 0, delta: {tool_calls: [{index: 0, function: {arguments: '"html"}'}}]}, finish_reason: "tool_calls"}]}) + '\n\n',
+      'data: [DONE]\n\n',
+    ].join('')
+    const encoded = new TextEncoder().encode(events)
+    const stream = new ReadableStream({start(controller) {
+      for(let index = 0; index < encoded.length; index += 7) controller.enqueue(encoded.slice(index, index + 7))
+      controller.close()
+    }})
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(stream, {headers: {"Content-Type": "text/event-stream"}}))
+      .mockResolvedValueOnce(response({choices: [{message: {content: "Read complete"}}]}))
+    const toolHandler = vi.fn().mockResolvedValue({status: "ok", html: "<p>Hello</p>", target: "body"})
+    const onProgress = vi.fn()
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler, onProgress, readOnly: true})).resolves.toBe("Read complete")
+    expect(toolHandler).toHaveBeenCalledWith(expect.objectContaining({name: "read_current_document", arguments: {mode: "html"}}), expect.anything())
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages).toContainEqual(expect.objectContaining({role: "assistant", reasoning_content: "Private reasoning"}))
+    expect(onProgress.mock.calls.flat().join(" ")).not.toContain("Private reasoning")
+  })
+
+  it.each(["error", "truncated", "length"])("rejects a %s stream before executing partial tools", async failure => {
+    const event = failure === "error" ? {error: {message: "Provider unavailable"}}
+      : {choices: [{index: 0, delta: {tool_calls: [{index: 0, id: "edit", function: {name: "queue_document_change", arguments: '{"summary":'}}]}, ...(failure === "length" ? {finish_reason: "length"} : {})}]}
+    const fetch = vi.fn().mockResolvedValue(new Response('data: ' + JSON.stringify(event) + '\n\n', {headers: {"Content-Type": "text/event-stream"}}))
+    const toolHandler = vi.fn().mockResolvedValue({})
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler})).rejects.toThrow(
+      failure === "error" ? "Provider unavailable" : failure === "length" ? "output limit" : "ended before completion")
+    expect(toolHandler).toHaveBeenCalledOnce()
+  })
+
+  it("times out keep-alive-only streams and releases the reader", async () => {
+    vi.useFakeTimers()
+    try {
+      const cancel = vi.fn()
+      const body = new ReadableStream({start(controller) {controller.enqueue(new TextEncoder().encode(': keep-alive\n\n'))}, cancel})
+      const onProgress = vi.fn()
+      const request = completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [],
+        fetch: vi.fn().mockResolvedValue(new Response(body, {headers: {"Content-Type": "text/event-stream"}})),
+        toolHandler: vi.fn().mockResolvedValue({}), onProgress})
+      const failure = expect(request).rejects.toThrow("did not respond within two minutes")
+      await vi.advanceTimersByTimeAsync(120_000)
+      await failure
+      expect(cancel).toHaveBeenCalledOnce()
+      expect(body.locked).toBe(false)
+      expect(onProgress.mock.calls.flat()).toContain("test: request accepted, waiting for output (119s; timeout in 1s)…")
+      expect(vi.getTimerCount()).toBe(0)
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("lists provider models with the configured bearer credential", async () => {
     const provider = createAIProvider("openai")
     const fetch = vi.fn().mockResolvedValue(response({data: [{id: "model-b"}, {id: "model-a"}]}))
@@ -70,7 +213,7 @@ describe("OpenAI-compatible AI client", () => {
       fetch,
     })).resolves.toBe("The document has one heading.")
 
-    expect(toolHandler).toHaveBeenCalledWith(expect.objectContaining({name: "read_current_document"}), {signal: undefined})
+    expect(toolHandler).toHaveBeenCalledWith(expect.objectContaining({name: "read_current_document"}), {signal: expect.any(AbortSignal)})
     const secondBody = JSON.parse((fetch.mock.calls[1][1] as RequestInit).body as string)
     expect(secondBody.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({role: "tool", tool_call_id: "call-1", content: JSON.stringify({html: "<h1>Hello</h1>"})}),
@@ -123,7 +266,7 @@ describe("OpenAI-compatible AI client", () => {
     expect(body.messages).toContainEqual({
       role: "system", content: expect.stringContaining(JSON.stringify(context)),
     })
-    expect(toolHandler).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({name: "read_editor_capabilities"}), {signal: undefined})
+    expect(toolHandler).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({name: "read_editor_capabilities"}), {signal: expect.any(AbortSignal)})
   })
 
   it.each(["Inspect the document first.\nThen choose a change.", ""])("preserves reasoning content %j across tool and repair requests", async reasoning => {

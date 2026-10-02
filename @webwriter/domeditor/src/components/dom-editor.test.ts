@@ -433,6 +433,36 @@ describe("DomEditor iframe setup", () => {
     await expect(state.handleAIEditReview("preview", call)).rejects.toThrow("unavailable")
   })
 
+  it("reads published initialization documentation before preserving configured automaton state", async () => {
+    const editor = new DomEditor(), state = editor as any
+    const tagName = "ai-configured-automaton"
+    customElements.define(tagName, class extends HTMLElement {})
+    state.editorWindow = window
+    state.installedPackages = [{...demoPackage, members: [{...demoPackage.members[0], tagName}]}]
+    const nodes = "#0(-150|0);%1(0|0);2(150|0)"
+    const transitions = "0-1[a];0-2[b];1-1[b];1-2[a];2-2[a,b]"
+    const markdown = '# Initialization\nEncode nodes as [#][%]id(x|y) and transitions as from-to[symbols], separated by semicolons. DFAs require a transition for every symbol at every state.'
+    const read = vi.spyOn(state.packageRegistry, "readPackageReadme").mockResolvedValue({status: "available", source: "published",
+      packageName: demoPackage.name, version: demoPackage.version, path: "README.md", markdown})
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({status: "previewing"})
+    const call = {id: "automaton-proposal", name: "queue_document_change", arguments: {summary: "Add an automaton accepting ab*.", operations: [
+      {type: "insert_widget", target: "body", position: "append", memberId: demoPackage.members[0].id,
+        attributes: {type: "dfa", nodes, transitions}},
+    ]}}
+    await expect(state.handleAIEditReview("preview", call)).rejects.toThrow("README")
+    const docs = await state.handleAIDocumentTool({id: "docs", name: "read_widget_documentation",
+      arguments: {packageName: demoPackage.name, version: demoPackage.version}})
+    expect(docs.markdown).toBe(markdown)
+    expect(read).toHaveBeenCalledOnce()
+    await state.handleAIEditReview("preview", call)
+    const proposal = execute.mock.calls.at(-1)![0] as any
+    const wrapper = document.createElement("div")
+    wrapper.innerHTML = proposal.operations[0].html
+    expect(wrapper.firstElementChild!.getAttribute("nodes")).toBe(nodes)
+    expect(wrapper.firstElementChild!.getAttribute("transitions")).toBe(transitions)
+    expect(proposal.availableWidgets).toContain(tagName)
+  })
+
   it("reads AI widget documentation only for known exact package versions", async () => {
     const editor = new DomEditor()
     const state = editor as any

@@ -39,6 +39,42 @@ const modelsResponse = (models: string[]) => new Response(JSON.stringify({
 }), {headers: {"content-type": "application/json"}})
 
 describe("AI prompt ribbon", () => {
+  it("clears busy state when Stop cancels a provider that never settles", async () => {
+    const ribbon = await mountRibbon()
+    await configureProvider(ribbon)
+    const fetch = vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise(() => {}))
+    const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    input.value = "Add a paragraph"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-submit")!.click()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-working")!.textContent).toContain("Waiting for test-model (step 1 of 8)")
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Stop AI request"]')!.click()
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('[aria-label="Stop AI request"]')).toBeNull())
+    expect(ribbon.shadowRoot!.textContent).toContain("Request stopped.")
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-working")).toBeNull()
+    expect((fetch.mock.calls[0][1] as RequestInit).signal!.aborted).toBe(true)
+  })
+
+  it("releases a cancelled preview and rejects a late result", async () => {
+    const ribbon = await mountRibbon()
+    let finishPreview!: (value: unknown) => void
+    const review = vi.fn().mockImplementation((action: string) => action === "preview"
+      ? new Promise(resolve => { finishPreview = resolve }) : Promise.resolve({status: "rejected"}))
+    ribbon.aiEditReviewHandler = review
+    const controller = new AbortController()
+    const call = {id: "stalled-preview", name: "queue_document_change", arguments: {summary: "Add content.", operations: []}}
+    const pending = (ribbon as any).handleAIDocumentTool(call, "chat-1", controller.signal)
+    controller.abort()
+    await expect(pending).resolves.toMatchObject({status: "error"})
+    expect((ribbon as any).pendingAIEdit).toBeNull()
+    finishPreview({status: "previewing"})
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("reject", call))
+    expect((ribbon as any).pendingAIEdit).toBeNull()
+  })
+
   it("renders a self-contained 24px–600px AI bar without an AI ribbon tab", async () => {
     const ribbon = await mountRibbon()
     const brand = ribbon.shadowRoot!.querySelector<HTMLElement>(".brand")!

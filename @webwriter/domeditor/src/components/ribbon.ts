@@ -146,6 +146,7 @@ export class AppRibbon extends EditingControls {
     aiProviders: {attribute: false, state: true},
     aiAttachments: {attribute: false, state: true},
     aiBusy: {type: Boolean, state: true},
+    aiProgress: {type: String, state: true},
     aiError: {type: String, state: true},
     pendingAIEdit: {attribute: false, state: true},
     aiDocumentToolHandler: {attribute: false},
@@ -2033,6 +2034,7 @@ export class AppRibbon extends EditingControls {
   private aiAttachments: AIAttachment[] = []
 
   private aiBusy = false
+  private aiProgress = "AI is working…"
 
   private aiError = ""
 
@@ -2537,10 +2539,11 @@ export class AppRibbon extends EditingControls {
       })) ?? []
   }
 
-  private handleAIDocumentTool(call: AIDocumentToolCall, chatId: string): Promise<unknown> {
+  private handleAIDocumentTool(call: AIDocumentToolCall, chatId: string, signal = this.aiAbortController?.signal): Promise<unknown> {
+    signal?.throwIfAborted()
     if(isAIReadTool(call.name)) {
       return this.aiDocumentToolHandler
-        ? this.aiDocumentToolHandler(call, {signal: this.aiAbortController?.signal})
+        ? this.aiDocumentToolHandler(call, {signal})
         : Promise.resolve({status: "unavailable", message: "The document editor is not connected"})
     }
     const html = call.arguments.html
@@ -2556,8 +2559,13 @@ export class AppRibbon extends EditingControls {
     this.pendingAIQueue = new Promise(resolve => {
       this.pendingAIEdit = {call, chatId, summary, previewing: true, deciding: false, resolve}
       this.activeAIChatId = chatId
+      const cancel = () => {
+        if(this.pendingAIEdit?.call.id === call.id) this.pendingAIEdit = null
+        resolve({status: "error", message: "The document preview was cancelled"})
+      }
+      signal?.addEventListener("abort", cancel, {once: true})
       const preview = this.aiEditReviewHandler
-        ? this.aiEditReviewHandler("preview", call, {signal: this.aiAbortController?.signal})
+        ? this.aiEditReviewHandler("preview", call, {signal})
         : Promise.reject(new Error("The document editor cannot preview AI changes"))
       void preview.then(
         result => {
@@ -2574,7 +2582,7 @@ export class AppRibbon extends EditingControls {
       ).catch(error => {
           if(this.pendingAIEdit?.call.id === call.id) this.pendingAIEdit = null
           resolve({status: "error", message: error instanceof Error ? error.message : String(error)})
-      })
+      }).finally(() => signal?.removeEventListener("abort", cancel))
       void this.updateComplete.then(() => this.scrollAIChatToEnd())
     })
     return this.pendingAIQueue
@@ -2674,7 +2682,6 @@ export class AppRibbon extends EditingControls {
       return
     }
     this.aiAbortController?.abort()
-    this.aiAbortController = null
   }
 
   /** Called before an iframe is replaced, and when the ribbon is destroyed. */
@@ -2727,6 +2734,7 @@ export class AppRibbon extends EditingControls {
     this.aiAttachments = []
     this.aiError = ""
     this.aiBusy = true
+    this.aiProgress = "Reading editor capabilities…"
     const controller = new AbortController()
     this.aiAbortController = controller
     try {
@@ -2737,19 +2745,25 @@ export class AppRibbon extends EditingControls {
         effort: this.aiEffort,
         messages: this.conversationFor(chatId),
         readOnly: requestsReadOnlyAI(prompt),
-        toolHandler: call => this.handleAIDocumentTool(call, chatId),
+        toolHandler: (call, options) => this.handleAIDocumentTool(call, chatId, options?.signal),
+        onProgress: message => {
+          if(this.aiAbortController === controller) this.aiProgress = message
+        },
         signal: controller.signal,
       })
-      this.appendAIResponse(response, chatId)
+      if(this.aiAbortController === controller) this.appendAIResponse(response, chatId)
     }
     catch(error) {
+      if(this.aiAbortController !== controller) return
       this.aiError = error instanceof DOMException && error.name === "AbortError"
         ? "Request stopped."
         : error instanceof Error ? error.message : String(error)
     }
     finally {
-      if(this.aiAbortController === controller) this.aiAbortController = null
-      this.aiBusy = false
+      if(this.aiAbortController === controller) {
+        this.aiAbortController = null
+        this.aiBusy = false
+      }
     }
   }
 
@@ -4106,7 +4120,7 @@ export class AppRibbon extends EditingControls {
                 </div>
               </section>
             ` : ""}
-            ${this.aiBusy && !this.pendingAIEdit ? html`<div class="ai-chat-working" role="status">AI is working…</div>` : ""}
+            ${this.aiBusy && !this.pendingAIEdit ? html`<div class="ai-chat-working" role="status">${this.aiProgress}</div>` : ""}
             ${this.aiError ? html`<div class="ai-chat-error" role="alert">${this.aiError}</div>` : ""}
           </div>
           <form

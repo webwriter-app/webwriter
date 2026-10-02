@@ -327,6 +327,83 @@ describe("development server", () => {
     }))
   })
 
+  it("forwards streamed chunks rather than serializing the SDK stream", async () => {
+    await request("/api/providers", {method: "POST", body: JSON.stringify({id: "stream-provider", name: "Stream provider", preset: "custom", baseUrl: "https://ai.example/v1", auth: "none", models: ["test-model"], defaultModel: "test-model"})})
+    const chunk = {choices: [{index: 0, delta: {content: "Hello"}, finish_reason: "stop"}]}
+    upstreamFetch.mockResolvedValue(new Response(`: keep-alive\n\ndata: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {headers: {"Content-Type": "text/event-stream"}}))
+    const result = await fetch(`${baseUrl}/api/inference/providers/stream-provider/chat/completions`, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({model: "test-model", messages: [], stream: true}),
+    })
+    expect(result.headers.get("content-type")).toContain("text/event-stream")
+    const text = await result.text()
+    expect(text).toContain(`data: ${JSON.stringify(chunk)}`)
+    expect(text).toContain("data: [DONE]")
+  })
+
+  it("bounds a non-streaming provider body after headers have arrived", async () => {
+    await request("/api/providers", {method: "POST", body: JSON.stringify({
+      id: "body-timeout", name: "Body timeout", preset: "custom", baseUrl: "https://ai.example/v1",
+      auth: "none", models: ["test-model"], defaultModel: "test-model",
+    })})
+    let upstreamSignal
+    upstreamFetch.mockImplementation((url, init) => {
+      upstreamSignal = init.signal
+      return Promise.resolve(new Response(new ReadableStream({start(controller) {
+        controller.enqueue(new TextEncoder().encode('\n'))
+        init.signal.addEventListener("abort", () => controller.error(init.signal.reason), {once: true})
+      }}), {headers: {"Content-Type": "application/json"}}))
+    })
+    const timers = vi.spyOn(globalThis, "setTimeout")
+    const pending = request("/api/inference/providers/body-timeout/chat/completions", {
+      method: "POST", body: JSON.stringify({model: "test-model", messages: []}),
+    })
+    await vi.waitFor(() => expect(upstreamSignal).toBeDefined())
+    const deadline = timers.mock.calls.find(([, delay]) => delay === 120_000)
+    expect(deadline).toBeDefined()
+    deadline[0]()
+    const result = await pending
+    expect(upstreamSignal.aborted).toBe(true)
+    expect(result.value.error.message).toContain("did not complete its response within two minutes")
+  })
+
+  it("cancels upstream inference when the browser disconnects", async () => {
+    await request("/api/providers", {method: "POST", body: JSON.stringify({
+      id: "cancel-provider", name: "Cancel provider", preset: "custom", baseUrl: "https://ai.example/v1",
+      auth: "none", models: ["test-model"], defaultModel: "test-model",
+    })})
+    let upstreamSignal
+    upstreamFetch.mockImplementation((url, init) => new Promise((resolve, reject) => {
+      upstreamSignal = init.signal
+      init.signal.addEventListener("abort", () => reject(new DOMException("Stopped", "AbortError")), {once: true})
+    }))
+    const controller = new AbortController()
+    const pending = fetch(`${baseUrl}/api/inference/providers/cancel-provider/chat/completions`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({model: "test-model", messages: [{role: "user", content: "Hi"}]}), signal: controller.signal,
+    })
+    const stopped = expect(pending).rejects.toMatchObject({name: "AbortError"})
+    await vi.waitFor(() => expect(upstreamSignal).toBeDefined())
+    controller.abort()
+    await stopped
+    await vi.waitFor(() => expect(upstreamSignal.aborted).toBe(true))
+    expect(upstreamFetch).toHaveBeenCalledOnce()
+  })
+
+  it("returns upstream failures immediately without automatic retries", async () => {
+    await request("/api/providers", {method: "POST", body: JSON.stringify({
+      id: "failure-provider", name: "Failure provider", preset: "custom", baseUrl: "https://ai.example/v1",
+      auth: "none", models: ["test-model"], defaultModel: "test-model",
+    })})
+    upstreamFetch.mockResolvedValue(new Response(JSON.stringify({error: {message: "Provider unavailable"}}), {
+      status: 503, headers: {"Content-Type": "application/json"},
+    }))
+    const result = await request("/api/inference/providers/failure-provider/chat/completions", {
+      method: "POST", body: JSON.stringify({model: "test-model", messages: []}),
+    })
+    expect(result.response.status).toBe(503)
+    expect(upstreamFetch).toHaveBeenCalledOnce()
+  })
+
   it("synchronizes Yjs documents through the collaboration WebSocket", async () => {
     const left = new Y.Doc()
     const right = new Y.Doc()

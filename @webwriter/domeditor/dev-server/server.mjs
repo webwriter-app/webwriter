@@ -268,6 +268,8 @@ const clientForProvider = (provider, fetchImplementation) => {
     apiKey: provider.auth === "bearer" ? secret : "not-required",
     baseURL: provider.baseUrl,
     fetch: customFetch,
+    timeout: 120_000,
+    maxRetries: 0,
   })
 }
 
@@ -790,24 +792,53 @@ export async function createDevServer(options = {}) {
         const state = await loadProviderState(providerStatePath)
         const provider = state.providers.find(candidate => candidate.id === id)
         if(!provider) return apiError(response, 404, "Provider not found")
+        const controller = new AbortController()
+        const deadline = setTimeout(() => controller.abort(new Error("The provider did not complete its response within two minutes")), 120_000)
+        const cancel = () => {
+          if(!response.writableEnded) controller.abort()
+        }
+        response.on("close", cancel)
         try {
           const client = clientForProvider(provider, fetchImplementation)
           if(operation === "models" && request.method === "GET") {
-            const models = await client.models.list()
+            const models = await client.models.list({signal: controller.signal})
             return json(response, 200, {object: "list", data: models.data})
           }
           if(operation === "chat/completions" && request.method === "POST") {
-            const completion = await client.chat.completions.create(await readJSON(request))
+            const input = await readJSON(request)
+            const completion = await client.chat.completions.create(input, {signal: controller.signal})
+            if(input.stream) {
+              response.writeHead(200, {"Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+              response.flushHeaders()
+              const heartbeat = setInterval(() => { if(!response.destroyed) response.write(": keep-alive\n\n") }, 5_000)
+              try {
+                for await (const chunk of completion) {
+                  if(controller.signal.aborted) throw controller.signal.reason
+                  response.write(`data: ${JSON.stringify(chunk)}\n\n`)
+                }
+                response.end("data: [DONE]\n\n")
+              }
+              finally { clearInterval(heartbeat) }
+              return
+            }
             return json(response, 200, completion)
           }
           if(operation === "responses" && request.method === "POST") {
-            const result = await client.responses.create(await readJSON(request))
+            const result = await client.responses.create(await readJSON(request), {signal: controller.signal})
             return json(response, 200, result)
           }
         }
         catch(error) {
-          inferenceError(response, error)
+          if(!response.destroyed) {
+            const failure = controller.signal.aborted ? controller.signal.reason : error
+            if(response.headersSent) response.end(`data: ${JSON.stringify({error: {message: errorMessage(failure)}})}\n\n`)
+            else inferenceError(response, failure)
+          }
           return
+        }
+        finally {
+          response.off("close", cancel)
+          clearTimeout(deadline)
         }
       }
 
