@@ -451,6 +451,10 @@ body:has(.◆element-capture-selected:is(:hover, .◆pointer-hovered, .◆elemen
   display: none;
 }
 
+body:has(summary:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
+  display: none;
+}
+
 body.◆element-hovered::part(hover-caret) {
   position-anchor: auto;
   inset: 0;

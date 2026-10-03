@@ -39,6 +39,57 @@ function el(tag = "p", text = "") {
   return element
 }
 
+it("keeps summary editable without allowing element or capture selection", () => {
+  document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
+  const summary = document.querySelector("summary")!
+  for(const select of [() => $.selectElement(summary), () => feature.selectElement(summary),
+    () => feature.captureElement(summary), () => feature.actions.selectNode({type: "selectNode", path: [0, 0]})]) {
+    select()
+    expect($.isElementSelection).toBe(false)
+    expect(feature.isCaptureSelection).toBe(false)
+    expect($.anchor).toBe(summary)
+  }
+  $.selectRange(summary.parentNode!, 0, summary.parentNode!, 1)
+  expect($.isElementSelection).toBe(false)
+})
+
+it("redirects leading summary gaps and native boundary carets into summary", () => {
+  document.body.innerHTML = '<details open><!--keep--><summary>Title</summary><p>Body</p></details>'
+  const details = document.querySelector("details")!
+  const summary = document.querySelector("summary")!
+  for(const select of [() => $.selectGap(summary, "before"), () => $.move(details, 0),
+    () => $.selectRange(details, 1), () => document.getSelection()!.setPosition(details, 0)]) {
+    select()
+    feature.processSelection()
+    expect($.anchor).toBe(summary)
+    expect($.anchorOffset).toBe(0)
+    expect($.isGapSelection).toBe(false)
+    expect(summary).not.toHaveClass("◆gap-before-selected")
+  }
+  $.selectGap(details, "before")
+  expect($.isGapSelection).toBe(true)
+})
+
+it.each([
+  {selector: "summary", content: ""}, {selector: "summary", content: "<p>Body</p>"},
+  {selector: "b", content: "<p>Body</p>"},
+])("modifier-click on $selector selects its details element with body '$content'", ({selector, content}) => {
+  document.body.innerHTML = `<details><summary><b>Title</b></summary>${content}</details>`
+  const details = document.querySelector("details")!
+  const target = document.querySelector(selector)!
+  const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, metaKey: true, ctrlKey: true})
+
+  target.dispatchEvent(event)
+
+  expect(event.defaultPrevented).toBe(true)
+  expect($.selectedElement).toBe(details)
+  expect(details).toHaveClass("◆element-selected", "◆atomic-range-selected")
+  expect(editor.appendix.querySelectorAll('[part="atomic-selection-overlay"]')).toHaveLength(1)
+  target.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0, metaKey: true, ctrlKey: true}))
+  expect($.selectedElement).toBe(details)
+  expect((details as HTMLDetailsElement).open).toBe(false)
+})
+
 it.each([false, true])("keeps graphic selection visible during passive geometry refreshes (capture: %s)", captured => {
   const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
   graphic.innerHTML = '<rect width="100" height="50"/>'
@@ -398,6 +449,44 @@ describe("processSelection()", () => {
     $.selectGap(element, "after")
     feature.processSelection()
     expect(atomicOverlays()).toHaveLength(0)
+  })
+
+  it.each([false, true])("overlays an element-selected details and clears it on collapse (open: %s)", open => {
+    document.body.innerHTML = `<details${open ? " open" : ""}><summary>Title</summary><p>Body<test-widget></test-widget></p></details>`
+    const details = document.querySelector("details")!
+    feature.selectElement(details)
+
+    expect(details).toHaveClass("◆element-selected", "◆atomic-range-selected")
+    expect(atomicOverlays()).toHaveLength(1)
+    expect(atomicOverlays()[0].getRootNode()).toBe(editor.appendix)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    $.move(details.querySelector("summary")!)
+    feature.processSelection()
+    expect(atomicOverlays()).toHaveLength(0)
+  })
+
+  it("covers a fully selected details element once, including nested widgets", () => {
+    document.body.innerHTML = '<p>before</p><details open><summary>Heading</summary><p>Body <test-widget></test-widget></p></details><p>after</p>'
+    const details = document.querySelector("details")!
+    const before = document.body.firstElementChild!.firstChild!
+    const after = document.body.lastElementChild!.firstChild!
+    document.getSelection()!.setBaseAndExtent(before, before.textContent!.length, after, 0)
+    feature.processSelection()
+
+    expect(details).toHaveClass("◆atomic-range-selected")
+    expect(details.querySelector(".◆atomic-range-selected")).toBeNull()
+    expect(atomicOverlays()).toHaveLength(1)
+  })
+
+  it("keeps partial text selection inside details native", () => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><p>abcdef</p></details>'
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+    feature.processSelection()
+
+    expect(document.querySelector("details")).not.toHaveClass("◆atomic-range-selected")
+    expect(atomicOverlays()).toHaveLength(0)
+    expect(document.getSelection()!.toString()).toBe("bcd")
   })
 
   it("excludes atomic elements merely touching a range edge in either direction", () => {

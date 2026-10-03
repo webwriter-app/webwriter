@@ -337,6 +337,10 @@ export class EditingSelection {
 
   /** Places the caret in the gap before or after the element, i.e. at the element's position in its parent. */
   static selectGap(element: Element, direction: "before" | "after" = "after") {
+    if(direction === "before" && element.matches("details > summary")) {
+      this.move(element)
+      return
+    }
     const parent = element.parentElement!
     const side = columnSide(element)
     if(isColumnGroup(parent) && side) {
@@ -353,6 +357,10 @@ export class EditingSelection {
   static selectElement(element: Element, focus=true) {
     this.columnAffinity = null
     if(!element.parentNode) return
+    if(element.matches("details > summary")) {
+      this.move(element, 0)
+      return
+    }
     if(focus) focusEditorWindow()
     if(!element.parentNode) return
     if(this.#selection.rangeCount) this.range.selectNode(element)
@@ -366,6 +374,13 @@ export class EditingSelection {
   /** Sets anchor and focus of the selection; collapses to the anchor when the focus is omitted. */
   static selectRange(anchorNode: Node, anchorOffset=0, focusNode: Node=anchorNode, focusOffset=anchorOffset) {
     this.columnAffinity = null
+    if(anchorNode === focusNode && anchorOffset === focusOffset) {
+      const summary = this.summaryAtLeadingBoundary(anchorNode, anchorOffset)
+      if(summary) {
+        this.move(summary)
+        return
+      }
+    }
     this.#selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
     window.focus()
   }
@@ -395,7 +410,11 @@ export class EditingSelection {
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = getDocumentRoot()
     let overrideNative = false
-    const point = (node: Node, offset: number) => ({node, offset, ...(overrideNative ? {overrideNative: true} : {})})
+    const point = (node: Node, offset: number) => {
+      const summary = this.summaryAtLeadingBoundary(node, offset)
+      return summary ? {node: summary, offset: 0, overrideNative: true}
+        : {node, offset, ...(overrideNative ? {overrideNative: true} : {})}
+    }
     const gap = (element: Element, placement: "before" | "after") => {
       const parent = element.parentNode!
       return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
@@ -738,6 +757,7 @@ export class EditingSelection {
 
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
+    if(this.isEmpty && this.anchor && this.summaryAtLeadingBoundary(this.anchor, this.anchorOffset)) return false
     if(mathRoot(this.anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
     if(this.detailsGap || this.dividerGap || this.styledParagraphGap) return true
@@ -801,7 +821,7 @@ export class EditingSelection {
     if(this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
-    if(inlineMathRoot(selected)) return false
+    if(inlineMathRoot(selected) || isElement(selected) && selected.matches("details > summary")) return false
     return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide"
       || !isMarkElement(selected) && !isSectionElement(selected))
   }
@@ -1156,8 +1176,18 @@ export class EditingSelection {
   static move(node: Node, offset: number = 0) {
     this.columnAffinity = null
     const length = node instanceof Text? node.length: node.childNodes.length
-    this.#selection.setPosition(node, offset < 0? length + 1 + offset: offset)
+    offset = offset < 0 ? length + 1 + offset : offset
+    const summary = this.summaryAtLeadingBoundary(node, offset)
+    this.#selection.setPosition(summary ?? node, summary ? 0 : offset)
     window.focus()
+  }
+
+  /** The space before a disclosure's summary is an editing point in the
+   * summary, never a structural insertion gap. */
+  static summaryAtLeadingBoundary(node: Node, offset: number) {
+    if(!isElement(node) || !node.matches("details:not([is])") || atomicEditingContainer(node)) return null
+    const summary = node.querySelector(":scope > summary")
+    return summary && offset <= Array.from(node.childNodes).indexOf(summary) ? summary : null
   }
 
   /** Moves the caret by the given granularity (character, word, line) and direction (forward, backward). */

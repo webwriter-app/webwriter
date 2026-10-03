@@ -95,12 +95,13 @@ export class SelectionFeature extends EditorFeature {
       if(!$.includesNode(element) || !range.intersectsNode(element)) return
       const children = element.children
       const isTable = element.localName === "table"
+      const isDetails = element.localName === "details"
       const isFormula = element.localName === "math" && mathRoot(element) === element
-      if(isTable || isFormula || isAtomicEditingElement(element, this.editor.schema)) {
+      if(isTable || isDetails || isFormula || isAtomicEditingElement(element, this.editor.schema)) {
         const parent = element.parentNode!
         const index = Array.from(parent.childNodes).indexOf(element)
         // Touching an edge or selecting a control's internal text is not a
-        // selection of that host. Fully selected tables also use one overlay
+        // selection of that host. Fully selected tables and disclosures use one overlay
         // instead of highlighting their atomic descendants twice.
         const wholeNode = range.comparePoint(parent, index) === 0 && range.comparePoint(parent, index + 1) === 0
         const wholeFormulaContents = isFormula && range.comparePoint(element, 0) === 0
@@ -117,8 +118,8 @@ export class SelectionFeature extends EditorFeature {
           this.#atomicOverlays.set(element, overlay)
           return
         }
-        // A partial table range can still fully select atomic cell contents.
-        if(!isTable) return
+        // Partial ranges can still fully select atomic descendants.
+        if(!isTable && !isDetails) return
       }
       Array.from(children).forEach(visit)
     }
@@ -190,6 +191,10 @@ export class SelectionFeature extends EditorFeature {
    * Contentful widgets use ordinary element selection so their content stays editable. */
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
     if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    if(element.matches("details > summary")) {
+      this.selectElement(element)
+      return
+    }
     this.clearSelectedSection()
     if(isContentfulWidget(element, this.editor.schema)) {
       this.#releaseCaptureSelection()
@@ -946,6 +951,8 @@ export class SelectionFeature extends EditorFeature {
   #modifierSelectionTarget(target: EventTarget | null) {
     if(!(target instanceof Node)) return null
     let targetElement = getContainer(target)
+    const summary = targetElement.closest("details > summary")
+    if(summary) return summary.parentElement
     const table = targetElement.closest("table")
     if(table) return table
     while(targetElement && !isContentfulWidget(targetElement, this.editor.schema)
@@ -1271,6 +1278,10 @@ export class SelectionFeature extends EditorFeature {
     if(this.editor.features.mark.isSVGTextSelection) return
     let selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
+    if(selection.isCollapsed) {
+      const summary = $.summaryAtLeadingBoundary(selection.anchorNode, selection.anchorOffset)
+      if(summary) $.move(summary)
+    }
     if(selection.rangeCount !== 1) {
       selection.setBaseAndExtent(
         selection.anchorNode,

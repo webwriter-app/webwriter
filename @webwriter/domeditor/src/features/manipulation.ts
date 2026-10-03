@@ -1344,6 +1344,10 @@ export class ManipulationFeature extends EditorFeature {
    * and the surroundings of the resulting selection. */
   private withNormalization<T>(command: () => T) {
     const selection = document.getSelection()
+    if(selection?.isCollapsed && selection.anchorNode) {
+      const summary = $.summaryAtLeadingBoundary(selection.anchorNode, selection.anchorOffset)
+      if(summary) $.move(summary)
+    }
     const originalNodes = [selection?.anchorNode, selection?.focusNode]
     return this.editor.features.canvas.preservePlacement(() => this.editor.features.layout.preserveItemLayout(() => {
       try {
@@ -1886,6 +1890,12 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       const summary = $.anchorContainer?.closest("summary")
+      if(ev.inputType.startsWith("delete") && $.anchorContainer?.closest("details")) {
+        ev.preventDefault()
+        const granularity = ev.inputType.includes("Word") ? "word" : ev.inputType.includes("Line") ? "line" : "character"
+        this.delete(ev.inputType.toLowerCase().includes("backward") ? "backward" : "forward", granularity)
+        return
+      }
       if(ev.inputType === "insertParagraph" && (summary?.parentElement?.matches("details")
         || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6"))) {
         ev.preventDefault()
@@ -2103,7 +2113,29 @@ export class ManipulationFeature extends EditorFeature {
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
+    const range = $.range
+    const selectedSummary = range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
+      ? range.startContainer.childNodes.item(range.startOffset) : null
+    if(isElement(selectedSummary) && selectedSummary.matches("details > summary")) {
+      return this.withNormalization(() => {
+        selectedSummary.replaceChildren()
+        $.move(selectedSummary)
+      })
+    }
+    const summary = $.anchorContainer?.closest("details > summary")
+    if($.range.collapsed && direction) {
+      if(summary && isCaretAtBoundary(summary, direction === "backward" ? "start" : "end")) return
+      const block = $.anchorContainer
+      if(!summary && direction === "backward" && block?.previousElementSibling?.matches("details > summary")
+        && isCaretAtBoundary(block, "start")) return
+      if($.isGapSelection && (direction === "backward" ? $.elementBefore : $.elementAfter)?.matches("details > summary")) return
+    }
     return this.withNormalization(() => {
+      if(summary && !summary.textContent && summary.contains($.range.endContainer)) {
+        $.delete()
+        $.move(summary)
+        return
+      }
       if($.isGapSelection && direction === "backward" && !$.elementAfter && $.elementBefore) {
         $.move($.elementBefore, -1)
         return
@@ -2125,6 +2157,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       const commonContainer = getContainer($.commonAncestor)
       if(!commonContainer.textContent && commonContainer !== document.body
+        && !commonContainer.matches("details, details > summary")
         && !isDocumentRoot(commonContainer) && !isOutOfFlow(commonContainer) && commonContainer.nodeName !== "HTML") {
         const emptyContainer = commonContainer
         const previous = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "previous")
@@ -2159,6 +2192,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
         const {elementBefore, elementAfter} = $
+        if(elementBefore.matches("summary") || elementAfter.matches("summary")) return
         if(!elementBefore.textContent) {
           elementBefore.remove()
           $.selectGap(elementAfter, "before")
@@ -2173,6 +2207,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
         const {elementBefore, elementAfter} = $
+        if(elementBefore.matches("summary") || elementAfter.matches("summary")) return
         if(!elementAfter.textContent) {
           elementAfter.remove()
           $.selectGap(elementBefore)

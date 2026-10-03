@@ -329,6 +329,13 @@ describe("isNodeValid()", () => {
 
       expect(editor.schema.isContentValid(details)).toBe(true)
     })
+    it("limits summary content to phrasing content", () => {
+      const summary = el("summary")
+      summary.append(el("b"), text())
+      expect(editor.schema.isContentValid(summary)).toBe(true)
+      summary.append(el("p"))
+      expect(editor.schema.isContentValid(summary)).toBe(false)
+    })
   })
 
   describe("transparent rules", () => {
@@ -999,7 +1006,7 @@ describe("Schema methods", () => {
   })
 
   describe("findValidTypesToInsert()", () => {
-    it("includes the summary when resolving insertion positions inside details", () => {
+    it("allows body insertion after summary and only phrasing insertion at its leading edge", () => {
       document.body.innerHTML = '<details open><summary>Summary</summary><p>Body</p></details>'
       const details = document.querySelector("details")!
       for(const offset of [1, 2]) {
@@ -1008,8 +1015,14 @@ describe("Schema methods", () => {
         expect(schema.findValidTypesToInsert()).not.toContain("summary")
       }
       $.move(details, 0)
-      expect(schema.findValidTypesToInsert()).toContain("summary")
+      expect($.anchor).toBe(details.querySelector("summary"))
+      expect(schema.findValidTypesToInsert()).toContain("b")
+      expect(schema.findValidTypesToInsert()).not.toContain("summary")
       expect(schema.findValidTypesToInsert()).not.toContain("p")
+      const leadingRange = document.createRange()
+      leadingRange.setStart(details, 0)
+      leadingRange.collapse(true)
+      expect(schema.findValidTypesToInsert(leadingRange)).toEqual([])
     })
 
     it("returns the types insertable at the selection", () => {

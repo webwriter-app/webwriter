@@ -166,6 +166,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
     expect(editorStyleString).toMatch(/summary\s*\{\s*cursor:\s*text;/)
+    expect(editorStyleString).toMatch(/body:has\(summary:is\(:hover, \.◆pointer-hovered, \.◆element-hovered, \.◆style-target-hovered\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
     expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:is\(:empty, :has\(> br:only-child\)\)::after\s*\{\s*content:\s*"Details";/)
@@ -594,6 +595,23 @@ describe("widget shadow interactions", () => {
 })
 
 describe("breadcrumb positioning", () => {
+  it("omits summary from the breadcrumb while its text is edited", () => {
+    document.body.innerHTML = '<details><summary style="position: relative; left: 2px">Title</summary><p>Body</p></details>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      $.move(document.querySelector("summary")!.firstChild!, 2)
+      editor.postSelectionPath()
+      const detail = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+      expect(detail.path.map(item => item.path)).toEqual([[], [0]])
+    }
+    finally {
+      editor.destroy()
+      postMessage.mockRestore()
+      document.body.replaceChildren()
+    }
+  })
+
   const withSelection = (html: string, check: (editor: DOMEditor, readPath: () => SelectionChangeDetail["path"]) => void) => {
     document.body.innerHTML = html
     const editor = new DOMEditor()

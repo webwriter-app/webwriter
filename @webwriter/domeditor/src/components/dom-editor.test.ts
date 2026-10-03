@@ -4119,6 +4119,21 @@ describe("DomEditor.execute()", () => {
     }))
   })
 
+  it("omits summary and its subtree from the expanded outline while keeping body paths", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body</p></details>'
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+
+    expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([
+      {path: [0, 2], name: "Paragraph"},
+    ])
+    expect(breadcrumb.shadowRoot!.textContent).not.toContain("Summary")
+  })
+
   it("omits inline and block formula subtrees from the expanded outline", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = '<p>Before <math><mrow><mi>x</mi></mrow></math> after</p><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math><p>End</p>'

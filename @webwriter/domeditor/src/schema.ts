@@ -1132,6 +1132,7 @@ export class Schema {
 
   /** Lists the type keys insertable at the given range (default: the current selection), considering the content before it. */
   findValidTypesToInsert(range = $.range): string[] {
+    if(range.collapsed && $.summaryAtLeadingBoundary(range.startContainer, range.startOffset)) return []
     let parent = range.startContainer && getContainer(range.startContainer)
     if(!parent) {
       return []

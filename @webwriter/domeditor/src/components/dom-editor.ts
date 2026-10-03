@@ -4567,7 +4567,7 @@ export class DomEditor extends LitElement {
           const childElement = child as Element
           const slideRole = slideLayoutRole(childElement)
           if(slideRole === "navigation") return
-          if(childElement.matches("source, math")
+          if(childElement.matches("source, math, details > summary")
             || childElement.matches("img") && childElement.closest("picture")
             || isLineBreakElement(childElement)) return
           const childPath = [...containerPath, index]

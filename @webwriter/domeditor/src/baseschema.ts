@@ -507,7 +507,7 @@ export const baseSchema = {
   },
   "source": {},
   "summary": {
-    content: {options: [{group: "phrasing"}, {group: "heading"}], min: 0, max: Infinity},
+    content: {group: "phrasing", min: 0, max: Infinity},
     inseperable: true
   },
   "tbody": {

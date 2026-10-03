@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isElement, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
 
 const listSelector = "ul, ol, dl, menu"
@@ -24,6 +24,7 @@ export class ListFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    this.ensureDetailsSummaries()
     window.addEventListener("resize", this.syncVirtualMarker)
     window.addEventListener("scroll", this.syncVirtualMarker, true)
     window.addEventListener("blur", this.handleWindowBlur)
@@ -65,7 +66,7 @@ export class ListFeature extends EditorFeature {
       this.syncVirtualMarker()
     }),
     pointerdown: event => {
-      if(event.button === 0 && this.detailsToggleSummary(event)) event.preventDefault()
+      if(event.button === 0 && !modifierKeyDown(event) && this.detailsToggleSummary(event)) event.preventDefault()
     },
     click: event => this.handleDetailsClick(event),
     beforeinput: event => this.handleBeforeInput(event),
@@ -789,8 +790,22 @@ export class ListFeature extends EditorFeature {
     const details = document.createElement("details")
     const summary = document.createElement("summary")
     details.append(summary)
+    if(!$.range.collapsed) {
+      details.append($.slice)
+      details.open = true
+    }
     this.editor.features.manipulation.insert(details)
-    $.move(summary)
+    if(details.isConnected) $.move(summary)
+  }
+
+  /** A disclosure always has a summary first, including after native,
+   * direct DOM or collaborative edits. Widget internals own their structure. */
+  ensureDetailsSummaries() {
+    for(const details of document.body.querySelectorAll("details:not([is])")) {
+      if(atomicEditingContainer(details, this.editor.schema)) continue
+      const summary = details.querySelector(":scope > summary") ?? document.createElement("summary")
+      if(details.firstElementChild !== summary) details.prepend(summary)
+    }
   }
 
   /** Opening follows editing intent, not just pointer activation: any
@@ -800,6 +815,7 @@ export class ListFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
     const selected = $.selectedElement
+    if(selected?.matches("details")) return
     const target = selected ?? getContainer(selection.anchorNode)
     if(!isElement(target)) return
     const details = (target.matches("details") ? target : target.closest("details")) as HTMLDetailsElement | null
@@ -863,13 +879,19 @@ export class ListFeature extends EditorFeature {
     if(!summary) return
     const details = summary.parentElement as HTMLDetailsElement
     details.open = !details.open
-    if(details.open) this.focusEmptyDetails(details)
-    else {
-      const selection = document.getSelection()
-      if(selection?.anchorNode && details.contains(selection.anchorNode) && !summary.contains(selection.anchorNode)) {
-        $.move(summary)
-      }
-    }
+    if(details.open) this.focusDetailsContent(details)
+    else $.move(summary, -1)
+    this.editor.features.selection.selectDropRange($.range)
+  }
+
+  private focusDetailsContent(details: HTMLDetailsElement) {
+    this.focusEmptyDetails(details)
+    const first = Array.from(details.childNodes).find(node => isElement(node) && !node.matches("summary")
+      || isText(node) && Boolean(node.data.trim()))
+    if(!first) return
+    if(isText(first) || isElement(first) && !atomicEditingContainer(first, this.editor.schema)
+      && (this.editor.features.manipulation.isTextBlock(first) || this.editor.schema.isPhrasing(first))) $.move(first)
+    else if(isElement(first)) $.selectGap(first, "before")
   }
 
   private focusEmptyDetails(details: HTMLDetailsElement) {

@@ -521,6 +521,7 @@ export class DOMEditor {
         && element !== getDocumentRoot() && element.isConnected) elements.add(element)
     }
     elements.forEach(element => normalizeEditingContent(element))
+    this.features.list.ensureDetailsSummaries()
     if(this.#ensureDocumentContent()) return
     if(selection && savedSelection) {
       const anchor = this.restoreTextPoint(savedSelection.anchor)
@@ -728,7 +729,10 @@ export class DOMEditor {
     }
   }
 
-  #handleBodySchemaChanges = () => {
+  #handleBodySchemaChanges = (records: MutationRecord[]) => {
+    if(records.some(record => record.type === "childList" && document.body.contains(record.target))) {
+      this.features.list.ensureDetailsSummaries()
+    }
     this.#ensureDocumentContent()
   }
 
@@ -998,7 +1002,7 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
-      if(mathRoot(currentElement)) return
+      if(mathRoot(currentElement) || currentElement.matches("details > summary")) return
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
       if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
