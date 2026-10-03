@@ -54,6 +54,7 @@ export class RibbonButton extends LitElement {
   }
 
   static styles = css`
+    :host([variant="package"][developer-package]) .button-label-text { font-style: italic; }
     :host([icon-only]) .button-label { display: none; }
     :host([icon-only]) .main-button { padding: 0.3rem; justify-content: center; }
     :host([icon-only]) .button-icon { width: 1.6rem; height: 1.6rem; }
@@ -861,6 +862,11 @@ export class RibbonButton extends LitElement {
       height: 0.85rem;
     }
 
+    :host([package-add]) {height: 100%}
+    :host([package-add]) .button-row {height: 100%; min-height: 0; border: 0; border-radius: 0}
+    :host([package-add]) .main-button {height: 100%; min-height: 0; justify-content: flex-start; padding: 0 .65rem; border-radius: 0}
+    :host([package-add]) .submenu-trigger {position: static; flex: 0 0 auto; align-self: stretch; width: auto; height: 100%; min-height: 0; aspect-ratio: 1; transform: none; border: 0; border-left: 1px solid #c8c8c8; border-radius: 0; padding: 0}
+
     :host([variant="qr"]) {
       grid-column: span 1;
       grid-row: span 2;
@@ -946,7 +952,7 @@ export class RibbonButton extends LitElement {
     :host([variant="package"]) .button-label {
       display: -webkit-box;
       flex: 1 1 auto;
-      line-height: 1.2;
+      line-height: 1.6;
       font-size: calc(0.6rem + 1px);
       overflow: hidden;
       white-space: normal;
@@ -967,6 +973,20 @@ export class RibbonButton extends LitElement {
 
     :host([variant="package"][muted]) .button-row:hover {
       opacity: 0.8;
+    }
+
+    :host([variant="package"][console-selected]) .button-row,
+    :host([variant="package"][console-selected]) .button-row:hover {
+      color: #153b5c;
+      opacity: 1;
+    }
+
+    :host([variant="package"][console-selected]) .button-label-text {
+      text-decoration-line: underline;
+      text-decoration-color: #8eb6df;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 2px;
+      text-decoration-skip-ink: none;
     }
 
     :host([variant="package"][management][active]) .corner-trigger:hover {

@@ -1,3 +1,5 @@
+import type {GitPackageSource} from "../git-package"
+import {ribbonIcon} from "../ribbon-icons"
 import "./developer-console"
 import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
@@ -16,6 +18,9 @@ import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
   describePackageExport,
+  editingConfigKey,
+  normalizeEditingConfig,
+  packageEditingConfigOptions,
   INSTALLED_PACKAGES_STORAGE_KEY,
   INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
   SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL as scopedCustomElementRegistryPolyfillUrl,
@@ -24,6 +29,7 @@ import {
   WebWriterPackageRegistry,
   webWriterPackageExportName,
   withPackageExportSource,
+  type PackageEditingConfig,
   type PackageMember,
   type PackageExportTarget,
   type PackageTestResult,
@@ -310,7 +316,7 @@ const isAbortError = (error: unknown) => error instanceof DOMException
   ? error.name === "AbortError"
   : isRecord(error) && error.name === "AbortError"
 
-const isLocalResourcePackage = (pkg: WebWriterPackage) => [
+const isLocalResourcePackage = (pkg: WebWriterPackage) => Boolean(pkg.developerSource) || [
   pkg.iconUrl,
   ...pkg.scripts,
   ...pkg.styles,
@@ -411,6 +417,7 @@ export class DomEditor extends LitElement {
     packageError: {attribute: false, state: true},
     localPackages: {attribute: false, state: true},
     localPackagesLoading: {attribute: false, state: true},
+    localPackageRefreshingNames: {attribute: false, state: true},
     localPackageError: {attribute: false, state: true},
     selectedLocalPackageName: {attribute: false, state: true},
     localPackageRuntimeWarnings: {attribute: false, state: true},
@@ -461,6 +468,9 @@ export class DomEditor extends LitElement {
     historyError: {attribute: false, state: true},
     consoleOpen: {attribute: false, state: true},
     consoleTab: {attribute: false, state: true},
+    localPackageDraft: {attribute: false, state: true},
+    localPackageDraftSaving: {attribute: false, state: true},
+    localPackageDraftRevision: {attribute: false, state: true},
     htmlMode: {attribute: false, state: true},
     htmlSource: {attribute: false, state: true},
     htmlPending: {attribute: false, state: true},
@@ -561,21 +571,35 @@ export class DomEditor extends LitElement {
   private packageError = ""
   private localPackages: WebWriterPackage[] = []
   private localPackagesLoading = false
+  private localPackageRefreshingNames: string[] = []
   private localPackageError = ""
   private selectedLocalPackageName = ""
+  private localPackageDraft: {id: string, base: Record<string, unknown>, manifest: Record<string, unknown>, errors: Record<string, string>} | null = null
+  private localPackageDraftSaving = false
+  private localPackageDraftRevision = 0
+  private pendingPackageDecision: Promise<boolean> | null = null
   /** Checks of loaded local widgets, keyed by package name. */
   private localPackageRuntimeWarnings: Record<string, LocalPackageWarning[]> = {}
   /** Latest test run per `<package name>/<test name>`. */
   private localPackageTestResults: Record<string, PackageTestResult | "running"> = {}
   private readonly localPackageManager = new LocalPackageManager({
+    gitApiUrl: async () => {
+      const session = this.backendSession ?? await probeDevelopmentBackend()
+      if(!session) throw new Error("Git packages require the local development server. Start it with npm start.")
+      return `${session.apiBaseUrl}/developer-packages/git`
+    },
     changed: packages => { this.localPackages = packages },
+    refreshing: names => { this.localPackageRefreshingNames = names },
     error: message => { this.localPackageError = message },
     loaded: record => this.selectLocalPackage(record.package.name),
     install: async(pkg, previousName) => {
+      const client = this.backendClient
+      const documentId = this.backendDocumentId
       await this.reloadEditor([
         ...this.installedPackages.filter(candidate => candidate.name !== previousName && candidate.name !== pkg.name),
         pkg,
       ])
+      if(previousName && client && documentId) await this.autosaveCloudAfterBundleReload({client, id: documentId})
     },
   })
   private frameState: EditorStateSnapshot | undefined
@@ -589,6 +613,7 @@ export class DomEditor extends LitElement {
   private templateConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
+  private pendingCloudBundleSave: {client: BackendClient, id: string} | null = null
   private savedDocuments: BackendDocumentSummary[] = []
   private documentsLoading = false
   private documentsError = ""
@@ -2125,6 +2150,7 @@ export class DomEditor extends LitElement {
 
   private async enterPreview() {
     if(this.previewActive || this.previewTransition) return
+    if(!this.settings.pinDeveloperConsole && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
     this.previewTransition = true
     this.savedEditorSelection = null
     this.saveEditorSelection()
@@ -2427,6 +2453,16 @@ export class DomEditor extends LitElement {
     const settings = (event as CustomEvent<AppSettings>).detail
     if(!settings || typeof settings.language !== "string" || typeof settings.updateDocumentLanguage !== "boolean") return
     const previous = this.settings
+    if(previous.pinDeveloperConsole && !settings.pinDeveloperConsole && this.localPackageDraft) {
+      const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+      if(!this.breadcrumbVisible || this.previewActive || !toolbox?.activeTool || toolbox.hidden) {
+        void this.resolvePendingPackageChanges().then(continueChange => {
+          if(continueChange) this.handleAppSettingsChange(event)
+          else persistAppSettings(this.settings)
+        })
+        return
+      }
+    }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
     this.lang = settings.language
     this.updateMotionPreference()
@@ -2528,7 +2564,7 @@ export class DomEditor extends LitElement {
   }
 
   private readonly handleBeforeUnload = (event: BeforeUnloadEvent) => {
-    if(!this.fileDirty && !this.fileOperationActive) return
+    if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft) return
     event.preventDefault()
     event.returnValue = ""
   }
@@ -2585,7 +2621,12 @@ export class DomEditor extends LitElement {
     this.fileOperationActive = true
     this.fileError = ""
     try { await operation() }
-    finally { this.fileOperationActive = false }
+    finally {
+      this.fileOperationActive = false
+      const pending = this.pendingCloudBundleSave
+      this.pendingCloudBundleSave = null
+      if(pending) await this.autosaveCloudAfterBundleReload(pending)
+    }
   }
 
   private newDocument(template: DocumentLayoutMode = this.settings.defaultTemplate) {
@@ -2772,17 +2813,30 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async saveBackendDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
+  private async autosaveCloudAfterBundleReload(expected: {client: BackendClient, id: string}) {
+    if(!this.isConnected || !this.settings.autosaveCloudOnBundleChange || this.backendClient !== expected.client
+      || this.backendDocumentId !== expected.id || this.storageLocation !== "development-server") return
+    if(this.fileOperationActive) {
+      this.pendingCloudBundleSave = expected
+      return
+    }
+    await this.runFileOperation(() => this.saveBackendDocument(false, this.fileFormat, expected))
+  }
+
+  private async saveBackendDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat, expectedDocument?: {client: BackendClient, id: string}) {
     if(!this.backendClient) return
     const revision = this.documentChangeSequence
     const client = this.backendClient
     try {
       const source = await this.execute({type: "serializeDocument", offline: requestedFormat === "offline"})
       if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
+      if(expectedDocument && (!this.settings.autosaveCloudOnBundleChange || this.backendClient !== expectedDocument.client
+        || this.backendDocumentId !== expectedDocument.id || this.storageLocation !== "development-server")) return
       const title = this.fileName.trim() || "Untitled"
       const document = !saveAs && this.backendDocumentId
         ? await client.updateDocument(this.backendDocumentId, {title, content: source, format: requestedFormat})
         : await client.createDocument({title, content: source, format: requestedFormat})
+      if(expectedDocument && (this.backendClient !== expectedDocument.client || this.backendDocumentId !== expectedDocument.id)) return
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.fileName = this.baseFileName(document.title)
@@ -2946,6 +3000,20 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(this.localPackageDraft && label?.startsWith("local-package") && label !== `local-package-select:${this.selectedLocalPackageName}`) {
+      event.preventDefault()
+      const action = /^(local-package-(?:remove|refresh|select)):(.+)$/.exec(label)
+      const record = action && [...this.localPackageManager.records.values()].find(record => record.package.name === action[2])
+      void this.resolvePendingPackageChanges().then(continueAction => {
+        if(!continueAction) return
+        const current = record && this.localPackageManager.records.get(record.id)
+        if(record && !current) return
+        this.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {
+          detail: {label: current ? `${action![1]}:${current.package.name}` : label},
+        }))
+      })
+      return
+    }
     if(label?.startsWith("layout-insert:")) {
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
       if(ribbon) ribbon.layoutInsertionError = ""
@@ -3002,6 +3070,16 @@ export class DomEditor extends LitElement {
     }
     if(label === "local-package-add") {
       void this.addLocalPackage()
+      return
+    }
+    if(label?.startsWith("local-package-refresh:")) {
+      const name = label.slice("local-package-refresh:".length)
+      const record = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === name)
+      if(record) void this.refreshDeveloperPackage(record.id)
+      return
+    }
+    if(label?.startsWith("local-package-remove:")) {
+      void this.removeDeveloperPackage(label.slice("local-package-remove:".length))
       return
     }
     if(label?.startsWith("local-package-select:")) {
@@ -3298,12 +3376,116 @@ export class DomEditor extends LitElement {
     return [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
   }
 
-  private async updateLocalPackageManifest(
+  private beginLocalPackageDraft(record: LocalPackageRecord) {
+    if(record.gitSource) throw new Error("Git package contents are read-only. Edit the repository and refresh the package.")
+    if(this.localPackageDraftSaving) throw new Error("Package changes are being saved")
+    if(this.localPackageDraft && this.localPackageDraft.id !== record.id) throw new Error("Confirm or discard the pending package changes first")
+    if(!this.localPackageDraft) {
+      if(!record.package.manifest) throw new Error("The package manifest is unavailable")
+      const base = structuredClone(record.package.manifest)
+      this.localPackageDraft = {id: record.id, base, manifest: structuredClone(base), errors: {}}
+    }
+    return this.localPackageDraft
+  }
+
+  private handleLocalPackagePendingInput = () => {
+    const record = this.selectedLocalPackageRecord
+    if(!record) return
+    try {this.beginLocalPackageDraft(record)}
+    catch(error) {this.localPackageError = error instanceof Error ? error.message : String(error)}
+  }
+
+  private failLocalPackageEdit(record: LocalPackageRecord, key: string, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    if(!record.gitSource && record.package.manifest && !this.localPackageDraftSaving && (!this.localPackageDraft || this.localPackageDraft.id === record.id)) {
+      const draft = this.beginLocalPackageDraft(record)
+      this.localPackageDraft = {...draft, errors: {...draft.errors, [key]: message}}
+    }
+    this.localPackageError = message
+  }
+
+  private updateLocalPackageManifest(
     record: LocalPackageRecord,
     update: (manifest: Record<string, unknown>) => void,
+    key = "action",
   ) {
-    const refreshed = await this.localPackageManager.updateManifest(record, update)
-    if(refreshed) this.selectLocalPackage(refreshed.package.name)
+    const draft = this.beginLocalPackageDraft(record)
+    const manifest = structuredClone(draft.manifest)
+    update(manifest)
+    const errors = {...draft.errors}
+    delete errors[key]
+    this.localPackageDraft = {...draft, manifest, errors}
+    this.localPackageError = Object.values(errors).join("\n")
+  }
+
+  private remapLocalPackageErrors(remap: (key: string) => string | null) {
+    const draft = this.localPackageDraft
+    if(!draft) return
+    const errors: Record<string, string> = {}
+    for(const [key, message] of Object.entries(draft.errors)) {
+      const nextKey = remap(key)
+      if(nextKey !== null) errors[nextKey] = message
+    }
+    this.localPackageDraft = {...draft, errors}
+    this.localPackageError = Object.values(errors).join("\n")
+  }
+
+  private discardLocalPackageChanges = () => {
+    if(this.localPackageDraftSaving) return
+    this.localPackageDraft = null
+    this.localPackageDraftRevision++
+    this.localPackageError = ""
+  }
+
+  private confirmLocalPackageChanges = async() => {
+    if(this.localPackageDraftSaving) return false
+    const console = this.renderRoot.querySelector("developer-console")
+    if(console && !console.flushPackageInputs()) return false
+    await Promise.resolve()
+    const draft = this.localPackageDraft
+    if(!draft) return true
+    if(Object.keys(draft.errors).length) return false
+    const record = this.localPackageManager.records.get(draft.id)
+    if(!record) {this.localPackageError = "The edited package is no longer available"; return false}
+    this.localPackageDraftSaving = true
+    try {
+      if([...this.localPackageManager.records.values()].some(candidate => candidate.id !== record.id && candidate.package.name === draft.manifest.name)) {
+        throw new Error(`A local package named '${draft.manifest.name}' is already loaded`)
+      }
+      const keys = [...new Set([...Object.keys(draft.base), ...Object.keys(draft.manifest)])]
+        .filter(key => JSON.stringify(draft.base[key]) !== JSON.stringify(draft.manifest[key]))
+      if(keys.length) {
+        const refreshed = await this.localPackageManager.updateManifest(record, manifest => {
+          for(const key of keys) {
+            if(JSON.stringify(manifest[key]) !== JSON.stringify(draft.base[key]) && JSON.stringify(manifest[key]) !== JSON.stringify(draft.manifest[key])) {
+              throw new Error(`The package's ${key} changed in the source. Discard your pending changes and refresh before editing it again.`)
+            }
+            if(key in draft.manifest) manifest[key] = structuredClone(draft.manifest[key])
+            else delete manifest[key]
+          }
+        })
+        if(refreshed) this.selectLocalPackage(refreshed.package.name)
+      }
+      this.localPackageDraft = null
+      this.localPackageDraftRevision++
+      this.localPackageError = ""
+      return true
+    }
+    catch(error) {this.localPackageError = error instanceof Error ? error.message : String(error); return false}
+    finally {this.localPackageDraftSaving = false}
+  }
+
+  private resolvePendingPackageChanges() {
+    if(!this.localPackageDraft) return Promise.resolve(true)
+    if(this.localPackageDraftSaving) return Promise.resolve(false)
+    if(this.pendingPackageDecision) return this.pendingPackageDecision
+    this.pendingPackageDecision = (async () => {
+      const choice = await this.renderRoot.querySelector("developer-console")?.askPendingPackageChanges()
+      if(choice === "keep") return this.confirmLocalPackageChanges()
+      if(choice === "discard") {this.discardLocalPackageChanges(); return true}
+      return false
+    })().finally(() => {this.pendingPackageDecision = null})
+    return this.pendingPackageDecision
   }
 
   private async handleLocalPackageMetadataChange(event: Event) {
@@ -3327,14 +3509,68 @@ export class DomEditor extends LitElement {
       await this.updateLocalPackageManifest(record, manifest => {
         if(update.remove) delete manifest[detail.field!]
         else manifest[detail.field!] = update.value
-      })
+      }, `metadata:${detail.field}`)
     }
     catch(error) {
-      this.localPackageError = error instanceof Error ? error.message : String(error)
+      this.failLocalPackageEdit(record, `metadata:${detail.field}`, error)
     }
   }
 
+  private handleLocalPackageKeywordChange = (event: Event) => {
+    const detail = (event as CustomEvent<{operation?: string, value?: string}>).detail
+    const record = this.selectedLocalPackageRecord
+    if(!record || !detail || typeof detail.value !== "string" || (detail.operation !== "add" && detail.operation !== "remove")) return
+    const value = detail.operation === "add" ? detail.value.trim() : detail.value
+    if(!value || value === "webwriter-widget") return
+    try {
+      this.updateLocalPackageManifest(record, manifest => {
+        const keywords = Array.isArray(manifest.keywords) ? manifest.keywords.filter((keyword): keyword is string => typeof keyword === "string") : []
+        manifest.keywords = ["webwriter-widget", ...new Set([
+          ...keywords.filter(keyword => keyword !== "webwriter-widget" && (detail.operation !== "remove" || keyword !== value)),
+          ...(detail.operation === "add" ? [value] : []),
+        ])]
+      }, "metadata:keywords")
+    }
+    catch(error) {this.failLocalPackageEdit(record, "metadata:keywords", error)}
+  }
+
+  private handleLocalPackageEditingOptionChange = (event: Event) => {
+    const detail = (event as CustomEvent<{key?: string, option?: string, value?: string}>).detail
+    const record = this.selectedLocalPackageRecord
+    if(!record || !detail?.key || !detail.option || typeof detail.value !== "string") return
+    const {key: inputKey, option, value} = detail
+    const key = editingConfigKey(inputKey)
+    if(!packageEditingConfigOptions.some(candidate => candidate === option) || key === "." && option !== "label" && option !== "description") return
+    const errorKey = `editing:${key}:${option}`
+    try {
+      let parsed: unknown = value
+      const remove = !value.trim() && option !== "marks" && option !== "content"
+      if(["uninsertable", "inline", "isolating", "sharedData"].includes(option)) {
+        if(value !== "" && value !== "true" && value !== "false") throw new Error("Choose Default, Yes, or No")
+        parsed = value === "true"
+      }
+      else if(option === "propagateEvents") parsed = [...new Set(value.split(/[\s,]+/).filter(Boolean))]
+      else if((option === "label" || option === "description") && value.trim().startsWith("{")) {
+        parsed = parsePackageMetadataJSON("Translations", value)
+        if(!isRecord(parsed) || !Object.values(parsed).every(text => typeof text === "string")) throw new Error("Translations must be a JSON object of language codes and text")
+      }
+      this.updateLocalPackageManifest(record, manifest => {
+        if(key !== "." && (!isRecord(manifest.exports) || !Object.keys(manifest.exports).some(name => editingConfigKey(name) === key))) throw new Error("Export is no longer available")
+        const config = isRecord(manifest.editingConfig) ? {...manifest.editingConfig} : {}
+        const entry = {...normalizeEditingConfig(config as PackageEditingConfig)[key]}
+        if(remove) delete entry[option]
+        else entry[option] = parsed
+        for(const name of Object.keys(config)) if(editingConfigKey(name) === key) delete config[name]
+        if(Object.keys(entry).length) config[key] = entry
+        if(Object.keys(config).length) manifest.editingConfig = config
+        else delete manifest.editingConfig
+      }, errorKey)
+    }
+    catch(error) {this.failLocalPackageEdit(record, errorKey, error)}
+  }
+
   private async handleLocalPackageContributorAdd() {
+    if(this.renderRoot.querySelector("developer-console")?.flushPackageInputs() === false) return
     const record = this.selectedLocalPackageRecord
     if(!record) return
     try {
@@ -3361,14 +3597,15 @@ export class DomEditor extends LitElement {
         if(index >= contributors.length) throw new Error("Contributor is no longer available")
         contributors[index] = value
         manifest.contributors = contributors
-      })
+      }, `contributor:${index}`)
     }
     catch(error) {
-      this.localPackageError = error instanceof Error ? error.message : String(error)
+      this.failLocalPackageEdit(record, `contributor:${index}`, error)
     }
   }
 
   private async handleLocalPackageContributorDelete(event: Event) {
+    if(this.renderRoot.querySelector("developer-console")?.flushPackageInputs() === false) return
     const index = (event as CustomEvent<{index?: number}>).detail?.index
     const record = this.selectedLocalPackageRecord
     if(!record || typeof index !== "number" || !Number.isInteger(index) || index < 0) return
@@ -3380,10 +3617,31 @@ export class DomEditor extends LitElement {
         if(contributors.length) manifest.contributors = contributors
         else delete manifest.contributors
       })
+      this.remapLocalPackageErrors(key => {
+        if(!key.startsWith("contributor:")) return key
+        const previousIndex = Number(key.slice("contributor:".length))
+        return previousIndex === index ? null : `contributor:${previousIndex > index ? previousIndex - 1 : previousIndex}`
+      })
     }
     catch(error) {
       this.localPackageError = error instanceof Error ? error.message : String(error)
     }
+  }
+
+  private moveLocalPackageEditingConfig(manifest: Record<string, unknown>, from: string, to?: string) {
+    if(!isRecord(manifest.editingConfig)) return
+    const key = editingConfigKey(from)
+    const nextKey = to ? editingConfigKey(to) : undefined
+    if(key === nextKey) return
+    const config = {...manifest.editingConfig}
+    if(!Object.keys(config).some(name => editingConfigKey(name) === key)) return
+    const entries = normalizeEditingConfig(config as PackageEditingConfig)
+    for(const name of Object.keys(config)) {
+      if(editingConfigKey(name) === key || nextKey && editingConfigKey(name) === nextKey) delete config[name]
+    }
+    if(nextKey) config[nextKey] = {...entries[nextKey], ...entries[key]}
+    if(Object.keys(config).length) manifest.editingConfig = config
+    else delete manifest.editingConfig
   }
 
   private async handleLocalPackageExportChange(event: Event) {
@@ -3395,6 +3653,7 @@ export class DomEditor extends LitElement {
     const record = this.selectedLocalPackageRecord
     if(!record || !detail?.exportName || !detail.field || detail.value === undefined) return
     const {exportName, field, value} = detail
+    let renamedExport = exportName
     try {
       await this.updateLocalPackageManifest(record, manifest => {
         const exports = isRecord(manifest.exports) ? {...manifest.exports} as Record<string, PackageExportTarget> : {}
@@ -3415,18 +3674,26 @@ export class DomEditor extends LitElement {
           if(nextName !== exportName && nextName in exports) throw new Error(`Export '${nextName}' already exists`)
           delete exports[exportName]
           exports[nextName] = target
+          renamedExport = nextName
+          this.moveLocalPackageEditingConfig(manifest, exportName, nextName)
           if(descriptor.type === "custom-elements" && type !== "custom-elements") delete manifest.customElements
           if(type === "custom-elements" && descriptor.source) manifest.customElements = descriptor.source.replace(/^\.\//, "")
         }
         manifest.exports = exports
+      }, `export:${exportName}:${field}`)
+      if(renamedExport !== exportName) this.remapLocalPackageErrors(key => {
+        if(key.startsWith(`export:${exportName}:`)) return `export:${renamedExport}:${key.slice(`export:${exportName}:`.length)}`
+        const prefix = `editing:${editingConfigKey(exportName)}:`
+        return key.startsWith(prefix) ? `editing:${editingConfigKey(renamedExport)}:${key.slice(prefix.length)}` : key
       })
     }
     catch(error) {
-      this.localPackageError = error instanceof Error ? error.message : String(error)
+      this.failLocalPackageEdit(record, `export:${exportName}:${field}`, error)
     }
   }
 
   private async handleLocalPackageExportAdd() {
+    if(this.renderRoot.querySelector("developer-console")?.flushPackageInputs() === false) return
     const record = this.selectedLocalPackageRecord
     if(!record) return
     try {
@@ -3451,6 +3718,7 @@ export class DomEditor extends LitElement {
   }
 
   private async handleLocalPackageExportDelete(event: Event) {
+    if(this.renderRoot.querySelector("developer-console")?.flushPackageInputs() === false) return
     const exportName = (event as CustomEvent<{exportName?: string}>).detail?.exportName
     const record = this.selectedLocalPackageRecord
     if(!record || !exportName) return
@@ -3459,9 +3727,11 @@ export class DomEditor extends LitElement {
         const exports = isRecord(manifest.exports) ? {...manifest.exports} : {}
         if(!(exportName in exports)) throw new Error(`Export '${exportName}' is no longer available`)
         delete exports[exportName]
+        this.moveLocalPackageEditingConfig(manifest, exportName)
         if(exportName === "./custom-elements.json") delete manifest.customElements
         manifest.exports = exports
       })
+      this.remapLocalPackageErrors(key => key.startsWith(`export:${exportName}:`) || key.startsWith(`editing:${editingConfigKey(exportName)}:`) ? null : key)
     }
     catch(error) {
       this.localPackageError = error instanceof Error ? error.message : String(error)
@@ -3471,7 +3741,7 @@ export class DomEditor extends LitElement {
   private async handleLocalPackageExportFilePick(event: Event) {
     const exportName = (event as CustomEvent<{exportName?: string}>).detail?.exportName
     const record = this.selectedLocalPackageRecord
-    if(!record || !exportName) return
+    if(!record || !exportName || record.gitSource) return
     const picker = this.filePickerWindow().showOpenFilePicker
     const directory = record.directory as FileSystemDirectoryHandle & {
       resolve?: (possibleDescendant: FileSystemHandle) => Promise<string[] | null>
@@ -3481,7 +3751,7 @@ export class DomEditor extends LitElement {
       return
     }
     try {
-      const [handle] = await picker.call(window, {id: "webwriter-package-export", startIn: record.directory, multiple: false})
+      const [handle] = await picker.call(window, {id: "webwriter-package-export", startIn: directory, multiple: false})
       if(!handle) return
       const parts = await directory.resolve(handle as unknown as FileSystemHandle)
       if(!parts?.length) throw new Error("Choose a file inside the selected package folder")
@@ -3566,6 +3836,53 @@ export class DomEditor extends LitElement {
     this.updateLiveVisualization()
   }
 
+  private async refreshDeveloperPackage(id: string) {
+    this.localPackagesLoading = true
+    const selected = this.selectedLocalPackageRecord?.id === id
+    try {
+      await this.localPackageManager.refresh(id, true)
+      const record = this.localPackageManager.records.get(id)
+      if(selected && record) this.selectLocalPackage(record.package.name)
+    }
+    finally {this.localPackagesLoading = false}
+  }
+
+  private async removeDeveloperPackage(name: string) {
+    if(this.localPackagesLoading) return
+    if(this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
+    const record = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === name)
+    if(!record) return
+    this.localPackagesLoading = true
+    this.localPackageError = ""
+    const enabled = record.enabled
+    record.enabled = false
+    try {
+      if(this.installedPackages.some(pkg => pkg.name === name)) {
+        await this.reloadEditor(this.installedPackages.filter(pkg => pkg.name !== name))
+      }
+      await this.localPackageManager.remove(record.id)
+      this.packages = this.packages.filter(pkg => pkg.name !== name || !pkg.developerSource)
+      if(this.selectedLocalPackageName === name) this.selectedLocalPackageName = this.localPackages[0]?.name ?? ""
+      this.localPackageRuntimeWarnings = Object.fromEntries(Object.entries(this.localPackageRuntimeWarnings).filter(([key]) => key !== name))
+      this.localPackageTestResults = Object.fromEntries(Object.entries(this.localPackageTestResults).filter(([key]) => !key.startsWith(`${name}/`)))
+    }
+    catch(error) {
+      record.enabled = enabled
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+    finally {this.localPackagesLoading = false}
+  }
+
+  private handleGitPackageLoad = async (event: Event) => {
+    if(this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
+    const source = (event as CustomEvent<GitPackageSource>).detail
+    this.localPackagesLoading = true
+    this.localPackageError = ""
+    try {await this.localPackageManager.loadGit(source)}
+    catch(error) {this.localPackageError = error instanceof Error ? error.message : String(error)}
+    finally {this.localPackagesLoading = false}
+  }
+
   private async addLocalPackage() {
     const picker = (window as FilePickerWindow).showDirectoryPicker
     if(!picker) {
@@ -3616,6 +3933,10 @@ export class DomEditor extends LitElement {
     this.busyPackageNames = [...this.busyPackageNames, pkg.name]
     this.packageError = ""
     try {
+      if(!installed && [...this.localPackageManager.records.values()].some(record => record.package.name === pkg.name)) {
+        await this.removeDeveloperPackage(pkg.name)
+        return undefined
+      }
       const localPackage = this.localPackages.find(candidate => candidate.name === pkg.name)
       const resolvedPackage = installed ? localPackage ?? await this.packageRegistry.getPackage(pkg) : pkg
       const nextPackages = installed
@@ -4321,9 +4642,10 @@ export class DomEditor extends LitElement {
     await this.refreshHTMLSource()
   }
 
-  private handleDeveloperConsoleChange = (event: Event) => {
+  private handleDeveloperConsoleChange = async(event: Event) => {
     const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
     if(typeof enabled !== "boolean" || this.htmlPending) return
+    if(!enabled && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
     this.consoleOpen = enabled
     if(enabled) this.templatesDismissed = true
     void this.setHTMLMode(enabled && this.consoleTab === "HTML")
@@ -4351,6 +4673,13 @@ export class DomEditor extends LitElement {
       event.preventDefault()
       return
     }
+    if(this.localPackageDraft && tab !== this.consoleTab) {
+      event.preventDefault()
+      void this.resolvePendingPackageChanges().then(continueAction => {
+        if(continueAction) this.handleDeveloperConsoleTabChange(new CustomEvent("developer-console-tab-change", {detail: {tab}}))
+      })
+      return
+    }
     this.consoleTab = tab
     void this.setHTMLMode(tab === "HTML")
   }
@@ -4358,8 +4687,7 @@ export class DomEditor extends LitElement {
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
     if(tool !== "Edit" && !this.htmlPending && !this.settings.pinDeveloperConsole) {
-      this.consoleOpen = false
-      void this.setHTMLMode(false)
+      void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
     }
   }
 
@@ -4422,15 +4750,25 @@ export class DomEditor extends LitElement {
       <div class="html-source-panel" ?inert=${!this.consoleOpen} aria-hidden=${String(!this.consoleOpen)}>
         <div class="html-source-clip">
           <developer-console .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
+            .packageDraft=${this.localPackageDraft?.manifest ?? null} .packageSaving=${this.localPackageDraftSaving}
+            .packageDraftRevision=${this.localPackageDraftRevision}
             ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
+            @git-package-load=${this.handleGitPackageLoad}
             .localPackages=${this.localPackages}
             .localPackagesLoading=${this.localPackagesLoading}
+            .localPackageRefreshingNames=${this.localPackageRefreshingNames}
             .localPackageError=${this.localPackageError}
             .selectedLocalPackageName=${this.selectedLocalPackageName}
             .localPackageWarnings=${this.localPackageWarnings}
+            .localPackageRuntimeWarnings=${this.localPackageRuntimeWarnings}
             .localPackageTestResults=${this.localPackageTestResults}
             @local-package-test-run=${this.handleLocalPackageTestRun}
             @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
+            @local-package-keyword-change=${this.handleLocalPackageKeywordChange}
+            @local-package-editing-option-change=${this.handleLocalPackageEditingOptionChange}
+            @local-package-pending-input=${this.handleLocalPackagePendingInput}
+            @local-package-changes-confirm=${this.confirmLocalPackageChanges}
+            @local-package-changes-discard=${this.discardLocalPackageChanges}
             @local-package-contributor-change=${this.handleLocalPackageContributorChange}
             @local-package-contributor-add=${this.handleLocalPackageContributorAdd}
             @local-package-contributor-delete=${this.handleLocalPackageContributorDelete}
@@ -4565,7 +4903,12 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
-  private handleRibbonCollapse = () => {
+  private handleRibbonCollapse = async () => {
+    if(!this.settings.pinDeveloperConsole && this.localPackageDraft && !await this.resolvePendingPackageChanges()) {
+      const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+      if(ribbon) ribbon.expanded = true
+      return
+    }
     this.breadcrumbVisible = false
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
   }
@@ -4574,8 +4917,9 @@ export class DomEditor extends LitElement {
     this.breadcrumbVisible = true
   }
 
-  private handleRibbonBreadcrumbVisibilityChange = (event: Event) => {
+  private handleRibbonBreadcrumbVisibilityChange = async (event: Event) => {
     const visible = (event as CustomEvent<{visible?: unknown}>).detail?.visible
+    if(visible === false && !this.settings.pinDeveloperConsole && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
     if(typeof visible === "boolean") this.breadcrumbVisible = visible
   }
 
@@ -5500,7 +5844,10 @@ export class DomEditor extends LitElement {
           .breadcrumbVisible=${this.breadcrumbVisible}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
+          .localPackages=${this.localPackages}
           .installedPackages=${this.installedPackages}
+          .consoleOpen=${this.consoleOpen}
+          .selectedLocalPackageName=${this.selectedLocalPackageName}
           .packagesLoading=${this.packagesLoading}
           .busyPackageNames=${this.busyPackageNames}
           .packageError=${this.packageError}
@@ -5625,7 +5972,7 @@ export class DomEditor extends LitElement {
         @developer-console-change=${this.handleDeveloperConsoleChange}
         @developer-console-pin-change=${this.handleDeveloperConsolePinChange}
       ></dom-editor-toolbox>
-      ${(this.breadcrumbVisible || this.settings.pinDeveloperConsole) && !this.previewActive && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
+      ${(this.breadcrumbVisible || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
       ${this.previewActive || this.liveSessionActive ? "" : html`
         <div class="templates-panel" ?inert=${this.templatesDismissed} aria-hidden=${String(this.templatesDismissed)}>
           <div class="templates-clip">

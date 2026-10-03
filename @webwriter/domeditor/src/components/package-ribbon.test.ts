@@ -45,6 +45,149 @@ const packageFixture = (name = "demo"): WebWriterPackage => ({
 afterEach(() => document.body.replaceChildren())
 
 describe("package ribbon controls", () => {
+  it.each([true, false])("completely removes uninstalled developer entries from ribbon lists (expanded: %s)", async expanded => {
+    const ribbon = new AppRibbon()
+    const local = packageFixture("local")
+    const git = {...packageFixture("git"), developerSource: {kind: "git" as const, repository: "https://example.test/repo.git", ref: "main", path: "", commit: "abc"}}
+    const published = packageFixture("published")
+    ribbon.localPackages = [local, git]
+    ribbon.installedPackages = [local, git]
+    ribbon.packages = [local, git, published]
+    ribbon.expanded = expanded
+    ribbon.menuOpen = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    if(!expanded) {
+      await menu.updateComplete
+      menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+    }
+    const labels = async () => {
+      await ribbon.updateComplete
+      if(expanded) return [...ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')].map(button => button.label)
+      await menu.updateComplete
+      const submenu = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+      await submenu.updateComplete
+      return [...submenu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item:not(.remove)")].map(button => button.title)
+    }
+    expect(await labels()).toEqual(["Local", "Git", "Published"])
+    ribbon.installedPackages = []
+    expect(await labels()).toEqual(["Published"])
+    ribbon.shadowRoot!.querySelector("package-search")!.dispatchEvent(new CustomEvent("package-search-change", {detail: {query: "local"}}))
+    expect(await labels()).toEqual([])
+    ribbon.shadowRoot!.querySelector("package-search")!.dispatchEvent(new CustomEvent("package-search-change", {detail: {query: ""}}))
+    ribbon.installedPackages = [git]
+    expect(await labels()).toEqual(["Git", "Published"])
+    expect(ribbon.localPackages).toEqual([local, git])
+  })
+
+  it("highlights the console selection only while the console is open", async () => {
+    const ribbon = new AppRibbon()
+    const local = packageFixture("local")
+    const git = {...packageFixture("git"), developerSource: {kind: "git" as const, repository: "https://example.test/repo.git", ref: "main", path: "", commit: "abc"}}
+    ribbon.localPackages = [local, git]
+    ribbon.installedPackages = [local, git, packageFixture("published")]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const buttons = () => Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'))
+    const selected = () => buttons().filter(button => button.hasAttribute("console-selected")).map(button => button.label)
+    expect(selected()).toEqual([])
+    ribbon.consoleOpen = true
+    await ribbon.updateComplete
+    expect(selected()).toEqual(["Local"])
+    ribbon.selectedLocalPackageName = git.name
+    await ribbon.updateComplete
+    await Promise.all(buttons().map(button => button.updateComplete))
+    expect(selected()).toEqual(["Git"])
+    expect(getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-row")!).backgroundColor).not.toBe("#dbe7f2")
+    const labelStyle = getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-label-text")!)
+    expect(labelStyle.textDecorationLine).toBe("underline")
+    expect(labelStyle.textDecorationColor).toBe("#8eb6df")
+    expect(getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-row")!).opacity).toBe("1")
+    ribbon.consoleOpen = false
+    await ribbon.updateComplete
+    await Promise.all(buttons().map(button => button.updateComplete))
+    expect(selected()).toEqual([])
+    expect(getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-label-text")!).textDecorationLine).not.toBe("underline")
+    expect(buttons()[0].active).toBe(true)
+  })
+
+  it("updates the selected entry in the collapsed package menu", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.localPackages = [packageFixture("local"), packageFixture("other")]
+    ribbon.installedPackages = [...ribbon.localPackages, packageFixture("published")]
+    ribbon.consoleOpen = true
+    ribbon.expanded = false
+    ribbon.menuOpen = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+    const selected = async () => {
+      await ribbon.updateComplete
+      await menu.updateComplete
+      const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+      await packages.updateComplete
+      const rows = Array.from(packages.shadowRoot!.querySelectorAll(".item-row.selected"))
+      for(const row of rows) {
+        expect(getComputedStyle(row).backgroundColor).not.toBe("#dbe7f2")
+        const labelStyle = getComputedStyle(row.querySelector(".item-label")!)
+        expect(labelStyle.textDecorationLine).toBe("underline")
+        expect(labelStyle.textDecorationColor).toBe("#8eb6df")
+      }
+      return rows.map(row => row.querySelector<HTMLButtonElement>(".item")!.title)
+    }
+    expect(await selected()).toEqual(["Local"])
+    ribbon.selectedLocalPackageName = ribbon.localPackages[1].name
+    expect(await selected()).toEqual(["Other"])
+    ribbon.consoleOpen = false
+    expect(await selected()).toEqual([])
+  })
+
+  it("places developer packages first, keeps their metadata and italicizes only their names", async () => {
+    const ribbon = new AppRibbon()
+    const local = {...packageFixture("local"), developerSource: {kind: "local" as const, path: "local-folder"}}
+    const git = {...packageFixture("git"), developerSource: {kind: "git" as const, repository: "https://example.test/repo.git", ref: "main", path: "", commit: "abc"}}
+    const installed = packageFixture("installed")
+    ribbon.localPackages = [local, git]
+    ribbon.installedPackages = [installed, {...local, label: "Old local"}, git]
+    ribbon.packages = [packageFixture("catalog"), {...local, label: "Published local"}]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const buttons = () => Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'))
+    expect(buttons().map(button => button.label)).toEqual(["Local", "Git", "Installed", "Catalog"])
+    await Promise.all(buttons().map(button => button.updateComplete))
+    expect(buttons().map(button => button.hasAttribute("developer-package"))).toEqual([true, true, false, false])
+    expect(getComputedStyle(buttons()[0].shadowRoot!.querySelector(".button-label-text")!).fontStyle).toBe("italic")
+    expect(getComputedStyle(buttons()[2].shadowRoot!.querySelector(".button-label-text")!).fontStyle).not.toBe("italic")
+    ribbon.shadowRoot!.querySelector("package-search")!.dispatchEvent(new CustomEvent("package-search-change", {detail: {query: "git"}}))
+    await ribbon.updateComplete
+    expect(buttons().map(button => button.label)).toEqual(["Git"])
+  })
+
+  it("puts developer packages first with italic labels in the collapsed package menu", async () => {
+    const ribbon = new AppRibbon()
+    const local = packageFixture("local")
+    ribbon.localPackages = [local]
+    ribbon.installedPackages = [packageFixture("installed"), local]
+    ribbon.packages = [packageFixture("catalog")]
+    ribbon.expanded = false
+    ribbon.menuOpen = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+    await menu.updateComplete
+    const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    await packages.updateComplete
+    const items = Array.from(packages.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item:not(.remove)"))
+    expect(items.map(item => item.title)).toEqual(["Local", "Installed", "Catalog"])
+    expect(getComputedStyle(items[0].querySelector(".item-label")!).fontStyle).toBe("italic")
+    expect(getComputedStyle(items[1].querySelector(".item-label")!).fontStyle).not.toBe("italic")
+  })
+
   it.each([true, false])("replaces the busy package icon with a spinner and restores it afterward (image: %s)", async image => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture()

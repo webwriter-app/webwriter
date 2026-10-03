@@ -459,22 +459,6 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
-        <section class="setting-card" aria-label="Developer console">
-          <label class="checkbox-setting">
-            <input type="checkbox" .checked=${this.settings.pinDeveloperConsole}
-              @change=${(event: Event) => this.emitSettings({...this.settings, pinDeveloperConsole: (event.currentTarget as HTMLInputElement).checked})}
-            />
-            <span class="checkbox-label">Pin developer console</span>
-            <span class="checkbox-description">Keep the developer console open when switching tools and after reloading.</span>
-          </label>
-          <label class="checkbox-setting">
-            <input type="checkbox" .checked=${this.settings.autoReloadPackages}
-              @change=${(event: Event) => this.emitSettings({...this.settings, autoReloadPackages: (event.currentTarget as HTMLInputElement).checked})}
-            />
-            <span class="checkbox-label">Auto-reload packages</span>
-            <span class="checkbox-description">Reload installed local packages when their files change.</span>
-          </label>
-        </section>
 
         <section class="setting-card" aria-label="Motion">
           <label class="checkbox-setting">
@@ -487,6 +471,33 @@ export class SettingsPanel extends LitElement {
             <span class="checkbox-description">Make the editing interface respond instantly, including menus, panels, and selection indicators.</span>
           </label>
         </section>
+
+        <details class="command-category developer-settings">
+          <summary>Developer settings</summary>
+          <section class="setting-card" aria-label="Developer console">
+            <label class="checkbox-setting">
+              <input type="checkbox" .checked=${this.settings.pinDeveloperConsole}
+                @change=${(event: Event) => this.emitSettings({...this.settings, pinDeveloperConsole: (event.currentTarget as HTMLInputElement).checked})}
+              />
+              <span class="checkbox-label">Pin developer console</span>
+              <span class="checkbox-description">Keep the developer console open when switching tools and after reloading.</span>
+            </label>
+            <label class="checkbox-setting">
+              <input type="checkbox" .checked=${this.settings.autoReloadPackages}
+                @change=${(event: Event) => this.emitSettings({...this.settings, autoReloadPackages: (event.currentTarget as HTMLInputElement).checked})}
+              />
+              <span class="checkbox-label">Auto-reload packages</span>
+              <span class="checkbox-description">Reload installed local packages when their files change.</span>
+            </label>
+            <label class="checkbox-setting">
+              <input type="checkbox" .checked=${this.settings.autosaveCloudOnBundleChange}
+                @change=${(event: Event) => this.emitSettings({...this.settings, autosaveCloudOnBundleChange: (event.currentTarget as HTMLInputElement).checked})}
+              />
+              <span class="checkbox-label">Autosave cloud on bundle change</span>
+              <span class="checkbox-description">Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile).</span>
+            </label>
+          </section>
+        </details>
 
         <h3 class="commands-heading">Commands</h3>
         <p class="shortcut-help">Select a shortcut, then press its replacement. Reserved system and browser shortcuts cannot be assigned.</p>

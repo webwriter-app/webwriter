@@ -119,6 +119,7 @@ export class AppRibbon extends EditingControls {
     presenceUsers: {attribute: false},
     packages: {attribute: false},
     installedPackages: {attribute: false},
+    consoleOpen: {type: Boolean, attribute: false},
     packagesLoading: {type: Boolean, attribute: "packages-loading"},
     busyPackageNames: {attribute: false},
     packageError: {type: String, attribute: "package-error"},
@@ -1937,6 +1938,8 @@ export class AppRibbon extends EditingControls {
 
   installedPackages: WebWriterPackage[] = []
 
+  consoleOpen = false
+
   packagesLoading = false
 
   busyPackageNames: string[] = []
@@ -2842,12 +2845,18 @@ export class AppRibbon extends EditingControls {
     ) this.scheduleResponsiveLayout()
   }
 
+  private isDeveloperPackage(pkg: WebWriterPackage) {
+    return Boolean(pkg.developerSource) || this.localPackages.some(candidate => candidate.name === pkg.name)
+  }
+
   private get availablePackages() {
-    const installed = new Map(this.installedPackages.map(pkg => [pkg.name, pkg]))
-    return [
-      ...this.installedPackages,
-      ...this.packages.filter(pkg => !installed.has(pkg.name)),
-    ]
+    const packages = new Map<string, WebWriterPackage>()
+    const installedNames = new Set(this.installedPackages.map(pkg => pkg.name))
+    for(const pkg of [...this.localPackages, ...this.installedPackages, ...this.packages]) {
+      if(this.isDeveloperPackage(pkg) && !installedNames.has(pkg.name)) continue
+      if(!packages.has(pkg.name)) packages.set(pkg.name, pkg)
+    }
+    return [...packages.values()].sort((a, b) => Number(this.isDeveloperPackage(b)) - Number(this.isDeveloperPackage(a)))
   }
 
   private get filteredPackages() {
@@ -2856,6 +2865,10 @@ export class AppRibbon extends EditingControls {
       const haystack = [pkg.name, pkg.label, pkg.description, ...pkg.keywords].filter(Boolean).join(" ").toLowerCase()
       return words.every(word => haystack.includes(word))
     })
+  }
+
+  private isConsoleSelectedPackage(pkg: WebWriterPackage) {
+    return this.consoleOpen && this.localPackageSelectionName === pkg.name
   }
 
   private get packageManagementMode() {
@@ -2880,6 +2893,8 @@ export class AppRibbon extends EditingControls {
       <ribbon-button
         slot=${slot}
         variant="package"
+        ?developer-package=${this.isDeveloperPackage(pkg)}
+        ?console-selected=${this.isConsoleSelectedPackage(pkg)}
         label=${pkg.label}
         icon="Packages"
         icon-url=${pkg.iconUrl ?? ""}
@@ -3309,7 +3324,7 @@ export class AppRibbon extends EditingControls {
     const packages = this.filteredPackages.map((pkg): RibbonMenuButton => {
       const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
       return {
-        label: pkg.label, icon: "Packages", iconUrl: pkg.iconUrl,
+        label: pkg.label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
         action: packageAction(pkg),
         disabled: this.busyPackageNames.includes(pkg.name),
         removeAction: installed ? packageToggleAction(pkg) : undefined,
@@ -3840,6 +3855,8 @@ export class AppRibbon extends EditingControls {
       const members = pkg.members.filter(member => member.insertable)
       return {
         label: pkg.label,
+        italic: this.isDeveloperPackage(pkg),
+        selected: this.isConsoleSelectedPackage(pkg),
         action: packageAction(pkg),
         submenu: members.slice(1).map(member => ({label: member.label, action: packageMemberAction(member)})),
       }

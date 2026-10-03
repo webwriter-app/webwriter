@@ -6,6 +6,7 @@ import {AppRibbon} from "./ribbon"
 import type {DomEditorToolbox} from "./toolbox"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
+import type {RibbonMenu} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {OpenDocumentMenu} from "./open-document-menu"
 import {
@@ -198,6 +199,7 @@ afterEach(async() => {
   document.body.replaceChildren()
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
+  localStorage.removeItem("webwriter_pinned_document_v1")
   await (window as unknown as {happyDOM: {abort(): Promise<void>}}).happyDOM.abort()
 })
 
@@ -1211,6 +1213,198 @@ describe("DomEditor breadcrumb visibility", () => {
 })
 
 describe("Develop local packages", () => {
+  it.each(["console", "ribbon"])("removes local packages from the %s, installed list and saved sources and stops their watchers", async surface => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const local = {...demoPackage, developerSource: {kind: "local", path: "demo-folder"}}
+    const other = {...demoPackage, name: "@local/other", label: "Other"}
+    const dispose = vi.fn()
+    host.localPackageManager.records.set("local-id", {id: "local-id", directory: {}, package: local, enabled: true, revision: 0, warnings: [], monitor: {dispose}})
+    host.localPackageManager.records.set("other-id", {id: "other-id", directory: {}, package: other, enabled: false, revision: 0, warnings: []})
+    host.localPackages = [local, other]
+    host.selectedLocalPackageName = local.name
+    host.installedPackages = [local, other]
+    host.localPackageRuntimeWarnings = {[local.name]: [{message: "Old warning"}], [other.name]: []}
+    host.localPackageTestResults = {[`${local.name}/test`]: "running", [`${other.name}/test`]: "running"}
+    const unregister = vi.spyOn(LocalPackageWorkerClient.prototype, "unregister").mockResolvedValue(undefined)
+    const reload = vi.spyOn(host, "reloadEditor").mockImplementation(async (packages: any) => { host.installedPackages = packages })
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    if(surface === "console") console.shadowRoot!.querySelector<HTMLButtonElement>(`[aria-label="Remove ${local.name}"]`)!.click()
+    else editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: `package-toggle:${local.name}`}, bubbles: true, composed: true,
+    }))
+    await vi.waitFor(() => expect(host.localPackages).toEqual([other]))
+    await vi.waitFor(() => expect(host.localPackagesLoading).toBe(false))
+    expect(reload).toHaveBeenCalledWith([other])
+    expect(host.installedPackages).toEqual([other])
+    expect(host.localPackageManager.records.has("local-id")).toBe(false)
+    expect(unregister).toHaveBeenCalledWith("local-id")
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(host.selectedLocalPackageName).toBe(other.name)
+    expect(host.localPackageRuntimeWarnings).toEqual({[other.name]: []})
+    expect(host.localPackageTestResults).toEqual({[`${other.name}/test`]: "running"})
+    await host.removeDeveloperPackage(other.name)
+    expect(host.selectedLocalPackageName).toBe("")
+    expect(host.localPackages).toEqual([])
+  })
+
+  it("keeps the local source if disabling its installed package fails", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const record = {id: "local-id", directory: {}, package: demoPackage, enabled: true, revision: 0, warnings: []}
+    host.localPackageManager.records.set(record.id, record)
+    host.localPackages = [demoPackage]
+    host.installedPackages = [demoPackage]
+    vi.spyOn(host, "reloadEditor").mockRejectedValue(new Error("Reload failed"))
+    const unregister = vi.spyOn(LocalPackageWorkerClient.prototype, "unregister")
+    await host.removeDeveloperPackage(demoPackage.name)
+    expect(host.localPackageManager.records.get(record.id)).toBe(record)
+    expect(record.enabled).toBe(true)
+    expect(unregister).not.toHaveBeenCalled()
+    expect(host.localPackagesLoading).toBe(false)
+    expect(host.localPackageError).toBe("Reload failed")
+  })
+
+  it("retains developer sources but only shows installed packages in the ribbon", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const local = {...demoPackage, developerSource: {kind: "local", path: "demo-folder"}, members: []}
+    host.localPackages = [local]
+    host.packages = [{...demoPackage, name: "@webwriter/published", label: "Published"}]
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    expect(ribbon.localPackages).toEqual([local])
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')).map(button => button.label)).toEqual(["Published"])
+    host.installedPackages = [local]
+    await editor.updateComplete
+    await ribbon.updateComplete
+    const buttons = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'))
+    expect(buttons.map(button => button.label)).toEqual(["Demo", "Published"])
+    expect(buttons[0].hasAttribute("developer-package")).toBe(true)
+    expect(buttons[0].hasAttribute("active")).toBe(true)
+    expect(buttons[0].hasAttribute("console-selected")).toBe(false)
+    host.selectedLocalPackageName = local.name
+    host.consoleOpen = true
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(ribbon.selectedLocalPackageName).toBe(local.name)
+    expect(buttons[0].hasAttribute("console-selected")).toBe(true)
+    host.consoleOpen = false
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(buttons[0].hasAttribute("console-selected")).toBe(false)
+  })
+
+  it("routes Git source loading from the console and excludes Git contents from installed-package storage", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const source = {repository: "https://github.com/example/demo.git", ref: "v1.0.0", path: ""}
+    const load = vi.spyOn(host.localPackageManager, "loadGit").mockResolvedValue(undefined)
+    editor.shadowRoot!.querySelector("developer-console")!.dispatchEvent(new CustomEvent("git-package-load", {detail: source, bubbles: true, composed: true}))
+    await vi.waitFor(() => expect(load).toHaveBeenCalledWith(source))
+    expect(host.localPackagesLoading).toBe(false)
+    const pkg = {...demoPackage, developerSource: {kind: "git", ...source, commit: "abc123"}}
+    host.installedPackages = [pkg]
+    host.persistInstalledPackages()
+    expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([])
+    expect(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)).not.toContain("abc123")
+  })
+
+  it.each([
+    {enabled: true, storage: "development-server", id: "saved", refreshing: true, busy: false, saves: true},
+    {enabled: false, storage: "development-server", id: "saved", refreshing: true, busy: false, saves: false},
+    {enabled: true, storage: "local", id: "saved", refreshing: true, busy: false, saves: false},
+    {enabled: true, storage: "development-server", id: null, refreshing: true, busy: false, saves: false},
+    {enabled: true, storage: "development-server", id: "saved", refreshing: false, busy: false, saves: false},
+    {enabled: true, storage: "development-server", id: "saved", refreshing: true, busy: true, saves: false},
+  ])("autosaves cloud documents after package bundle reloads only when eligible: %j", async scenario => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, autosaveCloudOnBundleChange: scenario.enabled}
+    host.storageLocation = scenario.storage
+    host.backendDocumentId = scenario.id
+    host.fileOperationActive = scenario.busy
+    host.fileName = "Lesson"
+    host.fileFormat = "html"
+    host.fileDirty = true
+    const updateDocument = vi.fn().mockResolvedValue({id: "saved", title: "Lesson", format: "html", createdAt: "", updatedAt: ""})
+    const createDocument = vi.fn()
+    host.backendClient = {updateDocument, createDocument}
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue("<html><body>Updated bundle</body></html>")
+    await host.localPackageManager.options.install(demoPackage, scenario.refreshing ? demoPackage.name : undefined)
+    expect(reload).toHaveBeenCalledOnce()
+    expect(createDocument).not.toHaveBeenCalled()
+    if(scenario.saves) {
+      expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: false})
+      expect(updateDocument).toHaveBeenCalledWith("saved", {title: "Lesson", content: "<html><body>Updated bundle</body></html>", format: "html"})
+      expect(host.fileDirty).toBe(false)
+    }
+    else expect(updateDocument).not.toHaveBeenCalled()
+  })
+
+  it("coalesces bundle autosaves while another file operation is running", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, autosaveCloudOnBundleChange: true}
+    host.storageLocation = "development-server"
+    host.backendDocumentId = "saved"
+    const updateDocument = vi.fn().mockResolvedValue({id: "saved", title: "Lesson", format: "html", createdAt: "", updatedAt: ""})
+    host.backendClient = {updateDocument}
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    vi.spyOn(editor, "execute").mockResolvedValue("<html><body>Latest bundle</body></html>")
+    let complete!: () => void
+    const operation = host.runFileOperation(() => new Promise<void>(resolve => {complete = resolve}))
+    await host.localPackageManager.options.install(demoPackage, demoPackage.name)
+    await host.localPackageManager.options.install(demoPackage, demoPackage.name)
+    expect(updateDocument).not.toHaveBeenCalled()
+    complete()
+    await operation
+    expect(updateDocument).toHaveBeenCalledOnce()
+    expect(host.fileOperationActive).toBe(false)
+  })
+
+  it("does not autosave a different cloud document when it changes during serialization", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, autosaveCloudOnBundleChange: true}
+    host.storageLocation = "development-server"
+    host.backendDocumentId = "original"
+    const updateDocument = vi.fn()
+    host.backendClient = {updateDocument}
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    let serialize!: (source: string) => void
+    const execute = vi.spyOn(editor, "execute").mockReturnValue(new Promise(resolve => {serialize = resolve}))
+    const installation = host.localPackageManager.options.install(demoPackage, demoPackage.name)
+    await vi.waitFor(() => expect(execute).toHaveBeenCalled())
+    host.backendDocumentId = "replacement"
+    serialize("<html><body>Original</body></html>")
+    await installation
+    expect(updateDocument).not.toHaveBeenCalled()
+    expect(host.backendDocumentId).toBe("replacement")
+  })
+
+  it("refreshes from list controls with auto-reload off and does not open a file picker for Git sources", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const source = {repository: "https://gitlab.example/demo.git", ref: "main", path: ""}
+    const pkg = {...demoPackage, developerSource: {kind: "git", ...source, commit: "abc123"}}
+    host.localPackageManager.records.set("git-demo", {id: "git-demo", package: pkg, gitSource: source})
+    host.localPackages = [pkg]
+    host.selectedLocalPackageName = pkg.name
+    host.localPackageManager.autoReload = false
+    const refresh = vi.spyOn(host.localPackageManager, "refresh").mockResolvedValue(undefined)
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: `local-package-refresh:${pkg.name}`}}))
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledWith("git-demo", true))
+    const picker = vi.fn()
+    vi.stubGlobal("showOpenFilePicker", picker)
+    await host.handleLocalPackageExportFilePick(new CustomEvent("local-package-export-file-pick", {detail: {exportName: "./icon"}}))
+    expect(picker).not.toHaveBeenCalled()
+  })
+
   it("proxies only registered local package resources from the isolated frame", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -1319,6 +1513,8 @@ describe("Develop local packages", () => {
       }))
     }
 
+    expect(editable.manifest().license).not.toBe("MIT")
+    expect(await (editor as any).confirmLocalPackageChanges()).toBe(true)
     expect(editable.manifest().license).toBe("MIT")
     expect(editable.manifest().keywords).toEqual(["webwriter-widget", "widget-lang-en", "widget-practical"])
     expect(editable.manifest().author).toEqual({name: "Ada Lovelace", email: "ada@example.test"})
@@ -1345,6 +1541,8 @@ describe("Develop local packages", () => {
 
     expect(editable.manifest().contributors).toEqual(originalContributors)
     expect((editor as any).localPackageError).toBe("Contributors must be valid JSON")
+    expect(await (editor as any).confirmLocalPackageChanges()).toBe(false)
+    expect((editor as any).localPackageDraft).not.toBeNull()
   })
 
   it("adds, edits, and removes compact contributor entries", async() => {
@@ -1357,16 +1555,18 @@ describe("Develop local packages", () => {
     await (editor as any).addLocalPackage()
 
     await (editor as any).handleLocalPackageContributorAdd()
-    expect(editable.manifest().contributors).toEqual([""])
+    expect((editor as any).localPackageDraft.manifest.contributors).toEqual([""])
 
     await (editor as any).handleLocalPackageContributorChange(new CustomEvent("local-package-contributor-change", {
       detail: {index: 0, value: '{"name":"Grace Hopper","email":"grace@example.test"}'},
     }))
-    expect(editable.manifest().contributors).toEqual([{name: "Grace Hopper", email: "grace@example.test"}])
+    expect((editor as any).localPackageDraft.manifest.contributors).toEqual([{name: "Grace Hopper", email: "grace@example.test"}])
 
     await (editor as any).handleLocalPackageContributorDelete(new CustomEvent("local-package-contributor-delete", {
       detail: {index: 0},
     }))
+    expect((editor as any).localPackageDraft.manifest.contributors).toBeUndefined()
+    expect(await (editor as any).confirmLocalPackageChanges()).toBe(true)
     expect(editable.manifest().contributors).toBeUndefined()
   })
 
@@ -1380,7 +1580,7 @@ describe("Develop local packages", () => {
     await (editor as any).addLocalPackage()
 
     await (editor as any).handleLocalPackageExportAdd()
-    expect(editable.manifest().exports).toMatchObject({
+    expect((editor as any).localPackageDraft.manifest.exports).toMatchObject({
       "./widgets/new-widget.*": {
         source: "./src/widgets/new-widget.ts",
         default: "./dist/widgets/new-widget.*",
@@ -1396,17 +1596,19 @@ describe("Develop local packages", () => {
     await (editor as any).handleLocalPackageExportChange(new CustomEvent("local-package-export-change", {
       detail: {exportName: "./widgets/secondary.*", field: "type", value: "test"},
     }))
-    expect(editable.manifest().exports).toMatchObject({
+    expect((editor as any).localPackageDraft.manifest.exports).toMatchObject({
       "./tests/secondary.*": {
         source: "./src/widgets/secondary.ts",
         default: "./dist/widgets/new-widget.*",
       },
     })
-    expect((editable.manifest().exports as Record<string, unknown>)["./widgets/new-widget.*"]).toBeUndefined()
+    expect(((editor as any).localPackageDraft.manifest.exports as Record<string, unknown>)["./widgets/new-widget.*"]).toBeUndefined()
 
     await (editor as any).handleLocalPackageExportDelete(new CustomEvent("local-package-export-delete", {
       detail: {exportName: "./tests/secondary.*"},
     }))
+    expect(((editor as any).localPackageDraft.manifest.exports as Record<string, unknown>)["./tests/secondary.*"]).toBeUndefined()
+    expect(await (editor as any).confirmLocalPackageChanges()).toBe(true)
     expect((editable.manifest().exports as Record<string, unknown>)["./tests/secondary.*"]).toBeUndefined()
   })
 
@@ -1428,12 +1630,365 @@ describe("Develop local packages", () => {
     }))
 
     expect(resolve).toHaveBeenCalledWith(fileHandle)
+    expect(await (editor as any).confirmLocalPackageChanges()).toBe(true)
     expect(editable.manifest().exports).toMatchObject({
       "./widgets/local-demo.*": {
         source: "./src/widgets/picked.ts",
         default: "./dist/local-demo.*",
       },
     })
+  })
+
+  it("discards staged metadata without writing the source and resets its inputs", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    host.consoleOpen = true
+    host.breadcrumbVisible = true
+    await editor.updateComplete
+    await host.handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {detail: {field: "description", value: "Draft description"}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    expect(console.shadowRoot!.querySelector(".package-pending-bar")).not.toBeNull()
+    expect(editable.manifest().description).toBe("Editable local package")
+    console.shadowRoot!.querySelector<HTMLButtonElement>(".package-pending-bar button")!.click()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(host.localPackageDraft).toBeNull()
+    expect(editable.manifest().description).toBe("Editable local package")
+    expect(console.shadowRoot!.querySelector(".package-pending-bar")).toBeNull()
+  })
+
+  it.each(["keep", "discard", "cancel"] as const)("protects console closing with the %s choice", async choice => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    host.consoleOpen = true
+    host.breadcrumbVisible = true
+    await host.handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {detail: {field: "license", value: "MIT"}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    vi.spyOn(console, "askPendingPackageChanges").mockResolvedValue(choice)
+    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
+    expect(console.askPendingPackageChanges).toHaveBeenCalledTimes(1)
+    expect(host.consoleOpen).toBe(choice === "cancel")
+    expect(editable.manifest().license).toBe(choice === "keep" ? "MIT" : undefined)
+    expect(Boolean(host.localPackageDraft)).toBe(choice === "cancel")
+  })
+
+  it("keeps Metadata selected until the pending-change dialog is answered", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    host.consoleOpen = true
+    host.breadcrumbVisible = true
+    await host.handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {detail: {field: "license", value: "MIT"}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    let answer!: (choice: "discard") => void
+    vi.spyOn(console, "askPendingPackageChanges").mockImplementation(() => new Promise(resolve => {answer = resolve}))
+    console.shadowRoot!.querySelector<HTMLButtonElement>("#console-tab-Tests")!.click()
+    expect(host.consoleTab).toBe("Packages")
+    expect(console.tab).toBe("Packages")
+    answer("discard")
+    await host.pendingPackageDecision
+    await editor.updateComplete
+    await console.updateComplete
+    expect(host.consoleTab).toBe("Tests")
+    expect(console.tab).toBe("Tests")
+    expect(editable.manifest().license).toBeUndefined()
+  })
+
+  it("preserves unblurred contributor typing when removing an earlier row", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const manifest = {name: "@local/demo", version: "1.0.0", contributors: ["Alice", "Bob"], exports: {}}
+    const pkg = {...demoPackage, name: manifest.name, manifest}
+    host.localPackageManager.records.set("draft", {id: "draft", package: pkg, directory: {}, enabled: true})
+    host.localPackages = [pkg]
+    host.selectedLocalPackageName = pkg.name
+    host.consoleOpen = true
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    const input = console.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Contributor 2"]')!
+    input.value = "Edited Bob"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    await console.updateComplete
+    console.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Delete contributor 1"]')!.click()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(host.localPackageDraft.manifest.contributors).toEqual(["Edited Bob"])
+  })
+
+  it("restores the expanded ribbon when pending changes are cancelled", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const pkg = {...demoPackage, manifest: {name: demoPackage.name, version: demoPackage.version}}
+    const record = {id: "draft", package: pkg, directory: {}}
+    host.localPackageManager.records.set(record.id, record)
+    host.localPackages = [pkg]
+    host.selectedLocalPackageName = pkg.name
+    host.consoleOpen = true
+    host.beginLocalPackageDraft(record)
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    vi.spyOn(console, "askPendingPackageChanges").mockResolvedValue("cancel")
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await ribbon.updateComplete
+    await host.pendingPackageDecision
+    await ribbon.updateComplete
+    expect(ribbon.expanded).toBe(true)
+    expect(host.consoleOpen).toBe(true)
+    expect(host.localPackageDraft).not.toBeNull()
+  })
+
+  it.each(["remove", "refresh"])("continues %s against the same source after Keep confirms a rename", async action => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const pkg = {...demoPackage, manifest: {name: demoPackage.name, version: demoPackage.version}}
+    const record = {id: "draft", package: pkg, directory: {}}
+    host.localPackageManager.records.set(record.id, record)
+    host.localPackages = [pkg]
+    host.selectedLocalPackageName = pkg.name
+    host.consoleOpen = true
+    await host.handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {detail: {field: "name", value: "@local/renamed"}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    vi.spyOn(console, "askPendingPackageChanges").mockResolvedValue("keep")
+    vi.spyOn(host.localPackageManager, "updateManifest").mockImplementation(async (record: any, update: any) => {
+      const manifest = structuredClone(record.package.manifest)
+      update(manifest)
+      record.package = {...record.package, name: manifest.name, manifest}
+      host.localPackages = [record.package]
+      return record
+    })
+    const operation = vi.spyOn(host.localPackageManager, action).mockResolvedValue(undefined)
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: `local-package-${action}:${pkg.name}`}, cancelable: true}))
+    await vi.waitFor(() => expect(operation).toHaveBeenCalledWith("draft", ...(action === "refresh" ? [true] : [])))
+  })
+
+  it("stages typing immediately and confirms the currently focused input", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    host.consoleOpen = true
+    host.breadcrumbVisible = true
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    const input = console.shadowRoot!.querySelector<HTMLTextAreaElement>('[name="description"]')!
+    input.value = "Unblurred draft"
+    input.dispatchEvent(new Event("input", {bubbles: true}))
+    await editor.updateComplete
+    await console.updateComplete
+    expect(console.shadowRoot!.querySelector(".package-pending-bar")).not.toBeNull()
+    expect(editable.manifest().description).toBe("Editable local package")
+    expect(await host.confirmLocalPackageChanges()).toBe(true)
+    expect(editable.manifest().description).toBe("Unblurred draft")
+    expect(host.localPackageDraft).toBeNull()
+  })
+
+  it("retains unsaved edits when writing the package source fails", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    await host.handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {detail: {field: "license", value: "MIT"}}))
+    vi.spyOn(host.localPackageManager, "updateManifest").mockRejectedValue(new Error("Permission denied"))
+    expect(await host.confirmLocalPackageChanges()).toBe(false)
+    expect(host.localPackageDraft.manifest.license).toBe("MIT")
+    expect(host.localPackageDraftSaving).toBe(false)
+    expect(host.localPackageError).toBe("Permission denied")
+    expect(editable.manifest().license).toBeUndefined()
+  })
+
+  it("preserves external source edits and retains the draft if a changed field conflicts", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    await host.handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {detail: {field: "license", value: "MIT"}}))
+    editable.manifest().description = "Changed externally"
+    expect(await host.confirmLocalPackageChanges()).toBe(true)
+    expect(editable.manifest().description).toBe("Changed externally")
+    await host.handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {detail: {field: "license", value: "ISC"}}))
+    editable.manifest().license = "Apache-2.0"
+    expect(await host.confirmLocalPackageChanges()).toBe(false)
+    expect(editable.manifest().license).toBe("Apache-2.0")
+    expect(host.localPackageDraft.manifest.license).toBe("ISC")
+    expect(host.localPackageError).toContain("changed in the source")
+  })
+
+  it("keeps custom license typing pending and confirms the nested combobox input", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    host.consoleOpen = true
+    host.breadcrumbVisible = true
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    const picker = console.shadowRoot!.querySelector<HTMLElement & {updateComplete: Promise<unknown>}>('document-head-combobox[label="License"]')!
+    await picker.updateComplete
+    const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    input.value = "Private project license"
+    input.dispatchEvent(new Event("input", {bubbles: true}))
+    await editor.updateComplete
+    await console.updateComplete
+    expect(host.localPackageDraft).not.toBeNull()
+    expect(editable.manifest().license).toBeUndefined()
+    expect(await host.confirmLocalPackageChanges()).toBe(true)
+    expect(editable.manifest().license).toBe("Private project license")
+    await editor.updateComplete
+    await console.updateComplete
+    const nextPicker = console.shadowRoot!.querySelector<HTMLElement & {updateComplete: Promise<unknown>}>('document-head-combobox[label="License"]')!
+    await nextPicker.updateComplete
+    const nextInput = nextPicker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    nextInput.value = "Discarded license"
+    nextInput.dispatchEvent(new Event("input", {bubbles: true}))
+    host.discardLocalPackageChanges()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(editable.manifest().license).toBe("Private project license")
+    expect(host.localPackageDraft).toBeNull()
+  })
+
+  it("stages keyword list actions and keeps the required keyword first through confirm and discard", async() => {
+    const editable = editableLocalPackageDirectory()
+    editable.manifest().keywords = ["alpha", "webwriter-widget", "beta", " padded "]
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    host.consoleOpen = true
+    host.breadcrumbVisible = true
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    const details = console.shadowRoot!.querySelector<HTMLDetailsElement>(".develop-compact-details")!
+    details.open = true
+    const input = details.querySelector<HTMLInputElement>('[name="newKeyword"]')!
+    input.value = "gamma"
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    await editor.updateComplete
+    await console.updateComplete
+    expect(host.localPackageDraft.manifest.keywords).toEqual(["webwriter-widget", "alpha", "beta", " padded ", "gamma"])
+    expect(editable.manifest().keywords).toEqual(["alpha", "webwriter-widget", "beta", " padded "])
+    expect(details.open).toBe(true)
+    expect(console.shadowRoot!.querySelector(".package-pending-bar")).not.toBeNull()
+    console.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Remove keyword alpha"]')!.click()
+    host.handleLocalPackageKeywordChange(new CustomEvent("local-package-keyword-change", {detail: {operation: "remove", value: " padded "}}))
+    expect(host.localPackageDraft.manifest.keywords).toEqual(["webwriter-widget", "beta", "gamma"])
+    host.handleLocalPackageKeywordChange(new CustomEvent("local-package-keyword-change", {detail: {operation: "add", value: "gamma"}}))
+    host.handleLocalPackageKeywordChange(new CustomEvent("local-package-keyword-change", {detail: {operation: "remove", value: "webwriter-widget"}}))
+    expect(host.localPackageDraft.manifest.keywords).toEqual(["webwriter-widget", "beta", "gamma"])
+    expect(await host.confirmLocalPackageChanges()).toBe(true)
+    expect(editable.manifest().keywords).toEqual(["webwriter-widget", "beta", "gamma"])
+    host.handleLocalPackageKeywordChange(new CustomEvent("local-package-keyword-change", {detail: {operation: "remove", value: "beta"}}))
+    host.discardLocalPackageChanges()
+    expect(editable.manifest().keywords).toEqual(["webwriter-widget", "beta", "gamma"])
+    expect(host.localPackageDraft).toBeNull()
+  })
+
+  it("stages individual package and export editing options without replacing other settings", async() => {
+    const editable = editableLocalPackageDirectory()
+    editable.manifest().editingConfig = {
+      ".": {label: {en: "Original"}, unknown: {preserved: true}},
+      "./widgets/local-demo.*": {inline: false, label: "Demo", marks: "strong", unknown: 42},
+      "./unrelated": {label: "Untouched"},
+    }
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    const change = (key: string, option: string, value: string) => host.handleLocalPackageEditingOptionChange(new CustomEvent("local-package-editing-option-change", {detail: {key, option, value}}))
+    change(".", "label", '{"en":"Updated","de":"Aktualisiert"}')
+    change("./widgets/local-demo", "inline", "true")
+    change("./widgets/local-demo", "marks", "")
+    change("./widgets/local-demo", "propagateEvents", "click, input click")
+    expect((editable.manifest().editingConfig as any)["."].label).toEqual({en: "Original"})
+    expect(await host.confirmLocalPackageChanges()).toBe(true)
+    expect(editable.manifest().editingConfig).toEqual({
+      ".": {label: {en: "Updated", de: "Aktualisiert"}, unknown: {preserved: true}},
+      "./widgets/local-demo": {inline: true, label: "Demo", marks: "", unknown: 42, propagateEvents: ["click", "input"]},
+      "./unrelated": {label: "Untouched"},
+    })
+    change("./widgets/local-demo", "inline", "")
+    expect(host.localPackageDraft.manifest.editingConfig["./widgets/local-demo"].inline).toBeUndefined()
+    host.discardLocalPackageChanges()
+    expect((editable.manifest().editingConfig as any)["./widgets/local-demo"].inline).toBe(true)
+    change(".", "label", '{"en":1}')
+    expect(await host.confirmLocalPackageChanges()).toBe(false)
+    expect(host.localPackageError).toContain("Translations must be")
+    change(".", "label", "Corrected label")
+    expect(await host.confirmLocalPackageChanges()).toBe(true)
+    expect((editable.manifest().editingConfig as any)["."].label).toBe("Corrected label")
+  })
+
+  it("moves export editing settings on rename and removes them with the export", async() => {
+    const editable = editableLocalPackageDirectory()
+    editable.manifest().editingConfig = {".": {label: "Package"}, "./widgets/local-demo.*": {inline: true, unknown: 42}}
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.addLocalPackage()
+    await host.handleLocalPackageExportChange(new CustomEvent("local-package-export-change", {detail: {exportName: "./widgets/local-demo.*", field: "name", value: "renamed"}}))
+    expect(host.localPackageDraft.manifest.editingConfig).toEqual({".": {label: "Package"}, "./widgets/renamed": {inline: true, unknown: 42}})
+    await host.handleLocalPackageExportDelete(new CustomEvent("local-package-export-delete", {detail: {exportName: "./widgets/renamed.*"}}))
+    expect(host.localPackageDraft.manifest.editingConfig).toEqual({".": {label: "Package"}})
+    expect(await host.confirmLocalPackageChanges()).toBe(true)
+    expect(editable.manifest().editingConfig).toEqual({".": {label: "Package"}})
   })
 
   it("honors the global package auto-reload setting", async() => {
@@ -2091,6 +2646,19 @@ describe("DomEditor file actions", () => {
 })
 
 describe("DomEditor.execute()", () => {
+  it("ignores previously pinned documents while restoring console pinning", async () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), pinDeveloperConsole: true}))
+    localStorage.setItem("webwriter_pinned_document_v1", JSON.stringify({html: "<p>Previously pinned</p>", fileName: "Saved"}))
+    const {editor} = await mountEditor()
+    expect((editor as any).frameDocumentHTML).toBeNull()
+    expect((editor as any).fileName).not.toBe("Saved")
+    expect((editor as any).consoleOpen).toBe(true)
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    expect(console.pinned).toBe(true)
+    expect(console.shadowRoot!.querySelector(".document-pin")).toBeNull()
+  })
+
   it("persists the developer console pin, restores it after reload, and keeps it across tool changes", async () => {
     const {editor} = await mountEditor()
     vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
@@ -2169,11 +2737,12 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     const console = editor.shadowRoot!.querySelector("developer-console")!
     await console.updateComplete
-    const input = console.shadowRoot!.querySelector<HTMLInputElement>(".auto-reload input")!
-    input.click()
+    const button = console.shadowRoot!.querySelector<HTMLButtonElement>(".auto-reload")!
+    button.click()
     await editor.updateComplete
     await console.updateComplete
     expect(console.autoReload).toBe(false)
+    expect(button.getAttribute("aria-pressed")).toBe("false")
     expect((editor as any).localPackageManager.autoReload).toBe(false)
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
@@ -2184,7 +2753,7 @@ describe("DomEditor.execute()", () => {
     ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: {...defaultAppSettings(), autoReloadPackages: true}}))
     await editor.updateComplete
     await console.updateComplete
-    expect(input.checked).toBe(true)
+    expect(button.getAttribute("aria-pressed")).toBe("true")
     expect((editor as any).localPackageManager.autoReload).toBe(true)
   })
 
@@ -3446,6 +4015,53 @@ describe("DomEditor.execute()", () => {
     expect(restored.anchorOffset).toBe(1)
     expect(restored.focusNode).toBe(text)
     expect(restored.focusOffset).toBe(4)
+  })
+
+  it.each(["Packages", "Tests", "HTML"])("keeps the pinned developer console visible on %s when entering and leaving preview", async tab => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), pinDeveloperConsole: true}))
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.consoleTab = tab
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    await host.enterPreview()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
+    expect(console.pinned).toBe(true)
+    expect(console.tab).toBe(tab)
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.hasAttribute("inert")).toBe(false)
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("false")
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(true)
+    await host.exitPreview()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
+    expect(console.tab).toBe(tab)
+    expect(host.consoleOpen).toBe(true)
+  })
+
+  it("keeps an unpinned console hidden in preview and respects a pinned console that was manually closed", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.consoleOpen = true
+    await editor.updateComplete
+    vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    await host.enterPreview()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBeNull()
+    await host.exitPreview()
+    host.settings = {...host.settings, pinDeveloperConsole: true}
+    host.consoleOpen = false
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await host.enterPreview()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.hasAttribute("inert")).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("true")
   })
 
   it("returns to editing from the app button during a preview transition", async () => {

@@ -385,6 +385,8 @@ export const editingControlStyles = css`
     }
 
     .develop-fields {
+      border: 0;
+      margin: 0;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
@@ -393,8 +395,6 @@ export const editingControlStyles = css`
       min-width: 0;
       padding: 0.2rem 0 0.35rem;
     }
-
-    .develop-secondary-column {display: contents}
 
     .develop-section {
       display: flex;
@@ -596,7 +596,15 @@ export const editingControlStyles = css`
       outline-offset: 1px;
     }
 
+    .develop-field document-head-combobox {
+      --metadata-combobox-height: 1.75rem;
+      --metadata-combobox-font-size: .65rem;
+      --metadata-combobox-background: #fff;
+    }
+
     .develop-field-label {
+      color: #526b86;
+      font-size: 0.65rem;
       font-weight: 600;
       line-height: 0.85rem;
     }
@@ -699,9 +707,13 @@ export const editingControlStyles = css`
       padding: 0 0.4rem 0.4rem;
     }
 
-    .develop-compact-details textarea {
-      min-height: 3rem;
-    }
+    .develop-keyword-list {list-style: none; margin: 0; padding: 0; display: grid; gap: .2rem}
+    .develop-keyword-entry {display: flex; align-items: center; justify-content: space-between; gap: .3rem; min-height: 1.6rem; padding: 0 .4rem; font-size: .65rem; color: #526b86}
+    .develop-keyword-entry span {min-width: 0; overflow-wrap: anywhere}
+    .develop-keyword-entry.required {color: #8b929c; background: rgb(0 0 0 / 3%)}
+    .develop-keyword-add {position: relative}
+    .develop-keyword-add input[type="text"] {padding-right: 2rem}
+    .develop-keyword-add button {position: absolute; right: .2rem; top: 50%; transform: translateY(-50%)}
 
     .develop-contributors {
       display: flex;

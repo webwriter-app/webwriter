@@ -11,6 +11,8 @@ export type RibbonMenuGroup = {
 
 export type RibbonMenuButton = string | {
   label: string
+  italic?: boolean
+  selected?: boolean
   action?: string
   icon?: string
   iconText?: string
@@ -57,6 +59,7 @@ export class RibbonMenu extends LitElement {
       overflow: visible;
     }
 
+    .item-label.italic { font-style: italic; }
     .item:disabled, .submenu-toggle:disabled { opacity: 0.5; cursor: default; }
     .remove { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
     .submenu-header { position: sticky; top: -0.35rem; background: white; z-index: 2; padding-bottom: 0.35rem; }
@@ -149,6 +152,28 @@ export class RibbonMenu extends LitElement {
 
     .item-row > .item {
       flex: 1 1 auto;
+    }
+
+    .item-row.selected,
+    .item.selected,
+    .item.selected:hover {
+      color: #153b5c;
+      border-radius: 0.25rem;
+    }
+
+    .item-row.selected > button,
+    .item-row.selected > button:hover {
+      color: #153b5c;
+      background: transparent;
+    }
+
+    .item-row.selected .item-label,
+    .item.selected .item-label {
+      text-decoration-line: underline;
+      text-decoration-color: #8eb6df;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 2px;
+      text-decoration-skip-ink: none;
     }
 
     .item-container {
@@ -505,7 +530,7 @@ export class RibbonMenu extends LitElement {
           itemIndex++
           return html`${divider}
             <button
-              class=${`item${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
+              class=${`item${typeof submenuButton !== "string" && submenuButton.selected ? " selected" : ""}${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
               type="button"
               draggable=${String(Boolean(this.dragTag(submenuButton)) && !(typeof submenuButton !== "string" && submenuButton.disabled))}
               role="menuitem"
@@ -516,7 +541,7 @@ export class RibbonMenu extends LitElement {
               @click=${() => this.handleClick(submenuButton)}
               @dragstart=${(event: DragEvent) => this.startDrag(event, submenuButton)}>
               ${this.renderButtonIcon(submenuButton)}
-              <span>${this.buttonLabel(submenuButton)}</span>
+              <span class="item-label">${this.buttonLabel(submenuButton)}</span>
             </button>`
         })}
     `
@@ -552,7 +577,7 @@ export class RibbonMenu extends LitElement {
               const anchorName = `--ribbon-submenu-${groupIndex}-${buttonIndex}`
               return html`
                 <div class="item-container">
-                  <div class="item-row" style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
+                  <div class=${`item-row${item.selected ? " selected" : ""}`} style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
                     <button
                       class="item"
                       type="button"
@@ -567,7 +592,7 @@ export class RibbonMenu extends LitElement {
                       @dragstart=${(event: DragEvent) => this.startDrag(event, button)}
                     >
                       ${this.renderButtonIcon(button)}
-                      <span>${label}</span>
+                      <span class=${`item-label${item.italic ? " italic" : ""}`}>${label}</span>
                     </button>
                     ${item.removeAction ? html`<button class="item remove" role="menuitem" tabindex="-1" aria-label=${`Remove ${label}`} ?disabled=${item.disabled} @click=${() => this.handleClick({label, action: item.removeAction})}>${ribbonIcon("Reject")}</button>` : nothing}
                     ${hasSubmenu ? html`

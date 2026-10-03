@@ -146,6 +146,7 @@ export type AppSettings = {
   showStyleToolbox: boolean
   pinDeveloperConsole: boolean
   autoReloadPackages: boolean
+  autosaveCloudOnBundleChange: boolean
   disableAnimations: boolean
   shortcuts: Record<string, string>
 }
@@ -158,6 +159,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     showStyleToolbox: false,
     pinDeveloperConsole: false,
     autoReloadPackages: true,
+    autosaveCloudOnBundleChange: false,
     disableAnimations: false,
     shortcuts: Object.fromEntries(appCommands.map(command => [
       command.id,
@@ -218,6 +220,8 @@ export function loadAppSettings(): AppSettings {
       autoReloadPackages: typeof value.autoReloadPackages === "boolean"
         ? value.autoReloadPackages
         : defaults.autoReloadPackages,
+      autosaveCloudOnBundleChange: typeof value.autosaveCloudOnBundleChange === "boolean"
+        ? value.autosaveCloudOnBundleChange : defaults.autosaveCloudOnBundleChange,
       shortcuts,
     }
     if((value.shortcutsVersion ?? 0) < 2) persistAppSettings(settings)

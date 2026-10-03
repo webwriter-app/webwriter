@@ -1,3 +1,5 @@
+import signRight from "@tabler/icons/outline/sign-right.svg?raw"
+import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
@@ -84,6 +86,7 @@ import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
 import packageIcon from "@tabler/icons/outline/package.svg?raw"
+import packagePlus from "@tabler/icons/outline/cube-plus.svg?raw"
 import paperclip from "@tabler/icons/outline/paperclip.svg?raw"
 import pencil from "@tabler/icons/outline/pencil.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
@@ -169,6 +172,7 @@ import flask from "@tabler/icons/outline/flask.svg?raw"
 import news from "@tabler/icons/outline/news.svg?raw"
 import presentation from "@tabler/icons/outline/presentation.svg?raw"
 import refresh from "@tabler/icons/outline/refresh.svg?raw"
+import bolt from "@tabler/icons/outline/bolt.svg?raw"
 import school from "@tabler/icons/outline/school.svg?raw"
 import stethoscope from "@tabler/icons/outline/stethoscope.svg?raw"
 import tools from "@tabler/icons/outline/tools.svg?raw"
@@ -213,7 +217,13 @@ const splitTable = `
   </svg>
 `
 
+/** Reload arrows surrounding an inset lightning bolt, optionally crossed out. */
+const autoReloadIcon = (off = false) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="icon-tabler-refresh">${iconContents(refresh)}</g><g class="icon-tabler-bolt" transform="translate(6 6) scale(.5)">${iconContents(bolt)}</g>${off ? '<path class="auto-reload-strike" d="M3 21L21 3" />' : ""}</svg>`
+
 const icons: Record<string, string> = {
+  Migration: signRight,
+  AutoReload: autoReloadIcon(),
+  AutoReloadOff: autoReloadIcon(true),
   Anchor: anchor,
   Balloon: balloon,
   BalloonFilled: balloonFilled,
@@ -362,11 +372,13 @@ const icons: Record<string, string> = {
   AI: sparkles2,
   AISettings: settings2,
   Refresh: refresh,
+  Git: gitBranch,
   Star: star,
   Attachment: paperclip,
   Preferences: adjustments,
   Extensions: packageIcon,
   Packages: packageIcon,
+  PackagePlus: packagePlus,
   Search: search,
   Goto: search,
   KeywordOnline: wifi,

@@ -98,7 +98,7 @@ export function orderedLanguageOptions(
 }
 
 /** Editable metadata combobox with optional rich suggestions. */
-class DocumentHeadCombobox extends LitElement {
+export class DocumentHeadCombobox extends LitElement {
   static properties = {
     value: {type: String},
     label: {type: String},
@@ -112,7 +112,7 @@ class DocumentHeadCombobox extends LitElement {
     :host {
       display: block;
       min-width: 0;
-      height: 1.4rem;
+      height: var(--metadata-combobox-height, 1.4rem);
       color: #2f3742;
       font: inherit;
     }
@@ -122,12 +122,12 @@ class DocumentHeadCombobox extends LitElement {
       display: flex;
       align-items: center;
       width: 100%;
-      height: 1.4rem;
+      height: var(--metadata-combobox-height, 1.4rem);
       min-width: 0;
       border: 1px solid #c8d2df;
       border-radius: 0.25rem;
       color: inherit;
-      background: transparent;
+      background: var(--metadata-combobox-background, transparent);
       font: inherit;
     }
 
@@ -158,7 +158,7 @@ class DocumentHeadCombobox extends LitElement {
       color: inherit;
       background: transparent;
       font: inherit;
-      font-size: 0.62rem;
+      font-size: var(--metadata-combobox-font-size, 0.62rem);
     }
 
     .toggle {
@@ -200,7 +200,7 @@ class DocumentHeadCombobox extends LitElement {
       position-try-fallbacks: flip-block;
       width: anchor-size(width);
       max-width: calc(100vw - 1rem);
-      max-height: min(26rem, calc(100% - 0.4rem));
+      max-height: min(26rem, calc(100dvh - 0.8rem));
       margin: 0.2rem 0;
       color: #2f3742;
       padding: 0.35rem;
@@ -381,6 +381,7 @@ class DocumentHeadCombobox extends LitElement {
     if(this.disabled) return
     this.editing = true
     this.draft = (event.currentTarget as HTMLInputElement).value
+    this.dispatchEvent(new Event("combobox-input", {bubbles: true, composed: true}))
     this.activeIndex = -1
     void this.setOpen(true)
   }

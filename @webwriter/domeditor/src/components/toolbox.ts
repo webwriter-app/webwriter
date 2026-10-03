@@ -333,7 +333,6 @@ export class DomEditorToolbox extends EditingControls {
       min-height: 0;
       border-left: 1px solid #a8a8a8;
       background: #f2f2f2;
-      box-shadow: -0.25rem 0 0.75rem rgb(0 0 0 / 8%);
       overflow: hidden;
     }
 

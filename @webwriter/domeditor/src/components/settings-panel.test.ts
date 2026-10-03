@@ -175,7 +175,7 @@ describe("settings panel", () => {
   it("places element-specific shortcuts in collapsed categories after general commands", async () => {
     const panel = await mountPanel()
     const root = panel.shadowRoot!
-    const categories = [...root.querySelectorAll<HTMLDetailsElement>("details")]
+    const categories = [...root.querySelectorAll<HTMLDetailsElement>("details.command-category:not(.developer-settings)")]
 
     expect(categories.map(category => category.querySelector("summary")!.textContent))
       .toEqual(["Table commands", "Graphic commands"])
@@ -190,7 +190,7 @@ describe("settings panel", () => {
 
   it("edits shortcuts inside an expanded category without collapsing it", async () => {
     const panel = await mountPanel()
-    const category = panel.shadowRoot!.querySelector<HTMLDetailsElement>("details")!
+    const category = panel.shadowRoot!.querySelector<HTMLDetailsElement>("details.command-category:not(.developer-settings)")!
     category.open = true
     const button = category.querySelector<HTMLButtonElement>("button")!
     button.click()
@@ -201,6 +201,21 @@ describe("settings panel", () => {
     expect(panel.settings.shortcuts["table.rowAbove"]).toBe("Alt+Shift+9")
     expect(category.open).toBe(true)
     expect(button.textContent).toContain("9")
+  })
+
+  it("keeps developer settings collapsed above keyboard shortcuts and preserves expansion while changing settings", async () => {
+    const panel = await mountPanel()
+    const root = panel.shadowRoot!
+    const category = root.querySelector<HTMLDetailsElement>(".developer-settings")!
+    expect(root.querySelector(".commands-heading")!.previousElementSibling).toBe(category)
+    expect(category.querySelector("summary")!.textContent).toBe("Developer settings")
+    expect(category.open).toBe(false)
+    expect([...category.querySelectorAll(".checkbox-label")].map(label => label.textContent)).toEqual(["Pin developer console", "Auto-reload packages", "Autosave cloud on bundle change"])
+    category.open = true
+    category.querySelector<HTMLInputElement>("input")!.click()
+    await panel.updateComplete
+    expect(panel.settings.pinDeveloperConsole).toBe(true)
+    expect(category.open).toBe(true)
   })
 
   it("swaps an occupied shortcut and explains the change", async () => {
@@ -388,4 +403,24 @@ it("persists global auto-reload and exposes it under developer console settings"
   expect(changes.at(-1)!.autoReloadPackages).toBe(false)
   persistAppSettings(changes.at(-1)!)
   expect(loadAppSettings().autoReloadPackages).toBe(false)
+})
+
+
+
+
+it("keeps cloud bundle autosave off by default and offers a persisted developer setting", async () => {
+  expect(defaultAppSettings().autosaveCloudOnBundleChange).toBe(false)
+  for(const value of [undefined, "yes", true, false]) {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({autosaveCloudOnBundleChange: value}))
+    expect(loadAppSettings().autosaveCloudOnBundleChange).toBe(value === true)
+  }
+  const panel = await mountPanel()
+  const developer = panel.shadowRoot!.querySelector<HTMLDetailsElement>(".developer-settings")!
+  expect(developer.open).toBe(false)
+  const label = [...developer.querySelectorAll("label")].find(label => label.textContent?.includes("Autosave cloud on bundle change"))!
+  const checkbox = label.querySelector<HTMLInputElement>("input")!
+  expect(checkbox.checked).toBe(false)
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  checkbox.click()
+  expect(loadAppSettings().autosaveCloudOnBundleChange).toBe(true)
 })
