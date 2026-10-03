@@ -459,6 +459,15 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        <section class="setting-card" aria-label="AI">
+          <label class="checkbox-setting">
+            <input type="checkbox" .checked=${this.settings.disableAI}
+              @change=${(event: Event) => this.emitSettings({...this.settings, disableAI: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Disable AI</span>
+            <span class="checkbox-description">Hide the AI bar and AI toolbox tab.</span>
+          </label>
+        </section>
 
         <section class="setting-card" aria-label="Motion">
           <label class="checkbox-setting">

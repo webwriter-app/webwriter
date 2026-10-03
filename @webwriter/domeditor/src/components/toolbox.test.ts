@@ -80,7 +80,7 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>("#toolbox-pane")!.hidden).toBe(true)
   })
 
-  it("renders Edit, Style, and Review as icon-only tabs on the breadcrumb baseline", async () => {
+  it("renders Edit, Style, Ask AI, and Review as icon-only tabs on the breadcrumb baseline", async () => {
     const toolbox = await mountToolbox()
     const tablist = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
     const tabs = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab"))
@@ -88,19 +88,19 @@ describe("toolbox", () => {
     const labels = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab-label"))
 
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
-      "Edit", "Style", "Review",
+      "Edit", "Style", "Ask AI", "Review",
     ])
     expect(buttons.map(button => button.getAttribute("aria-selected"))).toEqual([
-      "false", "false", "false",
+      "false", "false", "false", "false",
     ])
-    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Review"])
+    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Ask AI", "Review"])
     expect(labels.every(label => getComputedStyle(label).opacity === "0")).toBe(true)
     expect(tabs.every(tab => getComputedStyle(tab).width === "28px")).toBe(true)
     expect(getComputedStyle(tablist).borderBottomWidth).toBe("0.5px")
     expect(getComputedStyle(tablist).borderBottomColor).toBe("#a8a8a8")
     expect(buttons[0].querySelector(".icon-tabler-pencil")).not.toBeNull()
     expect(buttons[1].querySelector(".icon-tabler-palette")).not.toBeNull()
-    expect(buttons[2].querySelector(".icon-tabler-text-grammar")).not.toBeNull()
+    expect(buttons[3].querySelector(".icon-tabler-text-grammar")).not.toBeNull()
   })
 
   it("does not install app-only AI or resize listeners across reconnects", async () => {
@@ -171,7 +171,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(tablist).paddingRight).toBe("4px")
     expect(getComputedStyle(tablist).paddingLeft).toBe("0px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0"])
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0", "0"])
     expect(getComputedStyle(style).width).toBe("28px")
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
@@ -188,7 +188,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(editTab).width).toBe("28px")
     expect(getComputedStyle(styleTab).width).toBe("128px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0"])
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0", "0"])
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
@@ -200,7 +200,7 @@ describe("toolbox", () => {
     expect(toolbox.activeTool).toBeNull()
     expect(toolbox.hasAttribute("active-tool")).toBe(false)
     expect(getComputedStyle(styleTab).width).toBe("28px")
-    expect(getComputedStyle(toolbox).width).toBe("94px")
+    expect(getComputedStyle(toolbox).width).toBe("122px")
   })
 
   it("opens one developer console from Edit and locks its toggle during pending HTML edits", async () => {

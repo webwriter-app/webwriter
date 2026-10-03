@@ -479,6 +479,7 @@ export class DomEditor extends LitElement {
     documentLayoutError: {attribute: false, state: true},
     settings: {attribute: false, state: true},
     breadcrumbVisible: {attribute: false, state: true},
+    aiToolboxOpen: {state: true},
   }
 
   private editorDocument: Document | null = null
@@ -664,6 +665,7 @@ export class DomEditor extends LitElement {
   private freshTemplateSnapshot: string | null = null
   private initialTemplateStarted = false
   private breadcrumbVisible = true
+  private aiToolboxOpen = false
   private motionStylesheet: {document: Document, sheet: CSSStyleSheet} | null = null
   private backendState: "probing" | "connected" | "unavailable" = "probing"
   private backendSession: BackendSession | null = null
@@ -768,7 +770,7 @@ export class DomEditor extends LitElement {
       grid-column: 1;
     }
 
-    .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage {
+    .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage:not(:has(+ dom-editor-toolbox[active-tool="AI"]:not([hidden]))) {
       grid-column: 1 / -1;
     }
 
@@ -1951,7 +1953,6 @@ export class DomEditor extends LitElement {
 
   private handleEditorPointerDown = (event: PointerEvent) => {
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-    ribbon?.dismissAIChat()
     if(isWidgetShadowInteraction(event)) return
     this.focusEditor()
     ribbon?.dismissCollapsedMenu()
@@ -4684,8 +4685,18 @@ export class DomEditor extends LitElement {
     void this.setHTMLMode(tab === "HTML")
   }
 
+  private handleAIToolboxChange = (event: CustomEvent<{open: boolean}>) => {
+    this.aiToolboxOpen = event.detail.open
+    const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+    if(event.detail.open) toolbox?.selectTool("AI")
+    else if(toolbox?.activeTool === "AI") toolbox.selectTool(null)
+  }
+
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
+    this.aiToolboxOpen = tool === "AI"
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    if(ribbon) ribbon.aiChatOpen = this.aiToolboxOpen
     if(tool !== "Edit" && !this.htmlPending && !this.settings.pinDeveloperConsole) {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
     }
@@ -4810,6 +4821,11 @@ export class DomEditor extends LitElement {
 
   protected updated(changed: PropertyValues) {
     super.updated(changed)
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+    if(ribbon && toolbox) void toolbox.updateComplete.then(() => {
+      if(this.isConnected) ribbon.aiToolboxTarget = toolbox.renderRoot.querySelector<HTMLElement>(".ai-toolbox-content")
+    })
     if(changed.has("htmlSource")) {
       const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
       if(input) this.syncHTMLSourceScroll(input)
@@ -5266,8 +5282,7 @@ export class DomEditor extends LitElement {
     if(event.data?.type === "editor-frame-pointerdown") {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-      ribbon?.dismissAIChat()
-      if(event.data.widgetShadow === true) return
+        if(event.data.widgetShadow === true) return
       this.focusEditor()
       ribbon?.dismissCollapsedMenu()
       const path = event.data.targetPath
@@ -5871,6 +5886,7 @@ export class DomEditor extends LitElement {
           @storage-location-change=${this.handleStorageLocationChange}
           @backend-login-request=${this.loginToBackend}
           @backend-admin-request=${this.openBackendAdmin}
+          @ai-toolbox-change=${this.handleAIToolboxChange}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-expand=${this.handleRibbonExpand}
           @breadcrumb-visibility-change=${this.handleRibbonBreadcrumbVisibilityChange}
@@ -5955,6 +5971,7 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
+        .disableAI=${this.settings.disableAI}
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
@@ -5966,7 +5983,8 @@ export class DomEditor extends LitElement {
         .consoleOpen=${this.consoleOpen}
         .htmlPending=${this.htmlPending}
         .table=${this.tableSelection}
-        ?hidden=${!this.breadcrumbVisible || this.previewActive || this.liveSessionActive}
+        .aiSidebar=${!this.breadcrumbVisible && this.aiToolboxOpen}
+        ?hidden=${(!this.breadcrumbVisible && !this.aiToolboxOpen) || this.previewActive || this.liveSessionActive}
         @toolbox-change=${this.handleToolboxChange}
         @document-layout-change=${this.handleDocumentLayoutChange}
         @developer-console-change=${this.handleDeveloperConsoleChange}

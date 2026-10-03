@@ -910,19 +910,19 @@ describe("DomEditor iframe setup", () => {
     expect(getComputedStyle(ribbon.shadowRoot!.querySelector(".login-button")!).display).toBe("none")
   })
 
-  it("collapses the expanded AI bar when the editor receives a pointer", async () => {
+  it("keeps the AI toolbox open when the editor receives a pointer", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
 
     expand.click()
     await ribbon.updateComplete
-    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")?.hasAttribute("data-open")).toBe(true)
+    expect(ribbon.aiChatOpen).toBe(true)
 
     iframe.contentDocument!.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true}))
     await ribbon.updateComplete
 
-    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")?.hasAttribute("data-open")).toBe(false)
+    expect(ribbon.aiChatOpen).toBe(true)
   })
 
   it("routes in-document AI review buttons to the ribbon", async () => {
@@ -5419,6 +5419,91 @@ describe("DomEditor.execute()", () => {
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "hoverNode", path: []})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "hoverNode", path: null})
+  })
+
+  it("hides the AI bar, tab, and open sidebar when AI is disabled in settings", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Settings"]')!.click()
+    await ribbon.updateComplete
+    const panel = ribbon.shadowRoot!.querySelector("settings-panel")!
+    toolbox.selectTool("AI")
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.hidden).toBe(false)
+    panel.dispatchEvent(new CustomEvent("settings-change", {detail: {...ribbon.settings, disableAI: true}, bubbles: true, composed: true}))
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await toolbox.updateComplete
+    await editor.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[data-tool="AI"]')).toBeNull()
+    expect(toolbox.activeTool).toBeNull()
+    expect(toolbox.hidden).toBe(true)
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).disableAI).toBe(true)
+    panel.dispatchEvent(new CustomEvent("settings-change", {detail: {...ribbon.settings, disableAI: false}, bubbles: true, composed: true}))
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await toolbox.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[data-tool="AI"]')).not.toBeNull()
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    expect(getComputedStyle(toolbox).width).toBe("216px")
+  })
+
+  it("opens AI in the toolbox or a closable sidebar and synchronizes the prompt", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    await toolbox.updateComplete
+    await ribbon.updateComplete
+    expect([...toolbox.shadowRoot!.querySelectorAll("[role=tab]")].map(tab => tab.getAttribute("data-tool"))).toEqual(["Edit", "AI", "Review"])
+    toolbox.selectTool("AI")
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await toolbox.updateComplete
+    expect(ribbon.aiChatOpen).toBe(true)
+    expect(toolbox.hidden).toBe(false)
+    const bar = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    const chat = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-toolbox-content textarea")!
+    bar.value = "Help with my document"
+    bar.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await ribbon.updateComplete
+    expect(chat.value).toBe(bar.value)
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.aiSidebar).toBe(true)
+    expect(toolbox.hidden).toBe(false)
+    expect(toolbox.activeTool).toBe("AI")
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close Ask AI"]')!.click()
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect(toolbox.hidden).toBe(true)
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!.click()
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("AI")
+    expect(toolbox.hidden).toBe(false)
+    expect(chat.value).toBe(bar.value)
+    ribbon.expanded = true
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.aiSidebar).toBe(false)
+    toolbox.selectTool("Edit")
+    await ribbon.updateComplete
+    expect(ribbon.aiChatOpen).toBe(false)
   })
 
   it("hides the breadcrumb when the ribbon is collapsed", async () => {

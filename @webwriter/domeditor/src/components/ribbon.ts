@@ -1,5 +1,6 @@
 import {layoutPreviewStyles} from "./template-preview"
-import {css, html} from "lit"
+import {css, html, nothing, render} from "lit"
+import {aiChatStyles} from "./ai-chat.styles"
 import {version} from "../../package.json"
 import {
   requestsReadOnlyAI,
@@ -138,8 +139,8 @@ export class AppRibbon extends EditingControls {
     liveLearners: {attribute: false},
     storageLocation: {type: String, state: true},
     aiPrompt: {type: String, state: true},
-    aiChatOpen: {type: Boolean, state: true},
-    aiChatTransitioning: {type: Boolean, state: true},
+    aiChatOpen: {type: Boolean, attribute: false},
+    aiToolboxTarget: {attribute: false},
     aiChats: {attribute: false, state: true},
     activeAIChatId: {type: String, state: true},
     aiModel: {type: String, state: true},
@@ -385,926 +386,7 @@ export class AppRibbon extends EditingControls {
       anchor-name: --ai-bar-slot;
     }
 
-    .ai-prompt-input {
-      box-sizing: border-box;
-      flex: 1 1 auto;
-      width: 100%;
-      min-width: 0;
-      height: 100%;
-      min-height: 0;
-      padding: 2px 43px 2px 1.7rem;
-      border: 0;
-      outline: 0;
-      color: #2f3742;
-      background: transparent;
-      font: inherit;
-      font-size: 0.75rem;
-      line-height: 16px;
-      overflow: hidden;
-      resize: none;
-      transition: var(--ww-ui-transition,
-        min-height 220ms ease,
-        padding 220ms ease,
-        border-color 220ms ease,
-        border-radius 220ms ease);
-    }
-
-    .ai-prompt-input::placeholder {
-      color: #7d8998;
-    }
-
-    .ai-prompt-submit,
-    .ai-prompt-expand {
-      box-sizing: border-box;
-      display: grid;
-      position: absolute;
-      z-index: 2;
-      place-items: center;
-      width: 18px;
-      height: 18px;
-      padding: 3px;
-      border: 0;
-      border-radius: 50%;
-      color: #ffffff;
-      background: #3977c7;
-      cursor: pointer;
-      transition: var(--ww-ui-transition, background-color 120ms ease, color 120ms ease);
-    }
-
-    .ai-prompt-submit {
-      right: 22px;
-      bottom: 1px;
-    }
-
-    .ai-prompt-expand {
-      right: 2px;
-      bottom: 1px;
-      padding: 0;
-      color: #526b86;
-      background: transparent;
-    }
-
-    .ai-prompt-submit:hover {
-      background: #1e4f87;
-    }
-
-    .ai-prompt-expand:hover {
-      color: #1e4f87;
-      background: #e8eef5;
-    }
-
-    .ai-prompt-submit:focus-visible,
-    .ai-prompt-expand:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 2px;
-    }
-
-    .ai-prompt-submit:disabled {
-      color: #7d8998;
-      background: #e0e5eb;
-      cursor: default;
-    }
-
-    .ai-prompt-submit svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    .ai-prompt-expand-chevron {
-      display: block;
-      width: 0.32rem;
-      height: 0.32rem;
-      border-right: 1.5px solid currentColor;
-      border-bottom: 1.5px solid currentColor;
-      transform: translateY(-1px) rotate(45deg);
-      transition: var(--ww-ui-transition, transform 120ms ease);
-    }
-
-    .ai-prompt-expand[aria-expanded="true"] .ai-prompt-expand-chevron {
-      transform: translateY(1px) rotate(225deg);
-    }
-
-    .ai-chat-panel {
-      box-sizing: border-box;
-      display: block;
-      position: absolute;
-      z-index: 10;
-      top: 8px;
-      right: 7rem;
-      width: min(600px, calc(100vw - 1rem));
-      min-width: 24px;
-      max-width: 600px;
-      height: min(32rem, calc(100vh - 1rem));
-      max-height: var(--ribbon-compact-bar-height);
-      overflow: hidden;
-      border: 1px solid #c8d2df;
-      border-radius: 1rem;
-      color: #2f3742;
-      background: #ffffff;
-      box-shadow: 0 0 0 rgb(0 0 0 / 0%);
-      container-type: inline-size;
-      transition: var(--ww-ui-transition, border-color 120ms ease);
-    }
-
-    .ai-chat-panel[data-transitioning] {
-      transition: var(--ww-ui-transition,
-        width 220ms ease,
-        min-width 220ms ease,
-        right 220ms ease,
-        max-height 220ms ease,
-        border-color 120ms ease,
-        border-radius 220ms ease,
-        box-shadow 220ms ease);
-    }
-
-    .ai-chat-panel:hover,
-    .ai-chat-panel:focus-within {
-      border-color: #3977c7;
-    }
-
-    .ai-chat-panel:focus-within {
-      box-shadow: 0 0 0 1px #3977c7;
-    }
-
-    .ai-chat-panel[data-open] {
-      min-width: 400px;
-      max-height: min(32rem, calc(100vh - 1rem));
-      border-color: #a8b4c2;
-      border-radius: 0.65rem;
-      box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 20%);
-    }
-
-    .ai-chat-panel[hidden] {
-      display: none;
-    }
-
-    @container (max-width: 124px) {
-      .ai-chat-panel:not([data-open]) .ai-chat-composer {
-        visibility: hidden;
-        opacity: 0;
-        pointer-events: none;
-      }
-    }
-
-    @supports (top: anchor(top)) {
-      .ai-chat-panel {
-        position-anchor: --ai-bar-slot;
-        top: calc(anchor(top) + 8px);
-        right: anchor(right);
-        left: auto;
-        width: anchor-size(width);
-      }
-
-      .ai-chat-panel[data-open] {
-        width: clamp(400px, anchor-size(width), 600px);
-      }
-    }
-
-    @media (max-width: 34rem) {
-      .ai-chat-panel[data-open] {
-        right: 0.5rem;
-      }
-    }
-
-    @media (max-width: 26rem) {
-      .ai-chat-panel[data-open] {
-        width: calc(100vw - 1rem);
-        min-width: calc(100vw - 1rem);
-      }
-    }
-
-    .ai-chat-brand-button {
-      box-sizing: border-box;
-      display: grid;
-      position: absolute;
-      z-index: 3;
-      top: 1px;
-      left: 2px;
-      place-items: center;
-      width: 20px;
-      height: 20px;
-      padding: 2px;
-      border: 0;
-      border-radius: 50%;
-      color: #3977c7;
-      background: transparent;
-      cursor: pointer;
-      transition: var(--ww-ui-transition,
-        top 220ms ease,
-        left 220ms ease,
-        width 220ms ease,
-        height 220ms ease,
-        background-color 120ms ease);
-    }
-
-    .ai-chat-brand-button:hover {
-      color: #1e4f87;
-      background: #e8eef5;
-    }
-
-    .ai-chat-brand-button:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 1px;
-    }
-
-    .ai-chat-brand-icon,
-    .ai-chat-brand-icon svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    .ai-chat-panel[data-open] .ai-chat-brand-button {
-      top: 0.55rem;
-      left: 0.55rem;
-      width: 2rem;
-      height: 2rem;
-      padding: 0.4rem;
-      border: 0;
-      border-radius: 50%;
-      background: transparent;
-    }
-
-    .ai-chat-header {
-      box-sizing: border-box;
-      display: flex;
-      position: absolute;
-      top: 0;
-      right: 0;
-      left: 0;
-      align-items: center;
-      gap: 0.4rem;
-      height: 3.25rem;
-      min-width: 0;
-      padding: 0.55rem 0.55rem 0.55rem 3rem;
-      border-bottom: 1px solid #d8dee6;
-      background: #f7f9fb;
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(-0.5rem);
-      transition: var(--ww-ui-transition, opacity 150ms ease, transform 220ms ease);
-    }
-
-    .ai-chat-panel[data-open] .ai-chat-header {
-      opacity: 1;
-      pointer-events: auto;
-      transform: translateY(0);
-    }
-
-    .ai-chat-switcher {
-      box-sizing: border-box;
-      flex: 1 1 auto;
-      min-width: 0;
-      height: 2rem;
-      appearance: none;
-      padding: 0 2.35rem 0 0.55rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.35rem;
-      color: #2f3742;
-      background: #ffffff;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23526b86' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-      background-position: right 0.75rem center;
-      background-repeat: no-repeat;
-      background-size: 1rem;
-      font: inherit;
-      font-size: 0.72rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .ai-chat-switcher:focus {
-      border-color: #3977c7;
-      outline: 1px solid #3977c7;
-    }
-
-    .ai-chat-header-button {
-      box-sizing: border-box;
-      display: flex;
-      flex: 0 0 auto;
-      align-items: center;
-      justify-content: center;
-      gap: 0.3rem;
-      height: 2rem;
-      padding: 0 0.55rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.35rem;
-      color: #526b86;
-      background: #ffffff;
-      font: inherit;
-      font-size: 0.68rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .ai-chat-header-button:hover {
-      color: #1e4f87;
-      border-color: #8eb6df;
-      background: #eef4fb;
-    }
-
-    .ai-chat-header-button:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 1px;
-    }
-
-    .ai-chat-header-button:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .ai-chat-new-icon,
-    .ai-chat-new-icon svg,
-    .ai-chat-settings-icon,
-    .ai-chat-settings-icon svg {
-      display: block;
-      width: 0.9rem;
-      height: 0.9rem;
-    }
-
-    .ai-chat-messages {
-      display: flex;
-      flex-direction: column;
-      position: absolute;
-      top: 3.25rem;
-      right: 0;
-      bottom: 7rem;
-      left: 0;
-      gap: 0.75rem;
-      min-height: 0;
-      overflow: auto;
-      padding: 1rem;
-      scrollbar-width: thin;
-      background: #ffffff;
-      opacity: 0;
-      pointer-events: none;
-      transition: var(--ww-ui-transition, opacity 140ms ease 40ms);
-    }
-
-    .ai-chat-panel[data-open] .ai-chat-messages {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .ai-chat-empty {
-      display: grid;
-      flex: 1 1 auto;
-      place-items: center;
-      min-height: 8rem;
-      color: #7d8998;
-      font-size: 0.75rem;
-      text-align: center;
-    }
-
-    .ai-chat-message {
-      box-sizing: border-box;
-      max-width: 85%;
-      padding: 0.55rem 0.7rem;
-      border: 1px solid #d8dee6;
-      border-radius: 0.65rem;
-      color: #2f3742;
-      background: #f5f7fa;
-      font-size: 0.76rem;
-      line-height: 1.35;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-
-    .ai-chat-message[data-role="user"] {
-      align-self: flex-end;
-      color: #163f70;
-      border-color: #bdd5ef;
-      background: #eaf3fd;
-      border-bottom-right-radius: 0.2rem;
-    }
-
-    .ai-chat-message[data-role="assistant"] {
-      align-self: flex-start;
-      border-bottom-left-radius: 0.2rem;
-    }
-
-    .ai-chat-message[data-role="event"] {
-      align-self: stretch;
-      max-width: none;
-      color: #4c1d95;
-      border-color: #c4b5fd;
-      background: #faf5ff;
-    }
-
-    .ai-chat-message-role {
-      display: block;
-      margin-bottom: 0.25rem;
-      color: #667085;
-      font-size: 0.58rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-
-    .ai-message-attachments {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.25rem;
-      margin-top: 0.45rem;
-    }
-
-    .ai-message-attachment {
-      max-width: 12rem;
-      overflow: hidden;
-      padding: 0.15rem 0.35rem;
-      border-radius: 999px;
-      color: #526b86;
-      background: rgb(255 255 255 / 68%);
-      font-size: 0.62rem;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .ai-chat-error,
-    .ai-edit-approval {
-      align-self: stretch;
-      padding: 0.65rem 0.75rem;
-      border: 1px solid #fecaca;
-      border-radius: 0.55rem;
-      color: #991b1b;
-      background: #fef2f2;
-      font-size: 0.72rem;
-      line-height: 1.4;
-    }
-
-    .ai-edit-approval {
-      border-color: #facc15;
-      color: #713f12;
-      background: #fefce8;
-    }
-
-    .ai-edit-approval strong,
-    .ai-edit-approval span {
-      display: block;
-    }
-
-    .ai-edit-preview {
-      margin: 0.5rem 0;
-    }
-
-    .ai-edit-preview summary {
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .ai-edit-preview pre {
-      max-height: 10rem;
-      overflow: auto;
-      margin: 0.4rem 0 0;
-      padding: 0.5rem;
-      border-radius: 0.35rem;
-      color: #334155;
-      background: #ffffff;
-      font: 0.65rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
-      white-space: pre-wrap;
-    }
-
-    .ai-edit-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.4rem;
-      margin-top: 0.55rem;
-    }
-
-    .ai-edit-action {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.3rem;
-      min-height: 1.8rem;
-      padding: 0.25rem 0.55rem;
-      border: 1px solid #d6a80d;
-      border-radius: 0.35rem;
-      color: #713f12;
-      background: #ffffff;
-      font: inherit;
-      font-size: 0.68rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .ai-edit-action[data-kind="approve"] {
-      border-color: #2563eb;
-      color: #ffffff;
-      background: #2563eb;
-    }
-
-    .ai-edit-action[data-kind="undo"] {
-      border-color: #7c3aed;
-      color: #ffffff;
-      background: #7c3aed;
-    }
-
-    .ai-edit-action svg {
-      width: 0.85rem;
-      height: 0.85rem;
-    }
-
-    .ai-edit-action:disabled {
-      opacity: 0.55;
-      cursor: default;
-    }
-
-    .ai-chat-working {
-      align-self: flex-start;
-      color: #64748b;
-      font-size: 0.68rem;
-    }
-
-    .ai-prompt-review-actions {
-      box-sizing: border-box;
-      display: flex;
-      position: absolute;
-      z-index: 2;
-      right: 22px;
-      bottom: 1px;
-      gap: 2px;
-      height: 18px;
-    }
-
-    .ai-prompt-review-action {
-      box-sizing: border-box;
-      display: grid;
-      place-items: center;
-      width: 18px;
-      height: 18px;
-      padding: 2px;
-      border: 0;
-      border-radius: 50%;
-      color: #6b21a8;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .ai-prompt-review-action[data-kind="approve"] {
-      color: #ffffff;
-      background: #7c3aed;
-    }
-
-    .ai-prompt-review-action:hover,
-    .ai-prompt-review-action:focus-visible {
-      background: #ede9fe;
-      outline: none;
-    }
-
-    .ai-prompt-review-action[data-kind="approve"]:hover,
-    .ai-prompt-review-action[data-kind="approve"]:focus-visible {
-      background: #6d28d9;
-    }
-
-    .ai-prompt-review-action:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .ai-prompt-review-action svg {
-      width: 100%;
-      height: 100%;
-    }
-
-    .ai-composer-surface[data-review-pending] .ai-prompt-input {
-      padding-right: 82px;
-      color: #6b21a8;
-      background: #faf5ff;
-    }
-
-    .ai-chat-composer {
-      box-sizing: border-box;
-      display: flex;
-      position: absolute;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      align-items: center;
-      height: 22px;
-      padding: 0;
-      border-top: 0 solid transparent;
-      background: #ffffff;
-      visibility: visible;
-      opacity: 1;
-      transition: var(--ww-ui-transition,
-        height 220ms ease,
-        padding 220ms ease,
-        border-color 220ms ease,
-        background-color 220ms ease,
-        visibility 120ms ease,
-        opacity 120ms ease);
-    }
-
-    .ai-chat-panel[data-open] .ai-chat-composer {
-      align-items: stretch;
-      height: 7rem;
-      padding: 0.65rem 2.35rem 0.65rem 0.65rem;
-      border-top-width: 1px;
-      border-top-color: #d8dee6;
-      background: #f7f9fb;
-    }
-
-    .ai-composer-surface {
-      box-sizing: border-box;
-      display: flex;
-      flex: 1 1 auto;
-      position: relative;
-      min-width: 0;
-      height: 100%;
-      overflow: hidden;
-      border: 1px solid transparent;
-      border-radius: 0.5rem;
-      background: transparent;
-      transition: var(--ww-ui-transition, border-color 220ms ease, background-color 220ms ease);
-    }
-
-    .ai-chat-panel[data-open] .ai-composer-surface {
-      border: 1px solid #c8d2df;
-      background: #ffffff;
-    }
-
-    .ai-chat-panel[data-open] .ai-composer-surface:focus-within {
-      border-color: #3977c7;
-      box-shadow: 0 0 0 1px #3977c7;
-    }
-
-    .ai-chat-panel[data-open] .ai-prompt-input {
-      padding: 0.55rem 0.65rem 2.2rem;
-      line-height: 1.35;
-      overflow: auto;
-    }
-
-    .ai-chat-panel[data-open] .ai-composer-surface[data-has-attachments] .ai-prompt-input {
-      padding-top: 2.15rem;
-    }
-
-    .ai-chat-panel[data-open] .ai-prompt-submit {
-      right: 0.35rem;
-      bottom: 0.35rem;
-      width: 18px;
-      height: 18px;
-      padding: 3px;
-    }
-
-    .ai-chat-panel[data-open] .ai-prompt-expand {
-      right: 0.35rem;
-      bottom: 0.75rem;
-    }
-
-    .ai-composer-toolbar {
-      box-sizing: border-box;
-      display: flex;
-      position: absolute;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      align-items: center;
-      gap: 0.2rem;
-      height: 1.9rem;
-      min-width: 0;
-      padding: 0.2rem 1.9rem 0.25rem 0.35rem;
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(0.25rem);
-      transition: var(--ww-ui-transition, opacity 140ms ease 40ms, transform 220ms ease);
-    }
-
-    .ai-pending-attachments {
-      display: flex;
-      position: absolute;
-      top: 0.25rem;
-      right: 0.3rem;
-      left: 0.3rem;
-      gap: 0.25rem;
-      min-width: 0;
-      overflow-x: auto;
-      scrollbar-width: thin;
-      z-index: 1;
-    }
-
-    .ai-pending-attachment {
-      display: flex;
-      flex: 0 0 auto;
-      align-items: center;
-      max-width: 11rem;
-      height: 1.45rem;
-      padding: 0 0.15rem 0 0.4rem;
-      border: 1px solid #cbd5e1;
-      border-radius: 999px;
-      color: #475569;
-      background: #f8fafc;
-      font-size: 0.62rem;
-    }
-
-    .ai-pending-attachment-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .ai-attachment-remove {
-      display: grid;
-      flex: 0 0 1.1rem;
-      place-items: center;
-      width: 1.1rem;
-      height: 1.1rem;
-      margin-left: 0.15rem;
-      padding: 0;
-      border: 0;
-      border-radius: 50%;
-      color: #64748b;
-      background: transparent;
-      font: inherit;
-      cursor: pointer;
-    }
-
-    .ai-attachment-remove:hover,
-    .ai-attachment-remove:focus-visible {
-      color: #0f172a;
-      background: #e2e8f0;
-      outline: none;
-    }
-
-    .ai-attachment-input {
-      display: none;
-    }
-
-    .ai-chat-panel[data-open] .ai-composer-toolbar {
-      opacity: 1;
-      pointer-events: auto;
-      transform: translateY(0);
-    }
-
-    .ai-composer-attachment {
-      box-sizing: border-box;
-      display: grid;
-      flex: 0 0 1.45rem;
-      place-items: center;
-      width: 1.45rem;
-      height: 1.45rem;
-      padding: 0.25rem;
-      border: 0;
-      border-radius: 0.3rem;
-      color: #526b86;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .ai-composer-attachment:hover {
-      color: #1e4f87;
-      background: #e8eef5;
-    }
-
-    .ai-composer-attachment:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 0;
-    }
-
-    .ai-composer-attachment:disabled,
-    .ai-composer-select:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .ai-composer-attachment-icon,
-    .ai-composer-attachment-icon svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    .ai-composer-select {
-      box-sizing: border-box;
-      flex: 0 1 auto;
-      min-width: 0;
-      max-width: 8rem;
-      height: 1.45rem;
-      padding: 0 1.15rem 0 0.3rem;
-      border: 0;
-      border-radius: 0.3rem;
-      color: #526b86;
-      background: transparent;
-      font: inherit;
-      font-size: 0.62rem;
-      cursor: pointer;
-    }
-
-    .ai-composer-model-control {
-      display: flex;
-      position: relative;
-      flex: 0 1 auto;
-      min-width: 0;
-      max-width: 8rem;
-    }
-
-    .ai-composer-selects {
-      display: flex;
-      flex: 0 1 auto;
-      align-items: center;
-      gap: 0.2rem;
-      min-width: 0;
-      margin-left: auto;
-    }
-
-    .ai-composer-model-control .ai-composer-select {
-      width: 100%;
-      max-width: none;
-      appearance: none;
-      color: transparent;
-    }
-
-    .ai-composer-model-control::after {
-      box-sizing: border-box;
-      display: block;
-      position: absolute;
-      top: 50%;
-      right: 0.35rem;
-      width: 0.32rem;
-      height: 0.32rem;
-      border-right: 1.5px solid #526b86;
-      border-bottom: 1.5px solid #526b86;
-      content: "";
-      pointer-events: none;
-      transform: translateY(-65%) rotate(45deg);
-    }
-
-    .ai-composer-model-control .ai-composer-select option {
-      color: #526b86;
-    }
-
-    .ai-composer-model-label {
-      display: flex;
-      position: absolute;
-      inset: 0 1.15rem 0 0.3rem;
-      align-items: center;
-      overflow: hidden;
-      color: #526b86;
-      font: inherit;
-      font-size: 0.62rem;
-      pointer-events: none;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .ai-composer-model-control[data-disabled] .ai-composer-model-label {
-      opacity: 0.5;
-    }
-
-    .ai-composer-model-control[data-disabled]::after {
-      opacity: 0.5;
-    }
-
-    .ai-composer-select[data-kind="effort"] {
-      max-width: 7rem;
-    }
-
-    .ai-composer-select:focus {
-      outline: 1px solid #3977c7;
-    }
-
-    .ai-stop-icon {
-      display: block;
-      width: 0.55rem;
-      height: 0.55rem;
-      border-radius: 0.08rem;
-      background: currentColor;
-    }
-
-    @media (max-width: 42rem) {
-      .ai-chat-header-button-label {
-        display: none;
-      }
-
-      .ai-chat-header-button {
-        width: 2rem;
-        padding: 0;
-      }
-    }
-
-    @media (max-width: 28rem) {
-      .ribbon-top {
-        gap: 0;
-      }
-
-      .ai-chat-header {
-        gap: 0.25rem;
-      }
-
-      .ai-chat-header-button,
-      .ai-chat-panel[data-open] .ai-chat-brand-button {
-        width: 1.75rem;
-        height: 1.75rem;
-      }
-
-      .ai-chat-switcher {
-        height: 1.75rem;
-      }
-
-      .ai-composer-toolbar {
-        gap: 0.1rem;
-      }
-    }
+    ${aiChatStyles}
 
     .document-dialog {
       box-sizing: border-box;
@@ -2018,11 +1100,10 @@ export class AppRibbon extends EditingControls {
 
   private aiPrompt = ""
 
-  private aiChatOpen = false
+  aiChatOpen = false
+  aiToolboxTarget: HTMLElement | null = null
 
-  private aiChatTransitioning = false
 
-  private aiChatTransitionTimer: ReturnType<typeof setTimeout> | undefined
 
   private aiChats: AIChat[] = [{id: "chat-1", title: "New chat", messages: []}]
 
@@ -2115,13 +1196,6 @@ export class AppRibbon extends EditingControls {
   }
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
-    if(this.aiChatOpen) {
-      const path = event.composedPath()
-      const panel = this.renderRoot.querySelector(".ai-chat-panel")
-      if(!path.includes(panel as EventTarget)) {
-        this.closeAIChat()
-      }
-    }
     if(!this.menuOpen) return
 
     const menu = this.renderRoot.querySelector("ribbon-menu")
@@ -2140,13 +1214,11 @@ export class AppRibbon extends EditingControls {
   }
 
   disconnectedCallback() {
+    if(this.aiToolboxTarget) render(nothing, this.aiToolboxTarget)
     this.aiProviderStore.removeEventListener("change", this.handleAIProviderChange)
     void this.cancelAIWork()
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
     this.previewTransitionTimer = undefined
-    if(this.aiChatTransitionTimer !== undefined) clearTimeout(this.aiChatTransitionTimer)
-    this.aiChatTransitionTimer = undefined
-    this.aiChatTransitioning = false
     if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
     if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
     if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
@@ -2272,7 +1344,6 @@ export class AppRibbon extends EditingControls {
     }
     this.activeMenu = "Start"
     this.menuOpen = false
-    this.closeAIChat()
   }
 
   private updateAIPrompt(event: Event) {
@@ -2314,7 +1385,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private scrollAIChatToEnd() {
-    const messages = this.renderRoot.querySelector<HTMLElement>(".ai-chat-messages")
+    const messages = (this.aiToolboxTarget ?? this.renderRoot).querySelector<HTMLElement>(".ai-chat-messages")
     if(messages) messages.scrollTop = messages.scrollHeight
   }
 
@@ -2377,37 +1448,23 @@ export class AppRibbon extends EditingControls {
   }
 
   private toggleAIChat = () => {
+    if(this.settings.disableAI) return
     if(this.aiChatOpen) {
       this.closeAIChat(true)
       return
     }
-    this.startAIChatTransition()
     this.aiChatOpen = true
     void this.updateComplete.then(() => {
-      this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
+      (this.aiToolboxTarget ?? this.renderRoot).querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
     })
   }
 
   private closeAIChat(restoreFocus = false) {
     if(!this.aiChatOpen) return
-    this.startAIChatTransition()
     this.aiChatOpen = false
     if(restoreFocus) void this.updateComplete.then(() => {
       this.renderRoot.querySelector<HTMLButtonElement>(".ai-prompt-expand")?.focus()
     })
-  }
-
-  dismissAIChat() {
-    this.closeAIChat()
-  }
-
-  private startAIChatTransition() {
-    if(this.aiChatTransitionTimer !== undefined) clearTimeout(this.aiChatTransitionTimer)
-    this.aiChatTransitioning = true
-    this.aiChatTransitionTimer = setTimeout(() => {
-      this.aiChatTransitionTimer = undefined
-      this.aiChatTransitioning = false
-    }, uiMotionDisabled(this) ? 0 : 220)
   }
 
   private startNewAIChat = () => {
@@ -2418,7 +1475,7 @@ export class AppRibbon extends EditingControls {
     this.activeAIChatId = id
     this.aiPrompt = ""
     void this.updateComplete.then(() => {
-      this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
+      (this.aiToolboxTarget ?? this.renderRoot).querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
     })
   }
 
@@ -2462,7 +1519,8 @@ export class AppRibbon extends EditingControls {
 
   private chooseAIAttachments = () => {
     this.dispatchAIBarAction("attachments")
-    this.renderRoot.querySelector<HTMLInputElement>(".ai-attachment-input")?.click()
+    const root = this.aiToolboxTarget ?? this.renderRoot
+    root.querySelector<HTMLInputElement>(".ai-attachment-input")?.click()
   }
 
   private attachmentDataURL(file: File) {
@@ -2702,6 +1760,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private async runAIPrompt(prompt: string) {
+    if(this.settings.disableAI) return
     if(this.pendingAIEdit) {
       this.aiError = "Accept or reject the pending document change before continuing the chat."
       return
@@ -2795,6 +1854,10 @@ export class AppRibbon extends EditingControls {
 
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
+    if(changed.has("settings") && this.settings.disableAI) {
+      this.closeAIChat()
+      void this.cancelAIWork()
+    }
     const previewActiveChanged = changed.has("previewActive") && changed.get("previewActive") !== undefined
     if(previewActiveChanged) {
       this.previewTransitioning = true
@@ -2822,6 +1885,10 @@ export class AppRibbon extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    const previousTarget = changed.get("aiToolboxTarget") as HTMLElement | null | undefined
+    if(previousTarget && previousTarget !== this.aiToolboxTarget) render(nothing, previousTarget)
+    if(this.aiToolboxTarget) render(this.settings.disableAI ? nothing : this.renderAIChat(true), this.aiToolboxTarget, {host: this})
+    if(changed.has("aiChatOpen")) this.dispatchEvent(new CustomEvent("ai-toolbox-change", {detail: {open: this.aiChatOpen}, bubbles: true, composed: true}))
     if(changed.has("backendClient")) void this.connectAIBackend(this.backendClient)
     if(changed.has("previewActive") && changed.get("previewActive") !== undefined) {
       this.schedulePreviewTransitionEnd()
@@ -3903,13 +2970,245 @@ export class AppRibbon extends EditingControls {
     `
   }
 
-  render() {
-    const visibleTabs = this.previewActive ? ["File"] : menuTabs
+  private renderAIChat(expanded: boolean) {
     const activeProvider = this.activeAIProvider
     const selectedModelValue = activeProvider && this.aiModel
       ? JSON.stringify([activeProvider.id, this.aiModel])
       : ""
     const modelCount = this.aiProviders.reduce((count, provider) => count + provider.models.length, 0)
+    const historyPreviewPending = this.historyState.preview !== null
+    return html`
+        <section
+          id=${expanded ? "ai-toolbox-chat" : "ai-chat-panel"}
+          class="ai-chat-panel"
+          role=${expanded ? "region" : "presentation"}
+          aria-label="AI chat"
+          ?data-open=${expanded}
+          ?hidden=${this.previewActive}
+          ?inert=${historyPreviewPending}
+        >
+          <button
+            class="ai-chat-brand-button"
+            type="button"
+            aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
+            title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
+            aria-expanded=${this.aiChatOpen}
+            aria-controls="ai-toolbox-chat"
+            @click=${this.toggleAIChat}
+          ><span class="ai-chat-brand-icon" aria-hidden="true">${ribbonIcon("AI")}</span></button>
+          <header class="ai-chat-header" ?hidden=${!expanded} ?inert=${!expanded || Boolean(this.pendingAIEdit)}>
+            <select
+              class="ai-chat-switcher"
+              aria-label="Current AI chat"
+              data-ribbon-input-persistent
+              .value=${this.activeAIChatId}
+              ?disabled=${this.aiBusy}
+              @change=${this.switchAIChat}
+            >${this.aiChats.map(chat => html`
+              <option value=${chat.id}>${chat.title}</option>
+            `)}</select>
+            <button
+              class="ai-chat-header-button"
+              type="button"
+              aria-label="New chat"
+              title="New chat"
+              ?disabled=${this.aiBusy}
+              @click=${this.startNewAIChat}
+            >
+              <span class="ai-chat-new-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
+              <span class="ai-chat-header-button-label">New chat</span>
+            </button>
+            <button
+              class="ai-chat-header-button ai-chat-settings-button"
+              type="button"
+              aria-label="AI settings"
+              title="AI settings"
+              ?disabled=${Boolean(this.pendingAIEdit)}
+              @click=${this.showAISettings}
+            ><span class="ai-chat-settings-icon" aria-hidden="true">${ribbonIcon("AISettings")}</span></button>
+          </header>
+          <div
+            class="ai-chat-messages"
+            ?hidden=${!expanded}
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+            ?inert=${!expanded}
+          >
+            ${this.activeAIChat?.messages.length ? this.activeAIChat.messages.map(message => html`
+              <article class="ai-chat-message" data-role=${message.role}>
+                <span class="ai-chat-message-role">${message.role === "user" ? "You" : message.role === "assistant" ? "AI" : "Document change"}</span>
+                ${message.content}
+                ${message.attachments?.length ? html`
+                  <div class="ai-message-attachments" aria-label="Attachments">
+                    ${message.attachments.map(attachment => html`
+                      <span class="ai-message-attachment" title=${attachment.name}>${attachment.name}</span>
+                    `)}
+                  </div>
+                ` : ""}
+                ${message.edit ? html`
+                  <div class="ai-edit-actions" aria-label="Document change actions">
+                    ${message.edit.decision === "accepted" ? html`
+                      <button
+                        class="ai-edit-action"
+                        type="button"
+                        ?disabled=${message.edit.busy || Boolean(this.pendingAIEdit)}
+                        @click=${() => this.gotoProtocolAIEdit(message.edit!)}
+                      >${ribbonIcon("Goto")}<span>Go to</span></button>
+                      <button
+                        class="ai-edit-action"
+                        data-kind="undo"
+                        type="button"
+                        ?disabled=${message.edit.busy || Boolean(this.pendingAIEdit)}
+                        @click=${() => this.undoProtocolAIEdit(message.id, message.edit!)}
+                      >${ribbonIcon("Undo")}<span>${message.edit.busy ? "Undoing…" : "Undo change"}</span></button>
+                    ` : ""}
+                  </div>
+                ` : ""}
+              </article>
+            `) : html`<div class="ai-chat-empty">${this.aiProviders.length
+              ? "Start a conversation with your AI model."
+              : "Open AI settings to connect a provider."}</div>`}
+            ${this.pendingAIEdit?.chatId === this.activeAIChatId ? html`
+              <section class="ai-edit-approval" aria-label="Proposed document edit">
+                <strong>${this.pendingAIEdit.previewing ? "Preparing document preview…" : "Review document change"}</strong>
+                <span>${this.pendingAIEdit.summary}</span>
+                <div class="ai-edit-actions">
+                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}<span>Reject</span></button>
+                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}<span>Go to</span></button>
+                  <button class="ai-edit-action" data-kind="approve" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>
+                    ${ribbonIcon("Accept")}<span>${this.pendingAIEdit.deciding ? "Saving…" : "Accept"}</span>
+                  </button>
+                </div>
+              </section>
+            ` : ""}
+            ${this.aiBusy && !this.pendingAIEdit ? html`<div class="ai-chat-working" role="status">${this.aiProgress}</div>` : ""}
+            ${this.aiError ? html`<div class="ai-chat-error" role="alert">${this.aiError}</div>` : ""}
+          </div>
+          <form
+            class="ai-chat-composer"
+            ?inert=${Boolean(this.pendingAIEdit) && expanded}
+            @submit=${this.submitAIPrompt}
+          >
+            <div
+              class="ai-composer-surface"
+              ?data-has-attachments=${this.aiAttachments.length > 0}
+              ?data-review-pending=${Boolean(this.pendingAIEdit) && !expanded}
+            >
+              ${this.aiAttachments.length ? html`
+                <div class="ai-pending-attachments" aria-label="Pending attachments">
+                  ${this.aiAttachments.map(attachment => html`
+                    <span class="ai-pending-attachment" title=${attachment.name}>
+                      <span class="ai-pending-attachment-name">${attachment.name}</span>
+                      <button
+                        class="ai-attachment-remove"
+                        type="button"
+                        aria-label=${`Remove ${attachment.name}`}
+                        @click=${() => this.removeAIAttachment(attachment.id)}
+                      >×</button>
+                    </span>
+                  `)}
+                </div>
+              ` : ""}
+              <textarea
+                class="ai-prompt-input ai-chat-input"
+                aria-label=${expanded ? "Chat message" : "AI prompt"}
+                placeholder=${this.pendingAIEdit ? "Accept or reject the document change…" : expanded ? "Message AI…" : "Ask AI…"}
+                .rows=${expanded ? 3 : 1}
+                autocomplete="off"
+                data-ribbon-input-persistent
+                .value=${this.aiPrompt}
+                ?disabled=${Boolean(this.pendingAIEdit)}
+                @input=${this.updateAIPrompt}
+                @keydown=${this.handleAIChatPromptKeydown}
+              ></textarea>
+              <input
+                class="ai-attachment-input"
+                type="file"
+                multiple
+                accept="image/*,.pdf,.txt,.md,.csv,.json,.html,.css,.js,.mjs,.ts,.xml,.yaml,.yml"
+                @change=${this.addAIAttachments}
+              >
+              <div class="ai-composer-toolbar" ?hidden=${!expanded} ?inert=${!expanded}>
+                <button
+                  class="ai-composer-attachment"
+                  type="button"
+                  aria-label="Add attachments"
+                  title="Attachments"
+                  ?disabled=${this.aiBusy}
+                  @click=${this.chooseAIAttachments}
+                ><span class="ai-composer-attachment-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span></button>
+                <div class="ai-composer-selects">
+                  <div
+                    class="ai-composer-model-control"
+                    ?data-disabled=${this.aiBusy || modelCount === 0}
+                  >
+                    <select
+                      class="ai-composer-select"
+                      aria-label="AI model"
+                      data-kind="model"
+                      data-ribbon-input-persistent
+                      .value=${selectedModelValue}
+                      ?disabled=${this.aiBusy || modelCount === 0}
+                      @change=${this.updateAIModel}
+                    >
+                      ${modelCount === 0 ? html`<option value="">Set up AI…</option>` : ""}
+                      ${this.aiProviders.flatMap(provider => provider.models.map(model => html`
+                        <option value=${JSON.stringify([provider.id, model])}>${model} (${provider.name})</option>
+                      `))}
+                    </select>
+                    <span class="ai-composer-model-label" aria-hidden="true">${this.aiModel || "Set up AI…"}</span>
+                  </div>
+                  <select
+                    class="ai-composer-select"
+                    aria-label="AI effort"
+                    data-kind="effort"
+                    data-ribbon-input-persistent
+                    .value=${this.aiEffort}
+                    ?disabled=${this.aiBusy}
+                    @change=${this.updateAIEffort}
+                  >${aiEfforts.map(effort => html`
+                    <option value=${effort.value} ?selected=${this.aiEffort === effort.value}>${effort.label}</option>
+                  `)}</select>
+                </div>
+              </div>
+              ${this.pendingAIEdit && !expanded ? html`
+                <div class="ai-prompt-review-actions" aria-label="Review pending AI change">
+                  <button class="ai-prompt-review-action" type="button" aria-label="Reject AI change" title="Reject" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}</button>
+                  <button class="ai-prompt-review-action" type="button" aria-label="Go to AI change" title="Go to change" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}</button>
+                  <button class="ai-prompt-review-action" data-kind="approve" type="button" aria-label="Accept AI change" title="Accept" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>${ribbonIcon("Accept")}</button>
+                </div>
+              ` : html`
+                <button
+                  class="ai-prompt-submit ai-chat-send"
+                  type="button"
+                  aria-label=${this.aiBusy ? "Stop AI request" : expanded ? "Send chat message" : "Enter AI prompt"}
+                  title=${this.aiBusy ? "Stop" : expanded ? "Send" : "Enter"}
+                  ?data-busy=${this.aiBusy}
+                  ?disabled=${Boolean(this.pendingAIEdit) || !this.aiBusy && !this.aiPrompt.trim() && this.aiAttachments.length === 0}
+                  @click=${(event: MouseEvent) => this.aiBusy
+                    ? this.stopAIRequest()
+                    : (event.currentTarget as HTMLButtonElement).form?.requestSubmit()}
+                >${this.aiBusy ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
+              `}
+            </div>
+            <button
+              class="ai-prompt-expand"
+              type="button"
+              aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
+              title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
+              aria-expanded=${this.aiChatOpen}
+              aria-controls="ai-toolbox-chat"
+              @click=${this.toggleAIChat}
+            ><span class="ai-prompt-expand-chevron" aria-hidden="true"></span></button>
+          </form>
+        </section>
+    `
+  }
+
+  render() {
+    const fileMenu = menuGroups.File.find(group => group.label === "File")!
+    const visibleTabs = this.previewActive ? ["File"] : menuTabs
     const aiReviewPending = Boolean(this.pendingAIEdit)
     const historyPreviewPending = this.historyState.preview !== null
     return html`
@@ -3978,7 +3277,7 @@ export class AppRibbon extends EditingControls {
                 ` : ""}
               `)}
             </div>
-            ${this.previewActive ? "" : html`<div class="ai-bar-slot" aria-hidden="true"></div>`}
+            ${this.previewActive || this.settings.disableAI ? "" : html`<div class="ai-bar-slot" aria-hidden="true"></div>`}
           </nav>
           <button
             class="login-button"
@@ -4033,231 +3332,7 @@ export class AppRibbon extends EditingControls {
             </button>
           </div>
         </div>
-        <section
-          id="ai-chat-panel"
-          class="ai-chat-panel"
-          role=${this.aiChatOpen ? "region" : "presentation"}
-          aria-label="AI chat"
-          ?data-open=${this.aiChatOpen}
-          ?data-transitioning=${this.aiChatTransitioning}
-          ?hidden=${this.previewActive}
-          ?inert=${historyPreviewPending}
-        >
-          <button
-            class="ai-chat-brand-button"
-            type="button"
-            aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
-            title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
-            aria-expanded=${this.aiChatOpen}
-            aria-controls="ai-chat-panel"
-            @click=${this.toggleAIChat}
-          ><span class="ai-chat-brand-icon" aria-hidden="true">${ribbonIcon("AI")}</span></button>
-          <header class="ai-chat-header" ?inert=${!this.aiChatOpen || Boolean(this.pendingAIEdit)}>
-            <select
-              class="ai-chat-switcher"
-              aria-label="Current AI chat"
-              data-ribbon-input-persistent
-              .value=${this.activeAIChatId}
-              ?disabled=${this.aiBusy}
-              @change=${this.switchAIChat}
-            >${this.aiChats.map(chat => html`
-              <option value=${chat.id}>${chat.title}</option>
-            `)}</select>
-            <button
-              class="ai-chat-header-button"
-              type="button"
-              aria-label="New chat"
-              title="New chat"
-              ?disabled=${this.aiBusy}
-              @click=${this.startNewAIChat}
-            >
-              <span class="ai-chat-new-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
-              <span class="ai-chat-header-button-label">New chat</span>
-            </button>
-            <button
-              class="ai-chat-header-button ai-chat-settings-button"
-              type="button"
-              aria-label="AI settings"
-              title="AI settings"
-              ?disabled=${Boolean(this.pendingAIEdit)}
-              @click=${this.showAISettings}
-            ><span class="ai-chat-settings-icon" aria-hidden="true">${ribbonIcon("AISettings")}</span></button>
-          </header>
-          <div
-            class="ai-chat-messages"
-            role="log"
-            aria-live="polite"
-            aria-relevant="additions"
-            ?inert=${!this.aiChatOpen}
-          >
-            ${this.activeAIChat?.messages.length ? this.activeAIChat.messages.map(message => html`
-              <article class="ai-chat-message" data-role=${message.role}>
-                <span class="ai-chat-message-role">${message.role === "user" ? "You" : message.role === "assistant" ? "AI" : "Document change"}</span>
-                ${message.content}
-                ${message.attachments?.length ? html`
-                  <div class="ai-message-attachments" aria-label="Attachments">
-                    ${message.attachments.map(attachment => html`
-                      <span class="ai-message-attachment" title=${attachment.name}>${attachment.name}</span>
-                    `)}
-                  </div>
-                ` : ""}
-                ${message.edit ? html`
-                  <div class="ai-edit-actions" aria-label="Document change actions">
-                    ${message.edit.decision === "accepted" ? html`
-                      <button
-                        class="ai-edit-action"
-                        type="button"
-                        ?disabled=${message.edit.busy || Boolean(this.pendingAIEdit)}
-                        @click=${() => this.gotoProtocolAIEdit(message.edit!)}
-                      >${ribbonIcon("Goto")}<span>Go to</span></button>
-                      <button
-                        class="ai-edit-action"
-                        data-kind="undo"
-                        type="button"
-                        ?disabled=${message.edit.busy || Boolean(this.pendingAIEdit)}
-                        @click=${() => this.undoProtocolAIEdit(message.id, message.edit!)}
-                      >${ribbonIcon("Undo")}<span>${message.edit.busy ? "Undoing…" : "Undo change"}</span></button>
-                    ` : ""}
-                  </div>
-                ` : ""}
-              </article>
-            `) : html`<div class="ai-chat-empty">${this.aiProviders.length
-              ? "Start a conversation with your AI model."
-              : "Open AI settings to connect a provider."}</div>`}
-            ${this.pendingAIEdit?.chatId === this.activeAIChatId ? html`
-              <section class="ai-edit-approval" aria-label="Proposed document edit">
-                <strong>${this.pendingAIEdit.previewing ? "Preparing document preview…" : "Review document change"}</strong>
-                <span>${this.pendingAIEdit.summary}</span>
-                <div class="ai-edit-actions">
-                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}<span>Reject</span></button>
-                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}<span>Go to</span></button>
-                  <button class="ai-edit-action" data-kind="approve" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>
-                    ${ribbonIcon("Accept")}<span>${this.pendingAIEdit.deciding ? "Saving…" : "Accept"}</span>
-                  </button>
-                </div>
-              </section>
-            ` : ""}
-            ${this.aiBusy && !this.pendingAIEdit ? html`<div class="ai-chat-working" role="status">${this.aiProgress}</div>` : ""}
-            ${this.aiError ? html`<div class="ai-chat-error" role="alert">${this.aiError}</div>` : ""}
-          </div>
-          <form
-            class="ai-chat-composer"
-            ?inert=${Boolean(this.pendingAIEdit) && this.aiChatOpen}
-            @submit=${this.submitAIPrompt}
-          >
-            <div
-              class="ai-composer-surface"
-              ?data-has-attachments=${this.aiAttachments.length > 0}
-              ?data-review-pending=${Boolean(this.pendingAIEdit) && !this.aiChatOpen}
-            >
-              ${this.aiAttachments.length ? html`
-                <div class="ai-pending-attachments" aria-label="Pending attachments">
-                  ${this.aiAttachments.map(attachment => html`
-                    <span class="ai-pending-attachment" title=${attachment.name}>
-                      <span class="ai-pending-attachment-name">${attachment.name}</span>
-                      <button
-                        class="ai-attachment-remove"
-                        type="button"
-                        aria-label=${`Remove ${attachment.name}`}
-                        @click=${() => this.removeAIAttachment(attachment.id)}
-                      >×</button>
-                    </span>
-                  `)}
-                </div>
-              ` : ""}
-              <textarea
-                class="ai-prompt-input ai-chat-input"
-                aria-label=${this.aiChatOpen ? "Chat message" : "AI prompt"}
-                placeholder=${this.pendingAIEdit ? "Accept or reject the document change…" : this.aiChatOpen ? "Message AI…" : "Ask AI…"}
-                .rows=${this.aiChatOpen ? 3 : 1}
-                autocomplete="off"
-                data-ribbon-input-persistent
-                .value=${this.aiPrompt}
-                ?disabled=${Boolean(this.pendingAIEdit)}
-                @input=${this.updateAIPrompt}
-                @keydown=${this.handleAIChatPromptKeydown}
-              ></textarea>
-              <input
-                class="ai-attachment-input"
-                type="file"
-                multiple
-                accept="image/*,.pdf,.txt,.md,.csv,.json,.html,.css,.js,.mjs,.ts,.xml,.yaml,.yml"
-                @change=${this.addAIAttachments}
-              >
-              <div class="ai-composer-toolbar" ?inert=${!this.aiChatOpen}>
-                <button
-                  class="ai-composer-attachment"
-                  type="button"
-                  aria-label="Add attachments"
-                  title="Attachments"
-                  ?disabled=${this.aiBusy}
-                  @click=${this.chooseAIAttachments}
-                ><span class="ai-composer-attachment-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span></button>
-                <div class="ai-composer-selects">
-                  <div
-                    class="ai-composer-model-control"
-                    ?data-disabled=${this.aiBusy || modelCount === 0}
-                  >
-                    <select
-                      class="ai-composer-select"
-                      aria-label="AI model"
-                      data-kind="model"
-                      data-ribbon-input-persistent
-                      .value=${selectedModelValue}
-                      ?disabled=${this.aiBusy || modelCount === 0}
-                      @change=${this.updateAIModel}
-                    >
-                      ${modelCount === 0 ? html`<option value="">Set up AI…</option>` : ""}
-                      ${this.aiProviders.flatMap(provider => provider.models.map(model => html`
-                        <option value=${JSON.stringify([provider.id, model])}>${model} (${provider.name})</option>
-                      `))}
-                    </select>
-                    <span class="ai-composer-model-label" aria-hidden="true">${this.aiModel || "Set up AI…"}</span>
-                  </div>
-                  <select
-                    class="ai-composer-select"
-                    aria-label="AI effort"
-                    data-kind="effort"
-                    data-ribbon-input-persistent
-                    .value=${this.aiEffort}
-                    ?disabled=${this.aiBusy}
-                    @change=${this.updateAIEffort}
-                  >${aiEfforts.map(effort => html`
-                    <option value=${effort.value} ?selected=${this.aiEffort === effort.value}>${effort.label}</option>
-                  `)}</select>
-                </div>
-              </div>
-              ${this.pendingAIEdit && !this.aiChatOpen ? html`
-                <div class="ai-prompt-review-actions" aria-label="Review pending AI change">
-                  <button class="ai-prompt-review-action" type="button" aria-label="Reject AI change" title="Reject" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}</button>
-                  <button class="ai-prompt-review-action" type="button" aria-label="Go to AI change" title="Go to change" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}</button>
-                  <button class="ai-prompt-review-action" data-kind="approve" type="button" aria-label="Accept AI change" title="Accept" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>${ribbonIcon("Accept")}</button>
-                </div>
-              ` : html`
-                <button
-                  class="ai-prompt-submit ai-chat-send"
-                  type="button"
-                  aria-label=${this.aiBusy ? "Stop AI request" : this.aiChatOpen ? "Send chat message" : "Enter AI prompt"}
-                  title=${this.aiBusy ? "Stop" : this.aiChatOpen ? "Send" : "Enter"}
-                  ?data-busy=${this.aiBusy}
-                  ?disabled=${Boolean(this.pendingAIEdit) || !this.aiBusy && !this.aiPrompt.trim() && this.aiAttachments.length === 0}
-                  @click=${(event: MouseEvent) => this.aiBusy
-                    ? this.stopAIRequest()
-                    : (event.currentTarget as HTMLButtonElement).form?.requestSubmit()}
-                >${this.aiBusy ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
-              `}
-            </div>
-            <button
-              class="ai-prompt-expand"
-              type="button"
-              aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
-              title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
-              aria-expanded=${this.aiChatOpen}
-              aria-controls="ai-chat-panel"
-              @click=${this.toggleAIChat}
-            ><span class="ai-prompt-expand-chevron" aria-hidden="true"></span></button>
-          </form>
-        </section>
+        ${this.settings.disableAI ? nothing : this.renderAIChat(false)}
         <ai-settings-dialog .store=${this.aiProviderStore}></ai-settings-dialog>
         ${this.renderDocumentDialogs()}
         <ribbon-menu

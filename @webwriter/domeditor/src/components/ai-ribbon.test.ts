@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
+import {DomEditorToolbox} from "./toolbox"
 import {AI_KEYS_STORAGE_KEY, AI_PROVIDERS_STORAGE_KEY, createAIProvider, type AIProviderStore} from "../ai-provider"
 
 afterEach(() => {
@@ -13,6 +14,13 @@ afterEach(() => {
 const mountRibbon = async () => {
   const ribbon = new AppRibbon()
   document.body.append(ribbon)
+  await ribbon.updateComplete
+  const toolbox = new DomEditorToolbox()
+  document.body.append(toolbox)
+  await toolbox.updateComplete
+  ribbon.aiToolboxTarget = toolbox.shadowRoot!.querySelector<HTMLElement>(".ai-toolbox-content")!
+  ribbon.addEventListener("ai-toolbox-change", () => toolbox.selectTool(ribbon.aiChatOpen ? "AI" : null))
+  toolbox.addEventListener("toolbox-change", () => {ribbon.aiChatOpen = toolbox.activeTool === "AI"})
   await ribbon.updateComplete
   return ribbon
 }
@@ -39,6 +47,30 @@ const modelsResponse = (models: string[]) => new Response(JSON.stringify({
 }), {headers: {"content-type": "application/json"}})
 
 describe("AI prompt ribbon", () => {
+  it("hides AI and stops a running request when disabled", async () => {
+    const ribbon = await mountRibbon()
+    await configureProvider(ribbon)
+    const fetch = vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise(() => {}))
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!.click()
+    const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    input.value = "Explain this document"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-submit")!.click()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    ribbon.settings = {...ribbon.settings, disableAI: true}
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector(".ai-bar-slot")).toBeNull()
+    expect(ribbon.aiToolboxTarget!.textContent).toBe("")
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect((fetch.mock.calls[0][1] as RequestInit).signal!.aborted).toBe(true)
+    ribbon.settings = {...ribbon.settings, disableAI: false}
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")).not.toBeNull()
+    expect(ribbon.aiToolboxTarget!.querySelector(".ai-chat-panel")).not.toBeNull()
+  })
+
   it("clears busy state when Stop cancels a provider that never settles", async () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)
@@ -161,26 +193,23 @@ describe("AI prompt ribbon", () => {
     expand.click()
     await ribbon.updateComplete
 
-    const textarea = panel.querySelector<HTMLTextAreaElement>("textarea.ai-chat-input")!
-    const send = panel.querySelector<HTMLButtonElement>(".ai-chat-send")!
-    expect(textarea).toBe(collapsedInput)
-    expect(panel.hasAttribute("data-open")).toBe(true)
-    expect(panel.hasAttribute("data-transitioning")).toBe(true)
-    expect(getComputedStyle(panel).transition).toContain("width")
-    expect(getComputedStyle(panel).transition).toContain("min-width")
-    expect(getComputedStyle(panel).minWidth).toBe("400px")
-    expect(getComputedStyle(panel).maxHeight).not.toBe("24px")
+    const docked = ribbon.aiToolboxTarget!.querySelector<HTMLElement>(".ai-chat-panel")!
+    const textarea = docked.querySelector<HTMLTextAreaElement>("textarea.ai-chat-input")!
+    const send = docked.querySelector<HTMLButtonElement>(".ai-chat-send")!
+    expect(textarea).not.toBe(collapsedInput)
+    expect(panel.hasAttribute("data-open")).toBe(false)
+    expect(getComputedStyle(panel).maxHeight).toBe("24px")
     expect(expand.getAttribute("aria-expanded")).toBe("true")
     expect(textarea.getAttribute("rows")).toBe("3")
     expect(send.disabled).toBe(true)
-    expect(panel.querySelector(".ai-chat-header")!.firstElementChild).toBe(
-      panel.querySelector(".ai-chat-switcher"),
+    expect(docked.querySelector(".ai-chat-header")!.firstElementChild).toBe(
+      docked.querySelector(".ai-chat-switcher"),
     )
-    expect(panel.firstElementChild?.classList.contains("ai-chat-brand-button")).toBe(true)
-    expect(panel.querySelector('[aria-label="AI settings"]')).not.toBeNull()
-    expect(panel.querySelector('[aria-label="Add attachments"]')).not.toBeNull()
-    expect(panel.querySelector<HTMLSelectElement>('[aria-label="AI model"]')!.selectedOptions[0].textContent).toContain("test-model")
-    expect(panel.querySelector<HTMLSelectElement>('[aria-label="AI effort"]')!.value).toBe("medium")
+    expect(docked.firstElementChild?.classList.contains("ai-chat-brand-button")).toBe(true)
+    expect(docked.querySelector('[aria-label="AI settings"]')).not.toBeNull()
+    expect(docked.querySelector('[aria-label="Add attachments"]')).not.toBeNull()
+    expect(docked.querySelector<HTMLSelectElement>('[aria-label="AI model"]')!.selectedOptions[0].textContent).toContain("test-model")
+    expect(docked.querySelector<HTMLSelectElement>('[aria-label="AI effort"]')!.value).toBe("medium")
     expect(send.parentElement?.classList.contains("ai-composer-surface")).toBe(true)
     expect(getComputedStyle(send).position).toBe("absolute")
 
@@ -188,106 +217,45 @@ describe("AI prompt ribbon", () => {
     textarea.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
     await ribbon.updateComplete
     send.click()
-    await vi.waitFor(() => expect(panel.querySelectorAll(".ai-chat-message")).toHaveLength(2))
+    await vi.waitFor(() => expect(docked.querySelectorAll(".ai-chat-message")).toHaveLength(2))
 
-    const messages = Array.from(panel.querySelectorAll<HTMLElement>(".ai-chat-message"))
+    const messages = Array.from(docked.querySelectorAll<HTMLElement>(".ai-chat-message"))
     expect(messages.map(message => message.dataset.role)).toEqual(["user", "assistant"])
     expect(messages[0].textContent).toContain("Explain the selection")
     expect(messages[1].textContent).toContain("Here is the explanation.")
 
-    panel.querySelector<HTMLButtonElement>('[aria-label="New chat"]')!.click()
+    docked.querySelector<HTMLButtonElement>('[aria-label="New chat"]')!.click()
     await ribbon.updateComplete
-    const switcher = panel.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
+    const switcher = docked.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
     expect(switcher.options).toHaveLength(2)
-    expect(panel.querySelector(".ai-chat-empty")).not.toBeNull()
+    expect(docked.querySelector(".ai-chat-empty")).not.toBeNull()
 
     switcher.value = "chat-1"
     switcher.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     await ribbon.updateComplete
-    expect(panel.querySelectorAll(".ai-chat-message")).toHaveLength(2)
+    expect(docked.querySelectorAll(".ai-chat-message")).toHaveLength(2)
   })
 
-  it("does not create another empty new chat", async () => {
+  it("keeps both prompt inputs in sync and leaves the sidebar open on document interaction", async () => {
     const ribbon = await mountRibbon()
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
-    expand.click()
+    const bar = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    bar.value = "Draft a lesson"
+    bar.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!.click()
     await ribbon.updateComplete
-
-    const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
-    const newChat = panel.querySelector<HTMLButtonElement>('[aria-label="New chat"]')!
-    const switcher = panel.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
-
-    newChat.click()
+    const input = ribbon.aiToolboxTarget!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    expect(input.value).toBe("Draft a lesson")
+    input.value = "Draft a quiz"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
     await ribbon.updateComplete
-
-    expect(switcher.options).toHaveLength(1)
-    expect(switcher.value).toBe("chat-1")
-  })
-
-  it("centers the expanded header controls and keeps the sparkle control icon-only", async () => {
-    const ribbon = await mountRibbon()
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
-    expand.click()
+    expect(bar.value).toBe("Draft a quiz")
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}))
     await ribbon.updateComplete
-
-    const header = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-header")!
-    const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
-    const switcher = ribbon.shadowRoot!.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
-
-    expect(getComputedStyle(header).boxSizing).toBe("border-box")
-    expect(getComputedStyle(brand).borderTopWidth).toBe("0px")
-    expect(getComputedStyle(brand).backgroundColor).toBe("transparent")
-    expect(getComputedStyle(switcher).appearance).toBe("none")
-    expect(Number.parseFloat(getComputedStyle(switcher).paddingRight)).toBeGreaterThan(32)
-  })
-
-  it("collapses when the pointer goes outside the expanded bar", async () => {
-    const ribbon = await mountRibbon()
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
-    const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
-    expand.click()
+    expect(ribbon.aiChatOpen).toBe(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     await ribbon.updateComplete
-    expect(panel.hasAttribute("data-open")).toBe(true)
-
-    document.body.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true}))
-    await ribbon.updateComplete
-
-    expect(panel.hasAttribute("data-open")).toBe(false)
-  })
-
-  it("only transitions panel width while expanding or collapsing", async () => {
-    vi.useFakeTimers()
-    try {
-      const ribbon = await mountRibbon()
-      const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
-      const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
-
-      expect(panel.hasAttribute("data-transitioning")).toBe(false)
-      expect(getComputedStyle(panel).transition).not.toContain("width")
-
-      expand.click()
-      await ribbon.updateComplete
-      expect(panel.hasAttribute("data-transitioning")).toBe(true)
-      expect(getComputedStyle(panel).transition).toContain("width")
-
-      await vi.advanceTimersByTimeAsync(220)
-      await ribbon.updateComplete
-      expect(panel.hasAttribute("data-transitioning")).toBe(false)
-      expect(getComputedStyle(panel).transition).not.toContain("width")
-
-      expand.click()
-      await ribbon.updateComplete
-      expect(panel.hasAttribute("data-transitioning")).toBe(true)
-      expect(getComputedStyle(panel).transition).toContain("width")
-
-      await vi.advanceTimersByTimeAsync(220)
-      await ribbon.updateComplete
-      expect(panel.hasAttribute("data-transitioning")).toBe(false)
-      expect(getComputedStyle(panel).transition).not.toContain("width")
-    }
-    finally {
-      vi.useRealTimers()
-    }
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect(bar.value).toBe("Draft a quiz")
   })
 
   it("opens provider settings and offers simplified provider presets", async () => {

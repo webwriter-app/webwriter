@@ -2,6 +2,7 @@ import "./widget-grouping-dialog"
 import type {WidgetGroupingDialog} from "./widget-grouping-dialog"
 import type {WidgetGroupingContext} from "../widget-grouping.js"
 import {css, html} from "lit"
+import {aiChatStyles} from "./ai-chat.styles"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
@@ -13,11 +14,12 @@ import type {RibbonMenuGroup} from "./ribbon-menu"
 import {layoutPreviewStyles, renderTemplateCard, renderTemplatePreview, templateLabel, templateModes} from "./template-preview"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 
-export type ToolboxTool = "Edit" | "Style" | "Review"
+export type ToolboxTool = "Edit" | "Style" | "AI" | "Review"
 
 const tools: readonly {label: ToolboxTool, icon: string}[] = [
   {label: "Edit", icon: "Pencil"},
   {label: "Style", icon: "Theme"},
+  {label: "AI", icon: "AI"},
   {label: "Review", icon: "Grammar"},
 ]
 
@@ -26,6 +28,10 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * commands, selection preservation, and specialized editors keep one event
  * contract. */
 export class DomEditorToolbox extends EditingControls {
+  protected usesNativePointerInteraction(event: MouseEvent) {
+    return event.composedPath().some(target => target instanceof HTMLElement && target.classList.contains("ai-toolbox-content"))
+  }
+
   private renderWidgetSharing() {
     const state = this.widgetOptions
     if(!state?.sharing) return ""
@@ -70,6 +76,8 @@ export class DomEditorToolbox extends EditingControls {
 
   static properties = {
     ...EditingControls.properties,
+    disableAI: {type: Boolean, attribute: "disable-ai", reflect: true},
+    aiSidebar: {type: Boolean, attribute: "ai-sidebar", reflect: true},
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     selectionPath: {attribute: false},
@@ -82,7 +90,11 @@ export class DomEditorToolbox extends EditingControls {
     documentLayoutError: {attribute: false},
   }
 
+  disableAI = false
+  aiSidebar = false
+
   static styles = css`
+    ${aiChatStyles}
     ${EditingControls.styles}
 
   .developer-console-controls {display: flex; align-items: center; gap: 0; background: #e9e9e9}
@@ -128,7 +140,7 @@ export class DomEditorToolbox extends EditingControls {
       position: relative;
       z-index: 2;
       align-self: stretch;
-      width: 94px;
+      width: 122px;
       min-width: 0;
       height: 100%;
       max-height: none;
@@ -140,12 +152,49 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     :host(:not([show-style-toolbox])) {
-      width: 66px;
+      width: 94px;
     }
+
+    :host([disable-ai]:not([active-tool])) {width: 94px}
+    :host([disable-ai]:not([show-style-toolbox]):not([active-tool])) {width: 66px}
 
     :host([active-tool]) {
       width: 216px;
     }
+
+    :host([ai-sidebar]) {grid-template-rows: 30px minmax(0, 1fr)}
+    :host([ai-sidebar]) .toolbox-tab:not([data-active]) {display: none}
+    .ai-toolbox-content {flex: 1; min-height: 0; height: 100%; overflow: hidden}
+    .ai-toolbox-content .ai-chat-panel[data-open] {
+      display: flex; flex-direction: column; position: relative; inset: auto;
+      width: 100%; min-width: 0; max-width: none; height: 100%; max-height: none;
+      border: 0; border-radius: 0; box-shadow: none; background: #f2f2f2;
+      position-anchor: auto;
+    }
+    .ai-toolbox-content .ai-chat-brand-button,
+    .ai-toolbox-content .ai-prompt-expand {display: none}
+    .ai-toolbox-content .ai-chat-header {
+      position: static; flex: 0 0 auto; height: auto; padding: .5rem;
+      background: #f2f2f2;
+    }
+    .ai-toolbox-content .ai-chat-header-button-label {display: none}
+    .ai-toolbox-content .ai-chat-header-button {width: 2rem; padding: 0}
+    .ai-toolbox-content .ai-chat-switcher {padding-right: 1.75rem; background-position: right .5rem center}
+    .ai-toolbox-content .ai-chat-messages {
+      position: static; flex: 1 1 0; min-height: 0; padding: .65rem; background: #f2f2f2;
+    }
+    .ai-toolbox-content .ai-chat-message {max-width: 100%; overflow-wrap: anywhere}
+    .ai-toolbox-content .ai-chat-panel[data-open] .ai-chat-composer {
+      position: static; flex: 0 0 auto; height: 7rem; padding: 0;
+    }
+    .ai-toolbox-content .ai-chat-panel[data-open] .ai-composer-surface {
+      border: 0; border-radius: 0;
+    }
+    .ai-toolbox-content .ai-chat-panel[data-open] .ai-composer-surface:focus-within {
+      box-shadow: inset 0 0 0 1px #3977c7;
+    }
+    .ai-toolbox-content[hidden] {display: none}
+    :host([active-tool="AI"]) .toolbox-pane-content {overflow: hidden}
 
     :host([hidden]) {
       display: none;
@@ -508,6 +557,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   protected get currentMenuGroups(): RibbonMenuGroup[] {
+    if(this.activeTool === "AI") return []
     return contextDrawerPolicy({
       menu: "Edit",
       surface: "toolbox",
@@ -657,6 +707,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   selectTool(tool: ToolboxTool | null) {
+    if(tool === "AI" && this.disableAI) return
     if(tool === "Style" && !this.showStyleToolbox) return
     const nextTool = tool
     if(this.htmlPending && nextTool !== "Edit") return
@@ -665,8 +716,8 @@ export class DomEditorToolbox extends EditingControls {
     const previousMenu = this.activeMenu
     this.activeTool = nextTool
     if(nextTool) {
-      this.activeMenu = nextTool === "Review" ? "Edit" : nextTool
-      if(nextTool !== "Style" || previousMenu === nextTool) {
+      this.activeMenu = nextTool === "Review" || nextTool === "AI" ? "Edit" : nextTool
+      if(nextTool !== "AI" && (nextTool !== "Style" || previousMenu === nextTool)) {
         this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
       }
     }
@@ -694,6 +745,7 @@ export class DomEditorToolbox extends EditingControls {
 
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
+    if(this.disableAI && this.activeTool === "AI") this.selectTool(null)
     if(changed.has("activeTool") && this.activeTool === null) this.advancedOpen.clear()
     if(!this.showStyleToolbox && this.activeTool === "Style") {
       this.selectTool(null)
@@ -740,11 +792,12 @@ export class DomEditorToolbox extends EditingControls {
       >
         <div class="toolbox-tabs-area">
           <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
-            ${tools.filter(tool => tool.label !== "Style" || this.showStyleToolbox).map(tool => {
+            ${tools.filter(tool => (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
               const active = this.activeTool === tool.label
               const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
               const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
-              const label = contextualLabel ?? tool.label
+              const toolLabel = tool.label === "AI" ? "Ask AI" : tool.label
+              const label = contextualLabel ?? toolLabel
               return html`
                 <div
                   class="toolbox-tab"
@@ -758,8 +811,8 @@ export class DomEditorToolbox extends EditingControls {
                     data-tool=${tool.label}
                     type="button"
                     role="tab"
-                    aria-label=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
-                    title=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
+                    aria-label=${contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
+                    title=${contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
                     aria-controls="toolbox-pane"
                     aria-selected=${active}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
@@ -775,7 +828,7 @@ export class DomEditorToolbox extends EditingControls {
                   <button
                     class="toolbox-tab-close"
                     type="button"
-                    aria-label=${`Close ${tool.label}`}
+                    aria-label=${`Close ${toolLabel}`}
                     title="Close"
                     aria-hidden=${!active}
                     tabindex=${active ? 0 : -1}
@@ -799,7 +852,8 @@ export class DomEditorToolbox extends EditingControls {
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
-            ${this.activeTool ? this.renderDrawers() : ""}
+            ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}
+            <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
           ${(this.activeTool === "Edit" || this.consoleOpen) ? this.renderEditModeFooter() : ""}
         </aside>

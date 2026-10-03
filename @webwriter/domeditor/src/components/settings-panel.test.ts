@@ -406,6 +406,22 @@ it("persists global auto-reload and exposes it under developer console settings"
 })
 
 
+it("offers Disable AI, validates its saved value, and persists the preference", async () => {
+  expect(defaultAppSettings().disableAI).toBe(false)
+  for(const value of [undefined, "yes", true, false]) {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableAI: value}))
+    expect(loadAppSettings().disableAI).toBe(value === true)
+  }
+  const panel = await mountPanel()
+  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="AI"] input')!
+  expect(checkbox.checked).toBe(false)
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  checkbox.click()
+  expect(panel.settings.disableAI).toBe(true)
+  expect(loadAppSettings().disableAI).toBe(true)
+  checkbox.click()
+  expect(loadAppSettings().disableAI).toBe(false)
+})
 
 
 it("keeps cloud bundle autosave off by default and offers a persisted developer setting", async () => {
