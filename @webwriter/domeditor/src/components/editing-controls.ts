@@ -147,7 +147,6 @@ export abstract class EditingControls extends LitElement {
     elementStyle: {attribute: false},
     elementAttributes: {attribute: false},
     widgetOptions: {attribute: false},
-    linkAttributeMenuOpen: {type: Boolean, state: true},
     historyState: {attribute: false},
     historyLoading: {type: Boolean, attribute: "history-loading"},
     historyError: {type: String, attribute: "history-error"},
@@ -243,7 +242,6 @@ export abstract class EditingControls extends LitElement {
     context: {display: "", parentDisplay: ""},
   }
 
-  protected linkAttributeMenuOpen = false
 
   historyState = emptyVersionHistoryState()
 
@@ -371,22 +369,6 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
-  protected closeLinkAttributeMenu() {
-    this.linkAttributeMenuOpen = false
-  }
-
-  protected toggleLinkAttributeMenu() {
-    if(!this.canMark) return
-    if(this.linkAttributeMenuOpen) this.closeLinkAttributeMenu()
-    else this.linkAttributeMenuOpen = true
-  }
-
-  protected handleLinkAttributeMenuKeydown(event: KeyboardEvent) {
-    if(event.key !== "Enter" && event.key !== " ") return
-    event.preventDefault()
-    this.toggleLinkAttributeMenu()
-  }
-
   protected renderMarkAttribute(mark: MarkName, option: MarkAttributeOption) {
     return html`
       <label class=${`mark-attribute${mark === "a" && option.name === "href" ? " mark-attribute-link" : ""}`}>
@@ -394,6 +376,7 @@ export abstract class EditingControls extends LitElement {
         ${option.options ? html`<select
           aria-label=${`${this.markOption(mark).label}: ${option.label}`}
           .value=${this.markAttributes[mark]?.[option.name] ?? option.options[0]?.value ?? ""}
+          ?data-ribbon-input-persistent=${mark === "a"}
           ?disabled=${!this.canMark}
           @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
         >${option.options.map(item => html`<option value=${item.value}>${item.label}</option>`)}</select>` : html`<input
@@ -401,6 +384,7 @@ export abstract class EditingControls extends LitElement {
           aria-label=${`${this.markOption(mark).label}: ${option.label}`}
           placeholder=${option.placeholder}
           .value=${this.markAttributes[mark]?.[option.name] ?? ""}
+          ?data-ribbon-input-persistent=${mark === "a"}
           ?disabled=${!this.canMark}
           @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
         />`}
@@ -439,33 +423,25 @@ export abstract class EditingControls extends LitElement {
     return html`
       <div class="button-dropdown-form" role="group" aria-label="Link options">
         ${href ? this.renderMarkAttribute("a", href) : ""}
-        <button
-          class="button-dropdown-more"
-          type="button"
-          aria-label="More link options"
-          aria-expanded=${this.linkAttributeMenuOpen}
-          @click=${() => this.toggleLinkAttributeMenu()}
-          @keydown=${(event: KeyboardEvent) => this.handleLinkAttributeMenuKeydown(event)}
-        >More options</button>
-        ${this.linkAttributeMenuOpen ? html`
-          <div class="button-dropdown-advanced" role="group" aria-label="Advanced link options">
-            <label class="mark-attribute">
-              <span>Open in new tab</span>
-              <input type="checkbox" aria-label="Link: Open in new tab"
-                .checked=${this.markAttributes.a?.target === "_blank"}
-                ?disabled=${!this.canMark}
-                @change=${(event: Event) => this.dispatchMarkAttribute("a", "target", event)} />
-            </label>
-            <label class="mark-attribute">
-              <span>Download</span>
-              <input type="checkbox" aria-label="Link: Download"
-                .checked=${download !== undefined}
-                ?disabled=${!this.canMark}
-                @change=${(event: Event) => this.dispatchMarkAttribute("a", "download", event)} />
-            </label>
-            ${download !== undefined ? this.renderMarkAttribute("a", {name: "download", label: "Filename", placeholder: "Filename"}) : ""}
-          </div>
-        ` : ""}
+        <div class="link-options" role="group" aria-label="Link behavior">
+          <label class="mark-attribute">
+            <input type="checkbox" aria-label="Link: Open in new tab" data-ribbon-input-persistent
+              .checked=${this.markAttributes.a?.target === "_blank"}
+              ?disabled=${!this.canMark}
+              @change=${(event: Event) => this.dispatchMarkAttribute("a", "target", event)} />
+            <span>Open in new tab</span>
+          </label>
+          <label class="mark-attribute link-option-download">
+            <span>Download</span>
+            <input type="checkbox" aria-label="Link: Download" data-ribbon-input-persistent
+              .checked=${download !== undefined}
+              ?disabled=${!this.canMark}
+              @change=${(event: Event) => this.dispatchMarkAttribute("a", "download", event)} />
+          </label>
+          ${download !== undefined ? html`<div class="link-download-filename">
+            ${this.renderMarkAttribute("a", {name: "download", label: "Filename", placeholder: "Filename"})}
+          </div>` : ""}
+        </div>
       </div>
     `
   }
@@ -2561,38 +2537,6 @@ export abstract class EditingControls extends LitElement {
 
   protected usesNativePointerInteraction(_event: MouseEvent) { return false }
 
-  private readonly handleLinkPointerDown = (event: PointerEvent) => {
-    if(!event.composedPath().includes(this)) this.closeLinkAttributeMenu()
-  }
-
-  private readonly handleLinkKeydown = (event: KeyboardEvent) => {
-    if(event.key !== "Escape" || !this.linkAttributeMenuOpen) return
-    event.stopImmediatePropagation()
-    this.closeLinkAttributeMenu()
-    this.renderRoot.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')
-      ?.shadowRoot?.querySelector<HTMLButtonElement>(".button-dropdown-more")?.focus()
-  }
-
-  private syncLinkMenuListeners() {
-    this.ownerDocument.removeEventListener("pointerdown", this.handleLinkPointerDown)
-    this.ownerDocument.removeEventListener("keydown", this.handleLinkKeydown, true)
-    if(this.linkAttributeMenuOpen && this.isConnected) {
-      this.ownerDocument.addEventListener("pointerdown", this.handleLinkPointerDown)
-      this.ownerDocument.addEventListener("keydown", this.handleLinkKeydown, true)
-    }
-  }
-
-  connectedCallback() {
-    super.connectedCallback()
-    this.syncLinkMenuListeners()
-  }
-
-  disconnectedCallback() {
-    this.ownerDocument.removeEventListener("pointerdown", this.handleLinkPointerDown)
-    this.ownerDocument.removeEventListener("keydown", this.handleLinkKeydown, true)
-    super.disconnectedCallback()
-  }
-
   protected willUpdate(changed: Map<string, unknown>) {
     if(changed.has("marks")) this.syncSpanMarkSelection()
     if(changed.has("commentState")) this.commentDraft = this.commentState.text
@@ -2612,8 +2556,6 @@ export abstract class EditingControls extends LitElement {
       this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))
     }
     if(changed.has("historyState")) this.scrollNewHistoryCardIntoView(changed.get("historyState"))
-    if(changed.has("marks") && !this.marks.includes("a")) this.closeLinkAttributeMenu()
-    if(changed.has("linkAttributeMenuOpen")) this.syncLinkMenuListeners()
   }
 
   protected abstract get currentMenuGroups(): RibbonMenuGroup[]

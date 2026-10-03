@@ -3835,7 +3835,9 @@ export class DomEditor extends LitElement {
       mark,
       attribute: detail.attribute,
       value: detail.value,
-    }).finally(() => this.focusEditor())
+    }).finally(() => {
+      if(mark !== "a") this.focusEditor()
+    })
   }
 
   private handleRubyAction = (event: Event) => {

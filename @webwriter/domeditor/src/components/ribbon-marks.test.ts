@@ -849,19 +849,13 @@ describe("mark ribbon controls", () => {
     link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await link.updateComplete
     const dropdown = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    const inputs = Array.from(dropdown.querySelectorAll<HTMLInputElement>(".mark-attribute input"))
-    expect(inputs.map(input => input.getAttribute("aria-label"))).toEqual(["Link: Link"])
-    expect(inputs[0].value).toBe("/page")
-
-    const more = link.shadowRoot!.querySelector<HTMLButtonElement>(".button-dropdown-more")!
-    expect(more.getAttribute("aria-expanded")).toBe("false")
-    more.click()
-    await ribbon.updateComplete
-    await link.updateComplete
-
-    const openMore = link.shadowRoot!.querySelector<HTMLButtonElement>(".button-dropdown-more")!
-    expect(openMore.getAttribute("aria-expanded")).toBe("true")
-    const advanced = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-advanced")!
+    const href = dropdown.querySelector<HTMLInputElement>('input[aria-label="Link: Link"]')!
+    expect(href.value).toBe("/page")
+    expect(getComputedStyle(href).width).toBe("288px")
+    expect(dropdown.querySelector(".button-dropdown-more")).toBeNull()
+    const advanced = dropdown.querySelector<HTMLElement>(".link-options")!
+    expect(getComputedStyle(advanced).display).toBe("grid")
+    expect(getComputedStyle(advanced).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
     const advancedInputs = Array.from(advanced.querySelectorAll<HTMLInputElement>("input"))
     expect(advancedInputs.map(input => input.getAttribute("aria-label"))).toEqual([
       "Link: Open in new tab",
@@ -870,6 +864,14 @@ describe("mark ribbon controls", () => {
     expect(advancedInputs.every(input => input.type === "checkbox")).toBe(true)
     expect(advancedInputs[0].checked).toBe(true)
     expect(advancedInputs[1].checked).toBe(false)
+    const newTabLabel = advancedInputs[0].parentElement!
+    const downloadLabel = advancedInputs[1].parentElement!
+    expect(newTabLabel.firstElementChild).toBe(advancedInputs[0])
+    expect(downloadLabel.lastElementChild).toBe(advancedInputs[1])
+    expect(getComputedStyle(newTabLabel).justifyContent).toBe("flex-start")
+    expect(getComputedStyle(newTabLabel).textAlign).toBe("left")
+    expect(getComputedStyle(downloadLabel).justifyContent).toBe("flex-end")
+    expect(getComputedStyle(downloadLabel).textAlign).toBe("right")
     const changed = vi.fn()
     ribbon.addEventListener("mark-attribute-change", changed)
     advancedInputs[0].click()
@@ -897,16 +899,8 @@ describe("mark ribbon controls", () => {
     await link.updateComplete
     expect(link.shadowRoot!.querySelector('input[aria-label="Link: Filename"]')).toBeNull()
 
-    openMore.click()
-    await ribbon.updateComplete
-    await link.updateComplete
-    expect(link.shadowRoot!.querySelector<HTMLButtonElement>(".button-dropdown-more")!
-      .getAttribute("aria-expanded")).toBe("false")
-
-    ribbon.marks = []
-    await ribbon.updateComplete
-    await link.updateComplete
-    expect(link.shadowRoot!.querySelector(".button-dropdown-advanced")).toBeNull()
+    expect(link.shadowRoot!.querySelector<HTMLElement>("ribbon-menu")!.hidden).toBe(false)
+    expect(link.shadowRoot!.querySelector(".link-options")).not.toBeNull()
   })
 
   it("uses platform-native shortcut notation in button tooltips", async () => {
@@ -1053,6 +1047,59 @@ describe("mark ribbon bridge", () => {
     })
     expect(execute).toHaveBeenNthCalledWith(7, {type: "removeRubyFallback"})
     expect(execute).toHaveBeenNthCalledWith(8, {type: "removeRuby"})
+  })
+
+  it("keeps the link popup and focus while clicking and changing its controls", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {canMark: true, marks: ["a"], attributes: {a: {href: "/page", download: "file.txt"}}},
+    })
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+    await drawer.updateComplete
+    const link = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    const menu = link.shadowRoot!.querySelector<HTMLElement>("ribbon-menu")!
+    const popup = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
+    const focus = vi.spyOn(iframe, "focus")
+    const commit = vi.fn()
+    ribbon.addEventListener("ribbon-input-commit", commit)
+
+    for(const label of ["Open in new tab", "Download", "Filename", "Link"]) {
+      const input = popup.querySelector<HTMLInputElement>(`input[aria-label="Link: ${label}"]`)!
+      input.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
+      input.focus()
+      input.click()
+      if(input.type !== "checkbox") {
+        input.value = "changed"
+        input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+      }
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(menu.hidden).toBe(false)
+      expect(link.shadowRoot!.activeElement).toBe(input)
+    }
+    popup.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
+    popup.click()
+    expect(menu.hidden).toBe(false)
+    expect(focus).not.toHaveBeenCalled()
+    expect(commit).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledTimes(4)
+
+    document.body.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
+    await link.updateComplete
+    expect(menu.hidden).toBe(true)
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    popup.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
+    await link.updateComplete
+    expect(menu.hidden).toBe(true)
   })
 
   it("routes enabling and disabling downloads through the editor", async () => {

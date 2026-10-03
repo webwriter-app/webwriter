@@ -51,7 +51,7 @@ export const dropdownContentStyles = css`
     }
 
     .button-dropdown-content .mark-attribute-link input {
-      width: 11rem;
+      width: 18rem;
     }
 
     .button-dropdown-more {
@@ -127,12 +127,26 @@ export const dropdownContentStyles = css`
       outline-offset: 0;
     }
 
-    .button-dropdown-advanced {
-      display: flex;
-      flex-direction: column;
+    .link-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.35rem;
       padding-top: 0.35rem;
       border-top: 1px solid #d8dee6;
+    }
+
+    .button-dropdown-content .link-options > .mark-attribute {
+      justify-content: flex-start;
+      text-align: left;
+    }
+
+    .button-dropdown-content .link-options > .link-option-download {
+      justify-content: flex-end;
+      text-align: right;
+    }
+
+    .link-download-filename {
+      grid-column: 1 / -1;
     }
 
 `
