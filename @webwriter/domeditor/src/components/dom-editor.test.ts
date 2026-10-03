@@ -4995,6 +4995,74 @@ describe("DomEditor.execute()", () => {
     expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull()
   })
 
+  it.each([false, true])("keeps the initial template clean and the pane open across repeated template switches (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    const doc = iframe.contentDocument!
+    doc.documentElement.id = "ww9b905a62-994a-43a6-b8a4-eae2d166b55c"
+    host.freshTemplateSnapshot = null
+    const snapshot = () => {
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
+        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
+    }
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: doc.documentElement.outerHTML}))
+    }
+    vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type !== "setDocumentLayout") return undefined
+      doc.body.className = action.mode === "document" ? "" : `ww-${action.mode}`
+      doc.body.innerHTML = action.mode === "slides" ? '<div class="ww-slides-viewport"><section class="ww-slide" tabindex="-1"><h1 style="position: absolute; left: var(--ww-page-gutter, 1.25rem); width: calc(100% - 2 * var(--ww-page-gutter, 1.25rem)); top: 1.25rem; height: 20%;"></h1><p style="position: absolute; left: var(--ww-page-gutter, 1.25rem); width: calc(100% - 2 * var(--ww-page-gutter, 1.25rem)); top: calc(20% + 2.5rem); height: calc(80% - 3.75rem);"></p></section></div>' : "<p></p>"
+      host.documentLayout = {...host.documentLayout, mode: action.mode}
+      return true
+    })
+    for(const mode of ["canvas", "slides", "document", "canvas"]) {
+      editor.shadowRoot!.querySelector<HTMLButtonElement>(`.templates-bar [data-mode="${mode}"]`)!.click()
+      await vi.waitFor(() => expect(host.templateConversionCount).toBe(0))
+      snapshot()
+      expect(host.documentLayoutError).toBe("")
+      expect(host.isFreshDocumentUnchanged()).toBe(true)
+      expect(host.fileDirty).toBe(false)
+      expect(host.templatesDismissed).toBe(false)
+      doc.querySelector("p")!.innerHTML = "<br>"
+      doc.body.classList.add("◆empty-selected")
+      snapshot()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+      expect(host.fileDirty).toBe(false)
+    }
+    doc.querySelector("p")!.textContent = "An authored edit"
+    snapshot()
+    await vi.waitFor(() => expect(host.templatesDismissed).toBe(true))
+    expect(host.fileDirty).toBe(true)
+  })
+
+  it.each([false, true])("keeps concurrent authored edits dirty during template conversion (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    let complete!: (result: boolean) => void
+    vi.spyOn(editor, "execute").mockImplementation(() => new Promise(resolve => {complete = resolve}))
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: iframe.contentDocument!.documentElement.outerHTML}))
+    }
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!.click()
+    iframe.contentDocument!.body.classList.add("ww-canvas")
+    iframe.contentDocument!.body.innerHTML = "<p>Typed while converting</p>"
+    await new Promise(resolve => setTimeout(resolve, 0))
+    complete(true)
+    await vi.waitFor(() => expect(host.templateConversionCount).toBe(0))
+    expect(host.fileDirty).toBe(true)
+    expect(host.isFreshDocumentUnchanged()).toBe(false)
+    expect(host.templatesDismissed).toBe(true)
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(false))
+    expect(host.confirmDiscardChanges()).toBe(false)
+  })
+
   it("keeps Templates visible for conversion mutations, then hides it on the next edit", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))

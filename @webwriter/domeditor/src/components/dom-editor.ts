@@ -172,7 +172,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasStyles, slidesStyles, resetEmptyTemplateContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -1691,8 +1691,7 @@ export class DomEditor extends LitElement {
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
-            if(this.templateConversionCount === 0 && (this.dirtyTrackingReady && this.fileDirty
-              || mutations.some(mutation => mutation.type === "attributes" && this.isAuthoredMutation(mutation)))) this.templatesDismissed = true
+            if(this.templateConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.templatesDismissed = true
           }
           if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
@@ -1880,6 +1879,67 @@ export class DomEditor extends LitElement {
     return root.outerHTML
   }
 
+  private pristineTemplateSnapshot(snapshot: string | null) {
+    if(snapshot === null) return null
+    const doc = new DOMParser().parseFromString(snapshot, "text/html")
+    for(const style of doc.head.querySelectorAll("style")) {
+      if(style.attributes.length === 0 && (style.textContent === canvasStyles || style.textContent === slidesStyles)) style.remove()
+    }
+    const body = doc.body
+    body.classList.remove("ww-canvas", "ww-slides")
+    if(!body.classList.length) body.removeAttribute("class")
+    for(const viewport of body.querySelectorAll(":scope > div.ww-slides-viewport")) {
+      if(viewport.attributes.length !== 1 || viewport.className !== "ww-slides-viewport") return null
+      for(const slide of Array.from(viewport.children)) {
+        if(!slide.matches("section.ww-slide") || slide.className !== "ww-slide" || Array.from(slide.attributes).some(attribute => attribute.name !== "class"
+          && !(attribute.name === "tabindex" && attribute.value === "-1")
+          && !(attribute.name === "id" && /^slide-[0-9a-f-]{36}$/i.test(attribute.value)))) return null
+        slide.querySelectorAll(":scope > nav.ww-slide-directions").forEach(nav => nav.remove())
+        slide.replaceWith(...slide.childNodes)
+      }
+      viewport.replaceWith(...viewport.childNodes)
+    }
+    body.querySelectorAll(":scope > nav.ww-slides-navigation").forEach(nav => nav.remove())
+    const placement: Record<string, string[]> = {
+      position: ["absolute", "static"], left: ["0px", "var(--ww-page-gutter, 1.25rem)"],
+      top: ["0px", "1.25rem", "calc(20% + 2.5rem)"],
+      width: ["320px", "calc(100% - 2 * var(--ww-page-gutter, 1.25rem))"],
+      height: ["20%", "calc(80% - 3.75rem)"],
+    }
+    for(const child of body.children) {
+      if(!child.matches("p, h1, h2, h3, h4, h5, h6")) return null
+      const element = child as HTMLElement
+      for(const property of Array.from({length: element.style.length}, (_, index) => element.style.item(index))) {
+        if(!placement[property]?.includes(element.style.getPropertyValue(property)) || element.style.getPropertyPriority(property)) return null
+      }
+      element.removeAttribute("style")
+    }
+    if(!resetEmptyTemplateContent(body)) return null
+    return doc.documentElement.outerHTML
+  }
+
+  private async retainFreshTemplate(revision: number, initialSnapshot?: string | null) {
+    if(this.editorOpaque) {
+      // Published snapshots are throttled; request the converted DOM before
+      // recording its initial state so a delayed snapshot stays clean.
+      const response = await this.requestFrameControl("snapshot")
+      if(revision !== this.frameRevision) return
+      if(typeof response.html !== "string") throw new Error("The editor did not return its document")
+      this.editorDocument = new DOMParser().parseFromString(response.html, "text/html")
+      this.documentTree = this.buildDocumentTree()
+    }
+    if(revision !== this.frameRevision || this.fileHandle !== null || this.backendDocumentId !== null) return
+    if(initialSnapshot !== undefined) {
+      const before = this.pristineTemplateSnapshot(initialSnapshot)
+      if(before === null || before !== this.pristineTemplateSnapshot(this.authoredDocumentSnapshot())) {
+        this.fileDirty = true
+        return
+      }
+    }
+    this.freshTemplateSnapshot = this.authoredDocumentSnapshot()
+    this.fileDirty = false
+  }
+
   private isFreshDocumentUnchanged() {
     if(this.fileHandle !== null || this.backendDocumentId !== null) return false
     if(this.freshTemplateSnapshot !== null) return this.authoredDocumentSnapshot() === this.freshTemplateSnapshot
@@ -1898,8 +1958,11 @@ export class DomEditor extends LitElement {
       return Object.keys(attributes).length === Object.keys(expected).length
         && Object.entries(expected).every(([name, value]) => attributes[name] === value)
     }
-    if(!hasAttributes(body) || !hasAttributes(head)
-      || !hasAttributes(this.editorDocument!.documentElement, {lang: this.settings.language})) return false
+    // SharedDOMDoc assigns a persistent document identity during startup.
+    const root = this.editorDocument!.documentElement
+    const initialAttributes: Record<string, string> = {lang: this.settings.language}
+    if(/^ww[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(root.id)) initialAttributes.id = root.id
+    if(!hasAttributes(body) || !hasAttributes(head) || !hasAttributes(root, initialAttributes)) return false
 
     const authoredHeadNodes = Array.from(head.childNodes).filter(node => !(
       node.nodeType === Node.ELEMENT_NODE && (
@@ -2835,13 +2898,13 @@ export class DomEditor extends LitElement {
 
   private async applyDefaultTemplate(mode: DocumentLayoutMode, revision: number) {
     if(mode === "document" || revision !== this.frameRevision) return
+    const initialSnapshot = this.authoredDocumentSnapshot()
     this.templateConversionCount++
     try {
       const changed = await this.execute({type: "setDocumentLayout", mode, expectedMode: "document"})
       if(changed === false) throw new Error(`Could not create a new ${mode} document`)
       if(revision !== this.frameRevision) return
-      this.freshTemplateSnapshot = this.authoredDocumentSnapshot()
-      this.fileDirty = false
+      await this.retainFreshTemplate(revision, initialSnapshot)
     }
     finally { this.templateConversionCount-- }
   }
@@ -4839,16 +4902,21 @@ export class DomEditor extends LitElement {
     const mode = (event as CustomEvent<{mode?: unknown}>).detail?.mode
     if((mode !== "canvas" && mode !== "document" && mode !== "slides") || mode === this.documentLayout.mode) return
     const currentMode = this.documentLayout.mode as "document" | "canvas" | "slides"
+    const fresh = this.isFreshDocumentUnchanged()
+    const initialSnapshot = fresh ? this.authoredDocumentSnapshot() : null
+    const revision = this.frameRevision
     this.documentLayoutError = ""
     this.templateConversionCount++
-    void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).finally(() => {
-      this.templateConversionCount--
-    }).then(async changed => {
+    void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).then(async changed => {
+      if(revision !== this.frameRevision) return
       if(changed === false) {
         this.documentLayoutError = "The document layout changed before conversion could be applied. Try again."
         return
       }
-      this.fileDirty = true
+      if(fresh && this.fileHandle === null && this.backendDocumentId === null) {
+        await this.retainFreshTemplate(revision, initialSnapshot)
+      }
+      else this.fileDirty = true
       // Finish disabling the selected card and updating the toolbox before
       // handing keyboard focus back to the editing surface.
       await this.updateComplete
@@ -4857,6 +4925,9 @@ export class DomEditor extends LitElement {
       this.focusEditor()
     }).catch(error => {
       this.documentLayoutError = error instanceof Error ? error.message : String(error)
+    }).finally(() => {
+      this.templateConversionCount--
+      if(revision === this.frameRevision && this.templateConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.templatesDismissed = true
     })
   }
 
@@ -5397,7 +5468,7 @@ export class DomEditor extends LitElement {
         if(this.historyDocumentTransitionCount === 0) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true
-          if(this.templateConversionCount === 0) this.templatesDismissed = true
+          if(this.templateConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.templatesDismissed = true
         }
         if(this.stylesVisible()) this.queueElementStyleRefresh()
       }
