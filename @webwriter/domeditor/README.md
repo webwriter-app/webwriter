@@ -12,6 +12,12 @@ Editor and preview iframes use the paired `localhost` origin in development. The
 
 Data is stored in the ignored `.webwriter-dev/` directory. Provider files have owner-only permissions, but API keys are still stored as plaintext development secrets. `OPENAI_API_KEY` can instead be set in `.env.local`; it creates an OpenAI provider whose key stays in the environment.
 
+## Document links
+
+Opening or saving a document updates the editor URL's `open` parameter. Reloading that URL restores the saved document. A local link has the form `?open=local%3A<id>` and uses a file handle retained in this browser, including after the file leaves the recent-document list. The file must remain accessible; another browser or device needs to open the file first.
+
+A server document link contains its full API document URL, for example `?open=http%3A%2F%2Flocalhost%3A1234%2Fapi%2Fdocuments%2F<document-id>`. The editor connects to that exact endpoint and loads the document by ID. Server links use the existing supported backend and its access rules. Links store references only; they do not contain document content or credentials. Creating a new document clears `open`, while failed or cancelled opens keep the previous document URL. Live-session links take precedence over document links.
+
 ## Developer packages
 
 Open the developer console, then use **Add package → Add from local folder** for a local folder or **Add package → Add from Git repository** for an anonymous public Git remote (HTTP, HTTPS, or `git://`, including GitHub and GitLab). Enter a branch or tag, or leave it empty for the default branch. An optional package folder supports repositories containing multiple packages. The selected ref must contain `package.json` and the package's built exports; the editor does not run repository build scripts.

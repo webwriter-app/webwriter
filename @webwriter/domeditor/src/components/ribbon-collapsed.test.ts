@@ -28,6 +28,28 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("collapsed ribbon file menu", () => {
+  it("shows a grey empty hint and updates the Open submenu with up to ten recent documents", async () => {
+    const {ribbon, menu} = await mount()
+    const commands = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", commands)
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more Open options"]')!.click()
+    await menu.updateComplete
+    const hint = menu.shadowRoot!.querySelector<HTMLButtonElement>('.submenu button')!
+    expect(hint.textContent?.trim()).toBe("No recently opened documents")
+    expect(hint.disabled).toBe(true)
+    expect(commands).not.toHaveBeenCalled()
+    ribbon.recentDocuments = Array.from({length: 12}, (_, index) => ({id: `doc/${index}`, title: `Lesson ${index}`}))
+    await ribbon.updateComplete
+    await menu.updateComplete
+    const entries = [...menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('.submenu button')]
+    expect(entries).toHaveLength(10)
+    expect(entries.map(button => button.title)).toEqual(ribbon.recentDocuments.slice(0, 10).map(document => document.title))
+    entries[0].click()
+    expect(commands.mock.calls[0][0].detail.label).toBe("recent-document:doc%2F0")
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector(".submenu")).toBeNull()
+  })
+
   it.each(["Document", "Canvas", "Slides"])("dispatches New %s from the submenu", async label => {
     const {ribbon, menu} = await mount()
     const commands = vi.fn()

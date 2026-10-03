@@ -1,5 +1,6 @@
 import type {GitPackageSource} from "../git-package"
 import {ribbonIcon} from "../ribbon-icons"
+import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
 import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
@@ -173,16 +174,7 @@ import {
 import {getDocumentRoot} from "../document-template"
 import {slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
-type WritableFileStream = {
-  write(data: Blob): Promise<void>
-  close(): Promise<void>
-}
-
-type LocalFileHandle = {
-  readonly name: string
-  getFile(): Promise<File>
-  createWritable(): Promise<WritableFileStream>
-}
+type LocalFileHandle = RecentFileHandle
 
 type FilePickerWindow = Window & typeof globalThis & {
   showOpenFilePicker?: (options?: object) => Promise<LocalFileHandle[]>
@@ -443,6 +435,8 @@ export class DomEditor extends LitElement {
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     savedDocuments: {attribute: false, state: true},
+    recentDocuments: {attribute: false, state: true},
+    accessibleRecentDocumentIds: {attribute: false, state: true},
     documentsLoading: {attribute: false, state: true},
     documentsError: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
@@ -461,6 +455,7 @@ export class DomEditor extends LitElement {
     liveOverlayWidgets: {attribute: false, state: true},
     backendState: {attribute: false, state: true},
     backendClient: {attribute: false, state: true},
+    backendSession: {attribute: false, state: true},
     storageLocation: {attribute: false, state: true},
     documentHead: {attribute: false, state: true},
     historyState: {attribute: false, state: true},
@@ -616,6 +611,11 @@ export class DomEditor extends LitElement {
   private fileOperationActive = false
   private pendingCloudBundleSave: {client: BackendClient, id: string} | null = null
   private savedDocuments: BackendDocumentSummary[] = []
+  private recentDocuments: RecentDocument[] = []
+  private accessibleRecentDocumentIds = new Set<string>()
+  private recentDocumentsReady: Promise<void> = Promise.resolve()
+  private recentDocumentsWrite: Promise<void> = Promise.resolve()
+  private recentRefreshGeneration = 0
   private documentsLoading = false
   private documentsError = ""
   private documentChangeSequence = 0
@@ -890,14 +890,27 @@ export class DomEditor extends LitElement {
       color: #2f3742;
       font: 0.75rem/1.25 system-ui, sans-serif;
     }
-    .templates-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; }
-    .templates-close { border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
+    .templates-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; min-height: 1.45rem; }
+    .templates-bar .recent-documents-title {width: min(20.45rem, calc(100% - 6rem)); margin-left: auto; box-sizing: border-box; padding-right: 1.5rem}
+    .templates-close { position: absolute; right: 0; border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
     .templates-close:hover { background: #e2e5e9; }
     .templates-close:focus-visible { outline: 2px solid #5e91bf; outline-offset: 2px; }
     .templates-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
     .templates-bar .template-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 10rem)); gap: 0.45rem; }
     .templates-bar .layout-preset { min-height: 0; }
     .templates-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
+    .templates-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
+    .templates-documents {margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
+    .templates-documents ul {display: grid; grid-template-rows: repeat(5, 1.6rem); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
+    .templates-documents li {min-width: 0}
+    .templates-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
+    .templates-document svg {width: .9rem; height: .9rem; flex-shrink: 0; color: #526b86}
+    .templates-document span {overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
+    .templates-document[aria-current="true"] {background: #e0ebf8}
+    .templates-documents button:hover:not(:disabled) {background: #e3e3e3}
+    .templates-documents button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
+    .templates-documents button:disabled {opacity: .5; cursor: default}
+    .templates-documents p {margin: .3rem 0; color: #687383; font-size: .7rem}
 
     iframe {
       display: block;
@@ -1053,7 +1066,7 @@ export class DomEditor extends LitElement {
     outerUrl.searchParams.forEach((value, key) => {
       // Live-session bearer tokens are for the dedicated live room only; do
       // not forward them to the ordinary document collaboration provider.
-      if(key === liveSessionTokenParameter || key === liveSessionParameter || key === "role") return
+      if(key === liveSessionTokenParameter || key === liveSessionParameter || key === "role" || key === "open") return
       syncUrl.searchParams.set(key, value)
     })
     return syncUrl.href
@@ -1118,6 +1131,7 @@ export class DomEditor extends LitElement {
     const url = new URL(location.href)
     url.searchParams.delete("session")
     url.searchParams.delete("source")
+    url.searchParams.delete("open")
     url.searchParams.set(liveSessionParameter, sessionId)
     url.searchParams.set(liveSessionTokenParameter, token)
     url.searchParams.set("role", "learner")
@@ -1363,13 +1377,13 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private loginToBackend = async () => {
+  private loginToBackend = async (apiBaseUrl?: unknown) => {
     this.backendProbeController?.abort()
     const controller = new AbortController()
     this.backendProbeController = controller
     this.backendState = "probing"
     try {
-      const session = await probeDevelopmentBackend(controller.signal)
+      const session = await probeDevelopmentBackend(controller.signal, undefined, typeof apiBaseUrl === "string" ? apiBaseUrl : undefined)
       if(this.backendProbeController !== controller) return
       if(!session) {
         this.backendSession = null
@@ -1380,8 +1394,10 @@ export class DomEditor extends LitElement {
       }
       this.backendSession = session
       this.backendClient = new BackendClient(session)
+      this.savedDocuments = []
       this.backendState = "connected"
       this.storageLocation = "development-server"
+      void this.loadSavedDocuments()
     }
     catch(error) {
       if(controller.signal.aborted) return
@@ -1816,7 +1832,7 @@ export class DomEditor extends LitElement {
           }
           editorReadyResolve?.(editorWindow)
           if(this.frameRevision === 0 && this.frameDocumentHTML === null && !this.initialTemplateStarted
-            && this.settings.defaultTemplate !== "document") {
+            && !new URL(location.href).searchParams.has("open") && this.settings.defaultTemplate !== "document") {
             this.initialTemplateStarted = true
             void this.applyDefaultTemplate(this.settings.defaultTemplate, 0).catch(error => this.reportFileError(error))
           }
@@ -2662,14 +2678,109 @@ export class DomEditor extends LitElement {
     this.documentsLoading = true
     this.documentsError = ""
     try {
-      this.savedDocuments = (await client.listDocuments()).sort((a, b) =>
+      const documents = await client.listDocuments()
+      if(this.backendClient !== client) return
+      this.savedDocuments = documents.sort((a, b) =>
         b.updatedAt.localeCompare(a.updatedAt) || a.title.localeCompare(b.title))
     }
     catch(error) {
+      if(this.backendClient !== client) return
       this.savedDocuments = []
       this.documentsError = error instanceof Error ? error.message : String(error)
     }
-    finally { this.documentsLoading = false }
+    finally {
+      this.documentsLoading = false
+      void this.refreshRecentDocuments()
+    }
+  }
+
+  private get visibleRecentDocuments() {
+    return this.recentDocuments.filter(document => this.accessibleRecentDocumentIds.has(document.id)
+      && (document.kind === "local" || (this.backendClient && matchesRecentDocumentSession(document, this.backendSession)
+        && this.savedDocuments.some(summary => summary.id === document.documentId)))).slice(0, 10)
+  }
+
+  private async restoreRecentDocuments() {
+    this.recentDocuments = await readRecentDocuments()
+    await this.refreshRecentDocuments()
+  }
+
+  private async refreshRecentDocuments() {
+    const generation = ++this.recentRefreshGeneration
+    const documents = this.recentDocuments
+    const ids = new Set(this.savedDocuments.map(document => document.id))
+    const session = this.backendClient ? this.backendSession : null
+    const accessible = await Promise.all(documents.map(document => recentDocumentAccessible(document, session, ids)))
+    if(generation !== this.recentRefreshGeneration || !this.isConnected || documents !== this.recentDocuments) return
+    this.accessibleRecentDocumentIds = new Set(documents.filter((_, index) => accessible[index]).map(document => document.id))
+  }
+
+  private async rememberOpenedDocument(document: RecentDocument) {
+    await this.recentDocumentsReady
+    this.recentDocuments = await rememberRecentDocument(this.recentDocuments, document)
+    const documents = this.recentDocuments
+    this.recentDocumentsWrite = this.recentDocumentsWrite.then(() => saveRecentDocuments(documents))
+    await this.recentDocumentsWrite
+    await this.refreshRecentDocuments()
+    return this.recentDocuments[0]
+  }
+
+  private updateDocumentURL(reference: string | null) {
+    if(this.liveSessionActive) return
+    const url = new URL(location.href)
+    if(reference === null) url.searchParams.delete("open")
+    else url.searchParams.set("open", reference)
+    history.replaceState(history.state, "", url.href)
+  }
+
+  private updateBackendDocumentURL(id: string, client: BackendClient) {
+    const apiBaseUrl = client.apiBaseUrl ?? this.backendSession?.apiBaseUrl
+    if(apiBaseUrl) this.updateDocumentURL(`${apiBaseUrl.replace(/\/$/, "")}/documents/${encodeURIComponent(id)}`)
+  }
+
+  private async restoreLinkedDocument(value: string, backendReady: Promise<void> = Promise.resolve()) {
+    const initialReference = new URL(location.href).searchParams.get("open")
+    const currentLink = () => new URL(location.href).searchParams.get("open") === initialReference
+    try {
+      const reference = parseDocumentOpenReference(value)
+      if(!reference) throw new Error("The document link is invalid.")
+      await Promise.all([this.recentDocumentsReady, backendReady])
+      if(!this.isConnected || this.liveSessionActive || !currentLink()) return
+      const revision = this.frameRevision
+      await this.waitForEditorWindow()
+      if(!this.isConnected || this.frameRevision !== revision || this.liveSessionActive || !currentLink()) return
+      await this.runFileOperation(async () => {
+        if(reference.kind === "local") {
+          const document = this.recentDocuments.find(document => document.kind === "local" && document.id === reference.id)
+            ?? await readLocalDocumentReference(reference.id)
+          if(!document || document.kind !== "local") throw new Error("This local document is not stored in this browser. Open the file again to create a new link.")
+          if(!await recentDocumentAccessible(document, null, new Set())) throw new Error("This browser no longer has access to the linked local file. Open the file again to grant access.")
+          if(!this.isConnected || this.frameRevision !== revision || !currentLink()) return
+          await this.performOpenDocument(document.handle, document.id)
+        }
+        else {
+          if(this.backendClient?.apiBaseUrl !== reference.apiBaseUrl) await this.loginToBackend(reference.apiBaseUrl)
+          if(!this.isConnected || this.frameRevision !== revision || !currentLink()) return
+          if(this.backendClient?.apiBaseUrl !== reference.apiBaseUrl) throw new Error("Could not connect to the document storage in this link.")
+          await this.openBackendDocument(reference.documentId)
+          if(this.documentsError) throw new Error(this.documentsError)
+        }
+      })
+    }
+    catch(error) {this.reportFileError(error)}
+  }
+
+  private handleRecentDocumentsRefresh = () => {
+    void this.refreshRecentDocuments()
+    if(this.backendClient) void this.loadSavedDocuments()
+  }
+
+  private async openRecentDocument(id: string) {
+    const document = this.visibleRecentDocuments.find(document => document.id === id)
+    if(!document) return
+    await this.runFileOperation(() => document.kind === "local"
+      ? this.performOpenDocument(document.handle) : this.openBackendDocument(document.documentId))
+    this.handleRecentDocumentsRefresh()
   }
 
   private handleSavedDocumentOpen = (event: CustomEvent<{id: string}>) => {
@@ -2687,8 +2798,10 @@ export class DomEditor extends LitElement {
       try {
         await client.deleteDocument(summary.id)
         this.savedDocuments = this.savedDocuments.filter(document => document.id !== summary.id)
+        void this.refreshRecentDocuments()
         if(this.backendDocumentId === summary.id) {
           this.backendDocumentId = null
+          this.updateDocumentURL(null)
           this.fileDirty = true
         }
       }
@@ -2712,6 +2825,7 @@ export class DomEditor extends LitElement {
       await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
       await this.applyDefaultTemplate(template, this.frameRevision)
       this.fileDirty = false
+      this.updateDocumentURL(null)
       this.focusEditor()
     }
     catch(error) {
@@ -2732,16 +2846,16 @@ export class DomEditor extends LitElement {
     finally { this.templateConversionCount-- }
   }
 
-  private async performOpenDocument() {
+  private async performOpenDocument(storedHandle?: LocalFileHandle, storedId?: string) {
     if(!this.confirmDiscardChanges()) return
     const revision = this.documentChangeSequence
     const picker = this.filePickerWindow().showOpenFilePicker
-    if(!picker) {
+    if(!picker && !storedHandle) {
       this.reportFileError(new Error("This browser does not support the File System Access API"))
       return
     }
     try {
-      const [handle] = await picker.call(window, this.htmlFilePickerOptions())
+      const handle = storedHandle ?? (await picker!.call(window, this.htmlFilePickerOptions()))[0]
       if(!handle) return
       const file = await handle.getFile()
       const source = await file.text()
@@ -2749,10 +2863,13 @@ export class DomEditor extends LitElement {
       await this.reloadDocument(source)
       this.backendDocumentId = null
       this.fileHandle = handle
+      this.storageLocation = "local"
       const openedName = file.name || handle.name
       this.fileName = this.baseFileName(openedName)
       this.fileFormat = this.formatForFileName(openedName)
       this.fileDirty = false
+      const opened = await this.rememberOpenedDocument({id: storedId ?? crypto.randomUUID(), title: openedName, openedAt: Date.now(), kind: "local", handle})
+      this.updateDocumentURL(documentOpenReference(opened))
       this.focusEditor()
     }
     catch(error) {
@@ -2787,6 +2904,8 @@ export class DomEditor extends LitElement {
       this.fileName = this.baseFileName(handle.name)
       this.fileFormat = selectedFormat
       this.fileDirty = revision !== this.documentChangeSequence
+      const saved = await this.rememberOpenedDocument({id: crypto.randomUUID(), title: handle.name, openedAt: Date.now(), kind: "local", handle})
+      this.updateDocumentURL(documentOpenReference(saved))
     }
     catch(error) {
       this.reportFileError(error)
@@ -2796,16 +2915,23 @@ export class DomEditor extends LitElement {
   private async openBackendDocument(id: string) {
     if(!this.backendClient || !this.confirmDiscardChanges()) return
     const revision = this.documentChangeSequence
+    const client = this.backendClient
+    const session = this.backendSession
     try {
       this.documentsError = ""
-      const document = await this.backendClient.getDocument(id)
+      const document = await client.getDocument(id)
+      if(this.backendClient !== client) throw new Error("The document storage connection changed while opening the file.")
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       await this.reloadDocument(document.content)
       this.backendDocumentId = document.id
       this.fileHandle = null
+      this.storageLocation = "development-server"
       this.fileName = this.baseFileName(document.title)
       this.fileFormat = document.format
       this.fileDirty = false
+      if(session) await this.rememberOpenedDocument({id: crypto.randomUUID(), title: document.title, openedAt: Date.now(),
+        kind: "backend", documentId: document.id, apiBaseUrl: session.apiBaseUrl, userId: session.user.id})
+      this.updateBackendDocumentURL(document.id, client)
       this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
       this.focusEditor()
     }
@@ -2843,6 +2969,9 @@ export class DomEditor extends LitElement {
       this.fileName = this.baseFileName(document.title)
       this.fileFormat = document.format
       this.fileDirty = revision !== this.documentChangeSequence
+      const {id, title: savedTitle, format, createdAt, updatedAt} = document
+      this.savedDocuments = [{id, title: savedTitle, format, createdAt, updatedAt}, ...this.savedDocuments.filter(summary => summary.id !== id)]
+      this.updateBackendDocumentURL(id, client)
     }
     catch(error) {
       this.reportFileError(error)
@@ -3043,6 +3172,10 @@ export class DomEditor extends LitElement {
     }
     if(label === "Open") {
       void this.openDocument()
+      return
+    }
+    if(typeof label === "string" && label.startsWith("recent-document:")) {
+      void this.openRecentDocument(decodeURIComponent(label.slice("recent-document:".length)))
       return
     }
     if(label === "Save") {
@@ -5622,6 +5755,7 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.recentDocumentsReady = this.restoreRecentDocuments()
     this.lang = this.settings.language
     this.localPackageManager.autoReload = this.settings.autoReloadPackages
     this.updateMotionPreference()
@@ -5629,8 +5763,11 @@ export class DomEditor extends LitElement {
     window.addEventListener("beforeunload", this.handleBeforeUnload)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     const liveSessionId = this.liveSessionIdFromURL()
+    const open = new URL(location.href).searchParams.get("open")
+    const reference = open === null ? null : parseDocumentOpenReference(open)
+    const backendReady = !liveSessionId && import.meta.env.MODE !== "test" && reference?.kind !== "backend"
+      ? this.loginToBackend() : Promise.resolve()
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
-    else if(import.meta.env.MODE !== "test") void this.loginToBackend()
     this.restoreInstalledPackages()
     const catalog = this.loadPackageCatalog()
     const restoration = this.restoreLocalPackages()
@@ -5649,10 +5786,15 @@ export class DomEditor extends LitElement {
       startFrame()
     })
     this.localPackageManager.connect()
+    // Package restoration can replace the initial iframe. Open only after
+    // that startup work finishes, then wait for the current frame.
+    if(!liveSessionId && open !== null) void this.restoreLinkedDocument(open,
+      Promise.allSettled([backendReady, restoration]).then(() => {}))
     if(this.settings.pinDeveloperConsole) this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
   }
 
   disconnectedCallback() {
+    this.recentRefreshGeneration++
     clearTimeout(this.frameStartTimer)
     this.frameStartTimer = undefined
     this.clearMotionStylesheet()
@@ -5862,6 +6004,10 @@ export class DomEditor extends LitElement {
           .localPackages=${this.localPackages}
           .installedPackages=${this.installedPackages}
           .consoleOpen=${this.consoleOpen}
+          .recentDocuments=${this.visibleRecentDocuments.map(({id, title}) => ({id, title}))}
+          @recent-documents-refresh=${this.handleRecentDocumentsRefresh}
+          @ribbon-submenu-open=${(event: CustomEvent<{label: string}>) => {if(event.detail.label === "Open") this.handleRecentDocumentsRefresh()}}
+          @ribbon-dropdown-open=${(event: Event) => {if(event.composedPath().some(target => target instanceof HTMLElement && target.matches('ribbon-button[label="Open"]'))) this.handleRecentDocumentsRefresh()}}
           .selectedLocalPackageName=${this.selectedLocalPackageName}
           .packagesLoading=${this.packagesLoading}
           .busyPackageNames=${this.busyPackageNames}
@@ -5997,6 +6143,7 @@ export class DomEditor extends LitElement {
             <section class="templates-bar" aria-labelledby="templates-title">
               <div class="templates-heading">
                 <h2 id="templates-title">Templates</h2>
+                <h2 id="recent-documents-title" class="recent-documents-title">Recently opened</h2>
                 <button class="templates-close" type="button" aria-label="Hide templates" title="Hide templates"
                   @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
                   @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
@@ -6007,11 +6154,21 @@ export class DomEditor extends LitElement {
                   }}
                 >×</button>
               </div>
-              <div class="template-cards" role="group" aria-label="Templates">
-                ${templateModes.map(mode => renderTemplateCard(mode, this.documentLayout,
-                  this.historyState.preview !== null || this.htmlPending,
-                  selected => this.handleDocumentLayoutChange(new CustomEvent("document-layout-change", {detail: {mode: selected}})),
-                ))}
+              <div class="templates-options">
+                <div class="template-cards" role="group" aria-label="Templates">
+                  ${templateModes.map(mode => renderTemplateCard(mode, this.documentLayout,
+                    this.historyState.preview !== null || this.htmlPending,
+                    selected => this.handleDocumentLayoutChange(new CustomEvent("document-layout-change", {detail: {mode: selected}})),
+                  ))}
+                </div>
+                <nav class="templates-documents" aria-labelledby="recent-documents-title">
+                  ${this.visibleRecentDocuments.length ? html`<ul>${this.visibleRecentDocuments.map(document => html`<li>
+                    <button class="templates-document" type="button" aria-label=${`Open ${document.title}`} title=${document.title}
+                      ?disabled=${this.fileOperationActive || this.htmlPending || this.historyState.preview !== null}
+                      @click=${() => this.openRecentDocument(document.id)}
+                    >${ribbonIcon("Document")}<span>${document.title}</span></button>
+                  </li>`)}</ul>` : html`<p>No recently opened documents</p>`}
+                </nav>
               </div>
               ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
             </section>

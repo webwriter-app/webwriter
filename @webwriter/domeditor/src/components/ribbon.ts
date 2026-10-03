@@ -121,6 +121,7 @@ export class AppRibbon extends EditingControls {
     packages: {attribute: false},
     installedPackages: {attribute: false},
     consoleOpen: {type: Boolean, attribute: false},
+    recentDocuments: {attribute: false},
     packagesLoading: {type: Boolean, attribute: "packages-loading"},
     busyPackageNames: {attribute: false},
     packageError: {type: String, attribute: "package-error"},
@@ -1025,6 +1026,7 @@ export class AppRibbon extends EditingControls {
   installedPackages: WebWriterPackage[] = []
 
   consoleOpen = false
+  recentDocuments: {id: string, title: string}[] = []
 
   packagesLoading = false
 
@@ -1909,6 +1911,7 @@ export class AppRibbon extends EditingControls {
     if((changed.has("menuOpen") && !this.menuOpen) || changed.has("activeMenu")) {
       this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     }
+    if(changed.has("menuOpen") && this.menuOpen) this.dispatchEvent(new Event("recent-documents-refresh", {bubbles: true, composed: true}))
     if(changed.has("activeMenu") && this.activeMenu === "Start") {
       this.dispatchEvent(new Event("package-catalog-request", {bubbles: true, composed: true}))
     }
@@ -2321,13 +2324,19 @@ export class AppRibbon extends EditingControls {
               class="file-action"
               label=${item.label}
               .action=${item.action ?? item.label}
-              .submenu=${item.submenu ?? []}
+              .submenu=${item.label === "Open" ? this.recentDocumentButtons : item.submenu ?? []}
               shortcut=${this.commandShortcut(item.action ?? item.label)}
             ></ribbon-button>
           `
         })}
       </ribbon-drawer>
     `
+  }
+
+  private get recentDocumentButtons(): RibbonMenuButton[] {
+    return this.recentDocuments.length ? this.recentDocuments.slice(0, 10).map(document => ({
+      label: document.title, action: `recent-document:${encodeURIComponent(document.id)}`, icon: "Document",
+    })) : [{label: "No recently opened documents", disabled: true}]
   }
 
   private handleSettingsChange(event: CustomEvent<AppSettings>) {
@@ -3344,7 +3353,9 @@ export class AppRibbon extends EditingControls {
         ${this.renderDocumentDialogs()}
         <ribbon-menu
           .groups=${[
-            menuGroups.File.find(group => group.label === "File")!,
+            {...fileMenu, buttons: fileMenu.buttons.map(button =>
+              (typeof button === "string" ? button : button.label) === "Open"
+                ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
             ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
             {label: "Settings", buttons: [
               ...(!this.previewActive ? [{label: this.breadcrumbVisible ? "Hide breadcrumb" : "Show breadcrumb", action: "toggle-breadcrumb"}] : []),

@@ -35,6 +35,7 @@ import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
 import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings} from "../app-settings"
+import * as recentDocumentStorage from "../recent-documents"
 import {mathToolGroups} from "../math"
 
 const demoPackage: WebWriterPackage = {
@@ -172,9 +173,10 @@ function completePendingPackageLoad(editor: DomEditor) {
   }))
 }
 
-async function mountEditor() {
+async function mountEditor(configure?: (editor: DomEditor) => void) {
   const editor = new DomEditor()
   Object.assign(editor, {frameStarted: true})
+  configure?.(editor)
   document.body.append(editor)
   await editor.updateComplete
   const iframe = editor.shadowRoot!.querySelector("iframe")!
@@ -197,6 +199,9 @@ afterEach(async() => {
   ]
   frames.forEach(iframe => iframe.remove())
   document.body.replaceChildren()
+  const url = new URL(location.href)
+  url.searchParams.delete("open")
+  history.replaceState(history.state, "", url.href)
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
   localStorage.removeItem("webwriter_pinned_document_v1")
@@ -2364,6 +2369,7 @@ describe("DomEditor file actions", () => {
     expect(close).toHaveBeenCalledTimes(1)
     expect((editor as any).fileName).toBe("lesson")
     expect((editor as any).fileDirty).toBe(false)
+    expect(new URL(location.href).searchParams.get("open")).toBe(`local:${(editor as any).recentDocuments[0].id}`)
   })
 
   it("routes the quick Save button to Save As for a document without a file handle", async () => {
@@ -2480,6 +2486,268 @@ describe("DomEditor file actions", () => {
     expect(host.savedDocuments).toEqual([])
   })
 
+  it("restores a local deep link on startup from its retained handle, without a picker", async () => {
+    history.replaceState({previous: true}, "", "/?other=keep&open=local%3Astored#anchor")
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings, defaultTemplate: "canvas"}))
+    const file = new File(["<p>Linked local document</p>"], "Linked.html")
+    const handle = {name: file.name, getFile: vi.fn().mockResolvedValue(file), createWritable: vi.fn(), queryPermission: vi.fn().mockResolvedValue("granted")}
+    vi.spyOn(recentDocumentStorage, "readLocalDocumentReference").mockResolvedValue({id: "stored", title: file.name, openedAt: 1, kind: "local", handle})
+    const picker = vi.fn()
+    vi.stubGlobal("showOpenFilePicker", picker)
+    let reload!: ReturnType<typeof vi.spyOn>
+    const {editor} = await mountEditor(editor => {
+      const host = editor as any
+      reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+      vi.spyOn(host.localPackageManager, "restore").mockImplementation(async () => {
+        host.frameRevision++
+        return []
+      })
+    })
+    await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
+    await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
+    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>")
+    expect(picker).not.toHaveBeenCalled()
+    expect(new URL(location.href).searchParams.get("open")).toBe("local:stored")
+    expect(new URL(location.href).searchParams.get("other")).toBe("keep")
+    expect(location.hash).toBe("#anchor")
+    expect(history.state).toEqual({previous: true})
+  })
+
+  it.each([null, "local:newer"])("does not restore a delayed startup link after another document replaces it (%s)", async replacement => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState({}, "", "/?open=local%3Astored")
+    const opened = vi.spyOn(host, "performOpenDocument").mockResolvedValue(undefined)
+    let release!: () => void
+    const ready = new Promise<void>(resolve => {release = resolve})
+    const restoring = host.restoreLinkedDocument("local:stored", ready)
+    host.frameRevision++
+    host.updateDocumentURL(replacement)
+    release()
+    await restoring
+    expect(opened).not.toHaveBeenCalled()
+    expect(host.fileError).toBe("")
+    expect(new URL(location.href).searchParams.get("open")).toBe(replacement)
+  })
+
+  it.each(["missing", "denied"])("leaves the document unchanged for an inaccessible local deep link: %s", async reason => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const handle = {name: "Missing.html", getFile: vi.fn(), createWritable: vi.fn(), queryPermission: vi.fn().mockResolvedValue("denied")}
+    vi.spyOn(recentDocumentStorage, "readLocalDocumentReference").mockResolvedValue(reason === "missing" ? null : {id: "missing", title: handle.name, openedAt: 1, kind: "local", handle})
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    await host.restoreLinkedDocument("local:missing")
+    expect(reload).not.toHaveBeenCalled()
+    expect(handle.getFile).not.toHaveBeenCalled()
+    expect(host.fileHandle).toBeNull()
+    expect(host.fileOperationActive).toBe(false)
+    expect(host.fileError).toContain(reason === "missing" ? "not stored in this browser" : "no longer has access")
+  })
+
+  it("opens a cloud deep link from its exact endpoint and id without relying on recent history", async () => {
+    const base = "http://localhost:5678/nested/api"
+    const reference = `${base}/documents/folder%2Flesson`
+    history.replaceState({}, "", `/?open=${encodeURIComponent(reference)}`)
+    const getDocument = vi.fn().mockResolvedValue({id: "folder/lesson", title: "Linked lesson", content: "<p>Cloud document</p>", format: "html"})
+    let login!: ReturnType<typeof vi.spyOn>
+    let reload!: ReturnType<typeof vi.spyOn>
+    const {editor} = await mountEditor(editor => {
+      const host = editor as any
+      login = vi.spyOn(host, "loginToBackend").mockImplementation(async () => {
+        host.backendSession = {apiBaseUrl: base, user: {id: "ada"}}
+        host.backendClient = {apiBaseUrl: base, getDocument}
+      })
+      reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    })
+    await vi.waitFor(() => expect((editor as any).backendDocumentId).toBe("folder/lesson"))
+    await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
+    expect(login).toHaveBeenCalledWith(base)
+    expect(getDocument).toHaveBeenCalledWith("folder/lesson")
+    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>")
+    expect(new URL(location.href).searchParams.get("open")).toBe(reference)
+  })
+
+  it("updates cloud links after Save As and retains their ids on subsequent saves", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const saved = {id: "folder/new document", title: "Saved", format: "html", createdAt: "2026-10-03", updatedAt: "2026-10-03"}
+    const client = {apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn().mockResolvedValue(saved)}
+    host.backendClient = client
+    host.storageLocation = "development-server"
+    host.backendDocumentId = "previous"
+    vi.spyOn(editor, "execute").mockResolvedValue("<p>Saved content</p>")
+    history.replaceState({}, "", "/?other=keep&open=local%3Aprevious")
+    await host.saveDocument(true)
+    const reference = "http://localhost:1234/api/documents/folder%2Fnew%20document"
+    expect(new URL(location.href).searchParams.get("open")).toBe(reference)
+    expect(client.createDocument).toHaveBeenCalledOnce()
+    await host.saveDocument()
+    expect(client.updateDocument).toHaveBeenCalledWith(saved.id, expect.objectContaining({content: "<p>Saved content</p>"}))
+    expect(new URL(location.href).searchParams.get("open")).toBe(reference)
+    expect(new URL(location.href).searchParams.get("other")).toBe("keep")
+  })
+
+  it("reports failed cloud links without changing the document or linking a different endpoint", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    const login = vi.spyOn(host, "loginToBackend").mockResolvedValue(undefined)
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", getDocument: vi.fn().mockRejectedValue(new Error("Document not found"))}
+    await host.restoreLinkedDocument("http://localhost:5678/api/documents/missing")
+    expect(host.backendClient.getDocument).not.toHaveBeenCalled()
+    expect(login).toHaveBeenCalledWith("http://localhost:5678/api")
+    expect(host.fileError).toContain("Could not connect")
+    await host.restoreLinkedDocument("http://localhost:1234/api/documents/missing")
+    expect(host.fileError).toBe("Document not found")
+    expect(reload).not.toHaveBeenCalled()
+    await host.restoreLinkedDocument("javascript:alert(1)")
+    expect(host.fileError).toBe("The document link is invalid.")
+  })
+
+  it("retains the previous document link on a cancelled switch and clears it for a new document", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState({}, "", "/?open=local%3Aoriginal&other=keep")
+    host.fileDirty = true
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal("confirm", confirm)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    await host.newDocument("document")
+    expect(reload).not.toHaveBeenCalled()
+    expect(new URL(location.href).searchParams.get("open")).toBe("local:original")
+    confirm.mockReturnValue(true)
+    await host.newDocument("document")
+    expect(new URL(location.href).searchParams.has("open")).toBe(false)
+    expect(new URL(location.href).searchParams.get("other")).toBe("keep")
+  })
+
+  it("shows only accessible recently opened documents beside Templates and in the Open submenu", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    await host.recentDocumentsReady
+    host.backendSession = {apiBaseUrl: "https://storage.example/api", user: {id: "ada"}}
+    const documents = Array.from({length: 12}, (_, index) => ({id: `doc-${index}`, title: `Lesson ${index}`, format: "html", updatedAt: "2026-09-10T12:00:00Z"}))
+    host.backendClient = {listDocuments: vi.fn().mockResolvedValue(documents.slice())}
+    host.savedDocuments = documents
+    host.recentDocuments = documents.map((document, index) => ({id: `recent-${index}`, title: document.title, openedAt: 100 - index, kind: "backend", documentId: document.id, apiBaseUrl: host.backendSession.apiBaseUrl, userId: "ada"}))
+    await host.refreshRecentDocuments()
+    await editor.updateComplete
+    const nav = editor.shadowRoot!.querySelector<HTMLElement>(".templates-documents")!
+    const entries = [...nav.querySelectorAll<HTMLButtonElement>(".templates-document")]
+    expect(entries.map(button => button.title)).toEqual(documents.slice(0, 10).map(document => document.title))
+    expect(nav.previousElementSibling?.classList.contains("template-cards")).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".templates-heading #recent-documents-title")?.textContent).toBe("Recently opened")
+    expect(nav.querySelector("h2")).toBeNull()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    expect(ribbon.recentDocuments.map(document => document.title)).toEqual(entries.map(button => button.title))
+    const open = vi.spyOn(host, "openBackendDocument").mockResolvedValue(undefined)
+    entries[0].click()
+    await vi.waitFor(() => expect(open).toHaveBeenCalledWith("doc-0"))
+    host.fileOperationActive = true
+    await editor.updateComplete
+    expect([...nav.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true)
+    host.backendSession = {...host.backendSession, user: {id: "grace"}}
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(ribbon.recentDocuments).toEqual([])
+    expect(nav.textContent).toContain("No recently opened documents")
+    host.backendSession = null
+    await editor.updateComplete
+    expect(nav.querySelector(".templates-document")).toBeNull()
+  })
+
+  it("does not show unopened saved documents or deleted cloud documents as recent", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    await host.recentDocumentsReady
+    host.backendSession = {apiBaseUrl: "https://storage.example/api", user: {id: "ada"}}
+    host.backendClient = {}
+    host.savedDocuments = [{id: "unopened", title: "Unopened", format: "html", updatedAt: "2026-09-10T12:00:00Z"}]
+    host.recentDocuments = [{id: "recent", title: "Deleted", openedAt: 1, kind: "backend", documentId: "deleted", apiBaseUrl: host.backendSession.apiBaseUrl, userId: "ada"}]
+    await host.refreshRecentDocuments()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".templates-documents")!.textContent).toContain("No recently opened documents")
+  })
+
+  it("remembers successful local opens, reopens stored handles and hides revoked access", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const file = new File(["<p>Local lesson</p>"], "Lesson.html", {type: "text/html"})
+    const handle = {name: file.name, getFile: vi.fn().mockResolvedValue(file), createWritable: vi.fn(), queryPermission: vi.fn().mockResolvedValue("granted")}
+    const picker = vi.fn().mockResolvedValue([handle])
+    vi.stubGlobal("showOpenFilePicker", picker)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    await host.openDocument()
+    expect(host.recentDocuments).toHaveLength(1)
+    expect(host.recentDocuments[0]).toMatchObject({kind: "local", title: "Lesson.html", handle})
+    const reference = new URL(location.href).searchParams.get("open")
+    expect(reference).toBe(`local:${host.recentDocuments[0].id}`)
+    host.storageLocation = "development-server"
+    await editor.updateComplete
+    editor.shadowRoot!.querySelector<HTMLButtonElement>(".templates-document")!.click()
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+    expect(picker).toHaveBeenCalledOnce()
+    expect(host.recentDocuments).toHaveLength(1)
+    expect(new URL(location.href).searchParams.get("open")).toBe(reference)
+    expect(host.storageLocation).toBe("local")
+    handle.queryPermission.mockResolvedValue("denied")
+    await host.refreshRecentDocuments()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".templates-document")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".templates-documents")!.textContent).toContain("No recently opened documents")
+  })
+
+  it("records cloud opens for their account and orders history by successful opening", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    await host.recentDocumentsReady
+    host.backendSession = {apiBaseUrl: "https://storage.example/api", user: {id: "ada"}}
+    host.backendClient = {getDocument: vi.fn().mockImplementation(async id => ({id, title: id, content: "<p>Cloud</p>", format: "html"}))}
+    host.savedDocuments = ["first", "second"].map(id => ({id, title: id, format: "html", updatedAt: "2026-09-10T12:00:00Z"}))
+    vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    await host.openBackendDocument("first")
+    expect(host.storageLocation).toBe("development-server")
+    await host.openBackendDocument("second")
+    await host.openBackendDocument("first")
+    expect(host.recentDocuments.map((document: {title: string}) => document.title)).toEqual(["first", "second"])
+    expect(host.recentDocuments[0]).toMatchObject({kind: "backend", apiBaseUrl: "https://storage.example/api", userId: "ada"})
+    host.backendClient = null
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".templates-document")).toBeNull()
+  })
+
+  it("does not add cancelled or failed local opens to recent history", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const picker = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([{name: "Missing.html", getFile: vi.fn().mockRejectedValue(new Error("File not found"))}])
+    vi.stubGlobal("showOpenFilePicker", picker)
+    await host.openDocument()
+    expect(host.recentDocuments).toEqual([])
+    await host.openDocument()
+    expect(host.recentDocuments).toEqual([])
+    expect(host.fileError).toBe("File not found")
+  })
+
+  it("restores stored recent file handles after reload without restoring document contents", async () => {
+    const file = new File(["<p>Saved file</p>"], "Lesson.html", {type: "text/html"})
+    const handle = {name: file.name, getFile: vi.fn().mockResolvedValue(file), createWritable: vi.fn(), queryPermission: vi.fn().mockResolvedValue("granted")}
+    vi.spyOn(recentDocumentStorage, "readRecentDocuments").mockResolvedValue([{id: "stored", title: file.name, openedAt: 1, kind: "local", handle}])
+    const {editor} = await mountEditor()
+    const host = editor as any
+    await host.recentDocumentsReady
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector('.templates-document')?.getAttribute("title")).toBe("Lesson.html")
+    expect(host.frameDocumentHTML).toBeNull()
+    expect(host.fileHandle).toBeNull()
+    handle.queryPermission.mockResolvedValue("prompt")
+    const {editor: restored} = await mountEditor()
+    await (restored as any).recentDocumentsReady
+    await restored.updateComplete
+    expect(restored.shadowRoot!.querySelector('.templates-document')).toBeNull()
+  })
+
   it.each([true, false])("deletes saved documents without opening them (current: %s)", async current => {
     const {editor} = await mountEditor()
     const host = editor as any
@@ -2574,6 +2842,7 @@ describe("DomEditor file actions", () => {
     })
     expect((editor as any).backendDocumentId).toBe("doc-2")
     expect((editor as any).fileDirty).toBe(false)
+    expect((editor as any).savedDocuments.map((document: {id: string}) => document.id)).toEqual(["doc-2"])
   })
 
   it("selects the offline format through Save as and suggests its compound extension", async () => {

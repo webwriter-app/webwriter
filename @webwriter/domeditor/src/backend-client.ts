@@ -179,9 +179,12 @@ const backendCandidates = () => {
 export async function probeDevelopmentBackend(
   signal?: AbortSignal,
   fetchImplementation = globalThis.fetch,
+  apiBaseUrl?: string,
 ) {
   if(typeof fetchImplementation !== "function") return null
-  for(const url of backendCandidates()) {
+  const base = apiBaseUrl === undefined ? undefined : normalizedBaseUrl(apiBaseUrl)
+  const candidates = base === undefined ? backendCandidates() : [new URL(`${base}/session`)]
+  for(const url of candidates) {
     try {
       const response = await fetchImplementation.call(globalThis, url, {
         signal,
@@ -191,7 +194,7 @@ export async function probeDevelopmentBackend(
       })
       if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) continue
       const session = sessionFrom(await response.json())
-      if(session) return session
+      if(session && (base === undefined || normalizedBaseUrl(session.apiBaseUrl) === base)) return session
     }
     catch(error) {
       if(isAbortError(error)) throw error

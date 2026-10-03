@@ -29,6 +29,17 @@ describe("development backend client", () => {
     }))
   })
 
+  it("probes the exact linked endpoint without falling back to another server", async () => {
+    const linked = {...session, apiBaseUrl: "http://localhost:5678/nested/api"}
+    const fetch = vi.fn().mockResolvedValue(response(linked))
+    await expect(probeDevelopmentBackend(undefined, fetch, linked.apiBaseUrl)).resolves.toEqual(linked)
+    expect(fetch.mock.calls[0][0].href).toBe("http://localhost:5678/nested/api/session")
+    fetch.mockResolvedValue(response(session))
+    await expect(probeDevelopmentBackend(undefined, fetch, linked.apiBaseUrl)).resolves.toBeNull()
+    await expect(probeDevelopmentBackend(undefined, fetch, "https://attacker.example/api")).rejects.toThrow("unsafe URL")
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it("binds the browser fetch method to its global object", async () => {
     const fetch = vi.fn(function(this: unknown) {
       if(this !== globalThis) throw new TypeError("Illegal invocation")

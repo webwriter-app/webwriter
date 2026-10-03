@@ -458,6 +458,7 @@ export class RibbonMenu extends LitElement {
     }
     this.openSubmenu = label
     this.openSubmenuToggle = toggle
+    this.dispatchEvent(new CustomEvent("ribbon-submenu-open", {detail: {label}, bubbles: true, composed: true}))
     if(this.openSubmenu === label) {
       void this.updateComplete.then(() => {
         const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
