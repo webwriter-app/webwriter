@@ -114,9 +114,11 @@ export class LocalPackageWorkerClient {
   }
 
   async unregister(id: string) {
-    await this.registration()
-    await this.send({type: "unregister-local-package", id})
-    await removeLocalPackageDirectory(id)
+    try {
+      await this.registration()
+      await this.send({type: "unregister-local-package", id})
+    }
+    finally { await removeLocalPackageDirectory(id) }
   }
 
   async clear() {

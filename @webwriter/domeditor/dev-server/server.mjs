@@ -10,6 +10,7 @@ import * as Y from "yjs"
 import * as decoding from "lib0/decoding"
 import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
 import {formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
+import {fetchGitPackage, gitPackageSource, gitPackageMimeType} from "./git-packages.mjs"
 
 const serverDirectory = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(serverDirectory, "..")
@@ -288,6 +289,8 @@ export async function createDevServer(options = {}) {
   const widgetDataDirectory = join(dataDirectory, "widget-data")
   const widgetGroupingDirectory = join(dataDirectory, "widget-grouping")
   const fetchImplementation = options.fetch ?? globalThis.fetch
+  const gitSnapshots = new Map()
+  const loadGitPackage = options.fetchGitPackage ?? fetchGitPackage
   const useVite = options.vite !== false
   await mkdir(documentsDirectory, {recursive: true})
   await mkdir(widgetDataDirectory, {recursive: true})
@@ -535,6 +538,51 @@ export async function createDevServer(options = {}) {
     const origin = url.origin
 
     try {
+      if(path === "/api/developer-packages/git" && request.method === "POST") {
+        const source = gitPackageSource(await readJSON(request))
+        const snapshot = await loadGitPackage(source)
+        const sourceKey = JSON.stringify(source)
+        const existing = [...gitSnapshots].find(([, entry]) => entry.sourceKey === sourceKey && entry.commit === snapshot.commit)
+        const id = existing?.[0] ?? randomUUID()
+        if(!existing) {
+          const entry = {...snapshot, sourceKey, bytes: [...snapshot.files.values()].reduce((size, file) => size + file.length, 0)}
+          const entries = [...gitSnapshots, [id, entry]]
+          const latest = new Map(entries.map(([key, value]) => [value.sourceKey, key]))
+          let bytes = entries.reduce((sum, [, value]) => sum + value.bytes, 0)
+          let count = entries.length
+          const evicted = []
+          // Bound memory by evicting superseded revisions first. Never expire
+          // another source's current resources as a side effect of a refresh.
+          for(const [key, value] of entries) {
+            if(count <= 32 && bytes <= 256 * 1024 * 1024) break
+            if(latest.get(value.sourceKey) === key) continue
+            evicted.push(key)
+            bytes -= value.bytes
+            count--
+          }
+          if(count > 32 || bytes > 256 * 1024 * 1024) return apiError(response, 503, "Git package source cache is full. Restart the development server to release unused sources.")
+          for(const key of evicted) gitSnapshots.delete(key)
+          gitSnapshots.set(id, entry)
+        }
+        json(response, 200, {id, source, commit: snapshot.commit, baseUrl: `${origin}/api/developer-packages/git/${id}/`})
+        return
+      }
+      if(path.startsWith("/api/developer-packages/git/")) {
+        if(request.method !== "GET" && request.method !== "HEAD") return apiError(response, 405, "Git package contents are read-only")
+        const [id, ...parts] = path.slice("/api/developer-packages/git/".length).split("/")
+        const names = parts.map(part => decodeURIComponent(part))
+        if(names.some(part => !part || part === "." || part === ".." || /[\\/\x00]/.test(part))) return apiError(response, 400, "Invalid Git package resource path")
+        const filePath = names.join("/")
+        const snapshot = gitSnapshots.get(id)
+        if(!snapshot) return apiError(response, 410, "Git package source expired. Refresh the package to fetch it again.")
+        const file = snapshot.files.get(filePath)
+        if(!file) return apiError(response, 404, "Git package resource not found")
+        response.writeHead(200, {"Cache-Control": "no-store", "Content-Type": gitPackageMimeType(filePath),
+          "Content-Length": file.length, "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "sandbox"})
+        response.end(request.method === "HEAD" ? undefined : file)
+        return
+      }
       if(path === "/api/session" && request.method === "GET") {
         json(response, 200, {
           kind: "webwriter-dev-server",
@@ -544,7 +592,7 @@ export async function createDevServer(options = {}) {
           apiBaseUrl: `${origin}/api`,
           collaborationUrl: origin.replace(/^http/, "ws"),
           adminUrl: `${origin}/admin`,
-          capabilities: ["documents", "collaboration", "inference", "providers"],
+          capabilities: ["documents", "collaboration", "inference", "providers", "git-packages"],
         })
         return
       }
@@ -964,6 +1012,7 @@ export async function createDevServer(options = {}) {
       return {host, port, url: `http://${host}:${port}`}
     },
     async close() {
+      gitSnapshots.clear()
       for(const client of websocketServer.clients) client.terminate()
       await new Promise(resolveClose => websocketServer.close(() => resolveClose()))
       await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()))

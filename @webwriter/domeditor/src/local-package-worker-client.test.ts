@@ -179,6 +179,14 @@ describe("LocalPackageWorkerClient stored directory handles", () => {
 })
 
 describe("LocalPackageWorkerClient failures", () => {
+  it("forgets a removed folder even if the service worker is unavailable", async () => {
+    const {remove} = stubIndexedDb([])
+    vi.stubGlobal("navigator", {})
+    const client = new LocalPackageWorkerClient()
+    await expect(client.unregister("removed-folder")).rejects.toThrow()
+    expect(remove).toHaveBeenCalledWith("removed-folder")
+  })
+
   it("reports browsers without service worker support", async() => {
     vi.stubGlobal("navigator", {})
 

@@ -13,6 +13,7 @@ import {defaultGroupingRules, groupingTarget} from "../src/widget-grouping.js"
 let developmentServer
 let baseUrl
 let upstreamFetch
+let gitPackageFetch
 let widgetGroupsFormed
 
 const request = async (path, init) => {
@@ -81,7 +82,15 @@ beforeEach(async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "webwriter-dev-server-"))
   upstreamFetch = vi.fn().mockRejectedValue(new Error("Unexpected upstream inference request"))
   widgetGroupsFormed = vi.fn()
+  gitPackageFetch = vi.fn(async source => ({source, commit: "abc123", files: new Map([
+    ["package.json", Buffer.from('{"name":"@git/demo","version":"1.0.0"}')],
+    ["dist/demo.js", Buffer.from('export const version = "1.0.0"')],
+    ["dist/icon.png", Buffer.from([0, 255, 128])],
+    ["dist/page.html", Buffer.from("<script>localStorage.clear()</script>")],
+    ["dist/icon.svg", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="localStorage.clear()"/>')],
+  ])}))
   developmentServer = await createDevServer({
+    fetchGitPackage: gitPackageFetch,
     port: 0,
     vite: false,
     dataDirectory,
@@ -784,5 +793,76 @@ describe("development server", () => {
       learnerDoc.destroy()
       hostDoc.destroy()
     }
+  })
+})
+
+
+describe("Git developer packages", () => {
+  it("serves immutable, uncached snapshots with executable MIME types and frame CORS", async () => {
+    const source = {repository: "https://gitlab.example/demo.git", ref: "v1.0.0", path: "packages/demo"}
+    const {response, value} = await request("/api/developer-packages/git", {method: "POST", body: JSON.stringify(source)})
+    expect(response.status).toBe(200)
+    expect(gitPackageFetch).toHaveBeenCalledWith(source)
+    expect(value).toMatchObject({source, commit: "abc123", baseUrl: `${baseUrl}/api/developer-packages/git/${value.id}/`})
+    const script = await fetch(value.baseUrl + "dist/demo.js", {headers: {Origin: "http://localhost:1234"}})
+    expect(script.headers.get("Content-Type")).toBe("text/javascript")
+    expect(script.headers.get("Cache-Control")).toBe("no-store")
+    expect(script.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:1234")
+    expect(await script.text()).toContain('version = "1.0.0"')
+    const icon = await fetch(value.baseUrl + "dist/icon.png")
+    expect(new Uint8Array(await icon.arrayBuffer())).toEqual(new Uint8Array([0, 255, 128]))
+    const head = await fetch(value.baseUrl + "dist/demo.js", {method: "HEAD"})
+    expect(head.status).toBe(200)
+    expect(await head.text()).toBe("")
+    const refreshed = await request("/api/developer-packages/git", {method: "POST", body: JSON.stringify(source)})
+    expect(refreshed.value.id).toBe(value.id)
+    expect(gitPackageFetch).toHaveBeenCalledTimes(2)
+    expect((await fetch(value.baseUrl + "dist/demo.js")).status).toBe(200)
+    expect((await fetch(value.baseUrl + "missing.js")).status).toBe(404)
+    expect((await fetch(value.baseUrl + "dist/demo.js", {method: "PUT"})).status).toBe(405)
+  })
+
+  it("keeps another source's current resources available across repeated refreshes", async () => {
+    const load = repository => request("/api/developer-packages/git", {method: "POST", body: JSON.stringify({repository})})
+    const other = await load("https://example.test/other.git")
+    const original = await load("https://example.test/demo.git")
+    const files = new Map([["dist/demo.js", Buffer.from("export const version = 2")]])
+    for(let index = 0; index < 40; index++) {
+      gitPackageFetch.mockResolvedValueOnce({commit: `revision-${index}`, files})
+      expect((await load("https://example.test/demo.git")).response.status).toBe(200)
+    }
+    expect((await fetch(other.value.baseUrl + "dist/demo.js")).status).toBe(200)
+    expect((await fetch(original.value.baseUrl + "dist/demo.js")).status).toBe(410)
+  })
+
+  it("refuses a new source rather than evicting current resources when the cache is full", async () => {
+    let first
+    for(let index = 0; index < 32; index++) {
+      const loaded = await request("/api/developer-packages/git", {method: "POST", body: JSON.stringify({repository: `https://example.test/package-${index}.git`})})
+      expect(loaded.response.status).toBe(200)
+      first ??= loaded.value
+    }
+    const refused = await request("/api/developer-packages/git", {method: "POST", body: JSON.stringify({repository: "https://example.test/overflow.git"})})
+    expect(refused.response.status).toBe(503)
+    expect((await fetch(first.baseUrl + "dist/demo.js")).status).toBe(200)
+  })
+
+  it.each(["GET", "HEAD"])("sandboxes direct navigation to package documents without allowing scripts or same-origin access (%s)", async method => {
+    const {value} = await request("/api/developer-packages/git", {method: "POST", body: JSON.stringify({repository: "https://example.test/demo.git"})})
+    for(const [path, type] of [["dist/page.html", "text/html"], ["dist/icon.svg", "image/svg+xml"], ["dist/demo.js", "text/javascript"]]) {
+      const response = await fetch(value.baseUrl + path, {method})
+      expect(response.status).toBe(200)
+      expect(response.headers.get("Content-Type")).toBe(type)
+      expect(response.headers.get("Content-Security-Policy")).toBe("sandbox")
+    }
+  })
+
+  it("reports unknown snapshots and fetch errors without exposing a writable endpoint", async () => {
+    expect((await request("/api/developer-packages/git/missing/package.json")).response.status).toBe(410)
+    gitPackageFetch.mockRejectedValueOnce(new Error("Unknown branch or tag"))
+    const failed = await request("/api/developer-packages/git", {method: "POST", body: JSON.stringify({repository: "https://example.test/demo.git", ref: "missing"})})
+    expect(failed.value.error.message).toBe("Unknown branch or tag")
+    const invalid = await request("/api/developer-packages/git", {method: "POST", body: JSON.stringify({repository: "file:///local"})})
+    expect(invalid.response.status).toBe(400)
   })
 })

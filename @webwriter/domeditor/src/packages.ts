@@ -174,6 +174,7 @@ export type PackageInsertionItem = {
 }
 
 export type WebWriterPackage = {
+  developerSource?: {kind: "local", path: string} | {kind: "git", repository: string, ref: string, path: string, commit: string}
   name: string
   version: string
   label: string

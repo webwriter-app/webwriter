@@ -12,6 +12,12 @@ Editor and preview iframes use the paired `localhost` origin in development. The
 
 Data is stored in the ignored `.webwriter-dev/` directory. Provider files have owner-only permissions, but API keys are still stored as plaintext development secrets. `OPENAI_API_KEY` can instead be set in `.env.local`; it creates an OpenAI provider whose key stays in the environment.
 
+## Developer packages
+
+Open the developer console, then use **Add package → Add from local folder** for a local folder or **Add package → Add from Git repository** for an anonymous public Git remote (HTTP, HTTPS, or `git://`, including GitHub and GitLab). Enter a branch or tag, or leave it empty for the default branch. An optional package folder supports repositories containing multiple packages. The selected ref must contain `package.json` and the package's built exports; the editor does not run repository build scripts.
+
+Git packages require the development backend and Git installed on its host. Their contents are read-only. Git fetches into a temporary bare repository which is deleted after the transfer, including on failure. Runtime files are served from immutable snapshots in server memory with `Cache-Control: no-store`; no package checkout or persistent content cache is created. Only the repository/ref/folder descriptor is saved in browser settings, and reopening the app fetches it again. The refresh button at the bottom right of each package item refetches its source and reloads it even when Auto-reload is off. Hover or focus the source badge over the package icon to see the repository URL or local folder name.
+
 ## Example lessons
 
 [`examples/`](examples/) contains twelve editable HTML lessons. Open them in the editor or a browser; widget assets load online.
@@ -23,6 +29,8 @@ The [Kitchen Sink](examples/kitchen-sink.html) preset pairs empty and populated 
 ## APIs
 
 - `GET /api/session` — backend probe and no-auth login metadata
+- `POST /api/developer-packages/git` — fetch a public Git ref into an in-memory package snapshot
+- `GET|HEAD /api/developer-packages/git/:snapshot/:path` — read an immutable package file
 - `GET|POST /api/documents` and `GET|PUT|PATCH|DELETE /api/documents/:id` — document CRUD
 - `GET|POST /api/providers` and `GET|PUT|PATCH|DELETE /api/providers/:id` — AI provider CRUD
 - `PUT /api/providers/:id/active` — select the default provider
