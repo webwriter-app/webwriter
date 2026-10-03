@@ -317,6 +317,27 @@ describe("mark ribbon controls", () => {
     }
   })
 
+  it("starts at full height before enabling transitions for app-button toggles", async () => {
+    class StartupRibbon extends AppRibbon {
+      initialLayout: {expanded: boolean, height: string, transition: string} | null = null
+      protected firstUpdated() {
+        const style = getComputedStyle(this)
+        this.initialLayout = {expanded: this.hasAttribute("expanded"), height: style.height, transition: style.transition}
+        super.firstUpdated()
+      }
+    }
+    customElements.define("startup-test-ribbon", StartupRibbon)
+    const ribbon = new StartupRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    expect(ribbon.initialLayout).toEqual({expanded: true, height: "140px", transition: "none"})
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await ribbon.updateComplete
+    expect(ribbon.expanded).toBe(false)
+    expect(getComputedStyle(ribbon).transition).toContain("height")
+    expect(getComputedStyle(ribbon).transition).toContain("max-height")
+  })
+
   it("toggles the ribbon from the app icon while the File tab stays collapsed", async () => {
     const {ribbon} = await mountRibbon()
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!

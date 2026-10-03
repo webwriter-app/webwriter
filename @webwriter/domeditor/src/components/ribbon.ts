@@ -174,6 +174,10 @@ export class AppRibbon extends EditingControls {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-user-select: none;
       user-select: none;
+      transition: none;
+    }
+
+    :host([transitions-ready]) {
       transition: var(--ww-ui-transition,
         height 180ms ease,
         max-height 180ms ease);
@@ -1233,6 +1237,9 @@ export class AppRibbon extends EditingControls {
   }
 
   protected firstUpdated() {
+    // Commit the initial expanded layout before enabling height transitions.
+    void this.offsetHeight
+    this.setAttribute("transitions-ready", "")
     const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
     if(content && typeof ResizeObserver !== "undefined") {
       this.ribbonContentObserver = new ResizeObserver(() => this.scheduleResponsiveLayout())

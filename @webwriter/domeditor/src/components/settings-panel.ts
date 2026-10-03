@@ -70,6 +70,11 @@ export class SettingsPanel extends LitElement {
       border-radius: 0.35rem;
       color: #2f3742;
       background: #ffffff;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%23526b86' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right .875rem center;
+      background-size: .75rem .75rem;
       font: inherit;
       font-size: 0.75rem;
     }

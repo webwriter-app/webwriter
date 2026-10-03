@@ -826,6 +826,15 @@ export class RibbonButton extends LitElement {
       color: #1e4f87;
     }
 
+    /* Keep the popover shadow outside the connected button. */
+    ribbon-menu[data-connected="below"] {
+      clip-path: inset(0 -2rem -2rem -2rem);
+    }
+
+    ribbon-menu[data-connected="above"] {
+      clip-path: inset(-2rem -2rem 0 -2rem);
+    }
+
     /* The popover is in the top layer, so cover its shared border there. */
     ribbon-menu[data-connected]::before {
       content: "";
