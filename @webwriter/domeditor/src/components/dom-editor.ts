@@ -2564,8 +2564,8 @@ export class DomEditor extends LitElement {
     finally { this.fileOperationActive = false }
   }
 
-  private newDocument() {
-    return this.runFileOperation(() => this.performNewDocument())
+  private newDocument(template: DocumentLayoutMode = this.settings.defaultTemplate) {
+    return this.runFileOperation(() => this.performNewDocument(template))
   }
 
   private openDocument() {
@@ -2636,14 +2636,13 @@ export class DomEditor extends LitElement {
     return this.runFileOperation(() => this.performSaveDocument(saveAs, requestedFormat))
   }
 
-  private async performNewDocument() {
+  private async performNewDocument(template: DocumentLayoutMode) {
     if(!this.confirmDiscardChanges()) return
     try {
       this.fileHandle = null
       this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
-      const template = this.settings.defaultTemplate
       await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
       await this.applyDefaultTemplate(template, this.frameRevision)
       this.fileDirty = false
@@ -2943,6 +2942,10 @@ export class DomEditor extends LitElement {
     }
     if(label === "New") {
       void this.newDocument()
+      return
+    }
+    if(label === "new:document" || label === "new:canvas" || label === "new:slides") {
+      void this.newDocument(label.slice("new:".length) as DocumentLayoutMode)
       return
     }
     if(label === "Open") {

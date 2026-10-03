@@ -28,6 +28,21 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("collapsed ribbon file menu", () => {
+  it.each(["Document", "Canvas", "Slides"])("dispatches New %s from the submenu", async label => {
+    const {ribbon, menu} = await mount()
+    const commands = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", commands)
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more New options"]')!.click()
+    await menu.updateComplete
+    const options = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('.submenu button'))
+    expect(options.map(button => button.textContent!.trim())).toEqual(["Document", "Canvas", "Slides"])
+    options.find(button => button.title === label)!.click()
+    expect(commands).toHaveBeenCalledOnce()
+    expect(commands.mock.calls[0][0].detail.label).toBe(`new:${label.toLowerCase()}`)
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector(".submenu")).toBeNull()
+  })
+
   it("can dismiss menus before they mount", () => {
     expect(() => new RibbonMenu().closeSubmenus()).not.toThrow()
   })

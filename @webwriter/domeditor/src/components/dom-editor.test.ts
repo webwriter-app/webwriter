@@ -666,6 +666,21 @@ describe("DomEditor iframe setup", () => {
     expect(host.isFreshDocumentUnchanged()).toBe(false)
   })
 
+  it.each(["document", "canvas", "slides"] as const)("creates an explicit %s template from the New submenu without changing the default", async mode => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, defaultTemplate: "slides"}
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    const apply = vi.spyOn(host, "applyDefaultTemplate").mockResolvedValue(undefined)
+    editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: `new:${mode}`}, bubbles: true, composed: true,
+    }))
+    await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(mode, host.frameRevision))
+    expect(reload).toHaveBeenCalledOnce()
+    expect(host.settings.defaultTemplate).toBe("slides")
+    expect(host.fileDirty).toBe(false)
+  })
+
   it("applies the saved default template to the first blank document", async () => {
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), defaultTemplate: "canvas"}))
     const execute = vi.spyOn(DomEditor.prototype, "execute").mockImplementation(async function(this: DomEditor, action) {

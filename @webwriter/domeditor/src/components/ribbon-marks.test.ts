@@ -467,6 +467,11 @@ describe("mark ribbon controls", () => {
     expect(fileButtons.every(button => getComputedStyle(
       button.shadowRoot!.querySelector<HTMLElement>(".button-row")!,
     ).boxSizing === "border-box")).toBe(true)
+    expect(fileButtons.find(button => button.label === "New")?.submenu).toEqual([
+      {label: "Document", action: "new:document", icon: "Document"},
+      {label: "Canvas", action: "new:canvas", icon: "Canvas"},
+      {label: "Slides", action: "new:slides", icon: "KeywordPresentation"},
+    ])
     expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([
       {label: "HTML (.html)", action: "save:html"},
       {label: "Offline HTML (.offline.html)", action: "save:offline"},

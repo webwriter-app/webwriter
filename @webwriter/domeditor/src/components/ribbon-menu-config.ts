@@ -179,7 +179,14 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {
       label: "File",
       buttons: [
-        "New",
+        {
+          label: "New",
+          submenu: [
+            {label: "Document", action: "new:document", icon: "Document"},
+            {label: "Canvas", action: "new:canvas", icon: "Canvas"},
+            {label: "Slides", action: "new:slides", icon: "KeywordPresentation"},
+          ],
+        },
         "Open",
         {
           label: "Save",
