@@ -30,6 +30,18 @@ const feature = () => editor.features.mark
 const input = (data: string) => feature().handleSVGTextInput(new InputEvent("beforeinput", {inputType: "insertText", data, cancelable: true}))
 
 describe("SVG text marks", () => {
+  it("distinguishes absent and empty downloads on SVG links", () => {
+    const text = load('<a href="/file">hello</a>')
+    select(text.querySelector("a")!.firstChild!)
+    expect(feature().getAttributeState().a?.download).toBeUndefined()
+    expect(feature().setMarkAttribute("a", "download", "")).toBe(true)
+    expect(text.querySelector("a")!.getAttribute("download")).toBe("")
+    expect(feature().getAttributeState().a?.download).toBe("")
+    expect(feature().setMarkAttribute("a", "download", null)).toBe(true)
+    expect(text.querySelector("a")!.hasAttribute("download")).toBe(false)
+    expect(feature().getAttributeState().a?.download).toBeUndefined()
+  })
+
   it.each(["b", "i", "u", "s"] as const)("styles and toggles %s using only SVG spans", mark => {
     const text = load()
     select(text.firstChild!, 1, 4)

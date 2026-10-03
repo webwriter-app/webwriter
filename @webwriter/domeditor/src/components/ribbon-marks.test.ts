@@ -864,15 +864,38 @@ describe("mark ribbon controls", () => {
     const advanced = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-advanced")!
     const advancedInputs = Array.from(advanced.querySelectorAll<HTMLInputElement>("input"))
     expect(advancedInputs.map(input => input.getAttribute("aria-label"))).toEqual([
-      "Link: Target",
+      "Link: Open in new tab",
       "Link: Download",
-      "Link: Ping",
-      "Link: Relationship",
-      "Link: Language",
-      "Link: Media type",
-      "Link: Referrer policy",
     ])
-    expect(advancedInputs[0].value).toBe("_blank")
+    expect(advancedInputs.every(input => input.type === "checkbox")).toBe(true)
+    expect(advancedInputs[0].checked).toBe(true)
+    expect(advancedInputs[1].checked).toBe(false)
+    const changed = vi.fn()
+    ribbon.addEventListener("mark-attribute-change", changed)
+    advancedInputs[0].click()
+    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "target", value: ""})
+    advancedInputs[0].click()
+    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "target", value: "_blank"})
+    advancedInputs[1].click()
+    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "download", value: ""})
+    ribbon.markAttributes = {a: {href: "/page", download: ""}}
+    await ribbon.updateComplete
+    await link.updateComplete
+    const filename = link.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Link: Filename"]')!
+    expect(filename.value).toBe("")
+    filename.value = "page.html"
+    filename.dispatchEvent(new Event("change"))
+    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "download", value: "page.html"})
+    ribbon.markAttributes = {a: {href: "/page", download: "page.html"}}
+    await ribbon.updateComplete
+    await link.updateComplete
+    expect(link.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Link: Filename"]')!.value).toBe("page.html")
+    link.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Link: Download"]')!.click()
+    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "download", value: null})
+    ribbon.markAttributes = {a: {href: "/page"}}
+    await ribbon.updateComplete
+    await link.updateComplete
+    expect(link.shadowRoot!.querySelector('input[aria-label="Link: Filename"]')).toBeNull()
 
     openMore.click()
     await ribbon.updateComplete
@@ -1030,6 +1053,18 @@ describe("mark ribbon bridge", () => {
     })
     expect(execute).toHaveBeenNthCalledWith(7, {type: "removeRubyFallback"})
     expect(execute).toHaveBeenNthCalledWith(8, {type: "removeRuby"})
+  })
+
+  it("routes enabling and disabling downloads through the editor", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    for(const value of ["", "file.txt", null]) {
+      ribbon.dispatchEvent(new CustomEvent("mark-attribute-change", {
+        bubbles: true, composed: true, detail: {mark: "a", attribute: "download", value},
+      }))
+      expect(execute).toHaveBeenLastCalledWith({type: "setMarkAttribute", mark: "a", attribute: "download", value})
+    }
   })
 
   it("routes span dropdown selections and detail-attribute changes", async () => {

@@ -365,6 +365,27 @@ describe("MarkFeature toggles", () => {
     expect(feature.getState()).toEqual({canMark: true, marks: []})
   })
 
+  it("enables downloads without a filename and preserves unrelated link attributes", () => {
+    const paragraph = setContent('<p><a href="/file" ping="/track" rel="author" hreflang="en" type="text/plain" referrerpolicy="origin">Text</a></p>')
+    const link = paragraph.querySelector("a")!
+    selectText(link.firstChild as Text)
+    expect(feature.getAttributeState().a?.download).toBeUndefined()
+    expect(feature.setMarkAttribute("a", "download", "")).toBe(true)
+    expect(link.getAttribute("download")).toBe("")
+    expect(feature.getAttributeState().a?.download).toBe("")
+    expect(feature.setMarkAttribute("a", "download", "file.txt")).toBe(true)
+    expect(link.getAttribute("download")).toBe("file.txt")
+    expect(feature.setMarkAttribute("a", "download", null)).toBe(true)
+    expect(link.hasAttribute("download")).toBe(false)
+    expect(feature.getAttributeState().a?.download).toBeUndefined()
+    expect(link.outerHTML).toBe('<a href="/file" ping="/track" rel="author" hreflang="en" type="text/plain" referrerpolicy="origin">Text</a>')
+    $.move(link.firstChild!, 1)
+    expect(feature.setMarkAttribute("a", "download", "")).toBe(true)
+    expect(feature.getAttributeState().a?.download).toBe("")
+    expect(feature.setMarkAttribute("a", "download", null)).toBe(true)
+    expect(link.hasAttribute("download")).toBe(false)
+  })
+
   it("reads, sets, and removes mark-specific attributes", () => {
     const paragraph = setContent('<p><a href="/old" target="_blank">Text</a></p>')
     selectText(paragraph.querySelector("a")!.firstChild as Text)
@@ -373,7 +394,6 @@ describe("MarkFeature toggles", () => {
       a: {
         href: "/old",
         target: "_blank",
-        download: "",
         ping: "",
         rel: "",
         hreflang: "",
@@ -536,6 +556,17 @@ describe("MarkFeature stored marks", () => {
     return event
   }
 
+  it("keeps an empty download filename when typing a new link", () => {
+    const paragraph = setContent("<p></p>")
+    $.move(paragraph, 0)
+    feature.toggleMark("a")
+    feature.setMarkAttribute("a", "href", "/file")
+    feature.setMarkAttribute("a", "download", "")
+    expect(feature.getAttributeState().a?.download).toBe("")
+    typeText(paragraph, "X")
+    expect(paragraph.querySelector("a")!.getAttribute("download")).toBe("")
+  })
+
   it("stores and unstores marks at a caret without changing the DOM", () => {
     const paragraph = setContent("<p>Text</p>")
     $.move(paragraph.firstChild!, 2)
@@ -643,7 +674,6 @@ describe("MarkFeature stored marks", () => {
       a: {
         href: "https://example.com",
         target: "",
-        download: "",
         ping: "",
         rel: "",
         hreflang: "",

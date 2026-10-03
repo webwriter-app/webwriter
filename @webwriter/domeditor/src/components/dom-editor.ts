@@ -3826,7 +3826,7 @@ export class DomEditor extends LitElement {
     if(!mark
       || typeof detail?.attribute !== "string"
       || !isMarkAttributeName(mark, detail.attribute)
-      || typeof detail.value !== "string") {
+      || typeof detail.value !== "string" && detail.value !== null) {
       this.focusEditor()
       return
     }

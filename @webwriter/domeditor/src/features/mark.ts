@@ -153,7 +153,7 @@ export class MarkFeature extends EditorFeature {
       const value = values[property === "color" ? "fill" : property]
       return value ? [[property, value]] : []
     })) as StyleMarkValues
-    const attributes: MarkAttributeValues = link ? {a: Object.fromEntries(markAttributeOptionsFor("a").map(({name}) => [name, link!.getAttribute(name) ?? (name === "href" ? link!.getAttributeNS("http://www.w3.org/1999/xlink", "href") : null) ?? ""]))} : {}
+    const attributes: MarkAttributeValues = link ? {a: Object.fromEntries(markAttributeOptionsFor("a").filter(({name}) => name !== "download" || link!.hasAttribute(name)).map(({name}) => [name, link!.getAttribute(name) ?? (name === "href" ? link!.getAttributeNS("http://www.w3.org/1999/xlink", "href") : null) ?? ""]))} : {}
     return {marks, styles, attributes, link, values}
   }
 
@@ -166,7 +166,7 @@ export class MarkFeature extends EditorFeature {
     const styles = context.range.collapsed && this.storedStyles !== null ? {...this.storedStyles}
       : Object.fromEntries(styleMarkNames.flatMap(property => first?.styles[property] && samples.every(sample => sample.styles[property] === first.styles[property]) ? [[property, first.styles[property]]] : []))
     const attributes = context.range.collapsed && this.storedAttributes !== null ? this.cloneAttributeValues(this.storedAttributes)
-      : marks.includes("a") ? {a: Object.fromEntries(markAttributeOptionsFor("a").map(({name}) => [name, first?.attributes.a?.[name] && samples.every(sample => sample.attributes.a?.[name] === first.attributes.a?.[name]) ? first.attributes.a[name] : ""]))} : {}
+      : marks.includes("a") ? {a: Object.fromEntries(markAttributeOptionsFor("a").filter(({name}) => name !== "download" || samples.every(sample => sample.attributes.a?.download !== undefined)).map(({name}) => [name, first?.attributes.a?.[name] && samples.every(sample => sample.attributes.a?.[name] === first.attributes.a?.[name]) ? first.attributes.a[name] : ""]))} : {}
     return {canMark: true, svgText: true, marks, styles, attributes}
   }
 
@@ -258,7 +258,7 @@ export class MarkFeature extends EditorFeature {
       }
       if(link) {
         const anchor = document.createElementNS(SVG_NAMESPACE, "a")
-        for(const [name, value] of Object.entries(link)) if(value) anchor.setAttribute(name, value)
+        for(const [name, value] of Object.entries(link)) if(value || name === "download") anchor.setAttribute(name, value)
         node.before(anchor)
         anchor.append(node)
       }
@@ -426,7 +426,7 @@ export class MarkFeature extends EditorFeature {
       type: "setMarkAttribute"
       mark: MarkName
       attribute: string
-      value: string
+      value: string | null
     }) => this.setMarkAttribute(mark, attribute, value),
     createRuby: ({annotation, fallback}: {type: "createRuby", annotation: string, fallback: boolean}) =>
       this.createRuby(annotation, fallback),
@@ -578,7 +578,7 @@ export class MarkFeature extends EditorFeature {
       if(!options.length) continue
       const elements = this.markElementsForSelection(context, mark)
       if(!elements.length) continue
-      result[mark] = Object.fromEntries(options.map(option => {
+      result[mark] = Object.fromEntries(options.filter(option => option.name !== "download" || elements.every(element => element.hasAttribute("download"))).map(option => {
         const values = elements.map(element => element.getAttribute(option.name) ?? "")
         const value = values.every(candidate => candidate === values[0]) ? values[0] : ""
         return [option.name, value]
@@ -925,14 +925,17 @@ export class MarkFeature extends EditorFeature {
     return this.addMark(mark)
   }
 
-  /** Sets or removes one supported element-specific attribute on active mark wrappers. */
-  setMarkAttribute(mark: MarkName, attribute: string, value: string): boolean {
+  /** Sets or removes one supported element-specific attribute on active mark wrappers.
+   * An empty download value enables downloads without a filename; null removes it. */
+  setMarkAttribute(mark: MarkName, attribute: string, value: string | null): boolean {
     const svg = this.svgContext()
     if(svg) {
       if(mark !== "a" || !isMarkAttributeName(mark, attribute)) return false
       const state = this.svgState(svg)
       if(!state.marks.includes("a")) return false
-      const attributes = {...state.attributes.a, [attribute]: value}
+      const attributes = {...state.attributes.a}
+      if(value !== null && (value || attribute === "download")) attributes[attribute] = value
+      else delete attributes[attribute]
       if(svg.range.collapsed) {
         this.storeAttributes({a: attributes}, svg.selection)
         this.editor.postMarkState()
@@ -940,7 +943,10 @@ export class MarkFeature extends EditorFeature {
       }
       for(const slice of [...svg.text].reverse()) {
         const current = this.svgValues(slice.node).attributes.a ?? {}
-        this.editSVG({...svg, text: [slice]}, {}, {...current, [attribute]: value})
+        const next = {...current}
+        if(value !== null && (value || attribute === "download")) next[attribute] = value
+        else delete next[attribute]
+        this.editSVG({...svg, text: [slice]}, {}, next)
       }
       return svg.text.length > 0
     }
@@ -958,7 +964,7 @@ export class MarkFeature extends EditorFeature {
     if(caret) {
       const element = this.markElementAt(caret.range.startContainer, caret.block, mark)
       if(element) {
-        if((element.getAttribute(attribute) ?? "") === value) return false
+        if((attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value) return false
         this.applyMarkAttribute(element, attribute, value)
       }
       else {
@@ -966,7 +972,7 @@ export class MarkFeature extends EditorFeature {
         if(!marks.has(mark)) return false
         const attributes = this.effectiveCaretAttributes(caret)
         const markAttributes = {...(attributes[mark] ?? {})}
-        if(value) markAttributes[attribute] = value
+        if(value !== null && (value || attribute === "download")) markAttributes[attribute] = value
         else delete markAttributes[attribute]
         if(Object.keys(markAttributes).length) attributes[mark] = markAttributes
         else delete attributes[mark]
@@ -980,7 +986,7 @@ export class MarkFeature extends EditorFeature {
     if(!context) return false
     const elements = this.markElementsForSelection(context, mark)
     if(!elements.length) return false
-    if(elements.every(element => (element.getAttribute(attribute) ?? "") === value)) return false
+    if(elements.every(element => (attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value)) return false
     elements.forEach(element => this.applyMarkAttribute(element, attribute, value))
     context.block.normalize()
     this.restoreSelection(context)
@@ -1265,7 +1271,7 @@ export class MarkFeature extends EditorFeature {
     }
     for(const [mark, attributes] of Object.entries(desiredAttributes) as [MarkName, Record<string, string>][]) {
       for(const [attribute, value] of Object.entries(attributes)) {
-        if(value) this.setMarkAttribute(mark, attribute, value)
+        if(value || attribute === "download") this.setMarkAttribute(mark, attribute, value)
       }
     }
 
@@ -1641,7 +1647,7 @@ export class MarkFeature extends EditorFeature {
       const element = this.markElementAt(node, block, mark)
       if(!element) continue
       attributes[mark] = Object.fromEntries(
-        options.map(option => [option.name, element.getAttribute(option.name) ?? ""]),
+        options.filter(option => option.name !== "download" || element.hasAttribute("download")).map(option => [option.name, element.getAttribute(option.name) ?? ""]),
       )
     }
     return attributes
@@ -1653,8 +1659,8 @@ export class MarkFeature extends EditorFeature {
     ) as MarkAttributeValues
   }
 
-  private applyMarkAttribute(element: Element, attribute: string, value: string) {
-    if(value) element.setAttribute(attribute, value)
+  private applyMarkAttribute(element: Element, attribute: string, value: string | null) {
+    if(value !== null && (value || attribute === "download")) element.setAttribute(attribute, value)
     else element.removeAttribute(attribute)
   }
 

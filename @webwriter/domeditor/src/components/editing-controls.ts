@@ -357,7 +357,13 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected dispatchMarkAttribute(mark: MarkName, attribute: string, event: Event) {
-    const value = (event.currentTarget as HTMLInputElement | HTMLSelectElement).value
+    const input = event.currentTarget as HTMLInputElement
+    let value: string | null = input.value
+    if(input.type === "checkbox") {
+      value = input.checked ? input.value : ""
+      if(attribute === "target") value = input.checked ? "_blank" : ""
+      if(attribute === "download") value = input.checked ? "" : null
+    }
     this.dispatchEvent(new CustomEvent("mark-attribute-change", {
       detail: {mark, attribute, value},
       bubbles: true,
@@ -428,7 +434,8 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderLinkDropdown() {
-    const [href, ...advanced] = markAttributeOptionsFor("a")
+    const href = markAttributeOptionsFor("a").find(option => option.name === "href")
+    const download = this.markAttributes.a?.download
     return html`
       <div class="button-dropdown-form" role="group" aria-label="Link options">
         ${href ? this.renderMarkAttribute("a", href) : ""}
@@ -442,7 +449,21 @@ export abstract class EditingControls extends LitElement {
         >More options</button>
         ${this.linkAttributeMenuOpen ? html`
           <div class="button-dropdown-advanced" role="group" aria-label="Advanced link options">
-            ${advanced.map(option => this.renderMarkAttribute("a", option))}
+            <label class="mark-attribute">
+              <span>Open in new tab</span>
+              <input type="checkbox" aria-label="Link: Open in new tab"
+                .checked=${this.markAttributes.a?.target === "_blank"}
+                ?disabled=${!this.canMark}
+                @change=${(event: Event) => this.dispatchMarkAttribute("a", "target", event)} />
+            </label>
+            <label class="mark-attribute">
+              <span>Download</span>
+              <input type="checkbox" aria-label="Link: Download"
+                .checked=${download !== undefined}
+                ?disabled=${!this.canMark}
+                @change=${(event: Event) => this.dispatchMarkAttribute("a", "download", event)} />
+            </label>
+            ${download !== undefined ? this.renderMarkAttribute("a", {name: "download", label: "Filename", placeholder: "Filename"}) : ""}
           </div>
         ` : ""}
       </div>

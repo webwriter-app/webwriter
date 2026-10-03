@@ -37,6 +37,12 @@ export const dropdownContentStyles = css`
       font-size: 0.66rem;
     }
 
+    .button-dropdown-content .mark-attribute input[type="checkbox"] {
+      width: auto;
+      height: auto;
+      padding: 0;
+    }
+
     .button-dropdown-content .mark-attribute input:focus,
     .button-dropdown-content .mark-attribute select:focus,
     .mark-dropdown-attribute:focus {
