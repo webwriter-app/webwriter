@@ -402,6 +402,64 @@ describe("StateFeature", () => {
     editor.destroy()
   })
 
+  it("leaves the native caret unchanged when opening and closing clean HTML", () => {
+    document.body.innerHTML = "<p>Hello <b>world</b></p>"
+    const editor = new DOMEditor()
+    const text = document.querySelector("b")!.firstChild!
+    const selection = document.getSelection()!
+    selection.setPosition(text, 2)
+    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit"})
+    expect(selection.isCollapsed).toBe(true)
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(2)
+    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
+    expect(document.querySelector("p")!.classList.contains("◆style-target-hovered")).toBe(true)
+    expect(selection.isCollapsed).toBe(true)
+    editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(2)
+    expect(selection.isCollapsed).toBe(true)
+    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
+    editor.destroy()
+  })
+
+  it.each(["<p><b>Text</b></p>", "<unknown-widget><!--keep--><span>Text</span></unknown-widget>", '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" /></svg>'])("highlights the saved HTML target without selecting or serializing editor artifacts: %s", html => {
+    document.body.innerHTML = html + "<p>Other</p>"
+    const editor = new DOMEditor()
+    document.getSelection()!.setPosition(document.body, 0)
+    const target = document.body.firstElementChild!
+    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit", path: [0]})
+    document.getSelection()!.setPosition(document.body.lastElementChild!.firstChild!, 1)
+    const before = editor.toHTML(true)
+    editor.getActionHandler("setHTMLSelectionEditPending")({type: "setHTMLSelectionEditPending", pending: true})
+    expect(editor.features.state.allowsActionDuringHTMLSelectionEdit("hoverHTMLSelectionEdit")).toBe(true)
+    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
+    expect(target.classList.contains("◆style-target-hovered")).toBe(true)
+    expect(document.body.lastElementChild!.classList.contains("◆style-target-hovered")).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: false})
+    expect(target.classList.contains("◆style-target-hovered")).toBe(false)
+    editor.destroy()
+  })
+
+  it("cleans up a detached HTML hover target and ignores its concurrently replaced range", () => {
+    document.body.innerHTML = "<p>Original</p><p>Other</p>"
+    const editor = new DOMEditor()
+    document.getSelection()!.setPosition(document.body, 0)
+    const target = document.body.firstElementChild!
+    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit", path: [0]})
+    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
+    target.replaceWith(document.createElement("article"))
+    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
+    expect(target.classList.contains("◆style-target-hovered")).toBe(false)
+    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
+    document.body.append(target)
+    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
+    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
+    editor.destroy()
+  })
+
   it("uses the element outside nested mark-drawer wrappers as a collapsed selection's HTML root", () => {
     document.body.innerHTML = '<p class="authored ◆element-selected">Hello <b><i>world</i></b></p>'
     const editor = new DOMEditor()

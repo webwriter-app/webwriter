@@ -144,6 +144,8 @@ export type AppSettings = {
   defaultTemplate: DocumentLayoutMode
   updateDocumentLanguage: boolean
   showStyleToolbox: boolean
+  pinDeveloperConsole: boolean
+  autoReloadPackages: boolean
   disableAnimations: boolean
   shortcuts: Record<string, string>
 }
@@ -154,6 +156,8 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     defaultTemplate: "document",
     updateDocumentLanguage: true,
     showStyleToolbox: false,
+    pinDeveloperConsole: false,
+    autoReloadPackages: true,
     disableAnimations: false,
     shortcuts: Object.fromEntries(appCommands.map(command => [
       command.id,
@@ -208,6 +212,12 @@ export function loadAppSettings(): AppSettings {
       showStyleToolbox: typeof value.showStyleToolbox === "boolean"
         ? value.showStyleToolbox
         : defaults.showStyleToolbox,
+      pinDeveloperConsole: typeof value.pinDeveloperConsole === "boolean"
+        ? value.pinDeveloperConsole
+        : defaults.pinDeveloperConsole,
+      autoReloadPackages: typeof value.autoReloadPackages === "boolean"
+        ? value.autoReloadPackages
+        : defaults.autoReloadPackages,
       shortcuts,
     }
     if((value.shortcutsVersion ?? 0) < 2) persistAppSettings(settings)

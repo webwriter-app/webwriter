@@ -1,3 +1,4 @@
+import "./developer-console"
 import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, nothing, type PropertyValues } from "lit"
@@ -159,6 +160,7 @@ import {
   appCommands,
   builtinShortcuts,
   loadAppSettings,
+  persistAppSettings,
   shortcutFromEvent,
   type AppSettings,
 } from "../app-settings"
@@ -413,7 +415,6 @@ export class DomEditor extends LitElement {
     selectedLocalPackageName: {attribute: false, state: true},
     localPackageRuntimeWarnings: {attribute: false, state: true},
     localPackageTestResults: {attribute: false, state: true},
-    selectedLocalPackageAutoReload: {attribute: false, state: true},
     frameRevision: {attribute: false, state: true},
     frameStarted: {attribute: false, state: true},
     listType: {attribute: false, state: true},
@@ -458,6 +459,8 @@ export class DomEditor extends LitElement {
     historyState: {attribute: false, state: true},
     historyLoading: {attribute: false, state: true},
     historyError: {attribute: false, state: true},
+    consoleOpen: {attribute: false, state: true},
+    consoleTab: {attribute: false, state: true},
     htmlMode: {attribute: false, state: true},
     htmlSource: {attribute: false, state: true},
     htmlPending: {attribute: false, state: true},
@@ -534,6 +537,8 @@ export class DomEditor extends LitElement {
   }
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
+  private consoleOpen = false
+  private consoleTab: "HTML" | "Packages" | "Tests" = "Packages"
   private htmlMode = false
   private htmlSource = ""
   private htmlOriginalSource = ""
@@ -542,6 +547,9 @@ export class DomEditor extends LitElement {
   private documentLayout: DocumentLayoutState = defaultDocumentLayoutState()
   private documentLayoutError = ""
   private htmlSourceRefreshSequence = 0
+  private htmlSourceHovered = false
+  private htmlSourceFocused = false
+  private htmlSourceHighlightActive = false
   private htmlSourceRefreshQueued = false
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
@@ -559,7 +567,6 @@ export class DomEditor extends LitElement {
   private localPackageRuntimeWarnings: Record<string, LocalPackageWarning[]> = {}
   /** Latest test run per `<package name>/<test name>`. */
   private localPackageTestResults: Record<string, PackageTestResult | "running"> = {}
-  private selectedLocalPackageAutoReload = false
   private readonly localPackageManager = new LocalPackageManager({
     changed: packages => { this.localPackages = packages },
     error: message => { this.localPackageError = message },
@@ -661,6 +668,7 @@ export class DomEditor extends LitElement {
       grid-template-rows: auto auto minmax(0, 1fr) auto auto;
       width: 100%;
       height: 100%;
+      overflow: clip;
       border: 0.5px solid #a8a8a8;
     }
 
@@ -753,15 +761,21 @@ export class DomEditor extends LitElement {
 
     .html-source-editor {
       box-sizing: border-box;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      min-height: 0;
+      height: 100%;
       padding: 0.45rem 0.65rem;
       border-top: 1px solid #c8c8c8;
-      background: #f2f2f2;
+      background: #e9e9e9;
     }
+
+    .html-source-editor[hidden] {display: none}
 
     .html-source-field {
       position: relative;
-      /* Five lines of code plus the textarea padding and border. */
-      height: calc(5 * 18px + 2 * 0.45rem + 2px);
+      min-height: 0;
+      height: 100%;
       border-radius: 0.35rem;
       background: #fafafa;
     }
@@ -2416,6 +2430,16 @@ export class DomEditor extends LitElement {
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
     this.lang = settings.language
     this.updateMotionPreference()
+    this.localPackageManager.autoReload = settings.autoReloadPackages
+    if(settings.pinDeveloperConsole && !previous.pinDeveloperConsole) {
+      this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    }
+    if(previous.pinDeveloperConsole && !settings.pinDeveloperConsole) {
+      const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+      if(!toolbox?.activeTool || toolbox.hidden) {
+        this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
+      }
+    }
     if(this.editorOpaque) this.postFrameControl("shortcuts", {shortcuts: {...settings.shortcuts}})
     if(settings.updateDocumentLanguage && (
       settings.language !== previous.language || !previous.updateDocumentLanguage
@@ -2543,7 +2567,7 @@ export class DomEditor extends LitElement {
     this.historyError = ""
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
-    this.templatesDismissed = false
+    this.templatesDismissed = this.settings.pinDeveloperConsole
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
@@ -3268,7 +3292,6 @@ export class DomEditor extends LitElement {
       return
     }
     this.selectedLocalPackageName = name
-    this.selectedLocalPackageAutoReload = record.autoReload
   }
 
   private get selectedLocalPackageRecord() {
@@ -3522,14 +3545,6 @@ export class DomEditor extends LitElement {
       result = {status: "error", tests: [], error: error instanceof Error ? error.message : String(error)}
     }
     this.localPackageTestResults = {...this.localPackageTestResults, [key]: result}
-  }
-
-  private handleLocalPackageAutoReloadChange = (event: Event) => {
-    const detail = (event as CustomEvent<{enabled?: boolean}>).detail
-    const record = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
-    if(!record || typeof detail?.enabled !== "boolean") return
-    record.autoReload = detail.enabled
-    this.selectedLocalPackageAutoReload = detail.enabled
   }
 
   private handleRibbonPreviewExit = () => {
@@ -4247,7 +4262,6 @@ export class DomEditor extends LitElement {
     if(!this.htmlMode || this.htmlPending) return
     const sequence = ++this.htmlSourceRefreshSequence
     try {
-      this.restoreEditorSelection()
       const path = this.selectionPath.at(-1)?.path
       const result = await this.execute({
         type: "beginHTMLSelectionEdit",
@@ -4258,6 +4272,7 @@ export class DomEditor extends LitElement {
       this.htmlSource = indentHTMLSource(result.html)
       this.htmlOriginalSource = this.htmlSource
       this.htmlSourceError = ""
+      this.syncHTMLSourceHover(true)
     }
     catch(error) {
       if(sequence !== this.htmlSourceRefreshSequence || !this.htmlMode) return
@@ -4277,8 +4292,10 @@ export class DomEditor extends LitElement {
   private async setHTMLMode(enabled: boolean) {
     if(enabled === this.htmlMode) return
     if(!enabled && this.htmlPending) return
-    this.htmlSourceRefreshSequence++
+    const sequence = ++this.htmlSourceRefreshSequence
     if(!enabled) {
+      this.htmlMode = false
+      this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
       try {
         await this.execute({type: "discardHTMLSelectionEdit"})
       }
@@ -4286,13 +4303,17 @@ export class DomEditor extends LitElement {
         // The iframe may have replaced a clean source session after a remote
         // selection change; leaving the visual mode must still succeed.
       }
+      if(sequence !== this.htmlSourceRefreshSequence) return
+      if(this.consoleTab === "HTML") this.consoleOpen = false
       // Keep the source visible while the HTML view collapses; it is reset
       // when the view opens again.
-      this.htmlMode = false
       this.htmlOriginalSource = ""
       this.htmlSourceError = ""
       return
     }
+    this.consoleOpen = true
+    this.templatesDismissed = true
+    this.consoleTab = "HTML"
     this.htmlMode = true
     this.htmlSource = ""
     this.htmlOriginalSource = ""
@@ -4300,14 +4321,46 @@ export class DomEditor extends LitElement {
     await this.refreshHTMLSource()
   }
 
-  private handleHTMLModeChange = (event: Event) => {
+  private handleDeveloperConsoleChange = (event: Event) => {
     const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
-    if(typeof enabled === "boolean") void this.setHTMLMode(enabled)
+    if(typeof enabled !== "boolean" || this.htmlPending) return
+    this.consoleOpen = enabled
+    if(enabled) this.templatesDismissed = true
+    void this.setHTMLMode(enabled && this.consoleTab === "HTML")
+  }
+
+  private handleDeveloperConsolePinChange = (event: Event) => {
+    const pinned = (event as CustomEvent<{pinned?: unknown}>).detail?.pinned
+    if(typeof pinned !== "boolean") return
+    const settings = {...this.settings, pinDeveloperConsole: pinned}
+    persistAppSettings(settings)
+    this.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: settings}))
+  }
+
+  private handleDeveloperConsoleAutoReloadChange = (event: Event) => {
+    const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
+    if(typeof enabled !== "boolean") return
+    const settings = {...this.settings, autoReloadPackages: enabled}
+    persistAppSettings(settings)
+    this.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: settings}))
+  }
+
+  private handleDeveloperConsoleTabChange = (event: Event) => {
+    const tab = (event as CustomEvent<{tab?: unknown}>).detail?.tab
+    if((tab !== "HTML" && tab !== "Packages" && tab !== "Tests") || this.htmlPending) {
+      event.preventDefault()
+      return
+    }
+    this.consoleTab = tab
+    void this.setHTMLMode(tab === "HTML")
   }
 
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
-    if(tool !== "Edit" && this.htmlMode && !this.htmlPending) void this.setHTMLMode(false)
+    if(tool !== "Edit" && !this.htmlPending && !this.settings.pinDeveloperConsole) {
+      this.consoleOpen = false
+      void this.setHTMLMode(false)
+    }
   }
 
   private handleDocumentLayoutChange = (event: Event) => {
@@ -4335,6 +4388,14 @@ export class DomEditor extends LitElement {
     })
   }
 
+  private syncHTMLSourceHover(force = false) {
+    const hovered = this.htmlMode && (this.htmlSourceHovered || this.htmlSourceFocused)
+    if(!hovered && !this.htmlSourceHighlightActive || !force && hovered === this.htmlSourceHighlightActive) return
+    this.htmlSourceHighlightActive = hovered
+    if(!this.htmlMode) return
+    void this.execute({type: "hoverHTMLSelectionEdit", hovered}).catch(() => {})
+  }
+
   private handleHTMLSourceInput = (event: Event) => {
     const value = (event.currentTarget as HTMLTextAreaElement).value
     if(!this.htmlMode) return
@@ -4358,9 +4419,34 @@ export class DomEditor extends LitElement {
 
   private renderHTMLSourceEditor() {
     return html`
-      <div class="html-source-panel" ?inert=${!this.htmlMode} aria-hidden=${String(!this.htmlMode)}>
+      <div class="html-source-panel" ?inert=${!this.consoleOpen} aria-hidden=${String(!this.consoleOpen)}>
         <div class="html-source-clip">
-          <section class="html-source-editor" aria-label="Selected HTML source">
+          <developer-console .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
+            ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
+            .localPackages=${this.localPackages}
+            .localPackagesLoading=${this.localPackagesLoading}
+            .localPackageError=${this.localPackageError}
+            .selectedLocalPackageName=${this.selectedLocalPackageName}
+            .localPackageWarnings=${this.localPackageWarnings}
+            .localPackageTestResults=${this.localPackageTestResults}
+            @local-package-test-run=${this.handleLocalPackageTestRun}
+            @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
+            @local-package-contributor-change=${this.handleLocalPackageContributorChange}
+            @local-package-contributor-add=${this.handleLocalPackageContributorAdd}
+            @local-package-contributor-delete=${this.handleLocalPackageContributorDelete}
+            @local-package-export-change=${this.handleLocalPackageExportChange}
+            @local-package-export-add=${this.handleLocalPackageExportAdd}
+            @local-package-export-delete=${this.handleLocalPackageExportDelete}
+            @local-package-export-file-pick=${this.handleLocalPackageExportFilePick}
+            @developer-console-tab-change=${this.handleDeveloperConsoleTabChange}
+            @developer-console-change=${this.handleDeveloperConsoleChange}
+            @developer-console-pin-change=${this.handleDeveloperConsolePinChange}
+            .autoReload=${this.settings.autoReloadPackages}
+            @developer-console-auto-reload-change=${this.handleDeveloperConsoleAutoReloadChange}
+            @html-source-apply=${this.handleHTMLSourceApply}
+            @html-source-discard=${this.handleHTMLSourceDiscard}
+          >
+          <section class="html-source-editor" aria-label="Selected HTML source" ?hidden=${this.consoleTab !== "HTML"}>
             <div class="html-source-field">
               <pre class="html-source-highlight" aria-hidden="true">${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}${"\n"}</pre>
               <textarea
@@ -4368,12 +4454,17 @@ export class DomEditor extends LitElement {
                 aria-label="Selected HTML"
                 .value=${this.htmlSource}
                 spellcheck="false"
+                @mouseenter=${() => {this.htmlSourceHovered = true; this.syncHTMLSourceHover()}}
+                @mouseleave=${() => {this.htmlSourceHovered = false; this.syncHTMLSourceHover()}}
+                @focus=${() => {this.htmlSourceFocused = true; this.syncHTMLSourceHover()}}
+                @blur=${() => {this.htmlSourceFocused = false; this.syncHTMLSourceHover()}}
                 @input=${this.handleHTMLSourceInput}
                 @scroll=${(event: Event) => this.syncHTMLSourceScroll(event.currentTarget as HTMLTextAreaElement)}
               ></textarea>
             </div>
             ${this.htmlSourceError ? html`<p class="html-source-error" role="alert">${this.htmlSourceError}</p>` : ""}
           </section>
+          </developer-console>
         </div>
       </div>
     `
@@ -4628,7 +4719,7 @@ export class DomEditor extends LitElement {
 
   private stylesVisible() {
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    return toolbox?.activeTool === "Style" || toolbox?.activeTool === "Edit" && !toolbox.developMode
+    return toolbox?.activeTool === "Style" || toolbox?.activeTool === "Edit"
       || this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.activeMenu === "Style"
   }
 
@@ -5173,6 +5264,7 @@ export class DomEditor extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     this.lang = this.settings.language
+    this.localPackageManager.autoReload = this.settings.autoReloadPackages
     this.updateMotionPreference()
     window.addEventListener("message", this.handleEditorMessage)
     window.addEventListener("beforeunload", this.handleBeforeUnload)
@@ -5198,6 +5290,7 @@ export class DomEditor extends LitElement {
       startFrame()
     })
     this.localPackageManager.connect()
+    if(this.settings.pinDeveloperConsole) this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
   }
 
   disconnectedCallback() {
@@ -5287,6 +5380,9 @@ export class DomEditor extends LitElement {
     this.elementStyleRefreshQueued = false
     this.htmlSourceRefreshSequence++
     this.htmlSourceRefreshQueued = false
+    this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
+    this.consoleOpen = false
+    this.consoleTab = "Packages"
     this.htmlMode = false
     this.htmlSource = ""
     this.htmlOriginalSource = ""
@@ -5520,34 +5616,16 @@ export class DomEditor extends LitElement {
         .documentLayoutError=${this.documentLayoutError}
         .documentHead=${this.documentHead}
         @document-head-action=${this.handleDocumentHeadAction}
-        .htmlMode=${this.htmlMode}
+        .consoleOpen=${this.consoleOpen}
         .htmlPending=${this.htmlPending}
         .table=${this.tableSelection}
-        .localPackages=${this.localPackages}
-        .localPackagesLoading=${this.localPackagesLoading}
-        .localPackageError=${this.localPackageError}
-        .selectedLocalPackageName=${this.selectedLocalPackageName}
-        .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
-        .localPackageWarnings=${this.localPackageWarnings}
-        .localPackageTestResults=${this.localPackageTestResults}
-        @local-package-test-run=${this.handleLocalPackageTestRun}
         ?hidden=${!this.breadcrumbVisible || this.previewActive || this.liveSessionActive}
-        @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
-        @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
-        @local-package-contributor-change=${this.handleLocalPackageContributorChange}
-        @local-package-contributor-add=${this.handleLocalPackageContributorAdd}
-        @local-package-contributor-delete=${this.handleLocalPackageContributorDelete}
-        @local-package-export-change=${this.handleLocalPackageExportChange}
-        @local-package-export-add=${this.handleLocalPackageExportAdd}
-        @local-package-export-delete=${this.handleLocalPackageExportDelete}
-        @local-package-export-file-pick=${this.handleLocalPackageExportFilePick}
         @toolbox-change=${this.handleToolboxChange}
         @document-layout-change=${this.handleDocumentLayoutChange}
-        @html-mode-change=${this.handleHTMLModeChange}
-        @html-source-apply=${this.handleHTMLSourceApply}
-        @html-source-discard=${this.handleHTMLSourceDiscard}
+        @developer-console-change=${this.handleDeveloperConsoleChange}
+        @developer-console-pin-change=${this.handleDeveloperConsolePinChange}
       ></dom-editor-toolbox>
-      ${this.breadcrumbVisible && !this.previewActive && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
+      ${(this.breadcrumbVisible || this.settings.pinDeveloperConsole) && !this.previewActive && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
       ${this.previewActive || this.liveSessionActive ? "" : html`
         <div class="templates-panel" ?inert=${this.templatesDismissed} aria-hidden=${String(this.templatesDismissed)}>
           <div class="templates-clip">

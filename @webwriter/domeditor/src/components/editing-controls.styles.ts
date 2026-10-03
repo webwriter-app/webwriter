@@ -384,16 +384,6 @@ export const editingControlStyles = css`
       min-width: 0;
     }
 
-    .develop-field.local-package-auto-reload {
-      flex-direction: row;
-      align-items: center;
-      min-height: 1.45rem;
-      padding: 0 0.25rem;
-      color: #465465;
-      font-size: 0.68rem;
-      white-space: nowrap;
-    }
-
     .develop-fields {
       box-sizing: border-box;
       display: flex;
@@ -403,6 +393,8 @@ export const editingControlStyles = css`
       min-width: 0;
       padding: 0.2rem 0 0.35rem;
     }
+
+    .develop-secondary-column {display: contents}
 
     .develop-section {
       display: flex;
@@ -473,9 +465,7 @@ export const editingControlStyles = css`
 
     .develop-export-card {
       box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
+      position: relative;
       min-width: 0;
       padding: 0.5rem;
       border: 1px solid #d8dee6;
@@ -483,7 +473,23 @@ export const editingControlStyles = css`
       background: rgb(255 255 255 / 55%);
     }
 
+    .develop-export-card-header {
+      min-height: 1.55rem;
+      padding-right: 1.95rem;
+      list-style: none;
+      cursor: pointer;
+    }
+    .develop-export-card-header::-webkit-details-marker {display: none}
+    .develop-export-card-header::before {content: "›"; flex: 0 0 auto; color: #526b86}
+    .develop-export-details[open] > summary::before {transform: rotate(90deg)}
+    .develop-export-card-header:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
+    .develop-export-type-icon {display: flex; flex: 0 0 1rem; color: #526b86}
+    .develop-export-type-icon svg {width: 1rem; height: 1rem}
+    .develop-export-card-fields {display: grid; gap: .45rem; margin-top: .45rem}
+    .develop-export-delete {position: absolute; top: .5rem; right: .5rem}
+
     .develop-export-card-title {
+      flex: 1;
       min-width: 0;
       color: #52606d;
       font-size: 0.61rem;

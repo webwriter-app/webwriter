@@ -1,6 +1,7 @@
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {isGraphicPresetType} from "../graphic-shapes"
 import {LitElement, html, nothing} from "lit"
+import {repeat} from "lit/directives/repeat.js"
 import {appCommands, defaultAppSettings, formatShortcut, type AppSettings} from "../app-settings"
 import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
 import {
@@ -59,7 +60,7 @@ import {
   type TimedMediaResourceType,
 } from "../media"
 import {mathToolGroups, type MathSelectionState} from "../math"
-import type {PackageTestResult, WebWriterPackage} from "../packages"
+import type {PackageTestResult, WebWriterPackage, WebWriterPackageExportType} from "../packages"
 import type {LocalPackageWarning} from "../local-package"
 import {describePackageExport, webWriterPackageExportTypes} from "../packages"
 import {ribbonIcon} from "../ribbon-icons"
@@ -104,6 +105,12 @@ const packagePersonText = (value: unknown) => value === undefined
   ? ""
   : typeof value === "string" ? value : JSON.stringify(value)
 
+const packageExportIcons: Record<WebWriterPackageExportType, string> = {
+  widget: "Extensions", test: "Accept", migration: "Refresh", snippet: "Code",
+  theme: "Theme", icon: "Image", "editing-config": "Preferences",
+  "custom-elements": "Document", other: "More",
+}
+
 const scopedPackageNamePattern = "@[^/\\s]+/[^/\\s]+"
 const semanticVersionPattern = "(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?"
 
@@ -129,7 +136,6 @@ export abstract class EditingControls extends LitElement {
     localPackagesLoading: {type: Boolean, attribute: "local-packages-loading"},
     localPackageError: {type: String, attribute: "local-package-error"},
     selectedLocalPackageName: {type: String, attribute: "selected-local-package-name"},
-    selectedLocalPackageAutoReload: {type: Boolean, attribute: "selected-local-package-auto-reload"},
     localPackageWarnings: {attribute: false},
     localPackageTestResults: {attribute: false},
     listType: {type: String, attribute: "list-type"},
@@ -199,7 +205,6 @@ export abstract class EditingControls extends LitElement {
 
   selectedLocalPackageName = ""
 
-  selectedLocalPackageAutoReload = false
 
   /** Loader and runtime checks per local package name. */
   localPackageWarnings: Record<string, LocalPackageWarning[]> = {}
@@ -891,11 +896,10 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected get localPackageSelectionName() {
-    return this.selectedLocalPackageName || this.localPackages[0]?.name || ""
+    return this.selectedLocalPackage?.name ?? ""
   }
 
-  protected selectLocalPackageFromSelect = (event: Event) => {
-    const name = (event.currentTarget as HTMLSelectElement).value
+  protected selectLocalPackageByName(name: string) {
     this.selectedLocalPackageName = name
     this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
       detail: {label: `local-package-select:${name}`},
@@ -970,40 +974,19 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
-  protected localPackageAutoReloadChange = (event: Event) => {
-    const enabled = (event.currentTarget as HTMLInputElement).checked
-    this.dispatchEvent(new CustomEvent<{enabled: boolean}>("local-package-auto-reload-change", {
-      detail: {enabled},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
   protected renderDevelopDrawer() {
     const displayPackages = this.localPackages
     return html`
-      <ribbon-drawer
-        class="local-packages-drawer"
-        label="Local packages"
-        icon="Packages"
-        layout="packages"
-        hide-pane-label
-        single-column
-      >
-        <label class="local-package-selection">
-          <span class="local-package-selection-icon" aria-hidden="true">${ribbonIcon("Packages")}</span>
-          <select
-            class="local-package-select"
-            aria-label="Local package"
-            .value=${this.localPackageSelectionName}
-            ?disabled=${!displayPackages.length}
-            @change=${this.selectLocalPackageFromSelect}
-          >
-            ${displayPackages.length
-              ? displayPackages.map(pkg => html`<option value=${pkg.name}>${pkg.name}</option>`)
-              : html`<option value="">${this.localPackagesLoading ? "Loading packages…" : "No local packages"}</option>`}
-          </select>
-        </label>
+      <aside class="local-packages-drawer" aria-label="Local packages">
+        <nav class="local-package-list" aria-label="Choose a local package">
+          <ul>
+            ${displayPackages.map(pkg => html`<li><button type="button" class="local-package-item"
+              aria-pressed=${this.localPackageSelectionName === pkg.name}
+              @click=${() => this.selectLocalPackageByName(pkg.name)}
+            ><span class="local-package-name">${pkg.name}</span><span class="local-package-version">${pkg.version}</span></button></li>`)}
+          </ul>
+          ${!displayPackages.length ? html`<span class="package-status">${this.localPackagesLoading ? "Loading packages…" : "No local packages"}</span>` : ""}
+        </nav>
         <div class="local-package-actions">
           <ribbon-button
             label="Load"
@@ -1020,20 +1003,8 @@ export abstract class EditingControls extends LitElement {
             keep-drawer-open
           ></ribbon-button>
         </div>
-        <label class="develop-field local-package-auto-reload">
-          <input
-            type="checkbox"
-            .checked=${this.selectedLocalPackageAutoReload}
-            ?disabled=${!this.selectedLocalPackage}
-            @change=${this.localPackageAutoReloadChange}
-          />
-          <span>Auto-reload</span>
-        </label>
         ${this.localPackageError ? html`<span class="package-status" role="alert">${this.localPackageError}</span>` : ""}
-        ${!this.localPackagesLoading && !displayPackages.length && !this.localPackageError
-          ? html`<span class="package-status">No local packages</span>`
-          : ""}
-      </ribbon-drawer>
+      </aside>
     `
   }
 
@@ -1044,6 +1015,9 @@ export abstract class EditingControls extends LitElement {
     const keywords = manifest?.keywords ?? pkg?.keywords ?? []
     const contributors = manifest?.contributors ?? []
     const packageExports = Object.entries(manifest?.exports ?? {})
+      .map(([exportName, target]) => ({exportName, descriptor: describePackageExport(exportName, target)}))
+      .sort((a, b) => webWriterPackageExportTypes.findIndex(type => type.value === a.descriptor.type)
+        - webWriterPackageExportTypes.findIndex(type => type.value === b.descriptor.type))
     return html`
       <ribbon-drawer label="Metadata" icon="Properties" layout="metadata" hide-pane-label>
         ${pkg ? html`<div class="develop-fields">
@@ -1102,63 +1076,68 @@ export abstract class EditingControls extends LitElement {
             </div>` : ""}
           </section>
 
+          <div class="develop-secondary-column">
           <section class="develop-section" aria-labelledby="develop-export-fields">
             <div class="develop-section-title-row">
               <span id="develop-export-fields" class="develop-section-title">Exports</span>
               <button class="develop-icon-button" type="button" aria-label="Create export" title="Create export" @click=${this.addLocalPackageExport}>${ribbonIcon("Plus")}</button>
             </div>
             <div class="develop-export-list">
-              ${packageExports.length ? packageExports.map(([exportName, target]) => {
-                const descriptor = describePackageExport(exportName, target)
+              ${packageExports.length ? repeat(packageExports, item => `${pkg.name}/${item.exportName}`, ({exportName, descriptor}) => {
                 const fixedName = ["migration", "icon", "editing-config", "custom-elements"].includes(descriptor.type)
                 return html`
                   <article class="develop-export-card" data-export-name=${exportName}>
-                    <div class="develop-export-card-header">
-                      <span class="develop-export-card-title" title=${exportName}>${exportName}</span>
-                      <button
-                        class="develop-icon-button"
-                        type="button"
-                        aria-label=${`Delete export ${exportName}`}
-                        title="Delete export"
-                        @click=${() => this.deleteLocalPackageExport(exportName)}
-                      >${ribbonIcon("Delete")}</button>
-                    </div>
-                    <label class="develop-field">
-                      <span class="develop-field-label">Type</span>
-                      <select .value=${descriptor.type} @change=${(event: Event) => this.localPackageExportChange(exportName, "type", event)}>
-                        ${webWriterPackageExportTypes.map(type => html`<option value=${type.value} ?selected=${type.value === descriptor.type}>${type.label}</option>`)}
-                      </select>
-                    </label>
-                    <label class="develop-field">
-                      <span class="develop-field-label">Name</span>
-                      <input
-                        type="text"
-                        .value=${descriptor.name}
-                        ?disabled=${fixedName}
-                        title=${fixedName ? "This export type has a fixed package name" : ""}
-                        required
-                        @change=${(event: Event) => this.localPackageExportChange(exportName, "name", event)}
-                      />
-                    </label>
-                    <label class="develop-field">
-                      <span class="develop-field-label">Source path</span>
-                      <span class="develop-export-source-row">
-                        <input
-                          type="text"
-                          .value=${descriptor.source}
-                          placeholder="./src/file.ts"
-                          required
-                          @change=${(event: Event) => this.localPackageExportChange(exportName, "source", event)}
-                        />
-                        <button
-                          class="develop-icon-button"
-                          type="button"
-                          aria-label=${`Choose source file for ${exportName}`}
-                          title="Choose source file"
-                          @click=${() => this.pickLocalPackageExportFile(exportName)}
-                        >${ribbonIcon("Open")}</button>
-                      </span>
-                    </label>
+                    <details class="develop-export-details">
+                      <summary class="develop-export-card-header">
+                        <span class="develop-export-type-icon" aria-hidden="true" title=${webWriterPackageExportTypes.find(type => type.value === descriptor.type)!.label}>${ribbonIcon(packageExportIcons[descriptor.type])}</span>
+                        <span class="develop-export-card-title" title=${exportName}>${exportName}</span>
+                      </summary>
+                      <div class="develop-export-card-fields">
+                        <label class="develop-field">
+                          <span class="develop-field-label">Type</span>
+                          <select .value=${descriptor.type} @change=${(event: Event) => this.localPackageExportChange(exportName, "type", event)}>
+                            ${webWriterPackageExportTypes.map(type => html`<option value=${type.value} ?selected=${type.value === descriptor.type}>${type.label}</option>`)}
+                          </select>
+                        </label>
+                        <label class="develop-field">
+                          <span class="develop-field-label">Name</span>
+                          <input
+                            type="text"
+                            .value=${descriptor.name}
+                            ?disabled=${fixedName}
+                            title=${fixedName ? "This export type has a fixed package name" : ""}
+                            required
+                            @change=${(event: Event) => this.localPackageExportChange(exportName, "name", event)}
+                          />
+                        </label>
+                        <label class="develop-field">
+                          <span class="develop-field-label">Source path</span>
+                          <span class="develop-export-source-row">
+                            <input
+                              type="text"
+                              .value=${descriptor.source}
+                              placeholder="./src/file.ts"
+                              required
+                              @change=${(event: Event) => this.localPackageExportChange(exportName, "source", event)}
+                            />
+                            <button
+                              class="develop-icon-button"
+                              type="button"
+                              aria-label=${`Choose source file for ${exportName}`}
+                              title="Choose source file"
+                              @click=${() => this.pickLocalPackageExportFile(exportName)}
+                            >${ribbonIcon("Open")}</button>
+                          </span>
+                        </label>
+                      </div>
+                    </details>
+                    <button
+                      class="develop-icon-button develop-export-delete"
+                      type="button"
+                      aria-label=${`Delete export ${exportName}`}
+                      title="Delete export"
+                      @click=${() => this.deleteLocalPackageExport(exportName)}
+                    >${ribbonIcon("Delete")}</button>
                   </article>
                 `
               }) : html`<span class="develop-empty">No exports</span>`}
@@ -1177,9 +1156,8 @@ export abstract class EditingControls extends LitElement {
               <span class="develop-field-help">JSON keyed by “.” or an exported package member</span>
             </label>
           </section>
+          </div>
 
-          ${this.renderLocalPackageChecks(pkg)}
-          ${this.renderLocalPackageTests(pkg)}
         </div>` : html`<span class="develop-empty">Select a package</span>`}
       </ribbon-drawer>
     `

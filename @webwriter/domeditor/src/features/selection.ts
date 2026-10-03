@@ -1001,13 +1001,16 @@ export class SelectionFeature extends EditorFeature {
       section.classList.add("◆", "◆element-hovered")
     },
     hoverStyleTarget: ({hovered}: {type: "hoverStyleTarget", hovered: boolean}) => {
-      this.#clearStyleTargetHover()
-      if(!hovered) return
-
-      this.#clearElementHover()
-      this.editor.features.manipulation.styleTarget.classList.add("◆", "◆style-target-hovered")
+      this.showStyleTargetHover(hovered ? this.editor.features.manipulation.styleTarget : null)
     },
   } as const
+
+  showStyleTargetHover(target: Element | null) {
+    this.#clearStyleTargetHover()
+    if(!target || !document.body.contains(target)) return
+    this.#clearElementHover()
+    target.classList.add("◆", "◆style-target-hovered")
+  }
 
   /** Resolves a BODY-relative child-node path to an element. */
   #elementAtPath(path: number[]) {

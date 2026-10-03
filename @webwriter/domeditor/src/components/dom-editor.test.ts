@@ -1268,10 +1268,15 @@ describe("Develop local packages", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!.click()
-    await toolbox.updateComplete
-    expect(toolbox.localPackages).toEqual(packages)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    console.shadowRoot!.querySelector<HTMLButtonElement>("#console-tab-Packages")!.click()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(console.localPackages).toEqual(packages)
+    expect(console.shadowRoot!.querySelector('.local-packages-drawer')).not.toBeNull()
   })
 
   it("selects a local package without inserting it", async() => {
@@ -1431,7 +1436,7 @@ describe("Develop local packages", () => {
     })
   })
 
-  it("honors the selected package's auto-reload setting", async() => {
+  it("honors the global package auto-reload setting", async() => {
     vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(localPackageDirectory()))
     vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
     vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
@@ -1440,13 +1445,17 @@ describe("Develop local packages", () => {
     await (editor as any).addLocalPackage()
     reload.mockClear()
 
-    ;(editor as any).handleLocalPackageAutoReloadChange(new CustomEvent("local-package-auto-reload-change", {
+    ;(editor as any).handleDeveloperConsoleAutoReloadChange(new CustomEvent("developer-console-auto-reload-change", {
       detail: {enabled: false},
     }))
     await (editor as any).localPackageManager.refresh([...(editor as any).localPackageManager.records.keys()][0])
 
-    expect((editor as any).selectedLocalPackageAutoReload).toBe(false)
+    expect((editor as any).settings.autoReloadPackages).toBe(false)
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).autoReloadPackages).toBe(false)
     expect(reload).not.toHaveBeenCalled()
+    ;(editor as any).handleDeveloperConsoleAutoReloadChange(new CustomEvent("developer-console-auto-reload-change", {detail: {enabled: true}}))
+    await (editor as any).localPackageManager.refresh([...(editor as any).localPackageManager.records.keys()][0])
+    expect(reload).toHaveBeenCalledTimes(1)
   })
 
   it("restores persisted directory handles and reloads their packages", async() => {
@@ -2082,6 +2091,205 @@ describe("DomEditor file actions", () => {
 })
 
 describe("DomEditor.execute()", () => {
+  it("persists the developer console pin, restores it after reload, and keeps it across tool changes", async () => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
+    await (editor as any).setHTMLMode(true)
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    console.shadowRoot!.querySelector<HTMLButtonElement>(".console-pin")!.click()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(true)
+    expect(console.pinned).toBe(true)
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    expect((editor as any).consoleOpen).toBe(true)
+    ;(editor as any).handleRibbonCollapse()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.disabled).toBe(false)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
+    await editor.updateComplete
+    expect((editor as any).consoleOpen).toBe(false)
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(true)
+    editor.remove()
+
+    const {editor: reloaded} = await mountEditor()
+    await reloaded.updateComplete
+    const restored = reloaded.shadowRoot!.querySelector("developer-console")!
+    await restored.updateComplete
+    expect((reloaded as any).consoleOpen).toBe(true)
+    expect(restored.pinned).toBe(true)
+    expect(restored.tab).toBe("Packages")
+    expect(reloaded.shadowRoot!.querySelector<HTMLElement>(".templates-panel")!.inert).toBe(true)
+    const restoredToolbox = reloaded.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    restoredToolbox.selectTool("Edit")
+    await restoredToolbox.updateComplete
+    restored.shadowRoot!.querySelector<HTMLButtonElement>(".console-pin")!.click()
+    await reloaded.updateComplete
+    await restored.updateComplete
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(false)
+    expect(restored.pinned).toBe(false)
+    expect((reloaded as any).consoleOpen).toBe(true)
+    restoredToolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
+    await reloaded.updateComplete
+    expect((reloaded as any).consoleOpen).toBe(false)
+  })
+
+  it.each(["closed", "hidden"])("closes the developer console when unpinned with a %s toolbox", async state => {
+    const {editor} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await editor.updateComplete
+    ;(editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    console.shadowRoot!.querySelector<HTMLButtonElement>(".console-pin")!.click()
+    await editor.updateComplete
+    await console.updateComplete
+    if(state === "closed") toolbox.selectTool(null)
+    else (editor as any).handleRibbonCollapse()
+    await editor.updateComplete
+    expect((editor as any).consoleOpen).toBe(true)
+    console.shadowRoot!.querySelector<HTMLButtonElement>(".console-pin")!.click()
+    await editor.updateComplete
+    expect((editor as any).consoleOpen).toBe(false)
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(false)
+  })
+
+  it("synchronizes global auto-reload between the console, settings, and reloads", async () => {
+    const {editor} = await mountEditor()
+    ;(editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    const input = console.shadowRoot!.querySelector<HTMLInputElement>(".auto-reload input")!
+    input.click()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(console.autoReload).toBe(false)
+    expect((editor as any).localPackageManager.autoReload).toBe(false)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    expect(ribbon.settings.autoReloadPackages).toBe(false)
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).autoReloadPackages).toBe(false)
+    const {editor: restored} = await mountEditor()
+    expect((restored as any).localPackageManager.autoReload).toBe(false)
+    ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: {...defaultAppSettings(), autoReloadPackages: true}}))
+    await editor.updateComplete
+    await console.updateComplete
+    expect(input.checked).toBe(true)
+    expect((editor as any).localPackageManager.autoReload).toBe(true)
+  })
+
+  it("opens and pins the developer console when enabled through settings", async () => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: {...defaultAppSettings(), pinDeveloperConsole: true}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    expect((editor as any).consoleOpen).toBe(true)
+    expect(console.pinned).toBe(true)
+    expect(editor.shadowRoot!.querySelector<HTMLElement>(".templates-panel")!.inert).toBe(true)
+    ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: defaultAppSettings()}))
+    await editor.updateComplete
+    await console.updateComplete
+    expect(console.pinned).toBe(false)
+    expect((editor as any).consoleOpen).toBe(false)
+  })
+
+  it.each(["HTML", "Packages", "Tests"])("closes Templates when opening the developer console on %s", async tab => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
+    ;(editor as any).consoleTab = tab
+    const templates = editor.shadowRoot!.querySelector<HTMLElement>(".templates-panel")!
+    expect(templates.inert).toBe(false)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await editor.updateComplete
+    expect((editor as any).consoleOpen).toBe(true)
+    expect((editor as any).consoleTab).toBe(tab)
+    expect(templates.inert).toBe(true)
+    expect(templates.getAttribute("aria-hidden")).toBe("true")
+  })
+
+  it("keeps package tools and checks in the bottom console and protects pending HTML across tabs", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
+    ;(editor as any).consoleTab = "HTML"
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await vi.waitFor(() => expect((editor as any).htmlSource).toBe("<p>Hello</p>"))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    const input = editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    input.value = "<p>Changed</p>"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await editor.updateComplete
+    await console.updateComplete
+    console.shadowRoot!.querySelector<HTMLButtonElement>("#console-tab-Tests")!.click()
+    expect((editor as any).consoleTab).toBe("HTML")
+    console.shadowRoot!.querySelector<HTMLButtonElement>(".discard")!.click()
+    await vi.waitFor(() => expect((editor as any).htmlPending).toBe(false))
+    await editor.updateComplete
+    await console.updateComplete
+    console.shadowRoot!.querySelector<HTMLButtonElement>("#console-tab-Packages")!.click()
+    await editor.updateComplete
+    await console.updateComplete
+    expect((editor as any).consoleOpen).toBe(true)
+    expect((editor as any).consoleTab).toBe("Packages")
+    expect(console.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).toBeNull()
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-panel")!
+    expect(panel.inert).toBe(false)
+    expect(execute).toHaveBeenCalledWith({type: "discardHTMLSelectionEdit"})
+    console.shadowRoot!.querySelector<HTMLButtonElement>("#console-tab-Tests")!.click()
+    await editor.updateComplete
+    await console.updateComplete
+    expect(console.shadowRoot!.querySelector(".test-content")).not.toBeNull()
+    expect(console.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).toBeNull()
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    expect(panel.inert).toBe(true)
+  })
+
+  it("highlights HTML only while its source is hovered or focused, without restoring editor selection", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
+    const restore = vi.spyOn(editor as any, "restoreEditorSelection")
+    await (editor as any).setHTMLMode(true)
+    await editor.updateComplete
+    expect(restore).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "hoverHTMLSelectionEdit"}))
+    const input = editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    input.dispatchEvent(new MouseEvent("mouseenter"))
+    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
+    input.dispatchEvent(new FocusEvent("focus"))
+    input.dispatchEvent(new MouseEvent("mouseleave"))
+    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
+    input.dispatchEvent(new FocusEvent("blur"))
+    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: false})
+    input.dispatchEvent(new FocusEvent("focus"))
+    execute.mockClear()
+    await (editor as any).refreshHTMLSource()
+    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
+    await (editor as any).setHTMLMode(false)
+    expect((editor as any).htmlSourceHighlightActive).toBe(false)
+  })
+
   it("loads indented HTML as the clean baseline and leaves typing untouched", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: '<div><p>Hello <b>world</b></p></div>'} as any)
@@ -2103,7 +2311,7 @@ describe("DomEditor.execute()", () => {
     expect((editor as any).htmlPending).toBe(false)
   })
 
-  it("shows the HTML view as a wrapping five-line row below the editor and toolbox", async () => {
+  it("shows the HTML view in a fixed-height console below the editor and toolbox", async () => {
     const {editor} = await mountEditor()
     vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
     const root = editor.shadowRoot!
@@ -2114,13 +2322,15 @@ describe("DomEditor.execute()", () => {
     expect(panel.inert).toBe(true)
     expect(getComputedStyle(panel).gridTemplateRows).toBe("0fr")
     expect(getComputedStyle(panel).transition).toContain("grid-template-rows")
+    expect(getComputedStyle(editor).overflow).toBe("clip")
     await (editor as any).setHTMLMode(true)
     await editor.updateComplete
     expect(panel.inert).toBe(false)
     expect(panel.getAttribute("aria-hidden")).toBe("false")
     expect(getComputedStyle(panel).gridTemplateRows).toBe("1fr")
     expect(panel.textContent).not.toContain("Selected HTML")
-    expect(getComputedStyle(root.querySelector(".html-source-field")!).height).toContain("5 * 18px")
+    expect(getComputedStyle(root.querySelector("developer-console")!).height).toBe("300px")
+    expect(getComputedStyle(root.querySelector(".html-source-field")!).height).toBe("100%")
     const input = root.querySelector<HTMLTextAreaElement>(".html-source-input")!
     const highlight = root.querySelector<HTMLElement>(".html-source-highlight")!
     expect(input.value).toBe("<p>Hello</p>")

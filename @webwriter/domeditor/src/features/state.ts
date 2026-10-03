@@ -46,6 +46,7 @@ export class StateFeature extends EditorFeature {
   private htmlEditRange: Range | null = null
   private htmlEditSnapshot: string | null = null
   private htmlEditIdentity = new Set<Node>()
+  private htmlEditHoverTarget: Element | null = null
   private htmlEditPending = false
   private readonly htmlEditTargets = new Set<HTMLElement>()
   private readonly htmlEditLock = {}
@@ -331,6 +332,7 @@ export class StateFeature extends EditorFeature {
 
   allowsActionDuringHTMLSelectionEdit(type: string) {
     return !this.htmlEditPending || [
+      "hoverHTMLSelectionEdit",
       "setHTMLSelectionEditPending",
       "applyHTMLSelectionEdit",
       "discardHTMLSelectionEdit",
@@ -438,6 +440,25 @@ export class StateFeature extends EditorFeature {
     this.htmlEditPending = false
   }
 
+  private clearHTMLSelectionHover() {
+    if(this.htmlEditHoverTarget) removeEditorMarker(this.htmlEditHoverTarget, "◆style-target-hovered")
+    this.htmlEditHoverTarget = null
+  }
+
+  private hoverHTMLSelectionEdit(hovered: boolean) {
+    this.clearHTMLSelectionHover()
+    const range = this.htmlEditRange
+    if(!hovered || !range || !this.isCurrentHTMLSelection(range)) return
+    const exactChild = range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
+      ? range.startContainer.childNodes.item(range.startOffset) : null
+    const target = exactChild instanceof Element ? exactChild
+      : range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement
+    if(!target || !document.body.contains(target)) return
+    this.editor.features.selection.showStyleTargetHover(target)
+    this.htmlEditHoverTarget = target
+  }
+
   private restoreHTMLRange() {
     const range = this.htmlEditRange
     if(!range?.startContainer.isConnected || !range.endContainer.isConnected) return false
@@ -448,8 +469,10 @@ export class StateFeature extends EditorFeature {
   }
 
   private discardHTMLSelectionEdit() {
+    const pending = this.htmlEditPending
     this.clearHTMLSelectionPending()
-    this.restoreHTMLRange()
+    this.clearHTMLSelectionHover()
+    if(pending) this.restoreHTMLRange()
     this.htmlEditRange = null
     this.htmlEditSnapshot = null
     this.htmlEditIdentity.clear()
@@ -468,6 +491,7 @@ export class StateFeature extends EditorFeature {
     const nodes = Array.from(fragment.childNodes)
     if(!canPlaceLayouts(nodes, range.startContainer)) throw new Error("Layouts can only appear at the document top level")
     this.clearHTMLSelectionPending()
+    this.clearHTMLSelectionHover()
     try {
       range.deleteContents()
       range.insertNode(fragment)
@@ -737,11 +761,16 @@ export class StateFeature extends EditorFeature {
       if(path !== undefined && (!Array.isArray(path) || path.some(index => !Number.isInteger(index) || index < 0))) {
         throw new TypeError("The HTML selection path must contain non-negative integer indexes")
       }
+      this.clearHTMLSelectionHover()
       const range = this.selectedHTMLRange(path)
       this.htmlEditRange = range
       this.htmlEditSnapshot = this.serializeHTMLRange(range)
       this.htmlEditIdentity = captureRangeIdentity(range)
       return {html: this.htmlEditSnapshot}
+    },
+    hoverHTMLSelectionEdit: ({hovered}: {type: "hoverHTMLSelectionEdit", hovered: boolean}) => {
+      if(typeof hovered !== "boolean") throw new TypeError("The hover state must be a boolean")
+      this.hoverHTMLSelectionEdit(hovered)
     },
     setHTMLSelectionEditPending: ({pending}: {type: "setHTMLSelectionEditPending", pending: boolean}) => {
       if(typeof pending !== "boolean") throw new TypeError("The pending state must be a boolean")
@@ -836,6 +865,7 @@ export class StateFeature extends EditorFeature {
     this.reviewToolbar = null
     document.documentElement.classList.remove("◆ai-review-active")
     this.clearHTMLSelectionPending()
+    this.clearHTMLSelectionHover()
     this.htmlEditRange = null
     this.htmlEditSnapshot = null
     this.htmlEditIdentity.clear()

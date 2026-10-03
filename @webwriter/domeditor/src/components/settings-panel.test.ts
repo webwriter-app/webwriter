@@ -260,6 +260,7 @@ describe("settings panel", () => {
       updateDocumentLanguage: false,
       disableAnimations: true,
       showStyleToolbox: true,
+      pinDeveloperConsole: true,
       shortcuts: {...defaultAppSettings().shortcuts, "document.save": "Alt+S"},
     }
     panel.dispatchEvent(new CustomEvent("settings-change", {
@@ -351,4 +352,40 @@ it("defaults to hiding Style and loads the saved preference", async () => {
   expect(checkbox.checked).toBe(false)
   checkbox.click()
   expect(changes.at(-1)!.showStyleToolbox).toBe(true)
+})
+
+
+it("defaults to an unpinned console, validates saved settings, and exposes its checkbox", async () => {
+  expect(defaultAppSettings().pinDeveloperConsole).toBe(false)
+  for(const value of [undefined, "yes", true, false]) {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({pinDeveloperConsole: value}))
+    expect(loadAppSettings().pinDeveloperConsole).toBe(value === true)
+  }
+  const panel = await mountPanel()
+  const changes: AppSettings[] = []
+  panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
+  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Developer console"] input')!
+  expect(checkbox.checked).toBe(false)
+  checkbox.click()
+  expect(changes.at(-1)!.pinDeveloperConsole).toBe(true)
+  persistAppSettings(changes.at(-1)!)
+  expect(loadAppSettings().pinDeveloperConsole).toBe(true)
+})
+
+
+it("persists global auto-reload and exposes it under developer console settings", async () => {
+  expect(defaultAppSettings().autoReloadPackages).toBe(true)
+  for(const value of [undefined, "no", true, false]) {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({autoReloadPackages: value}))
+    expect(loadAppSettings().autoReloadPackages).toBe(value !== false)
+  }
+  const panel = await mountPanel()
+  const changes: AppSettings[] = []
+  panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
+  const input = panel.shadowRoot!.querySelectorAll<HTMLInputElement>('section[aria-label="Developer console"] input')[1]
+  expect(input.checked).toBe(true)
+  input.click()
+  expect(changes.at(-1)!.autoReloadPackages).toBe(false)
+  persistAppSettings(changes.at(-1)!)
+  expect(loadAppSettings().autoReloadPackages).toBe(false)
 })

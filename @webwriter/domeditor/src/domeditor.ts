@@ -867,7 +867,7 @@ export class DOMEditor {
         // Selection projections do not change the selection. Reposting it
         // starts another host read before this response arrives, creating a
         // feedback loop that also makes valid style/HTML responses stale.
-        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState") this.postSelectionPath()
+        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "hoverHTMLSelectionEdit" && ev.data.type !== "getStyleState") this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }

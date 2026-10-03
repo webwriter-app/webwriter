@@ -814,6 +814,14 @@ describe("bridge origin binding", () => {
     }), window.location.origin))
     expect(postMessage.mock.calls.some(([message]) => message.type === selectionChangeEvent)).toBe(false)
 
+    postMessage.mockClear()
+    window.dispatchEvent(new MessageEvent("message", {data: {
+      type: "hoverHTMLSelectionEdit", hovered: true, requestId: "html-hover", bridgeNonce,
+    }}))
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: executeCompleteEvent, detail: {requestId: "html-hover", result: undefined},
+    }), window.location.origin))
+    expect(postMessage.mock.calls.some(([message]) => message.type === selectionChangeEvent)).toBe(false)
     editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
     editor.destroy()
     postMessage.mockRestore()

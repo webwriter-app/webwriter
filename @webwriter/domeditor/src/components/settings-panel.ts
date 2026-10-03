@@ -459,6 +459,23 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        <section class="setting-card" aria-label="Developer console">
+          <label class="checkbox-setting">
+            <input type="checkbox" .checked=${this.settings.pinDeveloperConsole}
+              @change=${(event: Event) => this.emitSettings({...this.settings, pinDeveloperConsole: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Pin developer console</span>
+            <span class="checkbox-description">Keep the developer console open when switching tools and after reloading.</span>
+          </label>
+          <label class="checkbox-setting">
+            <input type="checkbox" .checked=${this.settings.autoReloadPackages}
+              @change=${(event: Event) => this.emitSettings({...this.settings, autoReloadPackages: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Auto-reload packages</span>
+            <span class="checkbox-description">Reload installed local packages when their files change.</span>
+          </label>
+        </section>
+
         <section class="setting-card" aria-label="Motion">
           <label class="checkbox-setting">
             <input

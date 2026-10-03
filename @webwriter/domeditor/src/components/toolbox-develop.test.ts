@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import type {WebWriterPackage} from "../packages"
-import {DomEditorToolbox} from "./toolbox"
+import {DeveloperConsole} from "./developer-console"
 import {RibbonButton} from "./ribbon-button"
 
 const localPackage = (name: string): WebWriterPackage => ({
@@ -31,41 +31,58 @@ const localPackage = (name: string): WebWriterPackage => ({
 
 afterEach(() => document.body.replaceChildren())
 
-describe("Develop toolbox", () => {
-  it("shows local package actions and selects packages from the drawer select", async () => {
-    const toolbox = new DomEditorToolbox()
-    toolbox.activeTool = "Edit"
-    toolbox.developMode = true
-    toolbox.activeMenu = "Develop"
+describe("Developer console packages", () => {
+  it("updates sticky column offsets after resizing and releases observation on removal", async () => {
+    const instances: {callback: ResizeObserverCallback, observe: ReturnType<typeof vi.fn>, disconnect: ReturnType<typeof vi.fn>}[] = []
+    vi.stubGlobal("ResizeObserver", class {
+      observe = vi.fn()
+      disconnect = vi.fn()
+      constructor(public callback: ResizeObserverCallback) {instances.push(this)}
+    })
+    try {
+      const toolbox = new DeveloperConsole()
+      toolbox.localPackages = [localPackage("Alpha")]
+      document.body.append(toolbox)
+      await toolbox.updateComplete
+      const drawer = toolbox.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[layout="metadata"]')!
+      const columns = Array.from(drawer.querySelectorAll<HTMLElement>(".develop-section, .develop-secondary-column"))
+      Object.defineProperty(drawer, "clientHeight", {configurable: true, value: 240})
+      columns.forEach((column, index) => Object.defineProperty(column, "offsetHeight", {value: index ? 100 : 400}))
+      const observer = instances.find(instance => instance.observe.mock.calls.some(([element]) => element === drawer))!
+      observer.callback([], observer as unknown as ResizeObserver)
+      expect(columns[0].style.getPropertyValue("--column-sticky-top")).toBe("-168px")
+      expect(columns[1].style.getPropertyValue("--column-sticky-top")).toBe("0px")
+      Object.defineProperty(drawer, "clientHeight", {value: 500})
+      observer.callback([], observer as unknown as ResizeObserver)
+      expect(columns[0].style.getPropertyValue("--column-sticky-top")).toBe("0px")
+      toolbox.remove()
+      expect(observer.disconnect).toHaveBeenCalled()
+    }
+    finally {vi.unstubAllGlobals()}
+  })
+
+  it("shows local package actions and selects packages from a scrollable vertical list", async () => {
+    const toolbox = new DeveloperConsole()
+    toolbox.tab = "Packages"
     toolbox.localPackages = [localPackage("Alpha"), localPackage("Beta")]
     document.body.append(toolbox)
     await toolbox.updateComplete
 
     expect(toolbox.shadowRoot!.querySelector('button[data-tool="Develop"]')).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('.develop-mode-toggle[aria-pressed="true"]')).not.toBeNull()
-    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')!
-    expect((drawer as HTMLElement & {expandable: boolean}).expandable).toBe(false)
-    await (drawer as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
-    expect((drawer as HTMLElement & {hidePaneLabel: boolean}).hidePaneLabel).toBe(true)
-    expect(getComputedStyle(drawer.shadowRoot!.querySelector<HTMLElement>(".pane-label")!).display).toBe("none")
-    expect(getComputedStyle(drawer).position).toBe("sticky")
-    const select = drawer.querySelector<HTMLSelectElement>("select.local-package-select")!
-    expect(select).not.toBeNull()
-    expect(select.parentElement?.parentElement?.firstElementChild).toBe(select.parentElement)
-    expect(select.parentElement?.querySelector(".icon-tabler-package")).not.toBeNull()
-    expect(getComputedStyle(select).backgroundColor).not.toBe("transparent")
-    expect(getComputedStyle(select.parentElement!).backgroundColor).not.toBe("transparent")
-    expect(Array.from(select.options, option => option.textContent)).toEqual([
-      "@local/alpha",
-      "@local/beta",
-    ])
-    expect(select.value).toBe("@local/alpha")
+    expect(toolbox.shadowRoot!.querySelector('#console-tab-Packages[aria-selected="true"]')).not.toBeNull()
+    const drawer = toolbox.shadowRoot!.querySelector<HTMLElement>(".local-packages-drawer")!
+    const list = drawer.querySelector<HTMLElement>(".local-package-list")!
+    const items = Array.from(list.querySelectorAll<HTMLButtonElement>(".local-package-item"))
+    expect(drawer.querySelector("select")).toBeNull()
+    expect(getComputedStyle(drawer.querySelector<HTMLElement>(".local-package-actions")!).boxSizing).toBe("border-box")
+    expect(getComputedStyle(list).overflow).toBe("auto")
+    expect(items.map(item => item.querySelector(".local-package-name")!.textContent)).toEqual(["@local/alpha", "@local/beta"])
+    expect(items.map(item => item.getAttribute("aria-pressed"))).toEqual(["true", "false"])
     expect(drawer.querySelector<RibbonButton>('ribbon-button[label="Load"]')).not.toBeNull()
     expect(drawer.querySelector<RibbonButton>('ribbon-button[label="New"]')).not.toBeNull()
-    expect(Array.from(drawer.children).slice(0, 3).map(element => element.className)).toEqual([
-      "local-package-selection",
+    expect(Array.from(drawer.children).slice(0, 2).map(element => element.className)).toEqual([
+      "local-package-list",
       "local-package-actions",
-      "develop-field local-package-auto-reload",
     ])
     expect(drawer.querySelector("package-search")).toBeNull()
     expect(drawer.querySelectorAll<RibbonButton>('ribbon-button[variant="package"]')).toHaveLength(0)
@@ -89,10 +106,11 @@ describe("Develop toolbox", () => {
       detail: expect.objectContaining({label: "local-package-new"}),
     }))
 
-    select.value = "@local/beta"
-    select.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    items[1].click()
     await toolbox.updateComplete
     expect(toolbox.selectedLocalPackageName).toBe("@local/beta")
+    expect(items[1].getAttribute("aria-pressed")).toBe("true")
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {label: "local-package-select:@local/beta"}}))
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Development"]')).toBeNull()
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Exports"]')).toBeNull()
@@ -146,12 +164,56 @@ describe("Develop toolbox", () => {
     expect(contributorAdd).toHaveBeenCalledTimes(1)
     expect(contributorDelete).toHaveBeenCalledWith(expect.objectContaining({detail: {index: 0}}))
 
-    const autoReloadChange = vi.fn()
-    toolbox.addEventListener("local-package-auto-reload-change", autoReloadChange)
-    const autoReload = drawer.querySelector<HTMLInputElement>('input[type="checkbox"]')!
-    autoReload.checked = true
-    autoReload.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(autoReloadChange).toHaveBeenCalledWith(expect.objectContaining({detail: {enabled: true}}))
+    expect(drawer.querySelector(".local-package-auto-reload")).toBeNull()
+  })
+
+  it("falls back to the current first package after the selected package is replaced", async () => {
+    const console = new DeveloperConsole()
+    console.localPackages = [localPackage("Alpha"), localPackage("Beta")]
+    console.selectedLocalPackageName = "@local/beta"
+    document.body.append(console)
+    await console.updateComplete
+    console.localPackages = [localPackage("Gamma")]
+    await console.updateComplete
+    expect(console.shadowRoot!.querySelector('.local-package-item[aria-pressed="true"] .local-package-name')!.textContent).toBe("@local/gamma")
+    expect(console.shadowRoot!.querySelector<HTMLInputElement>('input[name="name"]')!.value).toBe("@local/gamma")
+  })
+
+  it("collapses exports by default, sorts by type, and preserves each card's expanded state", async () => {
+    const pkg = localPackage("Alpha")
+    const exports = ["./custom-elements.json", "./icon", "./tests/check.*", "./themes/theme.html", "./editing-config.json", "./widgets/b.*", "./migrate.js", "./snippets/demo.html", "./widgets/a.*", "./other"]
+    pkg.manifest!.exports = Object.fromEntries(exports.map(name => [name, "./src/file.ts"]))
+    const toolbox = new DeveloperConsole()
+    toolbox.localPackages = [pkg, localPackage("Beta")]
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const cards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".develop-export-card"))
+    expect(cards.map(card => card.dataset.exportName)).toEqual([
+      "./widgets/b.*", "./widgets/a.*", "./tests/check.*", "./migrate.js", "./snippets/demo.html",
+      "./themes/theme.html", "./icon", "./editing-config.json", "./custom-elements.json", "./other",
+    ])
+    for(const card of cards) {
+      expect(card.querySelector<HTMLDetailsElement>("details")!.open).toBe(false)
+      const summary = card.querySelector("summary")!
+      expect(summary.querySelector(".develop-export-type-icon svg")).not.toBeNull()
+      expect(summary.querySelector(".develop-export-type-icon")!.nextElementSibling!.textContent).toBe(card.dataset.exportName)
+      expect(summary.querySelector("input, select")).toBeNull()
+      expect(card.querySelectorAll(".develop-export-card-fields input, .develop-export-card-fields select")).toHaveLength(3)
+    }
+    expect(cards[8].querySelector('option[value="custom-elements"]')!.textContent).toBe("Custom elements manifest")
+    const details = cards[0].querySelector<HTMLDetailsElement>("details")!
+    details.querySelector("summary")!.click()
+    expect(details.open).toBe(true)
+    toolbox.autoReload = false
+    await toolbox.updateComplete
+    expect(details.open).toBe(true)
+    details.querySelector("summary")!.click()
+    expect(details.open).toBe(false)
+    details.open = true
+    toolbox.selectedLocalPackageName = "@local/beta"
+    await toolbox.updateComplete
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLDetailsElement>(".develop-export-details")).every(card => !card.open)).toBe(true)
+    expect(Object.keys(pkg.manifest!.exports!)).toEqual(exports)
   })
 
   it("edits package exports as typed cards", async() => {
@@ -166,10 +228,8 @@ describe("Develop toolbox", () => {
       insertable: true,
       tagName: "alpha-widget",
     }]
-    const toolbox = new DomEditorToolbox()
-    toolbox.activeTool = "Edit"
-    toolbox.developMode = true
-    toolbox.activeMenu = "Develop"
+    const toolbox = new DeveloperConsole()
+    toolbox.tab = "Packages"
     toolbox.localPackages = [pkg]
     toolbox.selectedLocalPackageName = pkg.name
     document.body.append(toolbox)
@@ -177,6 +237,7 @@ describe("Develop toolbox", () => {
     const metadata = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')!
     const card = metadata.querySelector<HTMLElement>('.develop-export-card[data-export-name="./widgets/demo.*"]')!
     expect(card).not.toBeNull()
+    card.querySelector<HTMLDetailsElement>("details")!.open = true
     expect(card.querySelector<HTMLSelectElement>("select")!.value).toBe("widget")
     const fields = card.querySelectorAll<HTMLInputElement>("input")
     expect(fields[0].value).toBe("demo")
@@ -206,12 +267,10 @@ describe("Develop toolbox", () => {
   })
 })
 
-describe("Develop toolbox checks and tests", () => {
+describe("Developer console checks and tests", () => {
   it("lists package checks and runs tests", async () => {
-    const toolbox = new DomEditorToolbox()
-    toolbox.activeTool = "Edit"
-    toolbox.developMode = true
-    toolbox.activeMenu = "Develop"
+    const toolbox = new DeveloperConsole()
+    toolbox.tab = "Tests"
     const pkg = {...localPackage("Alpha"), tests: [{name: "basics", scriptUrl: "http://local.test/basics.js"}, {name: "slow", scriptUrl: "http://local.test/slow.js"}]}
     toolbox.localPackages = [pkg]
     toolbox.localPackageWarnings = {[pkg.name]: [{code: "unknown-editing-option", path: "./widgets/demo", message: "Editing config './widgets/demo' has an unknown option 'selectable'."}]}
@@ -224,7 +283,7 @@ describe("Develop toolbox checks and tests", () => {
     }
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')!
+    const drawer = toolbox.shadowRoot!.querySelector('.test-content')!
     expect(drawer.querySelector(".develop-check")?.textContent).toContain("unknown option 'selectable'")
     const [basics, slow] = drawer.querySelectorAll<HTMLElement>(".develop-test")
     expect(basics.dataset.status).toBe("failed")

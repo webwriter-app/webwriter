@@ -1,3 +1,4 @@
+import pin from "@tabler/icons/outline/pin.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
 import artboard from "@tabler/icons/outline/artboard.svg?raw"
@@ -404,6 +405,7 @@ const icons: Record<string, string> = {
   Layers: layersUnion,
   Visible: eye,
   Hidden: eyeOff,
+  Pin: pin,
   Lock: lock,
   Unlock: lockOpen,
   Zoom: zoomIn,

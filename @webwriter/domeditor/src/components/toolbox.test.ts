@@ -203,122 +203,35 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("94px")
   })
 
-  it("keeps an HTML toggle at the bottom of Edit and the visual tools beside the HTML view", async () => {
+  it("opens one developer console from Edit and locks its toggle during pending HTML edits", async () => {
     const toolbox = await mountToolbox()
     toolButton(toolbox, "Edit").click()
     await toolbox.updateComplete
-    const toggle = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-mode-toggle")!
-    let requestedMode: boolean | undefined
-    toolbox.addEventListener("html-mode-change", event => {
-      requestedMode = (event as CustomEvent<{enabled: boolean}>).detail.enabled
-    })
-
-    expect(toggle.querySelector(".icon-tabler-code")).not.toBeNull()
-    expect(toggle.getAttribute("aria-pressed")).toBe("false")
-    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).not.toBeNull()
-    toggle.click()
-    expect(requestedMode).toBe(true)
-
-    toolbox.htmlMode = true
-    await toolbox.updateComplete
-    const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
-    expect(getComputedStyle(toolbox).width).toBe("216px")
-    expect(toolbox.shadowRoot!.querySelector(".html-source-input")).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).not.toBeNull()
-    expect(content.inert).toBe(false)
-
-    toolbox.htmlPending = true
-    await toolbox.updateComplete
-    expect(content.inert).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-mode-toggle")!.disabled).toBe(true)
-    const actions = toolbox.shadowRoot!.querySelector<HTMLElement>(".html-source-actions")!
-    expect(actions.parentElement?.classList.contains("html-mode-anchor")).toBe(true)
-    expect(getComputedStyle(actions).position).toBe("absolute")
-    expect(getComputedStyle(actions).bottom).toContain("100% +")
-    expect(actions.querySelector(".html-source-action.apply")).not.toBeNull()
-    toolbox.selectTool("Style")
-    expect(toolbox.activeTool).toBe("Edit")
-  })
-
-  it("toggles Develop beside HTML inside Edit and resets it when leaving Edit", async () => {
-    const toolbox = await mountToolbox()
-    const request = vi.fn()
-    toolbox.addEventListener("local-package-request", request)
-    toolbox.addEventListener("html-mode-change", event => {
-      toolbox.htmlMode = (event as CustomEvent<{enabled: boolean}>).detail.enabled
-    })
-    toolbox.documentSelected = true
-    toolbox.selectTool("Edit")
-    await toolbox.updateComplete
-    const develop = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!
-    const html = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-mode-toggle")!
     const footer = toolbox.shadowRoot!.querySelector(".edit-mode-footer")!
-    expect(footer.lastElementChild).toBe(develop)
-    expect(getComputedStyle(develop).marginLeft).toBe("auto")
-    expect(develop.lastElementChild?.classList.contains("icon-tabler-terminal-2")).toBe(true)
-
-    develop.click()
+    const toggle = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!
+    const change = vi.fn()
+    toolbox.addEventListener("developer-console-change", change)
+    expect(toggle.textContent).toContain("Developer console")
+    expect(toolbox.shadowRoot!.querySelector(".html-mode-toggle, .develop-mode-toggle")).toBeNull()
+    toggle.click()
+    expect(change).toHaveBeenCalledWith(expect.objectContaining({detail: {enabled: true}}))
+    toolbox.consoleOpen = true
     await toolbox.updateComplete
-    expect(toolbox.activeTool).toBe("Edit")
-    expect(toolbox.activeMenu).toBe("Develop")
-    expect(develop.getAttribute("aria-pressed")).toBe("true")
-    expect(getComputedStyle(toolbox).width).toBe("216px")
-    expect(request).toHaveBeenCalledTimes(1)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector("document-head-editor")).toBeNull()
-
-    develop.click()
-    await toolbox.updateComplete
-    expect(toolbox.developMode).toBe(false)
-    expect(toolbox.activeMenu).toBe("Edit")
-    expect(getComputedStyle(toolbox).width).toBe("216px")
-    expect(toolbox.shadowRoot!.querySelector("document-head-editor")).not.toBeNull()
-
-    develop.click()
-    await toolbox.updateComplete
-    expect(request).toHaveBeenCalledTimes(2)
-    html.click()
-    await toolbox.updateComplete
-    expect(toolbox.developMode).toBe(true)
-    expect(toolbox.htmlMode).toBe(true)
-    expect(toolbox.activeMenu).toBe("Develop")
-    expect(html.getAttribute("aria-pressed")).toBe("true")
-    expect(develop.getAttribute("aria-pressed")).toBe("true")
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
-
+    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBe(footer)
+    expect(toggle.getAttribute("aria-pressed")).toBe("true")
+    expect(toolbox.shadowRoot!.querySelector(".console-pin")).toBeNull()
+    const close = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".console-close")!
+    expect(close.disabled).toBe(false)
+    close.click()
+    expect(change).toHaveBeenLastCalledWith(expect.objectContaining({detail: {enabled: false}}))
+    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).not.toBeNull()
+    toolbox.consoleOpen = false
     toolbox.htmlPending = true
     await toolbox.updateComplete
-    expect(develop.disabled).toBe(true)
-    develop.click()
-    expect(toolbox.developMode).toBe(true)
-    toolbox.htmlPending = false
-    await toolbox.updateComplete
-    develop.click()
-    await toolbox.updateComplete
-    expect(toolbox.htmlMode).toBe(true)
-    expect(toolbox.developMode).toBe(false)
-    expect(toolbox.activeMenu).toBe("Edit")
-    develop.click()
-    await toolbox.updateComplete
-    html.click()
-    await toolbox.updateComplete
-    expect(toolbox.htmlMode).toBe(false)
-    expect(toolbox.developMode).toBe(true)
-
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.disabled).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!.inert).toBe(true)
     toolbox.selectTool("Style")
-    await toolbox.updateComplete
-    expect(toolbox.developMode).toBe(false)
-    expect(getComputedStyle(toolbox).width).toBe("216px")
-    toolbox.selectTool("Edit")
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".develop-mode-toggle")!.getAttribute("aria-pressed")).toBe("false")
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).toBeNull()
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!.click()
-    await toolbox.updateComplete
-    toolbox.selectTool(null)
-    await toolbox.updateComplete
-    expect(toolbox.developMode).toBe(false)
-    expect(getComputedStyle(toolbox).width).toBe("94px")
+    expect(toolbox.activeTool).toBe("Edit")
   })
 
   it("names element-specific Edit tools in the active blue", async () => {
@@ -651,12 +564,9 @@ describe("toolbox", () => {
 
     toolButton(toolbox, "Edit").click()
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".develop-mode-toggle")!.click()
-    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".developer-console-toggle")).not.toBeNull()
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
-    expect(drawers.map(drawer => drawer.label)).toEqual([
-      "Local packages", "Metadata",
-    ])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Style", "Attributes"])
   })
 })
 

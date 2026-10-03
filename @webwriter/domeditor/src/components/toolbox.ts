@@ -76,8 +76,7 @@ export class DomEditorToolbox extends EditingControls {
     documentSelected: {type: Boolean, attribute: "document-selected"},
     documentHead: {attribute: false},
     documentHeadAttributeEditorId: {state: true},
-    htmlMode: {type: Boolean, attribute: "html-mode", reflect: true},
-    developMode: {type: Boolean, attribute: "develop-mode", reflect: true},
+    consoleOpen: {type: Boolean, attribute: "console-open", reflect: true},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
@@ -85,6 +84,15 @@ export class DomEditorToolbox extends EditingControls {
 
   static styles = css`
     ${EditingControls.styles}
+
+  .developer-console-controls {display: flex; align-items: center; gap: 0; background: #e9e9e9}
+  .developer-console-controls button {box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 32px; padding: .3rem .5rem; border: 0; border-radius: 0; background: transparent; color: #46576a; font: 600 .72rem/1 system-ui, sans-serif; cursor: pointer}
+  .developer-console-controls button[aria-pressed="true"] {color: #153b5c; background: #e9e9e9}
+  .developer-console-controls button:hover:not(:disabled) {color: #153b5c; background: #e9e9e9}
+  .developer-console-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: -2px}
+  .developer-console-controls button:disabled {opacity: .6; cursor: default}
+  .developer-console-controls svg {display: block; width: 15px; height: 15px}
+
 
     .widget-sharing {padding: .75rem; display: grid; gap: .5rem; border-bottom: 1px solid var(--sl-color-neutral-200, #ddd)}
     .share-toggle {display: flex; justify-content: space-between; align-items: center; font-size: .875rem}
@@ -422,59 +430,21 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     .edit-mode-footer {
-      box-sizing: border-box;
-      display: flex;
       flex: 0 0 auto;
-      align-items: center;
-      gap: 0.35rem;
-      min-height: 38px;
-      padding: 0.35rem 0.45rem;
       border-top: 1px solid #c8c8c8;
       background: #e9e9e9;
     }
-
-    .edit-mode-toggle,
-    .html-source-action {
-      box-sizing: border-box;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.35rem;
-      min-height: 28px;
-      margin: 0;
-      padding: 0.3rem 0.5rem;
-      border: 1px solid transparent;
-      border-radius: 0.25rem;
-      color: #46576a;
-      background: transparent;
-      font: 600 0.72rem/1 system-ui, sans-serif;
-      cursor: pointer;
-    }
-
-    .develop-mode-toggle {
-      margin-left: auto;
-    }
-
-    .edit-mode-toggle[aria-pressed="true"] {
-      border-color: #8ba5be;
-      color: #153b5c;
-      background: #dbe7f2;
-    }
-
-    .edit-mode-toggle:hover:not(:disabled),
-    .html-source-action:hover:not(:disabled) {
-      background: #dbe7f2;
-    }
-
-    .edit-mode-toggle:focus-visible,
-    .html-source-action:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 1px;
-    }
-
-    .edit-mode-toggle:disabled {
-      opacity: 0.6;
-      cursor: default;
+    .edit-mode-footer .developer-console-controls {justify-content: space-between}
+    :host([console-open]) .toolbox-pane {clip-path: inset(0 0 0 -1rem)}
+    :host([console-open][active-tool])::after {
+      content: "";
+      position: absolute;
+      bottom: -1px;
+      left: 1px;
+      right: 0;
+      height: 1px;
+      background: #e9e9e9;
+      pointer-events: none;
     }
 
     .toolbox-tab-button:disabled,
@@ -483,57 +453,7 @@ export class DomEditorToolbox extends EditingControls {
       cursor: default;
     }
 
-    .edit-mode-toggle svg,
-    .html-source-action svg {
-      display: block;
-      width: 15px;
-      height: 15px;
-    }
 
-    .html-mode-anchor {
-      position: relative;
-      display: inline-flex;
-    }
-
-    /* Speech bubble above the HTML toggle, so the footer never has to fit it. */
-    .html-source-actions {
-      position: absolute;
-      bottom: calc(100% + 5px);
-      left: 0;
-      z-index: 5;
-      display: flex;
-      gap: 0.2rem;
-      padding: 0.3rem;
-      border: 1px solid #a8a8a8;
-      border-radius: 0.35rem;
-      background: #fafafa;
-      box-shadow: 0 0.2rem 0.6rem rgb(31 41 55 / 16%);
-      white-space: nowrap;
-    }
-
-    .html-source-actions::before,
-    .html-source-actions::after {
-      content: "";
-      position: absolute;
-      top: 100%;
-      left: calc(2.25rem - 7px);
-      border: 7px solid transparent;
-      border-top-color: #a8a8a8;
-    }
-
-    .html-source-actions::after {
-      margin-top: -1px;
-      border-top-color: #fafafa;
-    }
-
-    .html-source-action.apply {
-      color: white;
-      background: #0f766e;
-    }
-
-    .html-source-action.apply:hover:not(:disabled) {
-      background: #115e59;
-    }
 
     @media (prefers-reduced-motion: reduce) {
       :host {
@@ -555,8 +475,7 @@ export class DomEditorToolbox extends EditingControls {
   documentSelected = false
   documentHead: DocumentHeadState = emptyDocumentHeadState()
   private documentHeadAttributeEditorId = ""
-  htmlMode = false
-  developMode = false
+  consoleOpen = false
   htmlPending = false
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
   documentLayoutError = ""
@@ -594,7 +513,6 @@ export class DomEditorToolbox extends EditingControls {
       menu: "Edit",
       surface: "toolbox",
       activeTool: this.activeTool ?? undefined,
-      developMode: this.developMode,
       documentSelected: this.documentSelected,
       sectionSelected: this.sectionSelected,
       layout: this.layout?.kind,
@@ -682,7 +600,7 @@ export class DomEditorToolbox extends EditingControls {
       `]
     }
     const drawers = super.renderDrawers()
-    if(this.activeTool === "Edit" && !this.developMode && this.documentSelected) {
+    if(this.activeTool === "Edit" && this.documentSelected) {
       drawers.push(html`
         <ribbon-drawer label="Templates" icon="Layout" layout="document-layout">
           <div class="document-layout-controls">
@@ -746,7 +664,6 @@ export class DomEditorToolbox extends EditingControls {
     if(this.activeTool === nextTool) return
     if(nextTool === null) this.advancedOpen.clear()
     const previousMenu = this.activeMenu
-    this.developMode = false
     this.activeTool = nextTool
     if(nextTool) {
       this.activeMenu = nextTool === "Review" ? "Edit" : nextTool
@@ -761,60 +678,19 @@ export class DomEditorToolbox extends EditingControls {
     }))
   }
 
-  private toggleHTMLMode() {
-    if(this.htmlPending) return
-    this.dispatchEvent(new CustomEvent<{enabled: boolean}>("html-mode-change", {
-      detail: {enabled: !this.htmlMode},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  private toggleDevelopMode() {
-    if(this.htmlPending) return
-    this.developMode = !this.developMode
-    this.activeMenu = this.developMode ? "Develop" : "Edit"
-  }
-
   private renderEditModeFooter() {
-    return html`
-      <footer class="edit-mode-footer">
-        <span class="html-mode-anchor">
-          <button
-            class="edit-mode-toggle html-mode-toggle"
-            type="button"
-            aria-label=${this.htmlMode ? "Show visual editing tools" : "Edit selection as HTML"}
-            title=${this.htmlMode ? "Visual editing" : "Edit HTML"}
-            aria-pressed=${this.htmlMode}
-            ?disabled=${this.htmlPending}
-            @click=${this.toggleHTMLMode}
-          >${ribbonIcon("Code")}<span>HTML</span></button>
-          ${this.htmlMode && this.htmlPending ? html`
-            <div class="html-source-actions" role="group" aria-label="Pending HTML change">
-              <button
-                class="html-source-action discard"
-                type="button"
-                @click=${() => this.dispatchEvent(new CustomEvent("html-source-discard", {bubbles: true, composed: true}))}
-              >${ribbonIcon("Reject")}<span>Discard</span></button>
-              <button
-                class="html-source-action apply"
-                type="button"
-                @click=${() => this.dispatchEvent(new CustomEvent("html-source-apply", {bubbles: true, composed: true}))}
-              >${ribbonIcon("Accept")}<span>Apply</span></button>
-            </div>
-          ` : ""}
-        </span>
-        <button
-          class="edit-mode-toggle develop-mode-toggle"
-          type="button"
-          aria-label=${this.developMode ? "Show visual editing tools" : "Develop local packages"}
-          title=${this.developMode ? "Visual editing" : "Develop"}
-          aria-pressed=${this.developMode}
+    return html`<footer class="edit-mode-footer">
+      <div class="developer-console-controls" role="group" aria-label="Developer console controls">
+        <button class="developer-console-toggle" type="button" aria-label="Developer console" title="Developer console"
+          aria-pressed=${this.consoleOpen} ?disabled=${this.htmlPending}
+          @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: !this.consoleOpen}, bubbles: true, composed: true}))}
+        >${ribbonIcon("Develop")}<span>Developer console</span></button>
+        ${this.consoleOpen ? html`<button class="console-close" type="button" aria-label="Close developer console" title="Close developer console"
           ?disabled=${this.htmlPending}
-          @click=${this.toggleDevelopMode}
-        ><span>Develop</span>${ribbonIcon("Develop")}</button>
-      </footer>
-    `
+          @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: false}, bubbles: true, composed: true}))}
+        >${ribbonIcon("Reject")}</button>` : ""}
+      </div>
+    </footer>`
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
@@ -828,7 +704,7 @@ export class DomEditorToolbox extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
-    if(this.activeTool !== "Edit" || !this.documentSelected || this.developMode) {
+    if(this.activeTool !== "Edit" || !this.documentSelected) {
       this.documentHeadAttributeEditorId = ""
     }
     if(changed.has("activeTool")) {
@@ -922,11 +798,11 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
-            ${this.activeTool === "Edit" && !this.developMode ? this.renderUniversalStyleDrawer() : ""}
-            ${this.activeTool === "Edit" && !this.developMode ? this.renderWidgetSharing() : ""}
+            ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
+            ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
             ${this.activeTool ? this.renderDrawers() : ""}
           </div>
-          ${this.activeTool === "Edit" ? this.renderEditModeFooter() : ""}
+          ${(this.activeTool === "Edit" || this.consoleOpen) ? this.renderEditModeFooter() : ""}
         </aside>
       </div>
     `

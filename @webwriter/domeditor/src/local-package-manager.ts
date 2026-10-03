@@ -16,7 +16,6 @@ export type LocalPackageRecord = {
   enabled: boolean
   monitor?: LocalPackageMonitor
   error?: string
-  autoReload: boolean
 }
 
 const localPackageId = () => globalThis.crypto?.randomUUID?.()
@@ -45,6 +44,7 @@ type LocalPackageManagerOptions = {
 /** Owns local folder records, restoration and refresh queues independently of
  * the host UI and the editor iframe's reload/selection lifecycle. */
 export class LocalPackageManager {
+  autoReload = true
   readonly records = new Map<string, LocalPackageRecord>()
   private readonly reloads = new Set<string>()
   private readonly reloadPending = new Set<string>()
@@ -208,7 +208,7 @@ export class LocalPackageManager {
       await this.watch(nextRecord)
       this.options.error(this.warning(result.package, result.warnings))
 
-      if(this.active && nextRecord.enabled && nextRecord.autoReload && result.package.members.length) {
+      if(this.active && nextRecord.enabled && this.autoReload && result.package.members.length) {
         await this.options.install(result.package, previous.package.name)
       }
     }
@@ -242,7 +242,6 @@ export class LocalPackageManager {
         enabled: true,
         monitor: previous?.monitor,
         error: error instanceof Error ? error.message : String(error),
-        autoReload: previous?.autoReload ?? true,
       }
       this.records.set(id, record)
       this.publishList()
@@ -260,7 +259,6 @@ export class LocalPackageManager {
       revision,
       enabled: true,
       monitor: previous?.monitor,
-      autoReload: previous?.autoReload ?? true,
     }
     this.replaceName(id, loaded.package.name)
     this.records.set(id, record)
@@ -301,7 +299,6 @@ export class LocalPackageManager {
             warnings: result.warnings,
             revision: 0,
             enabled: true,
-            autoReload: true,
           }
           this.replaceName(entry.id, result.package.name)
           this.records.set(entry.id, record)
@@ -317,7 +314,6 @@ export class LocalPackageManager {
             warnings: [],
             revision: 0,
             enabled: true,
-            autoReload: true,
             error: error instanceof Error ? error.message : String(error),
           }
           this.records.set(entry.id, record)

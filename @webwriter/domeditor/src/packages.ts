@@ -29,7 +29,7 @@ export const webWriterPackageExportTypes = [
   {value: "theme", label: "Theme"},
   {value: "icon", label: "Package icon"},
   {value: "editing-config", label: "Editing config"},
-  {value: "custom-elements", label: "Custom elements"},
+  {value: "custom-elements", label: "Custom elements manifest"},
   {value: "other", label: "Other"},
 ] as const
 
