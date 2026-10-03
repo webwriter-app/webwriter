@@ -231,6 +231,81 @@ describe("DOMEditor stylesheets", () => {
     expect($.isEmptyDocumentSelection).toBe(false)
   })
 
+  it("wraps native body text beside the restored paragraph and preserves the caret", () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.body.firstElementChild!)
+    editor.features.manipulation.delete("backward")
+    const paragraph = document.body.firstElementChild!
+    const text = document.createTextNode("typed")
+    paragraph.before(text)
+    $.move(text, 3)
+
+    document.body.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText", data: "typed"}))
+
+    expect(editor.toHTML(true)).toBe("<p>typed</p><p></p>")
+    expect(document.body.lastElementChild).toBe(paragraph)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(3)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).toBe("<body><p>typed</p><p></p></body>")
+  })
+
+  it("repairs only native body text runs while retaining comments, widgets and whitespace", () => {
+    document.body.innerHTML = ' \n<!--before-->one<!--between--><unknown-widget custom="yes">private</unknown-widget>two<p>kept</p>'
+    const comment = document.body.childNodes[1]
+    const widget = document.querySelector("unknown-widget")!
+    const paragraph = document.querySelector("p")!
+    const text = widget.nextSibling!
+    $.selectRange(text, 0, text, 2)
+
+    document.body.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertReplacementText"}))
+
+    expect(editor.toHTML(true)).toBe(' \n<!--before--><p>one</p><!--between--><unknown-widget custom="yes">private</unknown-widget><p>two</p><p>kept</p>')
+    expect(document.body.childNodes[1]).toBe(comment)
+    expect(document.querySelector("unknown-widget")).toBe(widget)
+    expect(document.body.lastElementChild).toBe(paragraph)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(0)
+    expect($.focus).toBe(text)
+    expect($.focusOffset).toBe(2)
+  })
+
+  it("keeps text repair in the same undo step as native insertion", () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.body.firstElementChild!)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const first = document.createTextNode("ab")
+    const second = document.createTextNode("cd")
+    document.body.prepend(first, second)
+    $.move(second, 1)
+    document.body.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    expect(editor.toHTML(true)).toBe("<p>abcd</p><p></p>")
+    expect($.anchor?.textContent).toBe("abcd")
+    expect($.anchorOffset).toBe(3)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe("<p></p>")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe("<p>abcd</p><p></p>")
+    expect(Array.from(document.body.childNodes).every(node => !(node instanceof Text))).toBe(true)
+  })
+
+  it("retains the adjusted body endpoint when wrapping a run with a text endpoint", () => {
+    const first = document.createTextNode("ab"), second = document.createTextNode("cd")
+    document.body.replaceChildren(first, second, document.createElement("p"))
+    $.selectRange(second, 1, document.body, 3)
+    document.body.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+
+    expect(editor.toHTML(true)).toBe("<p>abcd</p><p></p>")
+    expect($.anchor).toBe(second)
+    expect($.anchorOffset).toBe(1)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(2)
+  })
+
   it("preserves authored widget contenteditable attributes in saved HTML", () => {
     document.body.innerHTML = '<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
       + '<template><span class="authored ◆text-selected">Template</span><i class="◆editor-only">helper</i></template>'

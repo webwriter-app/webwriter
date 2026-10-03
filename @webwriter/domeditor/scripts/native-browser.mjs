@@ -68,6 +68,7 @@ const swiftDeveloperDir = process.env.WEBKIT_DEVELOPER_DIR ?? process.env.DEVELO
     ? bundledXcodeDeveloperDir
     : undefined)
 const expectedSmokeChecks = [
+  "typing after deleting the initial paragraph stays in a paragraph",
   "native widget grouping dialog and processing instruction roundtrip",
   "native Range and Selection",
   "designMode editing",

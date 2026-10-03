@@ -162,6 +162,32 @@ await check("native widget grouping dialog and processing instruction roundtrip"
   finally { dialog.remove() }
 })
 
+await check("typing after deleting the initial paragraph stays in a paragraph", async () => {
+  for(const mode of ["keyboard", "native", "body-text"]) {
+    document.body.innerHTML = "<p></p>"
+    const selection = document.getSelection()!
+    if(mode === "native") {
+      selection.setBaseAndExtent(document.body, 0, document.body, 1)
+      assert(document.execCommand("delete"), "native deletion failed")
+    }
+    else {
+      selection.setPosition(document.body.firstElementChild!, 0)
+      document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+    }
+    await new Promise(requestAnimationFrame)
+    if(mode === "body-text") {
+      const text = document.createTextNode("")
+      document.body.prepend(text)
+      selection.setPosition(text, 0)
+    }
+    assert(document.execCommand("insertText", false, "typed"), "native text insertion failed")
+    assert(!Array.from(document.body.childNodes).some(node => node instanceof Text && node.data.trim()), `typing escaped the paragraph (${mode}): ${editor.toHTML(true)}`)
+    assert(document.body.firstElementChild?.textContent === "typed", "typed content was lost")
+    assert(document.body.firstElementChild!.contains(selection.anchorNode), "caret escaped the typed paragraph")
+    assert(selection.anchorOffset === 5, "text repair moved the caret")
+  }
+})
+
 editor.destroy()
 const failed = checks.filter(item => item.error)
 document.documentElement.dataset.nativeSmokeStatus = failed.length ? "failed" : "passed"

@@ -691,7 +691,41 @@ export class DOMEditor {
 
   #handleInput = (ev: Event) => {
     if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev, this.schema) || isFormControlInteraction(ev)) return
+    this.#wrapBodyInputText()
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
+  }
+
+  /** Native editing can leave text beside the restored initial paragraph.
+   * Repair only these text runs, retaining their nodes and selection points. */
+  #wrapBodyInputText() {
+    if(documentLayoutMode() !== "document") return
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode, focus = selection?.focusNode
+    const anchorOffset = selection?.anchorOffset ?? 0, focusOffset = selection?.focusOffset ?? 0
+    const moved = new Set<Node>()
+    let run: Text[] = []
+    const wrap = () => {
+      if(run.some(node => node.data.trim())) {
+        const paragraph = document.createElement("p")
+        run[0].before(paragraph)
+        paragraph.append(...run)
+        run.forEach(node => moved.add(node))
+      }
+      run = []
+    }
+    for(const node of Array.from(document.body.childNodes)) {
+      if(node instanceof Text) run.push(node)
+      else wrap()
+    }
+    wrap()
+    if(selection && anchor?.isConnected && focus?.isConnected && (moved.has(anchor) || moved.has(focus))) {
+      const currentAnchor = moved.has(anchor) ? anchor : selection.anchorNode
+      const currentFocus = moved.has(focus) ? focus : selection.focusNode
+      if(currentAnchor?.isConnected && currentFocus?.isConnected) selection.setBaseAndExtent(
+        currentAnchor, moved.has(anchor) ? anchorOffset : selection.anchorOffset,
+        currentFocus, moved.has(focus) ? focusOffset : selection.focusOffset,
+      )
+    }
   }
 
   #handleBodySchemaChanges = () => {
