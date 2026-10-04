@@ -4,7 +4,7 @@ import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
 import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
-import {slideLayoutRole} from "./document-layout"
+import {documentLayoutMode, slideLayoutRole} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
 import {inlineMathRoot, mathBoundaryPoint, mathRoot} from "./math"
 
@@ -312,9 +312,51 @@ export class EditingSelection {
     return document.getSelection()!
   }
 
-  /** The selection's first (and only relevant) range. */
+  /** The selection's first range. */
   static get range() {
     return document.getSelection()!.getRangeAt(0)
+  }
+
+  static isSettingRanges = false
+  private static layoutRanges: Range[] | null = null
+  private static layoutRangeWitness: Range | null = null
+
+  /** Live DOM ranges for spatial selection. The native Selection stores them
+   * where supported; single-range browsers retain the remaining ranges here. */
+  static get ranges(): Range[] {
+    const selection = this.#selection
+    const native = Array.from({length: selection.rangeCount}, (_, i) => selection.getRangeAt(i))
+    const witness = this.layoutRangeWitness, first = native[0]
+    if(this.layoutRanges && documentLayoutMode() !== "document" && first && witness
+      && first.startContainer === witness.startContainer && first.startOffset === witness.startOffset
+      && first.endContainer === witness.endContainer && first.endOffset === witness.endOffset) {
+      const root = getDocumentRoot()
+      const ranges = this.layoutRanges.filter(range => !range.collapsed && root.contains(range.startContainer)
+        && root.contains(range.endContainer))
+      if(ranges.length > 1) return ranges
+    }
+    this.clearLayoutRanges()
+    return native
+  }
+
+  static clearLayoutRanges() {
+    this.layoutRanges = null
+    this.layoutRangeWitness = null
+  }
+
+  static selectRanges(ranges: Iterable<Range>) {
+    const items = Array.from(ranges)
+    this.clearLayoutRanges()
+    this.isSettingRanges = true
+    try {
+      this.#selection.removeAllRanges()
+      for(const range of items) this.#selection.addRange(range)
+      if(documentLayoutMode() !== "document" && items.length > this.#selection.rangeCount && this.#selection.rangeCount) {
+        this.layoutRanges = items.map(range => range.cloneRange())
+        this.layoutRangeWitness = this.#selection.getRangeAt(0).cloneRange()
+      }
+    }
+    finally { this.isSettingRanges = false }
   }
 
   private static columnAffinity: {group: HTMLElement, side: ColumnSide, element: Element | null, placement: "before" | "after", range: Range} | null = null
@@ -337,6 +379,7 @@ export class EditingSelection {
 
   /** Places the caret in the gap before or after the element, i.e. at the element's position in its parent. */
   static selectGap(element: Element, direction: "before" | "after" = "after") {
+    this.clearLayoutRanges()
     if(direction === "before" && element.matches("details > summary")) {
       this.move(element)
       return
@@ -363,7 +406,8 @@ export class EditingSelection {
     }
     if(focus) focusEditorWindow()
     if(!element.parentNode) return
-    if(this.#selection.rangeCount) this.range.selectNode(element)
+    if(this.isMultiElementSelection || this.#selection.rangeCount > 1) this.selectElements([element])
+    else if(this.#selection.rangeCount) this.range.selectNode(element)
     else {
       const range = document.createRange()
       range.selectNode(element)
@@ -371,8 +415,39 @@ export class EditingSelection {
     }
   }
 
+  /** Select independent layout items using live ranges, in document order. */
+  static selectElements(elements: Iterable<Element>) {
+    this.columnAffinity = null
+    const items = Array.from(new Set(elements)).filter(element => getDocumentRoot().contains(element) && element.parentNode)
+      .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1)
+    this.selectRanges(items.map(element => {
+      const range = document.createRange()
+      range.selectNode(element)
+      return range
+    }))
+  }
+
+  /** Whole elements represented by separate ranges in spatial layouts. */
+  static get selectedElements(): Element[] {
+    if(documentLayoutMode() === "document") return this.selectedElement ? [this.selectedElement] : []
+    const elements: Element[] = []
+    for(const range of this.ranges) {
+      if(range.startContainer !== range.endContainer || range.endOffset !== range.startOffset + 1) return []
+      const element = range.startContainer.childNodes[range.startOffset]
+      if(!(element instanceof Element) || !getDocumentRoot().contains(element)) return []
+      elements.push(element)
+    }
+    return elements
+  }
+
+  static get isMultiElementSelection() {
+    const ranges = this.ranges
+    return ranges.length > 1 && this.selectedElements.length === ranges.length
+  }
+
   /** Sets anchor and focus of the selection; collapses to the anchor when the focus is omitted. */
   static selectRange(anchorNode: Node, anchorOffset=0, focusNode: Node=anchorNode, focusOffset=anchorOffset) {
+    this.clearLayoutRanges()
     this.columnAffinity = null
     if(anchorNode === focusNode && anchorOffset === focusOffset) {
       const summary = this.summaryAtLeadingBoundary(anchorNode, anchorOffset)
@@ -818,7 +893,7 @@ export class EditingSelection {
   /** Whether exactly one element is selected (anchored in its parent,
    * spanning one child). */
   static get isElementSelection() {
-    if(this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
+    if(this.ranges.length !== 1 || this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
     if(inlineMathRoot(selected) || isElement(selected) && selected.matches("details > summary")) return false
@@ -832,7 +907,7 @@ export class EditingSelection {
     const formulaBoundary = this.mathBoundary
     if(this.isEmpty && mathRoot(this.anchor)) return true
     if(formulaBoundary) return formulaBoundary.element.getAttribute("display") !== "block"
-    if(this.isEmptySelection || this.isElementSelection) return false
+    if(this.isMultiElementSelection || this.isEmptySelection || this.isElementSelection) return false
     if(this.isEmpty) {
       if(this.anchor instanceof Text || isMarkElement(this.anchor)) return true
       if(isSectionElement(this.anchor)) return false
@@ -967,12 +1042,14 @@ export class EditingSelection {
   }
 
   static includesNode(node: Node) {
+    if(this.isMultiElementSelection) return this.selectedElements.some(element => element === node || element.contains(node))
     const root = this.flowRoot
     return node === root || root.contains(node) && editingFlowRoot(node) === root
   }
 
   /** Foreign positioned subtrees intersected by the native contiguous range. */
   static get excludedFlowElements() {
+    if(this.isMultiElementSelection) return []
     const range = this.range
     const excluded: Element[] = []
     const visit = (element: Element) => {
@@ -990,6 +1067,7 @@ export class EditingSelection {
   /** Native ranges cannot contain holes. Split only for editing, retaining
    * live DOM endpoints and the ancestor shells of excluded content. */
   static get flowRanges() {
+    if(this.isMultiElementSelection) return this.ranges.map(range => range.cloneRange())
     const range = this.range.cloneRange()
     if(this.selectedElement === getDocumentRoot() || this.selectedElement === document.body) range.selectNodeContents(getDocumentRoot())
     const ranges: Range[] = []
@@ -1020,11 +1098,13 @@ export class EditingSelection {
 
   /** A clone of the selected content. */
   static get slice() {
+    if(this.isMultiElementSelection) return this.copy()
     return this.cloneFlowContents(this.range)
   }
 
   /** The common ancestor's children covered by the selection (the selected element itself for element selections). Empty for selections within a single text node. Currently excludes children that contain the selection start, e.g. the first block of a cross-block selection. */
   static get nodesBetween() {
+  if(this.isMultiElementSelection) return this.selectedElements
   if(!this.start || !this.end) {
     return []
   }
@@ -1082,6 +1162,11 @@ export class EditingSelection {
   /** Returns a clone of the selected content, leaving the document
    * unchanged. */
   static copy() {
+    if(this.isMultiElementSelection) {
+      const fragment = getInertDocument(this.range.startContainer).createDocumentFragment()
+      for(const range of this.flowRanges) fragment.append(this.cloneFlowContents(range))
+      return fragment
+    }
     const root = getDocumentRoot()
     const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
     const range = copyingRoot ? document.createRange() : this.range
@@ -1101,23 +1186,32 @@ export class EditingSelection {
 
   /** Deletes the selected content (a no-op for collapsed selections). */
   static delete() {
+    const multi = this.isMultiElementSelection
     const range = this.range
     const root = getDocumentRoot()
     const selectsRoot = this.selectedElement === root || this.selectedElement === document.body
     for(const part of this.flowRanges.reverse()) part.deleteContents()
     if(selectsRoot) this.#selection.setPosition(root, 0)
-    else range.collapse(true)
+    else {
+      range.collapse(true)
+      if(multi) this.selectRange(range.startContainer, range.startOffset)
+    }
     window.focus()
   }
 
   /** Removes selected flow content, retaining the live excluded subtrees. */
   static cut() {
+    const multi = this.isMultiElementSelection
     const root = getDocumentRoot()
     const selectsRoot = this.selectedElement === root || this.selectedElement === document.body
     const fragment = document.createDocumentFragment()
     for(const part of this.flowRanges.reverse()) fragment.prepend(part.extractContents())
     if(selectsRoot) this.#selection.setPosition(root, 0)
-    else this.range.collapse(true)
+    else {
+      const range = this.range
+      range.collapse(true)
+      if(multi) this.selectRange(range.startContainer, range.startOffset)
+    }
     window.focus()
     return fragment
   }
@@ -1141,6 +1235,7 @@ export class EditingSelection {
 
   /** Extends the focus to the given position, keeping the anchor. */
   static extend(node: Node, offset: number = 0) {
+    this.clearLayoutRanges()
     if(this.isGapSelection) {
       this.#selection.deleteFromDocument()
     }
@@ -1150,6 +1245,7 @@ export class EditingSelection {
 
   private static modify(alter: "move" | "extend", direction: Direction, granularity: Granularity) {
     const flow = this.flowRoot
+    this.clearLayoutRanges()
     this.#selection.modify(alter, direction, granularity)
     const focus = this.focus
     if(!focus || editingFlowRoot(focus) === flow) return
@@ -1174,6 +1270,7 @@ export class EditingSelection {
 
   /** Collapses the selection to the given position. Negative offsets count from the node's end (-1 = at the very end). */
   static move(node: Node, offset: number = 0) {
+    this.clearLayoutRanges()
     this.columnAffinity = null
     const length = node instanceof Text? node.length: node.childNodes.length
     offset = offset < 0 ? length + 1 + offset : offset

@@ -6,5 +6,6 @@ export type EditorStateSnapshot = {
   selection?: {
     anchor: unknown
     focus: unknown
+    ranges?: {anchor: unknown, focus: unknown}[]
   }
 }

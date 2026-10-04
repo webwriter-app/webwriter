@@ -294,6 +294,26 @@ body::part(atomic-selection-overlay) {
   z-index: 2147483645;
 }
 
+/* A manual popover keeps the marquee over authored stacking contexts while
+ * the document iframe clips it below the outer editor controls. */
+body::part(selection-box) {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+  border: 1px solid #0078d7;
+  background: var(--editor-selection-background);
+  z-index: 2147483647;
+}
+
+body::part(multi-selection-overlay) {
+  outline: 1px solid #0078d7;
+}
+
 body::part(node-drag-surface) {
   position: fixed;
   cursor: grab;

@@ -181,6 +181,153 @@ describe("capture outline selection", () => {
   })
 })
 
+describe("canvas and slide box selection", () => {
+  function mockNativeRanges() {
+    const selection = document.getSelection()!
+    let ranges: Range[] = []
+    const native = new Proxy(selection, {
+      get(target, property) {
+        if(property === "rangeCount") return ranges.length
+        if(property === "isCollapsed") return ranges.length === 0 || ranges.every(range => range.collapsed)
+        if(property === "anchorNode") return ranges[0]?.startContainer ?? null
+        if(property === "anchorOffset") return ranges[0]?.startOffset ?? 0
+        if(property === "focusNode") return ranges.at(-1)?.endContainer ?? null
+        if(property === "focusOffset") return ranges.at(-1)?.endOffset ?? 0
+        if(property === "removeAllRanges") return () => { ranges = [] }
+        if(property === "addRange") return (range: Range) => { ranges.push(range) }
+        if(property === "getRangeAt") return (index: number) => ranges[index]
+        if(property === "setBaseAndExtent") return (anchor: Node, anchorOffset: number, focus: Node, focusOffset: number) => {
+          const range = document.createRange()
+          range.setStart(anchor, anchorOffset)
+          range.setEnd(focus, focusOffset)
+          ranges = [range]
+        }
+        if(property === "setPosition") return (node: Node, offset = 0) => {
+          const range = document.createRange()
+          range.setStart(node, offset)
+          range.collapse(true)
+          ranges = [range]
+        }
+        const value = Reflect.get(target, property, target)
+        return typeof value === "function" ? value.bind(target) : value
+      },
+    })
+    vi.spyOn(document, "getSelection").mockReturnValue(native)
+    return () => ranges
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  function rect(element: Element, left: number, top: number, right: number, bottom: number) {
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(left, top, right - left, bottom - top))
+  }
+
+  function pointer(type: string, x: number, y: number, target: Element) {
+    const event = new PointerEvent(type, {bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: x, clientY: y})
+    target.dispatchEvent(event)
+    return event
+  }
+
+  it("selects fully enclosed canvas items on a reverse drag and clears the box on pointerup", () => {
+    document.body.className = "ww-canvas"
+    document.body.innerHTML = '<p>first</p><custom-box>middle</custom-box><p>partial</p><p>outside</p>'
+    const [first, widget, partial, outside] = Array.from(document.body.children)
+    rect(first, 20, 20, 60, 60)
+    rect(widget, 70, 20, 110, 60)
+    rect(partial, 35, 70, 90, 130)
+    rect(outside, 115, 20, 150, 60)
+    const ranges = mockNativeRanges()
+
+    pointer("pointerdown", 112, 120, document.body)
+    pointer("pointermove", 10, 10, document.body)
+
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeTruthy()
+    expect(ranges()).toHaveLength(2)
+    expect(ranges().map(range => range.startContainer.childNodes[range.startOffset])).toEqual([first, widget])
+    expect(ranges().map(range => range.endContainer.childNodes[range.endOffset - 1])).toEqual([first, widget])
+    expect(partial).not.toHaveClass("◆element-selected")
+    expect(outside).not.toHaveClass("◆element-selected")
+
+    pointer("pointerup", 10, 10, document.body)
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+  })
+
+  it("starts from a slide and reevaluates its direct content while ignoring navigation and appendix UI", () => {
+    document.body.className = "ww-slides"
+    document.body.innerHTML = '<div class="ww-slides-viewport"><section class="ww-slide"><p>inside</p><p>changed</p><nav class="ww-slide-directions"><a>next</a></nav></section></div><nav class="ww-slides-navigation"><a>slide</a></nav>'
+    const slide = document.querySelector<HTMLElement>(".ww-slide")!
+    const inside = slide.querySelector("p")!
+    const changed = slide.querySelectorAll("p")[1]
+    const directions = slide.querySelector(".ww-slide-directions")!
+    rect(inside, 20, 20, 60, 60)
+    rect(changed, 70, 20, 110, 60)
+    rect(directions, 20, 70, 100, 100)
+    const ranges = mockNativeRanges()
+
+    pointer("pointerdown", 0, 0, slide)
+    const overlay = editor.appendix.querySelector<HTMLElement>('[part="selection-box"]')!
+    expect(overlay).toBeTruthy()
+    expect(overlay.getRootNode()).toBe(editor.appendix)
+    expect(overlay.popover).toBe("manual")
+    changed.remove()
+    const added = document.createElement("p")
+    slide.append(added)
+    rect(added, 70, 70, 100, 100)
+    pointer("pointermove", 120, 120, slide)
+
+    expect(ranges().map(range => range.startContainer.childNodes[range.startOffset])).toEqual([inside, added])
+    expect(directions).not.toHaveClass("◆element-selected")
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBe(overlay)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+  })
+
+  it("removes the temporary box and dragging marker on pointercancel and feature disable", () => {
+    document.body.className = "ww-canvas"
+    document.body.innerHTML = "<p>item</p>"
+    feature.beginBoxSelection(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: 0, clientY: 0}))
+    pointer("pointercancel", 0, 0, document.body)
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    expect(document.body).not.toHaveClass("◆selection-dragging")
+    expect(feature.isInDragSelection).toBe(false)
+
+    feature.beginBoxSelection(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 2, clientX: 0, clientY: 0}))
+    feature.disable()
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    expect(document.body).not.toHaveClass("◆selection-dragging")
+    expect(feature.isInDragSelection).toBe(false)
+  })
+
+  it("keeps disjoint canvas selections on single-range browsers through pointerup and passive refresh", () => {
+    document.body.className = "ww-canvas"
+    document.body.innerHTML = "<p>first</p><p>outside</p><p>last</p>"
+    const [first, outside, last] = Array.from(document.body.children)
+    rect(first, 20, 20, 50, 50)
+    rect(outside, 70, 20, 100, 50)
+    rect(last, 20, 70, 50, 100)
+
+    feature.beginBoxSelection(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: 60, clientY: 110}))
+    pointer("pointermove", 10, 10, document.body)
+    pointer("pointerup", 10, 10, document.body)
+    feature.processSelection(undefined, {scrollIntoView: false})
+
+    expect(document.getSelection()!.rangeCount).toBe(1)
+    expect($.ranges).toHaveLength(2)
+    expect($.selectedElements).toEqual([first, last])
+    expect(first).toHaveClass("◆element-selected")
+    expect(last).toHaveClass("◆element-selected")
+    expect(outside).not.toHaveClass("◆element-selected")
+    expect(editor.appendix.querySelectorAll('[part~="multi-selection-overlay"]')).toHaveLength(2)
+
+    feature.selectElement(first)
+    expect($.ranges).toHaveLength(1)
+    expect($.selectedElement).toBe(first)
+    expect(first).toHaveClass("◆element-selected")
+    expect(last).not.toHaveClass("◆element-selected")
+    expect(editor.appendix.querySelectorAll('[part~="multi-selection-overlay"]')).toHaveLength(0)
+  })
+})
+
 describe("contentful widgets", () => {
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   beforeEach(() => {

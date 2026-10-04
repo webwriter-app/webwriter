@@ -32,6 +32,29 @@ function firstText(parent: Element | null = document.body.firstElementChild) {
   return parent!.firstChild as Text
 }
 
+/** happy-dom exposes one native range; this facade models browsers with several. */
+function mockMultiRangeSelection(ranges: Range[]) {
+  let current = [...ranges]
+  const native = document.getSelection()!
+  const facade = new Proxy(native, {
+    get(target, property) {
+      if(property === "rangeCount") return current.length
+      if(property === "anchorNode") return current[0]?.startContainer ?? null
+      if(property === "anchorOffset") return current[0]?.startOffset ?? 0
+      if(property === "focusNode") return current[0]?.endContainer ?? null
+      if(property === "focusOffset") return current[0]?.endOffset ?? 0
+      if(property === "isCollapsed") return current.every(range => range.collapsed)
+      if(property === "getRangeAt") return (index: number) => current[index]
+      if(property === "removeAllRanges") return () => { current = [] }
+      if(property === "addRange") return (range: Range) => { current.push(range) }
+      const value = Reflect.get(target, property, target)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+  vi.spyOn(document, "getSelection").mockReturnValue(facade)
+  return {get ranges() { return current }}
+}
+
 describe("createInertScript()", () => {
   it("creates detached HTML and SVG scripts owned by the requested document", () => {
     const html = createInertScript(document)
@@ -976,6 +999,94 @@ describe("nodesBetween", () => {
     const texts = document.querySelectorAll("p")
     $.selectRange(texts[0].firstChild!, 0, texts[1].firstChild!, texts[1].textContent!.length)
     expect($.nodesBetween).toEqual(Array.from(texts))
+  })
+
+  it("copies and deletes separate canvas items while preserving the unselected hole", () => {
+    document.body.classList.add("ww-canvas")
+    setBody("<p>first</p><p>hole</p><p>last</p>")
+    const [first, , last] = Array.from(document.body.children)
+    const selection = mockMultiRangeSelection([first, last].map(element => {
+      const range = document.createRange()
+      range.selectNode(element)
+      return range
+    }))
+
+    expect($.isMultiElementSelection).toBe(true)
+    expect($.selectedElements).toEqual([first, last])
+    expect($.nodesBetween).toEqual([first, last])
+    expect($.copy().textContent).toBe("firstlast")
+
+    $.delete()
+    expect(document.body.innerHTML).toBe("<p>hole</p>")
+    expect(selection.ranges).toHaveLength(2)
+    vi.restoreAllMocks()
+  })
+
+  it("retains disjoint ranges when the native Selection accepts only one range", () => {
+    document.body.classList.add("ww-canvas")
+    setBody("<p>first</p><p>hole</p><p>last</p>")
+    const [first, , last] = Array.from(document.body.children)
+    const ranges = [first, last].map(element => {
+      const range = document.createRange()
+      range.selectNode(element)
+      return range
+    })
+
+    $.selectRanges(ranges)
+
+    expect(document.getSelection()!.rangeCount).toBe(1)
+    expect($.ranges).toHaveLength(2)
+    expect($.isMultiElementSelection).toBe(true)
+    expect($.copy().textContent).toBe("firstlast")
+    $.delete()
+    expect(document.body.innerHTML).toBe("<p>hole</p>")
+  })
+
+  it("drops retained ranges after a regular selection replaces their native witness", () => {
+    document.body.classList.add("ww-canvas")
+    setBody("<p>first</p><p>second</p><p>third</p>")
+    const [first, , third] = Array.from(document.body.children)
+    $.selectElements([first, third])
+    expect($.ranges).toHaveLength(2)
+
+    const secondText = document.querySelectorAll("p")[1].firstChild!
+    $.selectRange(secondText, 0, secondText, 3)
+
+    expect($.ranges).toHaveLength(1)
+    expect($.ranges[0].toString()).toBe("sec")
+    expect($.isMultiElementSelection).toBe(false)
+  })
+
+  it("drops retained ranges when native code replaces the primary range", () => {
+    document.body.classList.add("ww-canvas")
+    setBody("<p>first</p><p>second</p><p>third</p>")
+    const [first, , third] = Array.from(document.body.children)
+    $.selectElements([first, third])
+    expect($.ranges).toHaveLength(2)
+
+    const secondText = document.querySelectorAll("p")[1].firstChild!
+    document.getSelection()!.setBaseAndExtent(secondText, 1, secondText, 4)
+
+    expect($.ranges).toHaveLength(1)
+    expect($.ranges[0].toString()).toBe("eco")
+    expect($.isMultiElementSelection).toBe(false)
+  })
+
+  it("does not keep removed endpoints in the retained multi-range selection", () => {
+    document.body.classList.add("ww-canvas")
+    setBody("<p>first</p><p>second</p>")
+    const [first, second] = Array.from(document.body.children)
+    const ranges = [first, second].map(element => {
+      const range = document.createRange()
+      range.selectNode(element)
+      return range
+    })
+    $.selectRanges(ranges)
+    second.remove()
+
+    expect($.ranges).toHaveLength(1)
+    expect($.selectedElements).toEqual([first])
+    expect($.copy().textContent).toBe("first")
   })
 })
 

@@ -1,7 +1,8 @@
 import * as Y from "yjs"
 import {Awareness} from "y-protocols/awareness"
 import {messageSync, WebsocketProvider} from "y-websocket"
-import {createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
+import {$, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
+import {documentLayoutMode} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
 import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, type WidgetDataOptions} from "./widget-data"
@@ -61,6 +62,7 @@ export type CollaborationUser = {
 export type RelativeSelection = {
   anchor: Y.RelativePosition
   focus: Y.RelativePosition
+  ranges?: {anchor: Y.RelativePosition, focus: Y.RelativePosition}[]
 }
 
 export type DOMSelection = {
@@ -394,6 +396,9 @@ export class SharedDOMDoc {
         selection: {
           anchor: Y.relativePositionToJSON(selection.anchor),
           focus: Y.relativePositionToJSON(selection.focus),
+          ...(selection.ranges ? {ranges: selection.ranges.map(range => ({
+            anchor: Y.relativePositionToJSON(range.anchor), focus: Y.relativePositionToJSON(range.focus),
+          }))} : {}),
         },
       } : {}),
     }
@@ -407,6 +412,9 @@ export class SharedDOMDoc {
       this.#relativeSelection = {
         anchor: Y.createRelativePositionFromJSON(selection.anchor),
         focus: Y.createRelativePositionFromJSON(selection.focus),
+        ...(selection.ranges ? {ranges: selection.ranges.map(range => ({
+          anchor: Y.createRelativePositionFromJSON(range.anchor), focus: Y.createRelativePositionFromJSON(range.focus),
+        }))} : {}),
       }
       this.awareness.setLocalStateField("selection", this.#relativeSelection)
       this.writeSelection()
@@ -535,7 +543,17 @@ export class SharedDOMDoc {
       this.clearSelection()
       return
     }
-    this.#relativeSelection = {anchor, focus}
+    const ranges: NonNullable<RelativeSelection["ranges"]> = []
+    const selectedRanges = this.#document === document && selection === document.getSelection() ? $.ranges
+      : Array.from({length: selection.rangeCount}, (_, i) => selection.getRangeAt(i))
+    if(selectedRanges.length > 1 && documentLayoutMode(this.root) !== "document") {
+      for(const range of selectedRanges) {
+        const start = this.relativePositionFromDOMPoint(range.startContainer, range.startOffset)
+        const end = this.relativePositionFromDOMPoint(range.endContainer, range.endOffset)
+        if(start && end) ranges.push({anchor: start, focus: end})
+      }
+    }
+    this.#relativeSelection = {anchor, focus, ...(ranges.length > 1 ? {ranges} : {})}
     this.awareness.setLocalStateField("selection", this.#relativeSelection)
   }
 
@@ -599,6 +617,21 @@ export class SharedDOMDoc {
     const selectionAPI = this.#document.getSelection()
     if(!domSelection || !selectionAPI) return
     try {
+      if(selection?.ranges && documentLayoutMode(this.root) !== "document") {
+        const ranges: Range[] = []
+        for(const relative of selection.ranges) {
+          const points = this.#domSelection(relative)
+          if(!points) continue
+          const range = this.#document.createRange()
+          range.setStart(points.anchorNode, points.anchorOffset)
+          range.setEnd(points.focusNode, points.focusOffset)
+          if(!range.collapsed) ranges.push(range)
+        }
+        if(this.#document === document) $.selectRanges(ranges)
+        else { selectionAPI.removeAllRanges(); ranges.forEach(range => selectionAPI.addRange(range)) }
+        return
+      }
+      if(this.#document === document) $.clearLayoutRanges()
       selectionAPI.setBaseAndExtent(
         domSelection.anchorNode,
         domSelection.anchorOffset,

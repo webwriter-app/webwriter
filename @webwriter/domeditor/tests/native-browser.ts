@@ -1211,6 +1211,43 @@ await check("dead-key composition stays outside authored formulas", async () => 
   finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
+await check("canvas box selection retains disjoint ranges and stays in the document top layer", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body class="ww-canvas"><p style="position:absolute;left:40px;top:40px;width:100px;height:60px;margin:0">first</p><p style="position:absolute;left:40px;top:350px;width:100px;height:60px;margin:0">hole</p><p style="position:absolute;left:170px;top:40px;width:100px;height:60px;margin:0;z-index:2147483647">last</p></body>'
+  document.body.append(frame)
+  let canvasEditor: DOMEditor | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `canvas editor did not initialize: ${view.editorError}`)
+    canvasEditor = view.editor!
+    await layoutFrame()
+    const doc = frame.contentDocument!, [first, hole, last] = Array.from(doc.querySelectorAll("p"))
+    const a = first.getBoundingClientRect(), b = last.getBoundingClientRect()
+    const left = Math.min(a.left, b.left) - 10, top = Math.min(a.top, b.top) - 10
+    const right = Math.max(a.right, b.right) + 10, bottom = Math.max(a.bottom, b.bottom) + 10
+    doc.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 91, button: 0, clientX: left, clientY: top}))
+    doc.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 91, buttons: 1, clientX: right, clientY: bottom}))
+    const box = canvasEditor.appendix.querySelector<HTMLElement>('[part="selection-box"]')!
+    assert(box?.matches(":popover-open"), "selection box is not in the document top layer")
+    const boxRect = box.getBoundingClientRect()
+    assert(Math.abs(boxRect.left - left) < 1 && Math.abs(boxRect.top - top) < 1
+      && Math.abs(boxRect.width - (right - left)) < 1 && Math.abs(boxRect.height - (bottom - top)) < 1,
+      `selection box does not start at the pointer: expected=${left},${top}, actual=${boxRect.left},${boxRect.top}`)
+    assert(getComputedStyle(box).pointerEvents === "none" && box.getRootNode() === doc.body.shadowRoot, "selection box intercepts content or escapes the appendix")
+    assert(first.classList.contains("◆element-selected") && last.classList.contains("◆element-selected") && !hole.classList.contains("◆element-selected"), "box selected a hole or missed an enclosed item")
+    doc.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
+    await layoutFrame()
+    assert(!box.isConnected && first.classList.contains("◆element-selected") && last.classList.contains("◆element-selected"), "selection did not survive pointerup and native refresh")
+    assert(canvasEditor.appendix.querySelectorAll('[part~="multi-selection-overlay"]').length === 2, "selected items do not have separate overlays")
+    const selection = canvasEditor.doc.snapshot().selection
+    assert(selection?.ranges?.length === 2, "snapshot lost disjoint ranges")
+    assert(!canvasEditor.toHTML().includes("selection-box"), "marquee leaked into serialized content")
+  }
+  finally { canvasEditor?.destroy(); frame.remove() }
+})
+
 await check("canvas slot preserves hit testing and document coordinates at different zoom levels", async () => {
   const paragraph = document.createElement("p")
   paragraph.textContent = "Canvas text"

@@ -7,6 +7,7 @@ import * as encoding from "lib0/encoding"
 import * as decoding from "lib0/decoding"
 import * as syncProtocol from "y-protocols/sync"
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
+import {$} from "./utility"
 
 const sharedDocs: SharedDOMDoc[] = []
 
@@ -958,6 +959,78 @@ describe("relative selections and history", () => {
     expect(document.querySelector("p")!.textContent).toBe("XHello")
     expect(document.getSelection()!.anchorNode).toBe(text)
     expect(document.getSelection()!.anchorOffset).toBe(4)
+  })
+
+  it("stores independent slide ranges as relative collaborative selection endpoints", () => {
+    const {owner, shared} = createDocumentShared("", "<p>one</p><p>hole</p><p>three</p>")
+    owner.body.classList.add("ww-slides")
+    const [first, , third] = Array.from(owner.body.children)
+    const ranges = [first, third].map(element => {
+      const range = owner.createRange()
+      range.selectNode(element)
+      return range
+    })
+    const selection = {
+      anchorNode: ranges[0].startContainer,
+      anchorOffset: ranges[0].startOffset,
+      focusNode: ranges[0].endContainer,
+      focusOffset: ranges[0].endOffset,
+      rangeCount: ranges.length,
+      getRangeAt: (index: number) => ranges[index],
+    } as unknown as Selection
+
+    shared.updateLocalSelection(selection)
+
+    const stored = shared.awareness.getLocalState()!.selection
+    expect(stored.ranges).toHaveLength(2)
+    expect(shared.domPointFromRelativePosition(stored.ranges[0].anchor)).toMatchObject({node: owner.body, offset: 0})
+    expect(shared.domPointFromRelativePosition(stored.ranges[0].focus)).toMatchObject({node: owner.body, offset: 1})
+    expect(shared.domPointFromRelativePosition(stored.ranges[1].anchor)).toMatchObject({node: owner.body, offset: 2})
+    expect(shared.domPointFromRelativePosition(stored.ranges[1].focus)).toMatchObject({node: owner.body, offset: 3})
+  })
+
+  it("round-trips retained spatial ranges through a snapshot and restoreSelection", () => {
+    document.body.innerHTML = "<p>one</p><p>hole</p><p>three</p>"
+    document.body.classList.add("ww-canvas")
+    const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"])
+    sharedDocs.push(shared)
+    const [first, , third] = Array.from(document.body.children)
+    const ranges = [first, third].map(element => {
+      const range = document.createRange()
+      range.selectNode(element)
+      return range
+    })
+    $.selectRanges(ranges)
+
+    const snapshot = shared.snapshot()
+    expect(snapshot.selection?.ranges).toHaveLength(2)
+    $.selectDocumentStart()
+    shared.restoreSelection(snapshot.selection)
+
+    expect(document.getSelection()!.rangeCount).toBe(1)
+    expect($.ranges).toHaveLength(2)
+    expect($.selectedElements).toEqual([first, third])
+  })
+
+  it("syncs and undoes a disjoint canvas deletion without removing the middle item", () => {
+    document.body.innerHTML = "<p>first</p><p>middle</p><p>last</p>"
+    document.body.classList.add("ww-canvas")
+    const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"])
+    sharedDocs.push(shared)
+    const [first, middle, last] = Array.from(document.body.children)
+
+    $.selectElements([first, last])
+    $.delete()
+    shared.syncFromDOM()
+    shared.stopCapturing()
+
+    expect(document.body.innerHTML).toBe("<p>middle</p>")
+    expect(shared.body.toString()).toContain("<p>middle</p>")
+    shared.undo()
+    expect(document.body.innerHTML).toBe("<p>first</p><p>middle</p><p>last</p>")
+    shared.redo()
+    expect(document.body.innerHTML).toBe("<p>middle</p>")
+    expect(middle.isConnected).toBe(true)
   })
 
   it("leaves the selection alone after remote edits while another element has focus", () => {

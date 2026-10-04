@@ -45,6 +45,7 @@ const expectedChecks = [
   "ribbon shapes retain their aspect ratio under the document theme",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
+  "canvas box selection retains disjoint ranges and stays in the document top layer",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
   "canvas paragraphs split into separate positioned items and conversion returns normal flow",
   "ribbon elements drop on the blank canvas slot",

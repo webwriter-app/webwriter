@@ -276,14 +276,8 @@ export class CanvasFeature extends EditorFeature {
     pointerdown: event => {
       if(!this.active || !this.ownEvent(event)) return
       if(event.button === 0 && !this.hand && !this.spaceHand && this.backgroundInteraction(event)) {
-        // Native caret lookup snaps blank space to nearby text. Only authored
-        // element hits should enter that path; the camera slot is background.
-        event.preventDefault()
+        this.editor.features.selection.beginBoxSelection(event)
         event.stopImmediatePropagation()
-        const range = document.createRange()
-        range.setStart(document.body, 0)
-        range.collapse(true)
-        this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
         return
       }
       if(event.button !== 1 && !(event.button === 0 && (this.hand || this.spaceHand))) return

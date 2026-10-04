@@ -1871,7 +1871,7 @@ export class ManipulationFeature extends EditorFeature {
         if(fragment) this.insertClipboardFragment(fragment)
         return
       }
-      if($.excludedFlowElements.length) {
+      if($.isMultiElementSelection || $.excludedFlowElements.length) {
         if(ev.inputType.startsWith("delete")) {
           ev.preventDefault()
           this.delete()
@@ -2109,6 +2109,7 @@ export class ManipulationFeature extends EditorFeature {
    * the end/start of the adjacent block. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character") {
     if(!this.editor.features.slides.allowsSelection()) return
+    if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
     const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide($.range.startContainer) : null
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
