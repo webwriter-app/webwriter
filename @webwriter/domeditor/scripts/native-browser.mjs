@@ -21,7 +21,7 @@ const expectedChecks = [
   "typing after a formula inserted at paragraph end stays outside MathML",
   "blank space around a formula paragraph selects gaps for every click count",
   "leaving an empty inline formula removes it without moving the text caret",
-  "bottom template cards retain native editing focus after rendering",
+  "bottom layout cards retain native editing focus after rendering",
   "editor command preserves a live selection",
   "selection feature treats custom element as atomic",
   "layout based hit testing returns the rendered target",
@@ -47,9 +47,12 @@ const expectedChecks = [
   "iframe lifecycle reaches load and cleans up",
   "canvas box selection retains disjoint ranges and stays in the document top layer",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
-  "canvas paragraphs split into separate positioned items and conversion returns normal flow",
+  "canvas Enter inserts a line break and conversion returns normal flow",
+  "paragraphs grow with content and retain explicit sizes in canvas",
+  "paragraphs grow with content and retain explicit sizes in slides",
   "ribbon elements drop on the blank canvas slot",
   "relayed ribbon elements drop onto the selected element beneath editor overlays",
+  "ribbon snippets drop at the caret and center in freeform layouts",
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
   "exported canvas runs its standalone viewer without editor dependencies",
@@ -58,6 +61,9 @@ const expectedChecks = [
 const mathVisual = process.argv.includes("--math-visual")
 const importMapMode = process.argv.includes("--import-map")
 const smoke = process.argv.includes("--smoke")
+const checkFilter = process.argv.find(argument => argument.startsWith("--filter="))?.slice("--filter=".length)
+const filteredChecks = checkFilter ? expectedChecks.filter(name => name.includes(checkFilter)) : expectedChecks
+if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode)) throw new Error("The filter must match a native check")
 const browserArgument = process.argv.find(argument => argument.startsWith("--browser="))?.slice("--browser=".length)
 const browserName = browserArgument ?? "chromium"
 if(!["chromium", "firefox", "webkit"].includes(browserName)) throw new Error(`Unsupported native browser: ${browserName}`)
@@ -155,7 +161,7 @@ let timeout
 try {
   await vite.listen()
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run`
+  const url = `http://127.0.0.1:${port}/tests/${smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
@@ -182,8 +188,8 @@ try {
   const valid = !result?.error && (importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
     : mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
     : smoke ? checks.length === expectedSmokeChecks.length && expectedSmokeChecks.every(name => checks.some(check => check?.name === name))
-    : checks.length === expectedChecks.length
-    && expectedChecks.every(name => checks.some(check => check?.name === name)))
+    : checks.length === filteredChecks.length
+    && filteredChecks.every(name => checks.some(check => check?.name === name)))
     && checks.every(check => check && typeof check.name === "string" && check.error === undefined)
   process.stdout.write(JSON.stringify(checks, null, 2) + "\n")
   if(!valid) {
