@@ -7,14 +7,14 @@
     "url": "https://github.com/salmenf/webwriter.git"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.3",
+    "@happy-dom/global-registrator": "^20.8.9",
     "@lezer/generator": "^1.7.3",
     "@tabler/icons": "^3.30.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/user-event": "^14.6.1",
     "@types/semver": "^7.3.13",
-    "@vitest/coverage-v8": "4.0.18",
+    "@vitest/coverage-v8": "4.1.11",
     "@wagnerflo/cc-icons": "^1.2.1",
     "bootstrap-icons": "^1.10.3",
     "deepl-node": "^1.13.0",
@@ -25,7 +25,7 @@
     "vite": "^8.0.3",
     "vite-plugin-pwa": "^1.0.0",
     "vite-plugin-wasm": "^3.6.0",
-    "vitest": "^4.0.18",
+    "vitest": "^4.1.11",
     "xliff": "^6.2.1",
     "zod-to-json-schema": "^3.23.0"
   },
