@@ -40,6 +40,7 @@ export default defineConfig({
       dedupe: ["yjs"],
     },
     test: {
+      execArgv: ["--max-old-space-size=8192"],
       css: true,
       setupFiles: ["./tests/setup-happy-dom.mjs"],
       environmentOptions: {
