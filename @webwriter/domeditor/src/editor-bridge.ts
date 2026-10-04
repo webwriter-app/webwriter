@@ -35,6 +35,14 @@ export const loadWidgetsMessage = "load-widgets"
 export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 
+/** Relative DOM positions survive package installation replacing the iframe. */
+export type RibbonDropPosition = {
+  anchor: unknown
+  layout: "document" | "canvas" | "slides"
+  x?: number
+  y?: number
+}
+
 /** Chromium withholds drag events from a frame of another site than the one
  * that started the drag, so the host relays its ribbon drags over the editor
  * frame. Coordinates are relative to the frame's viewport. */

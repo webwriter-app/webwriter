@@ -1,4 +1,4 @@
-import type {Transaction} from "yjs"
+import {createRelativePositionFromJSON, relativePositionToJSON, type Transaction} from "yjs"
 import {authoredLayoutKind, canPlaceLayouts, canBecomeLayout} from "../layouts"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
@@ -15,11 +15,12 @@ import {
   type ElementStyleState,
   type FigureSelectionState,
   type HeadingGroupSelectionState,
+  type RibbonDropPosition,
 } from "../editor-bridge"
 import {paragraphStylePropertyNameSet} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
-import {elementDragType, insertionMenuItems} from "../components/insertion-menu"
+import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
 import {createTable} from "../table"
 import {
   elementAttributeEditability,
@@ -341,25 +342,31 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private acceptsDrop(event: DragEvent) {
-    return !event.defaultPrevented
+    return !this.editor.isEditingLocked && !event.defaultPrevented
       && Boolean(event.dataTransfer && Array.from(event.dataTransfer.types)
-        .some(type => ["text/html", "text/plain", this.dragType, elementDragType].includes(type)))
+        .some(type => ["text/html", "text/plain", this.dragType, elementDragType, ribbonInsertionDragType].includes(type)))
   }
 
   private ribbonDragTag(data: DataTransfer) {
-    const tag = data.getData(elementDragType) || Array.from(data.types).find(type => type.startsWith(`${elementDragType}-`))?.slice(elementDragType.length + 1)
+    const action = data.getData(ribbonInsertionDragType)
+    const tag = (action.startsWith("element:") ? action.slice("element:".length) : "")
+      || data.getData(elementDragType) || Array.from(data.types).find(type => type.startsWith(`${elementDragType}-`))?.slice(elementDragType.length + 1)
     return insertionMenuItems.some(item => item.tag === tag) ? tag : null
   }
 
   private ribbonDropTarget(event: DragEvent) {
     if(this.editor.features.canvas.active) return document.body
-    if(this.editor.features.slides.active && event.target instanceof Node) return this.editor.features.slides.containingSlide(event.target)
+    if(this.editor.features.slides.active) {
+      const direct = event.target instanceof Node ? this.editor.features.slides.containingSlide(event.target) : null
+      return direct ?? (document.elementsFromPoint?.(event.clientX, event.clientY) ?? [])
+        .map(element => this.editor.features.slides.containingSlide(element)).find(Boolean) ?? null
+    }
     return null
   }
 
-  private canvasSlotRibbonDrag(event: DragEvent) {
-    return !this.editor.isEditingLocked && this.editor.features.canvas.active && event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
-      && event.composedPath()[0] === this.editor.appendix.querySelector("slot:not([name])")
+  private ribbonSurfaceDrag(event: DragEvent) {
+    return event.dataTransfer && Array.from(event.dataTransfer.types)
+      .some(type => type === elementDragType || type === ribbonInsertionDragType)
   }
 
   private ribbonElement(tag: string): Element {
@@ -393,15 +400,17 @@ export class ManipulationFeature extends EditorFeature {
   private dragOver(event: DragEvent) {
     if(!this.acceptsDrop(event)) return
     const ribbonTag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
-    if(ribbonTag && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
+    const ribbonInsertion = event.dataTransfer && Array.from(event.dataTransfer.types).includes(ribbonInsertionDragType)
+    if((ribbonTag || ribbonInsertion) && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
       event.preventDefault()
       event.dataTransfer!.dropEffect = this.ribbonDropTarget(event) ? "copy" : "none"
       this.clearDropSelection(true)
       return
     }
     event.preventDefault()
-    const ribbonElement = ribbonTag ? this.ribbonElement(ribbonTag) : null
-    const range = this.dropRange(event, this.nodeDrag?.element ?? ribbonElement, Boolean(ribbonElement))
+    // Ribbon sources are insertion commands, not document nodes. Resolve
+    // their caret exactly like widgets, without a detached preview element.
+    const range = this.dropRange(event, ribbonTag || ribbonInsertion ? null : this.nodeDrag?.element ?? null)
     if(!range) {
       event.dataTransfer!.dropEffect = "none"
       this.clearDropSelection(true)
@@ -415,8 +424,8 @@ export class ManipulationFeature extends EditorFeature {
     this.editor.features.selection.selectDropRange(range)
     this.restoreDropColumn()
     if(this.dropColumn) this.editor.features.selection.processSelection()
-    const source = this.nodeDrag?.element ?? ribbonElement
-    const floatContainer = source && this.columnDropTarget(event, source, range)
+    const source = this.nodeDrag?.element
+    const floatContainer = !ribbonTag && !ribbonInsertion && source && this.columnDropTarget(event, source, range)
     if(floatContainer) {
       const rect = floatContainer.getBoundingClientRect()
       this.editor.features.selection.clearDropCaret()
@@ -588,13 +597,16 @@ export class ManipulationFeature extends EditorFeature {
     if(point?.column && isColumnGroup(point.node)) $.selectColumnGap(point.node, point.column, point.gapElement, point.placement)
   }
 
-  private dropRange(event: DragEvent, source: Element | null, allowDetached = false) {
+  private dropRange(event: DragEvent, source: Element | null) {
     this.dropColumn = undefined
-    if(source && !allowDetached && !getDocumentRoot().contains(source)) return null
+    if(source && !getDocumentRoot().contains(source)) return null
     // Overlays such as the selected element's drag surface cover authored
     // content, which native hit testing would otherwise resolve to the appendix.
+    // Bound the hit test to the editing root so its geometry fallback also
+    // resolves blank space when media leaves no native text caret to hit.
+    const root = getDocumentRoot()
     const point = this.editor.hitTestBeneathAppendix(() => $.pointFromCoords(
-      event.clientX, event.clientY, event.target, this.editor.schema, getDocumentRoot(),
+      event.clientX, event.clientY, event.target, this.editor.schema, root, root,
     ))
     if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)
       || source && !canPlaceLayouts([source], point.node instanceof Text ? point.node.parentNode! : point.node)) return null
@@ -615,56 +627,181 @@ export class ManipulationFeature extends EditorFeature {
     return source?.contains(range.startContainer) ? null : range
   }
 
+  private ribbonDropPosition(event: DragEvent): RibbonDropPosition | null {
+    const target = this.ribbonDropTarget(event)
+    if(this.editor.features.slides.active && !target) return null
+    const range = target ? null : this.dropRange(event, null)
+    if(!target && !range) return null
+    this.editor.doc.syncFromDOM()
+    const anchor = this.editor.doc.relativePositionFromDOMPoint(target ?? range!.startContainer, target ? 0 : range!.startOffset)
+    if(!anchor) return null
+    if(!target) return {anchor: relativePositionToJSON(anchor), layout: "document"}
+    const point = target === document.body ? this.editor.features.canvas.clientPoint(event.clientX, event.clientY)
+      : {x: event.clientX - target.getBoundingClientRect().left + target.scrollLeft,
+        y: event.clientY - target.getBoundingClientRect().top + target.scrollTop}
+    return {anchor: relativePositionToJSON(anchor), layout: target === document.body ? "canvas" : "slides", ...point}
+  }
+
+  private placeRibbonElements(elements: Element[], target: HTMLElement, point: {x: number, y: number}) {
+    const placed = elements.map(element => {
+      if(element.namespaceURI !== MATH_NAMESPACE) return element
+      const paragraph = document.createElement("p")
+      paragraph.append(element)
+      return paragraph
+    })
+    let offset = 0
+    for(const element of placed) {
+      if(element instanceof HTMLElement || element instanceof SVGSVGElement) {
+        const left = placed.length > 1 && element.style.position === "absolute" ? parseFloat(element.style.left) || 0 : 0
+        const top = placed.length > 1 && element.style.position === "absolute" ? parseFloat(element.style.top) || 0 : offset
+        Object.assign(element.style, {position: "absolute", left: `${point.x + left}px`, top: `${point.y + top}px`, right: "auto", bottom: "auto"})
+        if(!element.style.width && !element.matches("p:not([is])")) element.style.width = "320px"
+      }
+      if(element.parentElement !== target) target.append(element)
+      offset += element.getBoundingClientRect().height / (target === document.body ? this.editor.features.canvas.zoom : 1) + 24
+    }
+    const rects = placed.map(element => element.getBoundingClientRect())
+    const center = {x: (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2,
+      y: (Math.min(...rects.map(rect => rect.top)) + Math.max(...rects.map(rect => rect.bottom))) / 2}
+    const local = target === document.body ? this.editor.features.canvas.clientPoint(center.x, center.y)
+      : {x: center.x - target.getBoundingClientRect().left + target.scrollLeft,
+        y: center.y - target.getBoundingClientRect().top + target.scrollTop}
+    for(const element of placed) {
+      if(element instanceof HTMLElement || element instanceof SVGSVGElement) {
+        element.style.left = `${parseFloat(element.style.left) + point.x - local.x}px`
+        element.style.top = `${parseFloat(element.style.top) + point.y - local.y}px`
+      }
+    }
+    return placed
+  }
+
+  /** Drop placement changes the insertion point and geometry; the existing
+   * commands retain ownership of their element-specific editing selection. */
+  private insertAtRibbonDrop(position: RibbonDropPosition, insert: () => void) {
+    if(this.editor.isEditingLocked) return false
+    let point: ReturnType<typeof this.editor.doc.domPointFromRelativePosition>
+    try { point = this.editor.doc.domPointFromRelativePosition(createRelativePositionFromJSON(position.anchor as Parameters<typeof createRelativePositionFromJSON>[0])) }
+    catch { return false }
+    const layout = this.editor.features.canvas.active ? "canvas" : this.editor.features.slides.active ? "slides" : "document"
+    if(!point || position.layout !== layout) return false
+    const target = layout === "document" ? null : point.node
+    if(target && (!(target instanceof HTMLElement) || !(layout === "canvas" ? target === document.body : isSlide(target))
+      || !Number.isFinite(position.x) || !Number.isFinite(position.y))) return false
+    const end = this.editor.doc.beginUndoGroup()
+    return this.editor.features.selection.withoutSelectionScroll(() => {
+      try {
+        const before = target ? Array.from(target.childNodes) : []
+        const range = document.createRange()
+        range.setStart(point.node, target ? target.childNodes.length : point.offset)
+        range.collapse(true)
+        this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
+        insert()
+        this.editor.features.selection.processSelection()
+        this.editor.features.math.refresh()
+        if(target instanceof HTMLElement) {
+          const added = Array.from(target.children).filter(element => !before.includes(element))
+          if(!added.length) return false
+          this.placeRibbonElements(added, target, {x: position.x!, y: position.y!})
+          this.editor.features.selection.processSelection()
+        }
+        return true
+      }
+      finally { end() }
+    })
+  }
+
+  private async insertRibbonDrop(html: string, position: RibbonDropPosition) {
+    if(this.editor.isEditingLocked) return false
+    const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
+    if(migrated === null || this.editor.isEditingLocked) return false
+    return this.insertAtRibbonDrop(position, () => {
+      if(position.layout === "document") this.insertHTML(migrated)
+      else {
+        // Freeform roots have no flow content model to repair. Keep saved
+        // valid nesting and comments intact while applying import sanitization.
+        const {fragment} = this.editor.parseHTMLFragment(migrated, false, false)
+        this.insertClipboardFragment(fragment)
+      }
+    })
+  }
+
+  /** Create an independent text root before applying text formatting,
+   * so a drop does not reformat the existing paragraph under its caret. */
+  private insertRibbonTextRoot() {
+    const paragraph = document.createElement("p")
+    this.insert(paragraph)
+    if(paragraph.isConnected) $.move(paragraph)
+    return paragraph.isConnected
+  }
+
+  private createRibbonElement(tag: string) {
+    if(tag === "table") this.editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
+    else if(tag === "details") this.editor.features.list.actions.insertDetails({type: "insertDetails"})
+    else if(tag === "svg") this.editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    else if(isMediaType(tag)) this.editor.features.media.actions.insertMedia({type: "insertMedia", media: tag})
+    else if(tag === "math") {
+      if((this.editor.features.canvas.active || this.editor.features.slides.active) && !this.insertRibbonTextRoot()) return
+      this.editor.features.math.actions.insertMath({type: "insertMath"})
+    }
+    else if(tag === "ul" || tag === "ol") {
+      this.editor.features.list.insertList(tag)
+    }
+    else if(isBlockFormatTag(tag)) {
+      if(this.insertRibbonTextRoot()) this.actions.setBlockType({type: "setBlockType", tag})
+    }
+    else this.insertHTML(this.ribbonElement(tag).outerHTML)
+  }
+
+  private insertRibbonCommand(action: string, position: RibbonDropPosition) {
+    if(!ribbonElementInsertionAction(action)) return false
+    return this.insertAtRibbonDrop(position, () => {
+      if(action.startsWith("element:")) this.createRibbonElement(action.slice("element:".length))
+      else if(action.startsWith("insert-graphic-shape:")) {
+        const shape = action.slice("insert-graphic-shape:".length)
+        if(isGraphicShapeType(shape)) this.editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape})
+      }
+      else if(action.startsWith("insert-math:")) {
+        if(position.layout !== "document" && !this.insertRibbonTextRoot()) return
+        this.editor.features.math.actions.insertMath({type: "insertMath", structure: action.slice("insert-math:".length)})
+      }
+      else {
+        const [, tag, style] = action.split(":")
+        if(tag === "ul" || tag === "ol") {
+          this.editor.features.list.insertList(tag)
+          this.editor.features.list.actions.setListStyle({type: "setListStyle", listType: tag, style})
+        }
+      }
+    })
+  }
+
   private drop(event: DragEvent) {
     if(!this.acceptsDrop(event)) return
     event.preventDefault()
     let dropped = false
     try {
       const data = event.dataTransfer!
+      if(Array.from(data.types).includes(ribbonInsertionDragType)) {
+        const action = data.getData(ribbonInsertionDragType)
+        const position = (ribbonInsertionAction(action) || ribbonElementInsertionAction(action))
+          && this.ribbonDropPosition(event)
+        if(!position) return
+        if(ribbonElementInsertionAction(action)) dropped = this.insertRibbonCommand(action, position)
+        else if(data.getData("text/html")) {
+          // Already available content follows the same native transfer path as
+          // elements. Only installation and remote snippet fetching need the host.
+          void this.insertRibbonDrop(data.getData("text/html"), position).catch(error => console.error(error))
+          dropped = true
+        }
+        else {
+          this.editor.postHostMessage({type: "editor-ribbon-drop", action, position})
+          dropped = true
+        }
+        return
+      }
       const ribbonTag = this.ribbonDragTag(data)
       if(ribbonTag) {
-        const element = this.ribbonElement(ribbonTag)
-        const target = this.ribbonDropTarget(event)
-        if(this.editor.features.slides.active && !target) return
-        const range = target ? null : this.dropRange(event, element, true)
-        if(!target && !range) return
-        const end = this.editor.doc.beginUndoGroup()
-        try {
-          if(target) {
-            const placed = element.namespaceURI === MATH_NAMESPACE ? document.createElement("p") : element
-            if(placed !== element) placed.append(element)
-            target.append(placed)
-            if(placed instanceof HTMLElement || placed instanceof SVGSVGElement) {
-              const point = target === document.body
-                ? this.editor.features.canvas.clientPoint(event.clientX, event.clientY)
-                : {x: event.clientX - target.getBoundingClientRect().left + target.scrollLeft,
-                  y: event.clientY - target.getBoundingClientRect().top + target.scrollTop}
-              Object.assign(placed.style, {position: "absolute", left: `${point.x}px`, top: `${point.y}px`, right: "auto", bottom: "auto"})
-              if(!placed.style.width) placed.style.width = "320px"
-              const rect = placed.getBoundingClientRect()
-              const zoom = target === document.body ? this.editor.features.canvas.zoom : 1
-              placed.style.left = `${point.x + (event.clientX - rect.left - rect.width / 2) / zoom}px`
-              placed.style.top = `${point.y + (event.clientY - rect.top - rect.height / 2) / zoom}px`
-            }
-          }
-          else if(range) {
-            if(element.namespaceURI === MATH_NAMESPACE && element.localName === "math") this.editor.features.math.adaptToPlacement(element, range.startContainer)
-            const container = this.columnDropTarget(event, element, range)
-            if(container) {
-              const rect = container.getBoundingClientRect()
-              clearInlinePlacement(element)
-              this.placeFloat(element, container, event.clientX < rect.left + rect.width / 2 ? "left" : "right")
-            }
-            else {
-              range.insertNode(element)
-              clearInlinePlacement(element)
-              if(this.dropColumn?.column && element.parentNode === this.dropColumn.node) element.classList.add(`ww-column-${this.dropColumn.column}`)
-            }
-          }
-          if(getDocumentRoot().contains(element)) $.selectElement(element)
-          dropped = getDocumentRoot().contains(element)
-        }
-        finally { end() }
+        const position = this.ribbonDropPosition(event)
+        if(position) dropped = this.insertAtRibbonDrop(position, () => this.createRibbonElement(ribbonTag))
         return
       }
       // Only this live drag session can bypass import processing. An external
@@ -713,7 +850,7 @@ export class ManipulationFeature extends EditorFeature {
     finally {
       this.dropColumn = undefined
       this.endNodeDrag(!dropped)
-      this.editor.features.selection.processSelection()
+      this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.processSelection())
     }
   }
 
@@ -1708,8 +1845,24 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
+  private get snippetTarget() {
+    if(!document.getSelection()?.rangeCount) return null
+    const root = getDocumentRoot()
+    const selected = this.editor.features.selection.captureSelectedElement
+      ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
+    const topLevel = (element: Element) => element === root || element === document.body || isSlide(element)
+    const block = getSelectionAnchorBlock(this.editor.schema)
+    const anchor = $.anchor instanceof Element ? $.anchor : $.anchor?.parentElement
+    let container = selected ?? ($.isEmpty && $.anchor instanceof Element ? anchor
+      : block instanceof Element && !topLevel(block) ? block : anchor)
+    while(!selected && container && isMarkElement(container)) container = container.parentElement
+    return container instanceof Element && container.isConnected && root.contains(container)
+      && !topLevel(container) && !slideLayoutRole(container) && !$.isMultiElementSelection ? container : null
+  }
+
   /** Action handlers, addressable by action type through the editor. */
   actions = {
+    insertRibbonDrop: ({html, position}: {type: "insertRibbonDrop", html: string, position: RibbonDropPosition}) => this.insertRibbonDrop(html, position),
     insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => (
       this.editor.features.migration.needsMigration(html)
         ? this.#insertMigratedHTML(html, strict)
@@ -1726,6 +1879,17 @@ export class ManipulationFeature extends EditorFeature {
     },
     copy: ({}: {type: "copy"}) => {
       return this.copy()
+    },
+    getSnippet: ({}: {type: "getSnippet"}) => {
+      const container = this.snippetTarget
+      if(!container) return null
+      const fragment = document.createDocumentFragment()
+      fragment.append(cloneWithoutEditorMarkers(container, true, {inert: true}))
+      const {html, text} = this.editor.serializeClipboardFragment(fragment)
+      return {html, label: text.trim().replace(/\s+/g, " ").slice(0, 80) || container.localName}
+    },
+    hoverSnippet: ({hovered}: {type: "hoverSnippet", hovered: boolean}) => {
+      this.editor.features.selection.showSnippetHover(hovered ? this.snippetTarget : null)
     },
     cut: ({}: {type: "cut"}) => {
       return this.cut()
@@ -1869,10 +2033,10 @@ export class ManipulationFeature extends EditorFeature {
       this.insertBreak("br")
     },
     "dragover": event => {
-      if(this.canvasSlotRibbonDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
+      if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
     },
     "drop": event => {
-      if(this.canvasSlotRibbonDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
+      if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
     },
   }
 
@@ -2669,7 +2833,7 @@ export class ManipulationFeature extends EditorFeature {
   private insertBlockWidget(widget: Element) {
     $.delete()
     const block = getContainer($.range.startContainer)
-    if(isDocumentRoot(block) || this.editor.schema.isPhrasing(widget)
+    if(isDocumentRoot(block) || this.editor.features.slides.active && isSlide(block) || this.editor.schema.isPhrasing(widget)
       || this.canInsertAtSelection(widget)) {
       $.replace(widget)
     }

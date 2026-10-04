@@ -139,7 +139,10 @@ export const appCommands: readonly AppCommand[] = [
   })),
 ] as const
 
+export type UserSnippet = {id: string, label: string, html: string}
+
 export type AppSettings = {
+  userSnippets: UserSnippet[]
   language: string
   defaultLayout: DocumentLayoutMode
   updateDocumentLanguage: boolean
@@ -154,6 +157,7 @@ export type AppSettings = {
 
 export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
   return {
+    userSnippets: [],
     language: "en",
     defaultLayout: "document",
     updateDocumentLanguage: true,
@@ -204,6 +208,9 @@ export function loadAppSettings(): AppSettings {
       }
     }
     const settings: AppSettings = {
+      userSnippets: Array.isArray(value.userSnippets) ? value.userSnippets.filter((snippet): snippet is UserSnippet =>
+        Boolean(snippet && typeof snippet.id === "string" && snippet.id && typeof snippet.label === "string"
+          && snippet.label && typeof snippet.html === "string" && snippet.html)) : [],
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
       defaultLayout: value.defaultLayout === "canvas" || value.defaultLayout === "slides"
         ? value.defaultLayout

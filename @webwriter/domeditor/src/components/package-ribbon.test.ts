@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
+import {html} from "lit"
 import type {WebWriterPackage} from "../packages"
 import {AppRibbon} from "./ribbon"
 import {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
 import {RibbonDrawer} from "./ribbon-drawer"
+import {ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 
 const packageFixture = (name = "demo"): WebWriterPackage => ({
   name: `@webwriter/${name}`,
@@ -44,7 +46,404 @@ const packageFixture = (name = "demo"): WebWriterPackage => ({
 
 afterEach(() => document.body.replaceChildren())
 
+function dragData(target: HTMLElement) {
+  const values = new Map<string, string>()
+  const dataTransfer = {
+    effectAllowed: "none",
+    setData: vi.fn((type: string, value: string) => values.set(type, value)),
+    getData: (type: string) => values.get(type) ?? "",
+    setDragImage: vi.fn(),
+  }
+  const event = new Event("dragstart", {bubbles: true, cancelable: true, composed: true})
+  Object.assign(event, {dataTransfer})
+  target.dispatchEvent(event)
+  return dataTransfer
+}
+
 describe("package ribbon controls", () => {
+  it("drags package, member, and saved snippet actions from expanded and collapsed ribbon items", async () => {
+    expect(ribbonInsertionAction("package:@webwriter/demo")).toBe(true)
+    expect(ribbonInsertionAction("package-member:@webwriter/demo:./widgets/demo")).toBe(true)
+    expect(ribbonInsertionAction("user-snippet:snippet-1")).toBe(true)
+    expect(ribbonInsertionAction("package:")).toBe(false)
+    expect(ribbonInsertionAction("user-snippet:")).toBe(false)
+    expect(ribbonInsertionAction("pin-snippet")).toBe(false)
+    for(const action of ["list-style:ul:disc", "list-style:ol:decimal-leading-zero", "insert-graphic-shape:rectangle", "insert-math:frac"]) {
+      expect(ribbonElementInsertionAction(action)).toBe(true)
+    }
+    for(const action of ["list-style:ul:decimal", "list-style:ol:disc", "insert-graphic-shape:unknown", "insert-math:unknown"]) {
+      expect(ribbonElementInsertionAction(action)).toBe(false)
+    }
+
+    const expanded = new RibbonButton()
+    expanded.variant = "package"
+    expanded.label = "Demo"
+    expanded.action = "package:@webwriter/demo"
+    expanded.icon = "Package"
+    expanded.dragHTML = "<webwriter-demo></webwriter-demo>"
+    document.body.append(expanded)
+    await expanded.updateComplete
+    const main = expanded.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    expect(main.getAttribute("draggable")).toBe("true")
+    const down = new MouseEvent("mousedown", {bubbles: true, cancelable: true, composed: true})
+    main.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(false)
+    const packageData = dragData(main)
+    expect(packageData.getData("text/html")).toBe("<webwriter-demo></webwriter-demo>")
+    expect(packageData.getData(ribbonInsertionDragType)).toBe("package:@webwriter/demo")
+    expect(packageData.effectAllowed).toBe("copy")
+    expect(packageData.setDragImage).toHaveBeenCalledWith(main.querySelector(".button-icon"), 12, 12)
+
+    const collapsed = new RibbonMenu()
+    collapsed.groups = [{label: "Packages", buttons: [
+      {label: "Demo", action: "package:@webwriter/demo", icon: "Package"},
+      {label: "Demo Widget", action: "package-member:@webwriter/demo:./widgets/demo", icon: "Puzzle"},
+      {label: "Saved snippet", action: "user-snippet:snippet-1", icon: "FileHorizontal"},
+      {label: "Disc list", action: "list-style:ul:disc", icon: "ListDisc"},
+      {label: "Rectangle", action: "insert-graphic-shape:rectangle", icon: "Rectangle"},
+      {label: "Fraction", action: "insert-math:frac", icon: "Formula"},
+      {label: "Invalid math", action: "insert-math:unknown", icon: "Formula"},
+      {label: "Snippets", menuOnly: true, icon: "FileHorizontal", submenu: [
+        {label: "Saved snippet", action: "user-snippet:snippet-1", icon: "FileHorizontal"},
+      ]},
+      {label: "Add snippet", iconAction: "pin-snippet", iconActionLabel: "Add snippet", icon: "FileHorizontal"},
+    ]}]
+    document.body.append(collapsed)
+    await collapsed.updateComplete
+    const getItem = (label: string) => collapsed.shadowRoot!.querySelector<HTMLButtonElement>(`.item[title="${label}"]`)!
+    for(const [label, action] of [
+      ["Demo", "package:@webwriter/demo"],
+      ["Demo Widget", "package-member:@webwriter/demo:./widgets/demo"],
+      ["Saved snippet", "user-snippet:snippet-1"],
+      ["Disc list", "list-style:ul:disc"],
+      ["Rectangle", "insert-graphic-shape:rectangle"],
+      ["Fraction", "insert-math:frac"],
+    ]) {
+      const item = getItem(label)
+      expect(item.getAttribute("draggable")).toBe("true")
+      expect(dragData(item).getData(ribbonInsertionDragType)).toBe(action)
+    }
+    expect(getItem("Invalid math").getAttribute("draggable")).toBe("false")
+    expect(getItem("Snippets").getAttribute("draggable")).toBe("false")
+    expect(collapsed.shadowRoot!.querySelector<HTMLButtonElement>('.icon-action-trigger[aria-label="Add snippet"]')!.hasAttribute("draggable")).toBe(false)
+    getItem("Snippets").click()
+    await collapsed.updateComplete
+    const nestedSnippet = collapsed.shadowRoot!.querySelector<HTMLButtonElement>('.submenu .item[title="Saved snippet"]')!
+    expect(nestedSnippet.getAttribute("draggable")).toBe("true")
+    expect(dragData(nestedSnippet).getData(ribbonInsertionDragType)).toBe("user-snippet:snippet-1")
+  })
+
+  it("prepares HTML only for installed widget drags and saved snippets", async () => {
+    const ribbon = new AppRibbon(), pkg = packageFixture()
+    ribbon.packages = [pkg]
+    ribbon.settings.userSnippets = [{id: "saved", label: "Saved", html: "<p><b>Saved</b></p>"}]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    expect(button.dragHTML).toBeUndefined()
+    ribbon.installedPackages = [pkg]
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.dragHTML).toBe("<webwriter-demo></webwriter-demo>")
+    expect(button.submenu[0]).toMatchObject({action: "package-member:" + pkg.members[1].id})
+    expect(typeof button.submenu[0] === "string" ? undefined : button.submenu[0].dragHTML).toBeUndefined()
+    const snippets = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+    await snippets.updateComplete
+    expect(snippets.submenu[0]).toMatchObject({dragHTML: "<p><b>Saved</b></p>"})
+    ribbon.expanded = false
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+    await menu.updateComplete
+    const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    await packages.updateComplete
+    expect(dragData(packages.shadowRoot!.querySelector<HTMLButtonElement>('[title="Demo"]')!).getData("text/html"))
+      .toBe("<webwriter-demo></webwriter-demo>")
+  })
+
+  it.each([true, false])("keeps the Snippets dropdown open through removal and the empty hint (expanded: %s)", async expanded => {
+    const ribbon = new AppRibbon()
+    ribbon.expanded = expanded
+    ribbon.menuOpen = !expanded
+    ribbon.settings.userSnippets = [
+      {id: "new", label: "Newest", html: "<p>new</p>"},
+      {id: "old", label: "Oldest", html: "<p>old</p>"},
+    ]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    let snippets: RibbonButton | RibbonMenu
+    if(expanded) {
+      snippets = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+      await snippets.updateComplete
+      snippets.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    }
+    else {
+      const root = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await root.updateComplete
+      root.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+      await root.updateComplete
+      snippets = root.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+      await snippets.updateComplete
+      snippets.shadowRoot!.querySelector<HTMLButtonElement>('[title="Snippets"]')!.click()
+    }
+    ribbon.addEventListener("ribbon-button-click", event => {
+      const action = (event as CustomEvent<{label: string}>).detail.label
+      if(!action.startsWith("remove-user-snippet:")) return
+      ribbon.settings = {...ribbon.settings, userSnippets: ribbon.settings.userSnippets.filter(item => `remove-user-snippet:${item.id}` !== action)}
+    })
+    for(const label of ["Newest", "Oldest"]) {
+      await snippets.updateComplete
+      const menu = snippets.shadowRoot!.querySelector<RibbonMenu>(expanded ? "ribbon-menu" : ".submenu ribbon-menu")!
+      await menu.updateComplete
+      menu.shadowRoot!.querySelector<HTMLButtonElement>(`[aria-label="Remove ${label}"]`)!.click()
+      await ribbon.updateComplete
+      await snippets.updateComplete
+      const trigger = snippets.shadowRoot!.querySelector<HTMLButtonElement>(expanded ? ".main-button" : '[title="Snippets"]')!
+      expect(trigger.getAttribute("aria-expanded")).toBe("true")
+      if(!expanded) expect(ribbon.menuOpen).toBe(true)
+    }
+    expect(ribbon.settings.userSnippets).toEqual([])
+    const emptyHint = expanded ? snippets.shadowRoot!.querySelector("ribbon-menu")! : snippets.shadowRoot!.querySelector(".submenu")!
+    expect(emptyHint.textContent).toContain("Select something and click to store it here as a snippet")
+  })
+
+  it("keeps Snippets first, saves from its icon, and lists newest snippets with removal actions", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.settings.userSnippets = [
+      {id: "new", label: "Newest", html: "<p>new</p>"},
+      {id: "old", label: "Oldest", html: "<p>old</p>"},
+    ]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const search = drawer.querySelector("package-search")!
+    const snippets = drawer.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+    expect(search).not.toBeNull()
+    expect(drawer.children[0]).toBe(search)
+    expect([...drawer.querySelectorAll("ribbon-button")][0]).toBe(snippets)
+    expect(snippets.variant).toBe("package")
+    expect(snippets.icon).toBe("FileHorizontal")
+    expect(snippets.hoverIcon).toBe("Plus")
+    expect(snippets.iconAction).toBe("pin-snippet")
+    expect(snippets.iconActionLabel).toBe("Add snippet")
+    expect(snippets.dropdownOnClick).toBe(true)
+    expect(snippets.submenu.map(item => typeof item === "string" ? item : item.label)).toEqual(["Newest", "Oldest"])
+    expect(snippets.submenu.map(item => typeof item === "string" ? "" : item.action)).toEqual([
+      "user-snippet:new", "user-snippet:old",
+    ])
+    expect(snippets.submenu.map(item => typeof item === "string" ? "" : item.removeAction)).toEqual([
+      "remove-user-snippet:new", "remove-user-snippet:old",
+    ])
+    await snippets.updateComplete
+    const main = snippets.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const chevron = snippets.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
+    const iconAction = snippets.shadowRoot!.querySelector<HTMLButtonElement>('.icon-action-trigger[aria-label="Add snippet"]')!
+    expect(iconAction.querySelector(".button-icon-default svg")).not.toBeNull()
+    expect(iconAction.querySelector(".button-icon-hover svg")).not.toBeNull()
+    expect(RibbonButton.styles.toString()).toContain(".button-row.has-icon-action:has(.main-button:hover, .submenu-trigger:hover")
+    expect(RibbonButton.styles.toString()).toContain(".button-row.has-icon-action:has(.main-button:active, .submenu-trigger:active) .main-button")
+    expect(RibbonButton.styles.toString()).not.toMatch(/\.button-row\.has-icon-action:has\(\.main-button:active, \.submenu-trigger:active\)\s*\{[^}]*background:/)
+    expect(RibbonButton.styles.toString()).toContain(':host([variant="package"][active]) .button-row:not(.has-icon-action):hover')
+    expect(RibbonMenu.styles.toString()).toContain(".item-row.has-icon-action:has(> .item:hover, > .submenu-toggle:hover")
+    expect(RibbonMenu.styles.toString()).toContain(".item-row.has-icon-action:has(> .item:active, > .submenu-toggle:active) > .item")
+    expect(RibbonMenu.styles.toString()).not.toContain(".item-row.has-icon-action:has(> .item:active, > .submenu-toggle:active) {")
+    const actions = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", actions)
+    const hoverEvents = vi.fn()
+    ribbon.addEventListener("snippet-hover-change", hoverEvents)
+    iconAction.dispatchEvent(new MouseEvent("mouseenter", {bubbles: false}))
+    expect(hoverEvents.mock.calls[0][0].detail).toEqual({hovered: true})
+    iconAction.dispatchEvent(new MouseEvent("mouseleave", {bubbles: false}))
+    expect(hoverEvents.mock.calls.at(-1)?.[0].detail).toEqual({hovered: false})
+    iconAction.click()
+    expect(actions.mock.calls[0][0].detail.label).toBe("pin-snippet")
+    await snippets.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    iconAction.click()
+    await snippets.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    expect(actions.mock.calls.filter(([event]) => event.detail.label === "pin-snippet")).toHaveLength(2)
+    main.click()
+    await snippets.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("false")
+    chevron.click()
+    await snippets.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    expect(snippets.shadowRoot!.querySelector("ribbon-menu")?.hasAttribute("hidden")).toBe(false)
+    chevron.click()
+    await snippets.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("false")
+    main.click()
+    await snippets.updateComplete
+    const nested = snippets.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await nested.updateComplete
+    const remove = nested.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Remove Newest"]')!
+    remove.click()
+    expect(actions.mock.calls.at(-1)?.[0].detail.label).toBe("remove-user-snippet:new")
+  })
+
+  it("keeps Snippets available when empty and shows the empty-state hint in its chevron dropdown", async () => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const snippets = drawer.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+    expect(snippets).not.toBeNull()
+    expect(snippets.iconAction).toBe("pin-snippet")
+    expect(snippets.dropdownCompact).toBe(true)
+    expect(snippets.submenu).toHaveLength(0)
+    await snippets.updateComplete
+    snippets.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await snippets.updateComplete
+    expect(snippets.shadowRoot!.querySelector("ribbon-menu")?.textContent).toContain(
+      "Select something and click to store it here as a snippet to use later",
+    )
+
+  })
+
+  it("opens the expanded snippets dropdown after adding and keeps it open through an empty-to-populated update", async () => {
+    const snippets = new RibbonButton()
+    snippets.variant = "package"
+    snippets.label = "Snippets"
+    snippets.action = "snippets"
+    snippets.icon = "FileHorizontal"
+    snippets.iconAction = "pin-snippet"
+    snippets.iconActionLabel = "Add snippet"
+    snippets.hoverIcon = "Plus"
+    snippets.dropdownOnClick = true
+    snippets.dropdownCompact = true
+    snippets.dropdown = html`<div class="snippet-empty-hint">Select something and click to store it here as a snippet to use later</div>`
+    snippets.submenu = []
+    document.body.append(snippets)
+    await snippets.updateComplete
+
+    snippets.addEventListener("ribbon-button-click", event => {
+      if((event as CustomEvent).detail.label === "pin-snippet") {
+        snippets.dropdown = null
+        snippets.submenu = [{label: "New snippet", action: "user-snippet:new"}]
+        snippets.requestUpdate()
+      }
+    })
+    const iconAction = snippets.shadowRoot!.querySelector<HTMLButtonElement>('.icon-action-trigger[aria-label="Add snippet"]')!
+    const actions = vi.fn()
+    snippets.addEventListener("ribbon-button-click", actions)
+    iconAction.click()
+    await snippets.updateComplete
+    let main = snippets.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    let menu = snippets.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    expect(menu.shadowRoot!.querySelector('.item[title="New snippet"]')).not.toBeNull()
+    iconAction.click()
+    await snippets.updateComplete
+    main = snippets.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    expect(actions.mock.calls.filter(([event]) => event.detail.label === "pin-snippet")).toHaveLength(2)
+    main.click()
+    await snippets.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("false")
+    snippets.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await snippets.updateComplete
+    expect(snippets.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("opens the collapsed snippets submenu from the add icon and preserves it on repeated adds", async () => {
+    const menu = new RibbonMenu()
+    const snippetEntry = (submenu: Array<{label: string, action: string}> = []) => ({
+      label: "Snippets",
+      menuOnly: true,
+      iconAction: "pin-snippet",
+      iconActionLabel: "Add snippet",
+      icon: "FileHorizontal",
+      hoverIcon: "Plus",
+      submenu,
+      ...(submenu.length ? {} : {submenuHeader: html`<div class="snippet-empty-hint">Select something and click to store it here as a snippet to use later</div>`}),
+    })
+    menu.groups = [{label: "Packages", buttons: [snippetEntry()]}]
+    document.body.append(menu)
+    await menu.updateComplete
+    menu.addEventListener("ribbon-button-click", event => {
+      if((event as CustomEvent).detail.label === "pin-snippet") {
+        menu.groups = [{label: "Packages", buttons: [snippetEntry([{label: "New snippet", action: "user-snippet:new"}])]}]
+        menu.requestUpdate()
+      }
+    })
+    const actions = vi.fn()
+    menu.addEventListener("ribbon-button-click", actions)
+    const iconAction = menu.shadowRoot!.querySelector<HTMLButtonElement>('.icon-action-trigger[aria-label="Add snippet"]')!
+    iconAction.click()
+    await menu.updateComplete
+    let main = menu.shadowRoot!.querySelector<HTMLButtonElement>('.item[title="Snippets"]')!
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    expect(menu.shadowRoot!.querySelector(".submenu")?.textContent).toContain("New snippet")
+    iconAction.click()
+    await menu.updateComplete
+    main = menu.shadowRoot!.querySelector<HTMLButtonElement>('.item[title="Snippets"]')!
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    expect(actions.mock.calls.filter(([event]) => event.detail.label === "pin-snippet")).toHaveLength(2)
+    main.click()
+    await menu.updateComplete
+    expect(main.getAttribute("aria-expanded")).toBe("false")
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(".item-row .submenu-toggle")!.click()
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('.item[title="Snippets"]')!.getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("keeps the actual collapsed package menu open after pinning a snippet", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.consoleOpen = true
+    ribbon.expanded = false
+    ribbon.menuOpen = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    let rootMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await rootMenu.updateComplete
+    rootMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+    await rootMenu.updateComplete
+    let packages = rootMenu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    await packages.updateComplete
+    const actions = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", event => {
+      actions(event)
+      if((event as CustomEvent).detail.label === "pin-snippet") {
+        ribbon.settings.userSnippets = [{id: "saved", label: "Saved snippet", html: "<p>saved</p>"}]
+        ribbon.requestUpdate()
+      }
+    })
+    packages.shadowRoot!.querySelector<HTMLButtonElement>('.icon-action-trigger[aria-label="Add snippet"]')!.click()
+    await ribbon.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+    rootMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await rootMenu.updateComplete
+    packages = rootMenu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    await packages.updateComplete
+    let main = packages.shadowRoot!.querySelector<HTMLButtonElement>('.item[title="Snippets"]')!
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    const savedSnippets = packages.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    await savedSnippets.updateComplete
+    expect(savedSnippets.shadowRoot!.querySelector('.item[title="Saved snippet"]')).not.toBeNull()
+    packages.shadowRoot!.querySelector<HTMLButtonElement>('.icon-action-trigger[aria-label="Add snippet"]')!.click()
+    await ribbon.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+    expect(actions.mock.calls.filter(([event]) => (event as CustomEvent).detail.label === "pin-snippet")).toHaveLength(2)
+    rootMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await rootMenu.updateComplete
+    packages = rootMenu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    await packages.updateComplete
+    main = packages.shadowRoot!.querySelector<HTMLButtonElement>('.item[title="Snippets"]')!
+    expect(main.getAttribute("aria-expanded")).toBe("true")
+    main.click()
+    await packages.updateComplete
+    expect(packages.shadowRoot!.querySelector<HTMLButtonElement>('.item[title="Snippets"]')!.getAttribute("aria-expanded")).toBe("false")
+    packages.shadowRoot!.querySelector<HTMLButtonElement>(".item-row .submenu-toggle")!.click()
+    await packages.updateComplete
+    expect(packages.shadowRoot!.querySelector<HTMLButtonElement>('.item[title="Snippets"]')!.getAttribute("aria-expanded")).toBe("true")
+  })
+
   it.each([true, false])("completely removes uninstalled developer entries from ribbon lists (expanded: %s)", async expanded => {
     const ribbon = new AppRibbon()
     const local = packageFixture("local")
@@ -64,11 +463,11 @@ describe("package ribbon controls", () => {
     }
     const labels = async () => {
       await ribbon.updateComplete
-      if(expanded) return [...ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')].map(button => button.label)
+      if(expanded) return [...ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')].filter(button => button.label !== "Snippets").map(button => button.label)
       await menu.updateComplete
       const submenu = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
       await submenu.updateComplete
-      return [...submenu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item:not(.remove)")].map(button => button.title)
+      return [...submenu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item:not(.remove)")].map(button => button.title).filter(label => label !== "Snippets")
     }
     expect(await labels()).toEqual(["Local", "Git", "Published"])
     ribbon.installedPackages = []
@@ -89,7 +488,7 @@ describe("package ribbon controls", () => {
     ribbon.installedPackages = [local, git, packageFixture("published")]
     document.body.append(ribbon)
     await ribbon.updateComplete
-    const buttons = () => Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'))
+    const buttons = () => Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')).filter(button => button.label !== "Snippets")
     const selected = () => buttons().filter(button => button.hasAttribute("console-selected")).map(button => button.label)
     expect(selected()).toEqual([])
     ribbon.consoleOpen = true
@@ -155,7 +554,7 @@ describe("package ribbon controls", () => {
     ribbon.packages = [packageFixture("catalog"), {...local, label: "Published local"}]
     document.body.append(ribbon)
     await ribbon.updateComplete
-    const buttons = () => Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'))
+    const buttons = () => Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')).filter(button => button.label !== "Snippets")
     expect(buttons().map(button => button.label)).toEqual(["Local", "Git", "Installed", "Catalog"])
     await Promise.all(buttons().map(button => button.updateComplete))
     expect(buttons().map(button => button.hasAttribute("developer-package"))).toEqual([true, true, false, false])
@@ -182,7 +581,7 @@ describe("package ribbon controls", () => {
     await menu.updateComplete
     const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
     await packages.updateComplete
-    const items = Array.from(packages.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item:not(.remove)"))
+    const items = Array.from(packages.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item:not(.remove)")).filter(item => item.title !== "Snippets")
     expect(items.map(item => item.title)).toEqual(["Local", "Installed", "Catalog"])
     expect(getComputedStyle(items[0].querySelector(".item-label")!).fontStyle).toBe("italic")
     expect(getComputedStyle(items[1].querySelector(".item-label")!).fontStyle).not.toBe("italic")
@@ -298,7 +697,7 @@ describe("package ribbon controls", () => {
     const labels = () => Array.from(
       ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'),
       button => button.label,
-    )
+    ).filter(label => label !== "Snippets")
     expect(labels()).toEqual(["Beta", "Missing", "Alpha"])
 
     ribbon.packages = [packageFixture("available"), {...alpha, label: "New Alpha"}, {...beta, label: "New Beta"}]
@@ -480,7 +879,7 @@ describe("package ribbon controls", () => {
     await ribbon.updateComplete
 
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
-    const labels = () => Array.from(drawer.querySelectorAll<RibbonButton>("ribbon-button"), button => button.label)
+    const labels = () => Array.from(drawer.querySelectorAll<RibbonButton>("ribbon-button"), button => button.label).filter(label => label !== "Snippets")
     expect(labels()).toEqual(["Installed", "Available", "Another"])
 
     drawer.openDrawer(true)
@@ -535,8 +934,23 @@ describe("package ribbon controls", () => {
     await ribbon.updateComplete
 
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(count)
-    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(15 - count)
+    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(16 - count)
     expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+  })
+
+  it.each([[256, 5], [384, 8], [512, 11]])("keeps snippets within the three-row package capacity at %s pixels", async (width, count) => {
+    const ribbon = new AppRibbon()
+    ribbon.settings.userSnippets = [{id: "saved", label: "Saved", html: "<p>Saved</p>"}]
+    ribbon.packages = Array.from({length: 15}, (_, index) => packageFixture(`package-${index + 1}`))
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    vi.spyOn(controls, "getBoundingClientRect").mockReturnValue({width} as DOMRect)
+    ;(ribbon as unknown as {updatePackageCapacity(): void}).updatePackageCapacity()
+    await ribbon.updateComplete
+    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(count)
+    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(16 - count)
   })
 
   it("uses the full drawer width when only one package-button column fits", async () => {
@@ -562,7 +976,7 @@ describe("package ribbon controls", () => {
 
     expect(drawer.packageColumnCount).toBe(1)
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(2)
-    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(1)
+    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(2)
     expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(package-search\)\s*\{\s*grid-column: auto;/)
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
@@ -591,6 +1005,8 @@ describe("package ribbon controls", () => {
     await alpha.updateComplete
     await beta.updateComplete
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    alpha = drawer.querySelector<RibbonButton>('ribbon-button[label="Alpha"]')!
+    await alpha.updateComplete
     expect(alpha.action).toBe("package:@webwriter/alpha")
     expect(alpha.cornerAction).toBe("package-toggle:@webwriter/alpha")
     expect(alpha.keepDrawerOpen).toBe(true)
@@ -662,16 +1078,14 @@ describe("package ribbon controls", () => {
     await button.updateComplete
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     await drawer.updateComplete
+    const currentButton = drawer.querySelector<RibbonButton>('ribbon-button[label="Alpha"]')!
+    await currentButton.updateComplete
 
-    expect(action).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {label: "package:@webwriter/alpha", keepDrawerOpen: true},
-    }))
+    expect(action.mock.calls[0][0].detail).toEqual({label: "package:@webwriter/alpha", keepDrawerOpen: true})
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
 
-    button.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Alpha"]')!.click()
-    expect(action).toHaveBeenLastCalledWith(expect.objectContaining({
-      detail: {label: "package-toggle:@webwriter/alpha", keepDrawerOpen: true},
-    }))
+    currentButton.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Alpha"]')!.click()
+    expect(action.mock.calls.at(-1)?.[0].detail).toEqual({label: "package-toggle:@webwriter/alpha", keepDrawerOpen: true})
     expect(RibbonButton.styles.toString()).toMatch(
       /:host\(\[variant="package"\]\) \.corner-trigger\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1;/,
     )

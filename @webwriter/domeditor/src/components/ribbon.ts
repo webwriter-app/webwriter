@@ -18,7 +18,7 @@ import {type PresenceUser} from "../editor-bridge"
 import {mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
-import type {WebWriterPackage} from "../packages"
+import type {PackageMember, WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
 import {ribbonIcon} from "../ribbon-icons"
 import {uiMotionDisabled} from "../utility"
@@ -26,7 +26,7 @@ import "./ai-settings"
 import type {AISettingsDialog} from "./ai-settings"
 import "./element-attribute-editor"
 import "./element-style-editor"
-import {insertionMenuItems} from "./insertion-menu"
+import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import "./package-search"
 import type {QRCodeElement} from "./qr-code"
 import "./ribbon-button"
@@ -1909,6 +1909,10 @@ export class AppRibbon extends EditingControls {
     })
   }
 
+  private get userSnippets() {
+    return this.settings.userSnippets
+  }
+
   private isConsoleSelectedPackage(pkg: WebWriterPackage) {
     return this.consoleOpen && this.localPackageSelectionName === pkg.name
   }
@@ -1927,6 +1931,11 @@ export class AppRibbon extends EditingControls {
     }
   }
 
+  private packageDragHTML(pkg: WebWriterPackage, member: PackageMember | undefined) {
+    return this.installedPackages.some(candidate => candidate.name === pkg.name)
+      && member?.kind === "widget" && member.tagName ? emptyElementHTML(member.tagName) : undefined
+  }
+
   private renderPackageButton(pkg: WebWriterPackage, slot = "") {
     const members = pkg.members.filter(member => member.insertable)
     const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
@@ -1941,9 +1950,11 @@ export class AppRibbon extends EditingControls {
         icon="Packages"
         icon-url=${pkg.iconUrl ?? ""}
         .action=${packageAction(pkg)}
+        .dragHTML=${this.packageDragHTML(pkg, members[0])}
         .submenu=${management || !installed ? [] : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
+          dragHTML: this.packageDragHTML(pkg, member),
           icon: "Packages",
           iconUrl: pkg.iconUrl,
         }))}
@@ -1963,6 +1974,14 @@ export class AppRibbon extends EditingControls {
 
   private handlePackageSearch = (event: Event) => {
     this.packageSearchQuery = (event as CustomEvent<{query?: string}>).detail?.query ?? ""
+  }
+
+  private handleRibbonIconHover = (event: CustomEvent<{hovered: boolean}>) => {
+    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("snippet-hover-change", {
+      detail: event.detail,
+      bubbles: true,
+      composed: true,
+    }))
   }
 
   private handlePackageDrawerState = (event: Event) => {
@@ -2003,8 +2022,9 @@ export class AppRibbon extends EditingControls {
 
   private renderPackageDrawer() {
     const displayPackages = this.filteredPackages
-    const visiblePackages = displayPackages.slice(0, this.packageVisibleCount)
-    const overflowPackages = displayPackages.slice(this.packageVisibleCount)
+    const visibleCount = Math.max(0, this.packageVisibleCount - 1)
+    const visiblePackages = displayPackages.slice(0, visibleCount)
+    const overflowPackages = displayPackages.slice(visibleCount)
     return html`
       <ribbon-drawer
         label="Packages"
@@ -2021,10 +2041,38 @@ export class AppRibbon extends EditingControls {
           @package-search-change=${this.handlePackageSearch}
           @package-search-focus=${this.handlePackageSearchFocus}
         ></package-search>
+        ${this.renderUserSnippetButton()}
         ${visiblePackages.map(pkg => this.renderPackageButton(pkg))}
         ${overflowPackages.map(pkg => this.renderPackageButton(pkg, "more"))}
         ${!this.packagesLoading && !displayPackages.length ? html`<span class="package-status">No packages</span>` : ""}
       </ribbon-drawer>
+    `
+  }
+
+  private renderUserSnippetButton() {
+    const submenu = this.userSnippets.map(snippet => ({
+      label: snippet.label,
+      action: `user-snippet:${snippet.id}`,
+      dragHTML: snippet.html,
+      icon: "FileHorizontal",
+      removeAction: `remove-user-snippet:${snippet.id}`,
+    }))
+    return html`
+      <ribbon-button
+        variant="package"
+        label="Snippets"
+        icon="FileHorizontal"
+        icon-action="pin-snippet"
+        icon-action-label="Add snippet"
+        hover-icon="Plus"
+        dropdown-on-click
+        dropdown-compact
+        keep-drawer-open
+        .submenu=${submenu}
+        .dropdown=${this.userSnippets.length ? null : html`
+          <div class="snippet-empty-hint">Select something and click to store it here as a snippet to use later</div>
+        `}
+      ></ribbon-button>
     `
   }
 
@@ -2293,30 +2341,49 @@ export class AppRibbon extends EditingControls {
       ]}
       return item
     })
-    const packages = this.filteredPackages.map((pkg): RibbonMenuButton => {
+    const packages: RibbonMenuButton[] = [{
+      label: "Snippets",
+      menuOnly: true,
+      iconAction: "pin-snippet",
+      iconActionLabel: "Add snippet",
+      icon: "FileHorizontal",
+      hoverIcon: "Plus",
+      submenu: this.userSnippets.map(snippet => ({
+        label: snippet.label,
+        action: `user-snippet:${snippet.id}`,
+        dragHTML: snippet.html,
+        icon: "FileHorizontal",
+        removeAction: `remove-user-snippet:${snippet.id}`,
+      })),
+      ...(!this.userSnippets.length ? {
+        submenuHeader: html`<div class="snippet-empty-hint">Select something and click to store it here as a snippet to use later</div>`,
+      } : {}),
+    }]
+    packages.push(...this.filteredPackages.map((pkg): RibbonMenuButton => {
       const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
       return {
         label: pkg.label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
         action: packageAction(pkg),
+        dragHTML: this.packageDragHTML(pkg, pkg.members.find(member => member.insertable)),
         disabled: this.busyPackageNames.includes(pkg.name),
         removeAction: installed ? packageToggleAction(pkg) : undefined,
         submenu: pkg.members.filter(member => member.insertable).slice(1).map(member => ({
-          label: member.label, action: packageMemberAction(member), icon: "Packages", iconUrl: pkg.iconUrl,
+          label: member.label, action: packageMemberAction(member), dragHTML: this.packageDragHTML(pkg, member), icon: "Packages", iconUrl: pkg.iconUrl,
         })),
       }
-    })
+    }))
     return [{label: "Editing", buttons: [
       {label: "Format", icon: "MarkBold", menuOnly: true, submenuGroups: format},
       {label: "Insert", icon: "Paragraph", menuOnly: true, submenu: insert},
       {label: "Packages", icon: "Packages", menuOnly: true, submenuGroups: [{label: "Packages", buttons: packages,
-        content: !this.packagesLoading && !packages.length ? html`<span>No packages</span>` : undefined}],
+        content: !this.packagesLoading && !this.filteredPackages.length ? html`<span>No packages</span>` : undefined}],
         submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading}
           .error=${this.packageError} @package-search-change=${this.handlePackageSearch}></package-search>`},
     ]}]
   }
 
-  private handleFileMenuAction = (event: CustomEvent<{label: string}>) => {
-    this.menuOpen = false
+  private handleFileMenuAction = (event: CustomEvent<{label: string, keepDrawerOpen?: boolean}>) => {
+    if(event.detail.label !== "pin-snippet" && !event.detail.keepDrawerOpen) this.menuOpen = false
     if(event.detail.label === "toggle-breadcrumb") {
       event.stopPropagation()
       this.breadcrumbVisible = !this.breadcrumbVisible
@@ -2830,7 +2897,8 @@ export class AppRibbon extends EditingControls {
         italic: this.isDeveloperPackage(pkg),
         selected: this.isConsoleSelectedPackage(pkg),
         action: packageAction(pkg),
-        submenu: members.slice(1).map(member => ({label: member.label, action: packageMemberAction(member)})),
+        dragHTML: this.packageDragHTML(pkg, pkg.members.find(member => member.insertable)),
+        submenu: members.slice(1).map(member => ({label: member.label, action: packageMemberAction(member), dragHTML: this.packageDragHTML(pkg, member)})),
       }
     })
     return contextDrawerPolicy({
@@ -3116,6 +3184,7 @@ export class AppRibbon extends EditingControls {
         @keydown=${this.handleRibbonInputKeydown}
         @ribbon-tab-select=${this.selectMenu}
         @ribbon-button-click=${this.selectLocalPackage}
+        @ribbon-icon-hover=${this.handleRibbonIconHover}
         @ribbon-drawer-state-change=${this.handleRibbonDrawerState}
       >
         <div class="ribbon-top">

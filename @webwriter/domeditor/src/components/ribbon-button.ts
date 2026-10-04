@@ -5,7 +5,7 @@ import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
 import "./qr-code"
 import type {RibbonMenuButton} from "./ribbon-menu"
-import {ribbonElementTag, startElementDrag} from "./insertion-menu"
+import {ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
 export type RibbonButtonDetails = {
   heading: string
@@ -21,11 +21,15 @@ export class RibbonButton extends LitElement {
   static properties = {
     label: {type: String},
     action: {type: String},
+    dragHTML: {attribute: false},
+    iconAction: {type: String, attribute: "icon-action"},
+    iconActionLabel: {type: String, attribute: "icon-action-label"},
     active: {type: Boolean, reflect: true},
     compact: {type: Boolean, reflect: true},
     disabled: {type: Boolean, reflect: true},
     loading: {type: Boolean, reflect: true},
     icon: {type: String},
+    hoverIcon: {type: String, attribute: "hover-icon"},
     iconUrl: {type: String, attribute: "icon-url"},
     iconPath: {type: String, attribute: "icon-path"},
     iconOnly: {type: Boolean, attribute: "icon-only", reflect: true},
@@ -36,6 +40,7 @@ export class RibbonButton extends LitElement {
     dropdownOnClick: {type: Boolean, attribute: "dropdown-on-click"},
     lazyDropdown: {type: Boolean, attribute: "lazy-dropdown"},
     dropdownNoScroll: {type: Boolean, attribute: "dropdown-no-scroll"},
+    dropdownCompact: {type: Boolean, attribute: "dropdown-compact"},
     submenuOpen: {state: true},
     corner: {type: String},
     cornerLabel: {type: String, attribute: "corner-label"},
@@ -87,14 +92,57 @@ export class RibbonButton extends LitElement {
       border-radius: 0.35rem;
     }
 
-    .button-row:hover {
+    .button-row:not(.has-icon-action):hover {
       border-color: #c8d2df;
       background: #eef4fb;
+    }
+
+    .button-row.has-icon-action:hover,
+    .button-row.has-icon-action:focus-within {
+      border-color: transparent;
+      background: #d7e7f7;
+    }
+
+    .button-row.has-icon-action:hover .main-button,
+    .button-row.has-icon-action:hover .submenu-trigger,
+    .button-row.has-icon-action:has(.main-button:hover, .submenu-trigger:hover, .main-button:focus-visible, .submenu-trigger:focus-visible) .main-button,
+    .button-row.has-icon-action:has(.main-button:hover, .submenu-trigger:hover, .main-button:focus-visible, .submenu-trigger:focus-visible) .submenu-trigger {
+      color: var(--ribbon-control-color, #1e4f87);
+      background: #d7e7f7;
+    }
+
+    .button-row.has-icon-action:has(.main-button:active, .submenu-trigger:active) .main-button,
+    .button-row.has-icon-action:has(.main-button:active, .submenu-trigger:active) .submenu-trigger {
+      color: var(--ribbon-control-color, #1e4f87);
+      background: #c4dcf4;
     }
 
     .button-row button:active {
       color: var(--ribbon-control-color, #1e4f87);
       background: #c4dcf4;
+    }
+
+    .icon-action-trigger {
+      box-sizing: border-box;
+      flex: 0 0 auto;
+      width: 1.65rem;
+      min-height: 1.65rem;
+      padding: 0.25rem;
+      border: 1px solid transparent;
+      color: #526b86;
+      background: transparent;
+    }
+
+    .icon-action-trigger:hover,
+    .icon-action-trigger:focus-visible {
+      color: #1e5d9d;
+      background: #c4dcf4;
+    }
+
+    :host([variant="package"]) .icon-action-trigger {
+      flex-basis: 1.8rem;
+      width: 1.8rem;
+      min-height: 1.8rem;
     }
 
     .button-notification {
@@ -122,7 +170,7 @@ export class RibbonButton extends LitElement {
       opacity: 1;
     }
 
-    :host([active]) .button-row {
+    :host([active]:not([variant="package"])) .button-row:not(.has-icon-action) {
       border-color: #8eb6df;
       background: #dcecff;
       box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
@@ -241,6 +289,31 @@ export class RibbonButton extends LitElement {
       height: 100%;
     }
 
+    .button-icon-default,
+    .button-icon-hover {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .button-icon-hover {
+      display: none;
+    }
+
+    .button-row:not(.has-icon-action):hover .button-icon-default,
+    .button-row:not(.has-icon-action):focus-within .button-icon-default,
+    .icon-action-trigger:hover .button-icon-default,
+    .icon-action-trigger:focus-visible .button-icon-default {
+      display: none;
+    }
+
+    .button-row:not(.has-icon-action):hover .button-icon-hover,
+    .button-row:not(.has-icon-action):focus-within .button-icon-hover,
+    .icon-action-trigger:hover .button-icon-hover,
+    .icon-action-trigger:focus-visible .button-icon-hover {
+      display: block;
+    }
+
     .button-icon.image-icon {
       position: relative;
     }
@@ -311,6 +384,13 @@ export class RibbonButton extends LitElement {
     .button-dropdown-content {
       color: #2f3742;
       font-size: 0.7rem;
+    }
+
+    .snippet-empty-hint {
+      padding: 0.4rem;
+      color: #64748b;
+      font-size: 0.66rem;
+      line-height: 1rem;
     }
 
     ${dropdownContentStyles}
@@ -668,6 +748,13 @@ export class RibbonButton extends LitElement {
       accent-color: #3977c7;
     }
 
+    .button-dropdown-form > fieldset {
+      border: 0;
+      margin: 0;
+      padding: 0;
+      min-width: 0;
+    }
+
     .mark-dropdown-list {
       display: flex;
       flex-direction: column;
@@ -914,7 +1001,7 @@ export class RibbonButton extends LitElement {
       box-shadow: none;
     }
 
-    :host([variant="package"][active]) .button-row:hover {
+    :host([variant="package"][active]) .button-row:not(.has-icon-action):hover {
       border-color: #c8d2df;
       background: #eef4fb;
     }
@@ -956,6 +1043,23 @@ export class RibbonButton extends LitElement {
       min-height: 100%;
       aspect-ratio: 1 / 1;
       transform: none;
+    }
+
+    :host([variant="package"]) .has-icon-action .icon-action-trigger,
+    :host([variant="package"]) .has-icon-action .main-button,
+    :host([variant="package"]) .has-icon-action .submenu-trigger {
+      align-self: stretch;
+      height: auto;
+      min-height: 0;
+      margin: 0;
+    }
+
+    :host([variant="package"]) .has-icon-action .main-button {
+      border-radius: 0.25rem 0 0 0.25rem;
+    }
+
+    :host([variant="package"]) .has-icon-action .submenu-trigger {
+      border-radius: 0 0.25rem 0.25rem 0;
     }
 
     :host([variant="package"]) .button-label {
@@ -1011,10 +1115,14 @@ export class RibbonButton extends LitElement {
 
   label = "Placeholder"
   action = ""
+  dragHTML: string | undefined
+  iconAction = ""
+  iconActionLabel = ""
   active = false
   compact = false
   disabled = false
   icon = ""
+  hoverIcon = ""
   loading = false
   iconUrl = ""
   iconOnly = false
@@ -1026,6 +1134,7 @@ export class RibbonButton extends LitElement {
   dropdownOnClick = false
   lazyDropdown = false
   dropdownNoScroll = false
+  dropdownCompact = false
   corner = ""
   cornerLabel = ""
   cornerAction = ""
@@ -1120,8 +1229,8 @@ export class RibbonButton extends LitElement {
     }, duration)
   }
 
-  private dispatchClick(action: string) {
-    this.closeSubmenuPopover()
+  private dispatchClick(action: string, closeSubmenu = true) {
+    if(closeSubmenu) this.closeSubmenuPopover()
     this.dispatchEvent(new CustomEvent<{label: string, keepDrawerOpen?: boolean, openDrawer?: boolean}>("ribbon-button-click", {
       detail: {
         label: action || this.label,
@@ -1130,6 +1239,20 @@ export class RibbonButton extends LitElement {
       },
       bubbles: true,
       composed: true,
+    }))
+  }
+
+  private dispatchIconAction() {
+    this.dispatchClick(this.iconAction, false)
+    if(!this.submenuOpen && (this.submenu.length > 0 || this.dropdown !== null)) {
+      const trigger = this.renderRoot.querySelector<HTMLButtonElement>(".submenu-trigger")
+      if(trigger) this.openSubmenu(trigger)
+    }
+  }
+
+  private dispatchIconHover(hovered: boolean) {
+    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("ribbon-icon-hover", {
+      detail: {hovered}, bubbles: true, composed: true,
     }))
   }
 
@@ -1150,10 +1273,16 @@ export class RibbonButton extends LitElement {
       this.closeSubmenuPopover()
     }
     else {
-      this.submenuTrigger = event.currentTarget as HTMLButtonElement
-      this.submenuOpen = true
-      this.dispatchEvent(new CustomEvent("ribbon-dropdown-open", {bubbles: true, composed: true}))
-      void this.updateComplete.then(async () => {
+      this.openSubmenu(event.currentTarget as HTMLButtonElement)
+    }
+  }
+
+  private openSubmenu(trigger: HTMLButtonElement) {
+    if(this.submenuOpen) return
+    this.submenuTrigger = trigger
+    this.submenuOpen = true
+    this.dispatchEvent(new CustomEvent("ribbon-dropdown-open", {bubbles: true, composed: true}))
+    void this.updateComplete.then(async () => {
         const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
         if(!submenu || !this.submenuOpen || !this.isConnected) return
         if(submenu instanceof LitElement) await submenu.updateComplete
@@ -1186,12 +1315,11 @@ export class RibbonButton extends LitElement {
             ? opensBelow ? "0 0.35rem 0.35rem 0.35rem" : "0.35rem 0.35rem 0.35rem 0"
             : "0.35rem")
         }
-      })
-    }
+    })
   }
 
-  private handleSubmenuClick() {
-    this.closeSubmenuPopover()
+  private handleSubmenuClick(event: CustomEvent<{keepDrawerOpen?: boolean}>) {
+    if(!event.detail.keepDrawerOpen) this.closeSubmenuPopover()
   }
 
   closeSubmenu() {
@@ -1210,7 +1338,8 @@ export class RibbonButton extends LitElement {
       <svg viewBox="-10 -10 120 120" focusable="false"><path d=${this.iconPath} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
     </span>`
     return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
-      ${ribbonIcon(icon)}
+      ${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
+      ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}
       ${this.iconUrl ? html`<img
         src=${this.iconUrl}
         alt=""
@@ -1257,15 +1386,31 @@ export class RibbonButton extends LitElement {
 
   render() {
     const hasDropdown = this.submenu.length > 0 || this.dropdown !== null
-    const dragTag = this.variant === "insertion" ? ribbonElementTag(this.label, this.action || this.label) : null
+    const dragAction = this.action || this.label
+    const dragTag = this.variant === "insertion" || dragAction === "Formula" ? ribbonElementTag(this.label, dragAction) : null
+    const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
+      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
+        ${this.iconAction ? html`
+          <button
+            class="icon-action-trigger"
+            type="button"
+            aria-label=${this.iconActionLabel || this.iconAction}
+            title=${this.iconActionLabel || this.iconAction}
+            ?disabled=${this.disabled}
+            @mouseenter=${() => this.dispatchIconHover(true)}
+            @mouseleave=${() => this.dispatchIconHover(false)}
+            @focus=${() => this.dispatchIconHover(true)}
+            @blur=${() => this.dispatchIconHover(false)}
+            @click=${this.dispatchIconAction}
+          >${this.renderIcon()}</button>
+        ` : nothing}
         <button
           class="main-button"
           type="button"
-          draggable=${String(Boolean(dragTag) && !this.disabled)}
+          draggable=${String(Boolean(dragTag || dragPackageInsertion) && !this.disabled)}
           aria-label=${this.label}
           aria-busy=${this.loading ? "true" : nothing}
           aria-pressed=${this.toggle? String(this.active): nothing}
@@ -1276,9 +1421,13 @@ export class RibbonButton extends LitElement {
           @focus=${this.showDetails}
           @blur=${this.hideDetails}
           @click=${this.handleClick}
-          @dragstart=${(event: DragEvent) => dragTag && startElementDrag(event, dragTag, (event.currentTarget as HTMLElement).querySelector(".button-icon"))}
+          @dragstart=${(event: DragEvent) => {
+            const icon = (event.currentTarget as HTMLElement).querySelector(".button-icon")
+            if(dragTag) startElementDrag(event, dragTag, icon)
+            else if(dragPackageInsertion) startRibbonInsertionDrag(event, dragAction, icon, this.dragHTML)
+          }}
         >
-          ${this.renderIcon()}
+          ${this.iconAction ? nothing : this.renderIcon()}
           <span class="button-label">
             <span class="button-label-text">${this.label}</span>
             ${this.selectionCount > 0 ? html`<small class="selection-count">+${this.selectionCount}</small>`: ""}
@@ -1295,7 +1444,7 @@ export class RibbonButton extends LitElement {
           >
             <span class="button-icon corner-icon" aria-hidden="true">${ribbonIcon("Reject")}</span>
           </button>
-        ` : (hasDropdown || this.openDrawer) && !this.dropdownOnClick ? html`
+        ` : (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction)) ? html`
           <button
             class="submenu-toggle submenu-trigger"
             type="button"
@@ -1326,6 +1475,7 @@ export class RibbonButton extends LitElement {
           .customContent=${this.dropdown !== null}
           .label=${`${this.label} options`}
           ?no-scroll=${this.dropdownNoScroll}
+          ?compact-content=${this.dropdownCompact}
           ?hidden=${!this.submenuOpen}
           @ribbon-button-click=${this.handleSubmenuClick}
         >

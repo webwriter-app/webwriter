@@ -1601,7 +1601,7 @@ export class DOMEditor {
    * before any part of it enters the live document. Transfers additionally
    * strip styling, excluded marks, and section wrappers and canonize aliases; explicit HTML
    * edits retain authored structure and styles. */
-  prepareHTMLFragment(fragment: DocumentFragment, transfer=false) {
+  prepareHTMLFragment(fragment: DocumentFragment, transfer=false, repair=true) {
     hydrateWidgetGroupings(fragment)
     // Convert PRE after transfer sanitization so its whitespace styles survive.
     this.schema.enforceMedia(fragment, false)
@@ -1619,7 +1619,7 @@ export class DOMEditor {
     // structural repair have finished.
     const stagingBody = fragment.ownerDocument.createElement("body")
     stagingBody.append(fragment)
-    this.schema.checkAndCorrect(stagingBody, true)
+    if(repair) this.schema.checkAndCorrect(stagingBody, true)
     const prepared = stagingBody.ownerDocument.createDocumentFragment()
     prepared.append(...Array.from(stagingBody.childNodes))
     return {fragment: prepared, removedUnsafeItems}
@@ -1671,10 +1671,10 @@ export class DOMEditor {
     })
   }
 
-  parseHTMLFragment(html: string, transfer=false) {
+  parseHTMLFragment(html: string, transfer=false, repair=true) {
     const template = document.createElement("template")
     template.innerHTML = html
-    return this.prepareHTMLFragment(template.content, transfer)
+    return this.prepareHTMLFragment(template.content, transfer, repair)
   }
 
 

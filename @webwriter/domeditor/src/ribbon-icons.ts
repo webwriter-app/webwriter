@@ -47,6 +47,7 @@ import fileDownload from "@tabler/icons/outline/file-download.svg?raw"
 import fileExport from "@tabler/icons/outline/file-export.svg?raw"
 import fileOrientation from "@tabler/icons/outline/file-orientation.svg?raw"
 import filePlus from "@tabler/icons/outline/file-plus.svg?raw"
+import fileHorizontal from "@tabler/icons/outline/file-horizontal.svg?raw"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import h1 from "@tabler/icons/outline/h-1.svg?raw"
 import h2 from "@tabler/icons/outline/h-2.svg?raw"
@@ -228,6 +229,7 @@ const icons: Record<string, string> = {
   Balloon: balloon,
   BalloonFilled: balloonFilled,
   Document: fileDescription,
+  FileHorizontal: fileHorizontal,
   Canvas: artboard,
   ChevronRight: chevronRight,
   Section: section,

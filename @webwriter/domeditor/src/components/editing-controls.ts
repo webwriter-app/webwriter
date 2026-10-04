@@ -2720,6 +2720,7 @@ export abstract class EditingControls extends LitElement {
             <ribbon-button
               label=${item.label}
               .action=${item.action ?? item.label}
+              .dragHTML=${item.dragHTML}
               .icon=${item.icon ?? item.label}
               .submenu=${item.submenu ?? []}
             ></ribbon-button>

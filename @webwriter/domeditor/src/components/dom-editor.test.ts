@@ -36,7 +36,7 @@ import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
-import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings} from "../app-settings"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
 
 const demoPackage: WebWriterPackage = {
@@ -3728,6 +3728,107 @@ describe("DomEditor.execute()", () => {
       type: "setBlockStyle",
       styles: {"text-align": "center"},
     }))
+  })
+
+  it("pins selected HTML persistently and inserts saved user snippets through the normal insertion command", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: '<p class="authored">First</p>', label: "First"})
+    const action = (label: string) => editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label}, bubbles: true, composed: true}))
+    action("pin-snippet")
+    await vi.waitFor(() => expect(loadAppSettings().userSnippets).toHaveLength(1))
+    expect(execute).toHaveBeenCalledWith({type: "getSnippet"})
+    execute.mockResolvedValue({html: "<section>Second</section>", label: "Second"})
+    action("pin-snippet")
+    await vi.waitFor(() => expect(loadAppSettings().userSnippets).toHaveLength(2))
+    const snippets = loadAppSettings().userSnippets
+    expect(snippets.map(snippet => snippet.label)).toEqual(["Second", "First"])
+    expect(snippets[0].id).not.toBe(snippets[1].id)
+    execute.mockResolvedValue(undefined)
+    action(`user-snippet:${snippets[1].id}`)
+    await vi.waitFor(() => expect(execute).toHaveBeenLastCalledWith({type: "insert", html: '<p class="authored">First</p>'}))
+    expect(loadAppSettings().userSnippets).toEqual(snippets)
+    execute.mockClear()
+    action(`remove-user-snippet:${snippets[1].id}`)
+    expect(loadAppSettings().userSnippets).toEqual([snippets[0]])
+    action(`remove-user-snippet:${snippets[0].id}`)
+    expect(loadAppSettings().userSnippets).toEqual([])
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it("ignores pinning a selection with no snippet target", async () => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue(null)
+    await (editor as any).pinSnippet()
+    expect(loadAppSettings().userSnippets).toEqual([])
+  })
+
+  it("stores identical snippet HTML only once, including concurrent requests", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Saved</p>", label: "Saved"})
+    await Promise.all([(editor as any).pinSnippet(), (editor as any).pinSnippet()])
+    const saved = loadAppSettings().userSnippets
+    expect(saved).toHaveLength(1)
+    execute.mockResolvedValue({html: "<p>Saved</p>", label: "Different label"})
+    await (editor as any).pinSnippet()
+    expect(loadAppSettings().userSnippets).toEqual(saved)
+    execute.mockResolvedValue({html: '<p class="different">Saved</p>', label: "Saved"})
+    await (editor as any).pinSnippet()
+    expect(loadAppSettings().userSnippets.map(snippet => snippet.html)).toEqual(['<p class="different">Saved</p>', "<p>Saved</p>"])
+  })
+
+  it("routes snippet icon hover to an editor preview without storing content", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    for(const hovered of [true, false]) ribbon.dispatchEvent(new CustomEvent("snippet-hover-change", {detail: {hovered}, bubbles: true, composed: true}))
+    expect(execute.mock.calls.map(([action]) => action)).toEqual([{type: "hoverSnippet", hovered: true}, {type: "hoverSnippet", hovered: false}])
+    expect(loadAppSettings().userSnippets).toEqual([])
+  })
+
+  it("inserts ribbon drops from authenticated snippet messages and ignores invalid requests", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const authenticated = vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    host.settings = {...host.settings, userSnippets: [{id: "saved", label: "Saved", html: '<p>Saved</p>'}]}
+    const position = {anchor: {type: "body", tname: "root"}, layout: "canvas", x: 200, y: 100}
+    const drop = (action: string, target = position) => host.handleEditorMessage(new MessageEvent("message", {
+      data: {type: "editor-ribbon-drop", action, position: target},
+    }))
+    drop("user-snippet:saved")
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "insertRibbonDrop", html: '<p>Saved</p>', position}))
+    execute.mockClear()
+    drop("user-snippet:missing")
+    drop("delete")
+    drop("user-snippet:saved", {...position, x: Infinity})
+    authenticated.mockReturnValue(false)
+    drop("user-snippet:saved")
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it("installs dropped packages and routes dropped package members to the captured position", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.packages = [demoPackage]
+    const install = vi.spyOn(host, "setPackageInstalled").mockResolvedValue(demoPackage)
+    const insert = vi.spyOn(host, "insertPackageMember").mockResolvedValue(undefined)
+    const position = {anchor: {tname: "root"}, layout: "document"}
+    await host.insertRibbonDropAction(`package:${demoPackage.name}`, position)
+    expect(install).toHaveBeenCalledWith(demoPackage, true)
+    expect(insert).toHaveBeenCalledWith(demoPackage.members[0], position)
+    await host.insertRibbonDropAction(`package-member:${demoPackage.members[1].id}`, position)
+    expect(insert).toHaveBeenLastCalledWith(demoPackage.members[1], position)
+  })
+
+  it("fetches dropped package snippets before inserting at the captured position", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const fetch = vi.spyOn(host.packageRegistry, "fetchSnippet").mockResolvedValue('<p>Package snippet</p>')
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const position = {anchor: {tname: "root"}, layout: "slides", x: 100, y: 100}
+    await host.insertPackageMember(demoPackage.members[1], position)
+    expect(fetch).toHaveBeenCalledWith(demoPackage.members[1], host.documentLanguage)
+    expect(execute).toHaveBeenCalledWith({type: "insertRibbonDrop", html: '<p>Package snippet</p>', position})
   })
 
   it("renders Packages as ribbon buttons with a prefixed search bar", async () => {

@@ -9,10 +9,81 @@ import {sharedDOMBody} from "../domdoc"
 import { $, htmlToFragment, cloneWithoutEditorMarkers } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
-import {elementDragType} from "../components/insertion-menu"
-import {replayHostDrag} from "../editor-bridge"
+import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
+import {replayHostDrag, type RibbonDropPosition} from "../editor-bridge"
 
 let editor: DOMEditor
+
+describe("saved snippet capture", () => {
+  it("previews the same text container it saves and cleans the outline on exit or destruction", () => {
+    document.body.innerHTML = '<p>Before <b>selected</b> after</p><p>Other</p>'
+    const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 3)
+    editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
+    expect(document.querySelector(".◆snippet-hovered")).toBe(paragraph)
+    expect(editor.features.manipulation.actions.getSnippet({type: "getSnippet"})?.html).not.toContain("◆")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+    editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: false})
+    expect(document.querySelector(".◆snippet-hovered, .◆element-hovered")).toBeNull()
+    editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
+    editor.features.selection.disable()
+    expect(document.querySelector(".◆snippet-hovered, .◆element-hovered")).toBeNull()
+  })
+
+  it("cleans a snippet preview when its target was removed before hover exit", () => {
+    const paragraph = document.querySelector("p")!
+    paragraph.textContent = "Save"
+    $.move(paragraph.firstChild!, 1)
+    editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
+    paragraph.remove()
+    editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: false})
+    expect(paragraph.classList.contains("◆snippet-hovered")).toBe(false)
+    expect(paragraph.classList.contains("◆element-hovered")).toBe(false)
+  })
+  it("saves an entire text container from a partial inline text selection without editing it", () => {
+    document.body.innerHTML = '<p id="keep">Before <b class="◆text-selected">selected</b> after<!--keep--></p>'
+    const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 3)
+    const before = document.body.innerHTML
+    const snippet = editor.features.manipulation.actions.getSnippet({type: "getSnippet"})
+    expect(snippet).toEqual({html: '<p id="keep">Before <b>selected</b> after<!--keep--></p>', label: "Before selected after"})
+    expect(document.body.innerHTML).toBe(before)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it("saves an element selection with unfamiliar valid descendants and no editing markers", () => {
+    document.body.innerHTML = '<custom-card title="keep"><template><em>content</em></template><!--comment--><p class="◆text-selected">Text</p></custom-card>'
+    const element = document.body.firstElementChild!
+    $.selectElement(element)
+    const snippet = editor.features.manipulation.actions.getSnippet({type: "getSnippet"})
+    expect(snippet?.html).toBe('<custom-card title="keep"><template><em>content</em></template><!--comment--><p>Text</p></custom-card>')
+  })
+
+  it("captures a nested gap's surrounding container and rejects top-level gaps", () => {
+    document.body.innerHTML = '<section><p>One</p><p>Two</p></section><p>Outside</p>'
+    const section = document.querySelector("section")!
+    $.move(section, 1)
+    expect(editor.features.manipulation.actions.getSnippet({type: "getSnippet"})?.html).toBe('<section><p>One</p><p>Two</p></section>')
+    $.move(document.body, 1)
+    expect(editor.features.manipulation.actions.getSnippet({type: "getSnippet"})).toBeNull()
+  })
+
+  it.each(["canvas", "slides"] as const)("captures text in %s and excludes the layout's top-level gap", mode => {
+    const headHTML = document.head.innerHTML
+    try {
+      document.body.innerHTML = '<p>Saved text</p>'
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const paragraph = document.querySelector("p")!
+      $.move(paragraph.firstChild!, 2)
+      expect(editor.features.manipulation.actions.getSnippet({type: "getSnippet"})?.html).toContain('>Saved text</p>')
+      $.move(paragraph.parentElement!, 0)
+      expect(editor.features.manipulation.actions.getSnippet({type: "getSnippet"})).toBeNull()
+    }
+    finally { document.head.innerHTML = headHTML }
+  })
+})
 
 describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots", mode => {
   let headHTML: string
@@ -2315,7 +2386,7 @@ describe("unified content transfer", () => {
     return data
   }
 
-  it("drops a ribbon element at the document drop caret like a moved element", () => {
+  it("drops a ribbon element at the same text caret as a widget insertion", () => {
     document.body.innerHTML = "<p>before</p><p>after</p>"
     const first = document.body.firstElementChild!
     vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 20))
@@ -2326,7 +2397,8 @@ describe("unified content transfer", () => {
     read.mockRestore()
     expect(document.body).toHaveClass("◆drop-selection-active")
     document.body.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 20}))
-    expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p"])
+    expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
+    expect(Array.from(document.body.children).map(child => child.textContent)).toEqual(["bef", "", "ore", "after"])
     expect(document.body).not.toHaveClass("◆drop-selection-active")
   })
 
@@ -2349,11 +2421,11 @@ describe("unified content transfer", () => {
       expect(document.body).not.toHaveClass("◆drop-selection-active")
       replayHostDrag({event: "dragover", x: 150, y: 20, data})
       expect(replayHostDrag({event: "drop", x: 150, y: 20, data})).toBe(true)
-      expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p"])
+      expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
       expect(document.body).not.toHaveClass("◆drop-selection-active")
       expect(replayHostDrag({event: "drop", x: Number.NaN, y: 20, data})).toBe(false)
       expect(replayHostDrag({event: "click" as "drop", x: 150, y: 20, data})).toBe(false)
-      expect(document.body.children).toHaveLength(3)
+      expect(document.body.children).toHaveLength(4)
     }
     finally { vi.unstubAllGlobals() }
   })
@@ -2402,7 +2474,7 @@ describe("unified content transfer", () => {
 
   it("centers ribbon elements at the canvas drop position", () => {
     expect(editor.features.canvas.convert("canvas")).toBe(true)
-    vi.spyOn(editor.features.canvas, "clientPoint").mockReturnValue({x: 200, y: 100})
+    vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x: x - 100, y: y - 50}))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
       return new DOMRect(100 + parseFloat(this.style.left || "0"), 50 + parseFloat(this.style.top || "0"), 40, 20)
     })
@@ -2413,6 +2485,7 @@ describe("unified content transfer", () => {
     expect(item.style.position).toBe("absolute")
     expect(item.style.left).toBe("180px")
     expect(item.style.top).toBe("90px")
+    expect(item.style.width).toBe("")
   })
 
   it("accepts a ribbon drop on the canvas's blank shadow slot", () => {
@@ -2427,6 +2500,281 @@ describe("unified content transfer", () => {
     expect(document.body.lastElementChild).not.toBe(original)
     expect(document.body.lastElementChild?.localName).toBe("p")
     expect((document.body.lastElementChild as HTMLElement).style.position).toBe("absolute")
+  })
+
+  it.each(["document", "canvas", "slides"] as const)("captures ribbon drops on editor overlays in %s", mode => {
+    document.body.className = ""
+    if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const target = mode === "slides" ? document.querySelector<HTMLElement>(".ww-slide")! : document.body
+    const surface = document.createElement("div")
+    editor.addAppendix(surface)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target, offset: 0})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [surface, target]})
+    const data = ribbonData("h1")
+    const over = transferEvent("dragover", data)
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    surface.dispatchEvent(transferEvent("drop", data))
+    expect(target.querySelectorAll("h1")).toHaveLength(mode === "slides" ? 2 : 1)
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    surface.remove()
+    Reflect.deleteProperty(document, "elementsFromPoint")
+  })
+
+  function packageDrop(action: string, target: Element, x = 200, y = 100) {
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, action)
+    const post = vi.spyOn(editor, "postHostMessage")
+    target.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: y}))
+    const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0]
+    return message as {action: string, position: RibbonDropPosition} | undefined
+  }
+
+  it("resolves a drop beside a sole selected image when there is no native caret", () => {
+    document.body.innerHTML = "<picture><img></picture>"
+    const image = document.querySelector("picture")!
+    editor.features.selection.selectElement(image)
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 200, 100))
+    const caretDescriptor = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => null})
+    const descriptor = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.body]})
+    try {
+      const data = ribbonData("h2")
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 300}))
+      expect(document.body).toHaveClass("◆drop-selection-active")
+      expect($.anchor).toBe(document.body)
+      expect($.anchorOffset).toBe(1)
+      document.body.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 300}))
+      expect(Array.from(document.body.children).map(node => node.localName)).toEqual(["picture", "h2"])
+      expect(image.isConnected).toBe(true)
+      expect(document.querySelector("h2")!.contains($.anchor)).toBe(true)
+    }
+    finally {
+      if(caretDescriptor) Object.defineProperty(document, "caretPositionFromPoint", caretDescriptor)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      if(descriptor) Object.defineProperty(document, "elementsFromPoint", descriptor)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it.each([elementDragType, ribbonInsertionDragType])("previews protected native ribbon drags on overlays using only %s", type => {
+    document.body.innerHTML = "<p>content</p>"
+    const paragraph = document.querySelector("p")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 3})
+    const surface = document.createElement("div")
+    editor.addAppendix(surface)
+    const data = new DataTransfer()
+    data.setData(type, type === elementDragType ? "h1" : "element:h1")
+    const hidden = vi.spyOn(data, "getData").mockReturnValue("")
+    const over = transferEvent("dragover", data)
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    hidden.mockRestore()
+    surface.dispatchEvent(transferEvent("drop", data))
+    expect(document.querySelectorAll("h1")).toHaveLength(1)
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+  })
+
+  it.each(["document", "canvas", "slides"] as const)("repeated native drags use the widget insertion channel in %s", mode => {
+    document.body.className = ""
+    if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const target = mode === "slides" ? document.querySelector<HTMLElement>(".ww-slide")! : document.body
+    vi.spyOn($, "pointFromCoords").mockImplementation(() => ({node: target, offset: target.childNodes.length}))
+    for(const tag of ["picture", "h2", "table", "details", "math"]) {
+      const data = new DataTransfer()
+      data.setData(ribbonInsertionDragType, `element:${tag}`)
+      target.dispatchEvent(transferEvent("dragover", data))
+      target.dispatchEvent(transferEvent("drop", data))
+      expect(target.querySelector(tag)).not.toBeNull()
+    }
+    expect(editor.features.math.activeMath).toBe(target.querySelector("math"))
+  })
+
+  describe.each(["document", "canvas", "slides"] as const)("ribbon drop editing selection in %s", mode => {
+    function drop(tag: string) {
+      document.body.className = ""
+      if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const target = mode === "slides" ? document.querySelector<HTMLElement>(".ww-slide")! : document.body
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: target, offset: target.childNodes.length})
+      target.dispatchEvent(transferEvent("drop", ribbonData(tag), {clientX: 200, clientY: 100}))
+      return target.lastElementChild!
+    }
+
+    it("uses the table command's first-cell selection", () => {
+      const table = drop("table")
+      expect(table.localName).toBe("table")
+      expect(editor.features.table.hasCellSelection).toBe(true)
+      expect(table.querySelector("td")!.contains($.anchor)).toBe(true)
+      expect($.selectedElement).not.toBe(table)
+    })
+
+    it.each(["p", "h2", "details", "math"])("keeps the editing caret inside the dropped %s", tag => {
+      const root = drop(tag)
+      const content = tag === "details" ? root.querySelector("summary")! : tag === "math" ? root.querySelector("mrow")! : root
+      expect(content.contains($.anchor)).toBe(true)
+      expect($.range.collapsed).toBe(true)
+      expect($.selectedElement).not.toBe(root)
+    })
+
+    it.each(["ul", "ol"])("uses the virtual empty-list selection for %s", tag => {
+      const list = drop(tag)
+      expect(list.localName).toBe(tag)
+      expect(list.children).toHaveLength(0)
+      expect($.anchor).toBe(list)
+      expect(editor.features.list.getState().type).toBe(tag)
+    })
+
+    it("captures a blank graphic like click insertion", () => {
+      const graphic = drop("svg")
+      expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    })
+
+    it.each(["picture", "iframe"] as const)("retains the click insertion selection for %s media", tag => {
+      const media = drop(tag)
+      expect(media.localName).toBe(tag)
+      const selected = $.selectedElement === media
+      const captured = editor.features.selection.captureSelectedElement === media
+      const collapsed = $.range.collapsed
+      const parent = media.parentNode!
+      const range = document.createRange()
+      range.setStart(parent, parent.childNodes.length)
+      range.collapse(true)
+      editor.features.selection.selectDropRange(range)
+      editor.features.media.actions.insertMedia({type: "insertMedia", media: tag})
+      const clicked = parent.lastChild!
+      expect($.selectedElement === clicked).toBe(selected)
+      expect(editor.features.selection.captureSelectedElement === clicked).toBe(captured)
+      expect($.range.collapsed).toBe(collapsed)
+    })
+  })
+
+  it.each(["document", "canvas", "slides"] as const)("inserts repeated prepared widget drops directly in %s", async mode => {
+    document.body.className = ""
+    if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const target = mode === "slides" ? document.querySelector<HTMLElement>(".ww-slide")! : document.body
+    vi.spyOn($, "pointFromCoords").mockImplementation(() => ({node: target, offset: target.childNodes.length}))
+    const post = vi.spyOn(editor, "postHostMessage")
+    for(let index = 0; index < 3; index++) {
+      const data = new DataTransfer()
+      data.setData(ribbonInsertionDragType, "package:demo")
+      data.setData("text/html", '<x-demo-widget><p>Content</p></x-demo-widget>')
+      target.dispatchEvent(transferEvent("dragover", data))
+      target.dispatchEvent(transferEvent("drop", data, {clientX: 200 + index * 100, clientY: 100}))
+      await vi.waitFor(() => expect(target.querySelectorAll("x-demo-widget")).toHaveLength(index + 1))
+      expect(editor.features.selection.captureSelectedElement).toBe(target.querySelectorAll("x-demo-widget")[index])
+    }
+    expect(post.mock.calls.some(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")).toBe(false)
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("moves the package drop caret in protected dragover mode and retains the drop point after selection changes", async () => {
+    document.body.innerHTML = '<p>before after</p><p>other</p>'
+    const text = document.querySelector("p")!.firstChild!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 7})
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "user-snippet:saved")
+    const protectedData = vi.spyOn(data, "getData").mockReturnValue("")
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(7)
+    protectedData.mockRestore()
+    const message = packageDrop("user-snippet:saved", document.body)!
+    $.move(document.querySelectorAll("p")[1].firstChild!, 0)
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<em>inserted</em>', position: message.position})).toBe(true)
+    expect(document.querySelector("p")!.innerHTML).toBe('before <em>inserted</em>after')
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+  })
+
+  it.each(["canvas", "slides"] as const)("centers a saved snippet in %s and preserves nested content and explicit width", async mode => {
+    document.body.className = ""
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const target = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 800, 600))
+    vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x: (x - 100) / 2, y: (y - 50) / 2}))
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+      const scale = mode === "canvas" ? 2 : 1
+      return new DOMRect(100 + parseFloat(this.style.left || "0") * scale, 50 + parseFloat(this.style.top || "0") * scale, 80 * scale, 40 * scale)
+    })
+    const message = packageDrop("user-snippet:saved", target, 300, 150)!
+    expect(message.position.layout).toBe(mode)
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<p style="width:80px"><b>Saved</b><!--keep--></p>', position: message.position})).toBe(true)
+    const inserted = target.lastElementChild as HTMLElement
+    expect(inserted.innerHTML, target.outerHTML).toBe('<b>Saved</b><!--keep-->')
+    expect(inserted.style.width).toBe("80px")
+    expect(inserted.style.left).toBe(mode === "canvas" ? "60px" : "160px")
+    expect(inserted.style.top).toBe(mode === "canvas" ? "30px" : "80px")
+    expect(inserted.parentElement).toBe(target)
+  })
+
+  it("does not route unknown ribbon actions or drops outside a slide", () => {
+    expect(packageDrop("delete", document.body)).toBeUndefined()
+    document.body.className = ""
+    expect(editor.features.slides.convert("slides")).toBe(true)
+    expect(packageDrop("package:demo", document.body)).toBeUndefined()
+  })
+
+  it("ignores an asynchronous drop whose target was replaced", async () => {
+    document.body.innerHTML = '<p>before</p>'
+    const text = document.querySelector("p")!.firstChild!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 2})
+    const message = packageDrop("package-member:demo", document.body)!
+    document.body.innerHTML = '<p>replacement</p>'
+    editor.doc.syncFromDOM()
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<em>new</em>', position: message.position})).toBe(false)
+    expect(document.querySelector("p")!.textContent).toBe("replacement")
+  })
+
+  it("retains the document drop position after a package reload restores the shared DOM", async () => {
+    document.body.innerHTML = '<p>before after</p>'
+    const text = document.querySelector("p")!.firstChild!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 7})
+    const message = packageDrop("package:demo", document.body)!
+    const initialState = editor.doc.snapshot()
+    editor.destroy()
+    document.body.innerHTML = '<p></p>'
+    editor = new DOMEditor({initialState})
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<em>inserted </em>', position: message.position})).toBe(true)
+    expect(document.querySelector("p")!.textContent).toBe("before inserted after")
+  })
+
+  it("undoes and redoes a positioned snippet drop as one authored change", async () => {
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const message = packageDrop("user-snippet:saved", document.body)!
+    const before = editor.toHTML(true)
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<p style="width:80px">Saved</p>', position: message.position})).toBe(true)
+    const after = editor.toHTML(true)
+    expect(after).toContain("Saved")
+    expect(after).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it.each(["document", "canvas", "slides"] as const)("drops graphic shapes, formula structures and styled lists in %s", mode => {
+    document.body.className = ""
+    if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const target = mode === "slides" ? document.querySelector<HTMLElement>(".ww-slide")! : document.body
+    const point = vi.spyOn($, "pointFromCoords").mockImplementation(() => ({node: target, offset: target.childNodes.length}))
+    for(const [action, selector] of [["insert-graphic-shape:rectangle", "svg"], ["insert-math:frac", "math mfrac"], ["list-style:ol:lower-alpha", "ol"]]) {
+      const data = new DataTransfer()
+      data.setData(ribbonInsertionDragType, action)
+      target.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 100}))
+      const inserted = target.querySelector(selector)
+      expect(inserted, `${action}: ${target.innerHTML}`).not.toBeNull()
+      if(action.startsWith("list-style:")) expect((inserted as HTMLElement).style.listStyleType).toBe("lower-alpha")
+      if(mode !== "document") {
+        let root = inserted!
+        while(root.parentElement !== target) root = root.parentElement!
+        expect((root as HTMLElement).style.position).toBe("absolute")
+      }
+    }
+    point.mockRestore()
   })
 
   it("keeps a dropped formula in a positioned canvas text box", () => {

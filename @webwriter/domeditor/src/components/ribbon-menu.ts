@@ -1,7 +1,7 @@
 import {dropdownContentStyles} from "./dropdown-content.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
-import {ribbonElementTag, startElementDrag} from "./insertion-menu"
+import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
 export type RibbonMenuGroup = {
   label: string
@@ -14,7 +14,11 @@ export type RibbonMenuButton = string | {
   italic?: boolean
   selected?: boolean
   action?: string
+  dragHTML?: string
+  iconAction?: string
+  iconActionLabel?: string
   icon?: string
+  hoverIcon?: string
   iconText?: string
   iconUrl?: string
   /** Optional metadata used by visual galleries such as graphic shapes. */
@@ -93,6 +97,10 @@ export class RibbonMenu extends LitElement {
       max-width: calc(100vw - 1rem);
     }
 
+    :host([variant="button"][custom-content][compact-content]) {
+      width: min(200px, calc(100vw - 1rem));
+    }
+
     :host([variant="button"]) .menu {
       border-radius: var(--ribbon-menu-border-radius, 0.35rem);
     }
@@ -152,6 +160,40 @@ export class RibbonMenu extends LitElement {
 
     .item-row > .item {
       flex: 1 1 auto;
+    }
+
+    .item-row > .item.remove {
+      flex: 0 0 1.5rem;
+      width: 1.5rem;
+    }
+
+    .item-row.has-icon-action:hover,
+    .item-row.has-icon-action:focus-within {
+      border-radius: 0.25rem;
+      background: #eef4fb;
+    }
+
+    .item-row.has-icon-action:hover > .item,
+    .item-row.has-icon-action:hover > .submenu-toggle,
+    .item-row.has-icon-action:has(> .item:hover, > .submenu-toggle:hover, > .item:focus-visible, > .submenu-toggle:focus-visible) > .item,
+    .item-row.has-icon-action:has(> .item:hover, > .submenu-toggle:hover, > .item:focus-visible, > .submenu-toggle:focus-visible) > .submenu-toggle {
+      color: #1e4f87;
+      background: #eef4fb;
+    }
+
+    .item-row.has-icon-action:has(> .item:active, > .submenu-toggle:active) > .item,
+    .item-row.has-icon-action:has(> .item:active, > .submenu-toggle:active) > .submenu-toggle {
+      color: #1e4f87;
+      background: #c4dcf4;
+    }
+
+    .item-row.has-icon-action > .item {
+      border-radius: 0.25rem 0 0 0.25rem;
+    }
+
+    .item-row.has-icon-action > .submenu-toggle {
+      align-self: stretch;
+      border-radius: 0 0.25rem 0.25rem 0;
     }
 
     .item-row.selected,
@@ -279,6 +321,56 @@ export class RibbonMenu extends LitElement {
       height: 100%;
     }
 
+    .item-icon-default,
+    .item-icon-hover {
+      display: block;
+      flex: 0 0 1rem;
+      width: 1rem;
+      height: 1rem;
+    }
+
+    .item-icon-hover {
+      display: none;
+    }
+
+    .icon-action-trigger:hover .item-icon-default,
+    .icon-action-trigger:focus-visible .item-icon-default {
+      display: none;
+    }
+
+    .icon-action-trigger:hover .item-icon-hover,
+    .icon-action-trigger:focus-visible .item-icon-hover {
+      display: block;
+    }
+
+    .icon-action-trigger {
+      box-sizing: border-box;
+      display: grid;
+      flex: 0 0 1.65rem;
+      place-items: center;
+      width: 1.65rem;
+      min-height: 1.65rem;
+      padding: 0.2rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      color: #526b86;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .icon-action-trigger:hover,
+    .icon-action-trigger:focus-visible {
+      color: #1e5d9d;
+      background: #d7e7f7;
+    }
+
+    .snippet-empty-hint {
+      padding: 0.4rem;
+      color: #64748b;
+      font-size: 0.66rem;
+      line-height: 1rem;
+    }
+
     .item-icon.image-icon svg {
       visibility: hidden;
     }
@@ -356,6 +448,7 @@ export class RibbonMenu extends LitElement {
   groups: RibbonMenuGroup[] = []
   variant = "ribbon"
   customContent = false
+  compactContent = false
   noScroll = false
   gallery = false
   label = ""
@@ -366,6 +459,7 @@ export class RibbonMenu extends LitElement {
     groups: {attribute: false},
     variant: {type: String, reflect: true},
     customContent: {type: Boolean, attribute: "custom-content", reflect: true},
+    compactContent: {type: Boolean, attribute: "compact-content", reflect: true},
     noScroll: {type: Boolean, attribute: "no-scroll", reflect: true},
     label: {type: String},
     gallery: {type: Boolean, reflect: true},
@@ -388,13 +482,25 @@ export class RibbonMenu extends LitElement {
     return ribbonElementTag(this.buttonLabel(button), this.buttonAction(button))
   }
 
+  private packageInsertionAction(button: RibbonMenuButton) {
+    const action = this.buttonAction(button)
+    return ribbonInsertionAction(action) || ribbonElementInsertionAction(action) ? action : null
+  }
+
   private startDrag(event: DragEvent, button: RibbonMenuButton) {
     const tag = this.dragTag(button)
-    if(tag) startElementDrag(event, tag, (event.currentTarget as HTMLElement).querySelector(".item-icon"))
+    const action = this.packageInsertionAction(button)
+    const icon = (event.currentTarget as HTMLElement).querySelector(".item-icon")
+    if(tag) startElementDrag(event, tag, icon)
+    else if(action) startRibbonInsertionDrag(event, action, icon, typeof button === "string" ? undefined : button.dragHTML)
   }
 
   private buttonIcon(button: RibbonMenuButton) {
     return typeof button === "string" ? this.buttonAction(button) : button.icon ?? this.buttonAction(button)
+  }
+
+  private buttonHoverIcon(button: RibbonMenuButton) {
+    return typeof button === "string" ? "" : button.hoverIcon ?? ""
   }
 
   private buttonIconUrl(button: RibbonMenuButton) {
@@ -415,7 +521,7 @@ export class RibbonMenu extends LitElement {
     image.remove()
   }
 
-  private renderButtonIcon(button: RibbonMenuButton) {
+  private renderButtonIcon(button: RibbonMenuButton, hover = false) {
     const path = this.buttonPath(button)
     if(path) return html`
       <span class="item-icon shape-preview" aria-hidden="true">
@@ -424,27 +530,46 @@ export class RibbonMenu extends LitElement {
         </svg>
       </span>
     `
-    const iconUrl = this.buttonIconUrl(button)
+    const iconUrl = hover ? "" : this.buttonIconUrl(button)
     const iconText = typeof button === "string" ? undefined : button.iconText
     if(iconText !== undefined) {
       return html`<span class="item-icon text-icon" aria-hidden="true">${iconText}</span>`
     }
+    const icon = hover ? this.buttonHoverIcon(button) : this.buttonIcon(button)
     return html`
       <span class=${`item-icon${iconUrl ? " image-icon" : ""}`} aria-hidden="true">
-        ${ribbonIcon(this.buttonIcon(button))}
+        ${ribbonIcon(icon)}
         ${iconUrl ? html`<img src=${iconUrl} alt="" @error=${this.handleIconError} />` : ""}
       </span>
     `
   }
 
-  private handleClick(button: RibbonMenuButton) {
+  private handleClick(button: RibbonMenuButton, preserveSubmenu = false) {
     const label = this.buttonAction(button)
-    this.openSubmenu = null
-    this.openSubmenuToggle = null
-    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
-      detail: {label},
+    preserveSubmenu ||= label.startsWith("remove-user-snippet:")
+    if(!preserveSubmenu) {
+      this.openSubmenu = null
+      this.openSubmenuToggle = null
+    }
+    this.dispatchEvent(new CustomEvent<{label: string, keepDrawerOpen?: boolean}>("ribbon-button-click", {
+      detail: {label, ...(preserveSubmenu ? {keepDrawerOpen: true} : {})},
       bubbles: true,
       composed: true,
+    }))
+  }
+
+  private handleIconAction(button: RibbonMenuButton, event: Event) {
+    if(typeof button === "string" || !button.iconAction) return
+    this.handleClick({label: button.iconActionLabel ?? button.iconAction, action: button.iconAction}, true)
+    if(this.openSubmenu !== button.label) {
+      const trigger = (event.currentTarget as HTMLElement).closest(".item-row")?.querySelector<HTMLButtonElement>(".submenu-toggle")
+      if(trigger) this.showSubmenu(button.label, trigger, false)
+    }
+  }
+
+  private dispatchIconHover(hovered: boolean) {
+    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("ribbon-icon-hover", {
+      detail: {hovered}, bubbles: true, composed: true,
     }))
   }
 
@@ -456,10 +581,14 @@ export class RibbonMenu extends LitElement {
       this.openSubmenuToggle = null
       return
     }
+    this.showSubmenu(label, toggle)
+  }
+
+  private showSubmenu(label: string, toggle: HTMLButtonElement, focusFirst = true) {
     this.openSubmenu = label
     this.openSubmenuToggle = toggle
     this.dispatchEvent(new CustomEvent("ribbon-submenu-open", {detail: {label}, bubbles: true, composed: true}))
-    if(this.openSubmenu === label) {
+    if(focusFirst) {
       void this.updateComplete.then(() => {
         const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
           .find(candidate => candidate.getAttribute("aria-label") === `${label} options`)
@@ -533,7 +662,7 @@ export class RibbonMenu extends LitElement {
             <button
               class=${`item${typeof submenuButton !== "string" && submenuButton.selected ? " selected" : ""}${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
               type="button"
-              draggable=${String(Boolean(this.dragTag(submenuButton)) && !(typeof submenuButton !== "string" && submenuButton.disabled))}
+              draggable=${String(Boolean(this.dragTag(submenuButton) || this.packageInsertionAction(submenuButton)) && !(typeof submenuButton !== "string" && submenuButton.disabled))}
               role="menuitem"
               aria-label=${this.buttonLabel(submenuButton)}
               tabindex=${submenuIndex === 0 ? "0" : "-1"}
@@ -578,11 +707,32 @@ export class RibbonMenu extends LitElement {
               const anchorName = `--ribbon-submenu-${groupIndex}-${buttonIndex}`
               return html`
                 <div class="item-container">
-                  <div class=${`item-row${item.selected ? " selected" : ""}`} style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
+                  <div class=${`item-row${item.selected ? " selected" : ""}${item.iconAction ? " has-icon-action" : ""}`} style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
+                    ${item.iconAction ? html`
+                      <button
+                        class="icon-action-trigger"
+                        type="button"
+                        role="menuitem"
+                        tabindex="-1"
+                        aria-label=${item.iconActionLabel ?? item.iconAction}
+                        title=${item.iconActionLabel ?? item.iconAction}
+                        ?disabled=${item.disabled}
+                        @mouseenter=${() => this.dispatchIconHover(true)}
+                        @mouseleave=${() => this.dispatchIconHover(false)}
+                        @focus=${() => this.dispatchIconHover(true)}
+                        @blur=${() => this.dispatchIconHover(false)}
+                        @click=${(event: Event) => this.handleIconAction(button, event)}
+                      >
+                        ${this.buttonHoverIcon(button) ? html`
+                          <span class="item-icon-default">${this.renderButtonIcon(button)}</span>
+                          <span class="item-icon-hover">${this.renderButtonIcon(button, true)}</span>
+                        ` : this.renderButtonIcon(button)}
+                      </button>
+                    ` : nothing}
                     <button
                       class="item"
                       type="button"
-                      draggable=${String(Boolean(this.dragTag(button)) && !item.disabled && !item.menuOnly)}
+                      draggable=${String(Boolean(this.dragTag(button) || this.packageInsertionAction(button)) && !item.disabled && !item.menuOnly)}
                       role="menuitem"
                       tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
                       title=${label}
@@ -592,7 +742,10 @@ export class RibbonMenu extends LitElement {
                       @click=${(event: Event) => item.menuOnly ? this.toggleSubmenu(label, event) : this.handleClick(button)}
                       @dragstart=${(event: DragEvent) => this.startDrag(event, button)}
                     >
-                      ${this.renderButtonIcon(button)}
+                      ${item.iconAction ? nothing : this.buttonHoverIcon(button) ? html`
+                        <span class="item-icon-default">${this.renderButtonIcon(button)}</span>
+                        <span class="item-icon-hover">${this.renderButtonIcon(button, true)}</span>
+                      ` : this.renderButtonIcon(button)}
                       <span class=${`item-label${item.italic ? " italic" : ""}`}>${label}</span>
                     </button>
                     ${item.removeAction ? html`<button class="item remove" role="menuitem" tabindex="-1" aria-label=${`Remove ${label}`} ?disabled=${item.disabled} @click=${() => this.handleClick({label, action: item.removeAction})}>${ribbonIcon("Reject")}</button>` : nothing}

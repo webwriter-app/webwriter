@@ -46,6 +46,13 @@ afterEach(() => {
 })
 
 describe("settings panel", () => {
+  it("persists user snippets in their saved order and ignores malformed stored entries", () => {
+    const userSnippets = [{id: "new", label: "New", html: "<p>New</p>"}, {id: "old", label: "Old", html: "<p>Old</p>"}]
+    persistAppSettings({...defaultAppSettings(), userSnippets})
+    expect(loadAppSettings().userSnippets).toEqual(userSnippets)
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), userSnippets: [null, {}, {id: "broken"}, ...userSnippets]}))
+    expect(loadAppSettings().userSnippets).toEqual(userSnippets)
+  })
   it.each([true, false])("assigns unique shortcuts to every general command (Apple: %s)", apple => {
     const settings = defaultAppSettings(apple)
     const commands = appCommands.filter(command => !["Table", "Graphic"].includes(command.section))

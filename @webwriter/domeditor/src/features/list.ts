@@ -720,6 +720,14 @@ export class ListFeature extends EditorFeature {
     if(after) $.move(after)
   }
 
+  insertList(type: ListType) {
+    const list = document.createElement(type)
+    this.editor.features.manipulation.insert(list)
+    if(list.isConnected) this.moveToVirtual(list, 0)
+    this.syncVirtualMarker()
+    return list
+  }
+
   toggleList(type: ListType) {
     const list = this.activeList
     if(list) {
@@ -743,9 +751,7 @@ export class ListFeature extends EditorFeature {
       }
     }
     else {
-      const list = document.createElement(type)
-      this.editor.features.manipulation.insert(list)
-      this.moveToVirtual(list, 0)
+      this.insertList(type)
     }
     this.syncVirtualMarker()
   }

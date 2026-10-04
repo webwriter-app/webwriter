@@ -16,7 +16,7 @@ import type {RibbonDrawer} from "./ribbon-drawer"
 import type {LayoutSelectionState} from "../layouts"
 import type {LayoutEditorAction} from "./layout-editor"
 import type { EditingAction } from "../domeditor"
-import {elementDragType, emptyElementHTML, insertionMenuItems} from "./insertion-menu"
+import {elementDragType, emptyElementHTML, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
   describePackageExport,
@@ -105,6 +105,7 @@ import {
   type LoadWidgetsMessage,
   type AIEditReviewMessage,
   type CommentState,
+  type RibbonDropPosition,
   type HostDragDetail,
 } from "../editor-bridge"
 import {elementStylePropertyNames, paragraphStylePropertyNameSet} from "../element-styles"
@@ -3281,6 +3282,23 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label === "pin-snippet") {
+      void this.pinSnippet()
+      return
+    }
+    if(label?.startsWith("remove-user-snippet:")) {
+      const id = label.slice("remove-user-snippet:".length)
+      this.settings = {...this.settings, userSnippets: this.settings.userSnippets.filter(snippet => snippet.id !== id)}
+      persistAppSettings(this.settings)
+      return
+    }
+    if(label?.startsWith("user-snippet:")) {
+      const snippet = this.settings.userSnippets.find(candidate => candidate.id === label.slice("user-snippet:".length))
+      if(snippet) void this.execute({type: "insert", html: snippet.html})
+        .catch(error => { this.packageError = error instanceof Error ? error.message : String(error) })
+        .finally(() => this.focusEditor())
+      return
+    }
     if(this.localPackageDraft && label?.startsWith("local-package") && label !== `local-package-select:${this.selectedLocalPackageName}`) {
       event.preventDefault()
       const action = /^(local-package-(?:remove|refresh|select)):(.+)$/.exec(label)
@@ -4180,19 +4198,34 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private async pinSnippet() {
+    this.packageError = ""
+    try {
+      const snippet = await this.execute({type: "getSnippet"})
+      if(!snippet || typeof snippet !== "object" || !("html" in snippet) || typeof snippet.html !== "string"
+        || !("label" in snippet) || typeof snippet.label !== "string" || !snippet.html) return
+      if(this.settings.userSnippets.some(saved => saved.html === snippet.html)) return
+      this.settings = {...this.settings, userSnippets: [{id: crypto.randomUUID(), label: snippet.label, html: snippet.html},
+        ...this.settings.userSnippets]}
+      persistAppSettings(this.settings)
+    }
+    catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
+    finally { this.focusEditor() }
+  }
+
   /** Snippets are translated to the document language, else the UI's. */
   private get documentLanguage() {
     return this.documentHead.language || navigator.language || "en"
   }
 
-  private async insertPackageMember(member: PackageMember) {
+  private async insertPackageMember(member: PackageMember, position?: RibbonDropPosition) {
     this.packageError = ""
     try {
       const html = member.kind === "snippet"
         ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
         : member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
       if(!html) throw new Error(`Package member '${member.label}' has no insertable content`)
-      await this.execute({type: "insert", html})
+      await this.execute(position ? {type: "insertRibbonDrop", html, position} : {type: "insert", html})
     }
     catch(error) {
       this.packageError = error instanceof Error ? error.message : String(error)
@@ -4231,7 +4264,7 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async installAndInsertPackage(pkg: WebWriterPackage, requestedMember?: PackageMember) {
+  private async installAndInsertPackage(pkg: WebWriterPackage, requestedMember?: PackageMember, position?: RibbonDropPosition) {
     const activePackage = this.installedPackages.find(candidate => candidate.name === pkg.name) ??
       await this.setPackageInstalled(pkg, true)
     if(!activePackage) {
@@ -4246,7 +4279,27 @@ export class DomEditor extends LitElement {
       this.focusEditor()
       return
     }
-    await this.insertPackageMember(member)
+    if(position) await this.insertPackageMember(member, position)
+    else await this.insertPackageMember(member)
+  }
+
+  private async insertRibbonDropAction(action: string, position: RibbonDropPosition) {
+    try {
+      if(action.startsWith("user-snippet:")) {
+        const snippet = this.settings.userSnippets.find(candidate => `user-snippet:${candidate.id}` === action)
+        if(snippet) await this.execute({type: "insertRibbonDrop", html: snippet.html, position})
+        return
+      }
+      const packages = [...this.installedPackages, ...this.localPackages, ...this.packages]
+      const pkg = packages.find(candidate => action.startsWith("package-member:")
+        ? candidate.members.some(member => packageMemberAction(member) === action && member.insertable)
+        : `package:${candidate.name}` === action)
+      if(!pkg) return
+      const member = action.startsWith("package-member:") ? pkg.members.find(candidate => packageMemberAction(candidate) === action) : undefined
+      await this.installAndInsertPackage(pkg, member, position)
+    }
+    catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
+    finally { this.focusEditor() }
   }
 
   private async reloadEditor(nextPackages: WebWriterPackage[]) {
@@ -5550,7 +5603,7 @@ export class DomEditor extends LitElement {
   private handleRibbonDragStart = (event: DragEvent) => {
     const data = event.dataTransfer
     if(event.defaultPrevented || !data
-      || !Array.from(data.types).some(type => type === elementDragType)) return
+      || !Array.from(data.types).some(type => type === elementDragType || type === ribbonInsertionDragType)) return
     this.ribbonDrag = Object.fromEntries(Array.from(data.types).map(type => [type, data.getData(type)]))
   }
 
@@ -5580,6 +5633,15 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorMessage = (event: MessageEvent) => {
+    if(event.data?.type === "editor-ribbon-drop") {
+      if(!this.isEditorMessage(event) || typeof event.data.action !== "string" || !ribbonInsertionAction(event.data.action)) return
+      const position = event.data.position as RibbonDropPosition | undefined
+      if(!position || !position.anchor || typeof position.anchor !== "object"
+        || !["document", "canvas", "slides"].includes(position.layout)
+        || position.layout !== "document" && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) return
+      void this.insertRibbonDropAction(event.data.action, position)
+      return
+    }
     if(event.data?.type === "frame-local-package-request") {
       const isFrame = this.isEditorMessage(event) || this.isPreviewMessage(event)
       const port = event.ports[0]
@@ -6226,6 +6288,10 @@ export class DomEditor extends LitElement {
   private get editingUIListeners(): EditingUIListeners {
     return this.boundEditingUIListeners ??= {
       "ribbon-button-click": this.handleRibbonButtonClick.bind(this),
+      "snippet-hover-change": (event: Event) => {
+        const hovered = Boolean((event as CustomEvent<{hovered: boolean}>).detail?.hovered)
+        void this.execute({type: "hoverSnippet", hovered}).catch(() => {})
+      },
       "ribbon-combobox-change": this.handleRibbonComboboxChange.bind(this),
       "section-type-change": this.handleSectionTypeChange.bind(this),
       "mark-attribute-change": this.handleMarkAttributeChange.bind(this),
