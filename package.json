@@ -7,7 +7,7 @@
     "url": "https://github.com/salmenf/webwriter.git"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "~20.8.9",
     "@lezer/generator": "^1.7.3",
     "@tabler/icons": "^3.30.0",
     "@testing-library/dom": "^10.4.1",
@@ -27,7 +27,8 @@
     "vite-plugin-wasm": "^3.6.0",
     "vitest": "^4.1.11",
     "xliff": "^6.2.1",
-    "zod-to-json-schema": "^3.23.0"
+    "zod-to-json-schema": "^3.23.0",
+    "happy-dom": "~20.8.9"
   },
   "description": "Web-based authoring tool for explorables",
   "keywords": [
