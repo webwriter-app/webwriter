@@ -42,7 +42,7 @@ groupedGraphicShapeButtons.splice(
   {label: "Import graphic", action: "import-graphic", icon: "Upload", category: graphicShapeOptions[0].category, galleryColumns: 3},
 )
 
-const insertMathStructureButtons: RibbonMenuButton[] = mathStructureOptions.map(option => ({
+export const insertMathStructureButtons: RibbonMenuButton[] = mathStructureOptions.map(option => ({
   label: option.title,
   action: `insert-math:${option.command.slice("structure:".length)}`,
   iconText: option.label,
@@ -164,9 +164,9 @@ const groupedInsertionMenuGroup = (
 }
 
 export const insertionMenuGroups: RibbonMenuGroup[] = [
-  groupedInsertionMenuGroup("Text", ["Paragraph", "Section", "Heading", "Details"]),
-  groupedInsertionMenuGroup("Lists", ["List", "Table"]),
-  groupedInsertionMenuGroup("Media", ["Image", "Graphic", "Audio", "Website", "Video", "Formula"]),
+  groupedInsertionMenuGroup("Text", ["Paragraph", "Heading", "List"]),
+  groupedInsertionMenuGroup("Lists", ["Details", "Table"]),
+  groupedInsertionMenuGroup("Media", ["Image", "Graphic", "Audio", "Website", "Video"]),
 ]
 
 const elementInsertionMenuGroup: RibbonMenuGroup = {
@@ -218,8 +218,6 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Media", buttons: []},
     {label: "Dialog", buttons: []},
     {label: "Layout", buttons: []},
-    {label: "Grid layout", buttons: []},
-    {label: "Flex layout", buttons: []},
     {label: "Graphic", buttons: []},
     {label: "Widget", buttons: []},
     {label: "Comments", buttons: []},
@@ -302,10 +300,6 @@ export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGro
   if(context.menu !== "Edit") {
     const groups = menuGroups[context.menu]
     return context.menu === "Start" && context.startPackages ? [...groups, context.startPackages] : groups
-  }
-  if(context.layout && (!context.layoutItem || ![context.media, context.dialog, context.graphic, context.table, context.disclosure].some(Boolean))) {
-    return menuGroups.Edit.filter(group => group.label === (context.layout === "grid" ? "Grid layout" : context.layout === "columns" ? "Layout" : "Flex layout")
-      || context.attributes && group.label === "Attributes")
   }
   const priority = context.surface === "ribbon" ? ribbonContextPriority : toolboxContextPriority
   const selected = priority.find(key => context[key])

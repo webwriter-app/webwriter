@@ -20,9 +20,9 @@ describe("list ribbon drawer", () => {
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(
       'ribbon-drawer[label="Elements"] ribbon-button:not([slot="compact"])',
     )).map(button => button.getAttribute("label"))).toEqual([
-      "Paragraph", "Layouts", "Heading", "Details",
-      "List", "Table",
-      "Image", "Graphic", "Audio", "Website", "Video", "Formula", "Custom layout",
+      "Paragraph", "Heading", "List",
+      "Details", "Table",
+      "Image", "Graphic", "Audio", "Website", "Video",
     ])
   })
 
@@ -44,15 +44,16 @@ describe("list ribbon drawer", () => {
     expect(elements.layoutWidths.compact).toBe(128)
     expect(defaultSlot.hidden).toBe(true)
     expect(compactSlot.hidden).toBe(false)
-    expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Layouts"])
+    expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Details"])
     expect(getComputedStyle(primaryControls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
     expect(button("Text").submenu.map(item => typeof item === "string" ? item : item.label))
-      .toEqual(["Paragraph", "Heading", "List", "Details"])
+      .toEqual(["Paragraph", "Heading", "List"])
     expect(button("Media").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual([
-        "Image", "Audio", "Video", "Graphic", "Formula", "Website",
+        "Image", "Audio", "Video", "Graphic", "Website",
       ])
-    expect(button("Text").submenu).toContainEqual({label: "Details", action: "insert-details", icon: "Details"})
+    expect(button("Details").action).toBe("insert-details")
+    expect(button("Details").icon).toBe("Details")
     expect(button("Media").action).toBe("Image")
     expect(button("Media").dropdownOnClick).toBe(false)
 
@@ -69,6 +70,9 @@ describe("list ribbon drawer", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({
       detail: {label: "Image"},
     }))
+    await button("Details").updateComplete
+    button("Details").shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(listener.mock.calls.at(-1)![0].detail.label).toBe("insert-details")
   })
 
   it("groups heading insertions without dialog, form or HTML controls", async () => {
@@ -97,19 +101,6 @@ describe("list ribbon drawer", () => {
     ))).toEqual([])
   })
 
-  it("uses a native section type select for custom layouts", async () => {
-    const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Start"
-    ribbon.canSection = true
-    document.body.append(ribbon)
-    await ribbon.updateComplete
-
-    const select = ribbon.shadowRoot!.querySelector<HTMLSelectElement>(".custom-layout select")!
-    expect(select).not.toBeNull()
-    expect(Array.from(select.options).map(option => option.value)).toEqual([
-      "section", "div", "blockquote", "figure", "article", "aside", "header", "footer", "main", "nav", "search", "address",
-    ])
-  })
 
   it("renders the element controls with their appropriate expansion buttons on Start", async () => {
     const ribbon = new AppRibbon()
@@ -118,21 +109,20 @@ describe("list ribbon drawer", () => {
     await ribbon.updateComplete
 
     const elements = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
-    const buttons = ["Layouts", "Heading", "Details"].map(label =>
+    const buttons = ["Heading", "Details"].map(label =>
       elements.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!,
     )
     await Promise.all([elements.updateComplete, ...buttons.map(button => button.updateComplete)])
 
-    expect(elements.layoutWidths.expanded).toBe(356)
+    expect(elements.layoutWidths.expanded).toBeCloseTo(298.4)
     expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".elements-primary-controls")!).gridTemplateColumns)
-      .toBe("repeat(6, minmax(0, 1fr))")
+      .toBe("repeat(5, minmax(0, 1fr))")
     for(const button of buttons.filter(button => button.label === "Heading")) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
     }
     expect(buttons.find(button => button.label === "Details")!.shadowRoot!
       .querySelector(".submenu-trigger")).toBeNull()
-    expect(buttons.find(button => button.label === "Layouts")!.shadowRoot!
-      .querySelector('.submenu-trigger')).not.toBeNull()
+
   })
 
   it("merges enumeration into List while preserving every list style action", async () => {

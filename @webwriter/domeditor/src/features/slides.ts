@@ -1,7 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {documentLayoutMode, resetEmptyTemplateContent, isSlide, slideLayoutRole, slidesClass, slidesStyles} from "../document-layout"
+import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles} from "../document-layout"
 
 /** A CSS carousel with authored fragment links. Authoring and caret placement
  * belong to the editor; navigating and reading the saved deck need no script. */
@@ -228,7 +228,7 @@ export class SlidesFeature extends EditorFeature {
         }
         const viewport = this.viewport()
         if(viewport) viewport.replaceWith(...viewport.childNodes)
-        const paragraph = resetEmptyTemplateContent()
+        const paragraph = resetEmptyLayoutContent()
         if(paragraph) {
           $.move(paragraph)
           this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})

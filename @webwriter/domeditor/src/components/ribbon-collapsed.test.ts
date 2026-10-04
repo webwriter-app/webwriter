@@ -96,7 +96,7 @@ describe("collapsed ribbon file menu", () => {
     expect(format.shadowRoot!.querySelector('ribbon-combobox[name="font-family"]')).not.toBeNull()
     expect(format.shadowRoot!.querySelector('ribbon-combobox[name="font-size"]')).not.toBeNull()
     expect(format.groups[1].buttons.map(button => typeof button === "string" ? button : button.action))
-      .toEqual([...primaryDrawerMarkNames.map(name => `mark:${name}`), "mark:a"])
+      .toEqual(primaryDrawerMarkNames.map(name => `mark:${name}`))
     const commands = vi.fn()
     ribbon.addEventListener("ribbon-button-click", commands)
     format.shadowRoot!.querySelector<HTMLButtonElement>('[title="Increase font size"]')!.click()

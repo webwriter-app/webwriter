@@ -51,7 +51,8 @@ describe("formula toolbox controls", () => {
 
     const media = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[slot="compact"][label="Media"]')!
     const compactFormula = media.submenu.find(item => typeof item !== "string" && item.label === "Formula")
-    expect(typeof compactFormula === "object" && compactFormula.submenu).toEqual(formula.submenu)
+    expect(compactFormula).toBeUndefined()
+    expect(formula.closest('ribbon-drawer')?.getAttribute("label")).toBe("Marks")
   })
 
   it("keeps other menus available while a formula is selected", () => {

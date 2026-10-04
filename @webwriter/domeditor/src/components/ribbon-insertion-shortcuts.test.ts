@@ -6,7 +6,7 @@ import {SettingsPanel} from "./settings-panel"
 import type {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
 import {insertionMenuGroups} from "./ribbon-menu-config"
-import {elementDragType} from "./insertion-menu"
+import {elementDragType, ribbonInsertionDragType} from "./insertion-menu"
 
 const insertionShortcuts = [
   ["Heading", "heading", "1"],
@@ -63,14 +63,28 @@ describe("insertion ribbon shortcuts", () => {
     const down = new MouseEvent("mousedown", {bubbles: true, cancelable: true, composed: true})
     main.dispatchEvent(down)
     expect(down.defaultPrevented).toBe(false)
-    expect(drag(main).getData(elementDragType)).toBe("p")
+    const paragraphData = drag(main)
+    expect(paragraphData.getData(elementDragType)).toBe("p")
+    expect(paragraphData.getData(ribbonInsertionDragType)).toBe("element:p")
     expect(image.mock.calls.at(-1)?.[0]).toBe(main.querySelector(".button-icon"))
+    const headingButton = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Heading"]')!
+    const headingMain = headingButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    expect(headingMain.getAttribute("draggable")).toBe("true")
+    expect(drag(headingMain).getData(elementDragType)).toBe("h1")
+    const formulaButton = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Formula"]')!
+    await formulaButton.updateComplete
+    const formulaMain = formulaButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    expect(formulaMain.getAttribute("draggable")).toBe("true")
+    expect(drag(formulaMain).getData(ribbonInsertionDragType)).toBe("element:math")
 
     const menu = new RibbonMenu()
     menu.groups = insertionMenuGroups
     document.body.append(menu)
     await menu.updateComplete
     const headingToggle = menu.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!
+    const headingItem = headingToggle.previousElementSibling as HTMLButtonElement
+    expect(headingItem.getAttribute("draggable")).toBe("true")
+    expect(drag(headingItem).getData(elementDragType)).toBe("h1")
     headingToggle.click()
     await menu.updateComplete
     const heading2 = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".submenu button.item"))
@@ -130,7 +144,7 @@ describe("insertion ribbon shortcuts", () => {
       const command = commandById.get(`insert.${id}`)!
       expect(command.defaultShortcut?.(applePlatform)).toBe(`${applePlatform ? "Meta" : "Ctrl"}+${key}`)
       expect(settings.shortcuts[command.id]).toBe(`${applePlatform ? "Meta" : "Ctrl"}+${key}`)
-      const button = elements.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!
       const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
       expect(main.title).toBe(`${label} (${formatShortcut(settings.shortcuts[command.id])})`)
     }
@@ -140,8 +154,7 @@ describe("insertion ribbon shortcuts", () => {
     expect(elements.querySelector('ribbon-button[label="Section"]')).toBeNull()
     expect(settings.shortcuts["insert.paragraph"]).toBe("Alt+Shift+Enter")
     expect(settings.shortcuts).not.toHaveProperty("insert.section")
-    expect(elements.querySelector<RibbonButton>('ribbon-button[label="Layouts"]')
-      ?.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe("Layouts")
+    expect(elements.querySelector('ribbon-button[label="Layouts"]')).toBeNull()
   })
 
   it("uses changed configured shortcuts in insertion tooltips", async () => {
@@ -152,7 +165,7 @@ describe("insertion ribbon shortcuts", () => {
     const elements = ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Elements"]')!
 
     for(const [label, id] of [["Heading", "heading"], ["Image", "image"]] as const) {
-      const button = elements.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!
       const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
       expect(main.title).toBe(`${label} (${formatShortcut(settings.shortcuts[`insert.${id}`])})`)
     }

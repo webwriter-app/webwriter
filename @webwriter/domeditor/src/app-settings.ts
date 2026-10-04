@@ -141,7 +141,7 @@ export const appCommands: readonly AppCommand[] = [
 
 export type AppSettings = {
   language: string
-  defaultTemplate: DocumentLayoutMode
+  defaultLayout: DocumentLayoutMode
   updateDocumentLanguage: boolean
   disableAI: boolean
   showStyleToolbox: boolean
@@ -155,7 +155,7 @@ export type AppSettings = {
 export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
   return {
     language: "en",
-    defaultTemplate: "document",
+    defaultLayout: "document",
     updateDocumentLanguage: true,
     disableAI: false,
     showStyleToolbox: false,
@@ -175,7 +175,7 @@ export function loadAppSettings(): AppSettings {
   try {
     const stored = globalThis.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY)
     if(!stored) return defaults
-    const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number}
+    const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number; defaultTemplate?: DocumentLayoutMode}
     const shortcuts = value.shortcuts && typeof value.shortcuts === "object"
       ? Object.fromEntries(appCommands.map(command => [
         command.id,
@@ -205,8 +205,11 @@ export function loadAppSettings(): AppSettings {
     }
     const settings: AppSettings = {
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
-      defaultTemplate: value.defaultTemplate === "canvas" || value.defaultTemplate === "slides"
-        ? value.defaultTemplate : defaults.defaultTemplate,
+      defaultLayout: value.defaultLayout === "canvas" || value.defaultLayout === "slides"
+        ? value.defaultLayout
+        : value.defaultLayout === "document" ? "document"
+          : value.defaultTemplate === "canvas" || value.defaultTemplate === "slides" || value.defaultTemplate === "document"
+            ? value.defaultTemplate : defaults.defaultLayout,
       updateDocumentLanguage: typeof value.updateDocumentLanguage === "boolean"
         ? value.updateDocumentLanguage
         : defaults.updateDocumentLanguage,

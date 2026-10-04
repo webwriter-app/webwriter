@@ -735,11 +735,11 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
-  it.each(["canvas", "slides"] as const)("uses the selected %s template for File → New and keeps its fresh state clean", async mode => {
+  it.each(["canvas", "slides"] as const)("uses the selected %s layout for File → New and keeps its fresh state clean", async mode => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
-      detail: {...defaultAppSettings(), defaultTemplate: mode}, bubbles: true, composed: true,
+      detail: {...defaultAppSettings(), defaultLayout: mode}, bubbles: true, composed: true,
     }))
     const reload = vi.spyOn(host, "reloadDocument").mockImplementation(async () => {
       iframe.contentDocument!.body.innerHTML = "<p></p>"
@@ -759,23 +759,23 @@ describe("DomEditor iframe setup", () => {
     expect(host.isFreshDocumentUnchanged()).toBe(false)
   })
 
-  it.each(["document", "canvas", "slides"] as const)("creates an explicit %s template from the New submenu without changing the default", async mode => {
+  it.each(["document", "canvas", "slides"] as const)("creates an explicit %s layout from the New submenu without changing the default", async mode => {
     const {editor} = await mountEditor()
     const host = editor as any
-    host.settings = {...host.settings, defaultTemplate: "slides"}
+    host.settings = {...host.settings, defaultLayout: "slides"}
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
-    const apply = vi.spyOn(host, "applyDefaultTemplate").mockResolvedValue(undefined)
+    const apply = vi.spyOn(host, "applyDefaultLayout").mockResolvedValue(undefined)
     editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
       detail: {label: `new:${mode}`}, bubbles: true, composed: true,
     }))
     await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(mode, host.frameRevision))
     expect(reload).toHaveBeenCalledOnce()
-    expect(host.settings.defaultTemplate).toBe("slides")
+    expect(host.settings.defaultLayout).toBe("slides")
     expect(host.fileDirty).toBe(false)
   })
 
-  it("applies the saved default template to the first blank document", async () => {
-    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), defaultTemplate: "canvas"}))
+  it("applies the saved default layout to the first blank document", async () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), defaultLayout: "canvas"}))
     const execute = vi.spyOn(DomEditor.prototype, "execute").mockImplementation(async function(this: DomEditor, action) {
       if(action.type === "setDocumentLayout") this.shadowRoot!.querySelector("iframe")!.contentDocument!.body.classList.add("ww-canvas")
       return true
@@ -2643,7 +2643,7 @@ describe("DomEditor file actions", () => {
 
   it("restores a local deep link on startup from its retained handle, without a picker", async () => {
     history.replaceState({previous: true}, "", "/?other=keep&open=local%3Astored#anchor")
-    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings, defaultTemplate: "canvas"}))
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings, defaultLayout: "canvas"}))
     const file = new File(["<p>Linked local document</p>"], "Linked.html")
     const handle = {name: file.name, getFile: vi.fn().mockResolvedValue(file), createWritable: vi.fn(), queryPermission: vi.fn().mockResolvedValue("granted")}
     vi.spyOn(recentDocumentStorage, "readLocalDocumentReference").mockResolvedValue({id: "stored", title: file.name, openedAt: 1, kind: "local", handle})
@@ -2776,7 +2776,7 @@ describe("DomEditor file actions", () => {
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
   })
 
-  it("shows only accessible recently opened documents beside Templates and in the Open submenu", async () => {
+  it("shows only accessible recently opened documents beside Layouts and in the Open submenu", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
     await host.recentDocumentsReady
@@ -2787,11 +2787,11 @@ describe("DomEditor file actions", () => {
     host.recentDocuments = documents.map((document, index) => ({id: `recent-${index}`, title: document.title, openedAt: 100 - index, kind: "backend", documentId: document.id, apiBaseUrl: host.backendSession.apiBaseUrl, userId: "ada"}))
     await host.refreshRecentDocuments()
     await editor.updateComplete
-    const nav = editor.shadowRoot!.querySelector<HTMLElement>(".templates-documents")!
-    const entries = [...nav.querySelectorAll<HTMLButtonElement>(".templates-document")]
+    const nav = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-documents")!
+    const entries = [...nav.querySelectorAll<HTMLButtonElement>(".document-layout-document")]
     expect(entries.map(button => button.title)).toEqual(documents.slice(0, 10).map(document => document.title))
-    expect(nav.previousElementSibling?.classList.contains("template-cards")).toBe(true)
-    expect(editor.shadowRoot!.querySelector(".templates-heading #recent-documents-title")?.textContent).toBe("Recently opened")
+    expect(nav.previousElementSibling?.classList.contains("document-layout-cards")).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".document-layouts-heading #recent-documents-title")?.textContent).toBe("Recently opened")
     expect(nav.querySelector("h2")).toBeNull()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
@@ -2809,7 +2809,7 @@ describe("DomEditor file actions", () => {
     expect(nav.textContent).toContain("No recently opened documents")
     host.backendSession = null
     await editor.updateComplete
-    expect(nav.querySelector(".templates-document")).toBeNull()
+    expect(nav.querySelector(".document-layout-document")).toBeNull()
   })
 
   it("does not show unopened saved documents or deleted cloud documents as recent", async () => {
@@ -2822,7 +2822,7 @@ describe("DomEditor file actions", () => {
     host.recentDocuments = [{id: "recent", title: "Deleted", openedAt: 1, kind: "backend", documentId: "deleted", apiBaseUrl: host.backendSession.apiBaseUrl, userId: "ada"}]
     await host.refreshRecentDocuments()
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".templates-documents")!.textContent).toContain("No recently opened documents")
+    expect(editor.shadowRoot!.querySelector(".document-layouts-documents")!.textContent).toContain("No recently opened documents")
   })
 
   it("remembers successful local opens, reopens stored handles and hides revoked access", async () => {
@@ -2840,7 +2840,7 @@ describe("DomEditor file actions", () => {
     expect(reference).toBe(`local:${host.recentDocuments[0].id}`)
     host.storageLocation = "development-server"
     await editor.updateComplete
-    editor.shadowRoot!.querySelector<HTMLButtonElement>(".templates-document")!.click()
+    editor.shadowRoot!.querySelector<HTMLButtonElement>(".document-layout-document")!.click()
     await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(2))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
     expect(picker).toHaveBeenCalledOnce()
@@ -2850,8 +2850,8 @@ describe("DomEditor file actions", () => {
     handle.queryPermission.mockResolvedValue("denied")
     await host.refreshRecentDocuments()
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".templates-document")).toBeNull()
-    expect(editor.shadowRoot!.querySelector(".templates-documents")!.textContent).toContain("No recently opened documents")
+    expect(editor.shadowRoot!.querySelector(".document-layout-document")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-documents")!.textContent).toContain("No recently opened documents")
   })
 
   it("records cloud opens for their account and orders history by successful opening", async () => {
@@ -2870,7 +2870,7 @@ describe("DomEditor file actions", () => {
     expect(host.recentDocuments[0]).toMatchObject({kind: "backend", apiBaseUrl: "https://storage.example/api", userId: "ada"})
     host.backendClient = null
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".templates-document")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layout-document")).toBeNull()
   })
 
   it("does not add cancelled or failed local opens to recent history", async () => {
@@ -2893,14 +2893,14 @@ describe("DomEditor file actions", () => {
     const host = editor as any
     await host.recentDocumentsReady
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector('.templates-document')?.getAttribute("title")).toBe("Lesson.html")
+    expect(editor.shadowRoot!.querySelector('.document-layout-document')?.getAttribute("title")).toBe("Lesson.html")
     expect(host.frameDocumentHTML).toBeNull()
     expect(host.fileHandle).toBeNull()
     handle.queryPermission.mockResolvedValue("prompt")
     const {editor: restored} = await mountEditor()
     await (restored as any).recentDocumentsReady
     await restored.updateComplete
-    expect(restored.shadowRoot!.querySelector('.templates-document')).toBeNull()
+    expect(restored.shadowRoot!.querySelector('.document-layout-document')).toBeNull()
   })
 
   it.each([true, false])("deletes saved documents without opening them (current: %s)", async current => {
@@ -3118,7 +3118,7 @@ describe("DomEditor.execute()", () => {
     expect((reloaded as any).consoleOpen).toBe(true)
     expect(restored.pinned).toBe(true)
     expect(restored.tab).toBe("Packages")
-    expect(reloaded.shadowRoot!.querySelector<HTMLElement>(".templates-panel")!.inert).toBe(true)
+    expect(reloaded.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!.inert).toBe(true)
     const restoredToolbox = reloaded.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     restoredToolbox.selectTool("Edit")
     await restoredToolbox.updateComplete
@@ -3191,7 +3191,7 @@ describe("DomEditor.execute()", () => {
     await console.updateComplete
     expect((editor as any).consoleOpen).toBe(true)
     expect(console.pinned).toBe(true)
-    expect(editor.shadowRoot!.querySelector<HTMLElement>(".templates-panel")!.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!.inert).toBe(true)
     ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: defaultAppSettings()}))
     await editor.updateComplete
     await console.updateComplete
@@ -3199,12 +3199,12 @@ describe("DomEditor.execute()", () => {
     expect((editor as any).consoleOpen).toBe(false)
   })
 
-  it.each(["HTML", "Packages", "Tests"])("closes Templates when opening the developer console on %s", async tab => {
+  it.each(["HTML", "Packages", "Tests"])("closes Layouts when opening the developer console on %s", async tab => {
     const {editor} = await mountEditor()
     vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
     ;(editor as any).consoleTab = tab
-    const templates = editor.shadowRoot!.querySelector<HTMLElement>(".templates-panel")!
-    expect(templates.inert).toBe(false)
+    const layoutsPanel = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!
+    expect(layoutsPanel.inert).toBe(false)
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
@@ -3212,8 +3212,8 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect((editor as any).consoleOpen).toBe(true)
     expect((editor as any).consoleTab).toBe(tab)
-    expect(templates.inert).toBe(true)
-    expect(templates.getAttribute("aria-hidden")).toBe("true")
+    expect(layoutsPanel.inert).toBe(true)
+    expect(layoutsPanel.getAttribute("aria-hidden")).toBe("true")
   })
 
   it("keeps package tools and checks in the bottom console and protects pending HTML across tabs", async () => {
@@ -4691,7 +4691,7 @@ describe("DomEditor.execute()", () => {
     expect(empty.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")).not.toContain("unsafe-eval")
   })
 
-  it("adds the canvas template runtime only when needed and trusts its nonce", async () => {
+  it("adds the canvas layout runtime only when needed and trusts its nonce", async () => {
     const {editor, iframe} = await mountEditor()
     const source = iframe.contentDocument!
     source.body.className = "ww-canvas"
@@ -5075,7 +5075,7 @@ describe("DomEditor.execute()", () => {
     }
   })
 
-  it("keeps the full-width Templates bar in every template and reflects live conversion availability", async () => {
+  it("keeps the full-width Layouts bar in every layout and reflects live conversion availability", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
@@ -5087,8 +5087,8 @@ describe("DomEditor.execute()", () => {
         }}, source: editorWindow,
       }))
       await editor.updateComplete
-      const bar = editor.shadowRoot!.querySelector<HTMLElement>(".templates-bar")!
-      expect(bar.querySelector("h2")!.textContent).toBe("Templates")
+      const bar = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-bar")!
+      expect(bar.querySelector("h2")!.textContent).toBe("Layouts")
       const cards = Array.from(bar.querySelectorAll<HTMLButtonElement>("button[data-mode]"))
       expect(cards.map(card => card.dataset.mode)).toEqual(["document", "canvas", "slides"])
       expect(cards.filter(card => card.getAttribute("aria-pressed") === "true").map(card => card.dataset.mode)).toEqual([mode])
@@ -5100,11 +5100,11 @@ describe("DomEditor.execute()", () => {
         expect(cards.find(card => card.dataset.mode === (mode === "canvas" ? "slides" : "canvas"))!.disabled).toBe(false)
       }
     }
-    expect(editor.shadowRoot!.querySelector(".templates-bar")).not.toBeNull()
-    expect(editor.querySelector(".templates-bar")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).not.toBeNull()
+    expect(editor.querySelector(".document-layouts-bar")).toBeNull()
   })
 
-  it("keeps Templates visible when synchronization reapplies the document language", async () => {
+  it("keeps Layouts visible when synchronization reapplies the document language", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
     const root = iframe.contentDocument!.documentElement
@@ -5112,11 +5112,11 @@ describe("DomEditor.execute()", () => {
     root.setAttribute("lang", root.getAttribute("lang")!)
     await new Promise(resolve => setTimeout(resolve, 50))
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert])")).not.toBeNull()
     expect((editor as any).documentChangeSequence).toBe(revision)
   })
 
-  it("ignores editor resource initialization when deciding whether to dismiss Templates", async () => {
+  it("ignores editor resource initialization when deciding whether to dismiss Layouts", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
     const style = iframe.contentDocument!.createElement("style")
@@ -5127,36 +5127,36 @@ describe("DomEditor.execute()", () => {
     style.setAttribute("media", "screen")
     await new Promise(resolve => setTimeout(resolve, 50))
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert])")).not.toBeNull()
     expect((editor as any).fileDirty).toBe(false)
   })
 
-  it("hides Templates on the first authored edit and keeps it hidden after undoing that edit", async () => {
+  it("hides Layouts on the first authored edit and keeps it hidden after undoing that edit", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
     const body = iframe.contentDocument!.body
     body.innerHTML = '<p class="◆ ◆empty-selected"></p>'
     await new Promise(resolve => setTimeout(resolve, 0))
-    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).not.toBeNull()
     body.firstElementChild!.textContent = "First edit"
     await vi.waitFor(() => {
       expect((editor as any).fileDirty).toBe(true)
-      expect((editor as any).templatesDismissed).toBe(true)
-      expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull()
+      expect((editor as any).documentLayoutsDismissed).toBe(true)
+      expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).toBeNull()
     })
     body.firstElementChild!.textContent = ""
     await new Promise(resolve => setTimeout(resolve, 0))
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).toBeNull()
   })
 
-  it.each([false, true])("keeps the initial template clean and the pane open across repeated template switches (isolated frame: %s)", async isolated => {
+  it.each([false, true])("keeps the initial layout clean and the pane open across repeated layout switches (isolated frame: %s)", async isolated => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
     const doc = iframe.contentDocument!
     doc.documentElement.id = "ww9b905a62-994a-43a6-b8a4-eae2d166b55c"
-    host.freshTemplateSnapshot = null
+    host.freshDocumentLayoutSnapshot = null
     const snapshot = () => {
       if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
         data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
@@ -5174,28 +5174,28 @@ describe("DomEditor.execute()", () => {
       return true
     })
     for(const mode of ["canvas", "slides", "document", "canvas"]) {
-      editor.shadowRoot!.querySelector<HTMLButtonElement>(`.templates-bar [data-mode="${mode}"]`)!.click()
-      await vi.waitFor(() => expect(host.templateConversionCount).toBe(0))
+      editor.shadowRoot!.querySelector<HTMLButtonElement>(`.document-layouts-bar [data-mode="${mode}"]`)!.click()
+      await vi.waitFor(() => expect(host.documentLayoutConversionCount).toBe(0))
       snapshot()
       expect(host.documentLayoutError).toBe("")
       expect(host.isFreshDocumentUnchanged()).toBe(true)
       expect(host.fileDirty).toBe(false)
-      expect(host.templatesDismissed).toBe(false)
+      expect(host.documentLayoutsDismissed).toBe(false)
       doc.querySelector("p")!.innerHTML = "<br>"
       doc.body.classList.add("◆empty-selected")
       snapshot()
       await new Promise(resolve => setTimeout(resolve, 0))
       await editor.updateComplete
-      expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+      expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert])")).not.toBeNull()
       expect(host.fileDirty).toBe(false)
     }
     doc.querySelector("p")!.textContent = "An authored edit"
     snapshot()
-    await vi.waitFor(() => expect(host.templatesDismissed).toBe(true))
+    await vi.waitFor(() => expect(host.documentLayoutsDismissed).toBe(true))
     expect(host.fileDirty).toBe(true)
   })
 
-  it.each([false, true])("keeps an empty canvas clean and Templates open with or without a paragraph (isolated frame: %s)", async isolated => {
+  it.each([false, true])("keeps an empty canvas clean and Layouts open with or without a paragraph (isolated frame: %s)", async isolated => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
@@ -5216,8 +5216,8 @@ describe("DomEditor.execute()", () => {
       host.documentLayout = {...host.documentLayout, mode: "canvas"}
       return true
     })
-    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!.click()
-    await vi.waitFor(() => expect(host.templateConversionCount).toBe(0))
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.document-layouts-bar [data-mode="canvas"]')!.click()
+    await vi.waitFor(() => expect(host.documentLayoutConversionCount).toBe(0))
     snapshot()
     const initial = host.authoredDocumentSnapshot()
     for(const html of ["", "<p></p>", '<p class="◆ ◆empty-selected"><br></p>',
@@ -5229,7 +5229,7 @@ describe("DomEditor.execute()", () => {
       expect(host.authoredDocumentSnapshot()).toBe(initial)
       expect(host.isFreshDocumentUnchanged()).toBe(true)
       expect(host.fileDirty).toBe(false)
-      expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+      expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert])")).not.toBeNull()
       expect(doc.body.innerHTML).toBe(html)
     }
     for(const html of ['<p style="color: red"></p>', '<p id="anchor"></p>', '<p><br class="authored"></p>', '<!--keep-->',
@@ -5238,11 +5238,11 @@ describe("DomEditor.execute()", () => {
       snapshot()
       await vi.waitFor(() => expect(host.fileDirty).toBe(true))
       expect(host.isFreshDocumentUnchanged()).toBe(false)
-      expect(host.templatesDismissed).toBe(true)
+      expect(host.documentLayoutsDismissed).toBe(true)
     }
   })
 
-  it.each([false, true])("keeps concurrent authored edits dirty during template conversion (isolated frame: %s)", async isolated => {
+  it.each([false, true])("keeps concurrent authored edits dirty during layout conversion (isolated frame: %s)", async isolated => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
@@ -5252,58 +5252,58 @@ describe("DomEditor.execute()", () => {
       host.editorOpaque = true
       vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: iframe.contentDocument!.documentElement.outerHTML}))
     }
-    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!.click()
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.document-layouts-bar [data-mode="canvas"]')!.click()
     iframe.contentDocument!.body.classList.add("ww-canvas")
     iframe.contentDocument!.body.innerHTML = "<p>Typed while converting</p>"
     await new Promise(resolve => setTimeout(resolve, 0))
     complete(true)
-    await vi.waitFor(() => expect(host.templateConversionCount).toBe(0))
+    await vi.waitFor(() => expect(host.documentLayoutConversionCount).toBe(0))
     expect(host.fileDirty).toBe(true)
     expect(host.isFreshDocumentUnchanged()).toBe(false)
-    expect(host.templatesDismissed).toBe(true)
+    expect(host.documentLayoutsDismissed).toBe(true)
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(false))
     expect(host.confirmDiscardChanges()).toBe(false)
   })
 
-  it("keeps Templates visible for conversion mutations, then hides it on the next edit", async () => {
+  it("keeps Layouts visible for conversion mutations, then hides it on the next edit", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
     let complete!: (result: boolean) => void
     vi.spyOn(editor, "execute").mockImplementation(() => new Promise(resolve => { complete = resolve }))
-    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!.click()
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.document-layouts-bar [data-mode="canvas"]')!.click()
     iframe.contentDocument!.body.classList.add("ww-canvas")
     iframe.contentDocument!.body.innerHTML = '<p style="position:absolute"></p>'
     await new Promise(resolve => setTimeout(resolve, 0))
     complete(true)
-    await vi.waitFor(() => expect((editor as any).templateConversionCount).toBe(0))
-    expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).not.toBeNull()
+    await vi.waitFor(() => expect((editor as any).documentLayoutConversionCount).toBe(0))
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).not.toBeNull()
     iframe.contentDocument!.body.firstElementChild!.textContent = "Edit"
-    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull())
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).toBeNull())
   })
 
-  it("hides Templates when formatting empty content", async () => {
+  it("hides Layouts when formatting empty content", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
     const paragraph = iframe.contentDocument!.createElement("p")
     iframe.contentDocument!.body.append(paragraph)
     paragraph.style.color = "red"
-    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull())
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).toBeNull())
   })
 
-  it("dismisses Templates with its close button and restores editor focus", async () => {
+  it("dismisses Layouts with its close button and restores editor focus", async () => {
     const {editor, iframe} = await mountEditor()
     const focus = vi.spyOn(iframe, "focus")
-    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-close[aria-label="Hide templates"]')!.click()
-    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert]) .templates-bar")).toBeNull())
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.document-layouts-close[aria-label="Hide layouts"]')!.click()
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).toBeNull())
     expect(focus).toHaveBeenCalledWith({preventScroll: true})
-    expect(editor.shadowRoot!.querySelector(".templates-bar")).not.toBeNull()
-    expect(editor.shadowRoot!.querySelector(".templates-panel")!.getAttribute("aria-hidden")).toBe("true")
+    expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel")!.getAttribute("aria-hidden")).toBe("true")
     expect(editor.shadowRoot!.querySelector("dom-editor-toolbox")).not.toBeNull()
   })
 
-  it("keeps native pointer focus in the editor when pressing a bottom template card", async () => {
+  it("keeps native pointer focus in the editor when pressing a bottom layout card", async () => {
     const {editor, iframe} = await mountEditor()
-    const button = editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!
+    const button = editor.shadowRoot!.querySelector<HTMLButtonElement>('.document-layouts-bar [data-mode="canvas"]')!
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     iframe.focus()
     for(const type of ["pointerdown", "mousedown"]) {
@@ -5319,12 +5319,12 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
   })
 
-  it.each([true, false])("focuses the editor only after a successful template switch: %s", async changed => {
+  it.each([true, false])("focuses the editor only after a successful layout switch: %s", async changed => {
     const {editor, iframe} = await mountEditor()
     let complete!: (value: boolean) => void
     vi.spyOn(editor, "execute").mockImplementation(() => new Promise(resolve => { complete = resolve }))
     const focus = vi.spyOn(iframe, "focus")
-    const button = editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!
+    const button = editor.shadowRoot!.querySelector<HTMLButtonElement>('.document-layouts-bar [data-mode="canvas"]')!
     button.focus()
     button.click()
     expect(focus).not.toHaveBeenCalled()
@@ -5336,7 +5336,7 @@ describe("DomEditor.execute()", () => {
     else expect(focus).not.toHaveBeenCalled()
   })
 
-  it("switches templates immediately without confirmation", async () => {
+  it("switches document layouts immediately without confirmation", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     window.dispatchEvent(new MessageEvent("message", {
@@ -5368,7 +5368,7 @@ describe("DomEditor.execute()", () => {
     })
   })
 
-  it("uses a document template as the breadcrumb tree root and exposes the Document toolbox", async () => {
+  it("uses a document layout as the breadcrumb tree root and exposes the Document toolbox", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = '<demo-widget role="document"><p>Slide</p></demo-widget>'
     await Promise.resolve()

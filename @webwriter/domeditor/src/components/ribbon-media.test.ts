@@ -109,7 +109,7 @@ describe("media ribbon drawer", () => {
     await (menu as unknown as {updateComplete: Promise<unknown>}).updateComplete
     const labels = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('.item-row > .item'))
       .map(option => option.textContent?.trim())
-    expect(labels).toEqual(["Image", "Audio", "Video", "Graphic", "Formula", "Website"])
+    expect(labels).toEqual(["Image", "Audio", "Video", "Graphic", "Website"])
     menu.shadowRoot!.querySelector<HTMLButtonElement>(`.item[title="${label}"]`)!.click()
     expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {label}}))
 

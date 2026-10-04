@@ -2,7 +2,7 @@ import {CanvasViewer, canvasControlsStyles} from "../canvas-viewer.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {canvasClass, canvasStyles, documentLayoutMode, resetEmptyTemplateContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasClass, canvasStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type Item = HTMLElement | SVGSVGElement
 type Point = {x: number, y: number}
@@ -151,7 +151,7 @@ export class CanvasFeature extends EditorFeature {
           clearInlinePlacement(item)
           if(["absolute", "fixed"].includes(getComputedStyle(item).position)) item.style.position = "static"
         }
-        const paragraph = resetEmptyTemplateContent()
+        const paragraph = resetEmptyLayoutContent()
         if(paragraph) {
           $.move(paragraph)
           this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})

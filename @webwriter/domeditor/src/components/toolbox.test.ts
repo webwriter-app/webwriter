@@ -291,7 +291,7 @@ describe("toolbox", () => {
     expect(edit.getAttribute("aria-label")).toBe("Edit")
   })
 
-  it("offers template switching in the Document toolbox for a selected document root", async () => {
+  it("offers layout switching in the Document toolbox for a selected document root", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectionPath = [{path: [0], name: "Graphic", icon: "Graphic"}]
     toolbox.documentSelected = true
@@ -309,7 +309,7 @@ describe("toolbox", () => {
     expect(buttons.map(button => button.action)).toEqual(["set-document-template:body"])
   })
 
-  it("shows the active template as a dropdown card and emits conversion requests", async () => {
+  it("shows the active layout as a dropdown card and emits conversion requests", async () => {
     const toolbox = await mountToolbox()
     toolbox.documentSelected = true
     toolbox.selectTool("Edit")
@@ -318,14 +318,14 @@ describe("toolbox", () => {
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[layout="document-layout"]')!
     const picker = drawer.querySelector<HTMLDetailsElement>("details")!
     const summary = picker.querySelector("summary")!
-    expect(drawer.label).toBe("Templates")
+    expect(drawer.label).toBe("Layouts")
     expect(picker.open).toBe(false)
     expect(summary.textContent).toContain("Document")
-    expect(summary.querySelector(".template-preview.document")).not.toBeNull()
+    expect(summary.querySelector(".document-layout-preview.document")).not.toBeNull()
     expect(drawer.textContent).toContain("Zoom: 100%")
     const choices = Array.from(drawer.querySelectorAll<HTMLButtonElement>(".document-layout-change"))
     expect(choices.map(button => button.dataset.mode)).toEqual(["canvas", "slides"])
-    expect(choices.every(button => button.querySelector('.template-preview[aria-hidden="true"]'))).toBe(true)
+    expect(choices.every(button => button.querySelector('.document-layout-preview[aria-hidden="true"]'))).toBe(true)
     summary.click()
     expect(picker.open).toBe(true)
     const request = vi.fn()

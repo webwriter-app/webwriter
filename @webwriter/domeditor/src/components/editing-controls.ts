@@ -20,7 +20,7 @@ import {
 import {widgetOptionValue, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
 import type {ElementAttributeState} from "../element-attributes"
 import type {LayoutSelectionState} from "../layouts"
-import "./layout-editor"
+import {insertMathStructureButtons} from "./ribbon-menu-config"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {
   graphicShapeOptions,
@@ -431,11 +431,12 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderLinkDropdown() {
+  protected renderLinkDropdown(active = true) {
     const href = markAttributeOptionsFor("a").find(option => option.name === "href")
     const download = this.markAttributes.a?.download
     return html`
       <div class="button-dropdown-form" role="group" aria-label="Link options">
+        <fieldset ?disabled=${!active || !this.canMark || this.math?.active}>
         ${href ? this.renderMarkAttribute("a", href) : ""}
         <div class="link-options" role="group" aria-label="Link behavior">
           <label class="mark-attribute">
@@ -456,6 +457,7 @@ export abstract class EditingControls extends LitElement {
             ${this.renderMarkAttribute("a", {name: "download", label: "Filename", placeholder: "Filename"})}
           </div>` : ""}
         </div>
+        </fieldset>
       </div>
     `
   }
@@ -515,7 +517,7 @@ export abstract class EditingControls extends LitElement {
           data-ribbon-input-persistent
           aria-label=${`Select ${option.label}`}
           .checked=${active}
-          ?disabled=${!this.canMark}
+          ?disabled=${!this.canMark || this.svgText}
           @change=${(event: Event) => {
             this.toggleSpanMark(mark)
             const input = event.currentTarget as HTMLInputElement
@@ -535,25 +537,35 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderSpanDropdown(selected: readonly MarkName[]) {
+    const linkActive = this.marks.includes("a")
     return html`
       <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
+        <div class="mark-dropdown-option" role="option" aria-selected=${linkActive}>
+          <input type="checkbox" data-ribbon-input-persistent aria-label="Select Link"
+            .checked=${linkActive} ?disabled=${!this.canMark || this.math?.active}
+            @change=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+              detail: {label: "mark:a", keepDrawerOpen: true}, bubbles: true, composed: true,
+            }))} />
+          <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("MarkLink")}</span>
+          <span class="mark-dropdown-option-name">Link</span>
+          ${this.commandShortcut("mark:a") ? html`<span class="mark-dropdown-shortcut">${this.commandShortcut("mark:a")}</span>` : ""}
+        </div>
+        ${this.renderLinkDropdown(linkActive)}
         ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
       </div>
     `
   }
 
-  protected renderLinkButton() {
+  protected renderFormulaButton() {
     return html`
       <ribbon-button
-        class="mark-link"
+        class="mark-formula"
         style="grid-column: 8; grid-row: 1"
-        toggle
-        label="Link"
-        action="mark:a"
-        icon="MarkLink"
-        .dropdown=${this.renderLinkDropdown()}
-        ?active=${this.marks.includes("a")}
-        ?disabled=${!this.canMark || this.math?.active}
+        label="Formula"
+        action="Formula"
+        icon="Formula"
+        shortcut=${this.commandShortcut("Formula")}
+        .submenu=${insertMathStructureButtons}
       ></ribbon-button>
     `
   }
@@ -562,19 +574,18 @@ export abstract class EditingControls extends LitElement {
     const selected = this.spanSelectedMarks().filter(mark =>
       this.spanGroupMembers().includes(mark)
     )
-    const first = selected.length ? this.markOption(selected[0]) : {label: "More", icon: "More"}
     return html`
       <ribbon-button
         class="mark-span"
         style="grid-column: 8; grid-row: 2"
         toggle
-        label=${first.label}
-        icon=${first.icon}
-        action="mark:span"
-        .selectionCount=${Math.max(0, selected.length - 1)}
+        label="Link"
+        icon="MarkLink"
+        action="mark:a"
+        .selectionCount=${selected.length}
         .dropdown=${this.renderSpanDropdown(selected)}
-        ?active=${selected.length > 0}
-        ?disabled=${!this.canMark || this.math?.active || this.svgText}
+        ?active=${this.marks.includes("a") || selected.length > 0}
+        ?disabled=${!this.canMark || this.math?.active}
       ></ribbon-button>
     `
   }
@@ -648,7 +659,7 @@ export abstract class EditingControls extends LitElement {
           icon="RemoveMarks"
           ?disabled=${!this.canMark}
         ></ribbon-button>
-        ${this.renderLinkButton()}
+        ${this.renderFormulaButton()}
         ${this.renderSpanButton()}
       </ribbon-drawer>
     `
@@ -2681,13 +2692,6 @@ export abstract class EditingControls extends LitElement {
       ? elementStyleCategories.find(category => category.label === drawer.label)
       : undefined
     if(styleCategory) return this.renderElementStyleDrawer(styleCategory)
-    if(drawer.label === "Grid layout" || drawer.label === "Flex layout") return html`
-      <ribbon-drawer label=${drawer.label} icon="Layout" layout="element-style" expandable>
-        ${this.sectionSelected ? this.renderSectionTypeSelect() : nothing}
-        ${this.layoutError ? html`<p role="alert">${this.layoutError}</p>` : nothing}
-        ${this.layout ? html`<layout-editor .state=${this.layout} .styleState=${this.layout.style}></layout-editor>` : nothing}
-      </ribbon-drawer>
-    `
     if(drawer.label === "Versions") return this.renderHistoryVersionsDrawer()
     if(drawer.label === "Marks") return this.renderMarkDrawer()
     if(drawer.label === "Section") return this.renderSectionDrawer()

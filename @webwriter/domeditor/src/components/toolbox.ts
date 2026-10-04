@@ -8,7 +8,7 @@ import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
-import {layoutPreviewStyles, renderTemplateCard, renderTemplatePreview, templateLabel, templateModes} from "./template-preview"
+import {documentLayoutPreviewStyles, renderDocumentLayoutCard, renderDocumentLayoutPreview, documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 
 export type ToolboxTool = "Edit" | "Style" | "AI" | "Review"
@@ -213,6 +213,10 @@ export class DomEditorToolbox extends EditingControls {
       background: #f2f2f2;
     }
 
+    .toolbox-tab[data-active]:has([data-tool="Review"]) {
+      margin-right: 4px;
+    }
+
     :host([active-tool]) .toolbox-tabs {
       padding-left: 0;
     }
@@ -408,20 +412,20 @@ export class DomEditorToolbox extends EditingControls {
       font-size: 0.75rem;
     }
 
-    ${layoutPreviewStyles}
+    ${documentLayoutPreviewStyles}
 
     .document-layout-zoom { margin: 0; }
-    .template-picker { position: relative; }
-    .template-picker summary { position: relative; list-style: none; }
-    .template-picker summary::-webkit-details-marker { display: none; }
-    .template-picker summary::after {
+    .document-layout-picker { position: relative; }
+    .document-layout-picker summary { position: relative; list-style: none; }
+    .document-layout-picker summary::-webkit-details-marker { display: none; }
+    .document-layout-picker summary::after {
       content: "⌄";
       position: absolute;
       right: 0.5rem;
       bottom: 0.3rem;
       font-size: 1rem;
     }
-    .template-picker[open] summary::after { content: "⌃"; }
+    .document-layout-picker[open] summary::after { content: "⌃"; }
     .document-layout-choices {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -496,7 +500,6 @@ export class DomEditorToolbox extends EditingControls {
 
   private get editTypeLabel() {
     if(this.documentSelected) return "Document"
-    if(this.layout && (!this.layout.item || !this.media && !this.dialog && !this.table?.active && !this.graphic?.active && this.elementAttributes?.localName !== "details")) return this.layout.kind === "grid" ? "Grid layout" : this.layout.kind === "columns" ? "Layout" : "Flex layout"
     if(this.sectionSelected) return "Section"
     if(this.headingGroup) return "Heading group"
     if(this.listType === "ol") return "List"
@@ -612,21 +615,21 @@ export class DomEditorToolbox extends EditingControls {
     const drawers = super.renderDrawers()
     if(this.activeTool === "Edit" && this.documentSelected) {
       drawers.push(html`
-        <ribbon-drawer label="Templates" icon="Layout" layout="document-layout">
+        <ribbon-drawer label="Layouts" icon="Layout" layout="document-layout">
           <div class="document-layout-controls">
-            <details class="template-picker" @keydown=${(event: KeyboardEvent) => {
+            <details class="document-layout-picker" @keydown=${(event: KeyboardEvent) => {
               if(event.key !== "Escape") return
               const picker = event.currentTarget as HTMLDetailsElement
               picker.open = false
               picker.querySelector("summary")?.focus()
             }}>
-              <summary class="layout-preset" aria-label=${`Current template: ${templateLabel(this.documentLayout.mode)}. Choose template`}>
-                ${renderTemplatePreview(this.documentLayout.mode)}
+              <summary class="layout-preset" aria-label=${`Current layout: ${documentLayoutLabel(this.documentLayout.mode)}. Choose layout`}>
+                ${renderDocumentLayoutPreview(this.documentLayout.mode)}
               </summary>
-              <div class="document-layout-choices" role="group" aria-label="Templates">
-                ${templateModes.filter(mode => mode !== this.documentLayout.mode).map(mode => renderTemplateCard(
+              <div class="document-layout-choices" role="group" aria-label="Layouts">
+                ${documentLayoutModes.filter(mode => mode !== this.documentLayout.mode).map(mode => renderDocumentLayoutCard(
                   mode, this.documentLayout, this.historyState.preview !== null || this.htmlPending,
-                  selected => this.selectDocumentTemplate(selected),
+                  selected => this.selectDocumentLayout(selected),
                 ))}
               </div>
             </details>
@@ -658,8 +661,8 @@ export class DomEditorToolbox extends EditingControls {
     return drawers
   }
 
-  private selectDocumentTemplate(mode: DocumentLayoutMode) {
-    const picker = this.renderRoot.querySelector<HTMLDetailsElement>(".template-picker")
+  private selectDocumentLayout(mode: DocumentLayoutMode) {
+    const picker = this.renderRoot.querySelector<HTMLDetailsElement>(".document-layout-picker")
     if(picker) {
       picker.open = false
       picker.querySelector("summary")?.focus()

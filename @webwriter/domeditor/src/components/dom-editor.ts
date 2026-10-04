@@ -3,7 +3,7 @@ import {ribbonIcon} from "../ribbon-icons"
 import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
 import "./math-keyboard"
-import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
+import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, nothing, type PropertyValues } from "lit"
 import {guard} from "lit/directives/guard.js"
@@ -174,7 +174,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {canvasStyles, slidesStyles, documentLayoutMode, resetEmptyTemplateContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasStyles, slidesStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -434,7 +434,7 @@ export class DomEditor extends LitElement {
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
-    templatesDismissed: {attribute: false, state: true},
+    documentLayoutsDismissed: {attribute: false, state: true},
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     savedDocuments: {attribute: false, state: true},
@@ -612,8 +612,8 @@ export class DomEditor extends LitElement {
   private frameDocumentHTML: string | null = null
   private fileName = ""
   private fileDirty = false
-  private templatesDismissed = false
-  private templateConversionCount = 0
+  private documentLayoutsDismissed = false
+  private documentLayoutConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
   private pendingCloudBundleSave: {client: BackendClient, id: string} | null = null
@@ -671,8 +671,8 @@ export class DomEditor extends LitElement {
   private historyDocumentTransitionCount = 0
   private historyError = ""
   private settings: AppSettings = loadAppSettings()
-  private freshTemplateSnapshot: string | null = null
-  private initialTemplateStarted = false
+  private freshDocumentLayoutSnapshot: string | null = null
+  private initialDocumentLayoutStarted = false
   private breadcrumbVisible = true
   private aiToolboxOpen = false
   private motionStylesheet: {document: Document, sheet: CSSStyleSheet} | null = null
@@ -917,17 +917,17 @@ export class DomEditor extends LitElement {
       font: 0.7rem system-ui, sans-serif;
     }
 
-    .templates-panel {
+    .document-layouts-panel {
       grid-row: 5;
       grid-column: 1 / -1;
       display: grid;
       grid-template-rows: 1fr;
       transition: var(--ww-ui-transition, grid-template-rows 180ms ease);
     }
-    .templates-panel[inert] { grid-template-rows: 0fr; }
-    .templates-clip { min-height: 0; overflow: hidden; }
-    .templates-panel[inert] .templates-bar { transform: translateY(100%); }
-    .templates-bar {
+    .document-layouts-panel[inert] { grid-template-rows: 0fr; }
+    .document-layouts-clip { min-height: 0; overflow: hidden; }
+    .document-layouts-panel[inert] .document-layouts-bar { transform: translateY(100%); }
+    .document-layouts-bar {
       box-sizing: border-box;
       transition: var(--ww-ui-transition, transform 180ms ease);
       min-width: 0;
@@ -937,27 +937,27 @@ export class DomEditor extends LitElement {
       color: #2f3742;
       font: 0.75rem/1.25 system-ui, sans-serif;
     }
-    .templates-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; min-height: 1.45rem; }
-    .templates-bar .recent-documents-title {width: min(20.45rem, calc(100% - 6rem)); margin-left: auto; box-sizing: border-box; padding-right: 1.5rem}
-    .templates-close { position: absolute; right: 0; border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
-    .templates-close:hover { background: #e2e5e9; }
-    .templates-close:focus-visible { outline: 2px solid #5e91bf; outline-offset: 2px; }
-    .templates-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
-    .templates-bar .template-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 10rem)); gap: 0.45rem; }
-    .templates-bar .layout-preset { min-height: 0; }
-    .templates-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
-    .templates-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
-    .templates-documents {margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
-    .templates-documents ul {display: grid; grid-template-rows: repeat(5, 1.6rem); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
-    .templates-documents li {min-width: 0}
-    .templates-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
-    .templates-document svg {width: .9rem; height: .9rem; flex-shrink: 0; color: #526b86}
-    .templates-document span {overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
-    .templates-document[aria-current="true"] {background: #e0ebf8}
-    .templates-documents button:hover:not(:disabled) {background: #e3e3e3}
-    .templates-documents button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
-    .templates-documents button:disabled {opacity: .5; cursor: default}
-    .templates-documents p {margin: .3rem 0; color: #687383; font-size: .7rem}
+    .document-layouts-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; min-height: 1.45rem; }
+    .document-layouts-bar .recent-documents-title {width: min(20.45rem, calc(100% - 6rem)); margin-left: auto; box-sizing: border-box; padding-right: 1.5rem}
+    .document-layouts-close { position: absolute; right: 0; border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
+    .document-layouts-close:hover { background: #e2e5e9; }
+    .document-layouts-close:focus-visible { outline: 2px solid #5e91bf; outline-offset: 2px; }
+    .document-layouts-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
+    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 10rem)); gap: 0.45rem; }
+    .document-layouts-bar .layout-preset { min-height: 0; }
+    .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
+    .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
+    .document-layouts-documents {margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
+    .document-layouts-documents ul {display: grid; grid-template-rows: repeat(5, 1.6rem); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
+    .document-layouts-documents li {min-width: 0}
+    .document-layout-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
+    .document-layout-document svg {width: .9rem; height: .9rem; flex-shrink: 0; color: #526b86}
+    .document-layout-document span {overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
+    .document-layout-document[aria-current="true"] {background: #e0ebf8}
+    .document-layouts-documents button:hover:not(:disabled) {background: #e3e3e3}
+    .document-layouts-documents button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
+    .document-layouts-documents button:disabled {opacity: .5; cursor: default}
+    .document-layouts-documents p {margin: .3rem 0; color: #687383; font-size: .7rem}
 
     iframe {
       display: block;
@@ -1760,7 +1760,7 @@ export class DomEditor extends LitElement {
       const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
         if(mutations.some(mutation => mutation.type === "childList")) {
           this.documentTree = this.buildDocumentTree()
-          observeTemplates(mutations)
+          observeLayouts(mutations)
         }
         const hasAuthoredMutation = mutations.some(mutation => isCurrentTarget(mutation.target) && this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
@@ -1768,7 +1768,7 @@ export class DomEditor extends LitElement {
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
-            if(this.templateConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.templatesDismissed = true
+            if(this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
           }
           if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
@@ -1776,7 +1776,7 @@ export class DomEditor extends LitElement {
       // Template contents are separate trees. Release removed fragments and
       // retain any queued records when the observation roots need rebuilding.
       let observedTemplates = new Set<DocumentFragment>()
-      const observeTemplates = (mutations: MutationRecord[] = []) => {
+      const observeLayouts = (mutations: MutationRecord[] = []) => {
         const roots: ParentNode[] = [this.editorDocument!.documentElement]
         const templates = new Set<DocumentFragment>()
         for(let index = 0; index < roots.length; index++) {
@@ -1801,7 +1801,7 @@ export class DomEditor extends LitElement {
       this.documentTreeObserver = observer
       try {
         observer.observe(this.editorDocument?.documentElement ?? body, observationOptions)
-        observeTemplates()
+        observeLayouts()
       }
       catch {
         // A preliminary iframe load can expose a body from the document being
@@ -1907,10 +1907,10 @@ export class DomEditor extends LitElement {
             this.focusEditor()
           }
           editorReadyResolve?.(editorWindow)
-          if(this.frameRevision === 0 && this.frameDocumentHTML === null && !this.initialTemplateStarted
-            && !new URL(location.href).searchParams.has("open") && this.settings.defaultTemplate !== "document") {
-            this.initialTemplateStarted = true
-            void this.applyDefaultTemplate(this.settings.defaultTemplate, 0).catch(error => this.reportFileError(error))
+          if(this.frameRevision === 0 && this.frameDocumentHTML === null && !this.initialDocumentLayoutStarted
+            && !new URL(location.href).searchParams.has("open") && this.settings.defaultLayout !== "document") {
+            this.initialDocumentLayoutStarted = true
+            void this.applyDefaultLayout(this.settings.defaultLayout, 0).catch(error => this.reportFileError(error))
           }
           if(this.isConnected && this.editorWindow === editorWindow && this.stylesVisible()) this.queueElementStyleRefresh()
         },
@@ -1921,7 +1921,7 @@ export class DomEditor extends LitElement {
         if(this.dirtyTrackingMutationPending) {
           this.dirtyTrackingMutationPending = false
           this.fileDirty = !this.isFreshDocumentUnchanged()
-          if(this.fileDirty && this.templateConversionCount === 0) this.templatesDismissed = true
+          if(this.fileDirty && this.documentLayoutConversionCount === 0) this.documentLayoutsDismissed = true
         }
         this.dirtyTrackingTimer = undefined
       }, 0)
@@ -1967,7 +1967,7 @@ export class DomEditor extends LitElement {
     return root.outerHTML
   }
 
-  private pristineTemplateSnapshot(snapshot: string | null) {
+  private pristineDocumentLayoutSnapshot(snapshot: string | null) {
     if(snapshot === null) return null
     const doc = new DOMParser().parseFromString(snapshot, "text/html")
     for(const style of doc.head.querySelectorAll("style")) {
@@ -2002,11 +2002,11 @@ export class DomEditor extends LitElement {
       }
       element.removeAttribute("style")
     }
-    if(!resetEmptyTemplateContent(body)) return null
+    if(!resetEmptyLayoutContent(body)) return null
     return doc.documentElement.outerHTML
   }
 
-  private async retainFreshTemplate(revision: number, initialSnapshot?: string | null) {
+  private async retainFreshDocumentLayout(revision: number, initialSnapshot?: string | null) {
     if(this.editorOpaque) {
       // Published snapshots are throttled; request the converted DOM before
       // recording its initial state so a delayed snapshot stays clean.
@@ -2018,19 +2018,19 @@ export class DomEditor extends LitElement {
     }
     if(revision !== this.frameRevision || this.fileHandle !== null || this.backendDocumentId !== null) return
     if(initialSnapshot !== undefined) {
-      const before = this.pristineTemplateSnapshot(initialSnapshot)
-      if(before === null || before !== this.pristineTemplateSnapshot(this.authoredDocumentSnapshot())) {
+      const before = this.pristineDocumentLayoutSnapshot(initialSnapshot)
+      if(before === null || before !== this.pristineDocumentLayoutSnapshot(this.authoredDocumentSnapshot())) {
         this.fileDirty = true
         return
       }
     }
-    this.freshTemplateSnapshot = this.authoredDocumentSnapshot()
+    this.freshDocumentLayoutSnapshot = this.authoredDocumentSnapshot()
     this.fileDirty = false
   }
 
   private isFreshDocumentUnchanged() {
     if(this.fileHandle !== null || this.backendDocumentId !== null) return false
-    if(this.freshTemplateSnapshot !== null) return this.authoredDocumentSnapshot() === this.freshTemplateSnapshot
+    if(this.freshDocumentLayoutSnapshot !== null) return this.authoredDocumentSnapshot() === this.freshDocumentLayoutSnapshot
     const body = this.editorDocument?.body
     const head = this.editorDocument?.head
     if(!body || !head) return false
@@ -2742,7 +2742,7 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string) {
-    this.freshTemplateSnapshot = null
+    this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
@@ -2771,7 +2771,7 @@ export class DomEditor extends LitElement {
     this.historyError = ""
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
-    this.templatesDismissed = this.settings.pinDeveloperConsole
+    this.documentLayoutsDismissed = this.settings.pinDeveloperConsole
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
@@ -2797,8 +2797,8 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private newDocument(template: DocumentLayoutMode = this.settings.defaultTemplate) {
-    return this.runFileOperation(() => this.performNewDocument(template))
+  private newDocument(layout: DocumentLayoutMode = this.settings.defaultLayout) {
+    return this.runFileOperation(() => this.performNewDocument(layout))
   }
 
   private openDocument() {
@@ -2966,7 +2966,7 @@ export class DomEditor extends LitElement {
     return this.runFileOperation(() => this.performSaveDocument(saveAs, requestedFormat))
   }
 
-  private async performNewDocument(template: DocumentLayoutMode) {
+  private async performNewDocument(layout: DocumentLayoutMode) {
     if(!this.confirmDiscardChanges()) return
     try {
       this.fileHandle = null
@@ -2974,7 +2974,7 @@ export class DomEditor extends LitElement {
       this.fileName = ""
       this.fileFormat = "html"
       await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
-      await this.applyDefaultTemplate(template, this.frameRevision)
+      await this.applyDefaultLayout(layout, this.frameRevision)
       this.fileDirty = false
       this.updateDocumentURL(null)
       this.focusEditor()
@@ -2984,17 +2984,17 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async applyDefaultTemplate(mode: DocumentLayoutMode, revision: number) {
+  private async applyDefaultLayout(mode: DocumentLayoutMode, revision: number) {
     if(mode === "document" || revision !== this.frameRevision) return
     const initialSnapshot = this.authoredDocumentSnapshot()
-    this.templateConversionCount++
+    this.documentLayoutConversionCount++
     try {
       const changed = await this.execute({type: "setDocumentLayout", mode, expectedMode: "document"})
       if(changed === false) throw new Error(`Could not create a new ${mode} document`)
       if(revision !== this.frameRevision) return
-      await this.retainFreshTemplate(revision, initialSnapshot)
+      await this.retainFreshDocumentLayout(revision, initialSnapshot)
     }
-    finally { this.templateConversionCount-- }
+    finally { this.documentLayoutConversionCount-- }
   }
 
   private async performOpenDocument(storedHandle?: LocalFileHandle, storedId?: string) {
@@ -3295,19 +3295,6 @@ export class DomEditor extends LitElement {
       })
       return
     }
-    if(label?.startsWith("layout-insert:")) {
-      const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-      if(ribbon) ribbon.layoutInsertionError = ""
-      this.restoreEditorSelection()
-      void this.execute({type: "insertLayout", preset: label.slice("layout-insert:".length)}).then(inserted => {
-        if(!inserted) throw new Error("Select a valid insertion point or complete blocks for this layout.")
-        ribbon?.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[layout="elements"]')?.closeDrawer()
-        this.focusEditor()
-      }).catch(error => {
-        if(ribbon) ribbon.layoutInsertionError = error instanceof Error ? error.message : String(error)
-      })
-      return
-    }
     if(label === "Preview") {
       if(this.previewActive) void this.exitPreview()
       else void this.enterPreview()
@@ -3466,16 +3453,18 @@ export class DomEditor extends LitElement {
       return
     }
     if(label?.startsWith("mark:")) {
+      const keepDrawerOpen = Boolean((event as CustomEvent<{keepDrawerOpen?: boolean}>).detail?.keepDrawerOpen)
+      const restoreFocus = () => { if(!keepDrawerOpen) this.focusEditor() }
       const mark = canonicalMarkName(label.slice("mark:".length))
       const group = mark ? mergedMarkGroupFor(mark) : undefined
-      if(!mark) this.focusEditor()
+      if(!mark) restoreFocus()
       else if(group?.primary === mark) {
-        void this.execute({type: "toggleMarkGroup", mark}).finally(() => this.focusEditor())
+        void this.execute({type: "toggleMarkGroup", mark}).finally(restoreFocus)
       }
       else if(group) {
-        void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
+        void this.execute({type: "toggleMark", mark}).finally(restoreFocus)
       }
-      else void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
+      else void this.execute({type: "toggleMark", mark}).finally(restoreFocus)
       return
     }
     if(label?.startsWith("toggle-list:")) {
@@ -4954,7 +4943,7 @@ export class DomEditor extends LitElement {
       return
     }
     this.consoleOpen = true
-    this.templatesDismissed = true
+    this.documentLayoutsDismissed = true
     this.consoleTab = "HTML"
     this.htmlMode = true
     this.htmlSource = ""
@@ -4969,7 +4958,7 @@ export class DomEditor extends LitElement {
     if(!enabled && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
     this.consoleOpen = enabled
     if(enabled) {
-      this.templatesDismissed = true
+      this.documentLayoutsDismissed = true
       this.selectWidgetElementPackage()
     }
     void this.setHTMLMode(enabled && this.consoleTab === "HTML")
@@ -5041,7 +5030,7 @@ export class DomEditor extends LitElement {
     const initialSnapshot = fresh ? this.authoredDocumentSnapshot() : null
     const revision = this.frameRevision
     this.documentLayoutError = ""
-    this.templateConversionCount++
+    this.documentLayoutConversionCount++
     void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).then(async changed => {
       if(revision !== this.frameRevision) return
       if(changed === false) {
@@ -5049,7 +5038,7 @@ export class DomEditor extends LitElement {
         return
       }
       if(fresh && this.fileHandle === null && this.backendDocumentId === null) {
-        await this.retainFreshTemplate(revision, initialSnapshot)
+        await this.retainFreshDocumentLayout(revision, initialSnapshot)
       }
       else this.fileDirty = true
       // Finish disabling the selected card and updating the toolbox before
@@ -5061,8 +5050,8 @@ export class DomEditor extends LitElement {
     }).catch(error => {
       this.documentLayoutError = error instanceof Error ? error.message : String(error)
     }).finally(() => {
-      this.templateConversionCount--
-      if(revision === this.frameRevision && this.templateConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.templatesDismissed = true
+      this.documentLayoutConversionCount--
+      if(revision === this.frameRevision && this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
     })
   }
 
@@ -5675,7 +5664,7 @@ export class DomEditor extends LitElement {
         if(this.historyDocumentTransitionCount === 0) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true
-          if(this.templateConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.templatesDismissed = true
+          if(this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
         }
         if(this.stylesVisible()) this.queueElementStyleRefresh()
       }
@@ -6441,32 +6430,32 @@ export class DomEditor extends LitElement {
       ></dom-editor-toolbox>
       ${(this.breadcrumbVisible || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
       ${this.previewActive || this.liveSessionActive ? "" : html`
-        <div class="templates-panel" ?inert=${this.templatesDismissed} aria-hidden=${String(this.templatesDismissed)}>
-          <div class="templates-clip">
-            <section class="templates-bar" aria-labelledby="templates-title">
-              <div class="templates-heading">
-                <h2 id="templates-title">Templates</h2>
+        <div class="document-layouts-panel" ?inert=${this.documentLayoutsDismissed} aria-hidden=${String(this.documentLayoutsDismissed)}>
+          <div class="document-layouts-clip">
+            <section class="document-layouts-bar" aria-labelledby="document-layouts-title">
+              <div class="document-layouts-heading">
+                <h2 id="document-layouts-title">Layouts</h2>
                 <h2 id="recent-documents-title" class="recent-documents-title">Recently opened</h2>
-                <button class="templates-close" type="button" aria-label="Hide templates" title="Hide templates"
+                <button class="document-layouts-close" type="button" aria-label="Hide layouts" title="Hide layouts"
                   @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
                   @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
                   @click=${async () => {
-                    this.templatesDismissed = true
+                    this.documentLayoutsDismissed = true
                     await this.updateComplete
                     this.focusEditor()
                   }}
                 >×</button>
               </div>
-              <div class="templates-options">
-                <div class="template-cards" role="group" aria-label="Templates">
-                  ${templateModes.map(mode => renderTemplateCard(mode, this.documentLayout,
+              <div class="document-layouts-options">
+                <div class="document-layout-cards" role="group" aria-label="Layouts">
+                  ${documentLayoutModes.map(mode => renderDocumentLayoutCard(mode, this.documentLayout,
                     this.historyState.preview !== null || this.htmlPending,
                     selected => this.handleDocumentLayoutChange(new CustomEvent("document-layout-change", {detail: {mode: selected}})),
                   ))}
                 </div>
-                <nav class="templates-documents" aria-labelledby="recent-documents-title">
+                <nav class="document-layouts-documents" aria-labelledby="recent-documents-title">
                   ${this.visibleRecentDocuments.length ? html`<ul>${this.visibleRecentDocuments.map(document => html`<li>
-                    <button class="templates-document" type="button" aria-label=${`Open ${document.title}`} title=${document.title}
+                    <button class="document-layout-document" type="button" aria-label=${`Open ${document.title}`} title=${document.title}
                       ?disabled=${this.fileOperationActive || this.htmlPending || this.historyState.preview !== null}
                       @click=${() => this.openRecentDocument(document.id)}
                     >${ribbonIcon("Document")}<span>${document.title}</span></button>

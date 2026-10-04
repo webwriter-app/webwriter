@@ -10,7 +10,7 @@ import {
 } from "../app-settings"
 import {documentLanguages} from "../document-languages"
 import {ribbonIcon} from "../ribbon-icons"
-import {templateLabel, templateModes} from "./template-preview"
+import {documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 
 const languageLabel = (code: string, fallback: string) => {
   try {
@@ -298,10 +298,10 @@ export class SettingsPanel extends LitElement {
     this.emitSettings({...this.settings, language: (event.currentTarget as HTMLSelectElement).value})
   }
 
-  private changeDefaultTemplate(event: Event) {
+  private changeDefaultLayout(event: Event) {
     const mode = (event.currentTarget as HTMLSelectElement).value
     if(mode !== "document" && mode !== "canvas" && mode !== "slides") return
-    this.emitSettings({...this.settings, defaultTemplate: mode})
+    this.emitSettings({...this.settings, defaultLayout: mode})
   }
 
   private changeDocumentLanguageUpdate(event: Event) {
@@ -392,8 +392,8 @@ export class SettingsPanel extends LitElement {
   protected updated() {
     const language = this.renderRoot.querySelector<HTMLSelectElement>('select[aria-label="Interface language"]')
     if(language && language.value !== this.settings.language) language.value = this.settings.language
-    const template = this.renderRoot.querySelector<HTMLSelectElement>("#default-template")
-    if(template && template.value !== this.settings.defaultTemplate) template.value = this.settings.defaultTemplate
+    const layout = this.renderRoot.querySelector<HTMLSelectElement>("#default-layout")
+    if(layout && layout.value !== this.settings.defaultLayout) layout.value = this.settings.defaultLayout
   }
 
   private renderCommands(section: AppCommand["section"]) {
@@ -445,11 +445,11 @@ export class SettingsPanel extends LitElement {
         </section>
 
         <section class="setting-card" aria-label="New documents">
-          <label class="setting-label" for="default-template">Default template</label>
-          <select id="default-template" .value=${this.settings.defaultTemplate} @change=${this.changeDefaultTemplate}>
-            ${templateModes.map(mode => html`<option value=${mode}>${templateLabel(mode)}</option>`)}
+          <label class="setting-label" for="default-layout">Default layout</label>
+          <select id="default-layout" .value=${this.settings.defaultLayout} @change=${this.changeDefaultLayout}>
+            ${documentLayoutModes.map(mode => html`<option value=${mode}>${documentLayoutLabel(mode)}</option>`)}
           </select>
-          <p class="setting-description">Template used when creating a new document.</p>
+          <p class="setting-description">Layout used when creating a new document.</p>
         </section>
 
         <section class="setting-card" aria-label="Toolbox">

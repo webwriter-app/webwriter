@@ -115,25 +115,29 @@ describe("settings panel", () => {
     expect(defaultAppSettings().disableAnimations).toBe(false)
   })
 
-  it("defaults new documents to Document and validates saved template choices", () => {
-    expect(defaultAppSettings().defaultTemplate).toBe("document")
+  it("defaults new documents to Document and validates saved layout choices", () => {
+    expect(defaultAppSettings().defaultLayout).toBe("document")
     for(const value of ["document", "canvas", "slides", "invalid", null]) {
-      localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultTemplate: value}))
-      expect(loadAppSettings().defaultTemplate).toBe(value === "canvas" || value === "slides" ? value : "document")
+      localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultLayout: value}))
+      expect(loadAppSettings().defaultLayout).toBe(value === "canvas" || value === "slides" ? value : "document")
     }
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultTemplate: "slides"}))
+    expect(loadAppSettings().defaultLayout).toBe("slides")
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultLayout: "canvas", defaultTemplate: "slides"}))
+    expect(loadAppSettings().defaultLayout).toBe("canvas")
   })
 
-  it("changes the default template while preserving other settings", async () => {
+  it("changes the default layout while preserving other settings", async () => {
     const settings = {...defaultAppSettings(), language: "de"}
     const panel = await mountPanel(settings)
     const changes: AppSettings[] = []
     panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
-    const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#default-template")!
+    const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#default-layout")!
     expect([...select.options].map(option => option.textContent)).toEqual(["Document", "Canvas", "Slides"])
     expect(select.value).toBe("document")
     select.value = "slides"
     select.dispatchEvent(new Event("change", {bubbles: true}))
-    expect(changes.at(-1)).toMatchObject({defaultTemplate: "slides", language: "de"})
+    expect(changes.at(-1)).toMatchObject({defaultLayout: "slides", language: "de"})
     expect(parseFloat(getComputedStyle(select.closest(".setting-card")!).marginTop))
       .toBe(parseFloat(getComputedStyle(document.documentElement).fontSize))
     panel.resetSettings()

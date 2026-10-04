@@ -2,8 +2,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
 import type {DomEditorToolbox} from "./toolbox"
-import type {AppRibbon} from "./ribbon"
-import type {RibbonDrawer} from "./ribbon-drawer"
 import {
   executeCompleteEvent,
   loadWidgetsMessage,
@@ -122,12 +120,12 @@ describe("layout host and toolbox integration", () => {
     expect(toolbox.layout).toEqual(grid)
     expect(toolbox.activeTool).toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!.getAttribute("aria-label"))
-      .toBe("Edit Grid layout")
+      .toBe("Edit")
 
     sendSelection(editor, editorWindow, {layout: layoutState("flex")})
     toolbox = await settle(editor)
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!.getAttribute("aria-label"))
-      .toBe("Edit Flex layout")
+      .toBe("Edit")
 
     sendSelection(editor, editorWindow, {table: tableState})
     toolbox = await settle(editor)
@@ -157,42 +155,12 @@ describe("layout host and toolbox integration", () => {
     expect(toolbox.activeTool).toBeNull()
   })
 
-  it("forwards each layout action to the host executor once", async () => {
+  it("withholds the old layout editor and insertion presets", async () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("grid")})
     const toolbox = await settle(editor)
-    const layoutEditor = toolbox.shadowRoot!.querySelector<HTMLElement>("layout-editor")!
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
-    const action = {
-      type: "setLayoutStyles" as const,
-      styles: {gap: {value: "2rem", priority: "" as const}},
-      target: "container" as const,
-    }
-
-    layoutEditor.dispatchEvent(new CustomEvent("layout-action", {
-      detail: action,
-      bubbles: true,
-      composed: true,
-    }))
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1))
-    expect(execute).toHaveBeenCalledWith(action)
-  })
-
-  it("executes a preset insertion and keeps the gallery open with an error on failure", async () => {
-    const {editor} = await mountEditor()
-    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(false)
-
-    drawer.openDrawer(true)
-    await drawer.updateComplete
-    drawer.querySelector<HTMLButtonElement>('[data-layout-id="two-columns"]')!.click()
-    await vi.waitFor(() => expect(ribbon.layoutInsertionError).toContain("valid insertion point"))
-    expect(drawer.hasAttribute("drawer-open")).toBe(true)
-    expect(drawer.querySelector('[role="alert"]')?.textContent).toContain("valid insertion point")
-
-    execute.mockResolvedValue(true)
-    drawer.querySelector<HTMLButtonElement>('[data-layout-id="two-columns"]')!.click()
-    await vi.waitFor(() => expect(execute).toHaveBeenLastCalledWith({type: "insertLayout", preset: "two-columns"}))
+    expect(toolbox.shadowRoot!.querySelector("layout-editor")).toBeNull()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    expect(ribbon.shadowRoot!.querySelector(".layout-gallery, .layout-opener")).toBeNull()
   })
 })

@@ -6,7 +6,7 @@ export type DocumentLayoutState = {
   conversions?: Partial<Record<DocumentLayoutMode, string | null>>
 }
 
-/** Conversion availability shared by the template picker surfaces. */
+/** Conversion availability shared by the layout picker surfaces. */
 export function documentLayoutConversionReason(state: DocumentLayoutState, mode: DocumentLayoutMode) {
   if(mode === state.mode) return null
   if(typeof state.conversions?.[mode] === "string") return state.conversions[mode]
@@ -16,7 +16,7 @@ export function documentLayoutConversionReason(state: DocumentLayoutState, mode:
 
 /** Reset only empty native text placeholders; textless widgets, media,
  * comments and authored attributes still count as document content. */
-export function resetEmptyTemplateContent(body: HTMLElement = document.body) {
+export function resetEmptyLayoutContent(body: HTMLElement = document.body) {
   const empty = Array.from(body.childNodes).every(node => node instanceof Text ? !node.data.trim()
     : node instanceof HTMLElement && node.matches("p, h1, h2, h3, h4, h5, h6")
       && Array.from(node.attributes).every(attribute => attribute.name === "style" && !node.style.length

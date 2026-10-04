@@ -1,4 +1,3 @@
-import {layoutPreviewStyles} from "./template-preview"
 import {css, html, nothing, render} from "lit"
 import {aiChatStyles} from "./ai-chat.styles"
 import {version} from "../../package.json"
@@ -18,7 +17,6 @@ import type {BackendClient} from "../backend-client"
 import {type PresenceUser} from "../editor-bridge"
 import {mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames} from "../marks"
-import {layoutPresets} from "../layouts"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
@@ -46,6 +44,7 @@ import {
   menuTabs,
   orderedListStyles,
   placeholderSharingLink,
+  insertMathStructureButtons,
   storageLocations,
   type RibbonMenuName,
   type StorageLocation,
@@ -129,7 +128,6 @@ export class AppRibbon extends EditingControls {
     breadcrumbVisible: {type: Boolean},
     packageDrawerOpen: {type: Boolean, reflect: true, attribute: "package-drawer-open"},
     packageVisibleCount: {type: Number, state: true},
-    layoutInsertionError: {type: String, attribute: "layout-insertion-error"},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
     previewActive: {type: Boolean, attribute: "preview-active"},
@@ -873,38 +871,6 @@ export class AppRibbon extends EditingControls {
       --ribbon-drawer-inline-end: 0;
     }
 
-    .layout-gallery {
-      box-sizing: border-box;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
-      gap: 0.45rem;
-      width: 100%;
-      min-width: 0;
-      padding: 0.35rem 0.1rem 0.45rem;
-    }
-
-    ${layoutPreviewStyles}
-
-    .layout-insertion-error {
-      grid-column: 1 / -1;
-      padding: 0.3rem 0.45rem;
-      border: 1px solid #e8b4b4;
-      border-radius: 0.25rem;
-      color: #8f2020;
-      background: #fff5f5;
-      font-size: 0.64rem;
-      line-height: 0.85rem;
-    }
-
-    .custom-layout {
-      grid-column: 1 / -1;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      border-top: 1px solid #d8dee6;
-      padding-top: 0.5rem;
-    }
-
     .file-name-row {
       box-sizing: border-box;
       display: flex;
@@ -1034,7 +1000,6 @@ export class AppRibbon extends EditingControls {
 
   packageError = ""
 
-  layoutInsertionError = ""
 
   private tableGridRows = 2
 
@@ -2136,10 +2101,10 @@ export class AppRibbon extends EditingControls {
       })),
     ]
     const compactButtons: RibbonMenuButton[] = [
-      groupedButton("Text", "Text", ["Paragraph", "Heading", "List", "Details"]),
+      groupedButton("Text", "Text", ["Paragraph", "Heading", "List"]),
       {
-        ...groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
-        submenu: ["Image", "Audio", "Video", "Graphic", "Formula", "Website"].map(label => {
+        ...groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Website"]),
+        submenu: ["Image", "Audio", "Video", "Graphic", "Website"].map(label => {
           const button = buttonByLabel(label)
           const type = insertionMenuItems.find(candidate => candidate.name === label)?.tag
           return type === "picture" || type === "audio" || type === "video"
@@ -2148,6 +2113,7 @@ export class AppRibbon extends EditingControls {
         }),
       },
       buttonByLabel("Table"),
+      buttonByLabel("Details"),
     ]
     const renderButton = (button: RibbonMenuButton, slot = "") => {
       const item = typeof button === "string" ? {label: button} : button
@@ -2167,7 +2133,6 @@ export class AppRibbon extends EditingControls {
         ? this.mediaSelectionMatches(type)
         : item.label === "List" && this.listType !== null
       const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
-      if(item.label === "Section") return renderLayoutOpener(slot)
       return html`
         <ribbon-button
           slot=${slot}
@@ -2183,85 +2148,14 @@ export class AppRibbon extends EditingControls {
         ></ribbon-button>
       `
     }
-    const renderLayoutOpener = (slot = "") => html`
-      <ribbon-button
-        slot=${slot}
-        class="layout-opener"
-        ?active=${Boolean(this.layout)}
-        variant="insertion"
-        label="Layouts"
-        icon="Layout"
-        action="Layouts"
-        open-drawer
-        keep-drawer-open
-      ></ribbon-button>
-    `
-    const layoutStyle = (styles: Record<string, string>) => Object.entries(styles)
-      .map(([property, value]) => `${property}:${value}`)
-      .join(";")
-    const renderLayoutPreset = (preset: typeof layoutPresets[number]) => {
-      const previewStyles = {
-        ...preset.styles,
-        ...(preset.kind === "columns" ? {display: "grid", "grid-template-columns": `repeat(${preset.items}, 1fr)`} : {}),
-        gap: "0.4rem",
-        padding: "0.3rem",
-        "box-sizing": "border-box",
-      }
-      const previewItemStyles = preset.id === "wrapping-cards"
-        ? {...preset.itemStyles, flex: "1 1 3rem"}
-        : preset.itemStyles
-      return html`
-        <button
-          class="layout-preset"
-          type="button"
-          data-layout-id=${preset.id}
-          ?disabled=${Boolean(this.layout)}
-          aria-label=${`Insert ${preset.name} layout`}
-          @click=${(event: Event) => (event.currentTarget as HTMLElement).dispatchEvent(
-            new CustomEvent<{label: string, keepDrawerOpen: boolean}>("ribbon-button-click", {
-              detail: {label: `layout-insert:${preset.id}`, keepDrawerOpen: true},
-              bubbles: true,
-              composed: true,
-            }),
-          )}
-        >
-          <span
-            class="layout-preset-preview"
-            style=${layoutStyle(previewStyles)}
-            aria-hidden="true"
-          >
-            ${Array.from({length: preset.items}, (_, index) => html`
-              <span class="layout-preset-item" style=${layoutStyle(previewItemStyles)}>
-                <span class="layout-preset-line"></span>
-                ${index % 2 === 0 ? html`<span class="layout-preset-line short"></span>` : ""}
-              </span>
-            `)}
-          </span>
-          <span class="layout-preset-name">${preset.name}</span>
-        </button>
-      `
-    }
     return html`
       <ribbon-drawer
         label=${drawer.label}
         icon="Paragraph"
         layout="elements"
-        expandable
       >
         ${drawer.buttons.map(button => renderButton(button))}
         ${compactButtons.map(button => renderButton(button, "compact"))}
-        ${renderLayoutOpener("compact")}
-        <div class="layout-gallery" slot="more" aria-label="Layout presets">
-          ${this.layoutInsertionError ? html`
-            <div class="layout-insertion-error" role="alert">${this.layoutInsertionError}</div>
-          ` : ""}
-          ${layoutPresets.map(renderLayoutPreset)}
-          <div class="custom-layout" role="group" aria-label="Custom layout">
-            <ribbon-button label="Custom layout" icon="Section" action="toggle-section"
-              ?disabled=${!this.canSection} ?active=${this.sectionActive} toggle></ribbon-button>
-            ${this.renderSectionTypeSelect("Section type")}
-          </div>
-        </div>
       </ribbon-drawer>
     `
   }
@@ -2386,16 +2280,11 @@ export class AppRibbon extends EditingControls {
       {label: "Standard marks", content: html`
         ${picker("color", "Text color", textColorOptions)}
         ${picker("background-color", "Text background color", backgroundColorOptions)}
-      `, buttons: [...primaryDrawerMarkNames.map(mark), {label: "Link", action: "mark:a", icon: "MarkLink", disabled: !this.canMark || this.math?.active, submenuGroups: [{label: "Link", content: this.renderLinkDropdown(), buttons: []}]}]},
-      {label: "More marks", buttons: this.spanGroupMembers().map(mark)},
+      `, buttons: primaryDrawerMarkNames.map(mark)},
+      {label: "More marks", buttons: [{label: "Link", action: "mark:a", icon: "MarkLink", disabled: !this.canMark || this.math?.active, submenuGroups: [{label: "Link", content: this.renderSpanDropdown(this.spanSelectedMarks()), buttons: []}]}]},
     ]
-    const insert = menuGroups.Start.find(group => group.label === "Elements")!.buttons.map((button): RibbonMenuButton => {
+    const insert = [...menuGroups.Start.find(group => group.label === "Elements")!.buttons, {label: "Formula", icon: "Formula", submenu: insertMathStructureButtons}].map((button): RibbonMenuButton => {
       const item = typeof button === "string" ? {label: button} : button
-      if(item.label === "Section") return {
-        label: "Layouts", icon: "Layout", menuOnly: true,
-        submenu: [...layoutPresets.map(preset => ({label: preset.name, action: `layout-insert:${preset.id}`, disabled: Boolean(this.layout)})),
-          {label: "Custom layout", action: "toggle-section", disabled: !this.canSection}],
-      }
       if(item.label === "Table") return {...item, submenuGroups: [{label: "Table size", content: this.renderTableSizePicker(), buttons: []}]}
       const type = insertionMenuItems.find(candidate => candidate.name === item.label)?.tag
       if(type === "picture" || type === "audio" || type === "video") return {...item, submenu: [
