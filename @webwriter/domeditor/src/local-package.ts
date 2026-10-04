@@ -259,6 +259,7 @@ const optionChecks: Record<string, (value: unknown) => boolean> = {
   isolating: value => typeof value === "boolean",
   marks: value => typeof value === "string",
   propagateEvents: value => Array.isArray(value) && value.every(type => typeof type === "string" && type.length > 0),
+  sharedData: value => typeof value === "boolean",
 }
 
 /** Checks the editing config against the options the editor reads and the

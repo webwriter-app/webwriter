@@ -115,6 +115,25 @@ describe("loadLocalPackage", () => {
 })
 
 describe("local package checks", () => {
+  it.each([true, false, "yes", 1, null])("validates sharedData=%s without interrupting package loading", async sharedData => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": JSON.stringify({
+        name: "@local/demo",
+        version: "0.1.0",
+        exports: {"./widgets/demo-widget.js": "./dist/demo.js"},
+        editingConfig: {"./widgets/demo-widget": {sharedData}},
+      })},
+      directories: {dist: {files: {"demo.js": "bundle"}}},
+    }), {urlFor})
+
+    expect(result.package.name).toBe("@local/demo")
+    expect(result.warnings).toEqual(typeof sharedData === "boolean" ? [] : [expect.objectContaining({
+      code: "invalid-editing-option",
+      path: "./widgets/demo-widget",
+      message: expect.stringContaining("sharedData"),
+    })])
+  })
+
   it("reports editing config the editor would ignore or reject", async () => {
     const result = await loadLocalPackage(nestedDirectory({
       files: {"package.json": JSON.stringify({
