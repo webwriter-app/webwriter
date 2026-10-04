@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {LivePreview, previewElementAtPath} from "./live-preview"
+import {applyPreviewWidgetSnapshot, cleanPreviewEditorArtifacts, LivePreview, previewElementAtPath} from "./live-preview"
 
 const previews: LivePreview[] = []
 afterEach(() => {
@@ -23,6 +23,30 @@ const mount = () => {
 }
 
 describe("live preview lifecycle", () => {
+  it("cleans editor-only artifacts and markers inside nested template contents", () => {
+    const template = document.createElement("template")
+    template.innerHTML = '<div class="authored ◆widget-editable" contenteditable=""><span class="◆editor-only">remove</span><i data-webwriter-editor-only></i></div>'
+    const nested = document.createElement("template")
+    nested.innerHTML = '<b class="◆caret authored">text</b>'
+    template.content.querySelector("div")!.append(nested)
+
+    cleanPreviewEditorArtifacts(template.content)
+
+    expect(template.content.querySelector("[contenteditable], [data-webwriter-editor-only], .◆editor-only")).toBeNull()
+    expect(template.content.querySelector("div")?.className).toBe("authored")
+    expect((template.content.querySelector("template") as HTMLTemplateElement).content.querySelector("b")?.className).toBe("authored")
+  })
+
+  it("applies widget snapshots identically and ignores malformed HTML values", () => {
+    const {owner} = mount()
+    const widget = owner.body.firstElementChild as HTMLElement
+    const result = applyPreviewWidgetSnapshot(owner, {path: [0], html: 42 as unknown as string, state: {answer: 42}})
+    expect(result).toBe(widget)
+    expect(widget.localName).toBe("demo-widget")
+    expect((widget as unknown as {answer: number}).answer).toBe(42)
+    expect(applyPreviewWidgetSnapshot(owner, {path: [0], html: "<p>wrong</p>"})).toBeNull()
+  })
+
   it("resolves widget paths across iframe realms and rejects text/missing targets", () => {
     const {owner} = mount()
     const widget = owner.body.firstElementChild

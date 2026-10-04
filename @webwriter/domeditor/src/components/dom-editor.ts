@@ -12,7 +12,6 @@ import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
-import type {RibbonDrawer} from "./ribbon-drawer"
 import type {LayoutSelectionState} from "../layouts"
 import type {LayoutEditorAction} from "./layout-editor"
 import type { EditingAction } from "../domeditor"
@@ -119,7 +118,7 @@ import "./live-session-overlay"
 import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
 import {isPackageImportMap, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
-import {LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
+import {applyPreviewWidgetSnapshot, cleanPreviewEditorArtifacts, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {editorFrameOrigin} from "../frame-origins"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "../frame-local-packages"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
@@ -1071,23 +1070,11 @@ export class DomEditor extends LitElement {
         link.setAttribute("href", `about:srcdoc${link.getAttribute("href")}`)
       })
     }
-    source.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
-    clearEditorOwnedAttributes(source)
+    cleanPreviewEditorArtifacts(source)
 
     // Remove authored executable content before installing the trusted widget
     // and preview bridge scripts in the isolated frame.
     stripActiveContent(source, {allowStyles: true, allowIframes: true})
-
-    const editingElements = Array.from(source.querySelectorAll<HTMLElement>("[class]"))
-      .filter(element => Array.from(element.classList).some(name => name.startsWith("◆")))
-    editingElements.forEach(element => {
-      if(element.classList.contains("◆editor-only")) {
-        element.remove()
-        return
-      }
-      element.classList.remove(...Array.from(element.classList).filter(name => name.startsWith("◆")))
-      if(!element.classList.length) element.removeAttribute("class")
-    })
 
     // Use the same dependency selection as saving, after stripping authored code.
     if(import.meta.env.MODE !== "test") {
@@ -1566,41 +1553,18 @@ export class DomEditor extends LitElement {
     const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
     const previewDocument = frame?.contentDocument
     if(!previewDocument) return
+    const snapshot = learnerId
+      ? this.widgetStateAtStep(pathKey, learnerId)
+      : this.livePreview.baseWidgetStates.get(pathKey)
+    if(!snapshot) return
     let path: number[]
     try {
       const value = JSON.parse(pathKey)
       if(!Array.isArray(value) || !value.every(index => Number.isInteger(index) && index >= 0)) return
       path = value
     }
-    catch {
-      return
-    }
-    let current = previewElementAtPath(path, previewDocument)
-    const snapshot = learnerId
-      ? this.widgetStateAtStep(pathKey, learnerId)
-      : this.livePreview.baseWidgetStates.get(pathKey)
-    if(!current || !snapshot) return
-    if(snapshot.html && current.outerHTML !== snapshot.html) {
-      const template = previewDocument.createElement("template")
-      template.innerHTML = snapshot.html.trim()
-      stripActiveContent(template.content)
-      const replacement = template.content.firstElementChild
-      if(!replacement || replacement.localName !== current.localName || replacement.namespaceURI !== current.namespaceURI) return
-      current.replaceWith(replacement)
-      current = previewElementAtPath(path, previewDocument)
-    }
-    if(current && isRecord(snapshot.state)) {
-      Object.entries(snapshot.state).forEach(([key, value]) => {
-        const nativePrototype = (previewDocument.defaultView as unknown as {HTMLElement?: typeof HTMLElement} | null)?.HTMLElement?.prototype ?? HTMLElement.prototype
-        if(key.startsWith("on") || key === "__proto__" || key === "constructor" || key === "prototype" || key in nativePrototype) return
-        try {
-          (current as unknown as Record<string, unknown>)[key] = value
-        }
-        catch {
-          // A read-only public field cannot be restored and is left untouched.
-        }
-      })
-    }
+    catch { return }
+    applyPreviewWidgetSnapshot(previewDocument, {...snapshot, path})
   }
 
   private syncSelectedLiveWidgetStates() {

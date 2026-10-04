@@ -1,5 +1,4 @@
-import {stripActiveContent} from "./active-content"
-import {LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "./live-preview"
+import {applyPreviewWidgetSnapshot, LivePreview, previewElementPath, previewWidgetElements} from "./live-preview"
 import type {LiveSessionWidgetState} from "./live-session"
 
 const bridge = document.querySelector<HTMLMetaElement>('meta[name="webwriter-preview-bridge"]')
@@ -24,28 +23,9 @@ if(nonce && hostOrigin && window.parent !== window) {
     post({type: "preview-frame-positions", widgets})
   }
   const applyState = (snapshot: LiveSessionWidgetState) => {
-    const path = snapshot.path
-    if(!Array.isArray(path) || !path.every(index => Number.isInteger(index) && index >= 0)) return
-    let current = previewElementAtPath(path, document)
-    if(!current) return
-    if(typeof snapshot.html === "string" && snapshot.html && current.outerHTML !== snapshot.html) {
-      const template = document.createElement("template")
-      template.innerHTML = snapshot.html.trim()
-      stripActiveContent(template.content)
-      const replacement = template.content.firstElementChild
-      if(!replacement || replacement.localName !== current.localName || replacement.namespaceURI !== current.namespaceURI) return
-      current.replaceWith(replacement)
-      current = previewElementAtPath(path, document)
+    if(applyPreviewWidgetSnapshot(document, snapshot)) {
+      positions()
     }
-    if(current && snapshot.state && typeof snapshot.state === "object" && !Array.isArray(snapshot.state)) {
-      for(const [key, value] of Object.entries(snapshot.state)) {
-        if(key.startsWith("on") || key === "__proto__" || key === "constructor" || key === "prototype"
-          || key in HTMLElement.prototype) continue
-        try { (current as unknown as Record<string, unknown>)[key] = value }
-        catch { /* A read-only widget property is left untouched. */ }
-      }
-    }
-    positions()
   }
   document.designMode = "off"
   document.body?.removeAttribute("contenteditable")

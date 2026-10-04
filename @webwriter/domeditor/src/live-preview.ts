@@ -1,5 +1,6 @@
 import {serializeDoctype} from "./serialization"
-import {nodeAtPath, pathFromNode} from "./utility"
+import {clearEditorOwnedAttributes, clearEditorMarkerClasses, nodeAtPath, pathFromNode} from "./utility"
+import {stripActiveContent} from "./active-content"
 import type {LiveSession, LiveSessionRegion as SessionRegion, LiveSessionWidgetState} from "./live-session"
 
 type PublishPreviewStep = (step: Parameters<LiveSession["publish"]>[0]) => void
@@ -17,6 +18,54 @@ export function previewElementAtPath(path: number[], previewDocument: Document) 
 export function previewWidgetElements(previewDocument: Document) {
   return Array.from(previewDocument.body?.querySelectorAll("*") ?? [])
     .filter(element => element.localName.includes("-"))
+}
+
+/** Remove editor-only content and markers from a preview copy, including
+ * elements held in inert template contents. */
+export function cleanPreviewEditorArtifacts(root: Node) {
+  const removeEditorOnly = (parent: Node) => {
+    for(const child of Array.from(parent.childNodes)) {
+      if(child.nodeType === 1) {
+        const element = child as Element
+        if(element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only")) {
+          element.remove()
+          continue
+        }
+        if(element.localName === "template") removeEditorOnly((element as HTMLTemplateElement).content)
+      }
+      removeEditorOnly(child)
+    }
+  }
+  removeEditorOnly(root)
+  clearEditorOwnedAttributes(root)
+  clearEditorMarkerClasses(root)
+}
+
+/** Apply one learner/base widget snapshot in either preview realm. */
+export function applyPreviewWidgetSnapshot(previewDocument: Document, snapshot: LiveSessionWidgetState) {
+  const path = snapshot.path
+  if(!Array.isArray(path) || !path.every(index => Number.isInteger(index) && index >= 0)) return null
+  let current = previewElementAtPath(path, previewDocument)
+  if(!current) return null
+  if(typeof snapshot.html === "string" && snapshot.html && current.outerHTML !== snapshot.html) {
+    const template = previewDocument.createElement("template")
+    template.innerHTML = snapshot.html.trim()
+    stripActiveContent(template.content)
+    const replacement = template.content.firstElementChild
+    if(!replacement || replacement.localName !== current.localName || replacement.namespaceURI !== current.namespaceURI) return null
+    current.replaceWith(replacement)
+    current = previewElementAtPath(path, previewDocument)
+  }
+  if(current && snapshot.state && typeof snapshot.state === "object" && !Array.isArray(snapshot.state)) {
+    const nativePrototype = (previewDocument.defaultView as unknown as {HTMLElement?: typeof HTMLElement} | null)?.HTMLElement?.prototype
+    for(const [key, value] of Object.entries(snapshot.state)) {
+      if(key.startsWith("on") || key === "__proto__" || key === "constructor" || key === "prototype"
+        || key in (nativePrototype ?? HTMLElement.prototype)) continue
+      try { (current as unknown as Record<string, unknown>)[key] = value }
+      catch { /* A read-only widget property is left untouched. */ }
+    }
+  }
+  return current
 }
 
 /** Owns the observations and snapshots of one preview iframe. The authored
