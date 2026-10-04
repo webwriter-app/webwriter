@@ -40,7 +40,7 @@ const structure = (name: string, label: string, title: string): MathTool => ({la
 export const mathStructureOptions: MathTool[] = [
   structure("frac", "□/□", "Fraction"), structure("square", "x²", "Square"),
   structure("sup", "xⁿ", "Power"), structure("sub", "xₙ", "Subscript"),
-  structure("root", "ⁿ√□", "Root"),
+  structure("sqrt", "√□", "Square root"), structure("root", "ⁿ√□", "Root"),
   structure("abs", "|□|", "Absolute value"), structure("paren", "(□)", "Parentheses"),
   structure("binom", "(ⁿₖ)", "Binomial coefficient"), structure("matrix", "[▦]", "Matrix"),
   ...[["sum", "∑"], ["prod", "∏"], ["int", "∫"], ["bigcup", "⋃"], ["bigcap", "⋂"]]
@@ -56,7 +56,7 @@ export const mathToolGroups: {label: string, options: MathTool[]}[] = [
 ]
 
 export const mathCommandAliases: Record<string, string> = {
-  frac: "structure:frac", sqrt: "structure:root", root: "structure:root", binom: "structure:binom",
+  frac: "structure:frac", sqrt: "structure:sqrt", root: "structure:root", binom: "structure:binom",
   sum: "structure:sum", prod: "structure:prod", int: "structure:int", bigcup: "structure:bigcup", bigcap: "structure:bigcap",
   abs: "structure:abs", matrix: "structure:matrix",
   ...Object.fromEntries(["sin", "cos", "tan", "ln", "log"].map(name => [name, `function:${name}`])),
@@ -64,7 +64,7 @@ export const mathCommandAliases: Record<string, string> = {
 }
 
 export const mathTokenNames = new Set(["mi", "mn", "mo", "mtext", "ms"])
-export const mathRowNames = new Set(["math", "mrow", "msqrt", "mtd", "mstyle", "mpadded", "mphantom", "merror"])
+export const mathRowNames = new Set(["math", "mrow", "msqrt", "mtd", "mstyle", "mpadded", "mphantom", "merror", "menclose"])
 export const mathArity: Record<string, number> = {mfrac: 2, mroot: 2, msup: 2, msub: 2, msubsup: 3, mover: 2, munder: 2, munderover: 3}
 export const mathElement = (name: string, ...children: (Node | string)[]) => {
   const element = document.createElementNS(MATH_NAMESPACE, name)

@@ -2,6 +2,7 @@ import type {GitPackageSource} from "../git-package"
 import {ribbonIcon} from "../ribbon-icons"
 import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
+import "./math-keyboard"
 import {layoutPreviewStyles, renderTemplateCard, templateModes} from "./template-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, nothing, type PropertyValues } from "lit"
@@ -426,6 +427,7 @@ export class DomEditor extends LitElement {
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
     mathSelection: {attribute: false, state: true},
+    mathKeyboardHidden: {attribute: false, state: true},
     elementAttributes: {attribute: false, state: true},
     widgetOptions: {attribute: false, state: true},
     elementStyle: {attribute: false, state: true},
@@ -533,6 +535,7 @@ export class DomEditor extends LitElement {
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
   private mathSelection: MathSelectionState | null = null
+  private mathKeyboardHidden = false
   private elementAttributes: ElementAttributeState | null = null
   private widgetOptions: WidgetOptionsState | null = null
   private elementStyle: ElementStyleState = {
@@ -750,6 +753,38 @@ export class DomEditor extends LitElement {
       width: 100%;
       overflow: hidden;
     }
+
+    .math-keyboard-area {
+      position: absolute;
+      z-index: 5;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: min(280px, 100%);
+      min-width: 0;
+      pointer-events: none;
+    }
+
+    .math-keyboard-area dom-editor-math-keyboard { height: 100%; max-height: none; pointer-events: auto; }
+
+    .math-keyboard-open {
+      position: absolute;
+      right: 0.6rem;
+      bottom: 0.6rem;
+      display: grid;
+      place-items: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      padding: 0.2rem;
+      border: 1px solid #b9c5d2;
+      border-radius: 0.3rem;
+      background: #f2f4f7;
+      color: #26313d;
+      font: 0.85rem system-ui;
+      cursor: pointer;
+    }
+
+    .math-keyboard-open svg { width: 100%; height: 100%; }
 
     dom-editor-toolbox {
       grid-row: 2 / 4;
@@ -5025,6 +5060,9 @@ export class DomEditor extends LitElement {
 
   protected updated(changed: PropertyValues) {
     super.updated(changed)
+    if(changed.has("mathSelection") && this.mathSelection?.active) {
+      if(!changed.get("mathSelection")) this.mathKeyboardHidden = false
+    }
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
     if(ribbon && toolbox) void toolbox.updateComplete.then(() => {
@@ -5034,6 +5072,13 @@ export class DomEditor extends LitElement {
       const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
       if(input) this.syncHTMLSourceScroll(input)
     }
+  }
+
+  private handleMathKeyboardCommand = (event: CustomEvent<{command: string}>) => {
+    if(!this.mathSelection?.active || this.previewActive || this.liveSessionActive || typeof event.detail?.command !== "string") return
+    void this.execute({type: "editMath", command: `keyboard:${event.detail.command}`})
+      .catch(() => { /* A removed/replaced document no longer has a formula caret. */ })
+      .finally(() => this.focusEditor())
   }
 
   private handleHTMLSourceApply = () => {
@@ -5633,7 +5678,6 @@ export class DomEditor extends LitElement {
       } : null
       this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
       const hasContextualEditOptions = this.tableSelection?.active === true
-        || this.mathSelection?.active === true
         || this.layoutSelection !== null
         || this.graphicSelection?.active === true
         || this.mediaSelection !== null
@@ -6185,6 +6229,21 @@ export class DomEditor extends LitElement {
             .widgets=${this.liveOverlayWidgets}
             @live-widget-state-change=${this.handleLiveWidgetStateChange}
           ></live-session-overlay>
+        ` : ""}
+        ${this.mathSelection?.active && this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
+          <button class="math-keyboard-open" type="button" title="Show formula keyboard" aria-label="Show formula keyboard"
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @click=${() => { this.mathKeyboardHidden = false; this.focusEditor() }}
+          >${ribbonIcon("Shortcuts")}</button>
+        ` : ""}
+        ${this.mathSelection?.active && !this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
+          <section class="math-keyboard-area" aria-label="Formula input">
+            <dom-editor-math-keyboard
+              .display=${this.mathSelection.display}
+              @math-keyboard-command=${this.handleMathKeyboardCommand}
+              @math-keyboard-close=${() => { this.mathKeyboardHidden = true; this.focusEditor() }}
+            ></dom-editor-math-keyboard>
+          </section>
         ` : ""}
       </div>
       <dom-editor-toolbox

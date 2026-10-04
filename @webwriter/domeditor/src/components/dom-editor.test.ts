@@ -36,7 +36,6 @@ import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
 import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
-import {mathToolGroups} from "../math"
 
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
@@ -6032,36 +6031,38 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
   })
 
-  it("opens the Formula toolbox after math insertion and routes math tools", async () => {
+  it("shows formula input in the document column without a Formula toolbox", async () => {
     const {editor, editorWindow} = await mountEditor()
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    // Selection comes from the mocked bridge; focusing the empty test frame
+    // must not replace it with that frame's unrelated native selection.
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     const math = {active: true as const, display: "inline" as const}
-
     window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [{path: [], name: "Document"}, {path: [0], name: "Formula"}],
-          math,
-          inserted: true,
-        },
-      },
-      source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Formula"}], math, inserted: true,
+      }}, source: editorWindow,
     }))
     await editor.updateComplete
     await toolbox.updateComplete
-
-    expect(toolbox.activeTool).toBe("Edit")
     expect(toolbox.math).toEqual(math)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')).not.toBeNull()
-    const option = mathToolGroups[0].options[0]
-    const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(
-      `ribbon-drawer[label="Formula"] button.math-button[data-action="math:${option.command}"]`,
-    )!
-    button.click()
-
-    expect(execute).toHaveBeenCalledWith({type: "editMath", command: option.command})
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')).toBeNull()
+    const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-math-keyboard")!
+    expect(keyboard.closest(".math-keyboard-area")).not.toBeNull()
+    expect(keyboard.closest(".document-stage")).not.toBeNull()
+    keyboard.dispatchEvent(new CustomEvent("math-keyboard-command", {
+      detail: {command: "structure:frac"}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "editMath", command: "keyboard:structure:frac"})
+    keyboard.dispatchEvent(new CustomEvent("math-keyboard-close", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show formula keyboard"]')!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).not.toBeNull()
+    expect(focusEditor).toHaveBeenCalled()
   })
 
   it("allows ribbon inputs to receive pointer focus", async () => {

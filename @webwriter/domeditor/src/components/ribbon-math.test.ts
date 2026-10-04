@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {mathStructureOptions, mathToolGroups} from "../math"
+import {mathStructureOptions} from "../math"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import {AppRibbon} from "./ribbon"
 import {DomEditorToolbox} from "./toolbox"
@@ -11,9 +11,11 @@ afterEach(() => document.body.replaceChildren())
 const mathState = {active: true as const, display: "inline" as const}
 
 describe("formula toolbox controls", () => {
-  it("offers one root structure with an optional index", () => {
+  it("offers square roots and indexed roots", () => {
     const roots = mathStructureOptions.filter(option => /root/i.test(option.title))
     expect(roots).toEqual([{
+      command: "structure:sqrt", label: "√□", title: "Square root",
+    }, {
       command: "structure:root", label: "ⁿ√□", title: "Root",
     }])
   })
@@ -75,44 +77,15 @@ describe("formula toolbox controls", () => {
       .toEqual(contextDrawerPolicy({menu, surface: "ribbon"}))
   })
 
-  it("renders grouped math tools and dispatches their commands", async () => {
-    const toolbox = new DomEditorToolbox()
-    toolbox.activeTool = "Edit"
-    toolbox.math = mathState
-    const listener = vi.fn()
-    toolbox.addEventListener("ribbon-button-click", listener)
-    document.body.append(toolbox)
-    await toolbox.updateComplete
-
-    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')!
-    expect(drawer.querySelectorAll('.math-tool-groups button')).toHaveLength(
-      mathToolGroups.reduce((count, group) => count + group.options.length, 0),
-    )
-    expect(drawer.querySelector('[data-action^="math:move:"], [data-action^="math:delete:"], [data-action="math:exit"]')).toBeNull()
-    const option = mathToolGroups[0].options[0]
-    const button = drawer.querySelector<HTMLButtonElement>(`button.math-button[data-action="math:${option.command}"]`)!
-    expect(button.textContent).toBe(option.label)
-    expect(button.title).toBe(option.title)
-    expect(button.getAttribute("aria-label")).toBe(option.title)
-    expect(drawer.querySelector('[aria-label="Formula keyboard shortcuts"]')).toBeNull()
-    const groups = Array.from(drawer.querySelectorAll(".math-tool-group h3"), heading => heading.textContent)
-    expect(groups.slice(-2)).toEqual(["Greek letters", "Letters"])
-    button.click()
-
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {label: `math:${option.command}`, keepDrawerOpen: false},
-    }))
-  })
-
-  it("prioritizes Formula in the toolbox context", async () => {
+  it("leaves formula input to the keyboard rather than a toolbox drawer", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.math = mathState
     document.body.append(toolbox)
     await toolbox.updateComplete
 
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).not.toBeNull()
 
     toolbox.math = null
     await toolbox.updateComplete

@@ -268,7 +268,6 @@ export type ContextDrawerPolicy = {
 }
 
 const contextDrawerLabels = {
-  math: "Formula",
   documentSelected: "Document",
   paragraphSelected: "Paragraph",
   sectionSelected: "Section",
@@ -288,7 +287,7 @@ const ribbonContextPriority = [
   "paragraphSelected", "widget", "media", "dialog", "graphic", "headingGroup", "orderedList", "disclosure", "figure",
 ] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
 const toolboxContextPriority = [
-  "math", "documentSelected", "paragraphSelected", "widget", "sectionSelected", "headingGroup", "orderedList", "disclosure",
+  "documentSelected", "paragraphSelected", "widget", "sectionSelected", "headingGroup", "orderedList", "disclosure",
   "graphic", "table", "media", "dialog", "figure",
 ] as const satisfies readonly (keyof typeof contextDrawerLabels)[]
 
@@ -304,7 +303,6 @@ export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGro
     const groups = menuGroups[context.menu]
     return context.menu === "Start" && context.startPackages ? [...groups, context.startPackages] : groups
   }
-  if(context.surface === "toolbox" && context.math) return [{label: "Formula", buttons: []}]
   if(context.layout && (!context.layoutItem || ![context.media, context.dialog, context.graphic, context.table, context.disclosure].some(Boolean))) {
     return menuGroups.Edit.filter(group => group.label === (context.layout === "grid" ? "Grid layout" : context.layout === "columns" ? "Layout" : "Flex layout")
       || context.attributes && group.label === "Attributes")

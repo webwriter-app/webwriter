@@ -3,6 +3,7 @@ import {$, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixIntera
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, type MathSelectionState} from "../math"
 
 import {styleMarkNames, type MarkName} from "../marks"
+import {MathCompletionInput} from "./math-completion"
 
 const formulaMarks = {b: ["font-weight", "bold"], i: ["font-style", "italic"], u: ["text-decoration-line", "underline"], s: ["text-decoration-line", "line-through"]} as const
 const formulaStyleNames = [...styleMarkNames, "font-weight", "font-style", "text-decoration-line"]
@@ -25,6 +26,7 @@ export class MathFeature extends EditorFeature {
   private resizeObserver: ResizeObserver | null = null
   private observedRoot: Element | null = null
   private readonly handleResize = () => this.scheduleRefresh()
+  private readonly handleBlur = () => this.input?.suppress()
   private marked = new Set<Element>()
   private frame: number | null = null
   private commandText: string | null = null
@@ -36,6 +38,8 @@ export class MathFeature extends EditorFeature {
   private hovered: Element | null = null
   private typingStyles: Record<string, string> | null = null
   private typingPoint: Point | null = null
+  private input: MathCompletionInput | null = null
+  private spelling = false
 
   private pendingStyles() {
     const selection = document.getSelection()
@@ -201,10 +205,24 @@ export class MathFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    this.input = new MathCompletionInput({
+      root: () => this.activeMath,
+      command: () => this.commandText !== null && this.commandRange ? {text: this.commandText, range: this.commandRange} : null,
+      addAppendix: element => this.editor.addAppendix(element),
+      apply: (range, command) => {
+        const root = this.activeMath
+        if(!root || !this.editRange() || !range.startContainer.isConnected || !range.endContainer.isConnected
+          || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return false
+        this.dismissCommand()
+        document.getSelection()?.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+        return this.execute(command)
+      },
+    })
     this.observer = new MutationObserver(() => this.scheduleRefresh())
     this.observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true})
     this.resizeObserver = new ResizeObserver(this.handleResize)
     window.addEventListener("resize", this.handleResize)
+    window.addEventListener("blur", this.handleBlur)
   }
 
   disable() {
@@ -219,6 +237,7 @@ export class MathFeature extends EditorFeature {
     this.resizeObserver = null
     this.observedRoot = null
     window.removeEventListener("resize", this.handleResize)
+    window.removeEventListener("blur", this.handleBlur)
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null
     this.clearPresentation()
@@ -228,6 +247,8 @@ export class MathFeature extends EditorFeature {
     this.typingStyles = null
     this.typingPoint = null
     this.setHovered(null)
+    this.input?.destroy()
+    this.input = null
   }
 
   private accepts(event: Event) {
@@ -428,7 +449,6 @@ export class MathFeature extends EditorFeature {
   }
 
   insert(structure?: string) {
-    if(structure === "sqrt") structure = "root"
     if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return false
     if(this.activeMath) return false
     const selection = document.getSelection()
@@ -439,6 +459,12 @@ export class MathFeature extends EditorFeature {
       if(container.localName.includes("-") || container.hasAttribute("is") || container.namespaceURI !== document.body.namespaceURI) return false
       container = container.parentElement
     }
+    // Activate designMode before creating an empty MathML caret. Focusing the
+    // frame for the first time afterwards can canonicalize it to a prose gap.
+    const anchor = selection.anchorNode, offset = selection.anchorOffset
+    document.body.focus({preventScroll: true})
+    if(!anchor.isConnected || !document.body.contains(anchor)) return false
+    selection.setBaseAndExtent(anchor, Math.min(offset, anchor instanceof Text ? anchor.length : anchor.childNodes.length), anchor, Math.min(offset, anchor instanceof Text ? anchor.length : anchor.childNodes.length))
     this.editor.features.manipulation.ensureTextBlock()
     if(!this.textBlockAt(selection.anchorNode)) return false
     const math = mathElement("math", mathElement("mrow"))
@@ -452,6 +478,21 @@ export class MathFeature extends EditorFeature {
   execute(command: string): boolean {
     const math = this.activeMath
     if(!math) return false
+    if(command.startsWith("keyboard:")) {
+      this.validateCommand()
+      const inputCommand = command.slice(9)
+      if(inputCommand === "delete:backward" && this.commandText !== null) {
+        this.commandText ? this.commandText = this.commandText.slice(0, -1) : this.dismissCommand()
+        this.refresh()
+        return true
+      }
+      const editingWord = inputCommand.startsWith("delete:") || inputCommand.startsWith("move-extend:")
+      if(!editingWord && !inputCommand.startsWith("display:")) this.input?.commit(inputCommand.startsWith("move:"))
+      if(!inputCommand.startsWith("display:")) this.dismissCommand()
+      const result = this.execute(/^text:[\p{L}\p{Nl}]$/u.test(inputCommand) ? `identifier:${inputCommand.slice(5)}` : inputCommand)
+      if(!editingWord) this.input?.suppress()
+      return result
+    }
     this.marked.add(math)
     if(command === "exit") {
       this.dismissCommand()
@@ -476,10 +517,28 @@ export class MathFeature extends EditorFeature {
     if(!range) return false
     let result = false
     if(command.startsWith("text:")) result = this.typeText(range, command.slice(5))
+    else if(command.startsWith("identifier:")) {
+      const text = command.slice(11)
+      if(/^[\p{L}\p{Nl}]+$/u.test(text)) {
+        const styles = this.pendingStyles()
+        const identifier = mathElement("mi", text)
+        identifier.setAttribute("mathvariant", "italic")
+        if(styles) this.writeFormatting(identifier, styles)
+        result = this.insertNodes(range, [identifier])
+        if(result) {
+          $.move(identifier.firstChild!, text.length)
+          if(styles) {
+            this.typingStyles = styles
+            this.typingPoint = [identifier.firstChild!, text.length]
+          }
+        }
+      }
+    }
     else if(command.startsWith("structure:")) result = this.insertStructure(range, command.slice(10))
     else if(command.startsWith("function:")) result = this.insertFunction(range, command.slice(9))
     else if(command === "delete:backward" || command === "delete:forward") result = this.delete(range, command.endsWith("backward"))
     else if(command.startsWith("move:")) result = this.move(command.slice(5), false)
+    else if(command.startsWith("move-extend:")) result = this.move(command.slice(12), true)
     if(result) this.changed()
     return result
   }
@@ -638,6 +697,7 @@ export class MathFeature extends EditorFeature {
     }
     if(styles) tokens.forEach(token => this.writeFormatting(token, styles))
     if(!this.insertNodes(range, tokens)) return false
+    if(this.spelling) this.input?.recordInput(tokens)
     const last = tokens.at(-1)!
     $.move(last.firstChild!, last.textContent!.length)
     if(styles) this.typingPoint = [last.firstChild!, last.textContent!.length]
@@ -645,8 +705,8 @@ export class MathFeature extends EditorFeature {
   }
 
   private insertStructure(range: Range, name: string): boolean {
-    if(name === "sqrt") name = "root"
-    if(!mathStructureOptions.some(option => option.command === `structure:${name}`)) return false
+    const extra = ["sqrt", "cbrt", "coprod", "norm", "floor", "ceil", "angle", "cancel", "bcancel", "xcancel", "box", "overbrace", "underbrace", "overbracket", "underbracket", "overparen", "underparen", "text"]
+    if(!mathStructureOptions.some(option => option.command === `structure:${name}`) && !extra.includes(name)) return false
     // Preserve selected nodes by moving them, retaining identity and attributes.
     let operand: Node[] = []
     if(!range.collapsed) {
@@ -673,8 +733,8 @@ export class MathFeature extends EditorFeature {
     const first = mathElement("mrow")
     const second = mathElement("mrow")
     let node: Element
-    let target = first
-    const operators: Record<string, string> = {sum: "∑", prod: "∏", int: "∫", bigcup: "⋃", bigcap: "⋂"}
+    let target: Element = first
+    const operators: Record<string, string> = {sum: "∑", prod: "∏", int: "∫", coprod: "∐", bigcup: "⋃", bigcap: "⋂"}
     if(name === "frac" || name === "binom") {
       node = mathElement("mfrac", first, second)
       if(name === "binom") {
@@ -688,8 +748,32 @@ export class MathFeature extends EditorFeature {
       target = operand.length ? second : first
       if(name === "square") second.append(mathElement("mn", "2"))
     }
-    else if(name === "root") node = mathElement("mroot", first, second)
-    else if(name === "abs" || name === "paren") node = mathElement("mrow", mathElement("mo", name === "abs" ? "|" : "("), first, mathElement("mo", name === "abs" ? "|" : ")"))
+    else if(name === "root") { node = mathElement("mroot", first, second); target = second }
+    else if(name === "sqrt") node = mathElement("msqrt", first)
+    else if(name === "cbrt") node = mathElement("mroot", first, mathElement("mn", "3"))
+    else if(["abs", "paren", "norm", "floor", "ceil", "angle"].includes(name)) {
+      const fences: Record<string, [string, string]> = {abs: ["|", "|"], paren: ["(", ")"], norm: ["‖", "‖"], floor: ["⌊", "⌋"], ceil: ["⌈", "⌉"], angle: ["⟨", "⟩"]}
+      node = mathElement("mrow", mathElement("mo", fences[name][0]), first, mathElement("mo", fences[name][1]))
+    }
+    else if(["cancel", "bcancel", "xcancel", "box"].includes(name)) {
+      node = mathElement("menclose", first)
+      node.setAttribute("notation", {cancel: "updiagonalstrike", bcancel: "downdiagonalstrike", xcancel: "updiagonalstrike downdiagonalstrike", box: "box"}[name]!)
+    }
+    else if(/^(over|under)(brace|bracket|paren)$/.test(name)) {
+      const over = name.startsWith("over")
+      const glyphs: Record<string, string> = {overbrace: "⏞", underbrace: "⏟", overbracket: "⎴", underbracket: "⎵", overparen: "⏜", underparen: "⏝"}
+      const decoration = mathElement(over ? "mover" : "munder", first, mathElement("mo", glyphs[name]))
+      decoration.setAttribute(over ? "accent" : "accentunder", "true")
+      node = mathElement(over ? "mover" : "munder", decoration, second)
+      target = second
+    }
+    else if(name === "text") {
+      if(operand.some(node => !(node instanceof Text) && !plainToken(node))) return false
+      node = mathElement("mtext", operand.map(node => node.textContent).join(""))
+      target = node
+      operand.forEach(node => node.parentNode?.removeChild(node))
+      operand = []
+    }
     else if(name === "matrix") {
       const table = mathElement("mtable",
         mathElement("mtr", mathElement("mtd", first), mathElement("mtd", second)),
@@ -699,13 +783,14 @@ export class MathFeature extends EditorFeature {
     else node = mathElement(name === "int" ? "msubsup" : "munderover", mathElement("mo", operators[name]), first, second)
     parent.insertBefore(node, operand[0]?.parentNode === parent ? operand[0] : parent.childNodes[offset] ?? null)
     first.append(...operand)
-    if(name === "square" && operand.length) $.move(...after(node))
+    if(name === "text") $.move(node.firstChild ?? node, node.firstChild instanceof Text ? node.firstChild.length : 0)
+    else if(name === "square" && operand.length) $.move(...after(node))
     else $.move(target, target.childNodes.length)
     return true
   }
 
   private insertFunction(range: Range, name: string) {
-    if(!["sin", "cos", "tan", "ln", "log"].includes(name)) return false
+    if(!/^[\p{L}]+$/u.test(name)) return false
     const identifier = mathElement("mi", name)
     identifier.setAttribute("mathvariant", "normal")
     const argument = mathElement("mrow")
@@ -917,6 +1002,8 @@ export class MathFeature extends EditorFeature {
     this.deadPowerPoint = null
     event.preventDefault()
     event.stopImmediatePropagation()
+    this.validateCommand()
+    if(!event.shiftKey && this.input?.keydown(key)) return
     if(this.commandText !== null) {
       if(key === "Escape") this.dismissCommand()
       else if(key === "Backspace") this.commandText ? this.commandText = this.commandText.slice(0, -1) : this.dismissCommand()
@@ -930,12 +1017,12 @@ export class MathFeature extends EditorFeature {
       this.refresh()
       return
     }
-    if(key === "\\") {
+    if(key === "\\" && !(document.getSelection()?.focusNode?.parentElement?.closest("mtext"))) {
       this.commandText = ""
       this.commandRange = this.editRange()
       this.refresh()
     }
-    else if(key in directions) { this.move(directions[key], event.shiftKey); this.changed() }
+    else if(key in directions) { if(!event.shiftKey) this.input?.commit(true); this.move(directions[key], event.shiftKey); this.changed() }
     else if(key === "Tab") { this.moveSlot(event.shiftKey); this.changed() }
     else if(key === "Enter" || key === "Escape") this.execute("exit")
     else if(key === "Backspace" || key === "Delete") this.execute(`delete:${key === "Backspace" ? "backward" : "forward"}`)
@@ -1005,8 +1092,27 @@ export class MathFeature extends EditorFeature {
   }
 
   private typeInput(text: string) {
+    const selection = document.getSelection()
+    const focus = selection?.focusNode
+    if(focus?.parentElement?.closest("mtext")) return this.execute(`text:${text}`)
+    if(this.input?.beforeInput(text)) return true
+    if(selection?.isCollapsed && this.editRange()) {
+      const previous = focus instanceof Text && selection.focusOffset === focus.length ? focus.parentElement
+        : focus instanceof Element ? focus.childNodes[selection.focusOffset - 1] : null
+      const merged = ({"<=": "≤", ">=": "≥", "!=": "≠", ":=": "≔", "=>": "⇒", "≤>": "⇔", "||": "‖"} as Record<string, string>)[`${previous?.textContent}${text}`]
+      if(merged && previous instanceof Element && plainToken(previous) && previous.localName === "mo") {
+        previous.textContent = merged
+        $.move(previous.firstChild!, merged.length)
+        this.changed()
+        return true
+      }
+    }
     const structure = text === "^" ? "sup" : text === "_" ? "sub" : text === "/" ? "frac" : null
-    return this.execute(structure ? `structure:${structure}` : `text:${text}`)
+    this.spelling = true
+    try {
+      return this.execute(structure ? `structure:${structure}` : `text:${text === "*" ? "·" : text}`)
+    }
+    finally { this.spelling = false }
   }
 
   private setHovered(element: Element | null) {
@@ -1133,6 +1239,17 @@ export class MathFeature extends EditorFeature {
   }
 
   private dismissCommand() { this.commandText = null; this.commandRange = null }
+
+  private validateCommand() {
+    if(this.commandText === null) return
+    const root = this.activeMath
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    if(!root || !range || !this.commandRange?.startContainer.isConnected || !this.commandRange.endContainer.isConnected
+      || !root.contains(this.commandRange.startContainer) || !root.contains(this.commandRange.endContainer)
+      || this.commandRange.compareBoundaryPoints(Range.START_TO_START, range) !== 0
+      || this.commandRange.compareBoundaryPoints(Range.END_TO_END, range) !== 0) this.dismissCommand()
+  }
 
   private changed(inserted = false) {
     const root = this.activeMath
@@ -1291,6 +1408,7 @@ export class MathFeature extends EditorFeature {
   }
 
   refresh() {
+    this.validateCommand()
     if(this.deadPowerInput && (!this.isComposingPower || !this.deadPowerTarget?.[0].isConnected)) this.cancelDeadPowerComposition()
     if(this.hovered && !mathRoot(this.hovered)) this.setHovered(null)
     const root = this.activeMath
@@ -1320,7 +1438,7 @@ export class MathFeature extends EditorFeature {
       : Array.from(this.marked).some(element => element.classList.contains("◆element-capture-selected"))) {
       this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     }
-    if(!root) { this.clearPresentation(); this.dismissCommand(); return }
+    if(!root) { this.clearPresentation(); this.dismissCommand(); this.input?.refresh(); return }
     if(root !== this.observedRoot) {
       this.resizeObserver?.disconnect()
       this.resizeObserver?.observe(root)
@@ -1382,6 +1500,7 @@ export class MathFeature extends EditorFeature {
     })
     if(selection?.isCollapsed && selection.focusNode) {
       const rect = this.pointRect(caretPoint ?? [selection.focusNode, selection.focusOffset], structuralCaret)
+      this.input?.refresh(rect)
       if(structuralCaret) {
         const inset = caretNode instanceof Element && markers.get(caretNode) === "◆math-slot" && !outerRows.has(caretNode) ? 1 : 0
         const caret = this.caret ??= document.createElement("span")
@@ -1389,17 +1508,7 @@ export class MathFeature extends EditorFeature {
         caret.style.cssText = `position:absolute;background:currentColor;width:1px;left:${rect.left + inset}px;top:${rect.top}px;height:${rect.height}px;animation:var(--ww-ui-animation, blink 1s step-end 0s infinite)`
         if(caret.parentNode !== this.overlay) this.overlay.append(caret)
       }
-      if(this.commandText !== null) {
-        if(!this.commandRange?.startContainer.isConnected || !root.contains(this.commandRange.startContainer)
-          || this.commandRange.comparePoint(selection.focusNode, selection.focusOffset) !== 0) this.dismissCommand()
-        else {
-          const hint = document.createElement("span")
-          hint.style.cssText = `position:absolute;background:white;color:#0f172a;border:1px solid #94a3b8;border-radius:4px;padding:4px 8px;font:14px system-ui;left:${rect.left}px;top:${rect.bottom + 5}px`
-          const completions = Object.keys(mathCommandAliases).filter(name => name.startsWith(this.commandText!)).slice(0, 6)
-          hint.textContent = `\\${this.commandText}  ${completions.join(" · ")} — Space to insert`
-          this.overlay.append(hint)
-        }
-      }
     }
+    else this.input?.refresh()
   }
 }

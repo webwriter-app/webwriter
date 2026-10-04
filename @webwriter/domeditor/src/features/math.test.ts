@@ -793,7 +793,7 @@ describe("DOM MathML editing", () => {
     expect(editor.features.math.actions.insertMath({type: "insertMath", structure})).toBe(true)
     const math = document.querySelector("math")!
     const expectedTags: Record<string, string> = {
-      frac: "mfrac", square: "msup", sup: "msup", sub: "msub", sqrt: "mroot", root: "mroot",
+      frac: "mfrac", square: "msup", sup: "msup", sub: "msub", sqrt: "msqrt", root: "mroot",
       abs: "mo", paren: "mo", binom: "mfrac", matrix: "mtable", sum: "munderover", prod: "munderover",
       int: "msubsup", bigcup: "munderover", bigcap: "munderover",
     }
@@ -811,14 +811,18 @@ describe("DOM MathML editing", () => {
     expect(document.querySelector("p")!.lastChild!.textContent).toBe("after")
   })
 
-  it.each(["root", "sqrt"])("inserts %s with an optional editable index", structure => {
+  it.each(["root"])("inserts %s with an editable index first", structure => {
     const math = load("")
     expect(command(`structure:${structure}`)).toBe(true)
     const root = math.querySelector("mroot")!
     const [base, index] = Array.from(root.children)
+    expect(command("text:3")).toBe(true)
+    expect(index.textContent).toBe("3")
+    $.move(base, 0)
     expect(command("text:x")).toBe(true)
     expect(base.textContent).toBe("x")
-    expect(index.childNodes).toHaveLength(0)
+    $.move(index.firstChild!.firstChild!, 1)
+    expect(command("delete:backward")).toBe(true)
     expect(clean()).toContain("<mroot><mrow><mi>x</mi></mrow><mrow></mrow></mroot>")
     $.move(index, 0)
     expect(command("text:3")).toBe(true)
@@ -908,8 +912,8 @@ describe("DOM MathML editing", () => {
     const nodes = Array.from(math.childNodes).slice(0, 4)
     document.getSelection()!.setBaseAndExtent(math, 0, math, 4)
     expect(command("structure:sqrt")).toBe(true)
-    expect(Array.from(math.querySelector("mroot > mrow")!.childNodes)).toEqual(nodes)
-    expect(math.querySelector("mroot")?.nextElementSibling?.textContent).toBe("=")
+    expect(Array.from(math.querySelector("msqrt > mrow")!.childNodes)).toEqual(nodes)
+    expect(math.querySelector("msqrt")?.nextElementSibling?.textContent).toBe("=")
   })
 
   it.each(mathToolGroups.flatMap(group => group.options))("executes toolbox option $title ($command) as MathML", option => {
@@ -1082,9 +1086,9 @@ describe("DOM MathML editing", () => {
     const math = load("")
     for(const character of "\\sqrt") key(character)
     expect(math.textContent).toBe("")
-    expect(editor.appendix.querySelector(".◆math-overlay")?.textContent).toContain("sqrt")
+    expect(editor.appendix.querySelector('[aria-label="Formula completions"]')?.textContent).toContain("sqrt")
     key(" ")
-    expect(math.querySelector("mroot")).not.toBeNull()
+    expect(math.querySelector("msqrt")).not.toBeNull()
     expect(clean()).not.toContain("Space to insert")
   })
 
@@ -1658,5 +1662,281 @@ describe("formula formatting state", () => {
       expect(message().detail.marks).not.toContain("b")
       expect(token.getAttribute("style")).toContain("color: red")
     }
+  })
+})
+
+describe("formula input keyboard and autocomplete", () => {
+  const menu = () => editor.appendix.querySelector<HTMLElement>('[role="listbox"][aria-label="Formula completions"]')
+  const type = (text: string) => { for(const character of text) key(character) }
+  async function ready(html = "<mrow></mrow>") {
+    const math = load(html)
+    $.move(math.firstElementChild ?? math, 0)
+    editor.features.math.refresh()
+    return math
+  }
+
+  it("sets up autocomplete synchronously and cleans up when disabled", async () => {
+    expect((editor.features.math as any).input).not.toBeNull()
+    expect(menu()).toBeNull()
+    await ready()
+    type("sin")
+    expect(menu()?.hidden).toBe(false)
+    editor.features.math.disable()
+    expect((editor.features.math as any).input).toBeNull()
+    expect(menu()).toBeNull()
+    editor.features.math.enable()
+    expect((editor.features.math as any).input).not.toBeNull()
+    editor.features.math.refresh()
+    expect(menu()?.hidden ?? true).toBe(true)
+    type("x")
+    expect(menu()?.hidden).toBe(false)
+  })
+
+  it.each(['<mi>sin</mi>', '<mi>x</mi><mi>y</mi>'])("preserves existing identifiers while navigating %s", async html => {
+    const math = await ready(`<mrow>${html}</mrow>`)
+    const row = math.firstElementChild!
+    const nodes = Array.from(row.childNodes)
+    const end = row.lastChild!.firstChild!
+    $.move(end, end.textContent!.length)
+    editor.features.math.refresh()
+    const original = clean()
+    key("ArrowLeft")
+    expect(clean()).toBe(original)
+    $.move(end, end.textContent!.length)
+    command("keyboard:move:left")
+    expect(clean()).toBe(original)
+    expect(Array.from(row.childNodes)).toEqual(nodes)
+  })
+
+  it.each([true, false])("discards a backslash command after moving to another formula (refresh: %s)", async refresh => {
+    await ready()
+    type("\\s")
+    const other = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+    const row = document.createElementNS(other.namespaceURI!, "mrow")
+    other.append(row)
+    document.querySelector("math")!.after(other)
+    $.move(row, 0)
+    if(refresh) editor.features.math.refresh()
+    key("x")
+    expect(other.textContent).toBe("x")
+  })
+
+  it("applies pending formatting to virtual identifiers inserted inside a token", async () => {
+    const math = await ready('<mrow><mn>12</mn></mrow>')
+    $.move(math.querySelector("mn")!.firstChild!, 1)
+    editor.features.mark.toggleMark("b")
+    editor.features.mark.setStyleMark("color", "red")
+    command("keyboard:text:x")
+    command("keyboard:text:y")
+    expect(math.textContent).toBe("1xy2")
+    for(const identifier of math.querySelectorAll("mi")) {
+      expect(identifier.getAttribute("style")).toContain("font-weight: bold")
+      expect(identifier.getAttribute("style")).toContain("color: red")
+    }
+  })
+
+  it("deletes an unfinished word without accepting its completion", async () => {
+    const math = await ready()
+    type("sin")
+    command("keyboard:delete:backward")
+    expect(math.textContent).toBe("si")
+    expect(math.querySelector('mi[mathvariant="normal"]')).toBeNull()
+    const end = math.querySelector("mi:last-child")!.firstChild!
+    $.move(end, end.textContent!.length)
+    command("keyboard:move-extend:left")
+    expect(document.getSelection()!.toString()).toBe("i")
+    expect(math.textContent).toBe("si")
+  })
+
+  it("uses virtual backspace to edit and cancel a backslash command", async () => {
+    const math = await ready()
+    type("\\si")
+    command("keyboard:delete:backward")
+    expect(menu()?.querySelector('[aria-label="Sine: sin"]')).not.toBeNull()
+    command("keyboard:delete:backward")
+    command("keyboard:delete:backward")
+    key("x")
+    expect(math.textContent).toBe("x")
+  })
+
+  it("validates pending commands without changing a whole-formula selection", async () => {
+    const math = await ready('<mrow><mi>x</mi></mrow>')
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    key("\\")
+    $.selectElement(math)
+    const selection = document.getSelection()!
+    const range = selection.getRangeAt(0).cloneRange()
+    editor.features.math.refresh()
+    expect(selection.anchorNode).toBe(range.startContainer)
+    expect(selection.anchorOffset).toBe(range.startOffset)
+    expect(selection.focusNode).toBe(range.endContainer)
+    expect(selection.focusOffset).toBe(range.endOffset)
+    command("keyboard:delete:backward")
+    expect(math.isConnected).toBe(false)
+  })
+
+  it("offers functions at the live caret and accepts with Enter without UI in authored HTML", async () => {
+    const math = await ready()
+    type("sin")
+    expect(menu()?.hidden).toBe(false)
+    expect(menu()?.querySelector('[aria-selected="true"]')?.getAttribute("aria-label")).toBe("Sine: sin")
+    key("Enter")
+    expect(math.querySelector('mi[mathvariant="normal"]')?.textContent).toBe("sin")
+    expect(math.contains($.focus)).toBe(true)
+    expect(menu()?.hidden).toBe(true)
+    expect(clean()).not.toMatch(/math-completion|listbox|◆/)
+  })
+
+  it("confirms a single-letter word with Space before starting the next word", async () => {
+    const math = await ready()
+    type("x y")
+    expect(math.querySelectorAll("mi")).toHaveLength(2)
+    expect(menu()?.querySelector('[aria-selected="true"]')?.getAttribute("aria-label")).toBe("Variable: y")
+  })
+
+  it("cycles suggestions, accepts with Tab, and dismisses with Escape before leaving the formula", async () => {
+    const math = await ready()
+    type("s")
+    const options = () => Array.from(menu()!.querySelectorAll('[role="option"]'))
+    const count = options().length
+    key("ArrowUp")
+    expect(options().at(-1)?.getAttribute("aria-selected")).toBe("true")
+    key("ArrowDown")
+    expect(options()[0].getAttribute("aria-selected")).toBe("true")
+    for(let index = 0; index < count; index++) key("ArrowDown")
+    expect(options()[0].getAttribute("aria-selected")).toBe("true")
+    key("Escape")
+    editor.features.math.refresh()
+    expect(menu()?.hidden).toBe(true)
+    expect(editor.features.math.activeMath).toBe(math)
+    type("i")
+    expect(menu()?.hidden).toBe(false)
+    key("Tab")
+    expect(math.querySelector('mi[mathvariant="normal"]')?.textContent).toBe("sin")
+  })
+
+  it.each(["alpha", "NN", "sqrt", "root", "matrix", "overbrace", "floor", "norm", "box", "text"])("completes %s via the command popup", async name => {
+    const math = await ready()
+    type(`\\${name}`)
+    expect(menu()?.hidden).toBe(false)
+    expect(menu()?.querySelector('[aria-selected="true"]')?.textContent).toContain(name)
+    key("Enter")
+    expect(math.childNodes.length).toBeGreaterThan(0)
+    expect(math.textContent).not.toContain(name === "text" ? "\\text" : `\\${name}`)
+    expect(clean()).not.toContain("◆")
+  })
+
+  it("accepts a pointer completion without moving the native selection to UI", async () => {
+    const math = await ready()
+    type("alp")
+    const option = menu()!.querySelector<HTMLElement>('[aria-label="Greek letter alpha: alpha"]')!
+    const down = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+    option.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    expect(math.textContent).toBe("α")
+    expect(math.contains($.focus)).toBe(true)
+  })
+
+  it("does not apply a popup entry after remote text or selection replacement", async () => {
+    const math = await ready()
+    type("alp")
+    const option = menu()!.querySelector<HTMLElement>('[aria-label="Greek letter alpha: alpha"]')!
+    math.querySelector("mi")!.textContent = "z"
+    const original = clean()
+    option.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    expect(clean()).toBe(original)
+    math.replaceChildren(document.createTextNode("replaced"))
+    option.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    expect(math.textContent).toBe("replaced")
+  })
+
+  it("keeps comments, unknown content, styled identifiers and widget contents intact", async () => {
+    const math = await ready('<mi id="keep">s</mi><!--keep--><mi>i</mi><mi>n</mi><munknown><mi>z</mi></munknown>')
+    const kept = math.firstChild!
+    const comment = math.childNodes[1]
+    const unknown = math.lastChild!
+    $.move(math.childNodes[3].firstChild!, 1)
+    editor.features.math.refresh()
+    expect(menu()?.querySelector('[aria-selected="true"]')?.textContent ?? "").not.toContain("Sine")
+    key("Escape")
+    expect(math.firstChild).toBe(kept)
+    expect(math.childNodes[1]).toBe(comment)
+    expect(math.lastChild).toBe(unknown)
+    $.move(unknown.firstChild!.firstChild!, 1)
+    editor.features.math.refresh()
+    expect(menu()?.hidden ?? true).toBe(true)
+    expect(command("keyboard:text:x")).toBe(false)
+  })
+
+  it("commits named formulas on a space and supports arbitrary function names", async () => {
+    const math = await ready()
+    type("alpha ")
+    expect(math.textContent).toBe("α")
+    command("text:+")
+    type("customfunction(")
+    expect(math.querySelector('mi[mathvariant="normal"]')?.textContent).toBe("customfunction")
+    expect(math.querySelectorAll("mo")).toHaveLength(4)
+  })
+
+  it("keeps virtual variables committed and navigates/extends the live selection", async () => {
+    const math = await ready()
+    expect(command("keyboard:text:x")).toBe(true)
+    expect(command("keyboard:text:y")).toBe(true)
+    expect(menu()?.hidden ?? true).toBe(true)
+    type("s")
+    expect(menu()?.querySelector('[aria-selected="true"]')?.getAttribute("aria-label")).toBe("Variable: s")
+    key("Escape")
+    expect(command("keyboard:move-extend:left")).toBe(true)
+    expect(document.getSelection()!.toString()).toBe("s")
+    expect(command("keyboard:structure:frac")).toBe(true)
+    expect(math.querySelector("mfrac")?.firstElementChild?.textContent).toBe("s")
+    expect(math.textContent).toBe("xys")
+  })
+
+  it.each([["<=", "≤"], [">=", "≥"], ["!=", "≠"], [":=", "≔"], ["=>", "⇒"], ["<=>", "⇔"], ["||", "‖"], ["*", "·"]])("supports typed operator shortcut %s", async (text, symbol) => {
+    const math = await ready()
+    type(text)
+    expect(math.textContent).toBe(symbol)
+    expect(math.querySelector("mo")?.textContent).toBe(symbol)
+  })
+
+  it("treats formula text fields as plain text, including structural shortcuts", async () => {
+    const math = await ready()
+    command("keyboard:structure:text")
+    type("a^_/*\\test ")
+    expect(math.querySelector("mtext")?.textContent).toBe("a^_/*\\test ")
+    expect(math.querySelector("msup,mfrac,msub")).toBeNull()
+    expect(menu()?.hidden ?? true).toBe(true)
+  })
+
+  it("keeps the popup previews on one line with wrapping labels and a separate rounded frame", async () => {
+    await ready()
+    type("a")
+    const popup = menu()!
+    const list = popup.firstElementChild as HTMLElement
+    const option = list.querySelector('[aria-label="Argument: arg"]') as HTMLElement
+    expect(popup.style.overflow).toBe("hidden")
+    expect(popup.style.borderRadius).toBe("6px")
+    expect(list.style.overflow).toBe("auto")
+    expect((option.children[0] as HTMLElement).style.whiteSpace).toBe("nowrap")
+    expect((option.children[1] as HTMLElement).style.overflowWrap).toBe("anywhere")
+  })
+
+  it("synchronizes completions with history and removes all UI and markers on disable", async () => {
+    const math = await ready()
+    type("alpha")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    key("Enter")
+    editor.doc.syncFromDOM()
+    expect(math.textContent).toBe("α")
+    editor.doc.undo()
+    expect(document.querySelector("math")!.textContent).toBe("alpha")
+    editor.doc.redo()
+    expect(document.querySelector("math")!.textContent).toBe("α")
+    editor.features.math.disable()
+    expect(menu()).toBeNull()
+    expect(document.querySelector("math")!.className).not.toContain("◆math")
+    expect(clean()).not.toContain("◆")
   })
 })
