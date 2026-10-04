@@ -3,7 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 
 import {DOMEditor} from "../domeditor"
-import {$} from "../utility"
+import {$, cloneWithoutEditorMarkers} from "../utility"
 
 let editor: DOMEditor
 let feature: DOMEditor["features"]["transformation"]
@@ -173,6 +173,44 @@ describe("selection-owned transformation", () => {
       return article
     }
 
+    it.each(["Delete", "Backspace"])("deletes the whole root with %s after clicking its content-selection frame, with undo/redo", async key => {
+      const article = item()
+      article.id = "deleted-root"
+      article.insertAdjacentHTML("beforeend", '<div style="position: absolute"><demo-widget><span>Nested</span></demo-widget><svg><circle r="5"></circle></svg><!--keep--></div>')
+      const sibling = document.createElement("p")
+      sibling.textContent = "Neighbor"
+      article.after(sibling)
+      Object.assign(article.style, {left: "0px", top: "0px", width: "100px", height: "50px"})
+      mockRect(article)
+      captureNode(article.querySelector("demo-widget")!)
+      const frame = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+      frame.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 200, clientY: 150}))
+      expect($.selectedElement).toBe(article)
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const contents = cloneWithoutEditorMarkers(article, true)
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(article.isConnected).toBe(false)
+      expect(sibling.isConnected).toBe(true)
+      expect(sibling.textContent).toBe("Neighbor")
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      expect(editor.toHTML(true)).not.toContain("deleted-root")
+      expect(editor.toHTML(true)).not.toContain("◆")
+      editor.doc.undo()
+      await mutationsDelivered()
+      expect(document.getElementById("deleted-root")!.innerHTML).toBe(contents.innerHTML)
+      editor.doc.redo()
+      await mutationsDelivered()
+      expect(document.getElementById("deleted-root")).toBeNull()
+      expect(sibling.isConnected).toBe(true)
+    })
+
     it("keeps the interior free of drag surfaces and uses borders for moving and corners for resizing", () => {
       const article = item()
       selectNode(article)
@@ -189,21 +227,43 @@ describe("selection-owned transformation", () => {
       expect(feature.overlay.querySelectorAll(".◆transform-overlay-midpoint:not([hidden])")).toHaveLength(4)
     })
 
-    it.each(["scale-right", "scale-up-up", "scale-down-down", "scale-left-left", "scale-right-right", "scale-down-right", "rotator"])("retains the inner text range after dragging %s", control => {
+    it("promotes a table-cell selection to the root and keeps it selected when resizing is cancelled", () => {
+      const article = item()
+      Object.assign(article.style, {left: "0px", top: "0px", width: "100px", height: "50px"})
+      mockRect(article)
+      const cells = article.querySelectorAll("td")
+      editor.features.table.selectCells(cells[0], cells[1])
+      editor.features.selection.processSelection()
+      const before = article.style.cssText
+      feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+        .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      expect($.selectedElement).toBe(article)
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 180}))
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+      expect(article.style.cssText).toBe(before)
+      expect($.selectedElement).toBe(article)
+      expect(feature.target).toBe(article)
+    })
+
+    it.each(["scale-right", "scale-up-up", "scale-down-down", "scale-left-left", "scale-right-right", "scale-down-right", "rotator"])("selects the root from an inner text range and immediately drags %s", control => {
       const article = item(), text = article.querySelector("em")!.firstChild!
       Object.assign(article.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
       mockRect(article)
       document.getSelection()!.setBaseAndExtent(text, 4, text, 1)
       editor.features.selection.processSelection()
+      expect(feature.overlay.getAttribute("part")?.split(/\s+/)).toContain("transform-overlay-content-selected")
       const before = article.style.cssText
       const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${control}`)!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      expect($.selectedElement).toBe(article)
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(feature.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-content-selected")
       document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, altKey: true, clientX: 220, clientY: 180}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 180}))
       expect(article.style.cssText).not.toBe(before)
-      expect($.anchor).toBe(text); expect($.anchorOffset).toBe(4)
-      expect($.focus).toBe(text); expect($.focusOffset).toBe(1)
-      expect($.isTextSelection).toBe(true)
+      expect($.selectedElement).toBe(article)
+      expect($.isElementSelection).toBe(true)
       expect(feature.target).toBe(article)
       if(control === "scale-right") {
         expect(article.style.width).toBe("100px"); expect(article.style.height).toBe("50px")
@@ -372,6 +432,70 @@ describe("selection-owned transformation", () => {
 })
 
 describe("transform controls and geometry", () => {
+  it("releases transformed frame geometry when the controls are disabled", () => {
+    const target = targetElement("demo-widget")
+    Object.assign(target.style, {position: "absolute", width: "100px", height: "50px"})
+    target.style.setProperty("rotate", "20deg")
+    mockRect(target)
+    captureNode(target)
+    const caret = editor.features.selection.selectionCaret!
+    expect(caret.style.transform).not.toBe("")
+    feature.disable()
+    expect(caret.style.transform).toBe("")
+    expect(caret.style.getPropertyValue("position-anchor")).toBe("")
+    expect(caret).toHaveClass("◆selection-caret-capture")
+    expect(target).not.toHaveClass("◆transform-target")
+  })
+
+  it.each([
+    {mode: "canvas", capture: false}, {mode: "canvas", capture: true},
+    {mode: "slides", capture: false}, {mode: "slides", capture: true},
+  ] as const)("rotates the $mode selection frame with its controls (capture: $capture)", ({mode, capture}) => {
+    const target = targetElement(capture ? "demo-widget" : "p")
+    document.body.replaceChildren(target)
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    Object.assign(target.style, {width: "160px", height: "80px", transformOrigin: "0 0"})
+    target.style.setProperty("rotate", "30deg")
+    expect(getComputedStyle(target).getPropertyValue("rotate")).toBe("30deg")
+    expect(getComputedStyle(target).position).toBe("absolute")
+    // A transformed bounding box is wider and taller than the local border box.
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(60, 100, 178.56, 149.28))
+    if(capture) captureNode(target)
+    else selectNode(target)
+    if(!capture) expect($.selectedElement).toBe(target)
+    const caret = editor.features.selection.selectionCaret!
+    const expectGeometry = () => {
+      const overlay = feature.overlay
+      for(const property of ["left", "top", "width", "height", "transform"] as const) {
+        expect(caret.style[property]).toBe(overlay.style[property])
+        expect(caret.style.getPropertyPriority(property)).toBe("important")
+      }
+      expect(caret.style.width).toBe("160px")
+      expect(caret.style.height).toBe("80px")
+      expect(caret.style.getPropertyValue("position-anchor")).toBe("auto")
+      expect(caret.style.transformOrigin).toBe("center")
+      expect(new DOMMatrix(caret.style.transform).b).not.toBe(0)
+    }
+    expectGeometry()
+    if(mode === "canvas") {
+      editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+      expectGeometry()
+    }
+    target.style.setProperty("rotate", "90deg")
+    feature.updateInfo()
+    expectGeometry()
+    expect(caret.getRootNode()).toBe(editor.appendix)
+    expect(target.querySelector(".◆selection-caret")).toBeNull()
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Elsewhere"
+    document.body.append(paragraph)
+    const range = document.createRange()
+    range.setStart(paragraph.firstChild!, 0); range.collapse(true)
+    editor.features.selection.selectDropRange(range)
+    expect(caret.style.transform).toBe("")
+    expect(caret.style.transformOrigin).toBe("")
+  })
+
   function expectAnchorAt(left: number, top: number) {
     const overlay = feature.overlay
     const matrix = new DOMMatrix(overlay.style.transform)
@@ -905,8 +1029,12 @@ describe("transform controls and geometry", () => {
     mockRect(target)
     feature.handleRotateStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
     feature.handleRotateDrag(new MouseEvent("mousemove", {button: 0, clientX: 200, clientY: 125}))
+    const caret = editor.features.selection.selectionCaret!
+    expect(caret.style.transform).toBe(feature.overlay.style.transform)
+    expect(new DOMMatrix(caret.style.transform).b).toBeCloseTo(1)
     feature.handleRotateEnd()
     expect(target.style.getPropertyValue("rotate")).toBe("90deg")
+    expect(caret.style.transform).toBe(feature.overlay.style.transform)
 
     target.style.position = "relative"
     feature.updateInfo()

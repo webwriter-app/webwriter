@@ -373,6 +373,7 @@ export class TransformationFeature extends EditorFeature {
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const moveEdges = Boolean(this.target && this.#isFreeformItem(this.target))
     setPart(overlay, "transform-overlay-freeform", moveEdges)
+    setPart(overlay, "transform-overlay-capture-selected", moveEdges && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
       midpoint.hidden = !moveEdges
       setPart(midpoint, "transform-overlay-scale-hidden", !moveEdges)
@@ -416,8 +417,8 @@ export class TransformationFeature extends EditorFeature {
   #matrix(element: Element | null): DOMMatrix {
     if(!element) return new DOMMatrix()
     const style = getComputedStyle(element)
-    const angle = this.#angle(style.rotate)
-    const scale = this.#scale(style.scale)
+    const angle = this.#angle(style.getPropertyValue("rotate"))
+    const scale = this.#scale(style.getPropertyValue("scale"))
     const own = new DOMMatrix().rotate(angle).scale(scale[0], scale[1])
       .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
     own.e = own.f = 0
@@ -469,19 +470,31 @@ export class TransformationFeature extends EditorFeature {
     return new DOMRect(rect.left + element.clientLeft - element.scrollLeft, rect.top + element.clientTop - element.scrollTop, element.clientWidth, element.clientHeight)
   }
 
-  updateInfo() {
-    const target = this.target
-    if(!target) { if(this.#target) this.clearTransform(); return }
-    const rect = target.getBoundingClientRect()
-    const {width, height} = this.#size(target)
-    const matrix = this.#matrix(target)
-    const overlay = this.overlay
-    Object.assign(overlay.style, {
+  /** Border-box geometry shared by transform, selection and hover overlays. */
+  boxGeometry(element: TransformElement) {
+    const rect = element.getBoundingClientRect()
+    const {width, height} = this.#size(element)
+    const matrix = this.#matrix(element)
+    const corners = [[-width / 2, -height / 2], [width / 2, -height / 2], [width / 2, height / 2], [-width / 2, height / 2]].map(([x, y]) => {
+      const point = this.#vector(matrix, x, y)
+      return {x: rect.left + rect.width / 2 + point.x, y: rect.top + rect.height / 2 + point.y}
+    })
+    const styles = {
       width: `${width}px`, height: `${height}px`,
       left: `${rect.left + rect.width / 2 - width / 2}px`,
       top: `${rect.top + rect.height / 2 - height / 2}px`,
       transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, 0, 0)`,
-    })
+    }
+    return {rect, width, height, matrix, styles, corners}
+  }
+
+  updateInfo() {
+    const target = this.target
+    if(!target) { if(this.#target) this.clearTransform(); return }
+    const {rect, width, height, matrix, styles} = this.boxGeometry(target)
+    const overlay = this.overlay
+    Object.assign(overlay.style, styles)
+    this.editor.features.selection.positionTransformCaret(target, overlay.style)
     overlay.classList.toggle("◆transform-overlay-narrow", rect.width < 120)
     const centerY = rect.top + rect.height / 2
     const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
@@ -548,6 +561,11 @@ export class TransformationFeature extends EditorFeature {
     if(mode === "rotate" && getComputedStyle(target).position !== "absolute") return false
     const matrix = this.#matrix(target)
     if(!matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) return false
+    if(this.#isFreeformItem(target)) {
+      document.body.focus({preventScroll: true})
+      this.editor.features.selection.selectElement(target)
+      if(this.target !== target || !target.isConnected || !this.#isFreeformItem(target) || $.selectedElement !== target) return false
+    }
     const initial = document.createElement("div").style
     initial.cssText = target.style.cssText
     const style = getComputedStyle(target)
@@ -555,7 +573,7 @@ export class TransformationFeature extends EditorFeature {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: target.getBoundingClientRect(), ...this.#size(target),
-      matrix, parentMatrix: this.#matrix(renderedParentElement(target)), rotate: this.#angle(style.rotate), scale: this.#scale(style.scale),
+      matrix, parentMatrix: this.#matrix(renderedParentElement(target)), rotate: this.#angle(style.getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
       initial, written: new Map(), moved: false,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       captured: this.editor.features.selection.captureSelectedElement === target,
@@ -945,6 +963,7 @@ export class TransformationFeature extends EditorFeature {
 
   clearTransform() {
     this.#finish(true)
+    this.editor.features.selection.clearTransformCaret()
     if(this.#target) removeEditorMarker(this.#target, "◆transform-target")
     this.#target = null
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)

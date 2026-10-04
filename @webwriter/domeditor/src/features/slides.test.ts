@@ -5,6 +5,7 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {slidesStyles} from "../document-layout"
+import {authoredLayoutKind} from "../layouts"
 import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 
 let editor: DOMEditor
@@ -31,6 +32,81 @@ afterEach(() => {
 })
 
 describe("CSS-only Slides layout", () => {
+  it("keeps outer body, carousel and navigation gaps inside a slide", () => {
+    const [one, two] = seed(), viewport = one.parentElement!, navigation = document.querySelector("nav.ww-slides-navigation")!
+    for(const container of [document.body, viewport, navigation, ...links()]) {
+      for(const offset of [0, container.childNodes.length]) {
+        $.move(container, offset)
+        editor.features.selection.processSelection(false, {scrollIntoView: false})
+        expect(editor.features.slides.containingSlide($.anchor)).not.toBeNull()
+        expect(editor.features.slides.containingSlide($.focus)).toBe(editor.features.slides.containingSlide($.anchor))
+        expect(editor.features.slides.allowsSelection()).toBe(true)
+        expect(viewport.classList.contains("◆gap-before-selected") || viewport.classList.contains("◆gap-after-selected")).toBe(false)
+        expect([one, two].some(slide => slide.classList.contains("◆gap-before-selected") || slide.classList.contains("◆gap-after-selected"))).toBe(false)
+      }
+    }
+  })
+
+  it("preserves gaps and element selections inside a slide", () => {
+    const [one] = seed(), paragraph = one.querySelector("p")!
+    for(const placement of ["before", "after"] as const) {
+      $.selectGap(paragraph, placement)
+      const range = $.range.cloneRange()
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+      expect($.anchor).toBe(range.startContainer)
+      expect($.anchorOffset).toBe(range.startOffset)
+      expect(editor.features.slides.allowsSelection()).toBe(true)
+    }
+    $.selectElement(paragraph)
+    editor.features.selection.processSelection(false, {scrollIntoView: false})
+    expect($.selectedElement).toBe(paragraph)
+  })
+
+  it("keeps a native range escaping the slide within slide content", () => {
+    const [one] = seed(), text = one.querySelector("p")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 2, document.body, document.body.childNodes.length)
+    editor.features.selection.processSelection(false, {scrollIntoView: false})
+    expect(editor.features.slides.containingSlide($.anchor)).toBe(one)
+    expect(editor.features.slides.containingSlide($.focus)).toBe(one)
+    expect(editor.features.slides.allowsSelection()).toBe(true)
+  })
+
+  it("positions direct content relative to its slide while preserving nested layout and widget content", async () => {
+    document.body.innerHTML = '<article style="display:flex"><p>Nested</p><p>Layout</p></article><!--keep--><custom-card><p>Widget</p></custom-card><svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10" /></svg>'
+    const nodes = Array.from(document.body.childNodes)
+    expect(convert("slides")).toBe(true)
+    const slide = slides()[0]
+    expect(getComputedStyle(slide).position).toBe("relative")
+    expect(getComputedStyle(slide).display).toBe("block")
+    for(const item of slide.querySelectorAll(":scope > article, :scope > custom-card, :scope > svg")) {
+      expect(getComputedStyle(item).position).toBe("absolute")
+      expect(item.parentElement).toBe(slide)
+    }
+    expect(Array.from(slide.childNodes).slice(0, nodes.length)).toEqual(nodes)
+    expect(getComputedStyle(slide.querySelector("article")!).display).toBe("flex")
+    expect(Array.from(slide.querySelectorAll("p, rect")).every(item => !item.hasAttribute("style"))).toBe(true)
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
+    expect(saved.querySelector<HTMLElement>("custom-card")!.style.position).toBe("absolute")
+    expect(saved.querySelector<SVGSVGElement>("svg")!.style.position).toBe("absolute")
+  })
+
+  it("keeps carousel flex logic out of content layout controls while retaining authored nested layouts", () => {
+    expect(convert("slides")).toBe(true)
+    const slide = slides()[0], viewport = slide.parentElement!
+    expect(getComputedStyle(viewport).display).toBe("flex")
+    for(const element of [viewport, slide, ...document.querySelectorAll("nav")]) expect(authoredLayoutKind(element)).toBeNull()
+    $.move(slide.querySelector("p")!)
+    expect(editor.features.layout.getState()).toBeNull()
+    const before = viewport.getAttribute("style")
+    expect(editor.features.layout.actions.setLayoutStyles({type: "setLayoutStyles", styles: {"flex-direction": "column"}})).toBe(false)
+    expect(viewport.getAttribute("style")).toBe(before)
+    const nested = document.createElement("article")
+    nested.style.display = "flex"; nested.innerHTML = "<p>Nested</p><p>Layout</p>"
+    slide.append(nested)
+    $.move(nested.firstElementChild!)
+    expect(editor.features.layout.getState()).toMatchObject({kind: "flex", item: true})
+  })
+
   it("initializes empty documents and added slides with aligned heading and paragraph boxes", async () => {
     const original = document.body.firstElementChild!
     expect(convert("slides")).toBe(true)
@@ -43,11 +119,12 @@ describe("CSS-only Slides layout", () => {
       expect(paragraph.style.position).toBe("absolute")
       expect(heading.style.height).toBe("20%")
       expect(paragraph.style.top).toBe("calc(20% + 2.5rem)")
-      expect(paragraph.style.height).toBe("calc(80% - 3.75rem)")
+      expect(paragraph.style.width).toBe("")
+      expect(paragraph.style.height).toBe("")
     }
     expect($.anchor).toBe(slides()[1].querySelector("h1"))
     const saved = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
-    expect(saved.querySelector<HTMLElement>("section.ww-slide > p")!.style.height).toBe("calc(80% - 3.75rem)")
+    expect(saved.querySelector<HTMLElement>("section.ww-slide > p")!.style.height).toBe("")
     expect(saved.body.innerHTML).not.toContain("◆")
   })
 
@@ -476,11 +553,15 @@ describe("CSS-only Slides layout", () => {
       expect($.selectedElement).toBe(element.parentElement?.matches("picture") ? element.parentElement : element)
     })
 
-    it("retains an explicit document selection", async () => {
+    it("retains an explicit document selection outside slides and enters a slide in slides mode", async () => {
       $.selectElement(document.body)
       expect(convert(target)).toBe(true)
       await settle()
-      expect($.selectedElement).toBe(document.body)
+      if(target === "slides") {
+        expect(editor.features.slides.containingSlide($.anchor)).not.toBeNull()
+        expect(editor.features.slides.allowsSelection()).toBe(true)
+      }
+      else expect($.selectedElement).toBe(document.body)
     })
 
     it("retains an explicit authored section selection", async () => {

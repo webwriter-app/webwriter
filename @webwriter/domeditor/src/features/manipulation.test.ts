@@ -6,13 +6,77 @@ import '@testing-library/jest-dom/vitest'
 import * as Y from "yjs"
 import { DOMEditor } from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
-import { $, htmlToFragment } from "../utility"
+import { $, htmlToFragment, cloneWithoutEditorMarkers } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {elementDragType} from "../components/insertion-menu"
 import {replayHostDrag} from "../editor-bridge"
 
 let editor: DOMEditor
+
+describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots", mode => {
+  let headHTML: string
+  beforeEach(() => { headHTML = document.head.innerHTML })
+  afterEach(() => { document.head.innerHTML = headHTML })
+
+  it.each(["p", "h1", "section", "ul", "details"])("keeps a %s root intact on Enter and native paragraph input", tag => {
+    for(const input of ["key", "beforeinput"]) {
+      const root = document.createElement(tag)
+      root.innerHTML = tag === "section" ? "<p>ab</p>" : tag === "ul" ? "<li>ab</li>"
+        : tag === "details" ? "<summary>ab</summary><p>Body</p>" : "ab"
+      document.body.replaceChildren(root)
+      document.body.className = ""
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const parent = root.parentElement!, siblings = Array.from(parent.childNodes)
+      const style = root.getAttribute("style")
+      const textBlock = root.querySelector("p, li, summary") ?? root
+      $.move(textBlock.firstChild!, 1)
+      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+        : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+      textBlock.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(textBlock.innerHTML).toBe("a<br>b")
+      expect(Array.from(parent.childNodes)).toEqual(siblings)
+      expect(root.getAttribute("style")).toBe(style)
+      expect(root.contains($.anchor)).toBe(true)
+    }
+  })
+
+  it("replaces selected text with a line break and leaves adjacent roots alone", () => {
+    document.body.innerHTML = '<p><b>ab</b><i>cd</i></p><p>Neighbor</p>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const paragraph = document.querySelector("p")!, neighbor = document.querySelectorAll("p")[1]
+    const initialNeighbor = neighbor.outerHTML
+    $.selectRange(paragraph.querySelector("b")!.firstChild!, 1, paragraph.querySelector("i")!.firstChild!, 1)
+    paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(paragraph.textContent).toBe("ad")
+    expect(paragraph.querySelectorAll("br")).toHaveLength(1)
+    expect(paragraph.contains($.anchor)).toBe(true)
+    expect(neighbor.outerHTML).toBe(initialNeighbor)
+  })
+
+  it("leaves a widget's shadow input in control of Enter", () => {
+    const widget = document.createElement("custom-widget")
+    const shadow = widget.attachShadow({mode: "open"}), input = document.createElement("textarea")
+    shadow.append(input); document.body.replaceChildren(widget)
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const original = cloneWithoutEditorMarkers(widget, true).outerHTML
+    const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+    input.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(cloneWithoutEditorMarkers(widget, true).outerHTML).toBe(original)
+  })
+
+  it("inserts a line break into an empty text root", () => {
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const paragraph = document.querySelector("p")!, parent = paragraph.parentElement!
+    $.move(paragraph)
+    paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe("<br>")
+    expect(parent.querySelectorAll("p")).toHaveLength(1)
+    expect(paragraph.contains($.anchor)).toBe(true)
+  })
+})
 
 /*
 Selection: caret, gap, node, text, span (reversed)

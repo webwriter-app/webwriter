@@ -2128,13 +2128,24 @@ it.each(["shape", "canvas"])("capture-selects an element-selected standalone gra
   expect(editor.toHTML(true)).not.toContain("◆")
 })
 
-it("capture-selects an element-selected drawing canvas on an interior click", () => {
+it.each(["document", "canvas", "slides"] as const)("capture-selects an element-selected drawing canvas on an interior click in %s", mode => {
   editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
   const graphic = document.querySelector("svg")!
+  if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
   editor.features.selection.selectElement(graphic)
   expect(editor.features.selection.captureSelectedElement).toBeNull()
-  clickShape(graphic)
-  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  const hit = vi.spyOn($, "pointFromCoords").mockReturnValue({node: graphic.parentNode!, offset: Array.from(graphic.parentNode!.childNodes).indexOf(graphic)})
+  try {
+    clickShape(graphic)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+    if(mode !== "document") {
+      expect(editor.features.transformation.overlay.getAttribute("part")?.split(/\s+/)).toContain("transform-overlay-capture-selected")
+      editor.features.selection.selectElement(graphic)
+      expect(editor.features.transformation.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-capture-selected")
+    }
+  }
+  finally { hit.mockRestore(); document.body.className = "" }
 })
 
 it("does not capture an element-selected graphic on a secondary click", () => {

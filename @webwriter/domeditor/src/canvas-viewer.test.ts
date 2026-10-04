@@ -90,8 +90,34 @@ describe("standalone canvas reader", () => {
     document.body.replaceChildren(replacement)
     vi.spyOn(replacement, "getBoundingClientRect").mockReturnValue({left: -500, top: -300, right: -300, bottom: -200, width: 200, height: 100} as DOMRect)
     control("fit-content").click()
-    expect(document.body.shadowRoot!.querySelector("slot")!.style.transform).toContain("translate(548px, 348px)")
+    const x = (window.innerWidth - 200) / 2 + 500, y = (window.innerHeight - 100) / 2 + 300
+    expect(document.body.shadowRoot!.querySelector("slot")!.style.transform).toContain(`translate(${x}px, ${y}px)`)
     expect(replacement.hasAttribute("style")).toBe(false)
+  })
+
+  it.each([.5, 2])("centers transformed content bounds from a previous zoom of %s", previousZoom => {
+    reader = mountCanvasReader()!
+    const viewer = reader.viewer as CanvasViewer & {camera: {x: number, y: number, zoom: number}, items(): Element[]}
+    viewer.camera = {x: 120, y: -80, zoom: previousZoom}
+    const slot = document.body.shadowRoot!.querySelector("slot")!
+    vi.spyOn(slot, "getBoundingClientRect").mockImplementation(() => ({left: viewer.camera.x, top: viewer.camera.y} as DOMRect))
+    const shapes = [{left: -400, top: -200, right: 1600, bottom: 100}, {left: 200, top: 300, right: 600, bottom: 800}]
+    const authored = document.body.innerHTML
+    for(const [index, item] of viewer.items().entries()) {
+      const shape = shapes[index]
+      vi.spyOn(item, "getBoundingClientRect").mockImplementation(() => ({
+        left: viewer.camera.x + shape.left * viewer.zoom, top: viewer.camera.y + shape.top * viewer.zoom,
+        right: viewer.camera.x + shape.right * viewer.zoom, bottom: viewer.camera.y + shape.bottom * viewer.zoom,
+      } as DOMRect))
+    }
+    control("fit-content").click()
+    const rects = viewer.items().map(item => item.getBoundingClientRect())
+    const left = Math.min(...rects.map(rect => rect.left)), right = Math.max(...rects.map(rect => rect.right))
+    const top = Math.min(...rects.map(rect => rect.top)), bottom = Math.max(...rects.map(rect => rect.bottom))
+    expect((left + right) / 2).toBeCloseTo(window.innerWidth / 2)
+    expect((top + bottom) / 2).toBeCloseTo(window.innerHeight / 2)
+    expect(viewer.zoom).toBeLessThan(1)
+    expect(document.body.innerHTML).toBe(authored)
   })
 
   it("cleans up on a mode change and releases its slot before editor takeover", async () => {

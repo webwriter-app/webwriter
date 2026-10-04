@@ -53,14 +53,17 @@ export class SelectionFeature extends EditorFeature {
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
   #selectedSection: Element | null = null
-  #drag: {anchor: Range, focus: Range, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
+  #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
   #settingBoxSelection = false
-  #boxDrag: {x: number, y: number, pointerId?: number, overlay: HTMLElement, ranges: Range[]} | null = null
+  #boxDrag: {x: number, y: number, pointerId?: number, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
   #selectionMarkers = new Set<Element>()
   #atomicOverlays = new Map<Element, HTMLElement>()
   #atomicOverlayFrame: number | null = null
   #revealSelectionFrame: number | null = null
   #lastScrollSelection: {element: Element} | {range: Range, backwards: boolean} | null = null
+  #hoverFrame: number | null = null
+  #nativeHoverTarget: Element | null = null
+  #hoverOwner: Element | null = null
 
   #clearAtomicOverlays() {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
@@ -72,11 +75,12 @@ export class SelectionFeature extends EditorFeature {
   /** Measure live boxes while selected, including scrolling, resizing and
    * widget-driven layout changes that do not mutate the authored DOM. */
   readonly #positionAtomicOverlays = () => {
+    if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
     this.#atomicOverlayFrame = null
-    this.#atomicOverlays.forEach((overlay, element) => {
+    for(const overlays of [this.#atomicOverlays, this.#boxDrag?.previews]) overlays?.forEach((overlay, element) => {
       if(!document.body.contains(element)) {
         overlay.remove()
-        this.#atomicOverlays.delete(element)
+        overlays.delete(element)
         return
       }
       const rect = element.getBoundingClientRect()
@@ -85,13 +89,14 @@ export class SelectionFeature extends EditorFeature {
       overlay.style.width = `${rect.width}px`
       overlay.style.height = `${rect.height}px`
     })
-    if(this.#atomicOverlays.size) {
+    if(this.#atomicOverlays.size || this.#boxDrag?.previews.size) {
       this.#atomicOverlayFrame = requestAnimationFrame(this.#positionAtomicOverlays)
     }
   }
 
   #showAtomicOverlays(selection: Selection) {
     if(selection.isCollapsed || !selection.rangeCount) return
+    if($.selectedElement && (this.editor.features.canvas.active || this.editor.features.slides.active)) return
     const range = selection.getRangeAt(0)
     const visit = (element: Element) => {
       if(!$.includesNode(element) || !range.intersectsNode(element)) return
@@ -221,12 +226,24 @@ export class SelectionFeature extends EditorFeature {
     if(parent) document.getSelection()?.setPosition(parent, Array.from(parent.childNodes).indexOf(widget))
   }
 
+  private suppressSelectionScroll = false
+
+  /** Drop insertion keeps its pointer coordinates while creation commands
+   * establish their usual caret or capture selection. */
+  withoutSelectionScroll<T>(command: () => T): T {
+    const previous = this.suppressSelectionScroll
+    this.suppressSelectionScroll = true
+    try { return command() }
+    finally { this.suppressSelectionScroll = previous }
+  }
+
   selectElement(element: Element) {
     if(!element.isConnected || element === document.body || !document.body.contains(element)) return
     const focused = document.activeElement === document.body ? this.editor.appendix.activeElement : null
     if(focused instanceof HTMLElement) focused.blur()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
+    this.editor.features.table.clearCellSelection(false)
     $.selectElement(element)
     this.processSelection()
   }
@@ -538,7 +555,15 @@ export class SelectionFeature extends EditorFeature {
    * must stay in the flow where the interaction began. */
   #constrainSelectionToFlow() {
     const selection = document.getSelection()
+    const drag = this.#drag
+    if(selection && drag?.scope) {
+      if(drag.scope.contains(drag.anchor.startContainer) && drag.scope.contains(drag.lastFocus.startContainer)
+        && (!drag.scope.contains(selection.anchorNode) || !drag.scope.contains(selection.focusNode))) {
+        selection.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset, drag.lastFocus.startContainer, drag.lastFocus.startOffset)
+      }
+    }
     if(!selection?.anchorNode || !selection.focusNode || selection.isCollapsed || $.selectedElement || $.isMultiElementSelection) return
+    if(this.#layoutSelectionItem(selection.anchorNode, selection.focusNode)) return
     const flow = editingFlowRoot(selection.anchorNode)
     if(editingFlowRoot(selection.focusNode) === flow) return
     const backwards = $.isBackwards
@@ -582,6 +607,8 @@ export class SelectionFeature extends EditorFeature {
     this.clearSelectedSection()
     this.#clearElementHover()
     this.#clearStyleTargetHover()
+    this.#nativeHoverTarget = null
+    this.#clearHoverGeometry()
     this.editor.features.transformation.clearTransform()
     this.#clearSelections()
     this.selectionCaret?.remove()
@@ -629,7 +656,12 @@ export class SelectionFeature extends EditorFeature {
     const pointerId = this.#boxDrag?.pointerId ?? this.#drag?.pointerId
     const target = this.#boxDrag ? document.body : this.#drag?.target
     this.#boxDrag?.overlay.remove()
+    this.#boxDrag?.previews.forEach(overlay => overlay.remove())
     this.#boxDrag = null
+    if(!this.#atomicOverlays.size && this.#atomicOverlayFrame !== null) {
+      cancelAnimationFrame(this.#atomicOverlayFrame)
+      this.#atomicOverlayFrame = null
+    }
     this.#drag = null
     this.dragAnchor = null
     this.isInDragSelection = false
@@ -643,7 +675,18 @@ export class SelectionFeature extends EditorFeature {
   readonly #finishDrag = (event: PointerEvent) => {
     if(this.#boxDrag) {
       if(this.#boxDrag.pointerId !== undefined && this.#boxDrag.pointerId !== event.pointerId) return
-      if(event.type === "pointerup") this.#extendBoxSelection(event)
+      if(event.type === "pointerup") {
+        this.#extendBoxSelection(event)
+        const elements = this.#boxDrag?.elements
+        if(elements) {
+          this.#settingBoxSelection = true
+          try {
+            if(elements.length) $.selectElements(elements)
+            else $.selectRange(document.body, 0)
+          }
+          finally { this.#settingBoxSelection = false }
+        }
+      }
       this.#endDrag()
       this.processSelection(false, {scrollIntoView: false})
       return
@@ -662,6 +705,7 @@ export class SelectionFeature extends EditorFeature {
       }
     }
     const dragging = this.isInDragSelection
+    if(drag?.scope) this.#constrainSelectionToFlow()
     this.#endDrag()
     if(dragging) this.processSelection()
   }
@@ -669,6 +713,8 @@ export class SelectionFeature extends EditorFeature {
   #beginDrag(event: PointerEvent, nativeClick: boolean) {
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
+    const scope = this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
+    if(scope && !scope.contains(selection.anchorNode)) selection.collapse(selection.focusNode, selection.focusOffset)
     const anchor = document.createRange()
     anchor.setStart(selection.anchorNode, selection.anchorOffset)
     anchor.collapse(true)
@@ -676,7 +722,7 @@ export class SelectionFeature extends EditorFeature {
     focus.setStart(selection.focusNode, selection.focusOffset)
     focus.collapse(true)
     const target = document.body
-    this.#drag = {anchor, focus, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
+    this.#drag = {anchor, focus, lastFocus: focus.cloneRange(), scope, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
       nativeClick, moved: false, target, pointerId: event.pointerId}
     this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
     this.isInDragSelection = true
@@ -698,8 +744,9 @@ export class SelectionFeature extends EditorFeature {
     if(!drag || drag.pointerId !== undefined && event.pointerId !== drag.pointerId) return
     // Live Ranges track inserts/removals at the saved endpoints. Revalidate
     // their current roots before using them after a concurrent DOM mutation.
-    const root = getDocumentRoot()
-    if(!root.contains(drag.anchor.startContainer) || !root.contains(drag.focus.startContainer)) {
+    const root = drag.scope ?? getDocumentRoot()
+    if(!root.isConnected || drag.scope && this.#layoutSelectionItem(drag.scope, drag.scope) !== drag.scope
+      || !root.contains(drag.anchor.startContainer) || !root.contains(drag.focus.startContainer)) {
       this.#endDrag()
       this.processSelection()
       return
@@ -711,11 +758,24 @@ export class SelectionFeature extends EditorFeature {
       drag.moved = true
       document.body.classList.add("◆", "◆selection-dragging")
     }
+    let x = Math.max(0, Math.min(event.clientX, window.innerWidth - 1))
+    let y = Math.max(0, Math.min(event.clientY, window.innerHeight - 1))
+    if(drag.scope instanceof HTMLElement || drag.scope instanceof SVGSVGElement) {
+      const {rect, width, height, matrix} = this.editor.features.transformation.boxGeometry(drag.scope)
+      if(matrix.is2D && Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) > 1e-8 && width > 2 && height > 2) {
+        const center = {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2}
+        const local = matrix.inverse().transformPoint({x: x - center.x, y: y - center.y})
+        const clamped = matrix.transformPoint({x: Math.max(1 - width / 2, Math.min(local.x, width / 2 - 1)),
+          y: Math.max(1 - height / 2, Math.min(local.y, height / 2 - 1))})
+        x = center.x + clamped.x; y = center.y + clamped.y
+      }
+    }
     const point = atOrigin
       ? {node: drag.focus.startContainer, offset: drag.focus.startOffset}
-      : $.pointFromCoords(Math.max(0, Math.min(event.clientX, window.innerWidth - 1)),
-        Math.max(0, Math.min(event.clientY, window.innerHeight - 1)), event.target, this.editor.schema, editingFlowRoot(drag.anchor.startContainer))
-    if(!point) return
+      : $.pointFromCoords(x, y, event.target, this.editor.schema, editingFlowRoot(drag.anchor.startContainer), drag.scope ?? undefined)
+    if(!point || !root.contains(point.node)) return
+    drag.lastFocus.setStart(point.node, point.offset)
+    drag.lastFocus.collapse(true)
     document.getSelection()?.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset, point.node, point.offset)
     this.processSelection(true)
   }
@@ -740,7 +800,7 @@ export class SelectionFeature extends EditorFeature {
     // It remains inside the document iframe, below the surrounding editor UI.
     overlay.showPopover?.()
     this.#boxDrag = {x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
-      pointerId: event.pointerId, overlay, ranges: []}
+      pointerId: event.pointerId, overlay, elements: [], previews: new Map()}
     this.isInDragSelection = true
     document.body.classList.add("◆", "◆selection-dragging")
     if(event.pointerId !== undefined) {
@@ -770,18 +830,28 @@ export class SelectionFeature extends EditorFeature {
     const right = Math.max(x, event.clientX), bottom = Math.max(y, event.clientY)
     Object.assign(drag.overlay.style, {left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px`})
     const elements = this.#boxItems().filter(element => {
-      const rect = element.getBoundingClientRect()
-      return rect.width > 0 && rect.height > 0 && rect.left >= left && rect.right <= right && rect.top >= top && rect.bottom <= bottom
+      const geometry = element instanceof HTMLElement || element instanceof SVGSVGElement
+        ? this.editor.features.transformation.boxGeometry(element) : null
+      const rect = geometry?.rect ?? element.getBoundingClientRect()
+      const corners = geometry?.corners ?? [{x: rect.left, y: rect.top}, {x: rect.right, y: rect.bottom}]
+      // Matrix arithmetic can put a touching corner a fraction of a pixel outside.
+      const epsilon = 1e-6
+      return rect.width > 0 && rect.height > 0 && corners.every(point => point.x >= left - epsilon && point.x <= right + epsilon && point.y >= top - epsilon && point.y <= bottom + epsilon)
     })
-    this.#settingBoxSelection = true
-    try {
-      if(elements.length) $.selectElements(elements)
-      else $.selectRange(document.body, 0)
+    drag.elements = elements
+    for(const [element, overlay] of drag.previews) if(!elements.includes(element)) {
+      overlay.remove()
+      drag.previews.delete(element)
     }
-    finally { this.#settingBoxSelection = false }
-    const selection = document.getSelection()
-    drag.ranges = selection ? Array.from({length: selection.rangeCount}, (_, i) => selection.getRangeAt(i).cloneRange()) : []
-    this.processSelection(false, {scrollIntoView: false})
+    for(const element of elements) if(!drag.previews.has(element)) {
+      const overlay = document.createElement("div")
+      overlay.classList.add("◆", "◆editor-only")
+      overlay.setAttribute("part", "atomic-selection-overlay multi-selection-overlay box-selection-preview")
+      overlay.setAttribute("aria-hidden", "true")
+      this.editor.addAppendix(overlay)
+      drag.previews.set(element, overlay)
+    }
+    this.#positionAtomicOverlays()
   }
 
   /** Native caret hit testing snaps blank space to nearby text. Require an
@@ -812,6 +882,10 @@ export class SelectionFeature extends EditorFeature {
     }
     this.#endDrag()
     this.clearSelectedSection()
+    const graphic = graphicContainerForNode(ev.target instanceof Node ? ev.target : null)
+    // The graphic feature enters capture on a selected canvas/shape. Native
+    // caret hit testing must not replace that node selection with an outer gap.
+    if(graphic && $.selectedElement === graphic && !modifierKeyDown(ev)) return
     const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
     const divider = ev.target instanceof Element && ev.target.localName === "hr" ? ev.target : null
     if(media || divider) {
@@ -845,7 +919,10 @@ export class SelectionFeature extends EditorFeature {
       this.processSelection(this.isInDragSelection)
     }
     else {
-      const point = $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target, this.editor.schema)
+      const clickedItem = this.#layoutSelectionItem(canvasItem ?? (ev.target instanceof Node ? ev.target : null),
+        canvasItem ?? (ev.target instanceof Node ? ev.target : null))
+      const extend = ev.shiftKey && (!clickedItem || clickedItem === this.#layoutSelectionItem($.anchor, $.anchor))
+      const point = $.selectCoords(ev.clientX, ev.clientY, extend, ev.target, this.editor.schema)
       const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
       const nativeClick = !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
         && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
@@ -875,11 +952,21 @@ export class SelectionFeature extends EditorFeature {
     },
     pointermove: event => {
       this.#handleKeyState(event)
+      this.#nativeHoverTarget = event.target instanceof Element ? event.target : null
+      this.#refreshHoverGeometry()
       if(this.#drag && this.#drag.pointerId === event.pointerId) {
         this.#updatePointerHover(document.elementFromPoint(event.clientX, event.clientY))
       }
       if(this.isInDragSelection) event.preventDefault()
       if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
+    },
+    pointerover: event => {
+      this.#nativeHoverTarget = event.target instanceof Element ? event.target : null
+      this.#refreshHoverGeometry()
+    },
+    pointerout: event => {
+      this.#nativeHoverTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null
+      this.#refreshHoverGeometry()
     },
     pointerup: this.#finishDrag,
     pointercancel: this.#finishDrag,
@@ -898,10 +985,15 @@ export class SelectionFeature extends EditorFeature {
         const root = getDocumentRoot()
         if(this.#drag !== drag || drag.moved || !selection?.anchorNode || !selection.focusNode
           || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return
+        if(drag.scope && (!drag.scope.contains(selection.anchorNode) || !drag.scope.contains(selection.focusNode))) {
+          this.#constrainSelectionToFlow()
+          return
+        }
         drag.anchor.setStart(selection.anchorNode, selection.anchorOffset)
         drag.anchor.collapse(true)
         drag.focus.setStart(selection.focusNode, selection.focusOffset)
         drag.focus.collapse(true)
+        drag.lastFocus = drag.focus.cloneRange()
         this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
       })
     },
@@ -1092,6 +1184,7 @@ export class SelectionFeature extends EditorFeature {
       if(inlineMathRoot(pathElement)) return
       const element = pathElement.closest("table") ?? pathElement
       element.classList.add("◆", "◆element-hovered")
+      this.#refreshHoverGeometry()
     },
     hoverSection: ({path}: {type: "hoverSection", path: number[] | null}) => {
       this.#clearElementHover()
@@ -1101,6 +1194,7 @@ export class SelectionFeature extends EditorFeature {
       const section = this.#rawElementAtPath(path)
       if(!isSectionElement(section)) throw new TypeError("A section path must resolve to a section element")
       section.classList.add("◆", "◆element-hovered")
+      this.#refreshHoverGeometry()
     },
     hoverStyleTarget: ({hovered}: {type: "hoverStyleTarget", hovered: boolean}) => {
       this.showStyleTargetHover(hovered ? this.editor.features.manipulation.styleTarget : null)
@@ -1112,6 +1206,18 @@ export class SelectionFeature extends EditorFeature {
     if(!target || !document.body.contains(target)) return
     this.#clearElementHover()
     target.classList.add("◆", "◆style-target-hovered")
+    this.#refreshHoverGeometry()
+  }
+
+  #snippetHoverTarget: Element | null = null
+
+  showSnippetHover(target: Element | null) {
+    this.#clearElementHover()
+    this.#clearStyleTargetHover()
+    if(!target?.isConnected || !document.body.contains(target)) return
+    this.#snippetHoverTarget = target
+    target.classList.add("◆", "◆element-hovered", "◆snippet-hovered")
+    this.#refreshHoverGeometry()
   }
 
   /** Resolves a BODY-relative child-node path to an element. */
@@ -1165,6 +1271,45 @@ export class SelectionFeature extends EditorFeature {
     return this.hoverCaret ?? this.#createHoverCaret()
   }
 
+  #clearHoverGeometry() {
+    if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
+    this.#hoverFrame = null
+    if(this.#hoverOwner && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
+    this.#hoverOwner = null
+    const caret = this.hoverCaret
+    if(!caret) return
+    for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) caret.style.removeProperty(property)
+    setPart(caret, "hover-caret-transformed", false)
+    setPart(caret, "hover-caret-selected-root", false)
+  }
+
+  /** Native hover follows the freeform item; breadcrumb/style previews keep
+   * their explicit target. Refresh live geometry for zoom and authored edits. */
+  #refreshHoverGeometry = () => {
+    if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
+    this.#hoverFrame = null
+    const explicit = document.querySelector(".◆element-hovered, .◆style-target-hovered")
+    const target = explicit ?? this.#layoutSelectionItem(this.#nativeHoverTarget, this.#nativeHoverTarget)
+    if(!this.isEnabled || !this.editor.features.canvas.active && !this.editor.features.slides.active
+      || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !target.isConnected || isDocumentRoot(target)) {
+      this.#clearHoverGeometry()
+      return
+    }
+    if(this.#hoverOwner && this.#hoverOwner !== target && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
+    this.#hoverOwner = target
+    const caret = this.#ensureHoverCaret()
+    const {styles} = this.editor.features.transformation.boxGeometry(target)
+    for(const [property, value] of Object.entries(styles)) caret.style.setProperty(property, value, "important")
+    caret.style.setProperty("position-anchor", "auto", "important")
+    caret.style.setProperty("position-area", "none", "important")
+    caret.style.setProperty("translate", "none", "important")
+    caret.style.setProperty("transform-origin", "center", "important")
+    setPart(caret, "hover-caret-transformed")
+    setPart(caret, "hover-caret-selected-root", target.classList.contains("◆element-selected")
+      && this.#layoutSelectionItem(target, target) === target)
+    this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
+  }
+
   /** Creates the shared selection caret in BODY's shadow tree. */
   #createSelectionCaret() {
     const node = document.createElement("div")
@@ -1205,7 +1350,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("font-size")
     caret.style.removeProperty("--math-caret-top")
     caret.style.removeProperty("--math-caret-height")
-    for(const property of ["width", "position-area", "position-anchor", "translate"]) caret.style.removeProperty(property)
+    for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
     ;["node", "capture", "gap", "text"].forEach(state => {
       caret.classList.remove(`◆selection-caret-${state}`)
       setPart(caret, `selection-caret-${state}`, false)
@@ -1259,7 +1404,33 @@ export class SelectionFeature extends EditorFeature {
     setPart(caret, "selection-caret-hidden", false)
     if(state === "gap") setPart(caret, "gap-caret")
     caret.removeAttribute("visibility")
+    if(state === "node" || state === "capture") this.editor.features.transformation.updateInfo()
     return caret
+  }
+
+  /** Reuse the transform controls' border box instead of the axis-aligned
+   * CSS anchor box. Only the element owning this outline may position it. */
+  positionTransformCaret(element: Element, geometry: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">) {
+    const caret = this.selectionCaret
+    const owner = this.captureSelectedElement ?? this.selectedSectionElement ?? $.selectedElement
+    if(owner !== element || !element.isConnected || !caret
+      || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) return
+    for(const property of ["left", "top", "width", "height", "transform"] as const) {
+      caret.style.setProperty(property, geometry[property], "important")
+    }
+    caret.style.setProperty("position-anchor", "auto", "important")
+    caret.style.setProperty("position-area", "none", "important")
+    caret.style.setProperty("translate", "none", "important")
+    caret.style.setProperty("transform-origin", "center", "important")
+  }
+
+  /** Return to native anchor geometry when transform controls stop tracking. */
+  clearTransformCaret() {
+    const caret = this.selectionCaret
+    if(!caret?.style.transform) return
+    for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) {
+      caret.style.removeProperty(property)
+    }
   }
 
   /** Places a collapsed document selection, even if a widget or a table
@@ -1312,6 +1483,8 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #clearElementHover() {
+    if(this.#snippetHoverTarget) removeEditorMarker(this.#snippetHoverTarget, "◆element-hovered", "◆snippet-hovered")
+    this.#snippetHoverTarget = null
     this.#clearHoverMarker("◆element-hovered")
   }
 
@@ -1325,8 +1498,9 @@ export class SelectionFeature extends EditorFeature {
       hoveredElements.unshift(document.body)
     }
     hoveredElements.forEach(el => {
-      removeEditorMarker(el, marker)
+      removeEditorMarker(el, marker, ...(marker === "◆element-hovered" ? ["◆snippet-hovered"] : []))
     })
+    this.#refreshHoverGeometry()
   }
 
   /** Creates the virtual caret used only for a completely empty document.
@@ -1473,6 +1647,7 @@ export class SelectionFeature extends EditorFeature {
         && previous.range.endContainer === range.endContainer && previous.range.endOffset === range.endOffset) return
     this.#lastScrollSelection = selectedElement ? {element: selectedElement}
       : range ? {range: range.cloneRange(), backwards} : null
+    if(this.suppressSelectionScroll) return
     if(selectedElement) {
       if(this.editor.features.canvas.active) {
         this.editor.features.canvas.reveal(selectedElement.getBoundingClientRect())
@@ -1557,7 +1732,7 @@ export class SelectionFeature extends EditorFeature {
    * selectionchange events and every editor-driven refresh. Passive refreshes
    * preserve the last interaction's scroll target without revealing it again. */
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
-    if(this.#settingBoxSelection || $.isSettingRanges) return
+    if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
     // Appendix inputs and SVG label ranges own their text selection. Clamping
     // them into BODY disrupts typing and clears the graphic's capture outline.
     if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused
@@ -1617,10 +1792,11 @@ export class SelectionFeature extends EditorFeature {
       const root = getDocumentRoot()
       const isInRoot = (node: Node | null) => node === root || Boolean(node && root.contains(node))
       if(!sel?.rangeCount || sel.isCollapsed && (!isInRoot(sel.anchorNode) || !isInRoot(sel.focusNode))) {
-        $.selectDocumentStart()
+        if(!this.editor.features.slides.active) $.selectDocumentStart()
         sel = document.getSelection()
       }
       if(!inDragSelection) this.#normalizeNativeSelection()
+      this.editor.features.slides.constrainSelection()
       sel = document.getSelection()
       this.editor.features.list.clearSelectionPresentation()
     }
@@ -1771,14 +1947,8 @@ export class SelectionFeature extends EditorFeature {
     },
     "pointermove": event => this.#extendDrag(event),
     "selectionchange": () => {
-      if(this.editor.features.media.isPlaceholderInteraction || this.#settingBoxSelection || $.isSettingRanges) return
+      if(this.#boxDrag || this.editor.features.media.isPlaceholderInteraction || this.#settingBoxSelection || $.isSettingRanges) return
       const selection = document.getSelection()
-      const box = this.#boxDrag
-      if(box && (!selection || selection.rangeCount !== box.ranges.length || box.ranges.some((range, i) => {
-        const current = selection.getRangeAt(i)
-        return current.startContainer !== range.startContainer || current.startOffset !== range.startOffset
-          || current.endContainer !== range.endContainer || current.endOffset !== range.endOffset
-      }))) this.#endDrag()
       const current = selection?.rangeCount ? selection.getRangeAt(0) : null
       const previous = this.#selectedSectionRange
       // Programmatic selection queues a native event. Keep the explicit
@@ -1796,7 +1966,13 @@ export class SelectionFeature extends EditorFeature {
 
   /** Read the final selection after native defaults and other feature handlers.
    * Local input can move the caret visually without changing its live Range. */
-  #scheduleSelectionReveal() {
+  #scheduleSelectionReveal(event: Event) {
+    if(this.editor.features.canvas.active && (event instanceof KeyboardEvent ? event.key === "Backspace"
+      : event instanceof InputEvent && event.inputType.startsWith("delete") && event.inputType.endsWith("Backward"))) {
+      if(this.#revealSelectionFrame !== null) cancelAnimationFrame(this.#revealSelectionFrame)
+      this.#revealSelectionFrame = null
+      return
+    }
     if(this.#revealSelectionFrame !== null) return
     this.#revealSelectionFrame = requestAnimationFrame(() => {
       this.#revealSelectionFrame = null
@@ -1813,8 +1989,8 @@ export class SelectionFeature extends EditorFeature {
    * double/triple click select the word/line, 
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
-    "beforeinput": () => this.#scheduleSelectionReveal(),
-    "input": () => this.#scheduleSelectionReveal(),
+    "beforeinput": event => this.#scheduleSelectionReveal(event),
+    "input": event => this.#scheduleSelectionReveal(event),
     "mousedown": ev => {
       if(ev.detail >= 2 && !this.#hitsText(ev)) ev.preventDefault()
     },
@@ -1825,7 +2001,7 @@ export class SelectionFeature extends EditorFeature {
       // it here as the direct-call invariant as well.
       if(this.isCaptureSelection) return
       if(direction || ["Enter", "Backspace", "Delete", "Home", "End", "PageUp", "PageDown", "Tab"].includes(ev.key)) {
-        this.#scheduleSelectionReveal()
+        this.#scheduleSelectionReveal(ev)
       }
       this.#releaseCaptureSelection()
       this.clearSelectedSection()

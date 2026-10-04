@@ -39,6 +39,91 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe.each(["canvas", "slides"] as const)("transformed hover outlines in %s", mode => {
+  afterEach(() => { document.body.className = ""; vi.restoreAllMocks() })
+  it.each(["pointer", "breadcrumb", "style"] as const)("tracks rotated widgets through %s hover and clears geometry", async source => {
+    const widget = el("demo-widget", "Content") as HTMLElement
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    Object.assign(widget.style, {width: "160px", height: "80px", transformOrigin: "0 0"})
+    widget.style.setProperty("rotate", "30deg")
+    vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(60, 100, 178.56, 149.28))
+    const path: number[] = []
+    for(let node: Node = widget; node !== document.body; node = node.parentNode!) path.unshift(Array.from(node.parentNode!.childNodes).indexOf(node as ChildNode))
+    if(source === "pointer") widget.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    else if(source === "breadcrumb") feature.actions.hoverNode({type: "hoverNode", path})
+    else feature.showStyleTargetHover(widget)
+    const caret = feature.hoverCaret!
+    const expectGeometry = () => {
+      const {styles} = editor.features.transformation.boxGeometry(widget)
+      for(const [property, value] of Object.entries(styles)) {
+        expect(caret.style.getPropertyValue(property)).toBe(value)
+        expect(caret.style.getPropertyPriority(property)).toBe("important")
+      }
+      expect(caret.style.width).toBe("160px")
+      expect(caret.style.height).toBe("80px")
+      expect(new DOMMatrix(caret.style.transform).b).not.toBe(0)
+    }
+    expectGeometry()
+    const original = caret.style.transform
+    widget.style.setProperty("rotate", "90deg")
+    if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expectGeometry()
+    expect(caret.style.transform).not.toBe(original)
+    expect(caret.getRootNode()).toBe(editor.appendix)
+    expect(editor.toHTML(true)).not.toContain("hover-caret")
+    if(source === "pointer") widget.dispatchEvent(new PointerEvent("pointerout", {bubbles: true, relatedTarget: document.body}))
+    else if(source === "breadcrumb") feature.actions.hoverNode({type: "hoverNode", path: null})
+    else feature.showStyleTargetHover(null)
+    expect(caret.style.transform).toBe("")
+    expect(caret.style.getPropertyValue("position-anchor")).toBe("")
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-transformed")
+    expect(widget.className).not.toContain("hovered")
+  })
+
+  it("suppresses hover on a selected root and restores it after deselection", async () => {
+    const item = el("section", "Content")
+    const other = el("p", "Other content")
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    feature.selectElement(item)
+    item.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    const caret = feature.hoverCaret!
+    expect(caret.getAttribute("part")).toContain("hover-caret-selected-root")
+
+    other.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-selected-root")
+    item.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(caret.getAttribute("part")).toContain("hover-caret-selected-root")
+    $.move(item.firstChild!, 1)
+    feature.processSelection()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-selected-root")
+    feature.selectElement(item)
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(caret.getAttribute("part")).toContain("hover-caret-selected-root")
+    item.dispatchEvent(new PointerEvent("pointerout", {bubbles: true, relatedTarget: document.body}))
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-selected-root")
+  })
+
+  it("cleans hover geometry and markers when the hovered item is replaced", async () => {
+    const item = el("p", "Content") as HTMLElement
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    item.style.setProperty("rotate", "45deg")
+    const path: number[] = []
+    for(let node: Node = item; node !== document.body; node = node.parentNode!) path.unshift(Array.from(node.parentNode!.childNodes).indexOf(node as ChildNode))
+    feature.actions.hoverNode({type: "hoverNode", path})
+    const caret = feature.hoverCaret!
+    expect(caret.style.transform).not.toBe("")
+    item.replaceWith(document.createElement("p"))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(caret.style.transform).toBe("")
+    expect(item.className).not.toContain("◆element-hovered")
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-transformed")
+    feature.disable()
+    expect(editor.appendix.querySelector(".◆hover-caret")).toBeNull()
+  })
+})
+
 it("keeps summary editable without allowing element or capture selection", () => {
   document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
   const summary = document.querySelector("summary")!
@@ -181,7 +266,96 @@ describe("capture outline selection", () => {
   })
 })
 
+describe.each(["document", "canvas", "slides"] as const)("widget capture parity in %s", mode => {
+  afterEach(() => { document.body.className = "" })
+
+  it.each(["light", "open", "closed"] as const)("captures %s content, preserves widget input, and leaves capture through its frame", kind => {
+    const widget = el("interactive-capture-widget")
+    const button = document.createElement("button")
+    button.textContent = "Widget control"
+    if(kind === "light") widget.append(button)
+    else widget.attachShadow({mode: kind}).append(button)
+    if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    feature.selectElement(widget)
+    const event = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0})
+    button.dispatchEvent(event)
+    button.focus()
+    expect(feature.captureSelectedElement).toBe(widget)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+    const key = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true})
+    button.dispatchEvent(key)
+    expect(key.defaultPrevented).toBe(false)
+    expect(widget.isConnected).toBe(true)
+    const wheel = new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaY: 30})
+    button.dispatchEvent(wheel)
+    expect(wheel.defaultPrevented).toBe(false)
+    expect(feature.captureSelectedElement).toBe(widget)
+    if(mode !== "document") expect(editor.features.transformation.overlay.getAttribute("part")?.split(/\s+/)).toContain("transform-overlay-capture-selected")
+    const edge = feature.selectionCaret!.querySelector(".◆capture-edge")!
+    edge.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    expect(feature.captureSelectedElement).toBeNull()
+    expect($.selectedElement).toBe(widget)
+    expect(editor.features.transformation.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-capture-selected")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+})
+
 describe("canvas and slide box selection", () => {
+  it.each(["canvas", "slides"] as const)("previews one %s root without changing selection until release", mode => {
+    document.body.className = `ww-${mode}`
+    document.body.innerHTML = mode === "canvas" ? "<p>Content</p>"
+      : '<div class="ww-slides-viewport"><section class="ww-slide"><p>Content</p></section></div>'
+    const item = document.querySelector("p")!, root = item.parentElement!
+    rect(item, 20, 20, 60, 60)
+    $.selectRange(item.firstChild!, 1, item.firstChild!, 3)
+    feature.processSelection()
+    const before = document.getSelection()!.getRangeAt(0).cloneRange()
+    const selectElements = vi.spyOn($, "selectElements")
+    pointer("pointerdown", 0, 0, root)
+    for(const [x, count] of [[80, 1], [40, 0], [80, 1]]) {
+      pointer("pointermove", x, 80, root)
+      document.dispatchEvent(new Event("selectionchange"))
+      feature.processSelection()
+      expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(count)
+      expect(selectElements).not.toHaveBeenCalled()
+      expect(item).not.toHaveClass("◆element-selected")
+      const current = document.getSelection()!.getRangeAt(0)
+      expect(current.startContainer).toBe(before.startContainer)
+      expect(current.startOffset).toBe(before.startOffset)
+      expect(current.endOffset).toBe(before.endOffset)
+      expect(editor.toHTML(true)).not.toContain("box-selection-preview")
+    }
+    pointer("pointerup", 80, 80, root)
+    expect(selectElements).toHaveBeenCalledExactlyOnceWith([item])
+    expect(item).toHaveClass("◆element-selected")
+    expect(editor.features.transformation.target).toBe(item)
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(0)
+    selectElements.mockRestore()
+    document.body.className = ""
+  })
+
+  it.each(["pointercancel", "lostpointercapture", "Escape", "blur", "disable"])("discards previews on %s and retains the prior selection", ending => {
+    document.body.className = "ww-canvas"
+    document.body.innerHTML = "<p>Content</p>"
+    const item = document.querySelector("p")!
+    rect(item, 20, 20, 60, 60)
+    $.selectRange(item.firstChild!, 1, item.firstChild!, 3)
+    feature.processSelection()
+    pointer("pointerdown", 0, 0, document.body)
+    pointer("pointermove", 80, 80, document.body)
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(1)
+    if(ending === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(ending === "blur") window.dispatchEvent(new Event("blur"))
+    else if(ending === "disable") feature.disable()
+    else pointer(ending, 80, 80, document.body)
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(0)
+    expect(document.getSelection()!.toString()).toBe("on")
+    expect(feature.isInDragSelection).toBe(false)
+    document.body.className = ""
+  })
+
   function mockNativeRanges() {
     const selection = document.getSelection()!
     let ranges: Range[] = []
@@ -228,6 +402,54 @@ describe("canvas and slide box selection", () => {
     return event
   }
 
+  it.each([
+    {mode: "canvas", tag: "custom-box"}, {mode: "slides", tag: "custom-box"},
+    {mode: "canvas", tag: "svg"}, {mode: "slides", tag: "svg"},
+  ])("requires the entire rotated $tag shape to fit in a $mode box", ({mode, tag}) => {
+    document.body.className = `ww-${mode}`
+    document.body.innerHTML = mode === "canvas" ? "" : '<div class="ww-slides-viewport"><section class="ww-slide"></section></div>'
+    const root = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    const item = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : document.createElement(tag)
+    item.style.cssText = "position:absolute;width:100px;height:20px;rotate:45deg"
+    root.append(item)
+    const extent = 60 / Math.sqrt(2)
+    rect(item, 150 - extent, 150 - extent, 150 + extent, 150 + extent)
+    const ranges = mockNativeRanges()
+    const selected = () => ranges().filter(range => !range.collapsed).map(range => range.startContainer.childNodes[range.startOffset])
+
+    // Covers the unrotated box, but misses the rotated top and bottom corners.
+    pointer("pointerdown", 100, 135, root)
+    pointer("pointermove", 200, 165, root)
+    expect(selected()).toEqual([])
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(0)
+    pointer("pointerup", 200, 165, root)
+
+    // Covers the rotated box even though the unrotated width would not fit.
+    pointer("pointerdown", 195, 195, root)
+    pointer("pointermove", 105, 105, root)
+    expect(selected()).toEqual([])
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(1)
+    pointer("pointerup", 105, 105, root)
+    expect(selected()).toEqual([item])
+
+    // Touching the extreme rotated corners still counts as full coverage.
+    feature.beginBoxSelection(new PointerEvent("pointerdown", {button: 0, pointerId: 1, clientX: 150 - extent, clientY: 150 - extent}))
+    pointer("pointermove", 150 + extent, 150 + extent, root)
+    expect(selected()).toEqual([item])
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(1)
+
+    // Re-read the live rotation during the same drag.
+    item.style.setProperty("rotate", "0deg")
+    vi.mocked(item.getBoundingClientRect).mockReturnValue(new DOMRect(100, 140, 100, 20))
+    pointer("pointermove", 150 + extent, 150 + extent, root)
+    expect(selected()).toEqual([item])
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(0)
+    pointer("pointerup", 150 + extent, 150 + extent, root)
+    expect(selected()).toEqual([])
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    document.body.className = ""
+  })
+
   it("selects fully enclosed canvas items on a reverse drag and clears the box on pointerup", () => {
     document.body.className = "ww-canvas"
     document.body.innerHTML = '<p>first</p><custom-box>middle</custom-box><p>partial</p><p>outside</p>'
@@ -242,14 +464,18 @@ describe("canvas and slide box selection", () => {
     pointer("pointermove", 10, 10, document.body)
 
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBeTruthy()
-    expect(ranges()).toHaveLength(2)
-    expect(ranges().map(range => range.startContainer.childNodes[range.startOffset])).toEqual([first, widget])
-    expect(ranges().map(range => range.endContainer.childNodes[range.endOffset - 1])).toEqual([first, widget])
+    expect(ranges()).toHaveLength(0)
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(2)
+    expect(first).not.toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-selected")
     expect(partial).not.toHaveClass("◆element-selected")
     expect(outside).not.toHaveClass("◆element-selected")
 
     pointer("pointerup", 10, 10, document.body)
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(0)
+    expect(ranges()).toHaveLength(2)
+    expect(ranges().map(range => range.startContainer.childNodes[range.startOffset])).toEqual([first, widget])
   })
 
   it("starts from a slide and reevaluates its direct content while ignoring navigation and appendix UI", () => {
@@ -275,11 +501,16 @@ describe("canvas and slide box selection", () => {
     rect(added, 70, 70, 100, 100)
     pointer("pointermove", 120, 120, slide)
 
-    expect(ranges().map(range => range.startContainer.childNodes[range.startOffset])).toEqual([inside, added])
+    expect(ranges()).toHaveLength(0)
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(2)
+    expect(inside).not.toHaveClass("◆element-selected")
+    expect(added).not.toHaveClass("◆element-selected")
     expect(directions).not.toHaveClass("◆element-selected")
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBe(overlay)
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(0)
+    expect(ranges().every(range => range.collapsed)).toBe(true)
   })
 
   it("removes the temporary box and dragging marker on pointercancel and feature disable", () => {
@@ -566,6 +797,19 @@ describe("contentful widgets", () => {
 
 describe("processSelection()", () => {
   const atomicOverlays = () => editor.appendix.querySelectorAll<HTMLElement>('[part="atomic-selection-overlay"]')
+
+  it.each(["canvas", "slides"])("keeps element selection frames without atomic blue overlays in %s", mode => {
+    document.body.classList.add(`ww-${mode}`)
+    document.body.innerHTML = mode === "slides"
+      ? '<div class="ww-slides-viewport"><section class="ww-slide"><test-widget id="item"><img></test-widget></section></div>'
+      : '<test-widget id="item"><img></test-widget>'
+    const item = document.querySelector("#item")!
+    $.selectElement(item)
+    feature.processSelection()
+    expect(item).toHaveClass("◆element-selected")
+    expect(atomicOverlays()).toHaveLength(0)
+    expect(editor.appendix.querySelector('[part~="selection-caret-node"]')).not.toBeNull()
+  })
 
   it("overlays atomic hosts once in a mixed range without changing authored content", () => {
     document.body.innerHTML = '<p>before<img><span><test-widget><img></test-widget></span><input>after</p>'
@@ -2598,6 +2842,104 @@ describe("selection invariants", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
     return paragraph
   }
+
+  describe.each(["canvas", "slides"] as const)("root-bounded text dragging in %s", mode => {
+    afterEach(() => { document.body.className = "" })
+
+    function roots(reverse = false, rotated = false) {
+      document.body.innerHTML = '<article><section><!--keep--><p>hello</p></section></article><article><p>neighbor</p></article>'
+      const [root, neighbor] = Array.from(document.querySelectorAll("article"))
+      if(reverse) root.before(neighbor)
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      Object.assign(root.style, {position: "absolute", left: "100px", top: "100px", width: "100px", height: "40px"})
+      root.style.setProperty("rotate", rotated ? "90deg" : "0deg")
+      const rect = rotated ? new DOMRect(130, 70, 40, 100) : new DOMRect(100, 100, 100, 40)
+      for(const element of [root, ...root.querySelectorAll("*")]) vi.spyOn(element, "getBoundingClientRect").mockReturnValue(rect)
+      vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(rect)
+      const text = root.querySelector("p")!.firstChild!, foreign = neighbor.querySelector("p")!.firstChild!
+      const hit = vi.spyOn(document, "caretPositionFromPoint").mockImplementation((x, y) => {
+        const inside = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+        const coordinate = rotated ? y : x, start = rotated ? 70 : 100
+        return {offsetNode: inside ? text : foreign, offset: inside ? coordinate < start + 20 ? 0 : coordinate > start + 80 ? 5 : 2 : 3} as unknown as CaretPosition
+      })
+      return {root, neighbor, text, foreign, hit}
+    }
+
+    it.each([[false, false], [true, false], [false, true], [true, true]])("clamps to the rendered root regardless of DOM order (reversed=%s, rotated=%s)", (reverse, rotated) => {
+      const {root, neighbor, text} = roots(reverse, rotated)
+      pointer(root.querySelector("p")!, "pointerdown", 150, 120)
+      pointer(neighbor, "pointermove", rotated ? 150 : 300, rotated ? 300 : 120)
+      expect($.anchor).toBe(text); expect($.anchorOffset).toBe(2)
+      expect($.focus).toBe(text); expect($.focusOffset).toBe(5)
+      pointer(neighbor, "pointermove", rotated ? 150 : 50, rotated ? 0 : 120)
+      expect($.anchor).toBe(text); expect($.anchorOffset).toBe(2)
+      expect($.focus).toBe(text); expect($.focusOffset).toBe(0)
+      pointer(root, "pointermove", 150, 120)
+      expect($.isEmpty).toBe(true)
+      pointer(root, "pointerup", 150, 120)
+      expect(feature.isInDragSelection).toBe(false)
+    })
+
+    it.each(["overlapping root", "blank space"])("uses only the starting root when native hit testing finds %s", hitKind => {
+      const {root, neighbor, text, foreign, hit} = roots(true)
+      pointer(root.querySelector("p")!, "pointerdown", 150, 120)
+      hit.mockReturnValue(hitKind === "blank space" ? null : {offsetNode: foreign, offset: 3} as unknown as CaretPosition)
+      pointer(neighbor, "pointermove", 300, 120)
+      expect($.anchor).toBe(text)
+      expect(root.contains($.focus)).toBe(true)
+      expect(neighbor.contains($.focus)).toBe(false)
+      document.getSelection()!.setBaseAndExtent(text, 2, foreign, 3)
+      document.dispatchEvent(new Event("selectionchange"))
+      expect($.anchor).toBe(text)
+      expect(root.contains($.focus)).toBe(true)
+    })
+
+    it("ends safely when the starting root is replaced during the drag", () => {
+      const {root, neighbor} = roots()
+      pointer(root.querySelector("p")!, "pointerdown", 150, 120)
+      root.replaceWith(document.createElement("article"))
+      expect(() => pointer(neighbor, "pointermove", 300, 120)).not.toThrow()
+      expect(feature.isInDragSelection).toBe(false)
+      expect(document.body).not.toHaveClass("◆selection-dragging")
+    })
+
+    it("starts a fresh text selection when Shift-clicking another root", () => {
+      const {root, neighbor, text, foreign} = roots()
+      $.move(text, 2)
+      pointer(neighbor.querySelector("p")!, "pointerdown", 250, 120, {shiftKey: true})
+      expect($.anchor).toBe(foreign)
+      expect($.focus).toBe(foreign)
+      expect(root.contains($.anchor)).toBe(false)
+      pointer(neighbor, "pointerup", 250, 120)
+    })
+
+    it("can select across positioned descendants within the same root", () => {
+      const {root, text, hit} = roots()
+      root.querySelector("section")!.style.position = "absolute"
+      const tail = document.createElement("p")
+      tail.textContent = "last"
+      root.append(tail)
+      pointer(root.querySelector("p")!, "pointerdown", 150, 120)
+      hit.mockReturnValue({offsetNode: tail.firstChild!, offset: 3} as unknown as CaretPosition)
+      pointer(tail, "pointermove", 190, 120)
+      expect($.anchor).toBe(text)
+      expect($.focus).toBe(tail.firstChild)
+      pointer(tail, "pointerup", 190, 120)
+      expect($.anchor).toBe(text)
+      expect($.focus).toBe(tail.firstChild)
+    })
+
+    it("resolves positioned descendants when an overlapping root masks native hit testing", () => {
+      const {root, neighbor, text, foreign, hit} = roots()
+      root.querySelector("section")!.style.position = "absolute"
+      pointer(root.querySelector("p")!, "pointerdown", 150, 120)
+      hit.mockReturnValue({offsetNode: foreign, offset: 3} as unknown as CaretPosition)
+      pointer(neighbor, "pointermove", 300, 120)
+      expect($.anchor).toBe(text)
+      expect($.focus).toBe(text)
+      expect($.focusOffset).toBe(5)
+    })
+  })
 
   it.each(["before", "after"] as const)("clicks the gap %s a divider using native parent hit testing", placement => {
     document.body.innerHTML = '<section>before<!--break--><hr>after</section>'

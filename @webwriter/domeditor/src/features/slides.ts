@@ -40,10 +40,10 @@ export class SlidesFeature extends EditorFeature {
     slide.className = "ww-slide"; slide.tabIndex = -1
     // These are authored text boxes: their placement travels with the HTML.
     for(const element of [heading, paragraph]) Object.assign(element.style, {
-      position: "absolute", left: "var(--ww-page-gutter, 1.25rem)", width: "calc(100% - 2 * var(--ww-page-gutter, 1.25rem))",
+      position: "absolute", left: "var(--ww-page-gutter, 1.25rem)",
     })
-    Object.assign(heading.style, {top: "1.25rem", height: "20%"})
-    Object.assign(paragraph.style, {top: "calc(20% + 2.5rem)", height: "calc(80% - 3.75rem)"})
+    Object.assign(heading.style, {top: "1.25rem", height: "20%", width: "calc(100% - 2 * var(--ww-page-gutter, 1.25rem))"})
+    Object.assign(paragraph.style, {top: "calc(20% + 2.5rem)"})
     slide.append(heading, paragraph)
     return slide
   }
@@ -179,7 +179,7 @@ export class SlidesFeature extends EditorFeature {
     for(const {item, slide, origin, rect} of geometry) {
       if(item.parentElement !== slide) continue
       Object.assign(item.style, {position: "absolute", left: `${rect.left - origin.left + slide.scrollLeft}px`, top: `${rect.top - origin.top + slide.scrollTop}px`, right: "auto", bottom: "auto"})
-      if(rect.width > 0) item.style.width = `${rect.width}px`
+      if(rect.width > 0 && !item.matches("p:not([is])")) item.style.width = `${rect.width}px`
     }
   }
 
@@ -212,7 +212,7 @@ export class SlidesFeature extends EditorFeature {
         for(const {item, rect} of geometry) {
           if(!isSlide(item.parentNode)) continue
           Object.assign(item.style, {position: "absolute", left: `${rect.left - bodyRect.left}px`, top: `${rect.top - bodyRect.top + 20}px`, right: "auto", bottom: "auto"})
-          if(rect.width > 0) item.style.width = `${rect.width}px`
+          if(rect.width > 0 && !item.matches("p:not([is])")) item.style.width = `${rect.width}px`
         }
         this.ensureContent()
         this.updateNavigation()
@@ -251,10 +251,23 @@ export class SlidesFeature extends EditorFeature {
     if(!this.active) return true
     if(!range || !range.startContainer.isConnected || !range.endContainer.isConnected) return false
     const start = this.containingSlide(range.startContainer), end = this.containingSlide(range.endContainer)
-    if(start || end) return Boolean(start && start === end)
-    return range.startContainer !== document.body && range.endContainer !== document.body
-      && range.startContainer !== this.viewport() && range.endContainer !== this.viewport()
-      && !this.slides().some(slide => range.intersectsNode(slide))
+    return Boolean(start && start === end)
+  }
+
+  /** Outer carousel gaps are navigation space, not editable document positions. */
+  constrainSelection() {
+    if(!this.active || this.allowsSelection()) return
+    // Breadcrumbs can select a whole slide; its native node range is in the viewport.
+    if(isSlide($.selectedElement ?? null)) return
+    const selection = document.getSelection()
+    if(!selection) return
+    const anchorSlide = this.containingSlide(selection.anchorNode)
+    if(anchorSlide?.isConnected) selection.collapse(selection.anchorNode, selection.anchorOffset)
+    else {
+      const slide = this.current()
+      if(slide?.isConnected) $.move(slide, 0)
+      else if(selection.rangeCount) selection.removeAllRanges()
+    }
   }
 
   private edit(operation: "add" | "remove" | "earlier" | "later", current = this.current()) {
@@ -353,10 +366,9 @@ export class SlidesFeature extends EditorFeature {
     beforeinput: event => {
       this.boundaryInput(event)
       if(!this.active || event.defaultPrevented || this.navigationEvent(event) || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)) return
-      if(event.inputType === "insertParagraph" || event.inputType.startsWith("delete")) {
+      if(event.inputType.startsWith("delete")) {
         event.preventDefault(); event.stopImmediatePropagation()
-        if(event.inputType === "insertParagraph") this.editor.features.manipulation.insert()
-        else this.editor.features.manipulation.delete(event.inputType.toLowerCase().includes("backward") ? "backward" : "forward")
+        this.editor.features.manipulation.delete(event.inputType.toLowerCase().includes("backward") ? "backward" : "forward")
       }
     },
     paste: event => this.boundaryInput(event),

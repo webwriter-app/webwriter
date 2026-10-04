@@ -827,6 +827,7 @@ h6 {
 /* Paragraph spacing belongs between blocks, not below every paragraph. */
 p {
   margin-bottom: 0;
+  padding: 2px;
 }
 
 :is(body, body > main, body > article, body > section) > * + * {

@@ -49,6 +49,7 @@ body.ww-canvas {
   max-width: none; max-inline-size: none; min-height: 100vh; margin: 0; padding: 0; background: transparent;
 }
 body.ww-canvas > :not(style, script, link, meta, template) { position: absolute; }
+body.ww-canvas > p:not([is]) { inline-size: max-content; min-inline-size: 25px; max-inline-size: none; }
 `
 
 export const slidesClass = "ww-slides"
@@ -63,12 +64,13 @@ body.ww-slides > .ww-slides-viewport {
   margin: auto; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-behavior: smooth;
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
-  box-sizing: border-box; flex: 0 0 auto; width: min(100vw, 177.7777778dvh); min-width: 0; height: min(100dvh, 56.25vw); overflow: clip;
+  box-sizing: border-box; display: block; flex: 0 0 auto; width: min(100vw, 177.7777778dvh); min-width: 0; height: min(100dvh, 56.25vw); overflow: clip;
   margin: auto max(0px, calc((100vw - 177.7777778dvh) / 2)); padding: 1.25rem var(--ww-page-gutter, 1.25rem); position: relative; scroll-snap-align: center; background: #fff;
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > :not(style, script, link, meta, template, .ww-slide-directions) {
   position: absolute; box-sizing: border-box; margin: 0; max-width: none; max-inline-size: none;
 }
+body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > p:not([is]) { inline-size: max-content; min-inline-size: 25px; }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):focus { outline: none; }
 body.ww-slides > nav.ww-slides-navigation {
   box-sizing: border-box; position: absolute; bottom: 1rem; left: 1rem;

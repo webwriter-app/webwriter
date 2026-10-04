@@ -128,7 +128,7 @@ export class CanvasFeature extends EditorFeature {
           item.style.position = "absolute"
           item.style.left = `${rect.left - bodyRect.left - marginLeft}px`
           item.style.top = `${rect.top - bodyRect.top - marginTop}px`
-          if(width > 0) item.style.width = `${width}px`
+          if(width > 0 && !item.matches("p:not([is])")) item.style.width = `${width}px`
         }
         // Transforms, borders and margin collapse can offset the measured
         // border box from left/top. Correct against the new containing block.
@@ -138,7 +138,7 @@ export class CanvasFeature extends EditorFeature {
           const current = item.getBoundingClientRect()
           item.style.left = `${parseFloat(item.style.left) + rect.left - bodyRect.left - (current.left - origin.left)}px`
           item.style.top = `${parseFloat(item.style.top) + rect.top - bodyRect.top - (current.top - origin.top)}px`
-          if(item === empty) Object.assign(item.style, {left: "0px", top: "0px", width: "320px"})
+          if(item === empty) Object.assign(item.style, {left: "0px", top: "0px"})
         }
       }
       else {
@@ -216,7 +216,7 @@ export class CanvasFeature extends EditorFeature {
         const added = items().filter(item => !before.includes(item))
         // A split of a slide text box shares its available space with its
         // continuations, so the new caret stays on the finite slide.
-        const sharedHeight = !this.active && anchor?.parentElement === body && added.length && height > 48
+        const sharedHeight = !this.active && anchor?.style.height && anchor.parentElement === body && added.length && height > 48
           ? Math.max(1, (height - 24 * added.length) / (added.length + 1)) : null
         if(sharedHeight !== null) { anchor!.style.height = `${sharedHeight}px`; anchor!.style.bottom = "auto"; offset = sharedHeight + 24 }
         for(const item of added) {
@@ -225,8 +225,11 @@ export class CanvasFeature extends EditorFeature {
           item.style.left = `${origin.x}px`
           item.style.top = `${origin.y + offset}px`
           item.style.right = item.style.bottom = "auto"
-          if(!item.style.width) item.style.width = anchor?.style.width || "320px"
-          if(!this.active && rect) item.style.width = `${rect.width}px`
+          if(!item.style.width && anchor?.style.width) item.style.width = anchor.style.width
+          if(!item.matches("p:not([is])")) {
+            if(!item.style.width) item.style.width = "320px"
+            if(!this.active && rect) item.style.width = `${rect.width}px`
+          }
           if(sharedHeight !== null) item.style.height = `${sharedHeight}px`
           offset += item.getBoundingClientRect().height / this.zoom + 24
         }
@@ -329,7 +332,7 @@ export class CanvasFeature extends EditorFeature {
     const end = this.editor.doc.beginUndoGroup()
     try {
       const paragraph = document.createElement("p")
-      Object.assign(paragraph.style, {position: "absolute", left: `${world.x}px`, top: `${world.y}px`, width: "320px"})
+      Object.assign(paragraph.style, {position: "absolute", left: `${world.x}px`, top: `${world.y}px`})
       document.body.append(paragraph)
       $.move(paragraph)
       this.editor.features.selection.processSelection()

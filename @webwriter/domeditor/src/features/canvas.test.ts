@@ -47,6 +47,36 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it.each(["text", "root"])("keeps the canvas camera still when Backspace deletes %s", async kind => {
+    document.body.innerHTML = "<p>Text</p><p>Neighbor</p>"
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    const paragraph = document.querySelector("p")!
+    if(kind === "root") $.selectElement(paragraph)
+    else $.selectRange(paragraph.firstChild!, 1, paragraph.firstChild!, 3)
+    editor.features.selection.processSelection(false, {scrollIntoView: false})
+    const reveal = vi.spyOn(editor.features.canvas, "reveal")
+    paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+    await settle()
+    expect(reveal).not.toHaveBeenCalled()
+    if(kind === "root") expect(paragraph.isConnected).toBe(false)
+    else expect(paragraph.textContent).toBe("Tt")
+  })
+
+  it("cancels pending caret reveal for native backward deletion but still reveals typing", async () => {
+    document.body.innerHTML = "<p>Text</p>"
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    const reveal = vi.spyOn(editor.features.canvas, "reveal")
+    paragraph.dispatchEvent(new InputEvent("input", {inputType: "insertText", bubbles: true}))
+    for(const type of ["beforeinput", "input"]) paragraph.dispatchEvent(new InputEvent(type, {inputType: "deleteContentBackward", bubbles: true, cancelable: true}))
+    await settle()
+    expect(reveal).not.toHaveBeenCalled()
+    paragraph.dispatchEvent(new InputEvent("input", {inputType: "insertText", bubbles: true}))
+    await settle()
+    expect(reveal).toHaveBeenCalledOnce()
+  })
+
   it.each([
     {html: "", selection: "background"}, {html: "", selection: "document"},
     {html: "<p></p>", selection: "background"}, {html: "<p></p>", selection: "document"},
@@ -159,6 +189,7 @@ describe("canvas document layout", () => {
     document.head.append(style)
     const paragraph = document.querySelector("p")!
     document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    document.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
     expect(document.body.classList.contains("◆empty-selected")).toBe(true)
     expect(editor.features.selection.emptyDocumentCaret).not.toBeNull()
@@ -393,6 +424,10 @@ describe("canvas document layout", () => {
   it("supports local zoom and insertion controls in canvas mode", () => {
     const canvas = editor.features.canvas
     expect(canvas.actions.startCanvas({type: "startCanvas"})).toBe(true)
+    const controls = editor.appendix.querySelector<HTMLElement>('[part="canvas-controls"]')!
+    for(const control of [controls, ...controls.querySelectorAll("button, output")]) {
+      expect(getComputedStyle(control).userSelect).toBe("none")
+    }
     canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
     expect(canvas.getState().zoom).toBe(120)
     const dots = editor.appendix.querySelector<HTMLElement>('[part="canvas-background"]')!
@@ -408,7 +443,7 @@ describe("canvas document layout", () => {
     const inserted = document.body.lastElementChild as HTMLElement
     expect(inserted.localName).toBe("p")
     expect(inserted.style.position).toBe("absolute")
-    expect(inserted.style.width).toBe("320px")
+    expect(inserted.style.width).toBe("")
   })
 
   it("only creates a paragraph when a double click is outside existing canvas items", () => {
@@ -473,6 +508,7 @@ describe("canvas document layout", () => {
     const selectCoords = vi.spyOn($, "selectCoords")
     const event = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0, clientX: 300, clientY: 200})
     target().dispatchEvent(event)
+    target().dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, button: 0, clientX: 300, clientY: 200}))
 
     expect(event.defaultPrevented).toBe(true)
     expect(selectCoords).not.toHaveBeenCalled()
@@ -492,6 +528,7 @@ describe("canvas document layout", () => {
     editor.features.selection.processSelection()
 
     document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0, clientX: 500, clientY: 400}))
+    document.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, button: 0, clientX: 500, clientY: 400}))
 
     expect(empty.isConnected).toBe(false)
     expect(document.body.textContent).toBe("filled")
@@ -569,6 +606,26 @@ describe("canvas document layout", () => {
     expect(editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})).toBe(true)
     expect(document.body.lastChild?.textContent).toBe("text inserted directly by a widget")
     expect(getComputedStyle(paragraph).position).not.toBe("absolute")
+  })
+
+  it.each(["canvas", "slides"] as const)("keeps paragraphs intrinsic and preserves explicit sizes in %s", mode => {
+    document.body.innerHTML = '<p>Intrinsic</p><p style="width:180px;height:90px">Sized</p><p style="inline-size:210px">Logical</p>'
+    const [intrinsic, sized, logical] = Array.from(document.body.children) as HTMLElement[]
+    for(const item of [intrinsic, sized, logical]) mockGeometry(item, makeRect(10, 20, 400, 100))
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    expect(intrinsic.style.width).toBe("")
+    expect(intrinsic.style.height).toBe("")
+    expect(sized.style.width).toBe("180px")
+    expect(sized.style.height).toBe("90px")
+    expect(logical.style.width).toBe("")
+    expect(logical.style.inlineSize).toBe("210px")
+    $.move(intrinsic.firstChild!, 2)
+    const continuation = document.createElement("p")
+    editor.features.canvas.preservePlacement(() => intrinsic.after(continuation))
+    expect(continuation.style.position).toBe("absolute")
+    expect(continuation.style.width).toBe("")
+    expect(continuation.style.height).toBe("")
+    expect(intrinsic.style.height).toBe("")
   })
 
   it("withholds placement when a command also changes unrelated root siblings", () => {

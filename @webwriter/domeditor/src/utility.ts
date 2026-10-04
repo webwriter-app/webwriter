@@ -48,6 +48,7 @@ function focusEditorWindow() {
   while(focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement
   if(focused instanceof HTMLElement) focused.blur()
   widget?.blur()
+  if(widget && document.activeElement === widget) document.body.focus({preventScroll: true})
   window.focus()
 }
 
@@ -480,10 +481,11 @@ export class EditingSelection {
   }
 
   /** Resolves text and structural gaps identically for clicks and drags,
-   * without installing an intermediate selection inside atomic content. */
-  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element): {node: Node, offset: number, overrideNative?: boolean, column?: ColumnSide, gapElement?: Element | null, placement?: "before" | "after"} | undefined {
+   * without installing an intermediate selection inside atomic content.
+   * A selectionRoot confines hit testing to one canvas/slide item's content. */
+  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element, selectionRoot?: Element): {node: Node, offset: number, overrideNative?: boolean, column?: ColumnSide, gapElement?: Element | null, placement?: "before" | "after"} | undefined {
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
-    const root = getDocumentRoot()
+    const root = selectionRoot ?? getDocumentRoot()
     let overrideNative = false
     const point = (node: Node, offset: number) => {
       const summary = this.summaryAtLeadingBoundary(node, offset)
@@ -491,13 +493,14 @@ export class EditingSelection {
         : {node, offset, ...(overrideNative ? {overrideNative: true} : {})}
     }
     const gap = (element: Element, placement: "before" | "after") => {
+      if(element === selectionRoot) return point(element, placement === "after" ? element.childNodes.length : 0)
       const parent = element.parentNode!
       return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
     }
     const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
       && element !== document.documentElement && root.contains(element))
     const layoutChildren = (element: Element) => Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
-      if(node instanceof Element && !isOutOfFlow(node) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
+      if(node instanceof Element && (!isOutOfFlow(node) || selectionRoot?.contains(node)) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
       if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
         const range = document.createRange()
         range.selectNode(node)
@@ -508,8 +511,9 @@ export class EditingSelection {
     // Native hit testing often returns summary text (or hidden body content)
     // for space outside a disclosure. Resolve its outer edge before looking
     // for atomic descendants or gaps around individual text blocks.
-    const caretElement = offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
-    const pointerElement = hit ?? (pointerTarget instanceof Element ? pointerTarget
+    const caretElement = selectionRoot && offsetNode && !selectionRoot.contains(offsetNode) ? null
+      : offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
+    const pointerElement = hit ?? (selectionRoot ? selectionRoot : pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
     // Column affinity distinguishes the shared DOM boundary between the last
     // left child and first right child without inserting placeholder elements.
@@ -581,11 +585,11 @@ export class EditingSelection {
     }
     // Native hit testing can land on an overlapping positioned subtree while
     // extending the surrounding flow. Resolve against that flow's own boxes.
-    if(offsetNode && editingFlowRoot(offsetNode) !== flow) {
+    if(selectionRoot ? !offsetNode || !selectionRoot.contains(offsetNode) : offsetNode && editingFlowRoot(offsetNode) !== flow) {
       const distance = (rect: DOMRect) => Math.hypot(
         Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),
       )
-      let container = flow
+      let container = selectionRoot ?? flow
       while(true) {
         const nearest = layoutChildren(container).sort((a, b) => distance(a.rect) - distance(b.rect))[0]
         if(!nearest) return point(container, 0)
@@ -600,7 +604,7 @@ export class EditingSelection {
           Math.max(rect.left + 1, Math.min(x, rect.right - 1)),
           Math.max(rect.top + 1, Math.min(y, rect.bottom - 1)),
         )
-        if(native && editingFlowRoot(native.offsetNode) === flow) return point(native.offsetNode, native.offset)
+        if(native && (selectionRoot ? selectionRoot.contains(native.offsetNode) : editingFlowRoot(native.offsetNode) === flow)) return point(native.offsetNode, native.offset)
         return point(node, y > rect.bottom || y >= rect.top && x > rect.left + rect.width / 2 ? node.length : 0)
       }
     }

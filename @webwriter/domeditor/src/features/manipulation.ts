@@ -2,10 +2,10 @@ import type {Transaction} from "yjs"
 import {authoredLayoutKind, canPlaceLayouts, canBecomeLayout} from "../layouts"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
-import {SVG_NAMESPACE} from "../graphic"
-import {isSlide} from "../document-layout"
+import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
+import {isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isColumnGroup, columnSide, columnSides, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isColumnGroup, columnSide, columnSides, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -1680,6 +1680,21 @@ export class ManipulationFeature extends EditorFeature {
     if(this.canInsertAtSelection(element)) this.insertAtSelection(element)
   }
 
+  private freeformTextBreak(event: Event) {
+    if(event.defaultPrevented || this.editor.isEditingLocked || this.editor.features.selection.isCaptureSelection
+      || this.editor.features.mark.isSVGTextSelection || isAppendixInteraction(event)
+      || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)
+      || !($.isTextSelection || $.isEmptySelection)) return false
+    const range = $.range
+    const container = this.editor.features.canvas.active ? document.body
+      : this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
+    if(!container || !container.contains(range.startContainer) || !container.contains(range.endContainer)
+      || atomicEditingContainer(range.startContainer, this.editor.schema)) return false
+    let root: Element | null = getContainer(range.startContainer)
+    while(root && root.parentElement !== container) root = root.parentElement
+    return Boolean(root && !slideLayoutRole(root) && root.contains(range.endContainer))
+  }
+
   /** Splits the logical block at the current caret and, for a deeper split,
    * promotes the split through its ancestors. The first right-hand block is
    * retained as the editing target. */
@@ -1838,9 +1853,21 @@ export class ManipulationFeature extends EditorFeature {
     return changed
   }
 
-  // Deliberate drags can target widget/control surfaces and the canvas's
-  // shadow slot. Their ordinary input remains with the owning feature.
+  // Freeform text roots retain their structure on Enter. Deliberate drags
+  // can also target widget/control surfaces and the canvas's shadow slot.
   captureListeners: DocumentListenerMap = {
+    "keydown": event => {
+      if(event.key !== "Enter" || event.isComposing || !this.freeformTextBreak(event)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.insertBreak(event.altKey && event.shiftKey ? "wbr" : "br")
+    },
+    "beforeinput": event => {
+      if(event.inputType !== "insertParagraph" || !this.freeformTextBreak(event)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.insertBreak("br")
+    },
     "dragover": event => {
       if(this.canvasSlotRibbonDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
     },
@@ -2114,6 +2141,16 @@ export class ManipulationFeature extends EditorFeature {
   delete(direction?: "forward" | "backward", granularity:Granularity="character") {
     if(!this.editor.features.slides.allowsSelection()) return
     if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
+    const selected = $.selectedElement
+    if(selected && !slideLayoutRole(selected) && (this.editor.features.canvas.active && selected.parentElement === document.body
+      || this.editor.features.slides.active && isSlide(selected.parentElement))) {
+      return this.withNormalization(() => {
+        const parent = selected.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(selected)
+        selected.remove()
+        $.move(parent, Math.min(index, parent.childNodes.length))
+      })
+    }
     const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide($.range.startContainer) : null
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()

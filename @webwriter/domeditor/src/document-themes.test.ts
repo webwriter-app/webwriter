@@ -39,6 +39,7 @@ describe("document themes", () => {
       }
     }
     expect(source).toMatch(/\bp\s*\{\s*margin-bottom:\s*0;/)
+    expect(source).toMatch(/\bp\s*\{[^}]*padding:\s*2px;/)
   })
 
   it("uses two automatic-row tracks with full-width items and centered reading blocks", () => {

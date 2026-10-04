@@ -112,7 +112,9 @@ export class CanvasViewer {
     const height = Math.max(...rects.map(rect => rect.bottom)) - top
     const zoom = Math.min(1, Math.max(.1, Math.min((window.innerWidth - 96) / Math.max(1, width / this.zoom), (window.innerHeight - 128) / Math.max(1, height / this.zoom))))
     const point = this.clientPoint(left, top)
-    this.camera = {x: 48 - point.x * zoom, y: 48 - point.y * zoom, zoom}
+    const fittedWidth = width / this.zoom * zoom, fittedHeight = height / this.zoom * zoom
+    this.camera = {x: (window.innerWidth - fittedWidth) / 2 - point.x * zoom,
+      y: (window.innerHeight - fittedHeight) / 2 - point.y * zoom, zoom}
     this.applyCamera()
   }
 
@@ -162,6 +164,7 @@ export class CanvasViewer {
 }
 
 export const canvasControlsStyles = `
+      .◆canvas-controls, .◆canvas-controls * { user-select: none; -webkit-user-select: none; }
       .◆canvas-controls { position: fixed; bottom: 20px; left: 24px; z-index: 1000; display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
       .◆canvas-controls[hidden] { display: none; }
       .◆canvas-controls button { font: inherit; padding: 7px 10px; border: 0; border-radius: 6px; color: inherit; background: #f1f5f9; cursor: pointer; }

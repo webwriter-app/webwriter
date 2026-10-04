@@ -1,5 +1,6 @@
 import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
+import {slideLayoutRole} from "./document-layout"
 import {tokenize, TokenType} from "@csstools/css-tokenizer"
 import type {ElementStyleState} from "./editor-bridge"
 
@@ -25,7 +26,7 @@ export type LayoutPreset = {
 
 /** Layout identity follows authored classes and live CSS, never widget internals. */
 export function authoredLayoutKind(element: Element): LayoutKind | null {
-  if(!isSectionElement(element) || element.hasAttribute("is") || element.localName.includes("-")) return null
+  if(!isSectionElement(element) || element.hasAttribute("is") || element.localName.includes("-") || slideLayoutRole(element)) return null
   if(element.classList.contains("ww-column-group")) return "columns"
   const style = (element as HTMLElement).style
   const display = element.isConnected ? element.ownerDocument.defaultView?.getComputedStyle(element).display : style?.display

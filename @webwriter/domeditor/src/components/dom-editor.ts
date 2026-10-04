@@ -821,7 +821,7 @@ export class DomEditor extends LitElement {
       grid-column: 1 / -1;
     }
 
-    ${layoutPreviewStyles}
+    ${documentLayoutPreviewStyles}
 
     .html-source-panel {
       grid-row: 4;
