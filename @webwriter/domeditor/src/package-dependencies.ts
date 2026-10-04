@@ -55,11 +55,11 @@ async function npmHostAvailable(base: string) {
   catch { return false }
 }
 
-const publishedVersionRequests = new Map<string, Promise<string[]>>()
+type PublishedVersionCache = Map<string, Promise<string[]>>
 
 /** Published versions of an npm package, from jsDelivr's data API or else the npm registry. */
-function publishedVersions(name: string) {
-  let request = publishedVersionRequests.get(name)
+function publishedVersions(name: string, cache: PublishedVersionCache) {
+  let request = cache.get(name)
   if(!request) {
     request = (async() => {
       try {
@@ -77,8 +77,8 @@ function publishedVersions(name: string) {
       if(!response.ok) throw new Error(`The versions of ${name} could not be read (${response.status})`)
       return Object.keys((await response.json() as {versions?: Record<string, unknown>}).versions ?? {})
     })()
-    publishedVersionRequests.set(name, request)
-    request.catch(() => publishedVersionRequests.delete(name))
+    cache.set(name, request)
+    request.catch(() => cache.delete(name))
   }
   return request
 }
@@ -94,7 +94,7 @@ const exactPackagePath = /^((?:@[^/\\%@]+\/)?[^./\\%@][^/\\%@]*)@([^/]+)(\/.*)?$
 
 /** JSPM generator provider for published npm files at `<base>/<name>@<version>/`. Unlike the
  * generator's built-in providers, it resolves version ranges without jspm.io. */
-export const npmFileProvider = (base: string) => ({
+const createNpmFileProvider = (base: string, versionCache: PublishedVersionCache) => ({
   pkgToUrl: ({name, version}: {name: string, version: string}) => `${base}/${name}@${version}/` as `${string}/`,
   parseUrlPkg(url: string) {
     if(!url.startsWith(`${base}/`)) return undefined
@@ -102,11 +102,14 @@ export const npmFileProvider = (base: string) => ({
     return name && version ? {registry: "npm", name, version} : undefined
   },
   async resolveLatestTarget({registry, name, range, unstable}: {registry: string, name: string, range: SemverRange, unstable: boolean}, _layer: string, parentUrl?: string) {
-    const version = range.bestMatch(await publishedVersions(name), unstable)
+    const version = range.bestMatch(await publishedVersions(name, versionCache), unstable)
     if(!version) throw new Error(`No published version of ${name} matches ${String(range)}${parentUrl ? `, imported from ${parentUrl}` : ""}`)
     return {registry, name, version: version.toString()}
   },
 })
+
+/** A standalone provider keeps requests together only for its own linking pass. */
+export const npmFileProvider = (base: string) => createNpmFileProvider(base, new Map())
 
 const mapUrls = (map: IImportMap, rewrite: (url: string) => string): IImportMap => ({
   ...(map.imports ? {imports: Object.fromEntries(Object.entries(map.imports).map(([key, url]) => [key, rewrite(url)]))} : {}),
@@ -129,13 +132,16 @@ export async function resolvePackageDependencies(
   const entries = packageModuleEntries(packages)
   if(!entries.length) return {entries: [], map: null}
   const {Generator} = await import("@jspm/generator")
+  // Keep metadata warm while this installed set is linked, then let a later
+  // catalog refresh see newly published range-compatible versions.
+  const versionCache: PublishedVersionCache = new Map()
   const link = async(host: string, linked: string[]) => {
     const toHost = (url: string) => host === JSDELIVR_NPM_ENDPOINT || !url.startsWith(`${JSDELIVR_NPM_ENDPOINT}/`)
       ? url : `${host}/${url.slice(JSDELIVR_NPM_ENDPOINT.length + 1)}`
     const generator = new Generator({
       mapUrl: baseUrl,
       defaultProvider: "webwriter-npm",
-      customProviders: {"webwriter-npm": npmFileProvider(host)} as never,
+      customProviders: {"webwriter-npm": createNpmFileProvider(host, versionCache)} as never,
       env: ["browser", "production", "module"],
       ignore: nodeBuiltins,
       ...(inputMap ? {inputMap: mapUrls(inputMap, toHost), inputMapFallbacks: "semver-compatible" as const} : {}),

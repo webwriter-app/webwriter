@@ -8,6 +8,7 @@ type GeneratorOptions = {defaultProvider: string, customProviders: Record<string
 const generator = vi.hoisted(() => ({
   links: [] as {entries: string[], options: GeneratorOptions}[],
   fails: ((_entries: string[], _options: GeneratorOptions) => false) as (entries: string[], options: GeneratorOptions) => boolean,
+  resolveLatestTarget: undefined as ((provider: GeneratorOptions["customProviders"]["webwriter-npm"]) => Promise<void>) | undefined,
 }))
 vi.mock("@jspm/generator", () => ({
   Generator: class {
@@ -16,6 +17,7 @@ vi.mock("@jspm/generator", () => ({
     async link(entries: string[]) {
       generator.links.push({entries, options: this.options})
       if(generator.fails(entries, this.options)) throw new Error("Link failed")
+      await generator.resolveLatestTarget?.(this.options.customProviders[this.options.defaultProvider])
       this.entries = entries
     }
     getMap() {
@@ -37,6 +39,7 @@ const widgetPackage = (name: string, entry: string): WebWriterPackage => ({
 beforeEach(() => {
   generator.links = []
   generator.fails = () => false
+  generator.resolveLatestTarget = undefined
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
@@ -75,6 +78,31 @@ describe("package dependency resolution", () => {
     expect(provider.parseUrlPkg("https://cdn.jsdelivr.net/npm/@lit/reactive-element@2.1.2/css-tag.js"))
       .toEqual({registry: "npm", name: "@lit/reactive-element", version: "2.1.2"})
     expect(provider.parseUrlPkg("https://unpkg.com/lit@3.3.3/index.js")).toBeUndefined()
+  })
+
+  it("refreshes published version metadata between dependency resolution passes", async () => {
+    const requests: string[] = []
+    let catalogFetch = 0
+    vi.stubGlobal("fetch", vi.fn(async(url: string) => {
+      requests.push(url)
+      if(url === "https://data.jsdelivr.com/v1/packages/npm/lit") {
+        catalogFetch++
+        return Response.json({versions: catalogFetch === 1 ? ["3.3.3"] : ["3.4.0", "3.3.3"]})
+      }
+      return new Response(null, {status: 404})
+    }))
+    const resolvedVersions: string[] = []
+    generator.resolveLatestTarget = async provider => {
+      const result = await provider.resolveLatestTarget({registry: "npm", name: "lit", range: {
+        bestMatch: (versions: string[]) => versions[0] ? {toString: () => versions[0]} : null,
+      }, unstable: false}, "default")
+      resolvedVersions.push(result.version)
+    }
+    const packages = [widgetPackage("@webwriter/demo", "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/index.js")]
+    await resolvePackageDependencies(packages, "https://editor.example/")
+    await resolvePackageDependencies(packages, "https://editor.example/")
+    expect(resolvedVersions).toEqual(["3.3.3", "3.4.0"])
+    expect(requests.filter(url => url === "https://data.jsdelivr.com/v1/packages/npm/lit")).toHaveLength(2)
   })
 
   it("links on a mirror when jsDelivr is unreachable and maps the result back to jsDelivr", async () => {
