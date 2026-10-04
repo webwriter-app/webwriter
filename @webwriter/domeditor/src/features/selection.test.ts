@@ -1859,6 +1859,49 @@ describe("document listeners", () => {
     expect($.selectedElement).toBe(p)
     expect(p.classList.contains("◆element-selected")).toBe(true)
   })
+  it.each(["body", "html", "span", "section"])("does not select the document on modifier-click of %s", tag => {
+    document.body.innerHTML = '<p>hello</p><span>inline</span><section>section text</section>'
+    const paragraph = document.querySelector("p")!
+    feature.selectElement(paragraph)
+    const target = document.querySelector(tag)!
+
+    for(const type of ["pointerdown", "click"]) {
+      const event = new MouseEvent(type, {bubbles: true, cancelable: true, metaKey: true, ctrlKey: true})
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+
+    expect($.selectedElement).toBe(paragraph)
+    expect(document.body).not.toHaveClass("◆element-selected")
+    feature.actions.selectNode({type: "selectNode", path: []})
+    expect($.selectedElement).toBe(document.body)
+  })
+  it.each(["host", "shadow"])("does not modifier-select the document template from its %s", surface => {
+    document.body.innerHTML = '<demo-widget role="document"><p>hello</p></demo-widget>'
+    const template = document.body.firstElementChild!
+    const paragraph = template.firstElementChild!
+    const button = document.createElement("button")
+    template.attachShadow({mode: "open"}).append(button, document.createElement("slot"))
+    feature.selectElement(paragraph)
+    const target = surface === "host" ? template : button
+
+    for(let i = 0; i < 2; i++) {
+      for(const type of ["pointerdown", "click"]) {
+        const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, metaKey: true, ctrlKey: true})
+        target.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+      expect($.selectedElement).toBe(paragraph)
+      expect(feature.isCaptureSelection).toBe(false)
+      expect(template).not.toHaveClass("◆element-selected", "◆element-capture-selected")
+    }
+
+    paragraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, metaKey: true, ctrlKey: true}))
+    expect($.selectedElement).toBe(paragraph)
+    feature.actions.selectNode({type: "selectNode", path: [0]})
+    expect($.selectedElement).toBe(template)
+    expect(template).toHaveClass("◆element-selected")
+  })
   it("prevents the default modifier-click action", () => {
     const link = document.createElement("a")
     link.href = "#target"

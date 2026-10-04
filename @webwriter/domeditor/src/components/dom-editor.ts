@@ -52,7 +52,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {clearEditorOwnedAttributes, isWidgetShadowInteraction, getInertDocument} from "../utility"
+import {clearEditorOwnedAttributes, clearInlinePlacement, isWidgetShadowInteraction, getInertDocument} from "../utility"
 import {stripActiveContent} from "../active-content"
 import {
   imageMapAreaAttributeOptions,
@@ -173,7 +173,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {canvasStyles, slidesStyles, resetEmptyTemplateContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasStyles, slidesStyles, documentLayoutMode, resetEmptyTemplateContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -1909,7 +1909,18 @@ export class DomEditor extends LitElement {
       if(element.getAttribute("style") === "") element.removeAttribute("style")
       if(["p", "h1", "h2", "h3", "h4", "h5", "h6"].includes(element.localName)
         && Array.from(element.childNodes).every(node => node.nodeType === Node.TEXT_NODE && !node.textContent
-          || node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "br")) element.replaceChildren()
+          || node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "br" && !(node as Element).attributes.length)) element.replaceChildren()
+    }
+    const body = root.querySelector("body")
+    const paragraph = body?.firstElementChild
+    if(body && documentLayoutMode(body) === "canvas" && body.childNodes.length === 1
+      && paragraph?.localName === "p" && !paragraph.childNodes.length
+      && Array.from(paragraph.attributes).every(attribute => attribute.name === "style")) {
+      // Canvas drops an empty paragraph when focus leaves it. Its placement
+      // alone does not distinguish that placeholder from an empty canvas.
+      const placeholder = paragraph.cloneNode(true) as HTMLElement
+      clearInlinePlacement(placeholder)
+      if(!placeholder.attributes.length) paragraph.remove()
     }
     return root.outerHTML
   }

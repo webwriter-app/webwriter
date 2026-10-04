@@ -1213,7 +1213,12 @@ export class DOMEditor {
         : this.features.canvas.convert(mode as "canvas" | "document", false)
       if(!changed) return false
       const restoredAnchor = anchor(), restoredFocus = focus()
-      if(documentSelected || restoredAnchor && restoredFocus) {
+      // An empty Canvas becomes a new paragraph with a text caret. Keep that
+      // editing position instead of restoring the old canvas root selection.
+      const emptyDocumentStart = state.mode === "canvas" && mode === "document" && $.isEmptySelection
+        && $.anchor instanceof HTMLParagraphElement && $.anchor.parentElement === document.body
+        && document.body.childNodes.length === 1
+      if(!emptyDocumentStart && (documentSelected || restoredAnchor && restoredFocus)) {
         if(documentSelected) $.selectElement(document.body)
         else $.selectRange(...restoredAnchor!, ...restoredFocus!)
         if(capturedElement?.isConnected) this.features.selection.captureElement(capturedElement)

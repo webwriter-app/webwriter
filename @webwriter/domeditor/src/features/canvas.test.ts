@@ -47,6 +47,39 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it.each([
+    {html: "", selection: "background"}, {html: "", selection: "document"},
+    {html: "<p></p>", selection: "background"}, {html: "<p></p>", selection: "document"},
+    {html: "<p><br></p>", selection: "background"}, {html: "<p><br></p>", selection: "paragraph"},
+  ])("restores a text caret when converting an empty canvas ($html, $selection) to Document", async ({html, selection}) => {
+    document.body.classList.add(canvasClass)
+    document.body.innerHTML = html
+    editor.doc.syncFromDOM()
+    if(selection === "document") editor.features.selection.actions.selectNode({type: "selectNode", path: []})
+    else if(selection === "paragraph") editor.features.selection.selectElement(document.body.firstElementChild!)
+    else {
+      $.move(document.body, 0)
+      editor.features.selection.processSelection()
+    }
+
+    expect(editor.setDocumentLayout("document", "canvas")).toBe(true)
+    await settle()
+
+    const paragraph = document.body.firstElementChild!
+    expect(editor.toHTML(true)).toBe("<p></p>")
+    expect($.anchor).toBe(paragraph)
+    expect($.focus).toBe(paragraph)
+    expect($.anchorOffset).toBe(0)
+    expect($.focusOffset).toBe(0)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect($.isElementSelection).toBe(false)
+    expect($.isGapSelection).toBe(false)
+    expect(paragraph.classList.contains("◆empty-selected")).toBe(true)
+    for(const marker of ["◆node-selection-active", "◆gap-caret-visible", "◆element-selected"]) {
+      expect(document.body.classList.contains(marker)).toBe(false)
+    }
+  })
+
   it("posts Canvas as the breadcrumb root and restores Document after conversion", () => {
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
     for(const mode of ["canvas", "document"] as const) {

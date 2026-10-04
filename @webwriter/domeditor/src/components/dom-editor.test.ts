@@ -5039,6 +5039,53 @@ describe("DomEditor.execute()", () => {
     expect(host.fileDirty).toBe(true)
   })
 
+  it.each([false, true])("keeps an empty canvas clean and Templates open with or without a paragraph (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    const doc = iframe.contentDocument!
+    const snapshot = () => {
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
+        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
+    }
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: doc.documentElement.outerHTML}))
+    }
+    vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type !== "setDocumentLayout") return undefined
+      doc.body.className = "ww-canvas"
+      doc.body.innerHTML = '<p style="position: absolute; left: 0px; top: 0px; width: 320px;"></p>'
+      host.documentLayout = {...host.documentLayout, mode: "canvas"}
+      return true
+    })
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('.templates-bar [data-mode="canvas"]')!.click()
+    await vi.waitFor(() => expect(host.templateConversionCount).toBe(0))
+    snapshot()
+    const initial = host.authoredDocumentSnapshot()
+    for(const html of ["", "<p></p>", '<p class="◆ ◆empty-selected"><br></p>',
+      '<p style="position: absolute; left: 40px; top: 80px; width: 320px;"></p>', ""]) {
+      doc.body.innerHTML = html
+      snapshot()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+      expect(host.authoredDocumentSnapshot()).toBe(initial)
+      expect(host.isFreshDocumentUnchanged()).toBe(true)
+      expect(host.fileDirty).toBe(false)
+      expect(editor.shadowRoot!.querySelector(".templates-panel:not([inert])")).not.toBeNull()
+      expect(doc.body.innerHTML).toBe(html)
+    }
+    for(const html of ['<p style="color: red"></p>', '<p id="anchor"></p>', '<p><br class="authored"></p>', '<!--keep-->',
+      '<custom-card></custom-card>', '<p></p><p></p>', '<p>Content</p>']) {
+      doc.body.innerHTML = html
+      snapshot()
+      await vi.waitFor(() => expect(host.fileDirty).toBe(true))
+      expect(host.isFreshDocumentUnchanged()).toBe(false)
+      expect(host.templatesDismissed).toBe(true)
+    }
+  })
+
   it.each([false, true])("keeps concurrent authored edits dirty during template conversion (isolated frame: %s)", async isolated => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any

@@ -991,6 +991,11 @@ export class SelectionFeature extends EditorFeature {
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
     if(!widget) return
+    if(isDocumentRoot(widget) && event instanceof MouseEvent && event.type === "pointerdown"
+      && event.button === 0 && modifierKeyDown(event)) {
+      event.preventDefault()
+      return
+    }
     if(isContentfulWidget(widget, this.editor.schema)) {
       const hadCapture = this.isCaptureSelection
       this.#releaseCaptureSelection()
@@ -1057,7 +1062,8 @@ export class SelectionFeature extends EditorFeature {
       if(!parent) break
       targetElement = parent
     }
-    return isDocumentRoot(targetElement) ? targetElement : targetElement === document.body ? null : targetElement
+    return isDocumentRoot(targetElement) || targetElement === document.body || targetElement === document.documentElement
+      ? null : targetElement
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
