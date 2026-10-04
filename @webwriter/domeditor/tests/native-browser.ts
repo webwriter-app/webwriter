@@ -2291,6 +2291,35 @@ await check("column groups expose independent gaps and stack with separator line
 
 editor.destroy()
 
+await check("table commands complete across the real iframe bridge", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1280px;height:900px"
+  frame.src = "/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if((app as any)?.editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "table bridge editor did not initialize")
+    await (app as any).waitForEditorWindow()
+    const insert = await Promise.race([
+      app!.execute({type: "insertTable", rows: 2, columns: 2}),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("table insertion did not complete")), 3000)),
+    ])
+    assert(insert === true, "table insertion did not return a bridge-safe result")
+    assert(await app!.execute({type: "normalizeTable"}) === true, "table normalization did not complete")
+    const source = await app!.execute({type: "serializeDocument"}) as string
+    const doc = new DOMParser().parseFromString(source, "text/html")
+    assert(doc.querySelectorAll("table tr").length === 2 && doc.querySelectorAll("table td").length === 4,
+      "table bridge commands lost the inserted cells")
+    assert(!doc.body.querySelector('[class*="◆"]'), "table bridge commands exported editor markers")
+  }
+  finally { frame.remove() }
+})
+
 await check("bottom layout cards retain native editing focus after rendering", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"

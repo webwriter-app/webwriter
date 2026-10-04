@@ -474,7 +474,7 @@ export class TableFeature extends EditorFeature {
     if(firstCell) this.selectCells(firstCell)
     else if(table.isConnected) $.selectElement(table)
     if(table.isConnected) this.editor.postSelectionPath(true)
-    return table
+    return table.isConnected
   }
 
   private selectedPlacement(map: TableMap, prefer: "first" | "last") {
@@ -1078,7 +1078,9 @@ export class TableFeature extends EditorFeature {
     },
     normalizeTable: ({}: {type: "normalizeTable"}) => {
       const table = this.selectedTable
-      return table ? this.normalizeTable(table) : undefined
+      if(!table) return false
+      this.normalizeTable(table)
+      return true
     },
   } as const
 

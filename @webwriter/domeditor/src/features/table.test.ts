@@ -885,7 +885,7 @@ describe("table gap controls", () => {
 describe("table actions", () => {
   it("inserts a requested table size as the top-level element", () => {
     const postSelectionPath = vi.spyOn(editor, "postSelectionPath")
-    editor.features.table.actions.insertTable({type: "insertTable", rows: 3, columns: 4})
+    const result = editor.features.table.actions.insertTable({type: "insertTable", rows: 3, columns: 4})
 
     const table = document.body.firstElementChild as HTMLTableElement
     const map = buildTableMap(table)
@@ -893,6 +893,16 @@ describe("table actions", () => {
     expect(map.rows).toHaveLength(3)
     expect(map.width).toBe(4)
     expect(postSelectionPath).toHaveBeenLastCalledWith(true)
+    expect(result).toBe(true)
+  })
+
+  it("returns a bridge-safe result when normalizing the selected table", () => {
+    expect(editor.features.table.actions.normalizeTable({type: "normalizeTable"})).toBe(false)
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[0])
+
+    expect(editor.features.table.actions.normalizeTable({type: "normalizeTable"})).toBe(true)
+    expect(document.querySelectorAll("tr:last-child > td")).toHaveLength(2)
   })
 
   it("lifts an inserted table out of a text-only paragraph", () => {
