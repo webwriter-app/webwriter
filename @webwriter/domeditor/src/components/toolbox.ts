@@ -292,6 +292,10 @@ export class DomEditorToolbox extends EditingControls {
       width: 100px;
     }
 
+    .toolbox-tab[data-available] .toolbox-tab-button {
+      justify-content: flex-end;
+    }
+
     .toolbox-tab-close {
       width: 0;
       padding: 0;
