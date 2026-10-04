@@ -78,8 +78,16 @@ async function handleMessage(event: ExtendableMessageEvent) {
       if(typeof message.id !== "string" || !isLocalPackageDirectoryHandle(message.handle)) {
         throw new TypeError("Invalid local package directory handle")
       }
+      const previous = roots.get(message.id)
       roots.set(message.id, message.handle)
-      await saveLocalPackageDirectory({id: message.id, handle: message.handle}, worker.indexedDB)
+      try {
+        await saveLocalPackageDirectory({id: message.id, handle: message.handle}, worker.indexedDB)
+      }
+      catch(error) {
+        if(previous) roots.set(message.id, previous)
+        else roots.delete(message.id)
+        throw error
+      }
       acknowledge(event, message.requestId, true)
       return
     }

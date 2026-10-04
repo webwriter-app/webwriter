@@ -48,14 +48,14 @@ function openDatabase(indexedDatabase: IDBFactory | undefined = globalThis.index
 
 async function runWrite(indexedDatabase: IDBFactory | undefined, operation: (store: IDBObjectStore) => void) {
   const database = await openDatabase(indexedDatabase)
-  if(!database) return
+  if(!database) throw new Error("IndexedDB is unavailable for local package persistence")
   try {
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(LOCAL_PACKAGE_WORKER_STORE, "readwrite")
       operation(transaction.objectStore(LOCAL_PACKAGE_WORKER_STORE))
       transaction.oncomplete = () => resolve()
-      transaction.onerror = () => resolve()
-      transaction.onabort = () => resolve()
+      transaction.onerror = () => reject(transaction.error ?? new Error("Local package storage transaction failed"))
+      transaction.onabort = () => reject(transaction.error ?? new Error("Local package storage transaction was aborted"))
     })
   }
   finally {

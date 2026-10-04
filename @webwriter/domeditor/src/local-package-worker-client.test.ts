@@ -194,7 +194,7 @@ describe("LocalPackageWorkerClient failures", () => {
   })
 
   it("uses the registration returned for this worker instead of an unrelated ready worker", async() => {
-    vi.stubGlobal("indexedDB", undefined)
+    stubIndexedDb([])
     const {active, registration, register} = stubServiceWorker()
     const client = new LocalPackageWorkerClient({scriptUrl: "/worker.js", scope: "/app/"})
 
@@ -217,7 +217,7 @@ describe("LocalPackageWorkerClient failures", () => {
   })
 
   it("rejects malformed worker acknowledgements", async() => {
-    vi.stubGlobal("indexedDB", undefined)
+    stubIndexedDb([])
     stubServiceWorker((_message, port) => port.postMessage({type: "unexpected", ok: true}))
     const client = new LocalPackageWorkerClient()
 
@@ -226,7 +226,7 @@ describe("LocalPackageWorkerClient failures", () => {
 
   it("times out when the worker never responds", async() => {
     vi.useFakeTimers()
-    vi.stubGlobal("indexedDB", undefined)
+    stubIndexedDb([])
     stubServiceWorker(() => {})
     const client = new LocalPackageWorkerClient({timeoutMs: 25})
     const registering = client.register("demo", directoryHandle())

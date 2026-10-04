@@ -60,6 +60,68 @@ describe("local package service worker startup", () => {
     }
   })
 
+  it("does not keep an unpersisted root registered after a write transaction aborts", async () => {
+    vi.resetModules()
+    const listeners = new Map<string, EventListener>()
+    const addEventListener = vi.spyOn(globalThis, "addEventListener").mockImplementation(((type: string, listener: EventListenerOrEventListenerObject) => {
+      listeners.set(type, listener as EventListener)
+    }) as typeof globalThis.addEventListener)
+    const handle: LocalPackageDirectoryHandle = {
+      async getDirectoryHandle() { return handle },
+      async getFileHandle() { return {getFile: async() => new Blob(["should not be served"])} },
+    }
+    const database = {
+      objectStoreNames: {contains: () => true},
+      transaction: (_store: string, mode?: string) => {
+        const transaction: {error: DOMException | null, objectStore: () => Record<string, () => unknown>,
+          oncomplete?: () => void, onerror?: () => void, onabort?: () => void} = {
+          error: mode === "readwrite" ? new DOMException("storage failed", "QuotaExceededError") : null,
+          objectStore: () => ({
+            getAll: () => {
+              const request: {result: unknown[], onsuccess?: () => void} = {result: []}
+              queueMicrotask(() => request.onsuccess?.())
+              return request
+            },
+            put: () => undefined,
+            delete: () => undefined,
+            clear: () => undefined,
+          }),
+        }
+        queueMicrotask(() => mode === "readwrite" ? transaction.onerror?.() : transaction.oncomplete?.())
+        return transaction
+      },
+      close: vi.fn(),
+    }
+    vi.stubGlobal("indexedDB", {open() {
+      const request: {result: typeof database, onsuccess?: () => void} = {result: database}
+      queueMicrotask(() => request.onsuccess?.())
+      return request
+    }})
+    vi.stubGlobal("clients", {get: vi.fn().mockResolvedValue(undefined)})
+
+    try {
+      await import("./local-package-service-worker")
+      const port = {postMessage: vi.fn()}
+      const messageEvent = {
+        data: {type: "register-local-package", requestId: "register", id: "demo", handle},
+        ports: [port],
+        waitUntil: vi.fn(),
+      }
+      listeners.get("message")!(messageEvent as unknown as Event)
+      await messageEvent.waitUntil.mock.calls[0][0]
+      expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ok: false, requestId: "register"}))
+
+      const respondWith = vi.fn()
+      listeners.get("fetch")!({request: new Request(new URL("/__webwriter/local-packages/demo/widget.js", location.origin)),
+        clientId: "frame", respondWith} as unknown as Event)
+      expect(await respondWith.mock.calls[0][0]).toMatchObject({status: 503})
+    }
+    finally {
+      addEventListener.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("answers a failed jsDelivr package file from a mirror under its jsDelivr URL", async () => {
     vi.resetModules()
     const listeners = new Map<string, EventListener>()
