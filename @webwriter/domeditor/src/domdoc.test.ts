@@ -1070,6 +1070,26 @@ describe("relative selections and history", () => {
     expect(createElement.mock.calls.some(([name]) => name === "script")).toBe(false)
   })
 
+  it.each([
+    ["http://www.w3.org/1999/xhtml", "h:script"],
+    ["http://www.w3.org/2000/svg", "svg:script"],
+  ])("preserves prefixed shared scripts in %s", (namespace, name) => {
+    const {root, shared} = createShared("<p>seed</p>")
+    const script = new Y.XmlElement("script")
+    script.setAttribute("__domeditor_namespace", namespace)
+    script.setAttribute("__domeditor_qualified_name", name)
+    script.setAttribute("type", "module")
+    script.insert(0, [new Y.XmlText("authored code")])
+    shared.doc.transact(() => shared.body.insert(shared.body.length, [script]), "remote-client")
+    const rendered = root.lastElementChild!
+    expect(rendered.localName).toBe("script")
+    expect(rendered.prefix).toBe(name.split(":")[0])
+    expect(rendered.namespaceURI).toBe(namespace)
+    expect(rendered.textContent).toBe("authored code")
+    expect(rendered.getAttribute("type")).toBe("module")
+    expect(rendered.attributes.length).toBe(1)
+  })
+
   it("undoes and redoes compound direct DOM mutations in both DOM and Yjs", async () => {
     const {root, shared} = createShared("<p>before</p>")
     const paragraph = root.firstElementChild!

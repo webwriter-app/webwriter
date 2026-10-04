@@ -1350,8 +1350,8 @@ export class SharedDOMDoc {
       const qualifiedName = yNode.getAttribute(INTERNAL_QUALIFIED_NAME) ?? yNode.nodeName
       // Authored scripts are kept for serialization only. A created script
       // would run under the editor frame's 'strict-dynamic' policy.
-      element = qualifiedName === "script" && (namespace === "http://www.w3.org/1999/xhtml" || namespace === SVG_NAMESPACE)
-        ? createInertScript(this.#document, namespace)
+      element = qualifiedName.split(":").at(-1) === "script" && (namespace === "http://www.w3.org/1999/xhtml" || namespace === SVG_NAMESPACE)
+        ? createInertScript(this.#document, namespace, qualifiedName)
         : explicitNamespace !== undefined || qualifiedName !== yNode.nodeName
         ? this.#document.createElementNS(namespace, qualifiedName)
         : this.#document.createElement(yNode.nodeName)

@@ -1452,10 +1452,20 @@ export function getInertDocument(node: Node = document) {
   return inert
 }
 
-/** Creates an HTML or SVG script element that never executes. The HTML
- * fragment parser marks scripts as already started, which adoption and
+/** Creates an HTML or SVG script element that never executes. Native
+ * parsers mark scripts as already started, which adoption and
  * cloning retain, so later `src` or text changes cannot run it either. */
-export function createInertScript(document: Document, namespace: string | null = "http://www.w3.org/1999/xhtml") {
+export function createInertScript(document: Document, namespace: string | null = "http://www.w3.org/1999/xhtml", qualifiedName = "script") {
+  if(qualifiedName.includes(":")) {
+    // The HTML parser treats a prefix as part of the local name. The XML
+    // parser preserves it and also marks scripts as already started.
+    const source = new XMLSerializer().serializeToString(document.createElementNS(namespace, qualifiedName))
+    const parsed = new DOMParser().parseFromString(source, "application/xhtml+xml")
+    const script = parsed.documentElement
+    if(script.localName !== "script" || script.namespaceURI !== namespace) throw new Error("Invalid script name")
+    for(const attribute of Array.from(script.attributes)) script.removeAttributeNode(attribute)
+    return document.adoptNode(script)
+  }
   const template = getInertDocument(document).createElement("template")
   template.innerHTML = namespace === SVG_NAMESPACE ? "<svg><script></script></svg>" : "<script></script>"
   return document.adoptNode(template.content.querySelector("script")!)

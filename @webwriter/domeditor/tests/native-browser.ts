@@ -4,6 +4,8 @@ import type {DomEditor} from "../src/components/dom-editor"
 import {$, caretRect} from "../src/utility"
 import {defaultDocumentTheme} from "../src/document-themes"
 import {replayHostDrag} from "../src/editor-bridge"
+import {SharedDOMDoc} from "../src/domdoc"
+import * as Y from "yjs"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -16,6 +18,46 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("collaborated scripts remain inert with namespace prefixes, clones and later edits", async () => {
+  const root = document.createElement("main"), result = document.createElement("output")
+  result.id = "native-script-execution"
+  root.innerHTML = "<p>seed</p>"
+  fixture.append(root, result)
+  const shared = new SharedDOMDoc("", "native-script-audit", [], ["◆"], {root, connect: false})
+  const source = 'document.querySelector("#native-script-execution").textContent += "executed;"'
+  try {
+    // Confirm this fixture permits script execution, so CSP cannot mask a failure.
+    const control = document.createElement("script")
+    control.textContent = source
+    root.append(control)
+    assert(result.textContent === "executed;", "positive execution control failed")
+    control.remove()
+    result.textContent = ""
+    for(const [namespace, name] of [
+      ["http://www.w3.org/1999/xhtml", "script"],
+      ["http://www.w3.org/1999/xhtml", "h:script"],
+      ["http://www.w3.org/2000/svg", "script"],
+      ["http://www.w3.org/2000/svg", "svg:script"],
+    ]) {
+      const script = new Y.XmlElement("script")
+      script.setAttribute("__domeditor_namespace", namespace)
+      script.setAttribute("__domeditor_qualified_name", name)
+      script.insert(0, [new Y.XmlText(source)])
+      shared.doc.transact(() => shared.body.insert(shared.body.length, [script]), "remote-client")
+      const rendered = root.lastElementChild!
+      assert(rendered.namespaceURI === namespace && rendered.localName === "script", "script namespace changed")
+      assert(rendered.prefix === (name.includes(":") ? name.split(":")[0] : null), "script prefix changed")
+      root.append(rendered.cloneNode(true))
+      rendered.textContent = source
+      rendered.setAttribute(namespace.includes("svg") ? "href" : "src", `data:text/javascript,${encodeURIComponent(source)}`)
+      root.append(rendered.cloneNode(true))
+    }
+    await new Promise(resolve => setTimeout(resolve, 100))
+    assert(result.textContent === "", `authored script executed: ${result.textContent}`)
+  }
+  finally { shared.destroy(); root.remove(); result.remove() }
+})
 
 const dragTextInside = (editor: DOMEditor, element: HTMLElement) => {
   const doc = element.ownerDocument, text = element.firstChild!, range = doc.createRange()

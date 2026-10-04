@@ -5,10 +5,9 @@ import '@testing-library/jest-dom/vitest'
 import {
   $, getContainer, getSidesOfPoint, getSelectionAnchorBlock, getSelectionFocusBlock,
   getIndexBefore, isElement, isComment, isText, isDocument, isOnApple, modifierKeyDown,
-  getPathTo, htmlToFragment, cloneInert, cloneRangeIn, cloneRangeContents, cloneWithoutEditorMarkers, roundByDPR, roundTo, angleOnCircle, rotatePoint,
-  distanceBetweenPoints, midpoint, intersectionPoint, findClosest, findContainingBlock,
+  cloneInert, cloneRangeIn, cloneRangeContents, cloneWithoutEditorMarkers, roundByDPR, roundTo, midpoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
-  createsStackingContext, findStackingContainer, getZPos, getStaticCoords,
+  createsStackingContext, findStackingContainer, getStaticCoords,
   isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker,
   pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript
 } from "./utility"
@@ -56,6 +55,18 @@ function mockMultiRangeSelection(ranges: Range[]) {
 }
 
 describe("createInertScript()", () => {
+  it.each([
+    ["http://www.w3.org/1999/xhtml", "h:script"],
+    ["http://www.w3.org/2000/svg", "svg:script"],
+  ])("preserves prefixed scripts in %s", (namespace, name) => {
+    const script = createInertScript(document, namespace, name)
+    expect(script.ownerDocument).toBe(document)
+    expect(script.namespaceURI).toBe(namespace)
+    expect(script.localName).toBe("script")
+    expect(script.prefix).toBe(name.split(":")[0])
+    expect(script.attributes.length).toBe(0)
+    expect(script.parentNode).toBeNull()
+  })
   it("creates detached HTML and SVG scripts owned by the requested document", () => {
     const html = createInertScript(document)
     const svg = createInertScript(document, "http://www.w3.org/2000/svg")
