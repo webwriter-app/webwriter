@@ -1,4 +1,5 @@
 import {DOMEditor} from "../src/domeditor"
+import {defaultDocumentTheme} from "../src/document-themes"
 import {$} from "../src/utility"
 
 customElements.define("float-layout-widget", class extends HTMLElement {
@@ -23,10 +24,10 @@ const closeTo = (actual: number, expected: number, message: string) => {
 }
 const assert = (condition: boolean, message: string) => { if(!condition) throw new Error(message) }
 
-function targetElement(writingMode = "horizontal-tb", boxSizing = "border-box") {
+function targetElement(writingMode = "horizontal-tb", boxSizing = "border-box", position = "static") {
   feature.clearTransform()
   const target = document.createElement("demo-widget")
-  target.style.cssText = `display:block;box-sizing:${boxSizing};width:320px;height:180px;max-inline-size:unset;margin:30px auto;padding:8px;border:2px solid teal;writing-mode:${writingMode}`
+  target.style.cssText = `display:block;position:${position};box-sizing:${boxSizing};width:320px;height:180px;max-inline-size:unset;margin:30px auto;padding:8px;border:2px solid teal;writing-mode:${writingMode}`
   target.attachShadow({mode: "open"}).innerHTML = "<p>Widget content stays here.</p>"
   target.append(document.createComment("Keep authored content"))
   document.body.replaceChildren(target)
@@ -56,37 +57,44 @@ button.onclick = async () => {
   }
   try {
     for(const tag of ["float-layout-widget", "picture"]) for(const atEnd of [false, true]) for(const side of ["left", "right"] as const) {
-      check(`float wrapping: ${tag}, ${side}, caret at ${atEnd ? "end" : "start"}`, () => {
-        feature.clearTransform()
-        const paragraph = document.createElement("p")
-        paragraph.style.cssText = "width: 600px; max-width: 100%; line-height: 24px"
-        const text = document.createTextNode("Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(8))
-        paragraph.append(text)
-        document.body.replaceChildren(paragraph)
-        $.move(text, atEnd ? text.length : 0)
-        const target = document.createElement(tag)
-        if(tag === "picture") target.append(document.createElement("img"))
-        editor.features.manipulation.insert(target)
-        if(side === "left") {
-          feature.startTransform(target)
-          feature.overlay.querySelector<HTMLButtonElement>('[id="◆transform-overlay-float-left"]')!.click()
+      check(`column layout: ${tag}, ${side}, caret at ${atEnd ? "end" : "start"}`, () => {
+        const theme = document.createElement("style")
+        theme.textContent = defaultDocumentTheme.source
+        document.head.append(theme)
+        try {
+          feature.clearTransform()
+          const paragraph = document.createElement("p")
+          paragraph.style.cssText = "width: 600px; max-width: 100%; line-height: 24px"
+          const text = document.createTextNode("Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(8))
+          paragraph.append(text)
+          const target = document.createElement(tag)
+          if(tag === "picture") target.append(document.createElement("img"))
+          document.body.replaceChildren(paragraph, target)
+          $.move(text, atEnd ? text.length : 0)
+          assert(editor.features.manipulation.placeFloat(target, paragraph, side), "Placement creates a column group")
+          const group = target.parentElement!
+          assert(group.classList.contains("ww-column-group"), "Placement creates a column group")
+          assert(group.children.length === 2 && group.contains(paragraph), "Column group preserves both authored nodes")
+          assert(target.classList.contains(`ww-column-${side}`), "Widget receives its requested column")
+          assert(paragraph.classList.contains(`ww-column-${side === "left" ? "right" : "left"}`), "Text receives the opposite column")
+          group.style.inlineSize = "600px"
+          const left = side === "left" ? target.getBoundingClientRect() : paragraph.getBoundingClientRect()
+          const right = side === "left" ? paragraph.getBoundingClientRect() : target.getBoundingClientRect()
+          const columns = window.innerWidth > 960
+          assert(target.getBoundingClientRect().width > 0, "Placed content has a rendered width")
+          if(columns) assert(Math.abs(left.top - right.top) < 1 && right.left > left.left, "Column items render side by side")
+          else assert(right.top >= left.bottom, "Column items stack in reading order on narrow viewports")
+          group.style.inlineSize = "280px"
+          const width = group.getBoundingClientRect().width
+          assert(target.getBoundingClientRect().width <= (columns ? width / 2 : width) + 1, "Placed content adapts to a narrower group")
         }
-        const rect = target.getBoundingClientRect()
-        const firstLetter = document.createRange()
-        firstLetter.setStart(text, 0)
-        firstLetter.setEnd(text, Math.min(1, text.length))
-        const letter = firstLetter.getBoundingClientRect()
-        assert(rect.width > 0 && rect.width <= paragraph.clientWidth / 2 + 1, "Float leaves space for text")
-        assert(letter.top >= rect.top && letter.top < rect.bottom, "First line wraps beside float")
-        assert(side === "right" ? letter.right <= rect.left : letter.left >= rect.right, "Text stays beside float")
-        paragraph.style.width = "280px"
-        assert(target.getBoundingClientRect().width <= paragraph.clientWidth / 2 + 1, "Float adapts to a narrower container")
+        finally { theme.remove() }
       })
     }
     for(const writingMode of ["horizontal-tb", "vertical-rl", "vertical-lr", "sideways-rl"]) {
       for(const edge of ["left", "right", "up", "down"]) {
         check(`${writingMode}, ${edge} edge`, () => {
-          const target = targetElement(writingMode)
+          const target = targetElement(writingMode, "border-box", "relative")
           const originalContent = target.innerHTML
           const before = target.getBoundingClientRect()
           const horizontal = edge === "left" || edge === "right"
@@ -98,9 +106,8 @@ button.onclick = async () => {
           closeTo(rect.height, before.height - (horizontal ? 0 : 40), "Rendered height")
           closeTo(edge === "left" ? rect.right : rect.left, edge === "left" ? before.right : before.left, "Horizontal anchor")
           closeTo(edge === "up" ? rect.bottom : rect.top, edge === "up" ? before.bottom : before.top, "Vertical anchor")
-          const inlineAxis = horizontal === (writingMode === "horizontal-tb")
-          assert(target.style.getPropertyValue(inlineAxis ? "max-inline-size" : "max-block-size") !== "", "Affected logical maximum")
-          assert(target.style.getPropertyValue(inlineAxis ? "max-block-size" : "max-inline-size") === (inlineAxis ? "" : "unset"), "Unaffected logical maximum")
+          assert(target.style.getPropertyValue(horizontal ? "max-width" : "max-height") !== "", "Affected physical maximum")
+          assert(target.style.getPropertyValue(horizontal ? "max-height" : "max-width") === "", "Unaffected physical maximum")
           assert(target.style.width === "320px" && target.style.height === "180px", "Authored dimensions preserved")
           assert(target.innerHTML === originalContent, "Authored content preserved")
         })
@@ -108,7 +115,7 @@ button.onclick = async () => {
     }
     for(const boxSizing of ["border-box", "content-box"]) {
       check(`${boxSizing}, corner resize`, () => {
-        const target = targetElement("horizontal-tb", boxSizing)
+        const target = targetElement("horizontal-tb", boxSizing, "relative")
         const before = target.getBoundingClientRect()
         drag(target, "up-left", 40, 30)
         const rect = target.getBoundingClientRect()
@@ -135,7 +142,7 @@ button.onclick = async () => {
       closeTo(rect.height, before.height, "Fixed height")
       closeTo(rect.left, before.left, "Left edge")
       closeTo(rect.top, before.top, "Top edge")
-      assert(target.style.maxInlineSize === "360px" && target.style.maxBlockSize === "210px", "Maximums authored")
+      assert(target.style.maxWidth === "360px" && target.style.maxHeight === "210px", "Maximums authored")
     })
     check("fluid widget expands beyond the prose cap and still fits a narrow parent", () => {
       const target = targetElement()
@@ -145,15 +152,15 @@ button.onclick = async () => {
       parent.style.cssText = "width:1200px;max-inline-size:none"
       target.replaceWith(parent)
       parent.append(target)
-      target.style.maxInlineSize = "720px"
+      target.style.maxWidth = "720px"
       drag(target, "right", 200, 0)
       closeTo(target.getBoundingClientRect().width, 920, "Expanded widget")
       parent.style.width = "280px"
       closeTo(target.getBoundingClientRect().width, 280, "Narrow allocation")
-      assert(target.style.width === "100%" && target.style.maxInlineSize === "920px", "Responsive width retained")
+      assert(target.style.width === "100%" && target.style.maxWidth === "920px", "Responsive width retained")
     })
     check("Shift retains CSS scaling", () => {
-      const target = targetElement()
+      const target = targetElement("horizontal-tb", "border-box", "relative")
       const before = target.getBoundingClientRect()
       drag(target, "right", 40, 0, {shiftKey: true})
       const rect = target.getBoundingClientRect()
@@ -162,16 +169,44 @@ button.onclick = async () => {
       assert(target.style.maxInlineSize === "unset" && target.style.maxBlockSize === "", "Maximums unchanged")
       assert(target.style.scale !== "", "Scale authored")
     })
+    check("static edge resize stays centered in normal flow", () => {
+      const target = targetElement()
+      target.style.width = "100%"
+      target.style.removeProperty("max-inline-size")
+      target.style.maxWidth = "320px"
+      const before = target.getBoundingClientRect()
+      drag(target, "right", 40, 0)
+      const rect = target.getBoundingClientRect()
+      closeTo(rect.width, before.width + 40, "Expanded flow width")
+      closeTo(rect.left + rect.width / 2, before.left + before.width / 2, "Centered flow allocation")
+      closeTo(rect.top, before.top, "Flow position")
+      closeTo(rect.height, before.height, "Flow height")
+      assert(target.style.position === "static" && target.style.left === "" && target.style.top === "", "Static positioning preserved")
+    })
+    check("static corner resize stays centered in normal flow", () => {
+      const target = targetElement()
+      target.style.width = "100%"
+      target.style.removeProperty("max-inline-size")
+      target.style.maxWidth = "320px"
+      const before = target.getBoundingClientRect()
+      drag(target, "down-right", 40, 30)
+      const rect = target.getBoundingClientRect()
+      closeTo(rect.width, before.width + 40, "Expanded flow width")
+      closeTo(rect.left + rect.width / 2, before.left + before.width / 2, "Centered flow allocation")
+      closeTo(rect.top, before.top, "Flow position")
+      closeTo(rect.height, before.height, "Flow height")
+      assert(target.style.position === "static" && target.style.left === "" && target.style.top === "", "Static positioning preserved")
+    })
     check("one undo restores a resize and redo reapplies it", () => {
       const target = targetElement()
       drag(target, "down-right", -40, -30)
       editor.doc.syncFromDOM()
       editor.doc.undo()
       const restored = document.querySelector<HTMLElement>("demo-widget")!
-      assert(restored.style.maxInlineSize === "unset" && restored.style.maxBlockSize === "", "Initial maximums restored")
+      assert(restored.style.maxInlineSize === "unset" && restored.style.maxWidth === "" && restored.style.maxHeight === "", "Initial maximums restored")
       editor.doc.redo()
       const redone = document.querySelector<HTMLElement>("demo-widget")!
-      assert(redone.style.maxInlineSize === "280px" && redone.style.maxBlockSize === "150px", "Resized maximums restored")
+      assert(redone.style.maxWidth === "280px" && redone.style.maxHeight === "150px", "Resized maximums restored")
     })
   }
   finally {
