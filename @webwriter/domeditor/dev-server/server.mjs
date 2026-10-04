@@ -227,14 +227,22 @@ const loadProviderState = async path => {
 }
 
 const requestOrigin = request => {
-  const host = request.headers.host || "127.0.0.1"
+  const host = request.headers.host
   return `http://${host}`
+}
+
+const isAllowedHost = host => {
+  if(typeof host !== "string") return false
+  const match = /^(localhost|127\.0\.0\.1|\[::1\])(?::([0-9]{1,5}))?$/i.exec(host)
+  return Boolean(match && (match[2] === undefined || Number(match[2]) <= 65535))
 }
 
 const isAllowedOrigin = origin => {
   if(!origin) return true
   try {
-    return loopbackHosts.has(new URL(origin).hostname)
+    const url = new URL(origin)
+    const hostname = url.hostname === "[::1]" ? "::1" : url.hostname
+    return (url.protocol === "http:" || url.protocol === "https:") && loopbackHosts.has(hostname)
   }
   catch {
     return false
@@ -522,6 +530,10 @@ export async function createDevServer(options = {}) {
   })
 
   const requestHandler = async (request, response) => {
+    if(!isAllowedHost(request.headers.host)) {
+      apiError(response, 403, "Only loopback hosts may use this development server")
+      return
+    }
     applyCors(request, response)
     if(typeof request.headers.origin === "string" && !isAllowedOrigin(request.headers.origin)) {
       apiError(response, 403, "Only loopback browser origins may use this development server")
@@ -927,6 +939,10 @@ export async function createDevServer(options = {}) {
   }
 
   server.on("upgrade", (request, socket, head) => {
+    if(!isAllowedHost(request.headers.host)) {
+      socket.destroy()
+      return
+    }
     if(request.headers["sec-websocket-protocol"] === "vite-hmr") return
     const origin = request.headers.origin
     if(typeof origin === "string" && !isAllowedOrigin(origin)) {
@@ -1009,7 +1025,7 @@ export async function createDevServer(options = {}) {
       })
       const address = server.address()
       const port = typeof address === "object" && address ? address.port : requestedPort
-      return {host, port, url: `http://${host}:${port}`}
+      return {host, port, url: `http://${host === "::1" ? "[::1]" : host}:${port}`}
     },
     async close() {
       gitSnapshots.clear()

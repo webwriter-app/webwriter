@@ -2,6 +2,7 @@
 import {mkdtemp, readFile} from "node:fs/promises"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
+import {request as httpRequest} from "node:http"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {WebsocketProvider} from "y-websocket"
@@ -138,6 +139,37 @@ describe("development server", () => {
       headers: {Origin: "https://example.com"},
     })
     expect(response.status).toBe(403)
+  })
+
+  it.each(["attacker.invalid:1234", "localhost.attacker.invalid", "localhost@attacker.invalid", "localhost:bad", "localhost:65536"])("rejects an untrusted or malformed Host header %s without Origin", async Host => {
+    const status = await new Promise((resolve, reject) => {
+      const outgoing = httpRequest(`${baseUrl}/api/documents`, {headers: {Host}}, response => {
+        response.resume()
+        response.once("end", () => resolve(response.statusCode))
+      })
+      outgoing.once("error", reject)
+      outgoing.end()
+    })
+    expect(status).toBe(403)
+  })
+
+  it("rejects WebSocket upgrades with an untrusted Host header", async () => {
+    await expect(new Promise((resolve, reject) => {
+      const socket = new WebSocketPackage(`${baseUrl.replace(/^http/, "ws")}/untrusted-host`, {headers: {Host: "attacker.invalid"}})
+      socket.once("open", () => { socket.terminate(); resolve() })
+      socket.once("error", reject)
+    })).rejects.toBeInstanceOf(Error)
+  })
+
+  it("accepts bracketed IPv6 origins and advertises a usable IPv6 URL", async () => {
+    const response = await fetch(`${baseUrl}/api/session`, {headers: {Origin: "http://[::1]:1234"}})
+    expect(response.status).toBe(200)
+    expect(response.headers.get("access-control-allow-origin")).toBe("http://[::1]:1234")
+    await developmentServer.close()
+    developmentServer = await createDevServer({host: "::1", port: 0, vite: false, dataDirectory: developmentServer.dataDirectory})
+    const address = await developmentServer.listen()
+    expect(new URL(address.url).hostname).toBe("[::1]")
+    expect((await fetch(`${address.url}/api/session`)).status).toBe(200)
   })
 
   it("creates, reads, updates, lists, and deletes documents", async () => {
