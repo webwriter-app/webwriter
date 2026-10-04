@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {htmlToFragment} from "./utility"
 import {validateAIFragmentStructure} from "./ai-content"
 
+const fragmentFromHTML = (html: string) => {
+  const template = document.createElement("template")
+  template.innerHTML = html
+  return template.content
+}
 const validate = (html: string, existing?: string) =>
-  validateAIFragmentStructure(htmlToFragment(html), existing === undefined ? undefined : htmlToFragment(existing))
+  validateAIFragmentStructure(fragmentFromHTML(html), existing === undefined ? undefined : fragmentFromHTML(existing))
 
 describe("validateAIFragmentStructure()", () => {
   it("keeps topic content flat and rejects a new naked section", () => {
@@ -41,7 +45,7 @@ describe("validateAIFragmentStructure()", () => {
     expect(() => validate("<div><p>new text</p></div>", "<div><p>old text</p></div>")).not.toThrow()
     const existingRoot = document.createElement("div")
     existingRoot.innerHTML = "<p>old text</p>"
-    expect(() => validateAIFragmentStructure(htmlToFragment("<div><p>new text</p></div>"), existingRoot)).not.toThrow()
+    expect(() => validateAIFragmentStructure(fragmentFromHTML("<div><p>new text</p></div>"), existingRoot)).not.toThrow()
     expect(() => validate("<div><p>new text</p></div>", "<div class=old><p>old text</p></div>"))
       .toThrow(/unnecessary.*div/i)
     expect(() => validate('<div class="topic"><p>new text</p></div>')).not.toThrow()
@@ -49,7 +53,7 @@ describe("validateAIFragmentStructure()", () => {
   })
 
   it("does not mutate the fragment", () => {
-    const fragment = htmlToFragment("<section><p>Text</p></section>")
+    const fragment = fragmentFromHTML("<section><p>Text</p></section>")
     const before = fragment.firstElementChild!.outerHTML
     expect(() => validateAIFragmentStructure(fragment)).toThrow()
     expect(fragment.firstElementChild!.outerHTML).toBe(before)

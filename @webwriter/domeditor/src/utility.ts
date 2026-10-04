@@ -1404,39 +1404,6 @@ export function modifierKeyDown(ev: KeyboardEvent | PointerEvent | MouseEvent) {
   return isOnApple()? ev.metaKey: ev.ctrlKey
 }
 
-/** XPath-like path to the element, anchored at the nearest id or at BODY, e.g. 'BODY/DIV[1]/P[2]' or 'id("x")/P[1]'. Empty for null or detached elements. */
-export function getPathTo(element: Element | null): string {
-  if(element === null) {
-    return ""
-  }
-  else if (element.id !== '') {
-    return `id(${JSON.stringify(element.id)})`
-  }
-  else if (element === document.body) {
-    return element.tagName
-  }
-  else {
-    let ix= 0;
-    let siblings = element.parentNode?.childNodes ?? []
-    for (let i=0; i < siblings.length; i++) {
-      let sibling = siblings[i] as Element
-      let parent = element.parentNode as Element | null
-      if (sibling === element)
-        return `${getPathTo(parent)}/${element.tagName}[${ix+1}]`;
-      if (sibling.nodeType === 1 && sibling.tagName === element.tagName)
-        ix++
-    }
-    return ""
-  }
-}
-
-/** Parses an HTML string into a DocumentFragment. */
-export function htmlToFragment(html: string) {
-  const template = document.createElement("template")
-  template.innerHTML = html
-  return template.content
-}
-
 const inertDocuments = new WeakMap<Document, Document>()
 
 /** Scratch DOM has no browsing context or custom-element registry. Keep it
@@ -1657,50 +1624,10 @@ export function roundTo(value: number, to: number) {
   return Math.round(value / to) * to
 }
 
-/** Signed angle in degrees between two points as seen from the center (cx, cy). */
-export function angleOnCircle(cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
-  const angle1 = Math.atan2(y1 - cy, x1 - cx)
-  const angle2 = Math.atan2(y2 - cy, x2 - cx)
-  return (angle2 - angle1) * (180/Math.PI)
-}
-
-/** Rotates the point (x, y) around the center (cx, cy) by `angle` degrees, returning [x', y']. */
-export function rotatePoint(x: number, y: number, cx: number, cy: number, angle: number) {
-  const radians = angle * (Math.PI / 180)
-  const cos = Math.cos(radians)
-  const sin = Math.sin(radians)
-  /*return [
-    cos * (x - cx) - sin * (y - cy) + cx,
-    sin * (x - cx) - cos * (y - cy) + cy,
-  ]*/
-  return [
-    cos * (x - cx) - sin * (y - cy) + cx,
-    cos * (y - cy) + sin * (x - cx) + cy
-  ]
-}
-
-/** Euclidean distance between two points. */
-export function distanceBetweenPoints(x1: number, y1: number, x2: number, y2: number) {
-  return Math.sqrt( (x1-x2)**2 + (y1-y2)**2 )
-}
-
 /** The point halfway between two points, as [x, y]. */
 export function midpoint(x1: number, y1: number, x2: number, y2: number) {
   return [(x1 + x2) / 2, (y1 + y2) / 2]
 }
-
-/** Intersection point [x, y] of the segments (x1,y1)-(x2,y2) and
- * (x3,y3)-(x4,y4), or false if they do not intersect (including parallels). */
-export function intersectionPoint(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, x4: number, y4: number) {
-  const a_dx = x2 - x1
-  const a_dy = y2 - y1
-  const b_dx = x4 - x3
-  const b_dy = y4 - y3
-  const s = (-a_dy * (x1 - x3) + a_dx * (y1 - y3)) / (-b_dx * a_dy + a_dx * b_dy)
-  const t = (+b_dx * (y1 - y3) - b_dy * (x1 - x3)) / (-b_dx * a_dy + a_dx * b_dy)
-  return (s >= 0 && s <= 1 && t >= 0 && t <= 1)? [x1 + t * a_dx, y1 + t * a_dy]: false
-}
-
 
 /** The closest ancestor-or-self of `el` matching the filter, or undefined. */
 export function findClosest(el: HTMLElement, filter: (node: HTMLElement) => boolean) {
@@ -1999,13 +1926,6 @@ export function createsStackingContext(node: HTMLElement) {
 /** The nearest ancestor creating a stacking context (at least <html>). */
 export function findStackingContainer(el: HTMLElement) {
   return findClosest(el.parentElement!, createsStackingContext)!
-}
-
-/** The element's index in the paint order of its stacking container's descendants (matching the selector). */
-export function getZPos(el: HTMLElement, selector="*") {
-  const stackingContainer = findStackingContainer(el)
-  const descendants = getDescendantsInStackingOrder(stackingContainer, selector)
-  return descendants.indexOf(el)
 }
 
 type DisplayOutside = "inline" | "block"

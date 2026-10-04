@@ -1450,47 +1450,7 @@ describe("isOnApple()/modifierKeyDown()", () => {
   })
 })
 
-describe("getPathTo()", () => {
-  it("returns an empty string for null", () => {
-    expect(getPathTo(null)).toBe("")
-  })
-  it("uses the id when present", () => {
-    setBody(`<div id="foo"></div>`)
-    expect(getPathTo(document.body.firstElementChild)).toBe(`id("foo")`)
-  })
-  it("escapes quotes and backslashes in id anchors", () => {
-    const element = document.createElement("div")
-    element.id = 'a"b\\c'
-    document.body.append(element)
-    expect(getPathTo(element)).toBe('id("a\\"b\\\\c")')
-  })
-  it("returns BODY for the body element", () => {
-    expect(getPathTo(document.body)).toBe("BODY")
-  })
-  it("builds an indexed path for nested elements", () => {
-    setBody("<div><p>a</p><p>b</p></div>")
-    expect(getPathTo(document.querySelectorAll("p").item(1))).toBe("BODY/DIV[1]/P[2]")
-  })
-  it("anchors the path at the nearest id", () => {
-    setBody(`<div id="x"><p>a</p></div>`)
-    expect(getPathTo(document.querySelector("p"))).toBe(`id("x")/P[1]`)
-  })
-  it("returns an empty string for a detached element", () => {
-    expect(getPathTo(document.createElement("p"))).toBe("")
-  })
-})
-
-describe("htmlToFragment()", () => {
-  it("parses HTML into a fragment", () => {
-    const fragment = htmlToFragment("<p>a</p><b>c</b>")
-    expect(fragment).toBeInstanceOf(DocumentFragment)
-    expect(Array.from(fragment.children).map(el => el.tagName)).toEqual(["P", "B"])
-  })
-  it("parses plain text", () => {
-    const fragment = htmlToFragment("hello")
-    expect(fragment.firstChild).toBeInstanceOf(Text)
-    expect(fragment.textContent).toBe("hello")
-  })
+describe("cloneWithoutEditorMarkers()", () => {
   it("clones authored classes while removing markers inside template content", () => {
     const template = document.createElement("template")
     template.className = "authored ◆template-marker"
@@ -1528,53 +1488,9 @@ describe("roundTo()", () => {
   })
 })
 
-describe("angleOnCircle()", () => {
-  it("measures the angle between two points on a circle", () => {
-    expect(angleOnCircle(0, 0, 1, 0, 0, 1)).toBeCloseTo(90)
-    expect(angleOnCircle(0, 0, 1, 0, 0, -1)).toBeCloseTo(-90)
-  })
-})
-
-describe("rotatePoint()", () => {
-  it("rotates a point around the origin", () => {
-    const [x, y] = rotatePoint(1, 0, 0, 0, 90)
-    expect(x).toBeCloseTo(0)
-    expect(y).toBeCloseTo(1)
-  })
-  it("rotates a point around an arbitrary center", () => {
-    const [x, y] = rotatePoint(2, 1, 1, 1, 90)
-    expect(x).toBeCloseTo(1)
-    expect(y).toBeCloseTo(2)
-  })
-  it("rotates by 180 degrees", () => {
-    const [x, y] = rotatePoint(1, 0, 0, 0, 180)
-    expect(x).toBeCloseTo(-1)
-    expect(y).toBeCloseTo(0)
-  })
-})
-
-describe("distanceBetweenPoints()", () => {
-  it("measures the euclidean distance", () => {
-    expect(distanceBetweenPoints(0, 0, 3, 4)).toBe(5)
-    expect(distanceBetweenPoints(1, 1, 1, 1)).toBe(0)
-  })
-})
-
 describe("midpoint()", () => {
   it("returns the point in the middle", () => {
     expect(midpoint(0, 0, 4, 2)).toEqual([2, 1])
-  })
-})
-
-describe("intersectionPoint()", () => {
-  it("returns the intersection of two crossing segments", () => {
-    expect(intersectionPoint(0, 0, 2, 2, 0, 2, 2, 0)).toEqual([1, 1])
-  })
-  it("returns false for non-intersecting segments", () => {
-    expect(intersectionPoint(0, 0, 1, 1, 3, 0, 3, 1)).toBe(false)
-  })
-  it("returns false for parallel segments", () => {
-    expect(intersectionPoint(0, 0, 1, 0, 0, 1, 1, 1)).toBe(false)
   })
 })
 
@@ -1709,14 +1625,6 @@ describe("getDescendantsInStackingOrder()", () => {
     setBody(`<div id="top" style="position: relative; z-index: 2"></div><div id="bottom" style="position: relative; z-index: 1"></div>`)
     const ordered = getDescendantsInStackingOrder(document.body, "div")
     expect(ordered.map(el => el.id)).toEqual(["bottom", "top"])
-  })
-})
-
-describe("getZPos()", () => {
-  it("returns the element's index in stacking order", () => {
-    setBody("<div>a</div><div>b</div><div>c</div>")
-    const middle = document.body.children.item(1) as HTMLElement
-    expect(getZPos(middle, "div")).toBe(1)
   })
 })
 

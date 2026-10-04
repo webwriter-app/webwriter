@@ -1,4 +1,4 @@
-import {MATH_NAMESPACE, mathRoot, mathRowNames} from "../math"
+import {MATH_NAMESPACE, mathRowNames} from "../math"
 import {continuesMathCompletion, exactMathCompletion, mathCompletions, type MathCompletion} from "../math-input"
 
 type Pending = {text: string, range: Range, command: boolean}

@@ -6,7 +6,7 @@ import '@testing-library/jest-dom/vitest'
 import * as Y from "yjs"
 import { DOMEditor } from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
-import { $, htmlToFragment, cloneWithoutEditorMarkers } from "../utility"
+import { $, cloneWithoutEditorMarkers } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {mathElement} from "../math"
@@ -14,6 +14,12 @@ import {elementDragType, ribbonInsertionDragType} from "../components/insertion-
 import {replayHostDrag, type RibbonDropPosition} from "../editor-bridge"
 
 let editor: DOMEditor
+
+const fragmentFromHTML = (html: string) => {
+  const template = document.createElement("template")
+  template.innerHTML = html
+  return template.content
+}
 
 describe("saved snippet capture", () => {
   it("previews the same text container it saves and cleans the outline on exit or destruction", () => {
@@ -1577,16 +1583,16 @@ describe("wrap()", () => {
   it("accepts a fragment as wrapper", () => {
     document.body.innerHTML = "<p>a</p>"
     $.selectElement(document.body.firstElementChild!)
-    editor.features.manipulation.wrap(htmlToFragment("<section></section>"))
+    editor.features.manipulation.wrap(fragmentFromHTML("<section></section>"))
     expectBodyToBe(`<section><p>a</p></section>`)
   })
   it("does nothing for an empty or text-only fragment wrapper", () => {
     document.body.innerHTML = "<p>a</p>"
     $.selectElement(document.body.firstElementChild!)
 
-    expect(() => editor.features.manipulation.wrap(htmlToFragment(""))).not.toThrow()
+    expect(() => editor.features.manipulation.wrap(fragmentFromHTML(""))).not.toThrow()
     expectBodyToBe("<p>a</p>")
-    expect(() => editor.features.manipulation.wrap(htmlToFragment("text"))).not.toThrow()
+    expect(() => editor.features.manipulation.wrap(fragmentFromHTML("text"))).not.toThrow()
     expectBodyToBe("<p>a</p>")
   })
   it("wraps multiple selected blocks", () => {
