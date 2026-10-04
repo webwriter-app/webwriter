@@ -693,13 +693,18 @@ describe("semantic list editing", () => {
     expect(cleanHTML()).toBe('<details><summary title="keep"></summary><p>Body</p></details>')
   })
 
-  it("restores missing summaries after direct DOM edits without touching widget internals", async () => {
+  it("repairs missing summaries at local editing boundaries without touching widget internals", async () => {
     document.body.innerHTML = '<details><p>Body</p><!--keep--></details><test-widget><details><p>Owned</p></details></test-widget>'
     await new Promise<void>(resolve => setTimeout(resolve))
+
+    expect(cleanHTML()).toBe('<details><p>Body</p><!--keep--></details><test-widget><details><p>Owned</p></details></test-widget>')
+    editor.normalizeSurroundingElements(document.querySelector("details")!)
 
     expect(cleanHTML()).toBe('<details><summary></summary><p>Body</p><!--keep--></details><test-widget><details><p>Owned</p></details></test-widget>')
     document.querySelector("summary")!.remove()
     await new Promise<void>(resolve => setTimeout(resolve))
+    expect(document.querySelector("summary")).toBeNull()
+    editor.normalizeSurroundingElements(document.querySelector("details")!)
     expect(document.querySelector("details")!.firstElementChild!.localName).toBe("summary")
   })
 
@@ -715,7 +720,7 @@ describe("semantic list editing", () => {
     expect(cleanHTML()).toBe('<details><summary title="keep"></summary><p>Body</p></details>')
   })
 
-  it("restores summary after a collaborative removal", async () => {
+  it("preserves a collaborative summary removal without authoring another summary", async () => {
     document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
     editor.doc.syncFromDOM()
     const remote = new Y.Doc()
@@ -727,13 +732,13 @@ describe("semantic list editing", () => {
       await new Promise<void>(resolve => setTimeout(resolve))
       editor.doc.syncFromDOM()
 
-      expect(cleanHTML()).toBe('<details><summary></summary><p>Body</p></details>')
-      expect(editor.doc.body.toString()).toContain('<summary></summary>')
+      expect(cleanHTML()).toBe('<details><p>Body</p></details>')
+      expect(editor.doc.body.toString()).not.toContain('<summary')
     }
     finally { remote.destroy() }
   })
 
-  it("keeps the existing summary first after a direct insertion or move", async () => {
+  it("preserves authored summary placement after a direct insertion or move", async () => {
     document.body.innerHTML = '<details><summary title="keep">Title</summary><p>Body</p><!--keep--></details>'
     const details = document.querySelector("details")!
     const summary = details.querySelector("summary")!
@@ -741,11 +746,11 @@ describe("semantic list editing", () => {
     paragraph.textContent = "Inserted"
     details.prepend(paragraph)
     await new Promise<void>(resolve => setTimeout(resolve))
-    expect(details.firstElementChild).toBe(summary)
+    expect(details.firstElementChild).toBe(paragraph)
     details.append(summary)
     await new Promise<void>(resolve => setTimeout(resolve))
-    expect(details.firstElementChild).toBe(summary)
-    expect(cleanHTML()).toBe('<details><summary title="keep">Title</summary><p>Inserted</p><p>Body</p><!--keep--></details>')
+    expect(details.lastElementChild).toBe(summary)
+    expect(cleanHTML()).toBe('<details><p>Inserted</p><p>Body</p><!--keep--><summary title="keep">Title</summary></details>')
   })
 
   it("inserts block content below summary when the native caret is before it", () => {

@@ -2976,7 +2976,7 @@ export class DomEditor extends LitElement {
       this.fileFormat = "html"
       await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
       await this.applyDefaultLayout(layout, this.frameRevision)
-      this.fileDirty = false
+      this.fileDirty = !this.isFreshDocumentUnchanged()
       this.updateDocumentURL(null)
       this.focusEditor()
     }

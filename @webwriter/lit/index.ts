@@ -185,19 +185,19 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
     if(name === "contenteditable") this.requestUpdate("editable")
   }
 
-  #lang: string = ""
+  #lang: string | null = null
 
   get lang() {
-    return (this.#lang || (this.parentElement?.closest("[lang]") as HTMLElement)?.lang) ?? ""
+    return (this.#lang ?? (this.parentElement?.closest("[lang]") as HTMLElement)?.lang) ?? ""
   }
 
   /** [HTML global attribute] Language of the widget, allowing presentation changes for each language. Without its own `lang` attribute, the widget follows the nearest ancestor's, including later changes to it. Only a language set on the widget itself is written to its attribute. */
   @property({type: String, attribute: true})
   set lang(value) {
-    this.#lang = value ?? ""
-    if(this.#lang && this.getAttribute("lang") !== this.#lang) this.setAttribute("lang", this.#lang)
-    else if(!this.#lang && this.hasAttribute("lang")) this.removeAttribute("lang")
-    this.#inheritedLang = this.#lang ? "" : this.lang
+    this.#lang = value ?? null
+    if(this.#lang !== null && this.getAttribute("lang") !== this.#lang) this.setAttribute("lang", this.#lang)
+    else if(this.#lang === null && this.hasAttribute("lang")) this.removeAttribute("lang")
+    this.#inheritedLang = this.#lang !== null ? "" : this.lang
     this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
   }
 
@@ -207,7 +207,7 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
    * update is not reflected, so the inherited language never becomes an
    * attribute of the widget. */
   languageChanged() {
-    if(this.#lang || this.lang === this.#inheritedLang) return
+    if(this.#lang !== null || this.lang === this.#inheritedLang) return
     this.#inheritedLang = this.lang
     this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
   }

@@ -8,6 +8,7 @@ import {
 } from "../editor-bridge"
 import {isEditorOwnedAttribute, isOnApple, modifierKeyDown} from "../utility"
 import {userInitials} from "../user-identity"
+import {hydrateWidgetGroupings} from "../widget-grouping-dom"
 
 type StoredCheckpoint = {
   id: string
@@ -287,6 +288,7 @@ export class HistoryFeature extends EditorFeature {
     )
     document.head.replaceChildren(...editorHeadNodes)
     document.head.append(...Array.from(restored.head.childNodes, node => document.importNode(node, true)))
+    hydrateWidgetGroupings(document)
   }
 
   #replaceAttributes(target: Element, source: Element) {

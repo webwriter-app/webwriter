@@ -938,6 +938,26 @@ describe("table actions", () => {
     expect(originalCell).toHaveAttribute("role", "cell")
   })
 
+  it.each([
+    {group: "thead", side: "below", selected: 0},
+    {group: "tfoot", side: "above", selected: 2},
+  ] as const)("inserts $side inside a multi-row $group at the selected boundary", ({group, side, selected}) => {
+    document.body.innerHTML = `<table><${group} id="keep"><tr><th>A</th></tr><tr><th>B</th></tr><tr><th>C</th></tr></${group}></table>`
+    const rowGroup = document.querySelector(group)!
+    const originalRows = Array.from(rowGroup.children)
+    editor.features.table.selectCells(cells()[selected])
+
+    editor.features.table.actions.insertTableRow({type: "insertTableRow", side})
+
+    const rows = Array.from(rowGroup.children)
+    expect(rows).toHaveLength(4)
+    const boundary = side === "below" ? selected + 1 : selected
+    expect(rows.slice(0, boundary)).toEqual(originalRows.slice(0, boundary))
+    expect(rows.slice(boundary + 1)).toEqual(originalRows.slice(boundary))
+    expect(rows[boundary].querySelector("th")).not.toBeNull()
+    expect(document.querySelector("tbody")).toBeNull()
+  })
+
   it("preserves column definitions and cell accessibility attributes while toggling row groups", () => {
     document.body.innerHTML = '<table role="grid"><colgroup><col></colgroup><tbody><tr><td headers="name" scope="row" abbr="Name" role="cell">A</td></tr><tr><td>B</td></tr></tbody></table>'
     const table = document.querySelector("table")!
@@ -1067,6 +1087,21 @@ describe("table actions", () => {
     expect(editor.toHTML(true)).toBe(before)
     editor.doc.redo()
     expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it.each(["thead", "tfoot"] as const)("toggles %s without converting or moving the opposite authored row", type => {
+    document.body.innerHTML = '<table><tbody id="first"><tr><th scope="row">A</th></tr></tbody><tbody id="last"><tr><th scope="row">B</th></tr></tbody></table>'
+    const untouched = cells()[type === "thead" ? 1 : 0]
+    const parent = untouched.parentElement!.parentElement
+    const html = untouched.outerHTML
+    editor.features.table.selectCells(cells()[0])
+
+    type === "thead" ? editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+      : editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})
+
+    expect(untouched.isConnected).toBe(true)
+    expect(untouched.parentElement!.parentElement).toBe(parent)
+    expect(untouched.outerHTML.replace(/ class="[^"]*"/g, "")).toBe(html)
   })
 
   it("uses the current first row after replacement and handles a single-row table", () => {

@@ -63,7 +63,7 @@ function publishedVersions(name: string) {
   if(!request) {
     request = (async() => {
       try {
-        const response = await fetch(`${JSDELIVR_DATA_ENDPOINT}/packages/npm/${name}`)
+        const response = await fetchWithin(globalThis.fetch.bind(globalThis), `${JSDELIVR_DATA_ENDPOINT}/packages/npm/${name}`, {}, NPM_FILE_TIMEOUT_MS)
         if(response.ok) {
           const data = await response.json() as {versions?: unknown}
           if(Array.isArray(data.versions)) return data.versions
@@ -72,7 +72,7 @@ function publishedVersions(name: string) {
         }
       }
       catch { /* Use the registry below. */ }
-      const response = await fetch(`${NPM_REGISTRY_ENDPOINT}/${name.replace("/", "%2f")}`, {headers: {accept: "application/vnd.npm.install-v1+json"}})
+      const response = await fetchWithin(globalThis.fetch.bind(globalThis), `${NPM_REGISTRY_ENDPOINT}/${name.replace("/", "%2f")}`, {headers: {accept: "application/vnd.npm.install-v1+json"}}, NPM_FILE_TIMEOUT_MS)
       if(response.status === 404) return []
       if(!response.ok) throw new Error(`The versions of ${name} could not be read (${response.status})`)
       return Object.keys((await response.json() as {versions?: Record<string, unknown>}).versions ?? {})

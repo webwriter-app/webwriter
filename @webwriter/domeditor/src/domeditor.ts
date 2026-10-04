@@ -414,7 +414,7 @@ export class DOMEditor {
     "migration": new MigrationFeature(this),
   } as const
 
-  readonly #actionHandlers = collectFeatureActions(Object.values(this.features))
+  readonly #actionHandlers: ReturnType<typeof collectFeatureActions>
 
   ignoreAttrs: string[] = []
   ignoreClasses = ["◆"]
@@ -521,7 +521,7 @@ export class DOMEditor {
         && element !== getDocumentRoot() && element.isConnected) elements.add(element)
     }
     elements.forEach(element => normalizeEditingContent(element))
-    this.features.list.ensureDetailsSummaries()
+    this.features.list.ensureDetailsSummaries(elements)
     if(this.#ensureDocumentContent()) return
     if(selection && savedSelection) {
       const anchor = this.restoreTextPoint(savedSelection.anchor)
@@ -602,6 +602,7 @@ export class DOMEditor {
   }
 
   constructor(options: DOMEditorOptions = {}) {
+    this.#actionHandlers = collectFeatureActions(Object.values(this.features))
     hydrateWidgetGroupings(document)
     this.#bridgeNonce = options.bridgeNonce ?? globalThis.crypto?.randomUUID?.() ?? `bridge-${Date.now()}-${Math.random()}`
     this.#bridgeOrigin = options.bridgeOrigin && options.bridgeOrigin !== "null"
@@ -729,10 +730,7 @@ export class DOMEditor {
     }
   }
 
-  #handleBodySchemaChanges = (records: MutationRecord[]) => {
-    if(records.some(record => record.type === "childList" && document.body.contains(record.target))) {
-      this.features.list.ensureDetailsSummaries()
-    }
+  #handleBodySchemaChanges = () => {
     this.#ensureDocumentContent()
   }
 

@@ -24,7 +24,6 @@ export class ListFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
-    this.ensureDetailsSummaries()
     window.addEventListener("resize", this.syncVirtualMarker)
     window.addEventListener("scroll", this.syncVirtualMarker, true)
     window.addEventListener("blur", this.handleWindowBlur)
@@ -804,10 +803,17 @@ export class ListFeature extends EditorFeature {
     if(details.isConnected) $.move(summary)
   }
 
-  /** A disclosure always has a summary first, including after native,
-   * direct DOM or collaborative edits. Widget internals own their structure. */
-  ensureDetailsSummaries() {
-    for(const details of document.body.querySelectorAll("details:not([is])")) {
+  /** Repair disclosure summaries at local editing boundaries.
+   * Widget internals own their structure. */
+  ensureDetailsSummaries(roots: Iterable<Element> = [document.body]) {
+    const disclosures = new Set<Element>()
+    for(const root of roots) {
+      const ancestor = root.closest("details:not([is])")
+      if(ancestor) disclosures.add(ancestor)
+      root.querySelectorAll("details:not([is])").forEach(details => disclosures.add(details))
+    }
+    for(const details of disclosures) {
+      if(!document.body.contains(details)) continue
       if(atomicEditingContainer(details, this.editor.schema)) continue
       const summary = details.querySelector(":scope > summary") ?? document.createElement("summary")
       if(details.firstElementChild !== summary) details.prepend(summary)

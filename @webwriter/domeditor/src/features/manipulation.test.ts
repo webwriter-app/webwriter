@@ -9,6 +9,7 @@ import {sharedDOMBody} from "../domdoc"
 import { $, htmlToFragment, cloneWithoutEditorMarkers } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
+import {mathElement} from "../math"
 import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
 import {replayHostDrag, type RibbonDropPosition} from "../editor-bridge"
 
@@ -85,6 +86,96 @@ describe("saved snippet capture", () => {
   })
 })
 
+describe("migrated insertion selection", () => {
+  function pendingInsertion() {
+    let release!: (html: string) => void
+    vi.spyOn(editor.features.migration, "needsMigration").mockReturnValue(true)
+    vi.spyOn(editor.features.migration, "migrate").mockImplementation(() => new Promise<string>(resolve => { release = resolve }))
+    const inserting = editor.features.manipulation.actions.insert({type: "insert", html: "<p>Inserted</p>"})
+    return {inserting, release}
+  }
+
+  it("does not replace a widget captured while migration was pending", async () => {
+    document.body.innerHTML = '<p>Before</p><custom-widget>Keep</custom-widget>'
+    const paragraph = document.querySelector("p")!, widget = document.querySelector("custom-widget")!
+    $.move(paragraph.firstChild!, 2)
+    const {inserting, release} = pendingInsertion()
+    editor.features.selection.captureElement(widget)
+    release("<p>Inserted</p>")
+    await inserting
+    expect(widget.isConnected).toBe(true)
+    expect(widget.textContent).toBe("Keep")
+    expect(document.body.textContent).toContain("Inserted")
+  })
+
+  it("does not insert after its original selected text was replaced", async () => {
+    document.body.innerHTML = '<p>Original</p><p>Keep</p>'
+    const paragraph = document.querySelector("p")!, text = paragraph.firstChild!
+    $.selectRange(text, 0, text, 8)
+    const {inserting, release} = pendingInsertion()
+    paragraph.replaceChildren(document.createTextNode("Remote replacement"))
+    release("<p>Inserted</p>")
+    await inserting
+    expect(document.body.textContent).toBe("Remote replacementKeep")
+  })
+
+  it("does not insert after its original selected element was removed", async () => {
+    document.body.innerHTML = '<p>Original</p><p>Keep</p>'
+    const paragraph = document.querySelector("p")!
+    $.selectElement(paragraph)
+    const {inserting, release} = pendingInsertion()
+    paragraph.remove()
+    release("<p>Inserted</p>")
+    await inserting
+    expect(document.body.textContent).toBe("Keep")
+  })
+
+  it("does not replace text changed in place while migration was pending", async () => {
+    document.body.innerHTML = '<p>Original</p>'
+    const text = document.querySelector("p")!.firstChild as Text
+    $.selectRange(text, 0, text, 8)
+    const {inserting, release} = pendingInsertion()
+    text.replaceData(0, 8, "Remote replacement")
+    release("<p>Inserted</p>")
+    await inserting
+    expect(document.body.textContent).toBe("Remote replacement")
+  })
+
+  it("replaces the originally captured widget even after another widget was captured", async () => {
+    document.body.innerHTML = '<custom-widget>Original</custom-widget><custom-widget>Keep</custom-widget>'
+    const [original, keep] = Array.from(document.querySelectorAll("custom-widget"))
+    editor.features.selection.captureElement(original)
+    const {inserting, release} = pendingInsertion()
+    editor.features.selection.captureElement(keep)
+    release("<p>Inserted</p>")
+    await inserting
+    expect(original.isConnected).toBe(false)
+    expect(keep.isConnected).toBe(true)
+    expect(document.body.textContent).toBe("InsertedKeep")
+  })
+
+  it.each([
+    {type: "insert", reenable: false}, {type: "insertRibbonDrop", reenable: false},
+    {type: "insert", reenable: true}, {type: "insertRibbonDrop", reenable: true},
+  ] as const)("cancels pending $type after disable (re-enable: $reenable)", async ({type, reenable}) => {
+    document.body.innerHTML = '<p>Keep</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    editor.doc.syncFromDOM()
+    const anchor = Y.relativePositionToJSON(editor.doc.relativePositionFromDOMPoint(paragraph.firstChild!, 2)!)
+    let release!: (html: string) => void
+    vi.spyOn(editor.features.migration, "needsMigration").mockReturnValue(true)
+    vi.spyOn(editor.features.migration, "migrate").mockImplementation(() => new Promise<string>(resolve => { release = resolve }))
+    const inserting = type === "insert" ? editor.features.manipulation.actions.insert({type, html: "<p>Inserted</p>"})
+      : editor.features.manipulation.actions.insertRibbonDrop({type, html: "<p>Inserted</p>", position: {anchor, layout: "document"}})
+    editor.features.manipulation.disable()
+    if(reenable) editor.features.manipulation.enable()
+    release("<p>Inserted</p>")
+    await inserting
+    expect(document.body.textContent).toBe("Keep")
+  })
+})
+
 describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots", mode => {
   let headHTML: string
   beforeEach(() => { headHTML = document.head.innerHTML })
@@ -146,6 +237,22 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe("<br>")
     expect(parent.querySelectorAll("p")).toHaveLength(1)
     expect(paragraph.contains($.anchor)).toBe(true)
+  })
+
+  it("lets an inline formula own Enter inside a text root", () => {
+    document.body.innerHTML = '<p>Before </p>'
+    const math = mathElement("math", mathElement("mrow", mathElement("mi", "x")))
+    document.querySelector("p")!.append(math, " after")
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const text = math.querySelector("mi")!.firstChild!
+    $.move(text, 1)
+    editor.features.math.refresh()
+
+    text.parentElement!.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(math.textContent).toBe("x")
+    expect(math.querySelector("br")).toBeNull()
+    expect(math.contains($.anchor)).toBe(false)
   })
 })
 

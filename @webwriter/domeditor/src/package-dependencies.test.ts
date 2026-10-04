@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import type {WebWriterPackage} from "./packages"
 import {hasImportMapEntries, npmFileProvider, packageImportMapScript, packageModuleEntries, resolvePackageDependencies} from "./package-dependencies"
+import {NPM_FILE_TIMEOUT_MS} from "./npm-files"
 
 type GeneratorOptions = {defaultProvider: string, customProviders: Record<string, ReturnType<typeof npmFileProvider>>, ignore?: string[]}
 const generator = vi.hoisted(() => ({
@@ -37,7 +38,7 @@ beforeEach(() => {
   generator.links = []
   generator.fails = () => false
 })
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe("package dependency resolution", () => {
   it("links every widget script, fully bundled ones included, as one graph with portable absolute mappings", async () => {
@@ -88,6 +89,28 @@ describe("package dependency resolution", () => {
     expect(generator.links.at(-1)!.entries).toEqual(["https://unpkg.com/@webwriter/a@1.0.0/dist/a.js"])
     expect(provider(generator.links.at(-1)!.options)).toBe("https://unpkg.com/x@1/")
     expect(plan.map?.imports?.lit).toBe("https://cdn.jsdelivr.net/npm/lit@3.3.3/index.js")
+  })
+
+  it("falls back to the registry when version metadata stalls and bounds a stalled registry too", async () => {
+    vi.useFakeTimers()
+    const fetcher = vi.fn(async(url: string, init: RequestInit = {}) => {
+      if(url.startsWith("https://registry.npmjs.org/") && url.endsWith("version-timeout-fallback")) {
+        return Response.json({versions: {"1.0.0": {}}})
+      }
+      return await new Promise<Response>((_, reject) => init.signal!.addEventListener("abort", () => reject(init.signal!.reason), {once: true}))
+    })
+    vi.stubGlobal("fetch", fetcher)
+    const provider = npmFileProvider("https://cdn.jsdelivr.net/npm")
+    const target = (name: string) => ({registry: "npm", name, range: {bestMatch: (versions: string[]) => versions[0] ?? null}, unstable: false})
+    const fallback = provider.resolveLatestTarget(target("version-timeout-fallback"), "default")
+    await vi.advanceTimersByTimeAsync(NPM_FILE_TIMEOUT_MS)
+    await expect(fallback).resolves.toMatchObject({version: "1.0.0"})
+
+    const stalled = provider.resolveLatestTarget(target("version-timeout-both"), "default")
+    const rejected = expect(stalled).rejects.toMatchObject({name: "TimeoutError"})
+    await vi.advanceTimersByTimeAsync(NPM_FILE_TIMEOUT_MS * 2)
+    await rejected
+    expect(fetcher).toHaveBeenCalledTimes(4)
   })
 
   it("leaves out a script that cannot be linked instead of blocking the other widgets", async () => {

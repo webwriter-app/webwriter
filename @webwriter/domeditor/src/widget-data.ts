@@ -177,6 +177,7 @@ export class WidgetDataBindings {
     this.#busy = true
     try {
       const blocks = new Set([...this.root.querySelectorAll<HTMLScriptElement>('script[slot="data"]')].filter(block => this.isBlock(block)))
+      const previousBindings = new Map([...this.#bindings.values()].map(binding => [binding.widget.id, binding]))
       for(const [block, binding] of this.#bindings) {
         if(!blocks.has(block)) {
           // Removing the opt-in must not put participant data back in the public DOM mirror.
@@ -187,6 +188,12 @@ export class WidgetDataBindings {
       const ids = new Map([...this.#bindings.values()].map(binding => [binding.widget.id, binding.widget]))
       for(const block of blocks) {
         const widget = block.parentElement!
+        // DOM APIs and widget callbacks can replace a rendered block or its
+        // widget. Its authored identity retains the original defaults.
+        const previous = previousBindings.get(widget.id)
+        if(!this.#defaults.has(block) && previous?.format === block.type) {
+          this.#defaults.set(block, {format: previous.format, text: previous.defaults})
+        }
         // Only one direct data block per widget, and copied widgets receive a fresh authored identity.
         if(widget.querySelector(':scope > script[slot="data"]') !== block) continue
         if(ids.has(widget.id) && ids.get(widget.id) !== widget) {

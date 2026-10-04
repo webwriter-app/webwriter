@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import * as esbuild from "esbuild"
+import {ts} from "@custom-elements-manifest/analyzer"
 import * as fs from "fs"
 import * as path from "path"
 import * as process from "process"
@@ -172,10 +173,17 @@ async function cherryPickMap(dep, resolveDir, build) {
     }
     catch { /* Without a readable manifest, only re-exports are mapped. */ }
   }
-  for(const [, list, from] of fs.readFileSync(root.path, "utf8").matchAll(/export\s*\{([^}]*)\}\s*from\s*["'](\.[^"']+)["']/g)) {
-    for(const specifier of list.split(",").map(part => part.trim()).filter(Boolean)) {
-      const [imported, exported = imported] = specifier.split(/\s+as\s+/)
-      if(exported !== "default" && !candidates.has(exported)) candidates.set(exported, {file: path.resolve(path.dirname(root.path), from), name: imported})
+  const source = ts.createSourceFile(root.path, fs.readFileSync(root.path, "utf8"), ts.ScriptTarget.Latest, true)
+  for(const statement of source.statements) {
+    if(!ts.isExportDeclaration(statement) || statement.isTypeOnly || !statement.moduleSpecifier
+      || !ts.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.startsWith(".")
+      || !statement.exportClause || !ts.isNamedExports(statement.exportClause)) continue
+    for(const specifier of statement.exportClause.elements) {
+      const exported = specifier.name.text, imported = (specifier.propertyName ?? specifier.name).text
+      if(!specifier.isTypeOnly && ts.isIdentifier(specifier.name) && (!specifier.propertyName || ts.isIdentifier(specifier.propertyName))
+        && exported !== "default" && !candidates.has(exported)) {
+        candidates.set(exported, {file: path.resolve(path.dirname(root.path), statement.moduleSpecifier.text), name: imported})
+      }
     }
   }
   const map = new Map()
@@ -198,24 +206,32 @@ const rootImportsPlugin = (deps, report, treeShaken) => ({
       const source = await fs.promises.readFile(args.path, "utf8")
       if(!deps.some(dep => source.includes(dep))) return
       let contents = "", last = 0
-      for(const match of source.matchAll(/\b(import|export)(\s+type)?\s*\{([^}]*)\}\s*from\s*(["'])([^"']+)\4\s*;?/g)) {
-        const [statement, keyword, typeOnly, list, , dep] = match
-        if(typeOnly || !deps.includes(dep)) continue
+      const parsed = ts.createSourceFile(args.path, source, ts.ScriptTarget.Latest, true)
+      for(const statement of parsed.statements) {
+        const importing = ts.isImportDeclaration(statement), exporting = ts.isExportDeclaration(statement)
+        if(!importing && !exporting || statement.attributes || statement.assertClause) continue
+        const bindings = importing ? statement.importClause?.namedBindings : statement.exportClause
+        if(importing && (statement.importClause?.isTypeOnly || statement.importClause?.name)
+          || exporting && statement.isTypeOnly || !bindings || !(ts.isNamedImports(bindings) || ts.isNamedExports(bindings))
+          || bindings.elements.some(part => !ts.isIdentifier(part.name) || part.propertyName && !ts.isIdentifier(part.propertyName))
+          || !statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue
+        const dep = statement.moduleSpecifier.text, keyword = importing ? "import" : "export"
+        if(!deps.includes(dep)) continue
         const map = await cherryPickMap(dep, path.dirname(args.path), build)
-        const parts = list.split(",").map(part => part.trim()).filter(part => part && !part.startsWith("type ")).map(part => {
-          const [imported, local = imported] = part.split(/\s+as\s+/).map(name => name.trim())
+        const parts = bindings.elements.filter(part => !part.isTypeOnly).map(part => {
+          const imported = (part.propertyName ?? part.name).text, local = part.name.text
           return {imported, local, target: map?.get(imported)}
         })
         const entry = report.get(dep) ?? report.set(dep, {names: new Map(), locations: new Set()}).get(dep)
         for(const part of parts) entry.names.set(part.imported, part.target)
-        entry.locations.add(`${path.relative(".", args.path).split(path.sep).join("/")}:${source.slice(0, match.index).split("\n").length}`)
+        entry.locations.add(`${path.relative(".", args.path).split(path.sep).join("/")}:${source.slice(0, statement.getStart(parsed)).split("\n").length}`)
         if(!treeShaken.has(dep) || !parts.some(part => part.target)) continue
         const rest = parts.filter(part => !part.target)
-        contents += source.slice(last, match.index) + [
+        contents += source.slice(last, statement.getStart(parsed)) + [
           ...parts.filter(part => part.target).map(({target, local}) => `${keyword} {${target.name} as ${local}} from ${JSON.stringify(target.specifier)};`),
           ...(rest.length? [`${keyword} {${rest.map(({imported, local}) => imported === local? imported: `${imported} as ${local}`).join(", ")}} from ${JSON.stringify(dep)};`]: []),
         ].join(" ")
-        last = match.index + statement.length
+        last = statement.end
       }
       if(last) return {contents: contents + source.slice(last), loader: loaders[path.extname(args.path)]}
     })

@@ -759,6 +759,38 @@ describe("DomEditor iframe setup", () => {
     expect(host.isFreshDocumentUnchanged()).toBe(false)
   })
 
+  it.each([
+    ["canvas", false], ["canvas", true], ["slides", false], ["slides", true],
+  ] as const)("keeps edits made while creating a new %s document dirty (isolated frame: %s)", async (mode, isolated) => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    const doc = iframe.contentDocument!
+    vi.spyOn(host, "reloadDocument").mockImplementation(async () => {
+      doc.body.innerHTML = "<p></p>"
+    })
+    let complete!: (result: boolean) => void
+    const execute = vi.spyOn(editor, "execute").mockImplementation(() => new Promise(resolve => {complete = resolve}))
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: doc.documentElement.outerHTML}))
+    }
+    const creating = host.newDocument(mode)
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode, expectedMode: "document"}))
+    doc.body.className = mode === "canvas" ? "ww-canvas" : "ww-slides"
+    doc.body.innerHTML = "<p>Typed while creating the document</p>"
+    await new Promise(resolve => setTimeout(resolve, 0))
+    complete(true)
+    await creating
+    expect(host.fileDirty).toBe(true)
+    expect(host.isFreshDocumentUnchanged()).toBe(false)
+    const unload = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(false))
+    expect(host.confirmDiscardChanges()).toBe(false)
+  })
+
   it.each(["document", "canvas", "slides"] as const)("creates an explicit %s layout from the New submenu without changing the default", async mode => {
     const {editor} = await mountEditor()
     const host = editor as any
@@ -1437,11 +1469,13 @@ describe("Develop local packages", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
     expect(ribbon.localPackages).toEqual([local])
-    expect(Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')).map(button => button.label)).toEqual(["Published"])
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'))
+      .filter(button => button.action.startsWith("package:")).map(button => button.label)).toEqual(["Published"])
     host.installedPackages = [local]
     await editor.updateComplete
     await ribbon.updateComplete
     const buttons = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button'))
+      .filter(button => button.action.startsWith("package:"))
     expect(buttons.map(button => button.label)).toEqual(["Demo", "Published"])
     expect(buttons[0].hasAttribute("developer-package")).toBe(true)
     expect(buttons[0].hasAttribute("active")).toBe(true)
@@ -6449,14 +6483,13 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Form"]')).toBeNull()
-    const section = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Custom layout"]')!
     ribbon.canSection = true
-    await ribbon.updateComplete
-    await section.updateComplete
-    section.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: "toggle-section"}, bubbles: true, composed: true}))
     expect(execute).toHaveBeenCalledWith({type: "toggleSection", section: "section"})
-
-    const sectionType = ribbon.shadowRoot!.querySelector<HTMLSelectElement>('.custom-layout select')!
+    ribbon.activeMenu = "Edit"
+    ribbon.sectionSelected = true
+    await ribbon.updateComplete
+    const sectionType = ribbon.shadowRoot!.querySelector<HTMLSelectElement>('ribbon-drawer[label="Section"] select')!
     sectionType.value = "address"
     sectionType.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(execute).toHaveBeenLastCalledWith({type: "setSectionType", section: "address"})

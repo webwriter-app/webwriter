@@ -6,6 +6,8 @@ import { DOMEditor } from "./domeditor"
 import {editorFrameControlMessage, executeCompleteEvent, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
 import {$, cloneInert, getInertDocument} from "./utility"
+import * as Y from "yjs"
+import {sharedDOMBody} from "./domdoc"
 
 const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule =>
@@ -14,6 +16,51 @@ const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
 
 const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
+
+describe("collaborative disclosure structure", () => {
+  it("preserves missing summaries through remote updates, unrelated local input, and shared snapshot startup", async () => {
+    document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details><p>Other</p>'
+    const initialEditor = new DOMEditor()
+    initialEditor.doc.syncFromDOM()
+    const initial = Y.encodeStateAsUpdate(initialEditor.doc.doc)
+    initialEditor.destroy()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, initial)
+      const details = sharedDOMBody(remote).get(0) as Y.XmlElement
+      details.delete(0, 1)
+      const removal = Y.encodeStateAsUpdate(remote)
+      const updates: Uint8Array[] = []
+      for(let replica = 0; replica < 2; replica++) {
+        document.body.replaceChildren()
+        const editor = new DOMEditor({initialState: {update: Array.from(initial)}})
+        try {
+          Y.applyUpdate(editor.doc.doc, removal, "remote-client")
+          await new Promise(resolve => setTimeout(resolve))
+          expect(document.querySelector("details > summary")).toBeNull()
+          const other = document.body.lastElementChild!
+          $.move(other, 0)
+          other.dispatchEvent(new Event("input", {bubbles: true}))
+          await new Promise(resolve => setTimeout(resolve))
+          expect(document.querySelector("details > summary")).toBeNull()
+          editor.doc.syncFromDOM()
+          updates.push(Y.encodeStateAsUpdate(editor.doc.doc))
+        }
+        finally { editor.destroy() }
+      }
+      updates.forEach(update => Y.applyUpdate(remote, update))
+      expect(sharedDOMBody(remote).toString()).not.toContain("<summary")
+      document.body.replaceChildren()
+      const resumed = new DOMEditor({initialState: {update: Array.from(Y.encodeStateAsUpdate(remote))}})
+      try {
+        await new Promise(resolve => setTimeout(resolve))
+        expect(document.querySelector("details > summary")).toBeNull()
+      }
+      finally { resumed.destroy() }
+    }
+    finally { remote.destroy(); document.body.replaceChildren() }
+  })
+})
 
 describe("DOMEditor stylesheets", () => {
   let editor: DOMEditor

@@ -22,8 +22,9 @@ const maximumOutputGrowth = 1_000_000
 /** Runs package code in an opaque-origin frame, so it cannot reach the
  * editor or the application. Each run gets a fresh frame, which is removed
  * after the result or the timeout. */
-function sandboxRunner(nonce: () => string, mount: (frame: HTMLIFrameElement) => void): MigrationRunner {
+function sandboxRunner(nonce: () => string, mount: (frame: HTMLIFrameElement) => void, currentSignal: () => AbortSignal): MigrationRunner {
   return (request, timeout) => new Promise((resolve, reject) => {
+    const signal = currentSignal()
     const frame = document.createElement("iframe")
     frame.setAttribute("sandbox", "allow-scripts")
     frame.setAttribute("aria-hidden", "true")
@@ -59,6 +60,7 @@ window.addEventListener("message", async event => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const finish = (callback: () => void) => {
       clearTimeout(timer)
+      signal.removeEventListener("abort", abort)
       window.removeEventListener("message", onMessage)
       frame.remove()
       callback()
@@ -67,10 +69,14 @@ window.addEventListener("message", async event => {
       if(event.source !== frame.contentWindow || event.data?.type !== "widget-migration") return
       finish(() => event.data.error ? reject(new Error(String(event.data.error))) : resolve(event.data.results))
     }
+    const abort = () => finish(() => reject(new Error("The package migration was canceled")))
+    if(signal.aborted) { abort(); return }
+    signal.addEventListener("abort", abort, {once: true})
     window.addEventListener("message", onMessage)
     frame.addEventListener("load", () => frame.contentWindow?.postMessage(request, "*"), {once: true})
     timer = setTimeout(() => finish(() => reject(new Error("The package migration timed out"))), timeout)
-    mount(frame)
+    try { mount(frame) }
+    catch(error) { finish(() => reject(error)) }
   })
 }
 
@@ -78,8 +84,32 @@ window.addEventListener("message", async event => {
  * widgets in content entering the document. A migration that fails, times
  * out, or returns no element leaves those widgets unchanged. */
 export class MigrationFeature extends EditorFeature {
-  runner: MigrationRunner = sandboxRunner(() => this.editor.trustedScriptNonce, frame => this.editor.addAppendix(frame))
+  #controller = new AbortController()
+  runner: MigrationRunner = sandboxRunner(() => this.editor.trustedScriptNonce, frame => this.editor.addAppendix(frame), () => this.#controller.signal)
   readonly #sources = new Map<string, Promise<string>>()
+
+  enable() {
+    if(this.isEnabled) return
+    if(this.#controller.signal.aborted) this.#controller = new AbortController()
+    super.enable()
+  }
+
+  disable() {
+    this.#controller.abort()
+    this.#sources.clear()
+    super.disable()
+  }
+
+  async #wait<T>(operation: Promise<T>, signal: AbortSignal) {
+    let abort!: () => void
+    const canceled = new Promise<never>((_resolve, reject) => {
+      abort = () => reject(new Error("The package migration was canceled"))
+      if(signal.aborted) abort()
+      else signal.addEventListener("abort", abort, {once: true})
+    })
+    try { return await Promise.race([operation, canceled]) }
+    finally { signal.removeEventListener("abort", abort) }
+  }
 
   #migrations(packages: readonly WebWriterPackage[] = this.editor.features.dependency.installedPackages) {
     return packages.flatMap(pkg => {
@@ -99,14 +129,14 @@ export class MigrationFeature extends EditorFeature {
   #source(url: string) {
     let request = this.#sources.get(url)
     if(!request) {
-      request = fetch(url).then(async response => {
+      request = fetch(url, {signal: this.#controller.signal}).then(async response => {
         if(!response.ok) throw new Error(`Migration download failed (${response.status})`)
         const source = await response.text()
         if(source.length > maximumSourceBytes) throw new RangeError("The migration script is too large")
         return source
       })
       this.#sources.set(url, request)
-      request.catch(() => this.#sources.delete(url))
+      request.catch(() => { if(this.#sources.get(url) === request) this.#sources.delete(url) })
     }
     return request
   }
@@ -114,6 +144,8 @@ export class MigrationFeature extends EditorFeature {
   /** Returns `html` with each package's widgets replaced by its migration's
    * result, where that result is usable. */
   async migrate(html: string) {
+    if(!this.isEnabled) return html
+    const signal = this.#controller.signal
     const migrations = this.#migrations()
     if(!migrations.length || !this.needsMigration(html)) return html
     const template = document.createElement("template")
@@ -127,10 +159,13 @@ export class MigrationFeature extends EditorFeature {
       const items = elements.map(element => element.outerHTML)
       let results: unknown
       try {
-        const source = await this.#source(url)
-        results = await this.runner({packageName: pkg.name, version: pkg.version, source, tagNames, items}, migrationTimeout)
+        const source = await this.#wait(this.#source(url), signal)
+        if(signal.aborted) return html
+        results = await this.#wait(this.runner({packageName: pkg.name, version: pkg.version, source, tagNames, items}, migrationTimeout), signal)
+        if(signal.aborted) return html
       }
       catch(error) {
+        if(signal.aborted) return html
         console.warn(`Migration of ${pkg.name} was skipped:`, error)
         continue
       }

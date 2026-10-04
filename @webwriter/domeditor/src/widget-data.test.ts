@@ -86,6 +86,77 @@ describe("scoped widget data", () => {
     remoteDoc.destroy()
   })
 
+  it("keeps participant data private while a DOM preview is accepted", async () => {
+    const peer = create()
+    write(peer, {secret: "individual-answer"})
+    await tick()
+    const preview = peer.shared.beginDOMPreview()
+    expect(read(peer)).toEqual({secret: "individual-answer"})
+    peer.block().textContent = '{"secret":"preview-answer"}'
+    await tick()
+    preview.accept("preview-with-widget-data")
+    expect(sharedDOMBody(peer.shared.doc).toString()).not.toContain("preview-answer")
+    expect(read(peer)).toEqual({secret: "preview-answer"})
+  })
+
+  it.each(["replace", "remove", "sharing"])("restores participant scopes after rejecting a preview that changes widget %s", async change => {
+    const connection = resolver()
+    const peer = create(html(), connection)
+    write(peer, {secret: "individual-answer"})
+    await tick()
+    const defaults = sharedDOMBody(peer.shared.doc).toString()
+    const preview = peer.shared.beginDOMPreview()
+    if(change === "replace") peer.widget().replaceWith(peer.widget().cloneNode(true))
+    else if(change === "remove") peer.widget().remove()
+    else peer.widget().setAttribute("shared", "")
+    await tick()
+    expect(preview.reject()).toBe(true)
+    expect(read(peer)).toEqual({secret: "individual-answer"})
+    expect(sharedDOMBody(peer.shared.doc).toString()).toBe(defaults)
+    const secondPreview = peer.shared.beginDOMPreview()
+    expect(read(peer)).toEqual({secret: "individual-answer"})
+    secondPreview.reject()
+    write(peer, {secret: "after-preview"})
+    await tick()
+    expect(read(peer)).toEqual({secret: "after-preview"})
+    expect(sharedDOMBody(peer.shared.doc).toString()).not.toContain("after-preview")
+  })
+
+  it("releases participant connections once when the owner is destroyed with an active preview", () => {
+    const doc = new Y.Doc(), destroy = vi.fn()
+    cleanups.push(() => doc.destroy())
+    const peer = create(html(), {resolve: () => ({doc, destroy})})
+    const preview = peer.shared.beginDOMPreview()
+    peer.shared.destroy()
+    cleanups.pop()
+    expect(preview.active).toBe(false)
+    expect(destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps rendered participant data out of defaults after a data block is replaced", async () => {
+    const peer = create()
+    write(peer, {secret: "individual-answer"})
+    await tick()
+    peer.block().replaceWith(peer.block().cloneNode(true))
+    peer.shared.syncFromDOM()
+    const clone = peer.root.cloneNode(true) as HTMLElement
+    peer.shared.widgetData.writeDefaults(clone)
+    expect(clone.innerHTML).not.toContain("individual-answer")
+    expect(JSON.parse(clone.querySelector("script")!.textContent!)).toEqual({a: 1, b: 1})
+  })
+
+  it("keeps defaults when a widget is replaced by another node with the same authored identity", async () => {
+    const peer = create()
+    write(peer, {secret: "individual-answer"})
+    await tick()
+    peer.widget().replaceWith(peer.widget().cloneNode(true))
+    peer.shared.syncFromDOM()
+    const clone = peer.root.cloneNode(true) as HTMLElement
+    peer.shared.widgetData.writeDefaults(clone)
+    expect(clone.innerHTML).not.toContain("individual-answer")
+    expect(JSON.parse(clone.querySelector("script")!.textContent!)).toEqual({a: 1, b: 1})
+  })
+
   it("merges concurrent object properties, deletes keys, and replaces arrays atomically", async () => {
     const leftDoc = new Y.Doc(), rightDoc = new Y.Doc()
     cleanups.push(() => { leftDoc.destroy(); rightDoc.destroy() })

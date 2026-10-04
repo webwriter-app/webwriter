@@ -507,8 +507,8 @@ export class TableFeature extends EditorFeature {
     const source = map.rows[Math.min(Math.max(0, sourceRow), map.rows.length - 1)]
     let parent: Element = source?.parentElement ?? table
     const sourceGroup = parent.localName
-    if(source && (sourceGroup === "thead" && boundary > sourceRow
-      || sourceGroup === "tfoot" && boundary <= sourceRow)) {
+    if(source && (sourceGroup === "thead" && boundary > sourceRow && !map.rows.slice(boundary).some(row => row.parentElement === parent)
+      || sourceGroup === "tfoot" && boundary <= sourceRow && !map.rows.slice(0, boundary).some(row => row.parentElement === parent))) {
       parent = Array.from(table.children).find(child => child.localName === "tbody") ?? table.ownerDocument.createElement("tbody")
       if(!parent.parentNode) {
         const footer = Array.from(table.children).find(child => child.localName === "tfoot")
@@ -704,7 +704,9 @@ export class TableFeature extends EditorFeature {
         anchor: selection.anchorNode, anchorOffset: selection.anchorOffset,
         focus: selection.focusNode, focusOffset: selection.focusOffset,
       } : null
-      const replacements = normalizeTableStructure(table, header, footer)
+      const replacements = normalizeTableStructure(table,
+        type === "thead" || rows.length === 1 ? header : undefined,
+        type === "tfoot" || rows.length === 1 ? footer : undefined)
       if(anchor && focus) {
         const nextAnchor = replacements.get(anchor) ?? anchor
         const nextFocus = replacements.get(focus) ?? focus

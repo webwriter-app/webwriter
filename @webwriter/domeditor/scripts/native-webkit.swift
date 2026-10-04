@@ -37,7 +37,8 @@ let window = NSWindow(
 )
 window.isReleasedWhenClosed = false
 window.contentView = webView
-window.setFrameOrigin(NSPoint(x: 10000, y: 10000))
+// WebKit suspends animation frames for fully offscreen windows.
+window.center()
 window.makeKeyAndOrderFront(nil)
 application.activate(ignoringOtherApps: true)
 webView.load(URLRequest(url: url))

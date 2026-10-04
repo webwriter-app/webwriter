@@ -5,7 +5,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
 import {isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isColumnGroup, columnSide, columnSides, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isColumnGroup, columnSide, columnSides, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -219,6 +219,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private columnObserver: MutationObserver | null = null
+  private insertionGeneration = 0
   /** Groups changed by local edits. Every client receives remote edits, so
    * unwrapping in reaction to them would duplicate the moved children. */
   private readonly columnCleanupCandidates = new Set<Element>()
@@ -310,6 +311,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   disable() {
+    this.insertionGeneration++
     this.columnObserver?.disconnect()
     this.columnObserver = null
     this.columnCleanupCandidates.clear()
@@ -678,7 +680,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Drop placement changes the insertion point and geometry; the existing
    * commands retain ownership of their element-specific editing selection. */
   private insertAtRibbonDrop(position: RibbonDropPosition, insert: () => void) {
-    if(this.editor.isEditingLocked) return false
+    if(!this.isEnabled || this.editor.isEditingLocked) return false
     let point: ReturnType<typeof this.editor.doc.domPointFromRelativePosition>
     try { point = this.editor.doc.domPointFromRelativePosition(createRelativePositionFromJSON(position.anchor as Parameters<typeof createRelativePositionFromJSON>[0])) }
     catch { return false }
@@ -712,8 +714,9 @@ export class ManipulationFeature extends EditorFeature {
 
   private async insertRibbonDrop(html: string, position: RibbonDropPosition) {
     if(this.editor.isEditingLocked) return false
+    const generation = this.insertionGeneration
     const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
-    if(migrated === null || this.editor.isEditingLocked) return false
+    if(migrated === null || generation !== this.insertionGeneration || this.editor.isEditingLocked) return false
     return this.insertAtRibbonDrop(position, () => {
       if(position.layout === "document") this.insertHTML(migrated)
       else {
@@ -2776,10 +2779,22 @@ export class ManipulationFeature extends EditorFeature {
    * before they started. Returns null when that selection or the editor's
    * editability did not survive. */
   async #migrateAtSelection(html: string) {
+    const generation = this.insertionGeneration
     const selection = document.getSelection()
     const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    const owned = this.editor.features.selection.captureSelectedElement ?? this.editor.features.selection.selectedSectionElement
+    if(owned && range) range.selectNode(owned)
+    const identity = range ? captureRangeIdentity(range) : new Set<Node>()
+    const snapshot = range && !range.collapsed ? this.editor.serializeClipboardFragment(cloneRangeContents(range)).html : null
     const migrated = await this.editor.features.migration.migrate(html)
-    if(!range?.startContainer.isConnected || !range.endContainer.isConnected || this.editor.isEditingLocked) return null
+    const root = getDocumentRoot()
+    if(!this.isEnabled || generation !== this.insertionGeneration || !range?.startContainer.isConnected || !range.endContainer.isConnected || this.editor.isEditingLocked
+      || !root.contains(range.startContainer) || !root.contains(range.endContainer)
+      || [...identity].some(node => !node.isConnected || !root.contains(node))) return null
+    if(snapshot !== null && this.editor.serializeClipboardFragment(cloneRangeContents(range)).html !== snapshot) return null
+    // Restore all editor selection ownership as well as the native Range.
+    // A widget captured while the migration ran must not become its replacement target.
+    this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
     $.selectRange(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
     return migrated
   }

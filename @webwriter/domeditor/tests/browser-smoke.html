@@ -12,5 +12,7 @@ const reportSmokeFailure = error => fetch("/__native-result", {
 addEventListener("error", event => reportSmokeFailure(event.error ?? event.message))
 addEventListener("unhandledrejection", event => reportSmokeFailure(event.reason))
 </script>
-<script type="module" src="./browser-smoke.ts"></script>
+<script type="module">
+import("./browser-smoke.ts").catch(reportSmokeFailure)
+</script>
 </html>

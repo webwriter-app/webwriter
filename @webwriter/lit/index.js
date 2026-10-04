@@ -809,7 +809,7 @@ var LitElementWw = class extends (_a = ScopedElementsMixin2(i4), _lang_dec = [n4
     __publicField(this, "actions", {});
     /** Add `@lit/localize` support. This should be the return value of `configureLocalization`. */
     __publicField(this, "localize");
-    __privateAdd(this, _lang, "");
+    __privateAdd(this, _lang, null);
     __privateAdd(this, _inheritedLang, "");
     /** @internal */
     __publicField(this, "_inTransaction", false);
@@ -826,20 +826,20 @@ var LitElementWw = class extends (_a = ScopedElementsMixin2(i4), _lang_dec = [n4
     if (name === "contenteditable") this.requestUpdate("editable");
   }
   get lang() {
-    return (__privateGet(this, _lang) || this.parentElement?.closest("[lang]")?.lang) ?? "";
+    return __privateGet(this, _lang) ?? this.parentElement?.closest("[lang]")?.lang ?? "";
   }
   set lang(value) {
-    __privateSet(this, _lang, value ?? "");
-    if (__privateGet(this, _lang) && this.getAttribute("lang") !== __privateGet(this, _lang)) this.setAttribute("lang", __privateGet(this, _lang));
-    else if (!__privateGet(this, _lang) && this.hasAttribute("lang")) this.removeAttribute("lang");
-    __privateSet(this, _inheritedLang, __privateGet(this, _lang) ? "" : this.lang);
+    __privateSet(this, _lang, value ?? null);
+    if (__privateGet(this, _lang) !== null && this.getAttribute("lang") !== __privateGet(this, _lang)) this.setAttribute("lang", __privateGet(this, _lang));
+    else if (__privateGet(this, _lang) === null && this.hasAttribute("lang")) this.removeAttribute("lang");
+    __privateSet(this, _inheritedLang, __privateGet(this, _lang) !== null ? "" : this.lang);
     this.localize?.setLocale(this.lang).finally(() => this.requestUpdate());
   }
   /** @internal Called when a `lang` attribute in the document changes. The
    * update is not reflected, so the inherited language never becomes an
    * attribute of the widget. */
   languageChanged() {
-    if (__privateGet(this, _lang) || this.lang === __privateGet(this, _inheritedLang)) return;
+    if (__privateGet(this, _lang) !== null || this.lang === __privateGet(this, _inheritedLang)) return;
     __privateSet(this, _inheritedLang, this.lang);
     this.localize?.setLocale(this.lang).finally(() => this.requestUpdate());
   }

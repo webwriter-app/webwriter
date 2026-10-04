@@ -3,7 +3,7 @@ import {afterAll, afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import type {WebWriterPackage} from "../packages"
 import {Schema} from "../schema"
-import type {MigrationRequest} from "./migration"
+import {MigrationFeature, type MigrationRequest} from "./migration"
 
 const migrationUrl = "https://cdn.test/@webwriter/quiz@2.0.0/dist/migrate.js"
 const quizPackage: WebWriterPackage = {
@@ -65,6 +65,32 @@ afterEach(() => {
 afterAll(() => editor.destroy())
 
 describe("MigrationFeature", () => {
+  it("does not start a sandbox when its download settles after disable", async () => {
+    const feature = new MigrationFeature(editor)
+    feature.enable()
+    let release!: (response: Response) => void
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    feature.runner = runnerFor(renameAnswer)
+    const html = '<ww-quiz answer="1"></ww-quiz>'
+    const pending = feature.migrate(html)
+    feature.disable()
+    release(new Response("document.addEventListener('migrate', () => {})"))
+    await expect(pending).resolves.toBe(html)
+    expect(feature.runner).not.toHaveBeenCalled()
+  })
+
+  it("removes a pending sandbox and settles its migration on disable", async () => {
+    const feature = new MigrationFeature(editor)
+    feature.enable()
+    const html = '<ww-quiz answer="1"></ww-quiz>'
+    const pending = feature.migrate(html)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(editor.appendix.querySelector('iframe[sandbox="allow-scripts"]')).not.toBeNull()
+    feature.disable()
+    expect(editor.appendix.querySelector('iframe[sandbox="allow-scripts"]')).toBeNull()
+    await expect(pending).resolves.toBe(html)
+  })
+
   it("replaces each outermost widget with its migration result", async () => {
     migration.runner = runnerFor(renameAnswer)
     const html = '<p>Keep <b>this</b></p><ww-quiz answer="1"><ww-quiz answer="2"></ww-quiz></ww-quiz><ww-quiz></ww-quiz>'

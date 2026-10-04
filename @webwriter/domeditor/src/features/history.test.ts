@@ -5,6 +5,8 @@ import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {executeFailureEvent, type VersionHistoryState} from "../editor-bridge"
+import {defaultGroupingRules} from "../widget-grouping.js"
+import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 
 let editor: DOMEditor
 
@@ -29,6 +31,28 @@ afterEach(() => {
 })
 
 describe("collaborative version history", () => {
+  it("preserves widget grouping instructions through preview, revert, undo, and redo", async () => {
+    const history = editor.features.history
+    document.body.innerHTML = '<data-widget id="grouped" shared="group"></data-widget><p>Hello</p>'
+    writeWidgetGrouping(document.querySelector("data-widget")!, defaultGroupingRules("before"))
+    await mutationsDelivered()
+    const checkpointId = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    writeWidgetGrouping(document.querySelector("data-widget")!, defaultGroupingRules("after"))
+    await mutationsDelivered()
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    const seed = () => readWidgetGrouping(document.querySelector("data-widget")!)?.seed
+    history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId})
+    expect(seed()).toBe("before")
+    history.clearPreview()
+    expect(seed()).toBe("after")
+    history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId})
+    expect(seed()).toBe("before")
+    editor.doc.undo()
+    expect(seed()).toBe("after")
+    editor.doc.redo()
+    expect(seed()).toBe("before")
+  })
+
   it("defers document serialization until a checkpoint or state boundary during an edit burst", async () => {
     const history = editor.features.history
     history.actions.getVersionHistory({type: "getVersionHistory"})

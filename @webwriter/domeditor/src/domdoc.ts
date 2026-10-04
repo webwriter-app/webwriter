@@ -146,6 +146,7 @@ function longestOrderedSubset<T>(current: T[], desired: T[]) {
  */
 export class SharedDOMDoc {
   readonly widgetData: WidgetDataBindings
+  readonly #ownsWidgetData: boolean
   readonly doc: Y.Doc
   readonly awareness: Awareness
   readonly provider?: WebsocketProvider
@@ -202,7 +203,11 @@ export class SharedDOMDoc {
       const html = this.#document.documentElement
       html.id = this.#documentAttributes.getAttribute("id") || html.id || `ww${crypto.randomUUID()}`
     }
-    this.widgetData = new WidgetDataBindings(this.root, options.supportsWidgetData ?? (() => false), options.widgetData, serverUrl, sessionId)
+    // Preview branches share the live root and its participant data scopes.
+    // A second binding would mistake rendered answers for authored defaults.
+    this.#ownsWidgetData = !previewSource
+    this.widgetData = previewSource?.widgetData
+      ?? new WidgetDataBindings(this.root, options.supportsWidgetData ?? (() => false), options.widgetData, serverUrl, sessionId)
     this.widgetData.sync()
     this.#awaitingInitialSync = Boolean(this.serverUrl && this.sessionId && !mirror
       && this.#metadata.get(INITIALIZED_KEY) !== true && this.#body.length === 0
@@ -981,7 +986,7 @@ export class SharedDOMDoc {
   destroy() {
     this.#activeDOMPreview?.reject()
     this.stopObserve()
-    this.widgetData.destroy()
+    if(this.#ownsWidgetData) this.widgetData.destroy()
     this.doc.off("beforeTransaction", this.#flushPendingDOMChanges)
     this.#metadata.unobserve(this.#handleMirrorChange)
     this.#body.unobserveDeep(this.#handleYChanges)
