@@ -591,7 +591,11 @@ export class ManipulationFeature extends EditorFeature {
   private dropRange(event: DragEvent, source: Element | null, allowDetached = false) {
     this.dropColumn = undefined
     if(source && !allowDetached && !getDocumentRoot().contains(source)) return null
-    const point = $.pointFromCoords(event.clientX, event.clientY, event.target, this.editor.schema, getDocumentRoot())
+    // Overlays such as the selected element's drag surface cover authored
+    // content, which native hit testing would otherwise resolve to the appendix.
+    const point = this.editor.hitTestBeneathAppendix(() => $.pointFromCoords(
+      event.clientX, event.clientY, event.target, this.editor.schema, getDocumentRoot(),
+    ))
     if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)
       || source && !canPlaceLayouts([source], point.node instanceof Text ? point.node.parentNode! : point.node)) return null
     this.dropColumn = point.column ? point : undefined

@@ -1146,6 +1146,14 @@ export class DOMEditor {
     return this.ensureDefaultAppendixSlot(this.appendix)
   }
 
+  /** Runs `hitTest` with editor UI transparent to hit testing, so caret and
+   * element lookups resolve the authored content an overlay covers. */
+  hitTestBeneathAppendix<T>(hitTest: () => T): T {
+    const index = appendixStylesheet.insertRule(":not(slot) { pointer-events: none !important; }", appendixStylesheet.cssRules.length)
+    try { return hitTest() }
+    finally { appendixStylesheet.deleteRule(index) }
+  }
+
   addAppendix(el: Element) {
     if(this.#destroyed) return
     this.#appendixElements.forEach(reference => {

@@ -16,7 +16,7 @@ import type {RibbonDrawer} from "./ribbon-drawer"
 import type {LayoutSelectionState} from "../layouts"
 import type {LayoutEditorAction} from "./layout-editor"
 import type { EditingAction } from "../domeditor"
-import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
+import {elementDragType, emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
   describePackageExport,
@@ -105,6 +105,7 @@ import {
   type LoadWidgetsMessage,
   type AIEditReviewMessage,
   type CommentState,
+  type HostDragDetail,
 } from "../editor-bridge"
 import {elementStylePropertyNames, paragraphStylePropertyNameSet} from "../element-styles"
 import "./breadcrumb"
@@ -443,6 +444,7 @@ export class DomEditor extends LitElement {
     documentsError: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
     previewFramePending: {attribute: false, state: true},
+    ribbonDrag: {attribute: false, state: true},
     previewDocumentHTML: {attribute: false, state: true},
     liveSessionActive: {attribute: false, state: true},
     liveSessionRole: {attribute: false, state: true},
@@ -624,6 +626,8 @@ export class DomEditor extends LitElement {
   private documentChangeSequence = 0
   private previewActive = false
   private previewFramePending = false
+  /** Data of the ribbon drag in progress, relayed to the editor frame. */
+  private ribbonDrag: Record<string, string> | null = null
   private previewDocumentHTML: string | null = null
   private previewFrameRevision = 0
   private previewShellRevision = -1
@@ -766,6 +770,12 @@ export class DomEditor extends LitElement {
     }
 
     .math-keyboard-area dom-editor-math-keyboard { height: 100%; max-height: none; pointer-events: auto; }
+
+    .ribbon-drag-shield {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
 
     .math-keyboard-open {
       position: absolute;
@@ -5477,6 +5487,41 @@ export class DomEditor extends LitElement {
     }
   }
 
+  /** Ribbon buttons set their drag data in their own dragstart listeners,
+   * before the event bubbles here. Browsers hide those values until drop, so
+   * keep them for relaying the drag into the editor frame. */
+  private handleRibbonDragStart = (event: DragEvent) => {
+    const data = event.dataTransfer
+    if(event.defaultPrevented || !data
+      || !Array.from(data.types).some(type => type === elementDragType)) return
+    this.ribbonDrag = Object.fromEntries(Array.from(data.types).map(type => [type, data.getData(type)]))
+  }
+
+  private handleRibbonDragEnd = () => {
+    if(this.ribbonDrag) this.postFrameControl("drag", {event: "dragleave", x: 0, y: 0, data: this.ribbonDrag} satisfies HostDragDetail)
+    this.ribbonDrag = null
+  }
+
+  /** The browser does not deliver a ribbon drag to the cross-site editor
+   * frame, so the stage shield receives it and replays it at the same point. */
+  private relayRibbonDrag = (event: DragEvent) => {
+    const frame = this.editorIframe()
+    const data = this.ribbonDrag
+    if(!frame || !data) return
+    const rect = frame.getBoundingClientRect()
+    const x = event.clientX - rect.left
+    const y = event.clientY - rect.top
+    const inside = !frame.hidden && x >= 0 && y >= 0 && x < rect.width && y < rect.height
+    const type = event.type === "dragleave" || !inside ? "dragleave" : event.type === "drop" ? "drop" : "dragover"
+    if(event.type !== "dragleave") event.preventDefault()
+    if(event.dataTransfer) event.dataTransfer.dropEffect = inside ? "copy" : "none"
+    this.postFrameControl("drag", {
+      event: type, x, y, data,
+      ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, metaKey: event.metaKey,
+    } satisfies HostDragDetail)
+    if(event.type === "drop") this.ribbonDrag = null
+  }
+
   private handleEditorMessage = (event: MessageEvent) => {
     if(event.data?.type === "frame-local-package-request") {
       const isFrame = this.isEditorMessage(event) || this.isPreviewMessage(event)
@@ -5901,6 +5946,8 @@ export class DomEditor extends LitElement {
     this.updateMotionPreference()
     window.addEventListener("message", this.handleEditorMessage)
     window.addEventListener("beforeunload", this.handleBeforeUnload)
+    this.addEventListener("dragstart", this.handleRibbonDragStart)
+    this.addEventListener("dragend", this.handleRibbonDragEnd)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     const liveSessionId = this.liveSessionIdFromURL()
     const open = new URL(location.href).searchParams.get("open")
@@ -5948,6 +5995,9 @@ export class DomEditor extends LitElement {
     this.backendProbeController = null
     window.removeEventListener("message", this.handleEditorMessage)
     window.removeEventListener("beforeunload", this.handleBeforeUnload)
+    this.removeEventListener("dragstart", this.handleRibbonDragStart)
+    this.removeEventListener("dragend", this.handleRibbonDragEnd)
+    this.ribbonDrag = null
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.localPackageManager.disconnect()
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
@@ -6248,6 +6298,9 @@ export class DomEditor extends LitElement {
           @load=${this.handleEditorFrameLoad}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
         ></iframe>` : ""}
+        ${this.ribbonDrag && !this.previewActive ? html`<div class="ribbon-drag-shield"
+          @dragenter=${this.relayRibbonDrag} @dragover=${this.relayRibbonDrag}
+          @dragleave=${this.relayRibbonDrag} @drop=${this.relayRibbonDrag}></div>` : ""}
         ${this.liveSessionActive && this.liveSessionRole === "host" ? html`
           <live-session-overlay
             .learners=${this.liveOverlayLearners}

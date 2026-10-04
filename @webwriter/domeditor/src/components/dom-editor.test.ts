@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
 import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
+import {elementDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
@@ -10,6 +11,7 @@ import type {RibbonMenu} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {OpenDocumentMenu} from "./open-document-menu"
 import {
+  editorFrameControlMessage,
   executeCompleteEvent,
   executeFailureEvent,
   aiEditReviewEvent,
@@ -1169,6 +1171,75 @@ describe("DomEditor iframe setup", () => {
     await removing
 
     expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([])
+  })
+})
+
+describe("DomEditor ribbon drag relay", () => {
+  function dragEvent(type: string, data: DataTransfer, extra: Record<string, unknown> = {}) {
+    const event = new Event(type, {bubbles: true, cancelable: true, composed: true})
+    Object.assign(event, {dataTransfer: data, clientX: 0, clientY: 0, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...extra})
+    return event
+  }
+
+  async function startDrag(editor: DomEditor, types: Record<string, string>) {
+    const data = new DataTransfer()
+    Object.entries(types).forEach(([type, value]) => data.setData(type, value))
+    const source = document.createElement("button")
+    editor.shadowRoot!.append(source)
+    source.dispatchEvent(dragEvent("dragstart", data))
+    await editor.updateComplete
+    return data
+  }
+
+  it("relays ribbon drags over the cross-site editor frame and removes the shield afterwards", async () => {
+    const {editor, iframe} = await mountEditor()
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
+    const relayed = () => post.mock.calls.map(([message]) => message as Record<string, unknown>)
+      .filter(message => message.type === editorFrameControlMessage && message.command === "drag")
+    const data = await startDrag(editor, {[elementDragType]: "h2", [`${elementDragType}-h2`]: "h2", "text/html": "<h2></h2>"})
+    const shield = editor.shadowRoot!.querySelector(".ribbon-drag-shield")!
+    expect(shield).toBeTruthy()
+
+    const over = dragEvent("dragover", data, {clientX: 60, clientY: 70, altKey: true})
+    shield.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    expect(relayed().at(-1)).toMatchObject({event: "dragover", x: 50, y: 50, altKey: true,
+      data: {[elementDragType]: "h2", [`${elementDragType}-h2`]: "h2", "text/html": "<h2></h2>"}})
+    // Points over the stage but outside the frame clear the frame's drop caret.
+    shield.dispatchEvent(dragEvent("dragover", data, {clientX: 5, clientY: 70}))
+    expect(data.dropEffect).toBe("none")
+    expect(relayed().at(-1)).toMatchObject({event: "dragleave"})
+    shield.dispatchEvent(dragEvent("dragleave", data))
+    expect(relayed().at(-1)).toMatchObject({event: "dragleave"})
+
+    const drop = dragEvent("drop", data, {clientX: 110, clientY: 120})
+    shield.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(relayed().at(-1)).toMatchObject({event: "drop", x: 100, y: 100})
+    const count = relayed().length
+    editor.shadowRoot!.dispatchEvent(new Event("dragend", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(relayed()).toHaveLength(count)
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeNull()
+  })
+
+  it("clears the frame's drop caret when a ribbon drag is cancelled", async () => {
+    const {editor, iframe} = await mountEditor()
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
+    await startDrag(editor, {[elementDragType]: "h2", [`${elementDragType}-h2`]: "h2"})
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeTruthy()
+    editor.shadowRoot!.dispatchEvent(new Event("dragend", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({type: editorFrameControlMessage, command: "drag", event: "dragleave"}), expect.anything())
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeNull()
+  })
+
+  it("leaves other drags to the browser", async () => {
+    const {editor} = await mountEditor()
+    await startDrag(editor, {"text/plain": "text"})
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeNull()
   })
 })
 

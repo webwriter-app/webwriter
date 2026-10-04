@@ -1,5 +1,5 @@
 import { DOMEditor } from "./domeditor"
-import {editorFrameControlMessage, isInitializeEditorMessage} from "./editor-bridge"
+import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
 import {isWidgetShadowInteraction, pathFromNode} from "./utility"
 
@@ -111,6 +111,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     else if(data.command === "print") window.print()
     else if(data.command === "motion") setMotion(data.disabled === true)
     else if(data.command === "shortcuts" && data.shortcuts) shortcuts = data.shortcuts
+    else if(data.command === "drag") replayHostDrag(event.data)
   })
   void editor
 }

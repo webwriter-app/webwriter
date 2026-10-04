@@ -10,6 +10,7 @@ import { $, htmlToFragment } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {elementDragType} from "../components/insertion-menu"
+import {replayHostDrag} from "../editor-bridge"
 
 let editor: DOMEditor
 
@@ -2263,6 +2264,66 @@ describe("unified content transfer", () => {
     document.body.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 20}))
     expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p"])
     expect(document.body).not.toHaveClass("◆drop-selection-active")
+  })
+
+  it("replays host-relayed ribbon drags that the browser withholds from the cross-site frame", () => {
+    // Happy DOM's DragEvent ignores dataTransfer, which browsers carry.
+    vi.stubGlobal("DragEvent", class extends MouseEvent {
+      dataTransfer: DataTransfer | null
+      constructor(type: string, init: DragEventInit = {}) { super(type, init); this.dataTransfer = init.dataTransfer ?? null }
+    })
+    try {
+      document.body.innerHTML = "<p>before</p><p>after</p>"
+      const first = document.body.firstElementChild!
+      vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 20))
+      vi.spyOn(document, "elementFromPoint").mockReturnValue(first)
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: first.firstChild!, offset: 3})
+      const data = {[elementDragType]: "h2", [`${elementDragType}-h2`]: "h2", "text/html": "<h2></h2>"}
+      expect(replayHostDrag({event: "dragover", x: 150, y: 20, data})).toBe(true)
+      expect(document.body).toHaveClass("◆drop-selection-active")
+      expect(replayHostDrag({event: "dragleave", x: 0, y: 0, data})).toBe(false)
+      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      replayHostDrag({event: "dragover", x: 150, y: 20, data})
+      expect(replayHostDrag({event: "drop", x: 150, y: 20, data})).toBe(true)
+      expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p"])
+      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(replayHostDrag({event: "drop", x: Number.NaN, y: 20, data})).toBe(false)
+      expect(replayHostDrag({event: "click" as "drop", x: 150, y: 20, data})).toBe(false)
+      expect(document.body.children).toHaveLength(3)
+    }
+    finally { vi.unstubAllGlobals() }
+  })
+
+  it("drops ribbon elements onto the selected element beneath its drag surface", () => {
+    document.body.innerHTML = "<p>before</p><h2>selected</h2><p>after</p>"
+    const selected = document.body.children[1]
+    $.selectElement(selected)
+    editor.features.selection.processSelection()
+    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    expect(surface).not.toBeNull()
+    vi.spyOn(selected, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
+    // Like native hit testing, the point resolves to the surface's host
+    // position outside the document while the surface is hit-testable.
+    // The native browser suite covers the real appendix hit testing.
+    let beneath = false
+    const hitTest = editor.hitTestBeneathAppendix.bind(editor)
+    vi.spyOn(editor, "hitTestBeneathAppendix").mockImplementation(test => hitTest(() => {
+      beneath = true
+      try { return test() }
+      finally { beneath = false }
+    }))
+    vi.spyOn($, "pointFromCoords").mockImplementation(() => surface.isConnected && !beneath
+      ? undefined : {node: selected.firstChild!, offset: 2})
+    const data = ribbonData("table")
+    const over = transferEvent("dragover", data, {clientX: 50, clientY: 25})
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    // The drop caret moved the selection, so the surface no longer covers it.
+    expect(surface.isConnected).toBe(false)
+    selected.dispatchEvent(transferEvent("drop", data, {clientX: 50, clientY: 25}))
+    expect(document.body.querySelector("table")).not.toBeNull()
+    expect(selected.isConnected).toBe(true)
   })
 
   it("uses the ribbon's prepared table content when dropped", () => {

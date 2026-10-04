@@ -49,6 +49,7 @@ const expectedChecks = [
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
   "canvas paragraphs split into separate positioned items and conversion returns normal flow",
   "ribbon elements drop on the blank canvas slot",
+  "relayed ribbon elements drop onto the selected element beneath editor overlays",
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
   "exported canvas runs its standalone viewer without editor dependencies",

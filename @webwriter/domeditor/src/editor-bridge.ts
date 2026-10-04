@@ -35,6 +35,36 @@ export const loadWidgetsMessage = "load-widgets"
 export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 
+/** Chromium withholds drag events from a frame of another site than the one
+ * that started the drag, so the host relays its ribbon drags over the editor
+ * frame. Coordinates are relative to the frame's viewport. */
+export type HostDragDetail = {
+  event: "dragover" | "drop" | "dragleave"
+  x: number
+  y: number
+  data: Record<string, string>
+  ctrlKey?: boolean
+  altKey?: boolean
+  shiftKey?: boolean
+  metaKey?: boolean
+}
+
+/** Replays a relayed host drag where the native one would have been delivered. */
+export function replayHostDrag(detail: Partial<HostDragDetail>, doc: Document = document) {
+  const {event, x, y, data} = detail
+  if(event !== "dragover" && event !== "drop" && event !== "dragleave" || !Number.isFinite(x) || !Number.isFinite(y)
+    || !data || typeof data !== "object") return false
+  const transfer = new DataTransfer()
+  for(const [type, value] of Object.entries(data)) if(typeof value === "string") transfer.setData(type, value)
+  const target = event === "dragleave" ? doc.body : doc.elementFromPoint(x!, y!) ?? doc.body
+  const drag = new DragEvent(event, {
+    bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, dataTransfer: transfer,
+    ctrlKey: detail.ctrlKey === true, altKey: detail.altKey === true,
+    shiftKey: detail.shiftKey === true, metaKey: detail.metaKey === true,
+  })
+  return !target.dispatchEvent(drag)
+}
+
 export type AIEditReviewAction = "accept" | "reject"
 
 export type AIEditReviewMessage = {

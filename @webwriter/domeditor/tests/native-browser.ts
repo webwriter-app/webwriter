@@ -3,6 +3,7 @@ import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
 import {$, caretRect} from "../src/utility"
 import {defaultDocumentTheme} from "../src/document-themes"
+import {replayHostDrag} from "../src/editor-bridge"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -1434,6 +1435,34 @@ await check("ribbon elements drop on the blank canvas slot", async () => {
     assert(heading?.style.position === "absolute", "canvas slot did not insert the dropped heading")
   }
   finally { canvasEditor?.destroy(); frame.remove() }
+})
+
+await check("relayed ribbon elements drop onto the selected element beneath editor overlays", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>before</p><h2>selected</h2><p>after</p></body>'
+  document.body.append(frame)
+  let frameEditor: DOMEditor | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `overlay drop editor did not initialize: ${view.editorError}`)
+    frameEditor = view.editor!
+    const doc = frame.contentDocument!, heading = doc.querySelector("h2")!
+    doc.getSelection()!.setBaseAndExtent(doc.body, 1, doc.body, 2)
+    frameEditor.features.selection.processSelection()
+    await layoutFrame(); await layoutFrame()
+    const rect = heading.getBoundingClientRect()
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 4
+    assert(doc.elementFromPoint(x, y) === doc.body, "the selected element is not covered by an editor overlay")
+    const data = {"application/x-webwriter-element-tag": "table", "application/x-webwriter-element-tag-table": "table", "text/html": "<table></table>"}
+    assert(replayHostDrag({event: "dragover", x, y, data}, doc), "drag over the selected element was not accepted")
+    assert(doc.body.classList.contains("◆drop-selection-active"), "drag over the selected element shows no drop caret")
+    assert(replayHostDrag({event: "drop", x, y, data}, doc), "drop on the selected element was not accepted")
+    assert(doc.body.querySelector("table") && heading.isConnected,
+      `drop on the selected element did not insert the table: ${doc.body.innerHTML}`)
+  }
+  finally { frameEditor?.destroy(); frame.remove() }
 })
 
 await check("a clean canvas retains its initial item when moving and typing without inserting links", async () => {

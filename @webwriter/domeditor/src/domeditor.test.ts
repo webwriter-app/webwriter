@@ -721,6 +721,21 @@ describe("breadcrumb positioning", () => {
   })
 })
 
+describe("appendix hit testing", () => {
+  it("makes editor UI transparent only while resolving a hit test", () => {
+    const editor = new DOMEditor()
+    try {
+      const rules = () => editor.appendix.adoptedStyleSheets.map(sheet => Array.from(sheet.cssRules).map(rule => rule.cssText).join("\n")).join("\n")
+      const before = rules()
+      expect(editor.hitTestBeneathAppendix(() => rules())).toMatch(/pointer-events:\s*none\s*!important/)
+      expect(rules()).toBe(before)
+      expect(() => editor.hitTestBeneathAppendix(() => { throw new Error("hit test failed") })).toThrow("hit test failed")
+      expect(rules()).toBe(before)
+    }
+    finally { editor.destroy() }
+  })
+})
+
 describe("bridge origin binding", () => {
   it("leaves frame controls to the frame host listener", () => {
     const bridgeNonce = "0123456789abcdef"
