@@ -952,6 +952,7 @@ export async function createDevServer(options = {}) {
     const requestUrl = new URL(request.url || "/", requestOrigin(request))
     const room = requestUrl.pathname.replace(/^\/+/, "")
     let liveSession
+    let learnerKey
     if(room.startsWith("widget-data-")) {
       const token = requestUrl.searchParams.get("token")
       const capability = widgetDataCapabilities.get(token)
@@ -971,7 +972,7 @@ export async function createDevServer(options = {}) {
       const knownSession = liveSessionTokens.get(room)
       const hostKey = requestUrl.searchParams.get("hostKey")
       const learner = requestUrl.searchParams.get("learner")
-      const learnerKey = requestUrl.searchParams.get("learnerKey")
+      learnerKey = requestUrl.searchParams.get("learnerKey")
       if(!safeSessionToken(token) || (role !== "host" && role !== "learner")
         || knownSession && knownSession.token !== token
         || role === "host" && (!safeSessionToken(hostKey) || knownSession && knownSession.hostKey !== hostKey)
@@ -981,14 +982,15 @@ export async function createDevServer(options = {}) {
         return
       }
       liveSession = knownSession ?? {token, hostKey, learners: new Map(), connections: 0}
-      if(!knownSession) liveSessionTokens.set(room, liveSession)
-      if(role === "learner") liveSession.learners.set(learner, learnerKey)
       request.liveRole = role
       request.liveRoom = room
       request.liveLearner = learner
     }
     websocketServer.handleUpgrade(request, socket, head, webSocket => {
       if(liveSession) {
+        // A rejected WebSocket handshake must not reserve a room or identity.
+        liveSessionTokens.set(room, liveSession)
+        if(request.liveRole === "learner") liveSession.learners.set(request.liveLearner, learnerKey)
         liveSession.connections++
         webSocket.once("close", () => {
           liveSession.connections--

@@ -793,6 +793,31 @@ describe("development server", () => {
     await closeWebSocket(replacementHost)
   })
 
+  it("does not reserve host or learner capabilities after a failed WebSocket handshake", async () => {
+    const room = "live-session-failed-handshake"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa", replacementToken = "bbbbbbbbbbbbbbbbbbbbbbbb"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const invalidHandshake = path => new Promise((resolve, reject) => {
+      const outgoing = httpRequest(`${baseUrl}/${room}${path}`, {
+        headers: {Connection: "Upgrade", Upgrade: "websocket", "Sec-WebSocket-Version": "13"},
+      }, response => {
+        response.resume()
+        response.once("end", () => resolve(response.statusCode))
+      })
+      outgoing.once("error", reject)
+      outgoing.end()
+    })
+    expect(await invalidHandshake(`?role=host&token=${token}&hostKey=${hostKey}`)).toBe(400)
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const host = await openWebSocket(`${websocketUrl}/${room}?role=host&token=${replacementToken}&hostKey=${hostKey}`)
+    try {
+      expect(await invalidHandshake(`?role=learner&token=${replacementToken}&learner=ada&learnerKey=${token}`)).toBe(400)
+      const learner = await openWebSocket(`${websocketUrl}/${room}?role=learner&token=${replacementToken}&learner=ada&learnerKey=${hostKey}`)
+      await closeWebSocket(learner)
+    }
+    finally { await closeWebSocket(host) }
+  })
+
   it("accepts learner activity but rejects writes to host metadata over the actual socket", async () => {
     const websocketUrl = baseUrl.replace(/^http/, "ws")
     const room = "live-session-roles"
