@@ -308,6 +308,7 @@ describe("AI prompt ribbon", () => {
     await settings.updateComplete
 
     expect(settings.open).toBe(true)
+    expect(settings.shadowRoot!.querySelector("dialog")!.open).toBe(true)
     const dialog = settings.shadowRoot!.querySelector<HTMLElement>(".dialog")!
     const content = settings.shadowRoot!.querySelector<HTMLElement>(".content")!
     const providers = settings.shadowRoot!.querySelector<HTMLElement>(".providers")!
@@ -334,6 +335,33 @@ describe("AI prompt ribbon", () => {
     auth.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     await settings.updateComplete
     expect(settings.shadowRoot!.querySelector('input[type="password"]')).toBeNull()
+  })
+
+  it("closes the modal settings on cancel and can reopen it", async () => {
+    const ribbon = await mountRibbon()
+    const settings = ribbon.shadowRoot!.querySelector("ai-settings-dialog")!
+    const closed = vi.fn()
+    settings.addEventListener("ai-settings-close", closed)
+    settings.show()
+    await settings.updateComplete
+    const dialog = settings.shadowRoot!.querySelector("dialog")!
+    const showModal = vi.spyOn(dialog, "showModal")
+    settings.show()
+    await settings.updateComplete
+    expect(showModal).not.toHaveBeenCalled()
+    dialog.dispatchEvent(new Event("cancel", {cancelable: true}))
+    expect(settings.open).toBe(false)
+    expect(dialog.open).toBe(false)
+    expect(closed).toHaveBeenCalledOnce()
+    await settings.updateComplete
+
+    settings.show()
+    await settings.updateComplete
+    expect(settings.shadowRoot!.querySelector("dialog")!.open).toBe(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    expect(settings.open).toBe(false)
+    expect(closed).toHaveBeenCalledTimes(2)
+    expect(ribbon.aiChatOpen).toBe(false)
   })
 
   it("automatically loads models and supports refreshing and starring a default", async () => {

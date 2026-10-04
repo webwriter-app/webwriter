@@ -47,9 +47,19 @@ export class AISettingsDialog extends LitElement {
       display: grid;
       place-items: center;
       padding: 1rem;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      border: 0;
       overflow: hidden;
+      color: inherit;
+      background: transparent;
+    }
+
+    .backdrop::backdrop {
       background: rgb(15 23 42 / 45%);
-      z-index: 2147483600;
     }
 
     .dialog {
@@ -525,11 +535,16 @@ export class AISettingsDialog extends LitElement {
       this.subscribedStore?.addEventListener("change", this.handleStoreChange)
     }
     if(changed.has("open") && this.open) {
-      queueMicrotask(() => this.renderRoot.querySelector<HTMLElement>(".dialog")?.focus())
+      const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
+      if(this.isConnected && dialog && !dialog.open) dialog.showModal()
+      queueMicrotask(() => {
+        if(this.open && this.isConnected) this.renderRoot.querySelector<HTMLElement>(".dialog")?.focus()
+      })
     }
   }
 
   disconnectedCallback() {
+    if(this.open) this.close()
     this.resetAutoFetch()
     this.cancelModelFetch()
     this.subscribedStore?.removeEventListener("change", this.handleStoreChange)
@@ -557,6 +572,8 @@ export class AISettingsDialog extends LitElement {
     this.apiKey = ""
     this.passphrase = ""
     this.open = false
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
+    if(dialog?.open) dialog.close()
     this.dispatchEvent(new Event("ai-settings-close", {bubbles: true, composed: true}))
   }
 
@@ -860,13 +877,6 @@ export class AISettingsDialog extends LitElement {
     if(event.target === event.currentTarget) this.close()
   }
 
-  private handleKeydown(event: KeyboardEvent) {
-    if(event.key === "Escape") {
-      event.stopPropagation()
-      this.close()
-    }
-  }
-
   render() {
     if(!this.open || !this.draft) return nothing
     const providers = this.store?.providers ?? []
@@ -874,8 +884,12 @@ export class AISettingsDialog extends LitElement {
     const encryptedStored = this.draft.managed !== "backend" && Boolean(this.store?.vault.hasEncrypted(this.draft.id))
     const modelFetchReady = this.canFetchModels()
     return html`
-      <div class="backdrop" @click=${this.handleBackdropClick} @keydown=${this.handleKeydown}>
-        <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title" tabindex="-1" @click=${(event: Event) => event.stopPropagation()}>
+      <dialog class="backdrop" aria-labelledby="ai-settings-title"
+        @click=${this.handleBackdropClick}
+        @cancel=${(event: Event) => { event.preventDefault(); this.close() }}
+        @close=${(event: Event) => { if(this.open && !(event.currentTarget as HTMLDialogElement).open) this.close() }}
+      >
+        <section class="dialog" tabindex="-1" @click=${(event: Event) => event.stopPropagation()}>
           <aside class="sidebar">
             <h2 id="ai-settings-title">AI providers</h2>
             <div class="providers" aria-label="Configured providers">
@@ -1006,7 +1020,7 @@ export class AISettingsDialog extends LitElement {
             </form>
           </main>
         </section>
-      </div>
+      </dialog>
     `
   }
 }

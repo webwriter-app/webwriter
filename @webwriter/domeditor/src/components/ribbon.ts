@@ -1191,6 +1191,7 @@ export class AppRibbon extends EditingControls {
     const settings = this.renderRoot.querySelector<AISettingsDialog>("ai-settings-dialog")
     if(settings?.open) {
       event.stopImmediatePropagation()
+      event.preventDefault()
       settings.close()
       return
     }
