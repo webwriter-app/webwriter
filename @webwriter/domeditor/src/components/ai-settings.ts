@@ -520,6 +520,7 @@ export class AISettingsDialog extends LitElement {
   private autoFetchSignature = ""
   private modelFetchSequence = 0
   private modelFetchController: AbortController | null = null
+  private modelFetchDraftEdits: Partial<Pick<AIProviderConfig, "name" | "keyMode">> = {}
   private subscribedStore: AIProviderStore | null = null
   private readonly handleStoreChange = () => {
     if(this.draft && this.store?.provider(this.draft.id)) {
@@ -614,6 +615,7 @@ export class AISettingsDialog extends LitElement {
     this.modelFetchSequence++
     this.modelFetchController?.abort()
     this.modelFetchController = null
+    this.modelFetchDraftEdits = {}
     this.loading = false
   }
 
@@ -663,6 +665,10 @@ export class AISettingsDialog extends LitElement {
 
   private updateDraft<K extends keyof AIProviderConfig>(key: K, value: AIProviderConfig[K]) {
     if(!this.draft) return
+    if(this.loading && (key === "name" || key === "keyMode")) {
+      if(key === "name") this.modelFetchDraftEdits.name = value as string
+      else this.modelFetchDraftEdits.keyMode = value as AIKeyMode
+    }
     this.draft = {...this.draft, [key]: value}
     this.error = ""
     this.notice = ""
@@ -813,6 +819,7 @@ export class AISettingsDialog extends LitElement {
     const sequence = ++this.modelFetchSequence
     const controller = new AbortController()
     this.modelFetchController = controller
+    this.modelFetchDraftEdits = {}
     const draftAtStart = cloneProvider(this.draft)
     this.loading = true
     this.error = ""
@@ -827,14 +834,22 @@ export class AISettingsDialog extends LitElement {
       }
       const models = await listAIModels(source, key, controller.signal)
       if(sequence !== this.modelFetchSequence || controller.signal.aborted || !this.open) return
+      const currentDraft = this.draft?.id === draftAtStart.id ? this.draft : draftAtStart
       const next = {
         ...source,
+        name: this.modelFetchDraftEdits.name ?? currentDraft.name,
+        keyMode: this.modelFetchDraftEdits.keyMode ?? currentDraft.keyMode,
         models,
         defaultModel: models.includes(source.defaultModel) ? source.defaultModel : models[0] ?? "",
       }
       const saved = provider.managed === "backend" ? await this.store.save(next) : next
       if(sequence !== this.modelFetchSequence || controller.signal.aborted || !this.open) return
-      this.draft = saved
+      const latestDraft = this.draft?.id === draftAtStart.id ? this.draft : draftAtStart
+      this.draft = {
+        ...saved,
+        name: this.modelFetchDraftEdits.name ?? latestDraft.name,
+        keyMode: this.modelFetchDraftEdits.keyMode ?? latestDraft.keyMode,
+      }
       this.notice = `${models.length} model${models.length === 1 ? "" : "s"} loaded.${provider.managed === "backend" ? " Provider saved." : " Save to keep this list."}`
     }
     catch(error) {
@@ -843,6 +858,7 @@ export class AISettingsDialog extends LitElement {
     finally {
       if(sequence === this.modelFetchSequence) {
         this.modelFetchController = null
+        this.modelFetchDraftEdits = {}
         this.loading = false
       }
     }
