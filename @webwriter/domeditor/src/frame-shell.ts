@@ -6,6 +6,7 @@ const parameters = new URL(location.href).searchParams
 const kind = parameters.get("kind")
 const revision = parameters.get("revision")
 const nonce = new URLSearchParams(location.hash.slice(1)).get("nonce")
+const instanceId = crypto.randomUUID()
 
 const receiveDocument = (event: MessageEvent) => {
   if(event.source !== window.parent || event.origin !== hostOrigin) return
@@ -23,7 +24,7 @@ if(window.parent !== window && (kind === "editor" || kind === "preview") && nonc
   // The frame's worker proxies local package files before widget modules run.
   // Wait until it controls this document, including on the first visit.
   const base = new URL(import.meta.env.BASE_URL, location.href)
-  const ready = () => window.parent.postMessage({type: "webwriter-frame-shell-ready", kind, revision,
+  const ready = () => window.parent.postMessage({type: "webwriter-frame-shell-ready", kind, revision, instanceId,
     bridgeNonce: nonce}, hostOrigin)
   if(!navigator.serviceWorker) ready()
   else void navigator.serviceWorker.register(new URL("local-package-service-worker.js", base), {

@@ -52,7 +52,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {clearEditorOwnedAttributes, clearInlinePlacement, isWidgetShadowInteraction, getInertDocument} from "../utility"
+import {clearEditorOwnedAttributes, clearEditorMarkerClasses, clearInlinePlacement, isWidgetShadowInteraction, getInertDocument} from "../utility"
 import {stripActiveContent} from "../active-content"
 import {
   imageMapAreaAttributeOptions,
@@ -485,7 +485,9 @@ export class DomEditor extends LitElement {
   private editorWindow: Window | null = null
   private editorOpaque = false
   private editorShellRevision = -1
+  private editorShellInstanceId: string | null = null
   private editorInitializedRevision = -1
+  private previewShellInstanceId: string | null = null
   private readonly registeredWidgetTags = new Set<string>()
   private readonly frameRequests = new Map<string, {resolve: (value: any) => void, reject: (reason: unknown) => void,
     timer: ReturnType<typeof setTimeout>}>()
@@ -971,6 +973,10 @@ export class DomEditor extends LitElement {
   `
 
   private get editorSrcdoc() {
+    return this.editorSrcdocFromHTML(this.frameDocumentHTML)
+  }
+
+  private editorSrcdocFromHTML(documentHTML: string | null) {
     // Keep authored script elements in the live DOM for serialization, but
     // give only the editor bootstrap and explicitly installed package assets
     // execution permission in this isolated editing frame. The nonce is
@@ -994,11 +1000,11 @@ export class DomEditor extends LitElement {
     const editorScriptType = import.meta.env.MODE === "test" ? "application/json" : "module"
     const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script><script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
     const bootstrap = `${csp}${bridge}${bootstrapScripts}`
-    if(this.frameDocumentHTML === null) {
+    if(documentHTML === null) {
       return `<!-- frame ${this.frameRevision} -->${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}`
     }
 
-    const parsed = new DOMParser().parseFromString(this.frameDocumentHTML, "text/html")
+    const parsed = new DOMParser().parseFromString(documentHTML, "text/html")
     restoreOriginalResourceURLs(parsed)
     // The iframe receives its trusted resolution through load-widgets.
     parsed.getElementById(packageImportMapId)?.remove()
@@ -1010,6 +1016,32 @@ export class DomEditor extends LitElement {
     cspElement.content = policy
     parsed.head.prepend(cspElement)
     return `<!-- frame ${this.frameRevision} -->${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
+  }
+
+  /** Serialize the most recent host-side snapshot into a bootstrap payload
+   * without normalizing authored structure or upgrading custom elements. */
+  private snapshotEditorDocumentHTML() {
+    const source = this.editorDocument
+    if(!source?.documentElement) return this.frameDocumentHTML
+    const inertDocument = getInertDocument(source)
+    const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
+    const removeEditorOnly = (parent: Node) => {
+      for(const child of Array.from(parent.childNodes)) {
+        if(child.nodeType === Node.ELEMENT_NODE) {
+          const element = child as Element
+          if(element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only")) {
+            element.remove()
+            continue
+          }
+          if(element.localName === "template") removeEditorOnly((element as HTMLTemplateElement).content)
+        }
+        removeEditorOnly(child)
+      }
+    }
+    removeEditorOnly(root)
+    clearEditorOwnedAttributes(root)
+    clearEditorMarkerClasses(root)
+    return `${serializeDoctype(source.doctype)}${root.outerHTML}`
   }
 
   /** Creates a static copy for preview without bootstrapping another
@@ -4275,6 +4307,42 @@ export class DomEditor extends LitElement {
     return this.dependencyRefreshPromise
   }
 
+  /** Drop requests bound to a replaced child realm while preserving the live
+   * document snapshot and host-owned document/file metadata. */
+  private resetEditorFrameForShellRestart() {
+    const reloadError = new Error("The editor iframe was reloaded")
+    this.editorReadyPromise?.catch(() => {})
+    this.editorReadyReject?.(reloadError)
+    this.editorReadyPromise = null
+    this.editorReadyResolve = null
+    this.editorReadyReject = null
+    for(const pending of this.frameRequests.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(reloadError)
+    }
+    this.frameRequests.clear()
+    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
+      if(timer !== undefined) clearTimeout(timer)
+      abortCleanup?.()
+      reject(reloadError)
+    })
+    this.pendingExecutions.clear()
+    this.documentTreeObserver?.disconnect()
+    this.documentTreeObserver = null
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
+    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
+    this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.clearMotionStylesheet()
+    this.editorDocument = null
+    this.editorWindow = null
+    this.packageLoadPromise = null
+    this.savedEditorSelection = null
+    this.frameState = undefined
+    this.documentTree = null
+    this.editorInitializedRevision = -1
+  }
+
   private async checkPackageDependencies() {
     if(!packageModuleEntries(this.installedPackages).length) return
     let previousMap = this.packageImportMap
@@ -5547,15 +5615,42 @@ export class DomEditor extends LitElement {
     }
     if(event.data?.type === "webwriter-frame-shell-ready") {
       if(event.origin !== editorFrameOrigin() || event.data.bridgeNonce !== this.bridgeNonce) return
+      const hasInstanceId = Object.prototype.hasOwnProperty.call(event.data, "instanceId")
+      const instanceId = event.data.instanceId
+      if(hasInstanceId && (typeof instanceId !== "string"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(instanceId))) return
       if(event.data.kind === "editor" && event.data.revision === String(this.frameRevision)) {
         const frame = this.editorIframe()
-        if(event.source !== frame?.contentWindow || this.editorShellRevision === this.frameRevision) return
+        if(event.source !== frame?.contentWindow) return
+        if(hasInstanceId) {
+          if(instanceId === this.editorShellInstanceId) return
+          const restartedShell = this.editorShellInstanceId !== null && this.editorShellRevision === this.frameRevision
+          this.editorShellInstanceId = instanceId as string
+          this.editorShellRevision = this.frameRevision
+          let html = this.editorSrcdoc
+          if(restartedShell) {
+            const latestDocument = this.snapshotEditorDocumentHTML()
+            if(latestDocument !== null) {
+              this.frameDocumentHTML = latestDocument
+              html = this.editorSrcdoc
+            }
+            this.resetEditorFrameForShellRestart()
+          }
+          frame.contentWindow?.postMessage({type: "webwriter-frame-document", html}, editorFrameOrigin())
+          return
+        }
+        if(this.editorShellRevision === this.frameRevision) return
         this.editorShellRevision = this.frameRevision
         frame.contentWindow?.postMessage({type: "webwriter-frame-document", html: this.editorSrcdoc}, editorFrameOrigin())
       }
       else if(event.data.kind === "preview" && event.data.revision === String(this.previewFrameRevision)) {
         const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
-        if(event.source !== frame?.contentWindow || this.previewShellRevision === this.previewFrameRevision) return
+        if(event.source !== frame?.contentWindow) return
+        if(hasInstanceId) {
+          if(instanceId === this.previewShellInstanceId) return
+          this.previewShellInstanceId = instanceId as string
+        }
+        else if(this.previewShellRevision === this.previewFrameRevision) return
         this.previewShellRevision = this.previewFrameRevision
         frame.contentWindow?.postMessage({type: "webwriter-frame-document", html: this.previewDocumentHTML ?? ""}, editorFrameOrigin())
       }

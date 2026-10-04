@@ -565,6 +565,91 @@ describe("DomEditor iframe setup", () => {
     expect(detached.defaultPrevented).toBe(false)
   })
 
+  it("rebootstraps a new same-revision shell from the latest authored snapshot and rejects replays", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const frameOrigin = new URL(host.frameShellURL("editor", 0)).origin
+    const oldInstance = "11111111-1111-4111-8111-111111111111"
+    const newInstance = "22222222-2222-4222-8222-222222222222"
+    const source = new DOMParser().parseFromString(`<!doctype html>
+      <html lang="fr"><head><title>Keep title</title>
+        <script class="◆ ◆editor-only">bootstrap</script>
+        <meta data-webwriter-editor-only=""></head><body>
+        <!-- retain body comment --><x-widget data-custom="keep" class="authored ◆selected ◆widget-editable" contenteditable="">
+          <template><!-- retain template comment --><x-child data-template="keep"></x-child></template>
+        </x-widget></body></html>`, "text/html")
+    host.editorDocument = source
+    host.editorWindow = iframe.contentWindow
+    host.editorOpaque = false
+    host.editorShellRevision = 0
+    host.editorShellInstanceId = oldInstance
+    host.editorInitializedRevision = 0
+    host.frameState = {update: [new Uint8Array([1])], origin: "stale"}
+    host.fileDirty = true
+    host.fileName = "keep.html"
+    host.backendDocumentId = "keep-document-id"
+    const rejectFrameRequest = vi.fn()
+    const rejectExecution = vi.fn()
+    const rejectReady = vi.fn()
+    host.frameRequests.set("stale-frame-request", {
+      resolve: vi.fn(), reject: rejectFrameRequest, timer: setTimeout(() => {}, 60_000),
+    })
+    host.pendingExecutions.set("stale-execution", {resolve: vi.fn(), reject: rejectExecution})
+    host.editorReadyPromise = Promise.resolve(iframe.contentWindow)
+    host.editorReadyReject = rejectReady
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => {})
+    post.mockClear()
+    const ready = (instanceId: string, origin = frameOrigin, eventSource: MessageEventSource | null = iframe.contentWindow) => host.handleEditorMessage(new MessageEvent("message", {
+      origin,
+      source: eventSource,
+      data: {type: "webwriter-frame-shell-ready", kind: "editor", revision: "0", bridgeNonce: host.bridgeNonce, instanceId},
+    }))
+
+    ready(oldInstance)
+    expect(post).not.toHaveBeenCalled()
+    ready("not-a-uuid")
+    ready(newInstance, "https://forged.example")
+    ready(newInstance, frameOrigin, window)
+    expect(post).not.toHaveBeenCalled()
+
+    ready(newInstance)
+    expect(post).toHaveBeenCalledTimes(1)
+    const payload = post.mock.calls[0][0] as {type: string, html: string}
+    expect(payload.type).toBe("webwriter-frame-document")
+    expect(payload.html).toContain("<!DOCTYPE html>")
+    expect(payload.html).toContain("<title>Keep title</title>")
+    expect(payload.html).toContain("<!-- retain body comment -->")
+    expect(payload.html).toContain("<!-- retain template comment -->")
+    expect(payload.html).toContain('data-custom="keep"')
+    expect(payload.html).toContain('data-template="keep"')
+    const bootstrapped = new DOMParser().parseFromString(payload.html, "text/html")
+    expect(bootstrapped.body.querySelector("x-widget")?.getAttribute("class")).toBe("authored")
+    expect(bootstrapped.querySelector('meta[data-webwriter-editor-only]')).toBeNull()
+    expect(bootstrapped.querySelector('script:not([src])')?.textContent).not.toContain("bootstrap")
+    expect(bootstrapped.body.querySelector("[contenteditable]")).toBeNull()
+    expect(host.editorInitializedRevision).toBe(-1)
+    expect(host.frameState).toBeUndefined()
+    expect(rejectFrameRequest).toHaveBeenCalledWith(expect.any(Error))
+    expect(rejectExecution).toHaveBeenCalledWith(expect.any(Error))
+    expect(rejectReady).toHaveBeenCalledWith(expect.any(Error))
+    expect(host.frameRequests.size).toBe(0)
+    expect(host.pendingExecutions.size).toBe(0)
+    expect(host.editorReadyPromise).toBeNull()
+    expect(host.fileDirty).toBe(true)
+    expect(host.fileName).toBe("keep.html")
+    expect(host.backendDocumentId).toBe("keep-document-id")
+
+    ready(newInstance)
+    expect(post).toHaveBeenCalledTimes(1)
+    const initialize = vi.spyOn(host, "initializeEditorFrame").mockImplementation(() => {})
+    host.handleEditorMessage(new MessageEvent("message", {
+      origin: frameOrigin,
+      source: iframe.contentWindow,
+      data: {type: "webwriter-editor-frame-ready", bridgeNonce: host.bridgeNonce},
+    }))
+    expect(initialize).toHaveBeenCalledWith(iframe)
+  })
+
 
   it.each([
     ["local", "body"], ["development-server", "body"],
