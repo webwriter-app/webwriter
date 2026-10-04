@@ -15,9 +15,9 @@ export const menuTabs: RibbonMenuName[] = ["File"]
 export const dropdownMenus: RibbonMenuName[] = ["File"]
 
 export const aiEfforts: {label: string, value: AIEffort}[] = [
-  {label: "Low effort", value: "low"},
-  {label: "Medium effort", value: "medium"},
-  {label: "High effort", value: "high"},
+  {label: "Low", value: "low"},
+  {label: "Medium", value: "medium"},
+  {label: "High", value: "high"},
 ]
 
 export const storageLocations = [

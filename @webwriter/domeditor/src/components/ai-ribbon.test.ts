@@ -51,7 +51,7 @@ describe("AI prompt ribbon", () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)
     const fetch = vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise(() => {}))
-    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!.click()
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!.click()
     const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
     input.value = "Explain this document"
     input.dispatchEvent(new InputEvent("input", {bubbles: true}))
@@ -131,6 +131,7 @@ describe("AI prompt ribbon", () => {
     expect(getComputedStyle(panel).containerType).toBe("inline-size")
     expect(getComputedStyle(panel).transition).not.toContain("width")
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-tab")).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector(".ai-prompt-expand")).toBeNull()
     expect(ribbon.shadowRoot!.querySelector(".icon-tabler-sparkles-2")).not.toBeNull()
     expect(submit.querySelector(".icon-tabler-arrow-back")).not.toBeNull()
     expect(getComputedStyle(submit).borderRadius).toBe("50%")
@@ -181,11 +182,11 @@ describe("AI prompt ribbon", () => {
     await configureProvider(ribbon)
     vi.spyOn(globalThis, "fetch").mockResolvedValue(assistantResponse("Here is the explanation."))
     const enter = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-submit")!
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
     const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
     const collapsedInput = panel.querySelector<HTMLTextAreaElement>("textarea.ai-prompt-input")!
 
-    expect(enter.closest(".ai-composer-surface")?.nextElementSibling).toBe(expand)
+    expect(enter.closest(".ai-composer-surface")?.nextElementSibling).toBeNull()
     expect(expand.getAttribute("aria-expanded")).toBe("false")
     expect(getComputedStyle(panel).maxHeight).toBe("24px")
     expect(collapsedInput.getAttribute("rows")).toBe("1")
@@ -208,8 +209,7 @@ describe("AI prompt ribbon", () => {
     expect(docked.firstElementChild?.classList.contains("ai-chat-brand-button")).toBe(true)
     expect(docked.querySelector('[aria-label="AI settings"]')).not.toBeNull()
     expect(docked.querySelector('[aria-label="Add attachments"]')).not.toBeNull()
-    expect(docked.querySelector<HTMLSelectElement>('[aria-label="AI model"]')!.selectedOptions[0].textContent).toContain("test-model")
-    expect(docked.querySelector<HTMLSelectElement>('[aria-label="AI effort"]')!.value).toBe("medium")
+    expect(docked.querySelector<HTMLSelectElement>('[aria-label="AI model and effort"]')!.selectedOptions[0].textContent).toBe("test-model · Medium")
     expect(send.parentElement?.classList.contains("ai-composer-surface")).toBe(true)
     expect(getComputedStyle(send).position).toBe("absolute")
 
@@ -236,12 +236,51 @@ describe("AI prompt ribbon", () => {
     expect(docked.querySelectorAll(".ai-chat-message")).toHaveLength(2)
   })
 
+  it("selects a model and effort together and submits both from the combined picker", async () => {
+    const ribbon = await mountRibbon()
+    const first = await configureProvider(ribbon)
+    const store = (ribbon as unknown as {aiProviderStore: AIProviderStore}).aiProviderStore
+    const second = store.upsert({...createAIProvider("ollama"), name: "Other provider", models: ["other-model"], defaultModel: "other-model"})
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!.click()
+    await ribbon.updateComplete
+    const docked = ribbon.aiToolboxTarget!
+    const picker = docked.querySelector<HTMLSelectElement>('[aria-label="AI model and effort"]')!
+    expect(docked.querySelectorAll(".ai-composer-select")).toHaveLength(1)
+    expect(picker.options).toHaveLength(6)
+
+    for(const [provider, model, effort] of [[second, "other-model", "high"], [first, "test-model", "low"]] as const) {
+      picker.value = JSON.stringify([provider.id, model, effort])
+      picker.dispatchEvent(new Event("change", {bubbles: true}))
+      await ribbon.updateComplete
+      expect(store.activeProvider?.id).toBe(provider.id)
+      expect(picker.value).toBe(JSON.stringify([provider.id, model, effort]))
+      expect(docked.querySelector(".ai-composer-model-label")!.textContent).toContain(model)
+      expect(docked.querySelector(".ai-composer-model-label")!.textContent).toContain(effort === "high" ? "High" : "Low")
+    }
+
+    let finish!: (response: Response) => void
+    vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise(resolve => {finish = resolve}))
+    const listener = vi.fn()
+    ribbon.addEventListener("ai-prompt-submit", listener)
+    const input = docked.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    input.value = "Explain this"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await ribbon.updateComplete
+    docked.querySelector<HTMLButtonElement>(".ai-chat-send")!.click()
+    await vi.waitFor(() => expect(picker.disabled).toBe(true))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
+      providerId: first.id, model: "test-model", effort: "low",
+    })}))
+    finish(assistantResponse("Explanation"))
+    await vi.waitFor(() => expect(picker.disabled).toBe(false))
+  })
+
   it("keeps both prompt inputs in sync and leaves the sidebar open on document interaction", async () => {
     const ribbon = await mountRibbon()
     const bar = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
     bar.value = "Draft a lesson"
     bar.dispatchEvent(new InputEvent("input", {bubbles: true}))
-    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!.click()
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!.click()
     await ribbon.updateComplete
     const input = ribbon.aiToolboxTarget!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
     expect(input.value).toBe("Draft a lesson")
@@ -260,7 +299,7 @@ describe("AI prompt ribbon", () => {
 
   it("opens provider settings and offers simplified provider presets", async () => {
     const ribbon = await mountRibbon()
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
     expand.click()
     await ribbon.updateComplete
 
@@ -302,7 +341,7 @@ describe("AI prompt ribbon", () => {
     const fetch = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(modelsResponse(["model-b", "model-a"]))
       .mockResolvedValueOnce(modelsResponse(["model-c"]))
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
     expand.click()
     await ribbon.updateComplete
 
@@ -350,7 +389,7 @@ describe("AI prompt ribbon", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(assistantResponse("Attached file received."))
     const listener = vi.fn()
     ribbon.addEventListener("ai-prompt-submit", listener)
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
     expand.click()
     await ribbon.updateComplete
 
@@ -403,8 +442,7 @@ describe("AI prompt ribbon", () => {
     expect(ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelectorAll(".ai-prompt-review-actions button")).toHaveLength(3)
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-submit")).toBeNull()
-    expect(ribbon.shadowRoot!.querySelector(".ai-prompt-review-actions")?.closest(".ai-composer-surface")?.nextElementSibling)
-      .toBe(ribbon.shadowRoot!.querySelector(".ai-prompt-expand"))
+    expect(ribbon.shadowRoot!.querySelector(".ai-prompt-review-actions")?.closest(".ai-composer-surface")?.nextElementSibling).toBeNull()
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="approve"]')!.click()
     await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", expect.objectContaining({id: expect.stringContaining("/edit-1")})))

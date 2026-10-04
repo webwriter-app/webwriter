@@ -917,7 +917,7 @@ describe("DomEditor iframe setup", () => {
   it("keeps the AI toolbox open when the editor receives a pointer", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
 
     expand.click()
     await ribbon.updateComplete
@@ -5825,7 +5825,7 @@ describe("DomEditor.execute()", () => {
     await toolbox.updateComplete
     expect(ribbon.aiChatOpen).toBe(false)
     expect(toolbox.hidden).toBe(true)
-    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!.click()
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!.click()
     await ribbon.updateComplete
     await editor.updateComplete
     await toolbox.updateComplete

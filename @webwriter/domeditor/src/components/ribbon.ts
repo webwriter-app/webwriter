@@ -1472,7 +1472,7 @@ export class AppRibbon extends EditingControls {
     if(!this.aiChatOpen) return
     this.aiChatOpen = false
     if(restoreFocus) void this.updateComplete.then(() => {
-      this.renderRoot.querySelector<HTMLButtonElement>(".ai-prompt-expand")?.focus()
+      this.renderRoot.querySelector<HTMLButtonElement>(".ai-chat-brand-button")?.focus()
     })
   }
 
@@ -1494,23 +1494,22 @@ export class AppRibbon extends EditingControls {
     this.aiError = ""
   }
 
-  private updateAIModel(event: Event) {
+  private updateAIModelAndEffort(event: Event) {
     try {
-      const [providerId, model] = JSON.parse((event.currentTarget as HTMLSelectElement).value) as unknown[]
-      if(typeof providerId !== "string" || typeof model !== "string") return
+      const [providerId, model, effort] = JSON.parse((event.currentTarget as HTMLSelectElement).value) as unknown[]
+      if(typeof providerId !== "string" || typeof model !== "string"
+        || !this.aiProviders.some(provider => provider.id === providerId && provider.models.includes(model))
+        || !aiEfforts.some(option => option.value === effort)) return
       void this.aiProviderStore.activate(providerId).catch(error => {
         this.aiError = error instanceof Error ? error.message : String(error)
       })
       this.aiModel = model
+      this.aiEffort = effort as AIEffort
       this.aiError = ""
     }
     catch {
       // Ignore a stale option from a provider that was edited concurrently.
     }
-  }
-
-  private updateAIEffort(event: Event) {
-    this.aiEffort = (event.currentTarget as HTMLSelectElement).value as AIEffort
   }
 
   private dispatchAIBarAction(action: "attachments" | "settings") {
@@ -2900,7 +2899,7 @@ export class AppRibbon extends EditingControls {
   protected usesNativePointerInteraction(event: MouseEvent) {
     const aiAction = event.composedPath().find(target => target instanceof HTMLElement && (
       target.matches(
-        ".ai-prompt-submit, .ai-prompt-expand, .ai-chat-brand-button, " +
+        ".ai-prompt-submit, .ai-chat-brand-button, " +
         ".ai-chat-header-button, .ai-chat-send, .ai-composer-attachment, " +
         ".ai-attachment-remove, .ai-edit-action",
       )
@@ -2989,8 +2988,11 @@ export class AppRibbon extends EditingControls {
   private renderAIChat(expanded: boolean) {
     const activeProvider = this.activeAIProvider
     const selectedModelValue = activeProvider && this.aiModel
-      ? JSON.stringify([activeProvider.id, this.aiModel])
+      ? JSON.stringify([activeProvider.id, this.aiModel, this.aiEffort])
       : ""
+    const selectedModelLabel = this.aiModel
+      ? `${this.aiModel} · ${aiEfforts.find(option => option.value === this.aiEffort)?.label ?? this.aiEffort}`
+      : "Set up AI…"
     const modelCount = this.aiProviders.reduce((count, provider) => count + provider.models.length, 0)
     const historyPreviewPending = this.historyState.preview !== null
     return html`
@@ -3161,31 +3163,26 @@ export class AppRibbon extends EditingControls {
                   >
                     <select
                       class="ai-composer-select"
-                      aria-label="AI model"
-                      data-kind="model"
+                      aria-label="AI model and effort"
+                      title=${selectedModelLabel}
                       data-ribbon-input-persistent
                       .value=${selectedModelValue}
                       ?disabled=${this.aiBusy || modelCount === 0}
-                      @change=${this.updateAIModel}
+                      @change=${this.updateAIModelAndEffort}
                     >
                       ${modelCount === 0 ? html`<option value="">Set up AI…</option>` : ""}
                       ${this.aiProviders.flatMap(provider => provider.models.map(model => html`
-                        <option value=${JSON.stringify([provider.id, model])}>${model} (${provider.name})</option>
+                        <optgroup label=${`${model} (${provider.name})`}>
+                          ${aiEfforts.map(effort => html`
+                            <option value=${JSON.stringify([provider.id, model, effort.value])}
+                              ?selected=${activeProvider?.id === provider.id && this.aiModel === model && this.aiEffort === effort.value}
+                            >${model} · ${effort.label}</option>
+                          `)}
+                        </optgroup>
                       `))}
                     </select>
-                    <span class="ai-composer-model-label" aria-hidden="true">${this.aiModel || "Set up AI…"}</span>
+                    <span class="ai-composer-model-label" aria-hidden="true">${selectedModelLabel}</span>
                   </div>
-                  <select
-                    class="ai-composer-select"
-                    aria-label="AI effort"
-                    data-kind="effort"
-                    data-ribbon-input-persistent
-                    .value=${this.aiEffort}
-                    ?disabled=${this.aiBusy}
-                    @change=${this.updateAIEffort}
-                  >${aiEfforts.map(effort => html`
-                    <option value=${effort.value} ?selected=${this.aiEffort === effort.value}>${effort.label}</option>
-                  `)}</select>
                 </div>
               </div>
               ${this.pendingAIEdit && !expanded ? html`
@@ -3208,15 +3205,6 @@ export class AppRibbon extends EditingControls {
                 >${this.aiBusy ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
               `}
             </div>
-            <button
-              class="ai-prompt-expand"
-              type="button"
-              aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
-              title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
-              aria-expanded=${this.aiChatOpen}
-              aria-controls="ai-toolbox-chat"
-              @click=${this.toggleAIChat}
-            ><span class="ai-prompt-expand-chevron" aria-hidden="true"></span></button>
           </form>
         </section>
     `

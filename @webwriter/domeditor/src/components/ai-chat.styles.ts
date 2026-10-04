@@ -10,7 +10,7 @@ export const aiChatStyles = css`
       min-width: 0;
       height: 100%;
       min-height: 0;
-      padding: 2px 43px 2px 1.7rem;
+      padding: 2px 23px 2px 1.7rem;
       border: 0;
       outline: 0;
       color: #2f3742;
@@ -31,8 +31,7 @@ export const aiChatStyles = css`
       color: #7d8998;
     }
 
-    .ai-prompt-submit,
-    .ai-prompt-expand {
+    .ai-prompt-submit {
       box-sizing: border-box;
       display: grid;
       position: absolute;
@@ -50,29 +49,15 @@ export const aiChatStyles = css`
     }
 
     .ai-prompt-submit {
-      right: 22px;
-      bottom: 1px;
-    }
-
-    .ai-prompt-expand {
       right: 2px;
       bottom: 1px;
-      padding: 0;
-      color: #526b86;
-      background: transparent;
     }
 
     .ai-prompt-submit:hover {
       background: #1e4f87;
     }
 
-    .ai-prompt-expand:hover {
-      color: #1e4f87;
-      background: #e8eef5;
-    }
-
-    .ai-prompt-submit:focus-visible,
-    .ai-prompt-expand:focus-visible {
+    .ai-prompt-submit:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: 2px;
     }
@@ -87,20 +72,6 @@ export const aiChatStyles = css`
       display: block;
       width: 100%;
       height: 100%;
-    }
-
-    .ai-prompt-expand-chevron {
-      display: block;
-      width: 0.32rem;
-      height: 0.32rem;
-      border-right: 1.5px solid currentColor;
-      border-bottom: 1.5px solid currentColor;
-      transform: translateY(-1px) rotate(45deg);
-      transition: var(--ww-ui-transition, transform 120ms ease);
-    }
-
-    .ai-prompt-expand[aria-expanded="true"] .ai-prompt-expand-chevron {
-      transform: translateY(1px) rotate(225deg);
     }
 
     .ai-chat-panel {
@@ -504,7 +475,7 @@ export const aiChatStyles = css`
       display: flex;
       position: absolute;
       z-index: 2;
-      right: 22px;
+      right: 2px;
       bottom: 1px;
       gap: 2px;
       height: 18px;
@@ -551,7 +522,7 @@ export const aiChatStyles = css`
     }
 
     .ai-composer-surface[data-review-pending] .ai-prompt-input {
-      padding-right: 82px;
+      padding-right: 62px;
       color: #6b21a8;
       background: #faf5ff;
     }
@@ -582,7 +553,7 @@ export const aiChatStyles = css`
     .ai-chat-panel[data-open] .ai-chat-composer {
       align-items: stretch;
       height: 7rem;
-      padding: 0.65rem 2.35rem 0.65rem 0.65rem;
+      padding: 0.65rem;
       border-top-width: 1px;
       border-top-color: #d8dee6;
       background: #f7f9fb;
@@ -613,7 +584,7 @@ export const aiChatStyles = css`
     }
 
     .ai-chat-panel[data-open] .ai-prompt-input {
-      padding: 0.55rem 0.65rem 2.2rem;
+      padding: 0.55rem 0.65rem;
       line-height: 1.35;
       overflow: auto;
     }
@@ -630,11 +601,6 @@ export const aiChatStyles = css`
       padding: 3px;
     }
 
-    .ai-chat-panel[data-open] .ai-prompt-expand {
-      right: 0.35rem;
-      bottom: 0.75rem;
-    }
-
     .ai-composer-toolbar {
       box-sizing: border-box;
       display: flex;
@@ -647,6 +613,7 @@ export const aiChatStyles = css`
       height: 1.9rem;
       min-width: 0;
       padding: 0.2rem 1.9rem 0.25rem 0.35rem;
+      background: rgb(255 255 255 / 50%);
       opacity: 0;
       pointer-events: none;
       transform: translateY(0.25rem);
@@ -778,7 +745,7 @@ export const aiChatStyles = css`
       position: relative;
       flex: 0 1 auto;
       min-width: 0;
-      max-width: 8rem;
+      max-width: 12rem;
     }
 
     .ai-composer-selects {
@@ -836,10 +803,6 @@ export const aiChatStyles = css`
 
     .ai-composer-model-control[data-disabled]::after {
       opacity: 0.5;
-    }
-
-    .ai-composer-select[data-kind="effort"] {
-      max-width: 7rem;
     }
 
     .ai-composer-select:focus {

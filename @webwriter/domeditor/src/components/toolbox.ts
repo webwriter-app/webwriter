@@ -171,8 +171,7 @@ export class DomEditorToolbox extends EditingControls {
       border: 0; border-radius: 0; box-shadow: none; background: #f2f2f2;
       position-anchor: auto;
     }
-    .ai-toolbox-content .ai-chat-brand-button,
-    .ai-toolbox-content .ai-prompt-expand {display: none}
+    .ai-toolbox-content .ai-chat-brand-button {display: none}
     .ai-toolbox-content .ai-chat-header {
       position: static; flex: 0 0 auto; height: auto; padding: .5rem;
       background: #f2f2f2;
