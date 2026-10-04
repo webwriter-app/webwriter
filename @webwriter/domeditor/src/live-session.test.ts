@@ -23,6 +23,54 @@ describe("LiveSession", () => {
     expect(host.baseHTML).toBe("<p>Host</p>")
   })
 
+  it("keeps hostless learner edits private and validates history when a host reconnects", () => {
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const first = create({id: "hostless", role: "learner", token, learner: {id: "ada", name: "Ada", color: "#f00"}})
+    const second = create({id: "hostless", role: "learner", token, learner: {id: "lin", name: "Lin", color: "#08c"}})
+    const forged = create({id: "hostless", role: "learner", token, learner: {id: "mallory", name: "Mallory", color: "#333"}})
+    first.publish({kind: "document", html: "<p>Ada's work</p>"})
+    second.publish({kind: "pointer", pointer: {x: 0.25, y: 0.5}})
+    forged.publish({kind: "document", html: "<p>Untrusted work</p>"})
+    forged.doc.getMap("live-session-meta").set("baseHTML", "<p>forged</p>")
+
+    expect(second.baseHTML).toBeUndefined()
+
+    const host = create({id: "hostless", role: "host", token, baseHTML: "<p>Host document</p>"})
+    expect(host.baseHTML).toBe("<p>Host document</p>")
+    expect(first.baseHTML).toBe("<p>Host document</p>")
+    expect(second.baseHTML).toBe("<p>Host document</p>")
+    expect(host.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({learner: "ada", html: "<p>Ada's work</p>"}),
+      expect.objectContaining({learner: "lin", kind: "pointer", pointer: {x: 0.25, y: 0.5}}),
+    ]))
+    expect(host.states).toEqual(expect.arrayContaining([
+      expect.objectContaining({learner: "ada", html: "<p>Ada's work</p>"}),
+      expect.objectContaining({learner: "lin", pointer: {x: 0.25, y: 0.5}}),
+    ]))
+    expect(host.steps.some(step => step.learner === "mallory")).toBe(false)
+    expect(second.steps.map(step => step.id)).toEqual(expect.arrayContaining(host.steps.map(step => step.id)))
+    const next = first.publish({kind: "pointer", pointer: {x: 0.5, y: 0.75}})
+    expect(host.steps.map(step => step.id)).toEqual(expect.arrayContaining([next.id]))
+    expect(new Set(host.steps.map(step => step.id)).size).toBe(host.steps.length)
+    expect(second.steps.map(step => step.id)).toContain(next.id)
+    expect(new Set(second.steps.map(step => step.id)).size).toBe(second.steps.length)
+  })
+
+  it("keeps learner history unique and accepts later activity after host bootstrap", () => {
+    const token = "bbbbbbbbbbbbbbbbbbbbbbbb"
+    const learner = create({id: "reconnect", role: "learner", token, learner: {id: "ada", name: "Ada", color: "#f00"}})
+    const initial = learner.publish({kind: "document", html: "<p>Initial</p>"})
+    const host = create({id: "reconnect", role: "host", token, baseHTML: "<p>Host</p>"})
+    expect(host.steps.map(step => step.id)).toEqual([initial.id])
+    const next = learner.publish({kind: "pointer", pointer: {x: 0.4, y: 0.6}})
+
+    expect(host.steps.map(step => step.id)).toEqual([initial.id, next.id])
+    expect(new Set(host.steps.map(step => step.id)).size).toBe(2)
+    expect(host.states).toEqual([expect.objectContaining({
+      learner: "ada", time: next.time, html: "<p>Initial</p>", pointer: {x: 0.4, y: 0.6},
+    })])
+  })
+
   it("stores base HTML, durable steps, and the latest learner state", () => {
     const host = create({id: "lesson", role: "host", baseHTML: "<p>Start</p>"})
     const learner = create({id: "lesson", role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}})

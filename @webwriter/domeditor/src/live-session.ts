@@ -219,15 +219,22 @@ export class LiveSession {
     else {
       const peers = transportSessions.get(this.id) ?? new Set<LiveSession>()
       const compatiblePeers = [...peers].filter(peer => peer.#token === this.#token)
-      const source = compatiblePeers.find(peer => peer.role === "host") ?? compatiblePeers[0]
+      const host = compatiblePeers.find(peer => peer.role === "host")
+      const source = host ?? compatiblePeers[0]
       const sourceStateVector = source ? Y.encodeStateVector(source.doc) : new Uint8Array()
-      if(source) source.#sendSync(this)
+      if(host) host.#sendSync(this)
+      else if(this.role === "host") compatiblePeers.forEach(peer => peer.#sendLearnerHistory(this))
       peers.add(this)
       transportSessions.set(this.id, peers)
       const joiningUpdate = source
         ? Y.encodeStateAsUpdate(this.doc, sourceStateVector)
         : Y.encodeStateAsUpdate(this.doc)
-      this.#broadcastUpdate(joiningUpdate)
+      // A first host bootstraps from several independent learner histories.
+      // Send the resulting full session to every learner, since none of them
+      // necessarily has the other learners' original Yjs structs.
+      this.#broadcastUpdate(this.role === "host" && !host
+        ? Y.encodeStateAsUpdate(this.doc)
+        : joiningUpdate)
       this.#broadcastAwareness([this.awareness.clientID])
     }
   }
@@ -398,7 +405,9 @@ export class LiveSession {
   #broadcastUpdate(update: Uint8Array) {
     const peers = [...(transportSessions.get(this.id) ?? [])].filter(peer => peer.#token === this.#token)
     const host = peers.find(peer => peer.role === "host")
-    if(this.role === "learner" && host && !acceptLearnerUpdate(host.doc, update, this.#learner!.id)) return
+    // Learners cannot authorize one another. Keep their local changes so they
+    // can be validated when a host reconnects, but never relay them hostless.
+    if(this.role === "learner" && (!host || !acceptLearnerUpdate(host.doc, update, this.#learner!.id))) return
     peers.forEach(peer => {
       if(peer !== this) peer.#applyUpdate(update)
     })
@@ -408,6 +417,20 @@ export class LiveSession {
     target.#applyUpdate(Y.encodeStateAsUpdate(this.doc))
     const awareness = encodeAwarenessUpdate(this.awareness, [...this.awareness.getStates().keys()])
     target.#applyAwareness(awareness)
+  }
+
+  #sendLearnerHistory(target: LiveSession) {
+    if(this.role !== "learner" || !this.#learner) return
+    try {
+      // Reuse the learner's original Yjs structs. Re-creating equivalent
+      // map/array values under a fresh client ID would break later deltas,
+      // whose causal clocks refer to these structs.
+      const update = Y.encodeStateAsUpdate(this.doc, Y.encodeStateVector(target.doc))
+      if(acceptLearnerUpdate(target.doc, update, this.#learner.id)) target.#applyUpdate(update)
+    }
+    catch {
+      // A malformed local peer must not prevent a host from reconnecting.
+    }
   }
 
   #applyUpdate(update: Uint8Array) {
