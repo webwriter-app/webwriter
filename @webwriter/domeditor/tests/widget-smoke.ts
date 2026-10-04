@@ -1,5 +1,6 @@
 import {DomEditor} from "../src/components/dom-editor"
 import {WebWriterPackageRegistry, type WebWriterPackage} from "../src/packages"
+import {resolvePackageDependencies} from "../src/package-dependencies"
 import {initializeEditorMessage, loadWidgetsMessage} from "../src/editor-bridge"
 import type {DOMEditor} from "../src/domeditor"
 
@@ -16,10 +17,8 @@ let availablePackages: WebWriterPackage[] = []
 const fixtures: Record<string, string> = {
   "@webwriter/automaton": '<webwriter-automaton nodes="#0(-220|0);%1(0|0);2(220|0)" testlanguage="ab*" transitions="0-1[a];0-2[b];1-1[b];1-2[a];2-2[a,b]" type="dfa"></webwriter-automaton>',
   "@webwriter/quiz": `<webwriter-quiz>
-    <webwriter-task><webwriter-task-prompt slot="prompt"><p>Complete the sentence.</p></webwriter-task-prompt>
-      <webwriter-task-hint slot="hint"><p>A primary color.</p></webwriter-task-hint>
-      <webwriter-cloze><p>The sky is <webwriter-cloze-gap>blue</webwriter-cloze-gap>.</p></webwriter-cloze>
-      <webwriter-task-explainer slot="explainer"><p>Blue is a primary color.</p></webwriter-task-explainer>
+    <webwriter-task><webwriter-task-prompt slot="prompt"><p>Is the sky blue?</p></webwriter-task-prompt>
+      <webwriter-true-false solution="true"></webwriter-true-false>
     </webwriter-task>
     <webwriter-task><webwriter-task-prompt slot="prompt"><p>Match the pairs.</p></webwriter-task-prompt>
       <webwriter-pairing><webwriter-pairing-item><p>One</p></webwriter-pairing-item><webwriter-pairing-item><p>1</p></webwriter-pairing-item></webwriter-pairing>
@@ -49,11 +48,14 @@ async function mount(pkg: WebWriterPackage) {
   // saved documents, installed-package preferences, or a backend session.
   const app = new DomEditor() as unknown as {
     editorSrcdoc: string, bridgeNonce: string, installedPackages: WebWriterPackage[],
+    packageImportMap: Awaited<ReturnType<typeof resolvePackageDependencies>>["map"],
     editorDocument: Document, currentPreviewHTML(): string,
   }
   const additional = (params.get("also") ?? "").split(",").map(name => `@webwriter/${name}`)
   const packages = [pkg, ...availablePackages.filter(candidate => additional.includes(candidate.name) && candidate.name !== pkg.name)]
   app.installedPackages = packages
+  const plan = await resolvePackageDependencies(packages, document.baseURI)
+  app.packageImportMap = plan.map
   const frame = document.createElement("iframe")
   frame.title = pkg.label
   frame.sandbox.add("allow-scripts", "allow-same-origin")
@@ -77,6 +79,7 @@ async function mount(pkg: WebWriterPackage) {
         type: loadWidgetsMessage,
         widgets: packages.map(({name, version}) => ({name, version})),
         packages,
+        ...(plan.map ? {importMap: plan.map} : {}),
       }),
       new Promise((_, reject) => {timer = setTimeout(() => reject(new Error("Package load timed out")), 30_000)}),
     ])
@@ -148,6 +151,10 @@ async function run() {
           context.frame.hidden = true
         }
         const widgets = Array.from(doc.body.querySelectorAll<HTMLElement>("*")).filter(element => element.localName.includes("-"))
+        if(params.has("fixture")) {
+          const undefinedTags = widgets.filter(element => !doc.defaultView!.customElements.get(element.localName)).map(element => element.localName)
+          if(undefinedTags.length) throw new Error(`Configured fixture contains undefined widgets: ${[...new Set(undefinedTags)].join(", ")}`)
+        }
         const bounds = widgets.map(element => {
           const rect = element.getBoundingClientRect()
           return {tag: element.localName, defined: Boolean(doc.defaultView!.customElements.get(element.localName)), shadow: Boolean(element.shadowRoot), shadowChildren: element.shadowRoot?.childElementCount ?? 0, width: Math.round(rect.width), height: Math.round(rect.height)}
