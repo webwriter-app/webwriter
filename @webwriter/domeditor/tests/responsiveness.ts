@@ -22,7 +22,7 @@ const widgetStyle = `
 `
 
 const prose = '<h1 id="heading">Responsive layout</h1><p id="prose">The default widget matches the reading column. A wide widget opts out of the maximum.</p>'
-const wideDocumentStyle = "body > wide-widget, body > main { max-inline-size: unset; }"
+const wideDocumentStyle = "body > wide-widget, body > main, main > wide-widget { max-inline-size: unset; }"
 const content = `${prose}<demo-widget></demo-widget><wide-widget></wide-widget><!-- keep this comment -->
   <main><h2>Main content</h2><p>Reading inside a landmark.</p><ul><li>Nested list<ul><li>Keep list structure</li></ul></li></ul><demo-widget id="themed"></demo-widget><wide-widget></wide-widget></main>
   <section><blockquote>Reading inside a section.</blockquote></section>
@@ -87,8 +87,6 @@ document.querySelector<HTMLButtonElement>("#run")!.onclick = async event => {
             if(doc.documentElement.scrollWidth > doc.documentElement.clientWidth + 1) throw new Error("Document overflows horizontally")
             closeTo(doc.body.getBoundingClientRect().left, (doc.documentElement.clientWidth - doc.body.getBoundingClientRect().width) / 2, "Centered body")
             for(const child of doc.body.children) {
-              const expectedMax = wideDocument && child.matches("wide-widget, main") ? "none" : "720px"
-              if(win.getComputedStyle(child).maxInlineSize !== expectedMax) throw new Error(`Direct child maximum: ${child.localName}`)
               if(win.getComputedStyle(child).display === "block") {
                 const bounds = child.getBoundingClientRect()
                 closeTo(bounds.left, (doc.documentElement.clientWidth - bounds.width) / 2, `Centered direct child: ${child.localName}`)
@@ -98,7 +96,9 @@ document.querySelector<HTMLButtonElement>("#run")!.onclick = async event => {
               const parentWidth = host.parentElement!.clientWidth
                 - parseFloat(win.getComputedStyle(host.parentElement!).paddingLeft)
                 - parseFloat(win.getComputedStyle(host.parentElement!).paddingRight)
-              const capped = host.localName !== "wide-widget" || (host.parentElement === doc.body && !wideDocument)
+              const optedOut = wideDocument && host.localName === "wide-widget"
+                && (host.parentElement === doc.body || host.parentElement?.matches("main"))
+              const capped = !optedOut
               const expectedWidth = capped ? Math.min(720, parentWidth) : parentWidth
               closeTo(host.getBoundingClientRect().width, expectedWidth, `${host.localName} allocation`)
               if(host.parentElement === doc.body) {
@@ -111,19 +111,35 @@ document.querySelector<HTMLButtonElement>("#run")!.onclick = async event => {
               const expectedColumns = hostWidth >= 1440 ? 3 : hostWidth >= 768 ? 2 : 1
               if(columns !== expectedColumns) throw new Error(`Container query columns: ${columns} instead of ${expectedColumns}`)
             }
+            for(const host of doc.querySelectorAll<HTMLElement>("body > inline-widget")) {
+              closeTo(host.getBoundingClientRect().width, Math.min(720, available), "Top-level inline widget grid-item width")
+              closeTo(host.getBoundingClientRect().left,
+                (doc.documentElement.clientWidth - host.getBoundingClientRect().width) / 2,
+                "Centered top-level inline widget grid item")
+            }
             if(!template) {
               for(const selector of ["#heading", "#prose", "main > h2", "main > p", "main > ul", "section > blockquote"]) {
                 closeTo(doc.querySelector(selector)!.getBoundingClientRect().width, Math.min(720, available), `Reading width ${selector}`)
               }
               closeTo(doc.querySelector("main > demo-widget")!.getBoundingClientRect().width, Math.min(720, available), "Landmark widget width")
-              closeTo(doc.querySelector("main")!.getBoundingClientRect().width, wideDocument ? available : Math.min(720, available), "Landmark width")
+              closeTo(doc.querySelector("main")!.getBoundingClientRect().width, available, "Landmark width")
+              closeTo(doc.querySelector("article")!.getBoundingClientRect().width, available, "Article width")
               closeTo(doc.querySelector("main > wide-widget")!.getBoundingClientRect().width, wideDocument ? available : Math.min(720, available), "Wide landmark widget width")
               closeTo(doc.querySelector("#column > demo-widget")!.getBoundingClientRect().width, Math.min(280, available), "Nested widget width")
-              for(const selector of ["unknown-layout > p", "header", "article", "footer"]) {
+              for(const selector of ["unknown-layout > p", "header", "footer"]) {
                 closeTo(doc.querySelector(selector)!.getBoundingClientRect().width, Math.min(720, available), `Default child width ${selector}`)
               }
-              for(const widget of doc.querySelectorAll("inline-widget")) {
-                if(win.getComputedStyle(widget).display !== "inline") throw new Error("Inline widget became a block")
+              const article = doc.querySelector<HTMLElement>("article")!
+              const articleContentWidth = article.clientWidth
+                - parseFloat(win.getComputedStyle(article).paddingLeft)
+                - parseFloat(win.getComputedStyle(article).paddingRight)
+              closeTo(doc.querySelector("article > div")!.getBoundingClientRect().width,
+                Math.min(720, articleContentWidth), "Article content reading width")
+              const inlineWidget = doc.querySelector<HTMLElement>("p > inline-widget")!
+              if(win.getComputedStyle(inlineWidget).display !== "inline") throw new Error("Inline widget inside prose became a block")
+              if(inlineWidget.getBoundingClientRect().width <= 0
+                || inlineWidget.getBoundingClientRect().width > inlineWidget.parentElement!.getBoundingClientRect().width) {
+                throw new Error("Inline widget inside prose escaped its text line")
               }
             }
             if(doc.body.innerHTML !== original) throw new Error("Resizing changed authored content")
@@ -140,6 +156,7 @@ document.querySelector<HTMLButtonElement>("#run")!.onclick = async event => {
           closeTo(doc.querySelector("demo-widget")!.getBoundingClientRect().width, 560, "Default widget inherits authored reading token")
           closeTo(doc.querySelector("#themed")!.getBoundingClientRect().width, 560, "Theme in shadow DOM preserves inherited reading token")
           closeTo(doc.querySelector("wide-widget")!.getBoundingClientRect().width, 1200, "Wide widget respects authored page override")
+          closeTo(doc.querySelector("main > wide-widget")!.getBoundingClientRect().width, 1200, "Wide landmark widget respects authored page override")
           closeTo(doc.querySelector("#heading")!.getBoundingClientRect().width, 560, "Authored reading token")
           closeTo(doc.querySelector("#prose")!.getBoundingClientRect().width, 480, "Authored prose override")
           results.push(`PASS ${editing ? "editing" : "standalone"}, authored overrides`)
