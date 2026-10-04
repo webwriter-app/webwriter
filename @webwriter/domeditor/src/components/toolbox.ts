@@ -1,6 +1,3 @@
-import "./widget-grouping-dialog"
-import type {WidgetGroupingDialog} from "./widget-grouping-dialog"
-import type {WidgetGroupingContext} from "../widget-grouping.js"
 import {css, html} from "lit"
 import {aiChatStyles} from "./ai-chat.styles"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
@@ -30,44 +27,6 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
 export class DomEditorToolbox extends EditingControls {
   protected usesNativePointerInteraction(event: MouseEvent) {
     return event.composedPath().some(target => target instanceof HTMLElement && target.classList.contains("ai-toolbox-content"))
-  }
-
-  private renderWidgetSharing() {
-    const state = this.widgetOptions
-    if(!state?.sharing) return ""
-    const {sharing} = state
-    const reference = {path: [...state.path], localName: state.localName, widgetId: sharing.widgetId}
-    const grouping = sharing.grouping
-    const summary = grouping?.method === "existing" ? "Existing grouping"
-      : grouping?.method === "manual" ? `${grouping.manualGroups.length} groups · manual`
-      : grouping ? `${grouping.number} ${grouping.groupBy === "groups" ? "groups" : "members per group"} · ${grouping.allocateBy === "random" ? "random" : "ordered"}` : ""
-    return html`
-      <section class="widget-sharing" aria-label="Sharing">
-        <label class="share-toggle"><span>Share</span><input type="checkbox" role="switch"
-          .checked=${sharing.mode !== "individual"}
-          @change=${(event: Event) => this.dispatchEvent(new CustomEvent("widget-sharing-change", {bubbles: true, composed: true,
-            detail: {...reference, enabled: (event.target as HTMLInputElement).checked}}))}></label>
-        ${sharing.mode === "individual" ? "" : grouping ? html`
-          <div class="grouping-card">
-            <button class="grouping-summary" @click=${() => this.configureWidgetGrouping(reference, grouping)}>
-              <strong>${grouping.groupingName || "Grouping"}</strong><span>${summary}</span>
-            </button>
-            <button class="grouping-remove" aria-label="Remove grouping" title="Remove grouping"
-              @click=${() => this.dispatchEvent(new CustomEvent("widget-grouping-change", {bubbles: true, composed: true, detail: {...reference, grouping: null}}))}>${ribbonIcon("Reject")}</button>
-          </div>
-        ` : html`<button class="add-grouping" @click=${() => this.configureWidgetGrouping(reference, null)}>Add grouping</button>`}
-        ${sharing.error ? html`<p role="alert">${sharing.error}</p>` : ""}
-      </section>
-    `
-  }
-
-  private async configureWidgetGrouping(reference: {path: number[], localName: string, widgetId: string}, grouping: import("../widget-grouping.js").WidgetGroupingRules | null) {
-    const dialog = this.shadowRoot?.querySelector<WidgetGroupingDialog>("widget-grouping-dialog")
-    if(!dialog) return
-    const result = await dialog.show(grouping, () => new Promise<WidgetGroupingContext>((resolve, reject) => {
-      this.dispatchEvent(new CustomEvent("widget-grouping-context", {bubbles: true, composed: true, detail: {...reference, resolve, reject}}))
-    }))
-    if(result !== undefined) this.dispatchEvent(new CustomEvent("widget-grouping-change", {bubbles: true, composed: true, detail: {...reference, grouping: result}}))
   }
 
   protected renderGraphicDrawer() {

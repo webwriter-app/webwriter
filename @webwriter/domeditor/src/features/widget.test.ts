@@ -215,6 +215,16 @@ describe("widget editing config", () => {
 })
 
 describe("widget options", () => {
+  it("reports selected widgets even without optional dynamic declarations", () => {
+    document.body.innerHTML = "<demo-plain><p>Nested content</p></demo-plain>"
+    const widget = document.querySelector("demo-plain")!
+    expect(editor.features.widget.getOptionsState([document.body, widget, widget.firstElementChild!])).toMatchObject({
+      path: [0], localName: "demo-plain", options: [], actions: [],
+    })
+    widget.replaceWith(document.createElement("demo-plain"))
+    expect(editor.features.widget.getOptionsState([document.body, widget])).toBeNull()
+  })
+
   it("describes the options and actions of the selected widget", () => {
     document.documentElement.lang = "de"
     document.body.innerHTML = '<p>Before</p><demo-options count="3" shuffled widget-data="[1,2]" mode="b"></demo-options>'
@@ -367,6 +377,19 @@ describe("widget contract edge cases", () => {
 })
 
 describe("widget sharing controls", () => {
+  it.each(["application/json", "application/xml"])("reports only the direct scoped %s data block", type => {
+    editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
+    const value = type === "application/json" ? '{"answers":{}}' : '<answers />'
+    document.body.innerHTML = `<demo-widget><div><script slot="data" type="${type}">nested</script></div><script slot="data" type="${type}">${value}</script></demo-widget>`
+    const widget = document.querySelector("demo-widget")!
+    const state = editor.features.widget.getOptionsState([document.body, widget])!
+    expect(state.data).toEqual({type, value})
+    expect(isWidgetOptionsState(state)).toBe(true)
+    expect(isWidgetOptionsState({...state, data: {type: "text/javascript", value}})).toBe(false)
+    widget.querySelector(":scope > script")!.remove()
+    expect(editor.features.widget.getOptionsState([document.body, widget])?.data).toBeUndefined()
+  })
+
   it("offers sharing without widget options, retains rules while off and removes grouping independently", async () => {
     const {defaultGroupingRules} = await import("../widget-grouping.js")
     const {readWidgetGrouping} = await import("../widget-grouping-dom")

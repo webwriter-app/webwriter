@@ -3,12 +3,12 @@ import {keyed} from "lit/directives/keyed.js"
 import {ribbonIcon} from "../ribbon-icons"
 import {DocumentHeadCombobox} from "./document-head-editor"
 import {EditingControls} from "./editing-controls"
-import type {WebWriterPackage} from "../packages"
+import {packageMemberAction, type WebWriterPackage} from "../packages"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
 
-export type DeveloperConsoleTab = "HTML" | "Packages" | "Tests"
-const tabs: DeveloperConsoleTab[] = ["Packages", "Tests", "HTML"]
+export type DeveloperConsoleTab = "HTML" | "Packages" | "Tests" | "Element"
+const tabs: DeveloperConsoleTab[] = ["Packages", "Tests", "Element", "HTML"]
 
 /** Bottom console reusing the package editor's command and input contracts. */
 export class DeveloperConsole extends EditingControls {
@@ -111,6 +111,15 @@ export class DeveloperConsole extends EditingControls {
     .develop-checklist [data-status="passed"] .check-icon {color: #287344}
     .develop-checklist [data-status="failed"] {color: #a34521}
     .develop-checklist [data-status="pending"] {color: #667085}
+    .element-content {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: .75rem; padding: .65rem; font-size: .8rem; user-select: text}
+    .element-content .develop-section {margin: 0; min-width: 0}
+    .element-content h3 {font-size: .8rem; margin: .65rem 0}
+    .element-content code, .element-option small {display: block; overflow-wrap: anywhere; color: #667085; font-size: .7rem}
+    .element-option, .element-action {margin-bottom: .65rem}
+    .widget-data {white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem}
+    .element-empty {padding: .65rem; font-size: .8rem}
+    .element-insert, .element-action button, .widget-sharing button {border-color: #bac5d3; margin-right: .35rem}
+    .share-toggle {display: flex; align-items: center; gap: .5rem}
     [hidden] {display: none !important}
     @media (max-width: 600px) {:host {grid-template-columns: minmax(7rem, 30%) minmax(0, 1fr)}}
   `
@@ -259,6 +268,50 @@ export class DeveloperConsole extends EditingControls {
     })
   }
 
+  private renderWidgetElement() {
+    const pkg = this.selectedLocalPackage
+    const state = this.widgetOptions
+    const member = pkg?.members.find(member => member.kind === "widget" && member.tagName === state?.localName)
+    if(!state || !member) return html`
+      <div class="element-empty">
+        <p>No widget element of this package selected</p>
+        ${(pkg?.members ?? []).filter(member => member.kind === "widget" && member.insertable).map(member => html`
+          <button type="button" class="element-insert" title=${member.description ?? ""}
+            @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: packageMemberAction(member)}, bubbles: true, composed: true}))}
+          >Insert ${member.label}</button>`)}
+      </div>`
+    const attributesMatch = this.elementAttributes?.localName === state.localName
+      && JSON.stringify(this.elementAttributes.path) === JSON.stringify(state.path)
+    return html`
+      <div class="element-content">
+        <section class="develop-section">
+          <strong>${member.label}</strong><code>&lt;${state.localName}&gt;</code>
+          ${member.description ? html`<p>${member.description}</p>` : ""}
+          <h3>Options</h3>
+          ${state.options.length ? state.options.map(option => html`<div class="element-option">
+            ${this.renderWidgetOptionField(option)}
+            <small>${option.name} · ${option.type} · ${option.attribute === null ? "Property only (not saved)" : `Attribute: ${option.attribute}`}</small>
+          </div>`) : html`<p>No options declared</p>`}
+        </section>
+        <section class="develop-section">
+          <h3>Actions</h3>
+          ${state.actions.length ? state.actions.map(action => html`<div class="element-action">
+            <button type="button" class="widget-action"
+              @click=${() => this.dispatchEvent(new CustomEvent("widget-action", {detail: {name: action.name}, bubbles: true, composed: true}))}
+            >${action.label}</button><code>${action.name}()</code>
+            ${action.description ? html`<p>${action.description}</p>` : ""}
+          </div>`) : html`<p>No actions declared</p>`}
+          <h3>Scoped widget data</h3>
+          ${state.sharing ? html`
+            <p>Scope: ${state.sharing.mode === "individual" ? "Individual" : state.sharing.mode === "all" ? "Everyone" : "Group"}</p>
+            ${this.renderWidgetSharing()}
+            ${state.data ? html`<code>${state.data.type}</code><pre class="widget-data">${state.data.value}</pre>` : html`<p>No data block</p>`}
+          ` : html`<p>Not enabled for this widget</p>`}
+        </section>
+        ${attributesMatch ? this.renderElementAttributesDrawer() : ""}
+      </div>`
+  }
+
   protected render() {
     const pkg = this.selectedLocalPackage
     return html`
@@ -298,6 +351,11 @@ export class DeveloperConsole extends EditingControls {
           <button type="button" ?disabled=${this.packageSaving} @click=${() => this.dispatchEvent(new Event("local-package-changes-confirm", {bubbles: true, composed: true}))}>Confirm</button>
         </div>` : ""}
       </div>
+      <div role="tabpanel" id="console-panel-Element" aria-labelledby="console-tab-Element" ?hidden=${this.tab !== "Element"}
+        @mousedown=${this.handleRibbonPointerDown} @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>
+        ${this.tab === "Element" ? this.renderWidgetElement() : ""}
+      </div>
+      <widget-grouping-dialog></widget-grouping-dialog>
       <dialog class="package-changes-dialog" aria-labelledby="package-changes-title"
         @cancel=${(event: Event) => {event.preventDefault(); this.finishPendingPackageChanges("cancel")}}
         @close=${() => {if(this.pendingChangesResolve) this.finishPendingPackageChanges("cancel")}}>

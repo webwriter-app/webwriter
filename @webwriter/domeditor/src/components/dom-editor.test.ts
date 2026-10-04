@@ -6219,3 +6219,38 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.shadowRoot!.querySelector("ribbon-menu")?.hidden).toBe(true)
   })
 })
+
+it("follows the widget package only while the Element console tab is open", async () => {
+  const {editor, editorWindow} = await mountEditor()
+  const host = editor as any
+  host.localPackages = [{...demoPackage, name: "@local/first", members: []}, demoPackage]
+  host.selectedLocalPackageName = "@local/first"
+  host.widgetOptions = {path: [0], localName: demoPackage.members.find(member => member.kind === "widget")!.tagName, options: [], actions: []}
+  host.selectWidgetElementPackage()
+  expect(host.selectedLocalPackageName).toBe("@local/first")
+  host.consoleOpen = true
+  host.selectWidgetElementPackage()
+  expect(host.selectedLocalPackageName).toBe("@local/first")
+  host.handleDeveloperConsoleTabChange(new CustomEvent("developer-console-tab-change", {detail: {tab: "Element"}}))
+  expect(host.consoleTab).toBe("Element")
+  expect(host.selectedLocalPackageName).toBe(demoPackage.name)
+  host.selectedLocalPackageName = "@local/first"
+  window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+    type: selectionChangeEvent, detail: {path: [{path: [], name: "Document", icon: "Document"}],
+      widget: {...host.widgetOptions, path: [1]}},
+  }}))
+  expect(host.selectedLocalPackageName).toBe(demoPackage.name)
+  window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+    type: selectionChangeEvent, detail: {path: [{path: [], name: "Document", icon: "Document"}]},
+  }}))
+  expect(host.widgetOptions).toBeNull()
+  expect(host.selectedLocalPackageName).toBe(demoPackage.name)
+  host.selectedLocalPackageName = "@local/first"
+  host.widgetOptions = {path: [0], localName: "unknown-widget", options: [], actions: []}
+  host.selectWidgetElementPackage()
+  expect(host.selectedLocalPackageName).toBe("@local/first")
+  host.installedPackages = [{...demoPackage, name: "@npm/only", members: [{...demoPackage.members[0], tagName: "npm-only"}]}]
+  host.widgetOptions = {path: [0], localName: "npm-only", options: [], actions: []}
+  host.selectWidgetElementPackage()
+  expect(host.selectedLocalPackageName).toBe("@local/first")
+})

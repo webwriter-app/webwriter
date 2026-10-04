@@ -47,6 +47,7 @@ export type WidgetOptionsState = {
   localName: string
   options: WidgetOptionState[]
   actions: WidgetActionState[]
+  data?: {type: "application/json" | "application/xml", value: string}
   sharing?: {widgetId: string, mode: "individual" | "all" | "group", grouping: WidgetGroupingRules | null, error?: string}
 }
 
@@ -153,6 +154,9 @@ const isOptionValue = (value: unknown, depth = 0): boolean => {
 
 export function isWidgetOptionsState(value: unknown): value is WidgetOptionsState {
   if(!isRecord(value)) return false
+  if(value.data !== undefined && (!isRecord(value.data)
+    || !["application/json", "application/xml"].includes(value.data.type as string)
+    || typeof value.data.value !== "string")) return false
   if(value.sharing !== undefined) {
     const sharing = value.sharing
     if(!isRecord(sharing) || typeof sharing.widgetId !== "string"

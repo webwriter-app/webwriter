@@ -140,7 +140,7 @@ export class WidgetFeature extends EditorFeature {
 
   /** Options and actions of the innermost installed widget in `path`. */
   getOptionsState(path: Element[]): WidgetOptionsState | null {
-    const widget = [...path].reverse().find(element => this.isWidget(element))
+    const widget = [...path].reverse().find(element => document.body.contains(element) && this.isWidget(element))
     if(!widget) return null
     const locale = this.#locale()
     const options = Object.entries(this.#declarations(widget, "options")).map(([name, declaration]) => {
@@ -153,14 +153,17 @@ export class WidgetFeature extends EditorFeature {
       .filter(([name]) => typeof (widget as unknown as Record<string, unknown>)[name] === "function")
       .map(([name, declaration]) => widgetActionState(name, declaration, locale))
     const supported = this.editor.schema.get(widget)?.sharedData === true
-    if(!options.length && !actions.length && !supported) return null
     let grouping: WidgetGroupingRules | null = null, error: string | undefined
     if(supported) {
       try { grouping = readWidgetGrouping(widget) }
       catch(reason) { error = reason instanceof Error ? reason.message : String(reason) }
     }
     const mode = !widget.hasAttribute("shared") ? "individual" : widget.getAttribute("shared") === "group" ? "group" : "all"
+    const data = supported ? Array.from(widget.children).find(child => child.localName === "script"
+      && child.getAttribute("slot") === "data" && !child.hasAttribute("src")
+      && ["application/json", "application/xml"].includes(child.getAttribute("type") ?? "")) : undefined
     return {path: pathFromNode(document.body, widget) ?? [], localName: widget.localName, options, actions,
+      ...(data ? {data: {type: data.getAttribute("type") as "application/json" | "application/xml", value: data.textContent ?? ""}} : {}),
       ...(supported ? {sharing: {widgetId: widget.id, mode, grouping, ...(error ? {error} : {})}} : {})}
   }
 

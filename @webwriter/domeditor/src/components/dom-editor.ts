@@ -547,7 +547,7 @@ export class DomEditor extends LitElement {
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
   private consoleOpen = false
-  private consoleTab: "HTML" | "Packages" | "Tests" = "Packages"
+  private consoleTab: "HTML" | "Packages" | "Tests" | "Element" = "Packages"
   private htmlMode = false
   private htmlSource = ""
   private htmlOriginalSource = ""
@@ -4879,7 +4879,10 @@ export class DomEditor extends LitElement {
     if(typeof enabled !== "boolean" || this.htmlPending) return
     if(!enabled && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
     this.consoleOpen = enabled
-    if(enabled) this.templatesDismissed = true
+    if(enabled) {
+      this.templatesDismissed = true
+      this.selectWidgetElementPackage()
+    }
     void this.setHTMLMode(enabled && this.consoleTab === "HTML")
   }
 
@@ -4899,9 +4902,16 @@ export class DomEditor extends LitElement {
     this.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: settings}))
   }
 
+  private selectWidgetElementPackage() {
+    const widget = this.widgetOptions
+    if(!this.consoleOpen || this.consoleTab !== "Element" || !widget) return
+    const pkg = this.localPackages.find(pkg => pkg.members.some(member => member.kind === "widget" && member.tagName === widget.localName))
+    if(pkg) this.selectedLocalPackageName = pkg.name
+  }
+
   private handleDeveloperConsoleTabChange = (event: Event) => {
     const tab = (event as CustomEvent<{tab?: unknown}>).detail?.tab
-    if((tab !== "HTML" && tab !== "Packages" && tab !== "Tests") || this.htmlPending) {
+    if((tab !== "HTML" && tab !== "Packages" && tab !== "Tests" && tab !== "Element") || this.htmlPending) {
       event.preventDefault()
       return
     }
@@ -4913,6 +4923,7 @@ export class DomEditor extends LitElement {
       return
     }
     this.consoleTab = tab
+    this.selectWidgetElementPackage()
     void this.setHTMLMode(tab === "HTML")
   }
 
@@ -5676,7 +5687,10 @@ export class DomEditor extends LitElement {
         path: event.data.detail.element.path ? [...event.data.detail.element.path] : null,
         attributes: {...event.data.detail.element.attributes},
       } : null
+      const previousWidget = this.widgetOptions
       this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
+      if(previousWidget?.localName !== this.widgetOptions?.localName
+        || JSON.stringify(previousWidget?.path) !== JSON.stringify(this.widgetOptions?.path)) this.selectWidgetElementPackage()
       const hasContextualEditOptions = this.tableSelection?.active === true
         || this.layoutSelection !== null
         || this.graphicSelection?.active === true

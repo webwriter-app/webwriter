@@ -90,11 +90,11 @@ describe("Developer console", () => {
     expect(change).toHaveBeenLastCalledWith(expect.objectContaining({detail: {pinned: false}}))
   })
 
-  it("switches between three accessible tabs with clicks and keyboard navigation", async () => {
+  it("switches between four accessible tabs with clicks and keyboard navigation", async () => {
     const console = await mount()
     const root = console.shadowRoot!
     const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    expect(tabs.map(tab => tab.textContent)).toEqual(["Metadata", "Tests & Checks", "HTML"])
+    expect(tabs.map(tab => tab.textContent)).toEqual(["Metadata", "Tests & Checks", "Element", "HTML"])
     const change = vi.fn()
     console.addEventListener("developer-console-tab-change", change)
     tabs[0].click()
@@ -113,7 +113,7 @@ describe("Developer console", () => {
     tabs[1].dispatchEvent(new KeyboardEvent("keydown", {key: "End", bubbles: true}))
     await console.updateComplete
     expect(console.tab).toBe("HTML")
-    expect(tabs.map(tab => tab.tabIndex)).toEqual([-1, -1, 0])
+    expect(tabs.map(tab => tab.tabIndex)).toEqual([-1, -1, -1, 0])
   })
 
   it("keeps a fixed 300px height without a resize handle", async () => {
@@ -235,4 +235,68 @@ describe("Developer console", () => {
     await console.updateComplete
     expect(console.shadowRoot!.querySelector(".issue-count")).toBeNull()
   })
+})
+
+const elementPackage = {
+  name: "@local/demo", version: "1.0.0", label: "Demo", description: "", authors: [], keywords: [], links: {}, scripts: [], styles: [],
+  members: ["demo-widget", "demo-other"].map(tagName => ({id: tagName, packageName: "@local/demo", packageVersion: "1.0.0", exportName: `./widgets/${tagName}.js`, kind: "widget" as const, label: tagName, tagName, insertable: true})),
+}
+
+it("offers each insertable widget when the package has no matching selection", async () => {
+  const console = new DeveloperConsole()
+  console.localPackages = [{...elementPackage, members: [...elementPackage.members,
+    {...elementPackage.members[0], id: "hidden-widget", tagName: "hidden-widget", insertable: false},
+    {...elementPackage.members[0], id: "snippet", kind: "snippet"},
+  ]}]
+  console.tab = "Element"
+  console.widgetOptions = {path: [0], localName: "unrelated-widget", options: [], actions: []}
+  document.body.append(console)
+  await console.updateComplete
+  const panel = console.shadowRoot!.querySelector("#console-panel-Element")!
+  expect(panel.textContent).toContain("No widget element of this package selected")
+  const insert = vi.fn()
+  console.addEventListener("ribbon-button-click", insert)
+  const buttons = panel.querySelectorAll<HTMLButtonElement>(".element-insert")
+  expect(buttons).toHaveLength(2)
+  buttons[1].click()
+  expect(insert).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "package-member:demo-other"}}))
+  console.widgetOptions = null
+  await console.updateComplete
+  expect(panel.textContent).toContain("No widget element of this package selected")
+})
+
+it("shows live option declarations, actions and sharing with the existing command contracts", async () => {
+  const console = new DeveloperConsole()
+  console.localPackages = [elementPackage]
+  console.tab = "Element"
+  console.widgetOptions = {path: [1], localName: "demo-widget",
+    options: [{name: "count", label: "Count", type: "number", attribute: "count", value: 3, min: 0},
+      {name: "internal", label: "Internal", type: "string", attribute: null, value: "local"}],
+    actions: [{name: "reset", label: "Reset", description: "Reset answers"}],
+    data: {type: "application/json", value: '{"answers":{}}'},
+    sharing: {widgetId: "demo", mode: "individual", grouping: null}}
+  document.body.append(console)
+  await console.updateComplete
+  const panel = console.shadowRoot!.querySelector("#console-panel-Element")!
+  expect(panel.textContent).toContain("Attribute: count")
+  expect(panel.textContent).toContain("Property only (not saved)")
+  expect(panel.textContent).toContain("Reset answers")
+  expect(panel.querySelector(".widget-data")?.textContent).toBe('{"answers":{}}')
+  const option = vi.fn(), action = vi.fn(), sharing = vi.fn()
+  console.addEventListener("widget-option-change", option)
+  console.addEventListener("widget-action", action)
+  console.addEventListener("widget-sharing-change", sharing)
+  const input = panel.querySelector<HTMLInputElement>('input[type="number"]')!
+  input.value = "7"
+  input.dispatchEvent(new Event("change"))
+  expect(option).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "count", value: 7}}))
+  panel.querySelector<HTMLButtonElement>(".widget-action")!.click()
+  expect(action).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "reset"}}))
+  panel.querySelector<HTMLInputElement>('[role="switch"]')!.click()
+  expect(sharing).toHaveBeenCalledWith(expect.objectContaining({detail: {path: [1], localName: "demo-widget", widgetId: "demo", enabled: true}}))
+  console.widgetOptions = {...console.widgetOptions!, options: [], actions: [], sharing: undefined}
+  await console.updateComplete
+  expect(panel.textContent).toContain("No options declared")
+  expect(panel.textContent).toContain("No actions declared")
+  expect(panel.querySelector(".element-empty")).toBeNull()
 })
