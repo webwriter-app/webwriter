@@ -629,6 +629,36 @@ await check("selection feature treats custom element as atomic", () => {
   assert(widget.getAttribute("contenteditable") === "false", "editor changed authored widget editability")
 })
 
+await check("node drag borders leave native text and table editing reachable", async () => {
+  for(const tag of ["p", "h2", "table"]) {
+    const element = document.createElement(tag)
+    element.style.cssText = "width:360px;line-height:32px;padding:12px"
+    element.innerHTML = tag === "table" ? "<tbody><tr><td>editable text</td></tr></tbody>" : "editable text"
+    fixture.append(element)
+    const block = element.querySelector("td") ?? element, text = block.firstChild!
+    try {
+      $.selectElement(element)
+      editor.features.selection.processSelection()
+      await layoutFrame()
+      const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+      assert(surface?.draggable, "selected flow content lost native dragging")
+      const range = document.createRange()
+      range.setStart(text, 3); range.setEnd(text, 4)
+      const rect = range.getBoundingClientRect()
+      const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+      const hit = document.elementFromPoint(x, y)
+      assert(hit === block || block.contains(hit), `${tag} text is covered by its drag surface`)
+      hit!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 91, clientX: x, clientY: y}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 91, clientX: x, clientY: y}))
+      assert(document.getSelection()?.isCollapsed && block.contains($.anchor), `${tag} click did not enter text editing`)
+      assert(document.execCommand("insertText", false, "X") && block.textContent?.includes("X"), `${tag} typing was blocked`)
+      assert(!surface.isConnected, `${tag} retained its drag surface after entering text`)
+      assert(!editor.toHTML(true).includes("clip-path"), "drag clipping leaked into authored HTML")
+    }
+    finally { element.remove() }
+  }
+})
+
 await check("layout based hit testing returns the rendered target", async () => {
   await nextFrame()
   const target = document.querySelector<HTMLElement>("#hit-target")!
@@ -1535,7 +1565,7 @@ await check("relayed ribbon elements drop onto the selected element beneath edit
     frameEditor.features.selection.processSelection()
     await layoutFrame(); await layoutFrame()
     const rect = heading.getBoundingClientRect()
-    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 4
+    const x = rect.right - 2, y = rect.top + rect.height / 2
     assert(doc.elementFromPoint(x, y) === doc.body, "the selected element is not covered by an editor overlay")
     const data = {"application/x-webwriter-element-tag": "table", "application/x-webwriter-element-tag-table": "table", "text/html": "<table></table>"}
     assert(replayHostDrag({event: "dragover", x, y, data}, doc), "drag over the selected element was not accepted")

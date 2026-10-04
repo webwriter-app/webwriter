@@ -23,6 +23,7 @@ const expectedChecks = [
   "leaving an empty inline formula removes it without moving the text caret",
   "bottom layout cards retain native editing focus after rendering",
   "editor command preserves a live selection",
+  "node drag borders leave native text and table editing reachable",
   "selection feature treats custom element as atomic",
   "layout based hit testing returns the rendered target",
   "layout insertion retains its selected grid wrapper after two frames",

@@ -5,7 +5,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
 import {isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isColumnGroup, columnSide, columnSides, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, isColumnGroup, columnSide, columnSides, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, clearInlinePlacement, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -108,6 +108,10 @@ export class ManipulationFeature extends EditorFeature {
     const surface = document.createElement("div")
     surface.classList.add("◆", "◆editor-only")
     surface.setAttribute("part", "node-drag-surface")
+    // Native dragging uses the border while text and table cells stay reachable.
+    if(!isAtomicEditingElement(element, this.editor.schema)) {
+      surface.style.clipPath = "polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, 4px 4px, 4px calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 4px, 4px 4px)"
+    }
     surface.setAttribute("aria-hidden", "true")
     surface.contentEditable = "false"
     surface.draggable = true

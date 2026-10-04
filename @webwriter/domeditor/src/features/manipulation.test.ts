@@ -3482,6 +3482,23 @@ describe("unified content transfer", () => {
     editor.features.manipulation.enable()
   })
 
+  it.each(["p", "h2", "table", "test-widget", "svg"])("keeps %s drag hit areas in the appendix and out of shared HTML", tag => {
+    document.body.innerHTML = tag === "table" ? "<table><tbody><tr><td>source</td></tr></tbody></table>" : `<${tag}>source</${tag}>`
+    const source = document.body.firstElementChild!
+    const {surface, data} = beginDrag(source)
+    expect(surface.style.clipPath !== "").toBe(["p", "h2", "table"].includes(tag))
+    expect(surface.getRootNode()).toBe(editor.appendix)
+    expect(data.getData("text/html")).not.toContain("clip-path")
+    expect(source.getAttribute("style")).toBeNull()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("clip-path")
+    expect(editor.toHTML(true)).not.toContain("clip-path")
+    surface.dispatchEvent(transferEvent("dragend", data))
+    $.move(document.body, 0)
+    editor.features.selection.processSelection()
+    expect(surface.isConnected).toBe(false)
+  })
+
   it.each(["left", "right"] as const)("keeps external drops in the selected %s group column", side => {
     document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
     const group = document.querySelector<HTMLElement>(".ww-column-group")!
