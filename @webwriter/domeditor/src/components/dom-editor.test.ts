@@ -10,6 +10,7 @@ import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonMenu} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
+import type {RibbonTab} from "./ribbon-tab"
 import type {OpenDocumentMenu} from "./open-document-menu"
 import {
   editorFrameControlMessage,
@@ -3219,6 +3220,41 @@ describe("DomEditor file actions", () => {
 })
 
 describe("DomEditor.execute()", () => {
+  it.each([true, false])("opens the developer console from the File menu with ribbon expanded=%s", async expanded => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    ribbon.expanded = expanded
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(toolbox.activeTool).toBeNull()
+    const file = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
+    await file.updateComplete
+    file.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
+    await menu.updateComplete
+    const items = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item"))
+    const show = items.find(button => button.title === "Developer console")!
+    expect(items[items.indexOf(show) + 1].title).toBe("Settings")
+    expect(show.querySelector(".icon-tabler-terminal-2")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")?.getAttribute("aria-hidden")).not.toBe("false")
+    show.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await toolbox.updateComplete
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("false")
+    expect(toolbox.consoleOpen).toBe(true)
+    expect(ribbon.consoleOpen).toBe(true)
+    expect(ribbon.menuOpen).toBe(false)
+    file.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
+    show.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("false")
+  })
+
   it("ignores previously pinned documents while restoring console pinning", async () => {
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), pinDeveloperConsole: true}))
     localStorage.setItem("webwriter_pinned_document_v1", JSON.stringify({html: "<p>Previously pinned</p>", fileName: "Saved"}))

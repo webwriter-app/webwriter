@@ -929,7 +929,7 @@ export class RibbonDrawer extends LitElement {
       height: auto;
       max-height: none;
       min-height: 0;
-      padding: 0 0.7rem 0.75rem;
+      padding: 0 var(--ribbon-drawer-pane-padding-inline, 0.7rem) 0.75rem;
       border: 0;
       border-bottom: 1px solid #d8dee6;
       background: transparent;
@@ -963,7 +963,7 @@ export class RibbonDrawer extends LitElement {
     :host([pane][layout="packages"][single-column][hide-pane-label]) .drawer,
     :host([pane][layout="packages"][single-column][hide-pane-label]) .drawer.expanded,
     :host([pane][layout="packages"][single-column][hide-pane-label]) .drawer.expanded.closing {
-      padding: 0.35rem 0.7rem 0.45rem;
+      padding: 0.35rem var(--ribbon-drawer-pane-padding-inline, 0.7rem) 0.45rem;
     }
 
     :host([pane]) .controls,

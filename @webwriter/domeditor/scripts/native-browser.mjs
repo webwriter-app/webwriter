@@ -48,6 +48,7 @@ const expectedChecks = [
   "selection markers and appendix layout artifacts tear down cleanly",
   "standalone SVG affordances refit rotated elements and resize beyond their original size",
   "ribbon shapes retain their aspect ratio under the document theme",
+  "ribbon dropdowns join their triggers without gaps at viewport edges",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
   "canvas box selection retains disjoint ranges and stays in the document top layer",

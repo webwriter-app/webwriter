@@ -1164,6 +1164,50 @@ await check("shape labels retain capture while typing and selecting text", async
   }
 })
 
+await check("ribbon dropdowns join their triggers without gaps at viewport edges", async () => {
+  const {RibbonButton} = await import("../src/components/ribbon-button")
+  for(const options of [
+    {variant: "insertion", left: 42.25, top: 100.5, width: 92.5},
+    {variant: "package", active: true, muted: true, iconAction: "pin-snippet", left: 40, top: 100, width: 140},
+    {variant: "toolbar", dropdownOnClick: true, left: 40, top: 100, width: 320},
+    {variant: "default", compact: true, left: window.innerWidth - 40, top: 100, width: 32},
+    {variant: "tab", left: 40, top: window.innerHeight - 48, width: 100},
+  ]) {
+    const button = new RibbonButton()
+    Object.assign(button, {label: "Paragraph", action: "element:p", submenu: ["Heading 1", "Heading 2"], ...options})
+    Object.assign(button.style, {position: "fixed", left: `${options.left}px`, top: `${options.top}px`, width: `${options.width}px`})
+    document.body.append(button)
+    try {
+      await button.updateComplete
+      const row = button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+      const trigger = button.shadowRoot!.querySelector<HTMLButtonElement>(options.dropdownOnClick ? ".main-button" : ".submenu-trigger")!
+      trigger.click()
+      await button.updateComplete
+      await layoutFrame()
+      const menu = button.shadowRoot!.querySelector<HTMLElement>("ribbon-menu")!
+      const box = row.getBoundingClientRect(), popup = menu.getBoundingClientRect()
+      const above = row.dataset.connected === "above"
+      assert(row.dataset.connected === (options.variant === "tab" ? "above" : "below"), `${options.variant}: wrong placement`)
+      assert(menu.matches(":popover-open"), "menu left the browser's top layer")
+      assert(Math.abs((above ? popup.bottom - box.top : box.bottom - popup.top) - 1) < .01, "trigger and menu do not share exactly one border pixel")
+      assert(popup.width >= box.width && popup.left >= 8 && popup.right <= window.innerWidth - 8, "menu does not contain its trigger within the viewport")
+      const style = getComputedStyle(row), surface = getComputedStyle(menu.shadowRoot!.querySelector<HTMLElement>(".menu")!)
+      assert(style.backgroundColor === surface.backgroundColor && style.backgroundColor === "rgb(255, 255, 255)", "open trigger does not match the menu's white background")
+      assert(style.opacity === "1", "muted trigger makes the joined border translucent")
+      assert(style.borderLeftColor === surface.borderLeftColor && style.boxShadow === "none", "trigger's border does not match its menu")
+      assert(parseFloat(getComputedStyle(menu, "::before").width) === box.width - 2, "shared border mask does not match trigger interior")
+      assert(parseFloat(menu.style.getPropertyValue("--ribbon-menu-join-left")) === box.left - popup.left + 1, "shared border mask is not aligned with the trigger")
+      const corners = above ? [surface.borderBottomLeftRadius, surface.borderBottomRightRadius] : [surface.borderTopLeftRadius, surface.borderTopRightRadius]
+      if(popup.left === box.left) assert(corners[0] === "0px", "joined left corner retains a rounded gap")
+      if(popup.right === box.right) assert(corners[1] === "0px", "joined right corner retains a rounded gap")
+      button.closeSubmenu()
+      await button.updateComplete
+      assert(!row.hasAttribute("data-connected") && menu.hidden && !menu.matches(":popover-open"), "closing the menu retains connected styling")
+    }
+    finally { button.remove() }
+  }
+})
+
 await check("ribbon shapes retain their aspect ratio under the document theme", async () => {
   const theme = document.createElement("style")
   theme.textContent = defaultDocumentTheme.source

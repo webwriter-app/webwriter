@@ -72,7 +72,7 @@ describe("collapsed ribbon file menu", () => {
   it("shows editing menus only while collapsed and outside preview", async () => {
     const {ribbon, menu} = await mount()
     expect(menu.groups.flatMap(group => group.buttons).map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["New", "Open", "Save", "Format", "Insert", "Packages", "Hide breadcrumb", "Settings"])
+      .toEqual(["New", "Open", "Save", "Format", "Insert", "Packages", "Hide breadcrumb", "Developer console", "Settings"])
     ribbon.expanded = true
     await ribbon.updateComplete
     await menu.updateComplete
@@ -83,6 +83,11 @@ describe("collapsed ribbon file menu", () => {
     await menu.updateComplete
     expect(menu.shadowRoot!.querySelector('[title="Insert"]')).toBeNull()
     expect(menu.shadowRoot!.querySelector('[title="Hide breadcrumb"]')).toBeNull()
+    expect(menu.shadowRoot!.querySelector('[title="Developer console"]')).toBeNull()
+    ribbon.settings = {...ribbon.settings, pinDeveloperConsole: true}
+    await ribbon.updateComplete
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector('[title="Developer console"]')).not.toBeNull()
   })
 
   it("flattens marks into three sections and dispatches existing commands", async () => {

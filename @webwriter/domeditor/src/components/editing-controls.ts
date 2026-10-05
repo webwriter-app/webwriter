@@ -387,8 +387,18 @@ export abstract class EditingControls extends LitElement {
       if(attribute === "target") value = input.checked ? "_blank" : ""
       if(attribute === "download") value = input.checked ? "" : null
     }
+    if(mark === "a") this.applyLinkMark()
     this.dispatchEvent(new CustomEvent("mark-attribute-change", {
       detail: {mark, attribute, value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  protected applyLinkMark() {
+    if(!this.canMark || this.math?.active) return
+    this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "mark:a", apply: true, keepDrawerOpen: true},
       bubbles: true,
       composed: true,
     }))
@@ -439,16 +449,17 @@ export abstract class EditingControls extends LitElement {
         title=${option.label}
         .value=${this.markAttributes[mark]?.[option.name] ?? ""}
         ?disabled=${!this.canMark || !active}
+        @focus=${() => { if(mark === "a" && option.name === "href") this.applyLinkMark() }}
         @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
       />
     `
   }
 
-  protected renderLinkDropdown(active = true) {
+  protected renderLinkDropdown() {
     const download = this.markAttributes.a?.download
     return html`
       <div class="button-dropdown-form" role="group" aria-label="Link options">
-        <fieldset ?disabled=${!active || !this.canMark || this.math?.active}>
+        <fieldset ?disabled=${!this.canMark || this.math?.active}>
         <div class="link-options" role="group" aria-label="Link behavior">
           <label class="mark-attribute">
             <span>Open in new tab</span>
@@ -560,10 +571,10 @@ export abstract class EditingControls extends LitElement {
             }))} />
           <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("MarkLink")}</span>
           <span class="mark-dropdown-option-name">Link</span>
-          ${href ? html`<span class="mark-dropdown-link-url">${this.renderDropdownAttribute("a", href, linkActive && !this.math?.active)}</span>` : ""}
+          ${href ? html`<span class="mark-dropdown-link-url">${this.renderDropdownAttribute("a", href, !this.math?.active)}</span>` : ""}
           ${this.commandShortcut("mark:a") ? html`<span class="mark-dropdown-shortcut">${this.commandShortcut("mark:a")}</span>` : ""}
         </div>
-        ${this.renderLinkDropdown(linkActive)}
+        ${this.renderLinkDropdown()}
         ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
       </div>
     `

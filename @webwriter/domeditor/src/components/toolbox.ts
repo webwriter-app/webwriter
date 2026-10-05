@@ -65,7 +65,7 @@ export class DomEditorToolbox extends EditingControls {
   .developer-console-controls svg {display: block; width: 15px; height: 15px}
 
 
-    .widget-sharing {padding: .75rem; display: grid; gap: .5rem; border-bottom: 1px solid var(--sl-color-neutral-200, #ddd)}
+    .widget-sharing {padding: .75rem 0; display: grid; gap: .5rem; border-bottom: 1px solid var(--sl-color-neutral-200, #ddd)}
     .share-toggle {display: flex; justify-content: space-between; align-items: center; font-size: .875rem}
     .share-toggle input {appearance: none; position: relative; width: 2rem; height: 1.125rem; margin: 0; background: var(--sl-color-neutral-300, #ccc); border: 1px solid transparent; border-radius: 1rem; cursor: pointer}
     .share-toggle input::before {content: ""; position: absolute; width: .875rem; height: .875rem; left: .0625rem; top: .0625rem; border-radius: 50%; background: white; transition: transform .12s}
@@ -367,6 +367,11 @@ export class DomEditorToolbox extends EditingControls {
       scrollbar-width: thin;
     }
 
+    :host([active-tool="Edit"]) .toolbox-pane-content {
+      scrollbar-gutter: stable both-edges;
+      --ribbon-drawer-pane-padding-inline: 0;
+    }
+
     .toolbox-pane-content > ribbon-drawer {
       flex: 0 0 auto;
       width: 100%;
@@ -407,7 +412,7 @@ export class DomEditorToolbox extends EditingControls {
       flex-direction: column;
       align-items: stretch;
       gap: 0.45rem;
-      padding: 0.65rem;
+      padding: 0.65rem 0;
       color: #52606d;
       font-size: 0.75rem;
     }

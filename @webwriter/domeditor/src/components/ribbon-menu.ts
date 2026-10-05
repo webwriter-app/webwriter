@@ -630,7 +630,7 @@ export class RibbonMenu extends LitElement {
     return html`
       <span class=${`item-icon${iconUrl ? " image-icon" : ""}`} aria-hidden="true">
         ${ribbonIcon(icon)}
-        ${iconUrl ? html`<img src=${iconUrl} alt="" @error=${this.handleIconError} />` : ""}
+        ${iconUrl ? html`<img src=${iconUrl} alt="" draggable="false" @error=${this.handleIconError} />` : ""}
       </span>
     `
   }

@@ -3361,6 +3361,10 @@ export class DomEditor extends LitElement {
       void this.downloadDocument()
       return
     }
+    if(label === "show-developer-console") {
+      void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+      return
+    }
     if(label === "local-package-add") {
       void this.addLocalPackage()
       return
@@ -3474,11 +3478,13 @@ export class DomEditor extends LitElement {
       return
     }
     if(label?.startsWith("mark:")) {
-      const keepDrawerOpen = Boolean((event as CustomEvent<{keepDrawerOpen?: boolean}>).detail?.keepDrawerOpen)
+      const detail = (event as CustomEvent<{keepDrawerOpen?: boolean, apply?: boolean}>).detail
+      const keepDrawerOpen = Boolean(detail?.keepDrawerOpen)
       const restoreFocus = () => { if(!keepDrawerOpen) this.focusEditor() }
       const mark = canonicalMarkName(label.slice("mark:".length))
       const group = mark ? mergedMarkGroupFor(mark) : undefined
       if(!mark) restoreFocus()
+      else if(detail?.apply === true) void this.execute({type: "addMark", mark}).finally(restoreFocus)
       else if(group?.primary === mark) {
         void this.execute({type: "toggleMarkGroup", mark}).finally(restoreFocus)
       }
@@ -6529,7 +6535,7 @@ export class DomEditor extends LitElement {
         @developer-console-change=${this.handleDeveloperConsoleChange}
         @developer-console-pin-change=${this.handleDeveloperConsolePinChange}
       ></dom-editor-toolbox>
-      ${(this.breadcrumbVisible || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
+      ${(this.breadcrumbVisible || this.consoleOpen || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
       ${this.previewActive || this.liveSessionActive ? "" : html`
         <div class="document-layouts-panel" ?inert=${this.documentLayoutsDismissed} aria-hidden=${String(this.documentLayoutsDismissed)}>
           <div class="document-layouts-clip">

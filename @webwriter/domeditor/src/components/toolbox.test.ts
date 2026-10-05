@@ -22,6 +22,36 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("reserves both scrollbar gutters in Edit without extra content side spacing", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.documentSelected = true
+    toolbox.elementAttributes = {path: [], localName: "body", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Document", attributes: {}}
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
+    expect(getComputedStyle(content).getPropertyValue("scrollbar-gutter")).toBe("stable both-edges")
+    const drawers = Array.from(content.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
+    expect(drawers.length).toBeGreaterThan(1)
+    for(const drawer of drawers) {
+      await drawer.updateComplete
+      const style = getComputedStyle(drawer.shadowRoot!.querySelector(".drawer")!)
+      expect(style.paddingLeft).toBe("0px")
+      expect(style.paddingRight).toBe("0px")
+      expect(style.paddingBottom).toBe("12px")
+    }
+    const layouts = content.querySelector(".document-layout-controls")!
+    expect(getComputedStyle(layouts).paddingLeft).toBe("0px")
+    expect(getComputedStyle(layouts).paddingRight).toBe("0px")
+
+    toolbox.selectTool("Style")
+    await toolbox.updateComplete
+    expect(getComputedStyle(content).getPropertyValue("scrollbar-gutter")).not.toBe("stable both-edges")
+    const drawer = content.querySelector<RibbonDrawer>("ribbon-drawer")!
+    await drawer.updateComplete
+    expect(getComputedStyle(drawer.shadowRoot!.querySelector(".drawer")!).paddingLeft).toBe("11.2px")
+    expect(getComputedStyle(drawer.shadowRoot!.querySelector(".drawer")!).paddingRight).toBe("11.2px")
+  })
+
   it("offers the palette Style drawer for custom elements and reflects current styles", async () => {
     const toolbox = await mountToolbox(false)
     toolbox.selectTool("Edit")
@@ -778,6 +808,8 @@ describe("widget sharing toolbox", () => {
     const controls = toolbox.shadowRoot!.querySelector(".toolbox-pane-content")!
     const style = controls.querySelector('ribbon-drawer[label="Style"]')!
     const sharing = controls.querySelector(".widget-sharing")!
+    expect(getComputedStyle(sharing).paddingLeft).toBe("0px")
+    expect(getComputedStyle(sharing).paddingRight).toBe("0px")
     expect(style.compareDocumentPosition(sharing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     const listener = vi.fn()
     toolbox.addEventListener("widget-sharing-change", listener)

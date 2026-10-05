@@ -93,32 +93,32 @@ export class RibbonButton extends LitElement {
       border-radius: 0.35rem;
     }
 
-    .button-row:not(.has-icon-action):hover {
+    .button-row:not(.has-icon-action):not([data-connected]):hover {
       border-color: #c8d2df;
       background: #eef4fb;
     }
 
-    .button-row.has-icon-action:hover,
-    .button-row.has-icon-action:focus-within {
+    .button-row.has-icon-action:not([data-connected]):hover,
+    .button-row.has-icon-action:not([data-connected]):focus-within {
       border-color: transparent;
       background: #d7e7f7;
     }
 
-    .button-row.has-icon-action:hover .main-button,
-    .button-row.has-icon-action:hover .submenu-trigger,
-    .button-row.has-icon-action:has(.main-button:hover, .submenu-trigger:hover, .main-button:focus-visible, .submenu-trigger:focus-visible) .main-button,
-    .button-row.has-icon-action:has(.main-button:hover, .submenu-trigger:hover, .main-button:focus-visible, .submenu-trigger:focus-visible) .submenu-trigger {
+    .button-row.has-icon-action:not([data-connected]):hover .main-button,
+    .button-row.has-icon-action:not([data-connected]):hover .submenu-trigger,
+    .button-row.has-icon-action:not([data-connected]):has(.main-button:hover, .submenu-trigger:hover, .main-button:focus-visible, .submenu-trigger:focus-visible) .main-button,
+    .button-row.has-icon-action:not([data-connected]):has(.main-button:hover, .submenu-trigger:hover, .main-button:focus-visible, .submenu-trigger:focus-visible) .submenu-trigger {
       color: var(--ribbon-control-color, #1e4f87);
       background: #d7e7f7;
     }
 
-    .button-row.has-icon-action:has(.main-button:active, .submenu-trigger:active) .main-button,
-    .button-row.has-icon-action:has(.main-button:active, .submenu-trigger:active) .submenu-trigger {
+    .button-row.has-icon-action:not([data-connected]):has(.main-button:active, .submenu-trigger:active) .main-button,
+    .button-row.has-icon-action:not([data-connected]):has(.main-button:active, .submenu-trigger:active) .submenu-trigger {
       color: var(--ribbon-control-color, #1e4f87);
       background: #c4dcf4;
     }
 
-    .button-row button:active {
+    .button-row:not([data-connected]) button:active {
       color: var(--ribbon-control-color, #1e4f87);
       background: #c4dcf4;
     }
@@ -171,7 +171,7 @@ export class RibbonButton extends LitElement {
       opacity: 1;
     }
 
-    :host([active]:not([variant="package"])) .button-row:not(.has-icon-action) {
+    :host([active]:not([variant="package"])) .button-row:not(.has-icon-action):not([data-connected]) {
       border-color: #8eb6df;
       background: #dcecff;
       box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
@@ -820,23 +820,6 @@ export class RibbonButton extends LitElement {
       transform: translateY(1px);
     }
 
-    :host([variant="tab"]) .button-row[data-connected] {
-      border-color: #a8a8a8;
-      border-bottom-color: #ffffff;
-      border-radius: 0.45rem 0.45rem 0 0;
-      background: #ffffff;
-    }
-
-    :host([variant="tab"]) .button-row[data-connected="above"] {
-      border-top-color: #ffffff;
-      border-bottom-color: #a8a8a8;
-      border-radius: 0 0 0.45rem 0.45rem;
-    }
-
-    :host([variant="tab"]) .button-row[data-connected] .button-icon {
-      color: #1e4f87;
-    }
-
     /* Keep the popover shadow outside the connected button. */
     ribbon-menu[data-connected="below"] {
       clip-path: inset(0 -2rem -2rem -2rem);
@@ -919,13 +902,13 @@ export class RibbonButton extends LitElement {
       height: 100%;
     }
 
-    :host([variant="package"][active]) .button-row {
+    :host([variant="package"][active]) .button-row:not([data-connected]) {
       border-color: transparent;
       background: transparent;
       box-shadow: none;
     }
 
-    :host([variant="package"][active]) .button-row:not(.has-icon-action):hover {
+    :host([variant="package"][active]) .button-row:not(.has-icon-action):not([data-connected]):hover {
       border-color: #c8d2df;
       background: #eef4fb;
     }
@@ -992,24 +975,26 @@ export class RibbonButton extends LitElement {
       flex: 1 1 auto;
       line-height: 1.1;
       font-size: calc(0.6rem + 1px);
-      overflow: hidden;
+      overflow: clip;
+      overflow-clip-margin: 0.2em;
       white-space: normal;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
     }
 
     :host([variant="package"]) .button-label-text {
+      overflow: visible;
       overflow-wrap: anywhere;
       text-overflow: clip;
       white-space: normal;
     }
 
-    :host([variant="package"][muted]) .button-row {
+    :host([variant="package"][muted]) .button-row:not([data-connected]) {
       color: #7c8794;
       opacity: 0.55;
     }
 
-    :host([variant="package"][muted]) .button-row:hover {
+    :host([variant="package"][muted]) .button-row:not([data-connected]):hover {
       opacity: 0.8;
     }
 
@@ -1034,6 +1019,30 @@ export class RibbonButton extends LitElement {
 
     :host([variant="package"][management][active]) .corner-trigger:hover .corner-icon {
       color: #991b1b;
+    }
+
+    .button-row[data-connected],
+    :host([package-add]) .button-row[data-connected] {
+      border: 1px solid #a8a8a8;
+      border-bottom-color: #ffffff;
+      border-radius: 0.45rem 0.45rem 0 0;
+      background: #ffffff;
+      box-shadow: none;
+    }
+
+    .button-row[data-connected="above"],
+    :host([package-add]) .button-row[data-connected="above"] {
+      border-top-color: #ffffff;
+      border-bottom-color: #a8a8a8;
+      border-radius: 0 0 0.45rem 0.45rem;
+    }
+
+    .button-row[data-connected] > button {
+      background: transparent;
+    }
+
+    .button-row[data-connected] .button-icon {
+      color: #1e4f87;
     }
 
   `
@@ -1216,32 +1225,33 @@ export class RibbonButton extends LitElement {
         if(!this.submenuOpen || !this.isConnected) return
         this.showPopoverElement(submenu)
         const row = this.renderRoot.querySelector<HTMLElement>(".button-row")!
-        const connected = this.variant === "tab"
-        const button = (connected ? row : this).getBoundingClientRect()
+        const button = row.getBoundingClientRect()
+        submenu.style.minWidth = `${Math.min(button.width, window.innerWidth - 16)}px`
         const menu = submenu.getBoundingClientRect()
         const margin = 8
         const left = Math.min(
           Math.max(margin, button.left),
           Math.max(margin, window.innerWidth - menu.width - margin),
         )
-        const gap = connected ? -1 : 4
-        const below = button.bottom + gap
+        const below = button.bottom - 1
         const opensBelow = below + menu.height <= window.innerHeight - margin
         const top = opensBelow
           ? below
-          : Math.max(margin, button.top - menu.height - gap)
+          : Math.max(margin, button.top - menu.height + 1)
         submenu.style.left = `${left}px`
         submenu.style.top = `${top}px`
         submenu.focusEditingLabel()
-        if(connected && (opensBelow || top + menu.height === button.top + 1)) {
+        if(opensBelow || top + menu.height === button.top + 1) {
           const placement = opensBelow ? "below" : "above"
           row.setAttribute("data-connected", placement)
           submenu.setAttribute("data-connected", placement)
           submenu.style.setProperty("--ribbon-menu-join-left", `${button.left - left + 1}px`)
           submenu.style.setProperty("--ribbon-menu-join-width", `${button.width - 2}px`)
-          submenu.style.setProperty("--ribbon-menu-border-radius", left === button.left
-            ? opensBelow ? "0 0.35rem 0.35rem 0.35rem" : "0.35rem 0.35rem 0.35rem 0"
-            : "0.35rem")
+          const joinsLeft = left === button.left
+          const joinsRight = left + menu.width === button.right
+          submenu.style.setProperty("--ribbon-menu-border-radius", opensBelow
+            ? `${joinsLeft ? "0" : "0.35rem"} ${joinsRight ? "0" : "0.35rem"} 0.35rem 0.35rem`
+            : `0.35rem 0.35rem ${joinsRight ? "0" : "0.35rem"} ${joinsLeft ? "0" : "0.35rem"}`)
         }
     })
   }
@@ -1271,6 +1281,7 @@ export class RibbonButton extends LitElement {
       ${this.iconUrl ? html`<img
         src=${this.iconUrl}
         alt=""
+        draggable="false"
         @error=${(event: Event) => {
           const image = event.currentTarget as HTMLImageElement
           image.parentElement?.classList.remove("image-icon")

@@ -46,7 +46,7 @@ const packageFixture = (name = "demo"): WebWriterPackage => ({
 
 afterEach(() => document.body.replaceChildren())
 
-function dragData(target: HTMLElement) {
+function dragData(target: Element) {
   const values = new Map<string, string>()
   const dataTransfer = {
     effectAllowed: "none",
@@ -61,11 +61,13 @@ function dragData(target: HTMLElement) {
 }
 
 describe("package ribbon controls", () => {
-  it("keeps wrapped package labels compact within their rows", async () => {
-    for(const label of ["Map", "PhET Simulation", "Interactive Video", "Neural Network", "Branching Scenario"]) {
+  it("keeps wrapped package labels compact without cropping underlines", async () => {
+    for(const label of ["Map", "Algebra Term", "PhET Simulation", "Interactive Video", "Neural Network", "Branching Scenario"]) {
       const button = new RibbonButton()
       button.variant = "package"
       button.label = label
+      button.setAttribute("console-selected", "")
+      button.setAttribute("developer-package", "")
       document.body.append(button)
       await button.updateComplete
 
@@ -73,6 +75,10 @@ describe("package ribbon controls", () => {
       const labelStyle = getComputedStyle(button.shadowRoot!.querySelector(".button-label")!)
       expect(text.textContent).toBe(label)
       expect(getComputedStyle(text).whiteSpace).toBe("normal")
+      expect(getComputedStyle(text).overflow).toBe("visible")
+      expect(getComputedStyle(text).textDecorationLine).toBe("underline")
+      expect(labelStyle.overflow).toBe("clip")
+      expect(labelStyle.getPropertyValue("overflow-clip-margin")).toBe("0.2em")
       expect(labelStyle.lineHeight).toBe("1.1")
       expect(labelStyle.getPropertyValue("-webkit-line-clamp")).toBe("2")
     }
@@ -97,6 +103,7 @@ describe("package ribbon controls", () => {
     expanded.label = "Demo"
     expanded.action = "package:@webwriter/demo"
     expanded.icon = "Package"
+    expanded.iconUrl = "https://example.com/icon.svg"
     expanded.dragHTML = "<webwriter-demo></webwriter-demo>"
     document.body.append(expanded)
     await expanded.updateComplete
@@ -110,18 +117,25 @@ describe("package ribbon controls", () => {
     expect(packageData.getData(ribbonInsertionDragType)).toBe("package:@webwriter/demo")
     expect(packageData.effectAllowed).toBe("copy")
     expect(packageData.setDragImage).toHaveBeenCalledWith(main.querySelector(".button-icon"), 12, 12)
+    const image = main.querySelector<HTMLImageElement>("img")!
+    expect(image.getAttribute("draggable")).toBe("false")
+    const iconData = dragData(image)
+    expect(iconData.getData("text/html")).toBe("<webwriter-demo></webwriter-demo>")
+    expect(iconData.getData(ribbonInsertionDragType)).toBe("package:@webwriter/demo")
+    expect(iconData.effectAllowed).toBe("copy")
+    expect(iconData.setDragImage).toHaveBeenCalledWith(main.querySelector(".button-icon"), 12, 12)
 
     const collapsed = new RibbonMenu()
     collapsed.groups = [{label: "Packages", buttons: [
-      {label: "Demo", action: "package:@webwriter/demo", icon: "Package"},
-      {label: "Demo Widget", action: "package-member:@webwriter/demo:./widgets/demo", icon: "Puzzle"},
+      {label: "Demo", action: "package:@webwriter/demo", icon: "Package", iconUrl: "https://example.com/icon.svg"},
+      {label: "Demo Widget", action: "package-member:@webwriter/demo:./widgets/demo", icon: "Puzzle", iconUrl: "https://example.com/widget.svg"},
       {label: "Saved snippet", action: "user-snippet:snippet-1", icon: "FileHorizontal"},
       {label: "Disc list", action: "list-style:ul:disc", icon: "ListDisc"},
       {label: "Rectangle", action: "insert-graphic-shape:rectangle", icon: "Rectangle"},
       {label: "Fraction", action: "insert-math:frac", icon: "Formula"},
       {label: "Invalid math", action: "insert-math:unknown", icon: "Formula"},
       {label: "Snippets", menuOnly: true, icon: "FileHorizontal", submenu: [
-        {label: "Saved snippet", action: "user-snippet:snippet-1", icon: "FileHorizontal"},
+        {label: "Saved snippet", action: "user-snippet:snippet-1", icon: "FileHorizontal", iconUrl: "https://example.com/snippet.svg"},
       ]},
       {label: "Add snippet", iconAction: "pin-snippet", iconActionLabel: "Add snippet", icon: "FileHorizontal"},
     ]}]
@@ -139,6 +153,12 @@ describe("package ribbon controls", () => {
       const item = getItem(label)
       expect(item.getAttribute("draggable")).toBe("true")
       expect(dragData(item).getData(ribbonInsertionDragType)).toBe(action)
+      const icon = (item.querySelector("img") ?? item.querySelector("svg"))!
+      if(icon instanceof HTMLImageElement) expect(icon.getAttribute("draggable")).toBe("false")
+      const iconData = dragData(icon)
+      expect(iconData.getData(ribbonInsertionDragType)).toBe(action)
+      expect(iconData.effectAllowed).toBe("copy")
+      expect(iconData.setDragImage).toHaveBeenCalledWith(item.querySelector(".item-icon"), 12, 12)
     }
     expect(getItem("Invalid math").getAttribute("draggable")).toBe("false")
     expect(getItem("Snippets").getAttribute("draggable")).toBe("false")
@@ -148,6 +168,9 @@ describe("package ribbon controls", () => {
     const nestedSnippet = collapsed.shadowRoot!.querySelector<HTMLButtonElement>('.submenu .item[title="Saved snippet"]')!
     expect(nestedSnippet.getAttribute("draggable")).toBe("true")
     expect(dragData(nestedSnippet).getData(ribbonInsertionDragType)).toBe("user-snippet:snippet-1")
+    const nestedImage = nestedSnippet.querySelector<HTMLImageElement>("img")!
+    expect(nestedImage.getAttribute("draggable")).toBe("false")
+    expect(dragData(nestedImage).getData(ribbonInsertionDragType)).toBe("user-snippet:snippet-1")
   })
 
   it("prepares HTML only for installed widget drags and saved snippets", async () => {
@@ -335,10 +358,10 @@ describe("package ribbon controls", () => {
     const iconAction = snippets.shadowRoot!.querySelector<HTMLButtonElement>('.icon-action-trigger[aria-label="Add snippet"]')!
     expect(iconAction.querySelector(".button-icon-default svg")).not.toBeNull()
     expect(iconAction.querySelector(".button-icon-hover svg")).not.toBeNull()
-    expect(RibbonButton.styles.toString()).toContain(".button-row.has-icon-action:has(.main-button:hover, .submenu-trigger:hover")
-    expect(RibbonButton.styles.toString()).toContain(".button-row.has-icon-action:has(.main-button:active, .submenu-trigger:active) .main-button")
-    expect(RibbonButton.styles.toString()).not.toMatch(/\.button-row\.has-icon-action:has\(\.main-button:active, \.submenu-trigger:active\)\s*\{[^}]*background:/)
-    expect(RibbonButton.styles.toString()).toContain(':host([variant="package"][active]) .button-row:not(.has-icon-action):hover')
+    expect(RibbonButton.styles.toString()).toContain(".button-row.has-icon-action:not([data-connected]):has(.main-button:hover, .submenu-trigger:hover")
+    expect(RibbonButton.styles.toString()).toContain(".button-row.has-icon-action:not([data-connected]):has(.main-button:active, .submenu-trigger:active) .main-button")
+    expect(RibbonButton.styles.toString()).not.toMatch(/\.button-row\.has-icon-action:not\(\[data-connected\]\):has\(\.main-button:active, \.submenu-trigger:active\)\s*\{[^}]*background:/)
+    expect(RibbonButton.styles.toString()).toContain(':host([variant="package"][active]) .button-row:not(.has-icon-action):not([data-connected]):hover')
     expect(RibbonMenu.styles.toString()).toContain(".item-row.has-icon-action:has(> .item:hover, > .submenu-toggle:hover")
     expect(RibbonMenu.styles.toString()).toContain(".item-row.has-icon-action:has(> .item:active, > .submenu-toggle:active) > .item")
     expect(RibbonMenu.styles.toString()).not.toContain(".item-row.has-icon-action:has(> .item:active, > .submenu-toggle:active) {")

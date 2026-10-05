@@ -681,17 +681,26 @@ describe("mark ribbon controls", () => {
       trigger.click()
       await button.updateComplete
       expect(menu.hidden).toBe(false)
+      await vi.waitFor(() => expect(row.getAttribute("data-connected")).toBe("below"))
+      expect(getComputedStyle(row).backgroundColor).toBe("#ffffff")
+      expect(getComputedStyle(row).borderTopColor).toBe("#a8a8a8")
+      expect(getComputedStyle(row).borderBottomColor).toBe("#ffffff")
+      expect(getComputedStyle(row).boxShadow).toBe("none")
     }
 
     headingTrigger.click()
     await heading.updateComplete
     expect(headingMenu.hidden).toBe(false)
     expect(headingMenu.customContent).toBe(false)
+    await vi.waitFor(() => expect(headingRow.getAttribute("data-connected")).toBe("below"))
+    expect(getComputedStyle(headingRow).backgroundColor).toBe("#ffffff")
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
     await Promise.all([heading.updateComplete, ...standardButtons.map(button => button.updateComplete)])
     expect(headingMenu.hidden).toBe(true)
+    expect(headingRow.hasAttribute("data-connected")).toBe(false)
     expect(standardButtons.every(button => button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!.hidden)).toBe(true)
+    expect(standardButtons.every(button => !button.shadowRoot!.querySelector(".button-row")!.hasAttribute("data-connected"))).toBe(true)
   })
 
   it("shows the span multiselect with icons, attributes, and a count", async () => {
@@ -1123,7 +1132,7 @@ describe("mark ribbon bridge", () => {
     expect(menu.hidden).toBe(false)
     expect(focus).not.toHaveBeenCalled()
     expect(commit).not.toHaveBeenCalled()
-    expect(execute).toHaveBeenCalledTimes(4)
+    expect(execute).toHaveBeenCalledTimes(9)
 
     const linkToggle = popup.querySelector<HTMLInputElement>('input[aria-label="Select Link"]')!
     linkToggle.focus()
@@ -1143,6 +1152,65 @@ describe("mark ribbon bridge", () => {
     popup.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
     await link.updateComplete
     expect(menu.hidden).toBe(true)
+  })
+
+  it.each([
+    ["Link", undefined, undefined],
+    ["Open in new tab", "target", "_blank"],
+    ["Download", "download", ""],
+  ])("applies Link when interacting with %s before a link is selected", async (label, attribute, value) => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {canMark: true, marks: [], attributes: {}},
+    })
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+    await drawer.updateComplete
+    const link = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    const popup = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
+    const input = popup.querySelector<HTMLInputElement>(`input[aria-label="Link: ${label}"]`)!
+    const focus = vi.spyOn(iframe, "focus")
+    expect(input.disabled).toBe(false)
+    expect(popup.querySelector<HTMLFieldSetElement>("fieldset")!.disabled).toBe(false)
+    input.focus()
+    if(attribute) input.click()
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "addMark", mark: "a"})
+    if(attribute) expect(execute).toHaveBeenNthCalledWith(2, {type: "setMarkAttribute", mark: "a", attribute, value})
+    else expect(execute).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    expect(link.shadowRoot!.activeElement).toBe(input)
+    expect(link.shadowRoot!.querySelector<HTMLElement>("ribbon-menu")!.hidden).toBe(false)
+    expect(focus).not.toHaveBeenCalled()
+
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {canMark: true, marks: ["a"], attributes: {a: {href: "/page", target: "_blank", download: "file.txt"}}},
+    })
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await link.updateComplete
+    execute.mockClear()
+    if(attribute) input.click()
+    else {
+      input.blur()
+      input.focus()
+    }
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "addMark", mark: "a"})
+    if(attribute) expect(execute).toHaveBeenNthCalledWith(2, {
+      type: "setMarkAttribute", mark: "a", attribute, value: attribute === "download" ? null : "",
+    })
+    else {
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(input.value).toBe("/page")
+    }
+    expect(execute.mock.calls.some(([action]) => action.type === "toggleMark")).toBe(false)
   })
 
   it("routes enabling and disabling downloads through the editor", async () => {

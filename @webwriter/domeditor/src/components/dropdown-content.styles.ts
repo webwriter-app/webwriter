@@ -214,7 +214,7 @@ export const dropdownContentStyles = css`
 
     .link-options {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 0.35rem;
       padding-top: 0.35rem;
     }

@@ -52,7 +52,7 @@ describe("insertion ribbon shortcuts", () => {
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
     const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
     const image = vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
-    const drag = (target: HTMLElement) => {
+    const drag = (target: Element) => {
       const data = new DataTransfer()
       const event = new Event("dragstart", {bubbles: true, cancelable: true, composed: true})
       Object.assign(event, {dataTransfer: data})
@@ -67,6 +67,10 @@ describe("insertion ribbon shortcuts", () => {
     expect(paragraphData.getData(elementDragType)).toBe("p")
     expect(paragraphData.getData(ribbonInsertionDragType)).toBe("element:p")
     expect(image.mock.calls.at(-1)?.[0]).toBe(main.querySelector(".button-icon"))
+    const paragraphIconData = drag(main.querySelector(".button-icon svg path")!)
+    expect(paragraphIconData.getData(elementDragType)).toBe("p")
+    expect(paragraphIconData.getData(ribbonInsertionDragType)).toBe("element:p")
+    expect(paragraphIconData.effectAllowed).toBe("copy")
     const headingButton = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Heading"]')!
     const headingMain = headingButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
     expect(headingMain.getAttribute("draggable")).toBe("true")
@@ -91,6 +95,9 @@ describe("insertion ribbon shortcuts", () => {
       .find(item => item.textContent?.trim() === "Heading 2")!
     expect(heading2.getAttribute("draggable")).toBe("true")
     expect(drag(heading2).getData(elementDragType)).toBe("h2")
+    const headingIconData = drag(heading2.querySelector(".item-icon svg path")!)
+    expect(headingIconData.getData(elementDragType)).toBe("h2")
+    expect(headingIconData.getData(ribbonInsertionDragType)).toBe("element:h2")
     expect(image.mock.calls.at(-1)?.[0]).toBe(heading2.querySelector(".item-icon"))
   })
   it("upgrades saved empty defaults in both tooltips and configurable shortcuts", async () => {
