@@ -107,13 +107,13 @@ Tests should cover the DOM shapes the command claims to support, including irreg
 - cleanup of `◆` markers;
 - exclusion of editing artifacts from shared and serialized HTML.
 
-Run a focused test while developing:
+Run only focused tests covering the affected behavior by default, during development and before handoff:
 
 ```sh
 npx vitest run src/path/to/relevant.test.ts
 ```
 
-Before handing off a substantial change, run:
+Run the full suite only when needed to verify the change (for example, broad changes whose impact cannot be covered by focused tests) or when explicitly requested:
 
 ```sh
 npx vitest run
