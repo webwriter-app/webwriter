@@ -41,13 +41,12 @@ import {
   contextDrawerPolicy,
   listInsertionOptions,
   menuGroups,
+  fileFormatButtons,
   menuTabs,
   orderedListStyles,
   placeholderSharingLink,
   insertMathStructureButtons,
-  storageLocations,
   type RibbonMenuName,
-  type StorageLocation,
 } from "./ribbon-menu-config"
 import "./ribbon-tab"
 import "./settings-panel"
@@ -137,7 +136,6 @@ export class AppRibbon extends EditingControls {
     liveSessionRole: {type: String, attribute: "live-session-role"},
     liveSessionLink: {type: String, attribute: "live-session-link"},
     liveLearners: {attribute: false},
-    storageLocation: {type: String, state: true},
     aiPrompt: {type: String, state: true},
     aiChatOpen: {type: Boolean, attribute: false},
     aiToolboxTarget: {attribute: false},
@@ -155,6 +153,7 @@ export class AppRibbon extends EditingControls {
     aiEditReviewHandler: {attribute: false},
     backendClient: {attribute: false},
     backendState: {type: String, attribute: "backend-state"},
+    cloudSessionWarning: {type: String},
   }
 
   static styles = css`
@@ -945,32 +944,6 @@ export class AppRibbon extends EditingControls {
       height: 100%;
     }
 
-    .storage-location-select {
-      box-sizing: border-box;
-      field-sizing: content;
-      min-width: 0;
-      max-width: 9rem;
-      height: 1.55rem;
-      padding: 0 0.2rem;
-      border: 1px solid transparent;
-      border-radius: 0.25rem;
-      color: #2f3742;
-      background: transparent;
-      font: inherit;
-      font-size: 0.7rem;
-      cursor: pointer;
-    }
-
-    .storage-location-select:hover {
-      border-color: #8eb6df;
-      background: #eef4fb;
-    }
-
-    .storage-location-select:focus {
-      border-color: #3977c7;
-      outline: 1px solid #3977c7;
-    }
-
     ribbon-button.file-action {
       grid-row: 2;
       min-width: 0;
@@ -1049,7 +1022,6 @@ export class AppRibbon extends EditingControls {
 
   liveLearners: LiveLearnerRibbonItem[] = []
 
-  storageLocation: StorageLocation = "local"
 
   breadcrumbVisible = true
 
@@ -1066,6 +1038,7 @@ export class AppRibbon extends EditingControls {
   backendClient: BackendClient | null = null
 
   backendState: "probing" | "connected" | "unavailable" = "probing"
+  cloudSessionWarning = ""
 
   private readonly aiProviderStore = new AIProviderStore()
 
@@ -1136,7 +1109,7 @@ export class AppRibbon extends EditingControls {
   private connectAIBackend = async (client: BackendClient | null) => {
     const sequence = ++this.backendConnectionSequence
     try {
-      if(client) await this.aiProviderStore.connectBackend(client)
+      if(client && client.session.capabilities.includes("providers")) await this.aiProviderStore.connectBackend(client)
       else this.aiProviderStore.disconnectBackend()
     }
     catch(error) {
@@ -2229,21 +2202,10 @@ export class AppRibbon extends EditingControls {
     }))
   }
 
-  private handleStorageLocationChange(event: Event) {
-    const value = (event.currentTarget as HTMLSelectElement).value
-    if(storageLocations.some(location => location.value === value)) {
-      this.storageLocation = value as StorageLocation
-      this.dispatchEvent(new CustomEvent<{value: StorageLocation}>("storage-location-change", {
-        detail: {value: this.storageLocation},
-        bubbles: true,
-        composed: true,
-      }))
-    }
-  }
-
   private renderFileDrawer(drawer: RibbonMenuGroup) {
-    const availableStorageLocations = this.backendState === "connected" ? storageLocations : storageLocations.slice(0, 1)
-    const selectedStorageLocation = availableStorageLocations.find(location => location.value === this.storageLocation) ?? availableStorageLocations[0]
+    const activeService = this.settings.cloudServices.find(service => service.id === this.settings.activeCloudServiceId)
+    const selectedStorageLocation = {icon: activeService ? "Cloud" : "Local",
+      label: activeService?.type === "edumix" ? "edumix.eu" : activeService?.url ?? "Local"}
     return html`
       <ribbon-drawer label="File" icon="Save" layout="file">
         <div class="file-name-row">
@@ -2256,20 +2218,10 @@ export class AppRibbon extends EditingControls {
               @input=${this.handleFileNameInput}
             />
           </span>
-          <label class="storage-location">
+          <span class="storage-location">
             <span class="storage-location-icon" aria-hidden="true">${ribbonIcon(selectedStorageLocation.icon)}</span>
-            <select
-              class="storage-location-select"
-              aria-label="Storage location"
-              data-ribbon-input-persistent
-              .value=${this.storageLocation}
-              @change=${this.handleStorageLocationChange}
-            >
-              ${availableStorageLocations.map(location => html`
-                <option value=${location.value}>${location.label}</option>
-              `)}
-            </select>
-          </label>
+            <span>${selectedStorageLocation.label}</span>
+          </span>
         </div>
         ${drawer.buttons.map(button => {
           const item = typeof button === "string" ? {label: button} : button
@@ -2518,7 +2470,7 @@ export class AppRibbon extends EditingControls {
       <div class="sharing-dropdown" role="group" aria-label="Sharing options">
         <div class="sharing-document-actions" role="group" aria-label="Document actions">
           <ribbon-button label="Print" action="Print" variant="toolbar"></ribbon-button>
-          <ribbon-button label="Download" action="Download" variant="toolbar"></ribbon-button>
+          <ribbon-button label="Download" action="Download" variant="toolbar" .submenu=${fileFormatButtons("download")}></ribbon-button>
         </div>
         <webwriter-qr-code hidden .value=${link} .size=${56}></webwriter-qr-code>
         <label class="sharing-link-field">
@@ -3173,7 +3125,9 @@ export class AppRibbon extends EditingControls {
   }
 
   render() {
-    const fileMenu = menuGroups.File.find(group => group.label === "File")!
+    const configuredFileMenu = menuGroups.File.find(group => group.label === "File")!
+    const fileMenu = {...configuredFileMenu, buttons: [...configuredFileMenu.buttons,
+      ...(this.settings.activeCloudServiceId ? [{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: fileFormatButtons("download")}] : [])]}
     const visibleTabs = this.previewActive ? ["File"] : menuTabs
     const aiReviewPending = Boolean(this.pendingAIEdit)
     const historyPreviewPending = this.historyState.preview !== null
@@ -3212,6 +3166,7 @@ export class AppRibbon extends EditingControls {
                   .active=${tab === "File" ? this.menuOpen : this.activeMenu === tab && !this.previewActive}
                   .fileName=${tab === "File" ? this.fileName : ""}
                   .fileDirty=${tab === "File" && this.fileDirty}
+                  .warning=${tab === "File" ? this.cloudSessionWarning : ""}
                   .ribbonCollapsed=${true}
                 ></ribbon-tab>
                 ${tab === "File" ? html`
@@ -3251,14 +3206,14 @@ export class AppRibbon extends EditingControls {
             data-state=${this.backendState}
             type="button"
             title=${this.backendState === "connected"
-              ? "Automatically logged in to the localhost development server"
-            : this.backendState === "probing" ? "Looking for a local backend" : "Retry local backend login"}
+              ? this.backendClient?.session.kind === "webwriter-dev-server" ? "Open local development server" : "Cloud service settings"
+            : this.backendState === "probing" ? "Connecting to cloud service" : "Open settings to sign in"}
             ?disabled=${this.backendState === "probing"}
-            @click=${() => this.dispatchEvent(new Event(
-              this.backendState === "connected" ? "backend-admin-request" : "backend-login-request",
-              {bubbles: true, composed: true},
-            ))}
-          >${this.backendState === "connected" ? "Local dev" : this.backendState === "probing" ? "Connecting…" : "Log in"}</button>
+            @click=${() => this.backendClient?.session.kind === "webwriter-dev-server"
+              ? this.dispatchEvent(new Event("backend-admin-request", {bubbles: true, composed: true}))
+              : void this.showRibbonDialog("settings")}
+          >${this.backendState === "connected" ? this.backendClient?.session.kind === "webwriter-dev-server" ? "Local dev" : "Cloud"
+            : this.backendState === "probing" ? "Connecting…" : "Sign in"}</button>
           ${this.renderPresence()}
           <div class="ribbon-top-actions">
             ${this.previewActive ? "" : html`
@@ -3311,7 +3266,7 @@ export class AppRibbon extends EditingControls {
             {label: "Settings", buttons: [
               ...(!this.previewActive ? [{label: this.breadcrumbVisible ? "Hide breadcrumb" : "Show breadcrumb", icon: this.breadcrumbVisible ? "Hidden" : "Visible", action: "toggle-breadcrumb"}] : []),
               ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
-              {label: "Settings"},
+              {label: "Settings", warning: this.cloudSessionWarning},
             ]},
           ]}
           @ribbon-button-click=${this.handleFileMenuAction}

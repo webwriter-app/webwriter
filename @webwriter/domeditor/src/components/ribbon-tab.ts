@@ -8,6 +8,7 @@ export class RibbonTab extends LitElement {
     label: {type: String},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
+    warning: {type: String},
     ribbonCollapsed: {type: Boolean, attribute: "ribbon-collapsed", reflect: true},
   }
 
@@ -38,6 +39,7 @@ export class RibbonTab extends LitElement {
       transform: rotate(45deg);
       transition: var(--ww-ui-transition, transform 120ms ease);
     }
+    .warning-bubble { border-radius: 50%; padding: 0 .35rem; color: #78350f; background: #fcd34d; font-weight: 700; }
 
     :host([active]) .file-chevron {
       transform: rotate(225deg);
@@ -125,6 +127,7 @@ export class RibbonTab extends LitElement {
   label = "Tab"
   fileName = ""
   fileDirty = false
+  warning = ""
   ribbonCollapsed = false
 
   private select() {
@@ -156,6 +159,7 @@ export class RibbonTab extends LitElement {
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
         ></file-label>
+        ${this.warning ? html`<span class="warning-bubble" role="img" aria-label=${this.warning} title=${this.warning}>!</span>` : nothing}
         <span class="file-chevron" aria-hidden="true"></span>
       ` : this.label}</button>
     `

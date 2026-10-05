@@ -1,4 +1,6 @@
 import {LitElement, css, html} from "lit"
+import {repeat} from "lit/directives/repeat.js"
+import {keyed} from "lit/directives/keyed.js"
 import {
   appCommands,
   defaultAppSettings,
@@ -9,8 +11,10 @@ import {
   type AppCommand,
 } from "../app-settings"
 import {documentLanguages} from "../document-languages"
-import {ribbonIcon} from "../ribbon-icons"
+import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {documentLayoutLabel, documentLayoutModes} from "./layout-preview"
+import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} from "../cloud-services"
+import {connectCloudService} from "../backend-client"
 
 const languageLabel = (code: string, fallback: string) => {
   try {
@@ -36,6 +40,9 @@ export class SettingsPanel extends LitElement {
     recordingCommandId: {type: String, state: true},
     message: {type: String, state: true},
     error: {type: String, state: true},
+    signingIn: {type: String, state: true},
+    cloudError: {type: String, state: true},
+    providerType: {type: String, state: true},
   }
 
   static styles = css`
@@ -102,6 +109,86 @@ export class SettingsPanel extends LitElement {
       margin-top: 1rem;
     }
 
+    .cloud-service {
+      position: relative;
+      margin-top: .7rem;
+      padding: .75rem;
+      border: 1px solid #c4ccd6;
+      border-radius: .45rem;
+    }
+    .cloud-service[data-active] { border-color: #93b9e8; background: #f8fbff; }
+    .cloud-service-header {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      margin: 0;
+      padding-right: 1.5rem;
+      overflow-wrap: anywhere;
+    }
+    .cloud-service-header input { margin: 0; accent-color: #3977c7; }
+    .local-settings { display: flex; align-items: center; gap: .75rem; }
+    .local-settings > .setting-label { display: flex; align-items: center; gap: .5rem; flex: 0 0 auto; margin: 0; }
+    .local-settings input[type="radio"] { margin: 0; accent-color: #3977c7; }
+    .local-settings #local-username { width: min(18rem, 100%); min-width: 0; margin: 0; }
+    #local-username:disabled { color: #8993a1; background: #f2f4f7; }
+    .cloud-service-header .provider-icon { flex: 0 0 1.1rem; }
+    .provider-icon { display: block; width: 1.1rem; height: 1.1rem; }
+    .provider-icon svg { display: block; width: 100%; height: 100%; }
+    .cloud-service form, .cloud-identity, .new-provider { margin-top: .75rem; }
+    .cloud-service input:not([type="radio"]), .new-provider input, #local-username {
+      box-sizing: border-box; width: 100%; padding: .4rem; margin: .25rem 0;
+      border: 1px solid #c4ccd6; border-radius: .35rem; font: inherit; font-size: .75rem;
+    }
+    .cloud-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+    .cloud-button, .provider-types button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: .45rem;
+      min-height: 2rem;
+      padding: .4rem .65rem;
+      border: 1px solid #c4ccd6;
+      border-radius: .35rem;
+      color: #2f3742;
+      background: #f7f8fa;
+      font: inherit;
+      font-size: .72rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .cloud-button:hover, .provider-types button:hover { background: #eef4fb; border-color: #93b9e8; }
+    .cloud-button.primary { color: white; background: #3977c7; border-color: #3977c7; }
+    .cloud-button.primary:hover { background: #2e65ad; }
+    .cloud-button:disabled, .provider-types button:disabled { opacity: .55; cursor: default; }
+    .cloud-remove {
+      position: absolute;
+      top: .4rem;
+      right: .4rem;
+      width: 1.6rem;
+      height: 1.6rem;
+      padding: 0;
+      border: 0;
+      border-radius: .3rem;
+      color: #687383;
+      background: transparent;
+      font: inherit;
+      font-size: 1.1rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .cloud-remove:hover { color: #9a3412; background: #fff0e8; }
+    .provider-types { display: inline-flex; max-width: 100%; }
+    .provider-types button { border-radius: 0; }
+    .provider-types button:first-child { border-radius: .35rem 0 0 .35rem; }
+    .provider-types button:last-child { border-radius: 0 .35rem .35rem 0; margin-left: -1px; }
+    .provider-types button[aria-pressed="true"] { position: relative; color: #1e4f87; background: #e8f2fd; border-color: #3977c7; }
+    .add-provider-label { margin-top: 1rem; }
+    .cloud-button:focus-visible, .cloud-remove:focus-visible, .provider-types button:focus-visible,
+    .cloud-service input:focus-visible, .new-provider input:focus-visible, #local-username:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 2px;
+    }
+
     .checkbox-setting {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
@@ -150,10 +237,15 @@ export class SettingsPanel extends LitElement {
       background: #fff0e8;
     }
 
-    .commands-heading {
-      margin: 1rem 0 0.5rem;
+    .commands-heading, .cloud-heading, .editor-heading {
+      margin: 1.5rem 0 0.5rem;
       font-size: 0.85rem;
       font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .settings-panel > :first-child {
+      margin-top: 0;
     }
 
     .command-section + .command-section {
@@ -282,6 +374,144 @@ export class SettingsPanel extends LitElement {
   private recordingCommandId = ""
   private message = ""
   private error = ""
+  private signingIn = ""
+  private cloudError = ""
+  private providerType: CloudService["type"] | null = null
+  private signInController: AbortController | null = null
+
+  disconnectedCallback() {
+    this.signInController?.abort()
+    this.signingIn = ""
+    this.providerType = null
+    this.renderRoot.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach(input => {input.value = ""})
+    super.disconnectedCallback()
+  }
+
+  private changeCloudServices(cloudServices: CloudService[], activeCloudServiceId = this.settings.activeCloudServiceId) {
+    this.emitSettings({...this.settings, cloudServices, activeCloudServiceId, cloudServicesConfigured: true})
+  }
+
+  private async chooseProvider(type: CloudService["type"] | null) {
+    this.cloudError = ""
+    this.providerType = type
+    await this.updateComplete
+    this.renderRoot.querySelector<HTMLInputElement>('.new-provider input')?.focus()
+  }
+
+  private async addCloudService(event: SubmitEvent) {
+    event.preventDefault()
+    if(!this.providerType || this.signingIn) return
+    const form = event.currentTarget as HTMLFormElement
+    try {
+      const type = this.providerType
+      const url = cloudServiceURL(type === "edumix" ? EDUMIX_URL : form.querySelector<HTMLInputElement>('[name="url"]')!.value.trim())
+      const service = {id: crypto.randomUUID(), type, url, username: form.querySelector<HTMLInputElement>('[name="username"]')!.value.trim()}
+      this.changeCloudServices([...this.settings.cloudServices, service])
+      this.cloudError = ""
+      this.providerType = null
+      await this.signIn(service, event)
+    }
+    catch(error) {this.cloudError = error instanceof Error ? error.message : String(error)}
+  }
+
+  private renderProviderIcon(type: CloudService["type"]) {
+    return type === "edumix" ? html`<img class="provider-icon" src=${appIconUrl} alt="">`
+      : html`<span class="provider-icon" aria-hidden="true">${ribbonIcon("Cloud")}</span>`
+  }
+
+  private renderCredentials(service?: CloudService) {
+    return html`
+      <label class="setting-label">Username
+        <input name="username" autocomplete="username" aria-label=${service ? `Username for ${service.url}` : "Username"}
+          ?required=${service?.authentication !== "none"} .value=${service?.username ?? ""}
+          @input=${(event: Event) => service && this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id
+            ? {...value, username: (event.currentTarget as HTMLInputElement).value, accessToken: undefined, expiresAt: undefined} : value))}>
+      </label>
+      ${service?.authentication !== "none" ? html`<label class="setting-label">Password
+        <input name="password" type="password" autocomplete="current-password" aria-label=${service ? `Password for ${service.url}` : "Password"} required>
+      </label>` : ""}`
+  }
+
+  private async signIn(service: CloudService, event: SubmitEvent) {
+    event.preventDefault()
+    if(this.signingIn) return
+    const form = event.currentTarget as HTMLFormElement
+    const password = form.querySelector<HTMLInputElement>('input[type="password"]')!
+    const controller = new AbortController()
+    this.signInController = controller
+    this.signingIn = service.id
+    this.cloudError = ""
+    try {
+      const result = await connectCloudService(service, {password: password.value, signal: controller.signal})
+      if(controller.signal.aborted || !this.isConnected
+        || this.settings.cloudServices.find(value => value.id === service.id) !== service) return
+      this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id ? result.service : value), service.id)
+    }
+    catch(error) {if(!controller.signal.aborted) this.cloudError = error instanceof Error ? error.message : String(error)}
+    finally {
+      password.value = ""
+      if(this.signInController === controller) {
+        this.signInController = null
+        this.signingIn = ""
+      }
+    }
+  }
+
+  private renderCloudSettings() {
+    return html`<section class="setting-card" aria-label="Identity and cloud services">
+      <h2 class="cloud-heading">Cloud services</h2>
+      <div class="local-settings">
+        <label class="setting-label"><input type="radio" name="active-cloud" .checked=${!this.settings.activeCloudServiceId}
+          @change=${() => this.changeCloudServices(this.settings.cloudServices, null)}> Local</label>
+        <input id="local-username" aria-label="Local username" placeholder="Username" autocomplete="nickname"
+          ?disabled=${Boolean(this.settings.activeCloudServiceId)} .value=${this.settings.localUsername}
+          @input=${(event: Event) => this.emitSettings({...this.settings, localUsername: (event.currentTarget as HTMLInputElement).value})}>
+      </div>
+      ${repeat(this.settings.cloudServices, service => service.id, service => html`<div class="cloud-service" ?data-active=${this.settings.activeCloudServiceId === service.id}>
+        <button class="cloud-remove" type="button" aria-label=${`Remove ${service.type === "edumix" ? "edumix.eu" : service.url}`}
+          title="Remove provider" @click=${() => this.changeCloudServices(
+            this.settings.cloudServices.filter(value => value.id !== service.id), this.settings.activeCloudServiceId === service.id ? null : this.settings.activeCloudServiceId)}>×</button>
+        <label class="setting-label cloud-service-header"><input type="radio" name="active-cloud"
+          .checked=${this.settings.activeCloudServiceId === service.id}
+          @change=${() => this.changeCloudServices(this.settings.cloudServices, service.id)}>
+          ${this.renderProviderIcon(service.type)}
+          ${service.type === "edumix" ? "edumix.eu" : service.url}</label>
+        ${service.authentication === "none" ? html`
+          <p class="setting-description">Available on this host · no sign-in required</p>
+          <div class="cloud-identity">${this.renderCredentials(service)}</div>` : html`
+          <form @submit=${(event: SubmitEvent) => this.signIn(service, event)}>
+            ${this.renderCredentials(service)}
+            <p class="setting-description">${cloudServiceExpired(service) ? "Session expired. Sign in again."
+              : service.accessToken ? "Signed in" : "Sign in to connect."}</p>
+            <div class="cloud-actions"><button class="cloud-button primary" type="submit" ?disabled=${Boolean(this.signingIn)}>
+              ${this.signingIn === service.id ? "Signing in…" : "Sign in"}</button>
+              ${service.accessToken ? html`<button class="cloud-button" type="button" @click=${() => this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id
+                ? {...value, accessToken: undefined, expiresAt: undefined} : value))}>Sign out</button>` : ""}
+            </div>
+          </form>`}
+      </div>`)}
+      <p class="setting-label add-provider-label">Add a cloud service</p>
+      <div class="provider-types" role="group" aria-label="Provider type">
+        <button type="button" aria-pressed=${this.providerType === "edumix"} aria-controls="new-cloud-provider"
+          ?disabled=${Boolean(this.signingIn)} @click=${() => this.chooseProvider("edumix")}>${this.renderProviderIcon("edumix")}edumix.eu</button>
+        <button type="button" aria-pressed=${this.providerType === "url"} aria-controls="new-cloud-provider"
+          ?disabled=${Boolean(this.signingIn)} @click=${() => this.chooseProvider("url")}>${this.renderProviderIcon("url")}Custom provider</button>
+      </div>
+      <div id="new-cloud-provider">
+        ${this.providerType ? keyed(this.providerType, html`<form class="new-provider" @submit=${this.addCloudService}>
+          ${this.providerType === "url" ? html`<label class="setting-label">Provider URL
+            <input name="url" type="url" aria-label="Provider URL" placeholder="https://cloud.example.org" required>
+          </label>` : ""}
+          ${this.renderCredentials()}
+          <div class="cloud-actions">
+            <button class="cloud-button primary" type="submit">Sign in</button>
+            <button class="cloud-button" type="button" @click=${() => this.chooseProvider(null)}>Cancel</button>
+          </div>
+        </form>`) : ""}
+      </div>
+      ${this.cloudError ? html`<div class="status" data-error role="alert">${this.cloudError}</div>` : ""}
+    </section>`
+  }
 
   private emitSettings(settings: AppSettings) {
     this.settings = settings
@@ -373,6 +603,7 @@ export class SettingsPanel extends LitElement {
   }
 
   resetSettings() {
+    this.providerType = null
     this.recordingCommandId = ""
     this.error = ""
     this.message = "Settings reset to their defaults."
@@ -426,6 +657,7 @@ export class SettingsPanel extends LitElement {
     const elementSections = ["Table", "Graphic"] as const
     return html`
       <div class="settings-panel">
+        <h2 class="editor-heading">Editor</h2>
         <section class="setting-card" aria-label="Language">
           <select aria-label="Interface language" .value=${this.settings.language} @change=${this.changeLanguage}>
             ${languageOptions.map(option => html`
@@ -513,6 +745,7 @@ export class SettingsPanel extends LitElement {
           </section>
         </details>
 
+        ${this.renderCloudSettings()}
         <h3 class="commands-heading">Commands</h3>
         <p class="shortcut-help">Select a shortcut, then press its replacement. Reserved system and browser shortcuts cannot be assigned.</p>
         ${this.message || this.error ? html`

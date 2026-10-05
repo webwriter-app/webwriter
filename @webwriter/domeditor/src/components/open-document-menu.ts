@@ -6,6 +6,8 @@ import {ribbonIcon} from "../ribbon-icons"
 export class OpenDocumentMenu extends LitElement {
   static properties = {
     documents: {attribute: false},
+    mode: {type: String},
+    fileName: {type: String, attribute: "file-name"},
     currentDocumentId: {type: String, attribute: "current-document-id"},
     loading: {type: Boolean, reflect: true},
     busy: {type: Boolean, reflect: true},
@@ -90,6 +92,31 @@ export class OpenDocumentMenu extends LitElement {
       min-height: 0;
       overflow: auto;
       padding: 0.55rem;
+    }
+    .save-form {
+      display: flex;
+      flex-shrink: 0;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.8rem 1.1rem 1rem;
+      border-top: 1px solid #e6eaf0;
+    }
+    .save-form input {
+      min-width: 0;
+      flex: 1;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid #b8c5d3;
+      border-radius: 0.35rem;
+      font: inherit;
+    }
+    .save-form button {
+      padding: 0.55rem 0.9rem;
+      border: 0;
+      border-radius: 0.35rem;
+      color: white;
+      background: #1e4f87;
+      font: inherit;
+      cursor: pointer;
     }
     .rows {
       margin: 0;
@@ -178,17 +205,22 @@ export class OpenDocumentMenu extends LitElement {
   `
 
   documents: BackendDocumentSummary[] = []
+  mode: "open" | "save" = "open"
+  fileName = ""
   currentDocumentId: string | null = null
   loading = false
   busy = false
   error = ""
+  private selectedDocumentId: string | undefined
 
   async show() {
+    this.selectedDocumentId = undefined
     await this.updateComplete
     const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
     if(!dialog) return
     if(!dialog.open) dialog.showModal()
-    this.renderRoot.querySelector<HTMLButtonElement>(".close")?.focus()
+    if(this.mode === "save") this.renderRoot.querySelector<HTMLInputElement>(".file-name")?.focus()
+    else this.renderRoot.querySelector<HTMLButtonElement>(".close")?.focus()
   }
 
   close() {
@@ -197,8 +229,31 @@ export class OpenDocumentMenu extends LitElement {
   }
 
   private openDocument(id: string) {
+    if(this.busy || this.loading) return
+    if(this.mode === "save") {
+      const selected = this.documents.find(document => document.id === id)
+      if(selected) {
+        this.selectedDocumentId = id
+        this.fileName = selected.title
+      }
+      return
+    }
     if(this.busy) return
     this.dispatchEvent(new CustomEvent<{id: string}>("document-open", {detail: {id}, bubbles: true, composed: true}))
+  }
+
+  private saveDocument(event: SubmitEvent) {
+    event.preventDefault()
+    if(this.busy || this.loading) return
+    const name = this.fileName.trim()
+    if(!name) return
+    const normalized = (value: string) => value.trim().replace(/(?:\.offline)?\.html?$/i, "")
+    const match = this.documents.find(document => normalized(document.title) === normalized(name))
+    const selected = this.documents.find(document => document.id === this.selectedDocumentId)
+    const id = selected && normalized(selected.title) === normalized(name) ? selected.id : match?.id
+    this.dispatchEvent(new CustomEvent<{name: string; id?: string}>("document-save", {
+      detail: id ? {name, id} : {name}, bubbles: true, composed: true,
+    }))
   }
 
   private deleteDocument(event: Event, id: string) {
@@ -220,7 +275,7 @@ export class OpenDocumentMenu extends LitElement {
         <div class="shell">
           <header>
             <div>
-              <h2 id="open-document-title">Open</h2>
+              <h2 id="open-document-title">${this.mode === "save" ? "Save as" : "Open"}</h2>
               <p class="subtitle">Saved documents</p>
             </div>
             <button class="close" type="button" aria-label="Close" @click=${this.close}>${ribbonIcon("Reject")}</button>
@@ -241,8 +296,8 @@ export class OpenDocumentMenu extends LitElement {
                 <ul class="rows">
                   ${this.documents.map(document => html`
                     <li class="row">
-                      <button class="open" type="button" aria-label=${`Open ${document.title}`}
-                        ?disabled=${this.busy} @click=${() => this.openDocument(document.id)}>
+                      <button class="open" type="button" aria-label=${`${this.mode === "save" ? "Select" : "Open"} ${document.title}`}
+                        ?disabled=${this.busy || this.loading} @click=${() => this.openDocument(document.id)}>
                         <span class="title" title=${document.title}>${document.title}</span>
                         <span class="meta">
                           ${this.formatDate(document.updatedAt)} · ${document.format.toUpperCase()}
@@ -258,6 +313,14 @@ export class OpenDocumentMenu extends LitElement {
               ` : ""}
             `}
           </div>
+          ${this.mode === "save" ? html`
+            <form class="save-form" @submit=${this.saveDocument}>
+              <input class="file-name" aria-label="File name" placeholder="File name" required .value=${this.fileName}
+                ?disabled=${this.busy}
+                @input=${(event: InputEvent) => { this.fileName = (event.currentTarget as HTMLInputElement).value; this.selectedDocumentId = undefined }}>
+              <button type="submit" ?disabled=${this.busy || this.loading}>Save</button>
+            </form>
+          ` : ""}
         </div>
       </dialog>
     `

@@ -16,6 +16,7 @@ type SelectionBookmark = {
 /** Host-only frame operations. The document stays in this cross-origin realm. */
 const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings: {
   language?: string
+  username?: string
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
 }) => {
@@ -33,6 +34,8 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, motionSheet]
   }
   if(settings.language) document.documentElement.lang = settings.language
+  const setUsername = (name: string) => editor.doc?.setUser({name: name.trim() || `User ${editor.doc.doc.clientID.toString(36).toUpperCase()}`})
+  if(settings.username !== undefined) setUsername(settings.username)
   setMotion(settings.disableAnimations === true)
   // Serializing the document here and parsing it in the host costs time in
   // proportion to its size. Post the first change at once, then at most one
@@ -81,7 +84,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     if(event.source !== window.parent || event.origin !== origin || event.data?.bridgeNonce !== nonce
       || event.data?.type !== editorFrameControlMessage) return
     const data = event.data as {command?: string, requestId?: string, disabled?: boolean,
-      shortcuts?: Record<string, string>, tags?: string[]}
+      shortcuts?: Record<string, string>, tags?: string[], username?: string}
     if(data.command === "snapshot") {
       post({type: "editor-frame-response", requestId: data.requestId, html: snapshot()})
     }
@@ -116,6 +119,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     else if(data.command === "print") window.print()
     else if(data.command === "motion") setMotion(data.disabled === true)
     else if(data.command === "shortcuts" && data.shortcuts) shortcuts = data.shortcuts
+    else if(data.command === "username" && typeof data.username === "string") setUsername(data.username)
     else if(data.command === "drag") replayHostDrag(event.data)
   })
   void editor

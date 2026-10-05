@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import {version} from "../../package.json"
 import {
   APP_SETTINGS_STORAGE_KEY,
@@ -41,6 +41,7 @@ async function mountPanel(settings = defaultAppSettings()) {
 }
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   document.body.replaceChildren()
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
 })
@@ -98,6 +99,11 @@ describe("settings panel", () => {
   it("introduces commands, explains the Style tab, and spaces adjacent command sections", async () => {
     const panel = await mountPanel()
     const root = panel.shadowRoot!
+    const editorHeading = root.querySelector(".settings-panel")!.firstElementChild!
+    expect(editorHeading.localName).toBe("h2")
+    expect(editorHeading.textContent).toBe("Editor")
+    expect(root.querySelector(".cloud-heading")!.localName).toBe(editorHeading.localName)
+    expect(root.textContent).not.toContain("Name shown in")
     expect(root.querySelector("h3")!.textContent).toBe("Commands")
     expect(root.querySelector("h3")!.nextElementSibling!.className).toBe("shortcut-help")
     expect(root.querySelector('[aria-label="Toolbox"] .checkbox-description')!.textContent).toContain("CSS properties")
@@ -218,7 +224,9 @@ describe("settings panel", () => {
     const panel = await mountPanel()
     const root = panel.shadowRoot!
     const category = root.querySelector<HTMLDetailsElement>(".developer-settings")!
-    expect(root.querySelector(".commands-heading")!.previousElementSibling).toBe(category)
+    const cloudSettings = root.querySelector('[aria-label="Identity and cloud services"]')!
+    expect(root.querySelector(".commands-heading")!.previousElementSibling).toBe(cloudSettings)
+    expect(cloudSettings.previousElementSibling).toBe(category)
     expect(category.querySelector("summary")!.textContent).toBe("Developer settings")
     expect(category.open).toBe(false)
     expect([...category.querySelectorAll(".checkbox-label")].map(label => label.textContent)).toEqual(["Pin developer console", "Auto-reload packages", "Autosave cloud on bundle change"])
@@ -450,4 +458,206 @@ it("keeps cloud bundle autosave off by default and offers a persisted developer 
   panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
   checkbox.click()
   expect(loadAppSettings().autosaveCloudOnBundleChange).toBe(true)
+})
+
+const configuredService = {id: "cloud", type: "url" as const, url: "https://cloud.example", username: "ada"}
+const sessionMetadata = {
+  kind: "webwriter-cloud-service", version: 1, authentication: "bearer",
+  apiBaseUrl: "https://cloud.example/api", signInUrl: "https://cloud.example/api/sign-in",
+  collaborationUrl: "wss://cloud.example", adminUrl: "https://cloud.example/admin", capabilities: ["documents"],
+  user: {id: "ada", name: "Ada"},
+}
+const cloudResponse = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status, headers: {"Content-Type": "application/json"}})
+
+describe("identity and cloud settings", () => {
+  it("migrates the saved offline username to the local username", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({offlineUsername: "Ada", shortcutsVersion: 2}))
+    expect(loadAppSettings().localUsername).toBe("Ada")
+    const saved = JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)
+    expect(saved.localUsername).toBe("Ada")
+    expect(saved).not.toHaveProperty("offlineUsername")
+  })
+
+  it("prefers the local username when legacy settings also contain an offline username", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({localUsername: "", offlineUsername: "Ada", shortcutsVersion: 2}))
+    expect(loadAppSettings().localUsername).toBe("")
+  })
+
+  it("persists the local name, multiple providers, and only one active provider without passwords", async () => {
+    vi.stubGlobal("fetch", vi.fn(async(url: string, init?: RequestInit) => {
+      const origin = new URL(url).origin
+      const session = {...sessionMetadata, apiBaseUrl: `${origin}/api`, signInUrl: `${origin}/api/sign-in`,
+        collaborationUrl: origin.replace(/^http/, "ws"), adminUrl: `${origin}/admin`}
+      return cloudResponse(init?.method === "POST" ? {session, accessToken: "access-token"} : {...session, user: null})
+    }))
+    const panel = await mountPanel()
+    panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    const root = panel.shadowRoot!
+    const name = root.querySelector<HTMLInputElement>("#local-username")!
+    name.value = "Local Ada"
+    name.dispatchEvent(new Event("input"))
+    const click = (label: string) => [...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === label)!.click()
+    const submitProvider = async () => {
+      const form = root.querySelector<HTMLFormElement>(".new-provider")!
+      form.querySelector<HTMLInputElement>('[name="username"]')!.value = "ada"
+      form.querySelector<HTMLInputElement>('[name="password"]')!.value = "transient-password"
+      form.dispatchEvent(new Event("submit", {cancelable: true}))
+      await vi.waitFor(() => expect(panel.settings.cloudServices.at(-1)?.accessToken).toBe("access-token"))
+      await panel.updateComplete
+    }
+    click("edumix.eu")
+    await panel.updateComplete
+    expect(panel.settings.cloudServices).toHaveLength(0)
+    await submitProvider()
+    click("Custom provider")
+    await panel.updateComplete
+    const url = root.querySelector<HTMLInputElement>('.new-provider [name="url"]')!
+    url.value = "https://cloud.example"
+    await submitProvider()
+    expect(panel.settings.cloudServices.map(service => service.type)).toEqual(["edumix", "url"])
+    const radios = root.querySelectorAll<HTMLInputElement>('input[name="active-cloud"]')
+    radios[1].click()
+    await panel.updateComplete
+    radios[2].click()
+    await panel.updateComplete
+    expect([...radios].filter(input => input.checked)).toHaveLength(1)
+    expect(loadAppSettings().localUsername).toBe("Local Ada")
+    expect(loadAppSettings().activeCloudServiceId).toBe(panel.settings.cloudServices[1].id)
+    persistAppSettings({...panel.settings, cloudServices: [{...configuredService, password: "secret"} as any]})
+    expect(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)).not.toContain("secret")
+    expect(loadAppSettings().cloudServices[0]).not.toHaveProperty("password")
+  })
+
+  it("signs in inside settings, stores the token, selects that provider, and clears the password", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(cloudResponse({...sessionMetadata, user: null}))
+      .mockResolvedValueOnce(cloudResponse({session: sessionMetadata, accessToken: "access-token", expiresIn: 3600})))
+    const panel = await mountPanel({...defaultAppSettings(), cloudServices: [configuredService]})
+    panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    const password = panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
+    password.value = "never-store-this"
+    panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", {cancelable: true}))
+    await vi.waitFor(() => expect(loadAppSettings().cloudServices[0].accessToken).toBe("access-token"))
+    expect(loadAppSettings().activeCloudServiceId).toBe("cloud")
+    expect(password.value).toBe("")
+    expect(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)).not.toContain("never-store-this")
+    expect(panel.shadowRoot!.textContent).toContain("Signed in")
+  })
+
+  it("clears failed credentials and keeps the existing active provider", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(cloudResponse(sessionMetadata))
+      .mockResolvedValueOnce(cloudResponse({message: "Invalid credentials"}, 401)))
+    const panel = await mountPanel({...defaultAppSettings(), cloudServices: [configuredService]})
+    const password = panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
+    password.value = "wrong"
+    panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", {cancelable: true}))
+    await vi.waitFor(() => expect(panel.shadowRoot!.querySelector('[role="alert"]')?.textContent).toContain("Invalid credentials"))
+    expect(password.value).toBe("")
+    expect(panel.settings.activeCloudServiceId).toBeNull()
+    expect(panel.settings.cloudServices[0].accessToken).toBeUndefined()
+  })
+
+  it("does not transfer a password to another provider when one is removed", async () => {
+    const second = {...configuredService, id: "second", url: "https://second.example"}
+    const panel = await mountPanel({...defaultAppSettings(), cloudServices: [configuredService, second]})
+    const passwords = panel.shadowRoot!.querySelectorAll<HTMLInputElement>('input[type="password"]')
+    passwords[0].value = "first-secret"
+    passwords[1].value = "second-secret"
+    panel.shadowRoot!.querySelector<HTMLButtonElement>(".cloud-service > .cloud-remove")!.click()
+    await panel.updateComplete
+    expect(panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!.value).toBe("second-secret")
+    panel.remove()
+    expect(passwords[1].value).toBe("")
+  })
+})
+
+it("cancels a settings sign-in when the panel closes and ignores the late result", async () => {
+  let complete!: (response: Response) => void
+  const pending = new Promise<Response>(resolve => {complete = resolve})
+  const fetch = vi.fn().mockResolvedValueOnce(cloudResponse(sessionMetadata)).mockReturnValueOnce(pending)
+  vi.stubGlobal("fetch", fetch)
+  const panel = await mountPanel({...defaultAppSettings(), cloudServices: [configuredService]})
+  const changes = vi.fn()
+  panel.addEventListener("settings-change", changes)
+  const password = panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
+  password.value = "transient-password"
+  panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", {cancelable: true}))
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+  panel.remove()
+  expect(password.value).toBe("")
+  expect(fetch.mock.calls[1][1].signal.aborted).toBe(true)
+  complete(cloudResponse({session: sessionMetadata, accessToken: "late-token"}))
+  await pending
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(changes).not.toHaveBeenCalled()
+  expect(panel.settings.cloudServices[0].accessToken).toBeUndefined()
+})
+
+it("reveals the selected provider form, clears credentials when switching or cancelling, and reuses the app icon", async () => {
+  const panel = await mountPanel({...defaultAppSettings(), cloudServices: [{...configuredService, type: "edumix", url: "https://edumix.eu"}]})
+  const root = panel.shadowRoot!
+  const choices = root.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Provider type"] button')
+  expect(choices).toHaveLength(2)
+  expect(root.querySelector(".new-provider")).toBeNull()
+  expect(root.querySelector<HTMLImageElement>(".cloud-service-header img")!.getAttribute("src")).toBe("/assets/app-icon-transparent.svg")
+  const remove = root.querySelector<HTMLButtonElement>(".cloud-remove")!
+  expect(remove.textContent).toBe("×")
+  expect(remove.getAttribute("aria-label")).toBe("Remove edumix.eu")
+  choices[0].click()
+  await panel.updateComplete
+  expect(choices[0].getAttribute("aria-pressed")).toBe("true")
+  expect(root.querySelector('.new-provider [name="url"]')).toBeNull()
+  expect(root.textContent).not.toContain("Passwords are never saved")
+  root.querySelector<HTMLInputElement>('.new-provider [name="password"]')!.value = "discard-on-switch"
+  choices[1].click()
+  await panel.updateComplete
+  expect(choices[0].getAttribute("aria-pressed")).toBe("false")
+  expect(choices[1].getAttribute("aria-pressed")).toBe("true")
+  expect(root.querySelector('.new-provider [name="url"]')).not.toBeNull()
+  expect(root.querySelector<HTMLInputElement>('.new-provider [name="password"]')!.value).toBe("")
+  root.querySelector<HTMLInputElement>('.new-provider [name="password"]')!.value = "discard-on-cancel"
+  root.querySelector<HTMLButtonElement>('.new-provider button[type="button"]')!.click()
+  await panel.updateComplete
+  expect(root.querySelector(".new-provider")).toBeNull()
+  expect(choices[1].getAttribute("aria-pressed")).toBe("false")
+  expect(panel.settings.cloudServices).toHaveLength(1)
+  remove.click()
+  await panel.updateComplete
+  expect(panel.settings.cloudServices).toHaveLength(0)
+})
+
+it("keeps the local username beside Local and disables it while a cloud service is selected", async () => {
+  const panel = await mountPanel({...defaultAppSettings(), localUsername: "Local Ada", cloudServices: [configuredService], activeCloudServiceId: configuredService.id})
+  const root = panel.shadowRoot!
+  const local = root.querySelector<HTMLInputElement>('.local-settings input[type="radio"]')!
+  const username = root.querySelector<HTMLInputElement>("#local-username")!
+  expect(local.closest("label")!.textContent?.trim()).toBe("Local")
+  expect(username.getAttribute("aria-label")).toBe("Local username")
+  expect(local.closest(".local-settings")!.contains(username)).toBe(true)
+  expect(username.value).toBe("Local Ada")
+  expect(username.disabled).toBe(true)
+  local.click()
+  await panel.updateComplete
+  expect(username.disabled).toBe(false)
+  username.value = "Another name"
+  username.dispatchEvent(new Event("input"))
+  root.querySelector<HTMLInputElement>('.cloud-service input[type="radio"]')!.click()
+  await panel.updateComplete
+  expect(username.disabled).toBe(true)
+  expect(username.value).toBe("Another name")
+})
+
+it("allows a dev-server display name without exposing password or sign-in controls", async () => {
+  const service = {...configuredService, url: "http://localhost:1234/api", username: "Local developer", authentication: "none" as const}
+  const panel = await mountPanel({...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id})
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  const card = panel.shadowRoot!.querySelector(".cloud-service")!
+  const username = card.querySelector<HTMLInputElement>('[name="username"]')!
+  expect(username.value).toBe("Local developer")
+  expect(card.querySelector('input[type="password"]')).toBeNull()
+  expect(card.querySelector('button[type="submit"]')).toBeNull()
+  username.value = "Dev Ada"
+  username.dispatchEvent(new Event("input"))
+  await panel.updateComplete
+  expect(loadAppSettings().cloudServices[0].username).toBe("Dev Ada")
+  expect(loadAppSettings().activeCloudServiceId).toBe(service.id)
 })

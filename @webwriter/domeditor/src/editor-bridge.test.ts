@@ -165,6 +165,15 @@ describe("editor bridge message guards", () => {
     ])
   })
 
+  it("accepts a configured username and rejects invalid identity values", () => {
+    const message = {type: initializeEditorMessage, syncUrl: "ws://localhost/session"}
+    expect(isInitializeEditorMessage({...message, username: "Local Ada"})).toBe(true)
+    expect(isInitializeEditorMessage({...message, username: ""})).toBe(true)
+    expectAllRejected(isInitializeEditorMessage, [
+      {...message, username: null}, {...message, username: 42}, {...message, username: {name: "Ada"}},
+    ])
+  })
+
   it("validates widget references and supplied package collections", () => {
     expect(isLoadWidgetsMessage({
       type: loadWidgetsMessage,

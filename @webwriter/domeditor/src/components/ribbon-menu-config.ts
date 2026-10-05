@@ -174,6 +174,11 @@ const elementInsertionMenuGroup: RibbonMenuGroup = {
   buttons: insertionMenuGroups.flatMap(group => group.buttons),
 }
 
+export const fileFormatButtons = (action: "save" | "save-as" | "download"): RibbonMenuButton[] => [
+  {label: "HTML (.html)", action: `${action}:html`, icon: "HTML"},
+  {label: "Offline HTML (.offline.html)", action: `${action}:offline`, icon: "OfflineHTML"},
+]
+
 export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   File: [
     {
@@ -188,17 +193,11 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
           ],
         },
         "Open",
-        {
-          label: "Save",
-          submenu: [
-            {label: "HTML (.html)", action: "save:html"},
-            {label: "Offline HTML (.offline.html)", action: "save:offline"},
-            {label: "Save as"},
-          ],
-        },
+        {label: "Save", submenu: fileFormatButtons("save")},
+        {label: "Save as", submenu: fileFormatButtons("save-as")},
       ],
     },
-    {label: "Sharing", buttons: ["Share", "Print", "Download"]},
+    {label: "Sharing", buttons: ["Share", "Print", {label: "Download", submenu: fileFormatButtons("download")}]},
   ],
   Start: [
     {label: "Marks", buttons: []},

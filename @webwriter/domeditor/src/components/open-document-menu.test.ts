@@ -80,4 +80,57 @@ describe("open document menu", () => {
     expect(menu.shadowRoot!.querySelector<HTMLButtonElement>(".open")!.disabled).toBe(true)
     expect(menu.shadowRoot!.querySelector<HTMLButtonElement>(".delete")!.disabled).toBe(true)
   })
+
+  it("saves a new filename and includes a matching existing document id", async () => {
+    const menu = await mount()
+    menu.mode = "save"
+    await menu.updateComplete
+    const events: CustomEvent[] = []
+    menu.addEventListener("document-save", event => events.push(event as CustomEvent))
+    const input = menu.shadowRoot!.querySelector<HTMLInputElement>(".file-name")!
+    input.value = "A saved page.html"
+    input.dispatchEvent(new Event("input", {bubbles: true}))
+    menu.shadowRoot!.querySelector<HTMLFormElement>(".save-form")!.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}))
+    expect(events[0].detail).toEqual({name: "A saved page.html", id: "one"})
+  })
+
+  it("selects an existing row into the filename without opening it", async () => {
+    const menu = await mount()
+    menu.mode = "save"
+    await menu.updateComplete
+    const opens: Event[] = []
+    menu.addEventListener("document-open", event => opens.push(event))
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(".open")!.click()
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector<HTMLInputElement>(".file-name")!.value).toBe("A saved page")
+    expect(opens).toHaveLength(0)
+  })
+
+  it("allows entering a filename while the document list loads and waits to save", async () => {
+    const menu = await mount([])
+    menu.mode = "save"
+    menu.loading = true
+    await menu.show()
+    const input = menu.shadowRoot!.querySelector<HTMLInputElement>(".file-name")!
+    expect(menu.shadowRoot!.activeElement).toBe(input)
+    expect(input.disabled).toBe(false)
+    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('.save-form button')!.disabled).toBe(true)
+    menu.close()
+  })
+
+  it("requires a filename, focuses it on show, and disables save while busy", async () => {
+    const menu = await mount([])
+    menu.mode = "save"
+    await menu.updateComplete
+    await menu.show()
+    const input = menu.shadowRoot!.querySelector<HTMLInputElement>(".file-name")!
+    expect(menu.shadowRoot!.querySelector("h2")!.textContent).toBe("Save as")
+    expect(input.required).toBe(true)
+    expect(menu.shadowRoot!.activeElement).toBe(input)
+    menu.busy = true
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('.save-form button')!.disabled).toBe(true)
+    expect(input.disabled).toBe(true)
+    menu.close()
+  })
 })

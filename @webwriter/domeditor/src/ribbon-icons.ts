@@ -2,6 +2,7 @@ import signRight from "@tabler/icons/outline/sign-right.svg?raw"
 import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
+
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
 import artboard from "@tabler/icons/outline/artboard.svg?raw"
 import balloon from "@tabler/icons/outline/balloon.svg?raw"
@@ -42,6 +43,8 @@ import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
 import upload from "@tabler/icons/outline/upload.svg?raw"
 import download from "@tabler/icons/outline/download.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
+import file from "@tabler/icons/outline/file.svg?raw"
+import fileSignal from "@tabler/icons/outline/file-signal.svg?raw"
 import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
 import fileDownload from "@tabler/icons/outline/file-download.svg?raw"
 import fileExport from "@tabler/icons/outline/file-export.svg?raw"
@@ -264,6 +267,8 @@ const icons: Record<string, string> = {
   Upload: upload,
   Download: download,
   FileDownload: fileDownload,
+  HTML: fileSignal,
+  OfflineHTML: file,
   Local: deviceDesktop,
   Cloud: cloud,
   Print: printer,
@@ -457,4 +462,6 @@ const icons: Record<string, string> = {
 const fallbackIcon = dots
 
 /** Returns a trusted inline SVG for a ribbon action. */
+export const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
+
 export const ribbonIcon = (label: string) => unsafeSVG(icons[label] ?? fallbackIcon)

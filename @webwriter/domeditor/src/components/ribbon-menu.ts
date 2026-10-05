@@ -31,6 +31,7 @@ export type RibbonMenuButton = string | {
   submenuHeader?: TemplateResult
   menuOnly?: boolean
   disabled?: boolean
+  warning?: string
   removeAction?: string
   editingLabel?: boolean
 }
@@ -66,6 +67,7 @@ export class RibbonMenu extends LitElement {
     }
 
     .item-label.italic { font-style: italic; }
+    .warning-bubble { margin-left: auto; border-radius: 50%; padding: 0 .35rem; color: #78350f; background: #fcd34d; font-weight: 700; }
     .item:disabled, .submenu-toggle:disabled { opacity: 0.5; cursor: default; }
     .remove, .label-confirm { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
     .submenu-header { position: sticky; top: -0.35rem; background: white; z-index: 2; padding-bottom: 0.35rem; }
@@ -854,6 +856,7 @@ export class RibbonMenu extends LitElement {
                         <span class="item-icon-hover">${this.renderButtonIcon(button, true)}</span>
                       ` : this.renderButtonIcon(button)}
                       <span class=${`item-label${item.italic ? " italic" : ""}`}>${label}</span>
+                      ${item.warning ? html`<span class="warning-bubble" role="img" aria-label=${item.warning} title=${item.warning}>!</span>` : nothing}
                     </button>`}
                     ${item.editingLabel ? html`<button class="item label-confirm" type="button" role="menuitem" tabindex="-1"
                       aria-label="Confirm snippet name" title="Confirm snippet name" ?disabled=${item.disabled}

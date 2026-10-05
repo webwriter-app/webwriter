@@ -265,7 +265,7 @@ describe("mark ribbon controls", () => {
     await fileMenu.updateComplete
     expect(fileMenu.groups.map(group => group.label)).toEqual(["File", "Editing", "Settings"])
     expect(fileMenu.groups[0]!.buttons.map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["New", "Open", "Save"])
+      .toEqual(["New", "Open", "Save", "Save as"])
 
     ribbon.previewActive = true
     await ribbon.updateComplete
@@ -465,26 +465,20 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     expect(fileDrawer.querySelector(".file-dirty")).toBeNull()
     expect(fileDrawer.textContent).not.toContain("*")
-    const storageLocation = fileDrawer.querySelector<HTMLSelectElement>('select[aria-label="Storage location"]')!
-    expect(storageLocation.value).toBe("local")
-    expect(Array.from(storageLocation.options).map(option => option.textContent)).toEqual([
-      "Local",
-    ])
+    const storageLocation = fileDrawer.querySelector<HTMLElement>(".storage-location")!
+    expect(storageLocation.textContent?.trim()).toBe("Local")
+    expect(fileDrawer.querySelector('select[aria-label="Storage location"]')).toBeNull()
+    ribbon.settings = {...ribbon.settings, cloudServices: [{id: "development-server", type: "url",
+      url: "http://localhost:1234/api", username: "", authentication: "none"}],
+    activeCloudServiceId: "development-server"}
     ribbon.backendState = "connected"
     await ribbon.updateComplete
-    expect(Array.from(storageLocation.options).map(option => option.textContent)).toEqual([
-      "Local",
-      "Development server",
-    ])
-    storageLocation.value = "development-server"
-    storageLocation.dispatchEvent(new Event("change", {bubbles: true}))
-    await ribbon.updateComplete
-    expect(storageLocation.value).toBe("development-server")
+    expect(storageLocation.textContent?.trim()).toBe("http://localhost:1234/api")
     expect(fileDrawer.querySelector(".storage-location-icon svg")?.getAttribute("class"))
       .toContain("icon-tabler-cloud")
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(fileButtons.map(button => button.label))
-      .toEqual(["New", "Open", "Save"])
+      .toEqual(["New", "Open", "Save", "Save as"])
     expect(fileButtons.every(button => getComputedStyle(
       button.shadowRoot!.querySelector<HTMLElement>(".button-row")!,
     ).boxSizing === "border-box")).toBe(true)
@@ -494,15 +488,18 @@ describe("mark ribbon controls", () => {
       {label: "Slides", action: "new:slides", icon: "KeywordPresentation"},
     ])
     expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([
-      {label: "HTML (.html)", action: "save:html"},
-      {label: "Offline HTML (.offline.html)", action: "save:offline"},
-      {label: "Save as"},
+      {label: "HTML (.html)", action: "save:html", icon: "HTML"},
+      {label: "Offline HTML (.offline.html)", action: "save:offline", icon: "OfflineHTML"},
+    ])
+    expect(fileButtons.find(button => button.label === "Save as")?.submenu).toEqual([
+      {label: "HTML (.html)", action: "save-as:html", icon: "HTML"},
+      {label: "Offline HTML (.offline.html)", action: "save-as:offline", icon: "OfflineHTML"},
     ])
     expect(fileDrawer.querySelector('input[type="checkbox"]')).toBeNull()
     expect(getComputedStyle(fileDrawer).getPropertyValue("--ribbon-drawer-expanded-width").trim())
-      .toBe("13.25rem")
+      .toBe("17.5rem")
     expect(getComputedStyle(fileDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
-      .toBe("repeat(3, minmax(0, 1fr))")
+      .toBe("repeat(4, minmax(0, 1fr))")
 
     const sharingDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Sharing"]')!
     const sharingButtons = Array.from(sharingDrawer.querySelectorAll<RibbonButton>("ribbon-button"))

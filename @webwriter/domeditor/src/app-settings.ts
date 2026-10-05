@@ -2,6 +2,7 @@ import {isOnApple} from "./utility"
 import {excludedMarkNames, hasStandardMarkShortcut, primaryMarkOptions, secondaryMarkOptions} from "./marks"
 import {graphicArrangeOperations, graphicShapeOptions, graphicViewportOperations} from "./graphic"
 import type {DocumentLayoutMode} from "./document-layout"
+import {storedCloudServices, type CloudService} from "./cloud-services"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
 
@@ -143,6 +144,10 @@ export const SNIPPET_LABEL_MAX_LENGTH = 250
 export type UserSnippet = {id: string, label: string, html: string}
 
 export type AppSettings = {
+  localUsername: string
+  cloudServices: CloudService[]
+  activeCloudServiceId: string | null
+  cloudServicesConfigured: boolean
   userSnippets: UserSnippet[]
   language: string
   defaultLayout: DocumentLayoutMode
@@ -158,6 +163,10 @@ export type AppSettings = {
 
 export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
   return {
+    localUsername: "",
+    cloudServices: [],
+    activeCloudServiceId: null,
+    cloudServicesConfigured: false,
     userSnippets: [],
     language: "en",
     defaultLayout: "document",
@@ -180,7 +189,7 @@ export function loadAppSettings(): AppSettings {
   try {
     const stored = globalThis.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY)
     if(!stored) return defaults
-    const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number; defaultTemplate?: DocumentLayoutMode}
+    const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number; defaultTemplate?: DocumentLayoutMode; offlineUsername?: unknown}
     const shortcuts = value.shortcuts && typeof value.shortcuts === "object"
       ? Object.fromEntries(appCommands.map(command => [
         command.id,
@@ -208,7 +217,14 @@ export function loadAppSettings(): AppSettings {
         if(!shortcuts[id] && !Object.values(shortcuts).includes(shortcut)) shortcuts[id] = shortcut
       }
     }
+    const cloudServices = storedCloudServices(value.cloudServices)
     const settings: AppSettings = {
+      localUsername: typeof value.localUsername === "string" ? value.localUsername
+        : typeof value.offlineUsername === "string" ? value.offlineUsername : "",
+      cloudServices,
+      activeCloudServiceId: cloudServices.some(service => service.id === value.activeCloudServiceId)
+        ? value.activeCloudServiceId! : null,
+      cloudServicesConfigured: value.cloudServicesConfigured === true,
       userSnippets: Array.isArray(value.userSnippets) ? value.userSnippets.filter((snippet): snippet is UserSnippet =>
         Boolean(snippet && typeof snippet.id === "string" && snippet.id && typeof snippet.label === "string"
           && snippet.label && typeof snippet.html === "string" && snippet.html)) : [],
@@ -238,7 +254,7 @@ export function loadAppSettings(): AppSettings {
         ? value.autosaveCloudOnBundleChange : defaults.autosaveCloudOnBundleChange,
       shortcuts,
     }
-    if((value.shortcutsVersion ?? 0) < 2) persistAppSettings(settings)
+    if((value.shortcutsVersion ?? 0) < 2 || "offlineUsername" in value) persistAppSettings(settings)
     return settings
   }
   catch {
@@ -248,7 +264,8 @@ export function loadAppSettings(): AppSettings {
 
 export function persistAppSettings(settings: AppSettings) {
   try {
-    globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, shortcutsVersion: 2}))
+    globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings,
+      cloudServices: storedCloudServices(settings.cloudServices), shortcutsVersion: 2}))
   }
   catch {
     // Settings remain active for this session when storage is unavailable.

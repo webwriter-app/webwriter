@@ -1,9 +1,11 @@
 import type {AIProviderConfig} from "./ai-provider"
+import {cloudServiceURL, cloudServiceExpired, tokenExpiresAt, type CloudService} from "./cloud-services"
 
 export type BackendSession = {
-  kind: "webwriter-dev-server"
+  kind: "webwriter-dev-server" | "webwriter-cloud-service"
   version: 1
-  authentication: "none"
+  authentication: "none" | "bearer"
+  signInUrl?: string
   user: {id: string, name: string}
   apiBaseUrl: string
   collaborationUrl: string
@@ -56,10 +58,10 @@ const normalizedBaseUrl = (value: string) => validatedUrl(value, ["http:", "http
 export class BackendClient {
   readonly apiBaseUrl: string
 
-  constructor(readonly session: BackendSession, private readonly fetchImplementation = globalThis.fetch) {
-    this.apiBaseUrl = normalizedBaseUrl(session.apiBaseUrl)
-    validatedUrl(session.collaborationUrl, ["ws:", "wss:"])
-    validatedUrl(session.adminUrl, ["http:", "https:"])
+  constructor(readonly session: BackendSession, private readonly fetchImplementation = globalThis.fetch,
+    private readonly accessToken?: string, private readonly onUnauthorized?: () => void) {
+    this.apiBaseUrl = session.kind === "webwriter-dev-server" ? normalizedBaseUrl(session.apiBaseUrl) : cloudServiceURL(session.apiBaseUrl)
+    validateSessionURLs(session)
   }
 
   private async request<T>(path: string, init: RequestInit = {}) {
@@ -72,14 +74,20 @@ export class BackendClient {
           Accept: "application/json",
           ...(init.body ? {"Content-Type": "application/json"} : {}),
           ...(init.headers ?? {}),
+          ...(this.accessToken ? {Authorization: `Bearer ${this.accessToken}`} : {}),
         },
         cache: "no-store",
         credentials: "omit",
+        redirect: "error",
       })
     }
     catch(error) {
       const message = error instanceof Error ? error.message : String(error)
-      throw new Error(`Could not reach the development server. ${message}`)
+      throw new Error(`Could not reach the ${this.session.kind === "webwriter-dev-server" ? "development server" : "cloud service"}. ${message}`)
+    }
+    if(response.status === 401) {
+      this.onUnauthorized?.()
+      throw new Error("Your cloud session expired. Sign in again in Settings.")
     }
     if(response.status === 204) return undefined as T
     let value: unknown
@@ -87,9 +95,9 @@ export class BackendClient {
       value = await response.json()
     }
     catch {
-      throw new Error(`The development server returned invalid JSON (${response.status})`)
+      throw new Error(`The ${this.session.kind === "webwriter-dev-server" ? "development server" : "cloud service"} returned invalid JSON (${response.status})`)
     }
-    if(!response.ok) throw new Error(errorText(value, `Development server request failed (${response.status})`))
+    if(!response.ok) throw new Error(errorText(value, `${this.session.kind === "webwriter-dev-server" ? "Development server" : "Cloud service"} request failed (${response.status})`))
     return value as T
   }
 
@@ -148,9 +156,9 @@ export class BackendClient {
 
 const sessionFrom = (value: unknown): BackendSession | null => {
   if(!isRecord(value)
-    || value.kind !== "webwriter-dev-server"
+    || !["webwriter-dev-server", "webwriter-cloud-service"].includes(String(value.kind))
     || value.version !== 1
-    || value.authentication !== "none"
+    || !["none", "bearer"].includes(String(value.authentication))
     || !isRecord(value.user)
     || typeof value.user.id !== "string"
     || typeof value.user.name !== "string"
@@ -159,9 +167,7 @@ const sessionFrom = (value: unknown): BackendSession | null => {
     || typeof value.adminUrl !== "string"
     || !Array.isArray(value.capabilities)) return null
   try {
-    validatedUrl(value.apiBaseUrl, ["http:", "https:"])
-    validatedUrl(value.collaborationUrl, ["ws:", "wss:"])
-    validatedUrl(value.adminUrl, ["http:", "https:"])
+    validateSessionURLs(value as BackendSession)
   }
   catch {
     return null
@@ -171,8 +177,7 @@ const sessionFrom = (value: unknown): BackendSession | null => {
 
 const backendCandidates = () => {
   const urls = [new URL("/api/session", location.href)]
-  const hostname = location.hostname === "127.0.0.1" ? "127.0.0.1" : "localhost"
-  urls.push(new URL(`http://${hostname}:1234/api/session`))
+  if(loopbackHosts.has(location.hostname)) urls.push(new URL(`http://${location.hostname}:1234/api/session`))
   return [...new Map(urls.map(url => [url.href, url])).values()]
 }
 
@@ -194,11 +199,87 @@ export async function probeDevelopmentBackend(
       })
       if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) continue
       const session = sessionFrom(await response.json())
-      if(session && (base === undefined || normalizedBaseUrl(session.apiBaseUrl) === base)) return session
+      if(session?.kind === "webwriter-dev-server" && session.authentication === "none"
+        && (base === undefined || normalizedBaseUrl(session.apiBaseUrl) === base)) return session
     }
     catch(error) {
       if(isAbortError(error)) throw error
     }
   }
   return null
+}
+
+function validateSessionURLs(session: BackendSession) {
+  if(session.kind === "webwriter-dev-server") {
+    if(session.authentication !== "none") throw new TypeError("Invalid development session")
+    validatedUrl(session.apiBaseUrl, ["http:", "https:"])
+    validatedUrl(session.collaborationUrl, ["ws:", "wss:"])
+    validatedUrl(session.adminUrl, ["http:", "https:"])
+    return
+  }
+  const base = new URL(cloudServiceURL(session.apiBaseUrl))
+  for(const value of [session.adminUrl, session.signInUrl].filter((value): value is string => !!value)) {
+    if(new URL(cloudServiceURL(value)).origin !== base.origin) throw new TypeError("Cloud service URLs must use the provider origin")
+  }
+  const socket = new URL(session.collaborationUrl)
+  if(!["ws:", "wss:"].includes(socket.protocol) || socket.username || socket.password
+    || socket.host !== base.host || base.protocol === "https:" && socket.protocol !== "wss:") {
+    throw new TypeError("Cloud collaboration must use the provider origin")
+  }
+}
+
+export async function connectCloudService(service: CloudService, options: {
+  password?: string, signal?: AbortSignal, fetchImplementation?: typeof fetch,
+} = {}) {
+  const base = cloudServiceURL(service.url)
+  const api = base.endsWith("/api") ? base : `${base}/api`
+  const fetch = options.fetchImplementation ?? globalThis.fetch
+  const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000)
+  const request = async (url: string, init: RequestInit = {}) => {
+    const response = await fetch.call(globalThis, url, {...init, signal, credentials: "omit", redirect: "error",
+      cache: "no-store", headers: {Accept: "application/json", ...(init.body ? {"Content-Type": "application/json"} : {}),
+        ...(service.accessToken && options.password === undefined ? {Authorization: `Bearer ${service.accessToken}`} : {})}})
+    if(response.status === 401 && options.password === undefined) throw new CloudAuthenticationError("Sign in again in Settings.")
+    const value = await response.json()
+    if(!response.ok) throw new Error(errorText(value, `Cloud request failed (${response.status})`))
+    return value
+  }
+  if(options.password === undefined && cloudServiceExpired(service)) throw new CloudAuthenticationError("Sign in again in Settings.")
+  let value = await request(`${api}/session`)
+  if(options.password !== undefined) {
+    if(!isRecord(value) || value.kind !== "webwriter-cloud-service" || value.version !== 1 || value.authentication !== "bearer") {
+      throw new Error("This URL does not provide a supported WebWriter cloud service.")
+    }
+    const signInUrl = isRecord(value) && typeof value.signInUrl === "string" ? cloudServiceURL(value.signInUrl) : null
+    if(!signInUrl || new URL(signInUrl).origin !== new URL(base).origin) throw new Error("This service does not advertise a supported sign-in endpoint.")
+    value = await request(signInUrl, {method: "POST", body: JSON.stringify({username: service.username, password: options.password})})
+  }
+  const session = sessionFrom(isRecord(value) && value.session ? value.session : value)
+  if(!session || session.apiBaseUrl.replace(/\/$/, "") !== api) throw new Error("This URL does not provide a supported WebWriter cloud service.")
+  const accessToken = isRecord(value) && typeof value.accessToken === "string" ? value.accessToken
+    : options.password === undefined ? service.accessToken : undefined
+  if(session.authentication === "bearer" && !accessToken) throw new CloudAuthenticationError("Sign in in Settings.")
+  const expiresAt = isRecord(value) && typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt) ? value.expiresAt
+    : isRecord(value) && typeof value.expiresIn === "number" && Number.isFinite(value.expiresIn) ? Date.now() + value.expiresIn * 1000
+      : accessToken ? tokenExpiresAt(accessToken) ?? (options.password === undefined ? service.expiresAt : undefined) : undefined
+  return {session, service: {...service, authentication: session.authentication === "none" ? "none" as const : undefined,
+    accessToken, expiresAt}}
+}
+
+export class CloudAuthenticationError extends Error {}
+
+/** Discover only the current host; localhost port fallback belongs to dev setups. */
+export async function discoverHostBackend(signal?: AbortSignal, fetchImplementation = globalThis.fetch) {
+  try {
+    const response = await fetchImplementation.call(globalThis, new URL("/api/session", location.href), {
+      signal, credentials: "omit", cache: "no-store", redirect: "error", headers: {Accept: "application/json"},
+    })
+    if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) return null
+    const value = await response.json()
+    if(!isRecord(value)) return null
+    const session = sessionFrom(value.kind === "webwriter-cloud-service" ? {...value, user: value.user ?? {id: "", name: ""}} : value)
+    if(!session || session.kind === "webwriter-cloud-service" && new URL(session.apiBaseUrl).origin !== location.origin) return null
+    return session
+  }
+  catch(error) {if(isAbortError(error)) throw error; return null}
 }

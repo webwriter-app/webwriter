@@ -42,6 +42,11 @@ import type {LiveSessionControls} from "./live-session-controls"
 import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
 
+const configureCloudStorage = (host: any) => {
+  host.settings = {...host.settings, cloudServicesConfigured: true, activeCloudServiceId: "test-cloud",
+    cloudServices: [{id: "test-cloud", type: "url", url: "http://localhost:1234/api", username: "Tester", authentication: "none"}]}
+}
+
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
   version: "1.0.0",
@@ -759,6 +764,7 @@ describe("DomEditor iframe setup", () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     host.storageLocation = storageLocation
+    if(storageLocation === "development-server") {configureCloudStorage(host); host.backendDocumentId = "saved"}
     const template = iframe.contentDocument!.createElement("template")
     iframe.contentDocument!.body.append(template)
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -768,7 +774,7 @@ describe("DomEditor iframe setup", () => {
     vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({
       name: "lesson.html", createWritable: async() => ({write, close: async() => {}}),
     }))
-    host.backendClient = {createDocument: vi.fn(async() => { await write(); return {id: "saved", title: "lesson", format: "html"} })}
+    host.backendClient = {updateDocument: vi.fn(async() => { await write(); return {id: "saved", title: "lesson", format: "html"} })}
     mockSaveSnapshot(editor, "<p>Saved snapshot</p>")
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     const saving = host.saveDocument()
@@ -1670,6 +1676,7 @@ describe("Develop local packages", () => {
     const host = editor as any
     host.settings = {...host.settings, autosaveCloudOnBundleChange: true}
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     host.backendDocumentId = "saved"
     const updateDocument = vi.fn().mockResolvedValue({id: "saved", title: "Lesson", format: "html", createdAt: "", updatedAt: ""})
     host.backendClient = {updateDocument}
@@ -1691,6 +1698,7 @@ describe("Develop local packages", () => {
     const host = editor as any
     host.settings = {...host.settings, autosaveCloudOnBundleChange: true}
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     host.backendDocumentId = "original"
     const updateDocument = vi.fn()
     host.backendClient = {updateDocument}
@@ -2715,10 +2723,11 @@ describe("DomEditor file actions", () => {
     const {editor} = await mountEditor()
     const host = editor as any
     host.storageLocation = storageLocation
+    if(storageLocation === "development-server") {configureCloudStorage(host); host.backendDocumentId = "saved"}
     host.fileDirty = true
     vi.spyOn(host, "reportFileError").mockImplementation(() => {})
     const failure = new Error("Save failed")
-    host.backendClient = {createDocument: vi.fn().mockRejectedValue(failure)}
+    host.backendClient = {updateDocument: vi.fn().mockRejectedValue(failure)}
     vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({name: "failed.html",
       createWritable: async () => ({write: async () => {}, close: async () => {throw failure}})}))
     const execute = mockSaveSnapshot(editor, "<p>Unsaved</p>")
@@ -2726,6 +2735,204 @@ describe("DomEditor file actions", () => {
     expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: false})
     expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "recordVersionSave"}))
     expect(host.fileDirty).toBe(true)
+  })
+
+  it("uses the hidden input to open local files even when a backend is connected", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, cloudServicesConfigured: true, activeCloudServiceId: null}
+    host.backendClient = {listDocuments: vi.fn()}
+    host.storageLocation = "development-server"
+    vi.stubGlobal("showOpenFilePicker", undefined)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    const opening = host.openDocument()
+    const input = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(input.hidden).toBe(true)
+    Object.defineProperty(input, "files", {value: [new File(["<p>Imported</p>"], "import.html")]})
+    input.dispatchEvent(new Event("change"))
+    await opening
+    expect(reload).toHaveBeenCalledWith("<p>Imported</p>")
+    expect(host.backendClient.listDocuments).not.toHaveBeenCalled()
+    expect(host.fileHandle).toBeNull()
+    expect(host.fileName).toBe("import")
+    expect(input.isConnected).toBe(false)
+    expect(host.fileOperationActive).toBe(false)
+  })
+
+  it("cleans up cancelled fallback file dialogs", async () => {
+    const {editor} = await mountEditor()
+    vi.stubGlobal("showOpenFilePicker", undefined)
+    const host = editor as any
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    const opening = host.openDocument()
+    editor.shadowRoot!.querySelector('input[type="file"]')!.dispatchEvent(new Event("cancel"))
+    await opening
+    expect(host.fileOperationActive).toBe(false)
+    expect(reload).not.toHaveBeenCalled()
+    expect(editor.shadowRoot!.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it("prompts for the first local download name and reuses it on Save", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileDirty = true
+    vi.stubGlobal("showSaveFilePicker", undefined)
+    const prompt = vi.fn().mockReturnValueOnce("Lesson").mockReturnValueOnce("Copy.html")
+    vi.stubGlobal("prompt", prompt)
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    const downloads: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function(this: HTMLAnchorElement) {downloads.push(this.download)})
+    mockSaveSnapshot(editor, "<p>Saved</p>")
+    await host.saveDocument()
+    expect(host.fileName).toBe("Lesson")
+    expect(host.fileDirty).toBe(false)
+    await host.saveDocument()
+    expect(prompt).toHaveBeenCalledTimes(1)
+    await host.saveDocument(true)
+    expect(prompt).toHaveBeenCalledTimes(2)
+    expect(downloads).toEqual(["Lesson.html", "Lesson.html", "Copy.html"])
+  })
+
+  it("leaves the document unchanged when the fallback Save as prompt is cancelled", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileDirty = true
+    vi.stubGlobal("showSaveFilePicker", undefined)
+    vi.stubGlobal("prompt", vi.fn().mockReturnValue(null))
+    const execute = mockSaveSnapshot(editor, "<p>Saved</p>")
+    await host.saveDocument()
+    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "prepareVersionSave"}))
+    expect(host.fileDirty).toBe(true)
+    expect(host.downloadedFileName).toBeNull()
+  })
+
+  it("reports an unavailable configured cloud without invoking local file dialogs", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    configureCloudStorage(host)
+    host.backendClient = null
+    const open = vi.fn()
+    const save = vi.fn()
+    vi.stubGlobal("showOpenFilePicker", open)
+    vi.stubGlobal("showSaveFilePicker", save)
+    const report = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    await host.openDocument()
+    await host.saveDocument()
+    expect(report).toHaveBeenCalledTimes(2)
+    expect(open).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it("reuses the local file handle when Save is triggered again", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const write = vi.fn()
+    host.fileHandle = {name: "Original.html", createWritable: async () => ({write, close: async () => {}})}
+    host.fileName = "Renamed in editor"
+    const picker = vi.fn()
+    vi.stubGlobal("showSaveFilePicker", picker)
+    mockSaveSnapshot(editor, "<p>Saved</p>")
+    await host.saveDocument()
+    expect(write).toHaveBeenCalledOnce()
+    expect(picker).not.toHaveBeenCalled()
+  })
+
+  it("keeps the cloud endpoint and dirty state when downloading a local copy", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    configureCloudStorage(host)
+    host.backendDocumentId = "cloud-file"
+    host.fileName = "Cloud lesson"
+    host.fileDirty = true
+    const write = vi.fn()
+    const handle = {name: "Local copy.html", createWritable: async () => ({write, close: async () => {}})}
+    const picker = vi.fn().mockResolvedValue(handle)
+    vi.stubGlobal("showSaveFilePicker", picker)
+    mockSaveSnapshot(editor, "<p>Saved</p>")
+    host.backendClient = {updateDocument: vi.fn().mockResolvedValue({id: "cloud-file", title: "Cloud lesson", format: "html"})}
+    await host.downloadDocument()
+    await host.downloadDocument()
+    expect(picker).toHaveBeenCalledOnce()
+    expect(write).toHaveBeenCalledTimes(2)
+    expect(host.backendDocumentId).toBe("cloud-file")
+    expect(host.fileName).toBe("Cloud lesson")
+    expect(host.fileDirty).toBe(true)
+    await host.saveDocument()
+    expect(host.backendClient.updateDocument).toHaveBeenCalledWith("cloud-file", expect.objectContaining({title: "Cloud lesson"}))
+    expect(host.fileHandle).toBe(handle)
+  })
+
+  it("uses the cloud Save as dialog to replace a selected file and keeps failures open", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    configureCloudStorage(host)
+    const existing = {id: "existing", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
+    host.backendClient = {listDocuments: vi.fn().mockResolvedValue([{...existing, id: "earlier"}, existing]), updateDocument: vi.fn().mockRejectedValue(new Error("Save failed")), createDocument: vi.fn()}
+    const report = vi.spyOn(host, "reportFileError").mockImplementation((error: unknown) => {host.fileError = (error as Error).message})
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    mockSaveSnapshot(editor, "<p>Saved</p>")
+    await host.saveDocument(true)
+    const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
+    menu.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Lesson.html", id: "existing"}}))
+    await vi.waitFor(() => expect(report).toHaveBeenCalledOnce())
+    expect(host.backendClient.updateDocument).toHaveBeenCalledWith("existing", expect.objectContaining({title: "Lesson"}))
+    expect(host.backendClient.createDocument).not.toHaveBeenCalled()
+    expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(true)
+    expect(host.documentsError).toBe("Save failed")
+    host.backendClient.updateDocument.mockResolvedValue(existing)
+    menu.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Lesson", id: "existing"}}))
+    await vi.waitFor(() => expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false))
+    expect(host.backendDocumentId).toBe("existing")
+    await host.saveDocument(true)
+    menu.fileName = "Discarded draft"
+    menu.close()
+    await host.saveDocument(true)
+    expect(menu.fileName).toBe("Lesson.html")
+  })
+
+  it.each(["html", "offline"])("routes the %s Download submenu to local saving without changing the cloud destination", async format => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    configureCloudStorage(host)
+    host.backendDocumentId = "cloud-file"
+    const write = vi.fn()
+    const name = format === "offline" ? "copy.offline.html" : "copy.html"
+    vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({name, createWritable: async () => ({write, close: async () => {}})}))
+    const execute = mockSaveSnapshot(editor, "<p>Downloaded</p>")
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: `download:${format}`}}))
+    await vi.waitFor(() => expect(write).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+    expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: format === "offline"})
+    expect(host.backendDocumentId).toBe("cloud-file")
+  })
+
+  it("offers Upload and Download only for a configured cloud, above the menu separator", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.label)).not.toContain("Upload")
+    configureCloudStorage(host)
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(menu.groups[0].buttons.slice(-2)).toEqual([{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: [
+      {label: "HTML (.html)", action: "download:html", icon: "HTML"}, {label: "Offline HTML (.offline.html)", action: "download:offline", icon: "OfflineHTML"},
+    ]}])
+    const labels = menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.label)
+    expect(labels.indexOf("Save as")).toBe(labels.indexOf("Save") + 1)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    host.backendDocumentId = "old-cloud-file"
+    vi.stubGlobal("showOpenFilePicker", undefined)
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "Upload"}}))
+    const input = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, "files", {value: [new File(["<p>Upload</p>"], "Uploaded.html")]})
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+    expect(reload).toHaveBeenCalledWith("<p>Upload</p>")
+    expect(host.settings.activeCloudServiceId).toBe("test-cloud")
+    expect(host.backendDocumentId).toBeNull()
   })
 
   it("opens an HTML file and associates its handle with the document", async () => {
@@ -2777,6 +2984,7 @@ describe("DomEditor file actions", () => {
     }
     ;(editor as any).backendClient = backend
     ;(editor as any).storageLocation = "development-server"
+    configureCloudStorage(editor as any)
     const reload = vi.spyOn(editor as any, "reloadDocument").mockResolvedValue(undefined)
 
     await (editor as any).openDocument()
@@ -2803,6 +3011,7 @@ describe("DomEditor file actions", () => {
       .mockResolvedValueOnce([older, newer]).mockResolvedValueOnce([])
     host.backendClient = {listDocuments}
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     host.fileDirty = true
     const confirm = vi.fn()
     vi.stubGlobal("confirm", confirm)
@@ -2903,13 +3112,16 @@ describe("DomEditor file actions", () => {
     const {editor} = await mountEditor()
     const host = editor as any
     const saved = {id: "folder/new document", title: "Saved", format: "html", createdAt: "2026-10-03", updatedAt: "2026-10-03"}
-    const client = {apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn().mockResolvedValue(saved)}
+    const client = {listDocuments: vi.fn().mockResolvedValue([]), apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn().mockResolvedValue(saved)}
     host.backendClient = client
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     host.backendDocumentId = "previous"
     mockSaveSnapshot(editor, "<p>Saved content</p>")
     history.replaceState({}, "", "/?other=keep&open=local%3Aprevious")
     await host.saveDocument(true)
+    editor.shadowRoot!.querySelector("open-document-menu")!.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Saved.html"}}))
+    await vi.waitFor(() => expect(host.backendDocumentId).toBe(saved.id))
     const reference = "http://localhost:1234/api/documents/folder%2Fnew%20document"
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
     expect(client.createDocument).toHaveBeenCalledOnce()
@@ -3016,6 +3228,7 @@ describe("DomEditor file actions", () => {
     const reference = new URL(location.href).searchParams.get("open")
     expect(reference).toBe(`local:${host.recentDocuments[0].id}`)
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     await editor.updateComplete
     editor.shadowRoot!.querySelector<HTMLButtonElement>(".document-layout-document")!.click()
     await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(2))
@@ -3087,6 +3300,7 @@ describe("DomEditor file actions", () => {
     const backend = {listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockResolvedValue(undefined), getDocument: vi.fn()}
     host.backendClient = backend
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     host.backendDocumentId = current ? "doc-1" : "other"
     host.fileDirty = false
     const reload = vi.spyOn(host, "reloadDocument")
@@ -3108,6 +3322,7 @@ describe("DomEditor file actions", () => {
     const backend = {listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockRejectedValue(new Error("Delete failed"))}
     host.backendClient = backend
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     await host.openDocument()
     const menu = editor.shadowRoot!.querySelector("open-document-menu")!
     const confirm = vi.fn()
@@ -3129,6 +3344,7 @@ describe("DomEditor file actions", () => {
     const getDocument = vi.fn(() => new Promise(resolve => { finish = resolve }))
     host.backendClient = {listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}]), getDocument}
     host.storageLocation = "development-server"
+    configureCloudStorage(host)
     host.fileDirty = true
     const confirm = vi.fn()
     vi.stubGlobal("confirm", confirm)
@@ -3158,14 +3374,21 @@ describe("DomEditor file actions", () => {
       content: "<!DOCTYPE html><html><body><p>Saved remotely</p></body></html>",
       format: "html",
     }
-    const backend = {createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn()}
+    const backend = {listDocuments: vi.fn().mockResolvedValue([]), createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn()}
     ;(editor as any).backendClient = backend
     ;(editor as any).storageLocation = "development-server"
+    configureCloudStorage(editor as any)
     ;(editor as any).fileName = "Lesson"
     ;(editor as any).fileDirty = true
     mockSaveSnapshot(editor, saved.content)
 
     await (editor as any).saveDocument()
+
+    expect(backend.createDocument).not.toHaveBeenCalled()
+    const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
+    expect(menu.mode).toBe("save")
+    menu.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Lesson.html"}}))
+    await vi.waitFor(() => expect((editor as any).backendDocumentId).toBe("doc-2"))
 
     expect(backend.createDocument).toHaveBeenCalledWith({
       title: "Lesson",
@@ -3230,19 +3453,21 @@ describe("DomEditor file actions", () => {
 
   it("downloads the serialized document with the current file name", async () => {
     const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute")
-      .mockResolvedValue("<!DOCTYPE html><html><body><p>Downloaded</p></body></html>")
+    const execute = mockSaveSnapshot(editor, "<!DOCTYPE html><html><body><p>Downloaded</p></body></html>")
+    vi.stubGlobal("showSaveFilePicker", undefined)
+    vi.stubGlobal("prompt", vi.fn().mockReturnValue("lesson.html"))
     const createObjectURL = vi.fn().mockReturnValue("blob:test")
     const revokeObjectURL = vi.fn()
-    vi.stubGlobal("URL", {createObjectURL, revokeObjectURL})
+    vi.spyOn(URL, "createObjectURL").mockImplementation(createObjectURL)
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(revokeObjectURL)
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
     ;(editor as any).fileName = "lesson"
 
     await (editor as any).downloadDocument()
 
-    expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: false})
+    expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: false})
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:test")
+    await vi.waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:test"))
   })
 })
 
@@ -6886,4 +7111,175 @@ it("follows the widget package only while the Element console tab is open", asyn
   host.widgetOptions = {path: [0], localName: "npm-only", options: [], actions: []}
   host.selectWidgetElementPackage()
   expect(host.selectedLocalPackageName).toBe("@local/first")
+})
+
+describe("cloud service settings integration", () => {
+  const service = {id: "cloud-a", type: "url" as const, url: "https://cloud.example", username: "ada", accessToken: "token"}
+  const session = {
+    kind: "webwriter-cloud-service", version: 1, authentication: "bearer",
+    apiBaseUrl: "https://cloud.example/api", collaborationUrl: "wss://cloud.example",
+    adminUrl: "https://cloud.example/admin", capabilities: ["documents"], user: {id: "ada", name: "Ada"},
+  }
+  const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status, headers: {"Content-Type": "application/json"}})
+
+  it("uses the configured provider and saved token, and preserves the document ID after re-sign-in", async () => {
+    vi.stubGlobal("fetch", vi.fn(async(url: string) => response(String(url).endsWith("/session") ? session : {documents: []})))
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id, cloudServicesConfigured: true}
+    await host.loginToBackend()
+    expect(host.backendClient.apiBaseUrl).toBe(session.apiBaseUrl)
+    expect(host.backendSession.user.name).toBe("Ada")
+    expect(vi.mocked(fetch).mock.calls.some(([, init]) => (init?.headers as any)?.Authorization === "Bearer token")).toBe(true)
+    host.backendDocumentId = "existing-document"
+    host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {
+      ...host.settings, cloudServices: [{...service, accessToken: "renewed-token"}],
+    }}))
+    await vi.waitFor(() => expect(host.backendState).toBe("connected"))
+    expect(host.backendDocumentId).toBe("existing-document")
+    host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {...host.settings, activeCloudServiceId: null}}))
+    expect(host.backendClient).toBeNull()
+    expect(host.backendDocumentId).toBeNull()
+    await vi.waitFor(() => expect(host.backendState).toBe("unavailable"))
+    expect(host.settings.activeCloudServiceId).toBeNull()
+  })
+
+  it("expires the active token on a timer and renders warnings on File and Settings", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...defaultAppSettings(), cloudServices: [{...service, expiresAt: Date.now() + 50}], activeCloudServiceId: service.id}
+    host.backendState = "connected"
+    host.updateCloudExpiry()
+    await vi.waitFor(() => expect(host.backendState).toBe("unavailable"))
+    expect(loadAppSettings().cloudServices[0].accessToken).toBeUndefined()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const tab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
+    await tab.updateComplete
+    expect(tab.shadowRoot!.querySelector(".warning-bubble")?.getAttribute("aria-label")).toContain("sign in")
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    expect(menu.shadowRoot!.querySelector('[data-action="Settings"] .warning-bubble')?.getAttribute("aria-label")).toContain("expired")
+  })
+
+  it("treats unauthorized document responses as expiration without persisting the token", async () => {
+    vi.stubGlobal("fetch", vi.fn(async(url: string) => String(url).endsWith("/session") ? response(session) : new Response("Expired", {status: 401})))
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.settings = {...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id}
+    await host.loginToBackend()
+    await vi.waitFor(() => expect(host.backendState).toBe("unavailable"))
+    expect(host.backendClient).toBeNull()
+    expect(loadAppSettings().cloudServices[0].accessToken).toBeUndefined()
+    expect(host.cloudSessionWarning).toContain("expired")
+  })
+
+  it("applies the local username through the authenticated frame-control bridge", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    const post = vi.spyOn(host, "postFrameControl")
+    host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {...host.settings, localUsername: "Local Ada"}}))
+    expect(post).toHaveBeenCalledWith("username", {username: "Local Ada"})
+  })
+})
+
+it("discovers the dev server alongside a configured cloud provider without activating it", async () => {
+  const service = {id: "selected", type: "url" as const, url: "https://selected.example", username: "ada", accessToken: "token"}
+  const devSession = {kind: "webwriter-dev-server", version: 1, authentication: "none",
+    apiBaseUrl: "http://localhost:1234/api", collaborationUrl: "ws://localhost:1234", adminUrl: "http://localhost:1234/admin",
+    user: {id: "dev", name: "Developer"}, capabilities: ["documents"]}
+  const cloudSession = {...devSession, kind: "webwriter-cloud-service", authentication: "bearer",
+    apiBaseUrl: `${service.url}/api`, collaborationUrl: "wss://selected.example", adminUrl: `${service.url}/admin`, user: {id: "ada", name: "Ada"}}
+  vi.stubGlobal("fetch", vi.fn(async(url: string) => new Response(JSON.stringify(
+    !String(url).endsWith("/session") ? {documents: []} : String(url).startsWith(service.url) ? cloudSession : devSession,
+  ), {headers: {"Content-Type": "application/json"}})))
+  const {editor} = await mountEditor()
+  const host = editor as any
+  host.settings = {...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id, cloudServicesConfigured: true}
+  await host.loginToBackend(undefined, true)
+  expect(host.settings.cloudServices).toHaveLength(2)
+  expect(host.settings.cloudServices[1].url).toBe(devSession.apiBaseUrl)
+  expect(host.settings.activeCloudServiceId).toBe(service.id)
+  expect(host.backendClient.apiBaseUrl).toBe(cloudSession.apiBaseUrl)
+})
+
+it("does not apply a cloud save response after the active service is changed", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  let finish!: (document: object) => void
+  const pending = new Promise(resolve => {finish = resolve})
+  const client = {createDocument: vi.fn(() => pending)}
+  host.backendClient = client
+  host.fileDirty = true
+  vi.spyOn(editor, "execute").mockResolvedValue({source: "<p>Draft</p>", checkpointId: "checkpoint"})
+  const saving = host.saveBackendDocument()
+  await vi.waitFor(() => expect(client.createDocument).toHaveBeenCalledOnce())
+  host.backendClient = {apiBaseUrl: "https://replacement.example/api"}
+  finish({id: "old-cloud-id", title: "Old response", format: "html"})
+  await saving
+  expect(host.backendDocumentId).toBeNull()
+  expect(host.fileDirty).toBe(true)
+  expect(host.fileName).not.toBe("Old response")
+})
+
+it("activates a saved inactive cloud service when opening its document link", async () => {
+  const first = {id: "first", type: "url" as const, url: "https://first.example", username: "ada", accessToken: "first-token"}
+  const second = {...first, id: "second", url: "https://second.example", accessToken: "second-token"}
+  const session = {kind: "webwriter-cloud-service", version: 1, authentication: "bearer",
+    apiBaseUrl: `${second.url}/api`, collaborationUrl: "wss://second.example", adminUrl: `${second.url}/admin`,
+    user: {id: "ada", name: "Ada"}, capabilities: ["documents"]}
+  vi.stubGlobal("fetch", vi.fn(async(url: string) => new Response(JSON.stringify(
+    String(url).endsWith("/session") ? session : {documents: []},
+  ), {headers: {"Content-Type": "application/json"}})))
+  const {editor} = await mountEditor()
+  const host = editor as any
+  host.settings = {...defaultAppSettings(), cloudServices: [first, second], activeCloudServiceId: first.id}
+  host.backendDocumentId = "old-provider-document"
+  await host.loginToBackend(session.apiBaseUrl)
+  expect(loadAppSettings().activeCloudServiceId).toBe(second.id)
+  expect(host.backendClient.apiBaseUrl).toBe(session.apiBaseUrl)
+  expect(host.backendDocumentId).toBeNull()
+})
+
+it("does not remove a replacement provider's document when an earlier deletion finishes", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  let finish!: () => void
+  const pending = new Promise<void>(resolve => {finish = resolve})
+  const client = {deleteDocument: vi.fn(() => pending)}
+  host.backendClient = client
+  host.savedDocuments = [{id: "same-id", title: "First provider", format: "html", createdAt: "2026-10-05T00:00:00Z", updatedAt: "2026-10-05T00:00:00Z"}]
+  vi.stubGlobal("confirm", vi.fn(() => true))
+  host.handleSavedDocumentDelete(new CustomEvent("saved-document-delete", {detail: {id: "same-id"}}))
+  await vi.waitFor(() => expect(client.deleteDocument).toHaveBeenCalledOnce())
+  host.backendClient = {apiBaseUrl: "https://second.example/api"}
+  host.savedDocuments = [{id: "same-id", title: "Second provider", format: "html", createdAt: "2026-10-05T00:00:00Z", updatedAt: "2026-10-05T00:00:00Z"}]
+  host.backendDocumentId = "same-id"
+  finish()
+  await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+  expect(host.savedDocuments[0].title).toBe("Second provider")
+  expect(host.backendDocumentId).toBe("same-id")
+})
+
+it("updates the dev-server username without reconnecting or losing the saved document", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  const service = {id: "dev", type: "url" as const, url: "http://localhost:1234/api", username: "Local developer", authentication: "none" as const}
+  host.settings = {...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id}
+  host.backendSession = {authentication: "none", user: {id: "local-development", name: "Local developer"}}
+  const client = {apiBaseUrl: service.url}
+  host.backendClient = client
+  host.backendDocumentId = "current-document"
+  host.editorOpaque = true
+  const login = vi.spyOn(host, "loginToBackend")
+  const post = vi.spyOn(host, "postFrameControl")
+  host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {
+    ...host.settings, cloudServices: [{...service, username: "Dev Ada"}],
+  }}))
+  expect(login).not.toHaveBeenCalled()
+  expect(host.backendClient).toBe(client)
+  expect(host.backendDocumentId).toBe("current-document")
+  expect(host.username).toBe("Dev Ada")
+  expect(post).toHaveBeenCalledWith("username", {username: "Dev Ada"})
 })

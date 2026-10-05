@@ -105,6 +105,7 @@ export type InitializeEditorMessage = {
   bridgeNonce?: string
   initialState?: EditorStateSnapshot
   language?: string
+  username?: string
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
 }
@@ -157,6 +158,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
     && validSyncUrl
     && (message.bridgeNonce === undefined || typeof message.bridgeNonce === "string" && message.bridgeNonce.length >= 16)
     && (message.language === undefined || typeof message.language === "string")
+    && (message.username === undefined || typeof message.username === "string")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
     && (message.shortcuts === undefined || !!message.shortcuts && typeof message.shortcuts === "object"
       && !Array.isArray(message.shortcuts) && Object.values(message.shortcuts).every(value => typeof value === "string"))

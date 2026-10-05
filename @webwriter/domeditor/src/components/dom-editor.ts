@@ -1,5 +1,7 @@
+import type {DOMEditor} from "../domeditor"
+import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
 import type {GitPackageSource} from "../git-package"
-import {ribbonIcon} from "../ribbon-icons"
+import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
 import type {DeveloperConsole} from "./developer-console"
@@ -145,6 +147,9 @@ import {
 import {
   BackendClient,
   probeDevelopmentBackend,
+  connectCloudService,
+  discoverHostBackend,
+  CloudAuthenticationError,
   type BackendSession,
   type BackendDocumentSummary,
 } from "../backend-client"
@@ -214,7 +219,6 @@ const defaultDocumentThemeHTML = () => {
 
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const previewEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/preview-entry.ts" : "assets/preview-entry.js"}`
-const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
@@ -445,6 +449,7 @@ export class DomEditor extends LitElement {
     accessibleRecentDocumentIds: {attribute: false, state: true},
     documentsLoading: {attribute: false, state: true},
     documentsError: {attribute: false, state: true},
+    documentDialogMode: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
     previewFramePending: {attribute: false, state: true},
     ribbonDrag: {attribute: false, state: true},
@@ -620,6 +625,11 @@ export class DomEditor extends LitElement {
   private documentLayoutConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
+  private downloadedFileName: string | null = null
+  private cancelFileInput?: () => void
+  private documentDialogMode: "open" | "save" = "open"
+  private documentDialogFormat: FileFormat = "html"
+  private documentDialogClient: BackendClient | null = null
   private pendingCloudBundleSave: {client: BackendClient, id: string} | null = null
   private savedDocuments: BackendDocumentSummary[] = []
   private recentDocuments: RecentDocument[] = []
@@ -686,6 +696,7 @@ export class DomEditor extends LitElement {
   private backendClient: BackendClient | null = null
   private backendDocumentId: string | null = null
   private backendProbeController: AbortController | null = null
+  private cloudExpiryTimer: ReturnType<typeof setTimeout> | undefined
   private dirtyTrackingReady = false
   private dirtyTrackingMutationPending = false
   private dirtyTrackingTimer: ReturnType<typeof setTimeout> | undefined
@@ -1219,7 +1230,7 @@ export class DomEditor extends LitElement {
       if(value) {
         const parsed = JSON.parse(value) as Partial<LiveSessionIdentity>
         if(typeof parsed.id === "string" && typeof parsed.name === "string" && typeof parsed.color === "string") {
-          return {id: parsed.id, name: parsed.name, color: parsed.color}
+          return {id: parsed.id, name: this.username || parsed.name, color: parsed.color}
         }
       }
     }
@@ -1231,7 +1242,7 @@ export class DomEditor extends LitElement {
     const suffix = id.replaceAll(/[^a-zA-Z0-9]/g, "").slice(-4).toLocaleUpperCase()
     const identity = {
       id,
-      name: `Learner ${suffix || "?"}`,
+      name: this.username || `Learner ${suffix || "?"}`,
       color: liveSessionColors[Math.abs(hashString(id)) % liveSessionColors.length],
     }
     try {
@@ -1451,27 +1462,147 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private loginToBackend = async (apiBaseUrl?: unknown) => {
+  private cloudServiceForURL(apiBaseUrl: string) {
+    const matches = (service: CloudService) => {
+      const base = service.url.replace(/\/$/, "")
+      return (base.endsWith("/api") ? base : `${base}/api`) === apiBaseUrl
+    }
+    return this.settings.cloudServices.find(service => service.id === this.settings.activeCloudServiceId && matches(service))
+      ?? this.settings.cloudServices.find(matches)
+  }
+
+  private expireCloudService(service: CloudService) {
+    const current = this.settings.cloudServices.find(value => value.id === service.id)
+    if(!current || current.accessToken !== service.accessToken) return
+    this.settings = {...this.settings, cloudServices: this.settings.cloudServices.map(value => value.id === service.id
+      ? {...value, accessToken: undefined, expiresAt: Date.now() - 1} : value)}
+    persistAppSettings(this.settings)
+    if(this.settings.activeCloudServiceId === service.id) {
+      this.backendProbeController?.abort()
+      this.backendClient = null
+      this.backendSession = null
+      this.backendState = "unavailable"
+      this.savedDocuments = []
+      this.documentsLoading = false
+      this.storageLocation = "local"
+    }
+    this.updateCloudExpiry()
+    this.updateUserIdentity()
+  }
+
+  private updateCloudExpiry() {
+    clearTimeout(this.cloudExpiryTimer)
+    this.cloudExpiryTimer = undefined
+    let nextExpiry = Infinity
+    for(const service of this.settings.cloudServices) {
+      if(!service.accessToken) continue
+      const expiry = service.expiresAt ?? tokenExpiresAt(service.accessToken)
+      if(expiry === undefined) continue
+      if(expiry <= Date.now()) {this.expireCloudService(service); return}
+      nextExpiry = Math.min(nextExpiry, expiry)
+    }
+    if(Number.isFinite(nextExpiry)) this.cloudExpiryTimer = setTimeout(() => this.updateCloudExpiry(), Math.min(nextExpiry - Date.now(), 2 ** 31 - 1))
+  }
+
+  private get cloudSessionWarning() {
+    return this.settings.cloudServices.some(service => cloudServiceExpired(service))
+      ? "Cloud session expired. Open Settings to sign in again." : ""
+  }
+
+  private get username() {
+    if(this.backendSession?.authentication === "none") {
+      const service = this.settings.cloudServices.find(value => value.id === this.settings.activeCloudServiceId)
+      return service?.username.trim() || this.backendSession.user.name || this.settings.localUsername.trim()
+    }
+    return this.backendSession?.user.name || this.settings.localUsername.trim()
+  }
+
+  private updateUserIdentity() {
+    const username = this.username
+    if(this.editorOpaque) this.postFrameControl("username", {username})
+    else {
+      const doc = (this.editorWindow as Window & {editor?: DOMEditor} | null)?.editor?.doc
+      doc?.setUser({name: username || `User ${doc.doc.clientID.toString(36).toUpperCase()}`})
+    }
+  }
+
+  private discoverAdditionalCloudServices = async (signal: AbortSignal) => {
+    try {
+      const session = await discoverHostBackend(signal) ?? await probeDevelopmentBackend(signal)
+      if(!session || signal.aborted || !this.isConnected || this.cloudServiceForURL(session.apiBaseUrl)) return
+      const service: CloudService = {id: crypto.randomUUID(), type: "url", url: session.apiBaseUrl,
+        username: session.user.name, ...(session.authentication === "none" ? {authentication: "none" as const} : {})}
+      this.settings = {...this.settings, cloudServices: [...this.settings.cloudServices, service]}
+      persistAppSettings(this.settings)
+    }
+    catch { /* Discovery must not interrupt the selected provider. */ }
+  }
+
+  private loginToBackend = async (apiBaseUrl?: unknown, discoverAdditional = false) => {
     this.backendProbeController?.abort()
     const controller = new AbortController()
     this.backendProbeController = controller
     this.backendState = "probing"
+    this.backendClient = null
+    this.backendSession = null
+    this.savedDocuments = []
+    this.documentsLoading = false
+    this.storageLocation = "local"
+    const linkedBase = typeof apiBaseUrl === "string" ? apiBaseUrl : undefined
+    let service = linkedBase ? this.cloudServiceForURL(linkedBase)
+      : this.settings.cloudServices.find(value => value.id === this.settings.activeCloudServiceId)
+    if(linkedBase && service && this.settings.activeCloudServiceId !== service.id) {
+      this.settings = {...this.settings, activeCloudServiceId: service.id, cloudServicesConfigured: true}
+      this.backendDocumentId = null
+      persistAppSettings(this.settings)
+    }
+    const discovery = service && discoverAdditional ? this.discoverAdditionalCloudServices(
+      AbortSignal.any([controller.signal, AbortSignal.timeout(5000)])) : Promise.resolve()
     try {
-      const session = await probeDevelopmentBackend(controller.signal, undefined, typeof apiBaseUrl === "string" ? apiBaseUrl : undefined)
-      if(this.backendProbeController !== controller) return
-      if(!session) {
-        this.backendSession = null
-        this.backendClient = null
-        this.backendState = "unavailable"
-        this.storageLocation = "local"
-        return
+      let session: BackendSession | null = null
+      if(service) {
+        if(service.authentication !== "none" && !service.accessToken) {
+          if(cloudServiceExpired(service)) this.expireCloudService(service)
+        }
+        else {
+          const result = await connectCloudService(service, {signal: controller.signal})
+          if(this.backendProbeController !== controller) return
+          session = result.session
+          service = result.service
+          this.settings = {...this.settings, cloudServices: this.settings.cloudServices.map(value => value.id === result.service.id ? result.service : value)}
+          persistAppSettings(this.settings)
+        }
       }
+      else {
+        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)])
+        if(!linkedBase) session = await discoverHostBackend(signal)
+        if(!session) session = await probeDevelopmentBackend(signal, undefined, linkedBase)
+        if(this.backendProbeController !== controller) return
+        if(session) {
+          const existing = this.cloudServiceForURL(session.apiBaseUrl)
+          service = existing ?? {id: crypto.randomUUID(), type: "url", url: session.apiBaseUrl,
+            username: session.user.name, ...(session.authentication === "none" ? {authentication: "none" as const} : {})}
+          this.settings = {...this.settings,
+            cloudServices: existing ? this.settings.cloudServices : [...this.settings.cloudServices, service],
+            activeCloudServiceId: linkedBase || !this.settings.cloudServicesConfigured ? service.id : this.settings.activeCloudServiceId,
+            cloudServicesConfigured: true,
+          }
+          persistAppSettings(this.settings)
+          if(!linkedBase && this.settings.activeCloudServiceId !== service.id) session = null
+          if(session?.authentication === "bearer") session = null
+        }
+      }
+      if(this.backendProbeController !== controller) return
       this.backendSession = session
-      this.backendClient = new BackendClient(session)
+      const connectedService = service
+      this.backendClient = session ? new BackendClient(session, undefined, service?.accessToken,
+        connectedService ? () => this.expireCloudService(connectedService) : undefined) : null
       this.savedDocuments = []
-      this.backendState = "connected"
-      this.storageLocation = "development-server"
-      void this.loadSavedDocuments()
+      this.backendState = session ? "connected" : "unavailable"
+      this.storageLocation = session ? "development-server" : "local"
+      this.updateCloudExpiry()
+      this.updateUserIdentity()
+      if(session) void this.loadSavedDocuments()
     }
     catch(error) {
       if(controller.signal.aborted) return
@@ -1479,9 +1610,12 @@ export class DomEditor extends LitElement {
       this.backendClient = null
       this.backendState = "unavailable"
       this.storageLocation = "local"
-      this.reportFileError(error)
+      if(error instanceof CloudAuthenticationError && service?.accessToken) this.expireCloudService(service)
+      else this.reportFileError(error)
+      this.updateUserIdentity()
     }
     finally {
+      await discovery
       if(this.backendProbeController === controller) this.backendProbeController = null
     }
   }
@@ -1805,6 +1939,7 @@ export class DomEditor extends LitElement {
         syncUrl: this.syncUrl,
         bridgeNonce: this.bridgeNonce,
         language: this.settings.language,
+        username: this.username,
         disableAnimations: this.settings.disableAnimations,
         shortcuts: {...this.settings.shortcuts},
         ...(this.frameState ? {initialState: this.frameState} : {}),
@@ -1885,6 +2020,7 @@ export class DomEditor extends LitElement {
           if(this.isConnected && this.editorWindow === editorWindow && this.frameRevision === 0 && !this.previewActive) {
             this.focusEditor()
           }
+          this.updateUserIdentity()
           editorReadyResolve?.(editorWindow)
           if(this.frameRevision === 0 && this.frameDocumentHTML === null && !this.initialDocumentLayoutStarted
             && !new URL(location.href).searchParams.has("open") && this.settings.defaultLayout !== "document") {
@@ -2581,13 +2717,6 @@ export class DomEditor extends LitElement {
     if(typeof value === "string") this.fileName = this.baseFileName(value)
   }
 
-  private handleStorageLocationChange = (event: Event) => {
-    const value = (event as CustomEvent<{value?: unknown}>).detail?.value
-    if(value === "local" || value === "development-server" && this.backendClient) {
-      this.storageLocation = value
-    }
-  }
-
   private handleDocumentHeadAction = (event: Event) => {
     const action = (event as CustomEvent<DocumentHeadAction>).detail
     if(!isDocumentHeadAction(action)) return
@@ -2635,6 +2764,19 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
+    const active = (value: AppSettings) => value.cloudServices.find(service => service.id === value.activeCloudServiceId)
+    const connection = (service?: CloudService) => service?.authentication === "none" ? {...service, username: ""} : service
+    if(previous.activeCloudServiceId !== settings.activeCloudServiceId
+      || JSON.stringify(connection(active(previous))) !== JSON.stringify(connection(active(settings)))) {
+      if(previous.activeCloudServiceId !== settings.activeCloudServiceId
+        || active(previous)?.username !== active(settings)?.username || active(previous)?.url !== active(settings)?.url) this.backendDocumentId = null
+      this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
+      this.documentDialogClient = null
+      this.savedDocuments = []
+      void this.loginToBackend()
+    }
+    this.updateCloudExpiry()
+    this.updateUserIdentity()
     this.lang = settings.language
     this.updateMotionPreference()
     this.localPackageManager.autoReload = settings.autoReloadPackages
@@ -2805,14 +2947,18 @@ export class DomEditor extends LitElement {
   }
 
   private openDocument() {
-    if(this.storageLocation === "development-server" && this.backendClient) {
+    if(this.settings.activeCloudServiceId) {
       if(this.fileOperationActive) return Promise.resolve()
+      if(!this.backendClient) {this.reportFileError(new Error("Connect to the configured cloud service in Settings to open a file.")); return Promise.resolve()}
       return this.showOpenDocumentMenu()
     }
     return this.runFileOperation(() => this.performOpenDocument())
   }
 
-  private async showOpenDocumentMenu() {
+  private async showOpenDocumentMenu(mode: "open" | "save" = "open", format: FileFormat = this.fileFormat) {
+    this.documentDialogMode = mode
+    this.documentDialogFormat = format
+    this.documentDialogClient = this.backendClient
     this.documentsError = ""
     const loading = this.loadSavedDocuments()
     await this.updateComplete
@@ -2822,7 +2968,11 @@ export class DomEditor extends LitElement {
     await ribbon?.updateComplete
     ribbon?.shadowRoot?.querySelector('ribbon-tab[label="File"]')?.shadowRoot
       ?.querySelector<HTMLButtonElement>("button")?.focus()
-    await this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.show()
+    const menu = this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")
+    if(menu) {
+      menu.fileName = this.fileNameForFormat(format)
+      await menu.show()
+    }
     await loading
   }
 
@@ -2843,8 +2993,10 @@ export class DomEditor extends LitElement {
       this.documentsError = error instanceof Error ? error.message : String(error)
     }
     finally {
-      this.documentsLoading = false
-      void this.refreshRecentDocuments()
+      if(this.backendClient === client) {
+        this.documentsLoading = false
+        void this.refreshRecentDocuments()
+      }
     }
   }
 
@@ -2938,7 +3090,8 @@ export class DomEditor extends LitElement {
   }
 
   private handleSavedDocumentOpen = (event: CustomEvent<{id: string}>) => {
-    if(this.documentsLoading || !this.savedDocuments.some(document => document.id === event.detail.id)) return
+    if(this.documentDialogMode !== "open" || this.documentDialogClient !== this.backendClient
+      || this.documentsLoading || !this.savedDocuments.some(document => document.id === event.detail.id)) return
     void this.runFileOperation(() => this.openBackendDocument(event.detail.id))
   }
 
@@ -2951,6 +3104,7 @@ export class DomEditor extends LitElement {
       this.documentsError = ""
       try {
         await client.deleteDocument(summary.id)
+        if(this.backendClient !== client) return
         this.savedDocuments = this.savedDocuments.filter(document => document.id !== summary.id)
         void this.refreshRecentDocuments()
         if(this.backendDocumentId === summary.id) {
@@ -2960,12 +3114,38 @@ export class DomEditor extends LitElement {
         }
       }
       catch(error) {
+        if(this.backendClient !== client) return
         this.documentsError = error instanceof Error ? error.message : String(error)
       }
     })
   }
 
+  private handleSavedDocumentSave = (event: CustomEvent<{name: string, id?: string}>) => {
+    const client = this.backendClient
+    const name = event.detail.name.trim()
+    if(!client || client !== this.documentDialogClient || this.documentDialogMode !== "save"
+      || this.documentsLoading || this.fileOperationActive || !name) return
+    const existing = event.detail.id ? this.savedDocuments.find(document => document.id === event.detail.id)
+      : this.savedDocuments.find(document => this.baseFileName(document.title) === this.baseFileName(name))
+    if(event.detail.id && !existing) return
+    if(existing && !window.confirm(`Replace “${existing.title}”?`)) return
+    void this.runFileOperation(async () => {
+      this.documentsError = ""
+      const saved = await this.saveBackendDocument(true, this.formatForFileName(name, this.documentDialogFormat), undefined,
+        {name: this.baseFileName(name), id: existing?.id})
+      if(client !== this.backendClient) return
+      if(saved) this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
+      else this.documentsError = this.fileError || "Could not save the document."
+    })
+  }
+
   private saveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
+    if(this.fileOperationActive) return Promise.resolve()
+    if(this.settings.activeCloudServiceId) {
+      if(!this.backendClient) {this.reportFileError(new Error("Connect to the configured cloud service in Settings to save a file.")); return Promise.resolve()}
+      if(saveAs || !this.backendDocumentId) return this.showOpenDocumentMenu("save", requestedFormat)
+      return this.runFileOperation(async () => {await this.saveBackendDocument(false, requestedFormat)})
+    }
     return this.runFileOperation(() => this.performSaveDocument(saveAs, requestedFormat))
   }
 
@@ -2973,6 +3153,7 @@ export class DomEditor extends LitElement {
     if(!this.confirmDiscardChanges()) return
     try {
       this.fileHandle = null
+      this.downloadedFileName = null
       this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
@@ -3004,26 +3185,26 @@ export class DomEditor extends LitElement {
     if(!this.confirmDiscardChanges()) return
     const revision = this.documentChangeSequence
     const picker = this.filePickerWindow().showOpenFilePicker
-    if(!picker && !storedHandle) {
-      this.reportFileError(new Error("This browser does not support the File System Access API"))
-      return
-    }
     try {
-      const handle = storedHandle ?? (await picker!.call(window, this.htmlFilePickerOptions()))[0]
-      if(!handle) return
-      const file = await handle.getFile()
+      const handle = storedHandle ?? (picker ? (await picker.call(window, this.htmlFilePickerOptions()))[0] : null)
+      const file = handle ? await handle.getFile() : picker ? null : await this.pickFileInput()
+      if(!file) return
       const source = await file.text()
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       await this.reloadDocument(source)
       this.backendDocumentId = null
       this.fileHandle = handle
       this.storageLocation = "local"
-      const openedName = file.name || handle.name
+      const openedName = file.name || handle?.name || "document.html"
+      this.downloadedFileName = openedName
       this.fileName = this.baseFileName(openedName)
       this.fileFormat = this.formatForFileName(openedName)
       this.fileDirty = false
-      const opened = await this.rememberOpenedDocument({id: storedId ?? crypto.randomUUID(), title: openedName, openedAt: Date.now(), kind: "local", handle})
-      this.updateDocumentURL(documentOpenReference(opened))
+      if(handle) {
+        const opened = await this.rememberOpenedDocument({id: storedId ?? crypto.randomUUID(), title: openedName, openedAt: Date.now(), kind: "local", handle})
+        this.updateDocumentURL(documentOpenReference(opened))
+      }
+      else this.updateDocumentURL(null)
       this.focusEditor()
     }
     catch(error) {
@@ -3031,22 +3212,59 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async performSaveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
-    if(this.storageLocation === "development-server" && this.backendClient) {
-      await this.saveBackendDocument(saveAs, requestedFormat)
-      return
-    }
+  private pickFileInput(): Promise<File | null> {
+    return new Promise((resolve, reject) => {
+      const input = document.createElement("input")
+      input.type = "file"
+      input.accept = ".html,.htm,text/html"
+      input.hidden = true
+      const finish = (file: File | null, error?: unknown) => {
+        input.removeEventListener("change", change)
+        input.removeEventListener("cancel", cancel)
+        input.remove()
+        this.cancelFileInput = undefined
+        if(error !== undefined) reject(error)
+        else resolve(file)
+      }
+      const change = () => finish(input.files?.[0] ?? null)
+      const cancel = () => finish(null)
+      input.addEventListener("change", change)
+      input.addEventListener("cancel", cancel)
+      this.cancelFileInput = cancel
+      this.renderRoot.append(input)
+      try {input.click()}
+      catch(error) {finish(null, error)}
+    })
+  }
+
+  private triggerFileDownload(source: string, name: string) {
+    const url = URL.createObjectURL(new Blob([source], {type: "text/html;charset=utf-8"}))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = name
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+
+  private async performSaveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat, localCopy = false) {
     try {
-      const currentHandleMatches = this.fileHandle
-        && this.formatForFileName(this.fileHandle.name, requestedFormat) === requestedFormat
-        && this.baseFileName(this.fileHandle.name) === this.fileName
-      let handle = saveAs || !currentHandleMatches ? null : this.fileHandle
+      let handle = saveAs || this.fileHandle && this.formatForFileName(this.fileHandle.name, requestedFormat) !== requestedFormat
+        ? null : this.fileHandle
+      let name = handle?.name ?? this.downloadedFileName ?? this.fileNameForFormat(requestedFormat)
       if(!handle) {
         const picker = this.filePickerWindow().showSaveFilePicker
-        if(!picker) throw new Error("This browser does not support the File System Access API")
-        handle = await picker.call(window, this.htmlFilePickerOptions(this.fileNameForFormat(requestedFormat)))
+        if(picker) {
+          handle = await picker.call(window, this.htmlFilePickerOptions(this.fileNameForFormat(requestedFormat)))
+          name = handle.name
+        }
+        else if(saveAs || !this.downloadedFileName || this.formatForFileName(this.downloadedFileName) !== requestedFormat) {
+          const chosen = window.prompt("File name", this.fileNameForFormat(requestedFormat) || `document${requestedFormat === "offline" ? ".offline" : ""}.html`)
+          if(chosen === null || !chosen.trim()) return
+          name = chosen.trim()
+          if(!/\.html?$/i.test(name)) name += requestedFormat === "offline" ? ".offline.html" : ".html"
+        }
       }
-      const selectedFormat = this.formatForFileName(handle.name, requestedFormat)
+      const selectedFormat = this.formatForFileName(name, requestedFormat)
       const revision = this.documentChangeSequence
       const frameRevision = this.frameRevision
       const snapshot = await this.execute({type: "prepareVersionSave", offline: selectedFormat === "offline"})
@@ -3054,23 +3272,30 @@ export class DomEditor extends LitElement {
         throw new TypeError("The editor returned an invalid save snapshot")
       }
       const {source, checkpointId} = snapshot
-      const writable = await handle.createWritable()
-      await writable.write(new Blob([source], {type: "text/html;charset=utf-8"}))
-      await writable.close()
+      if(handle) {
+        const writable = await handle.createWritable()
+        await writable.write(new Blob([source], {type: "text/html;charset=utf-8"}))
+        await writable.close()
+      }
+      else this.triggerFileDownload(source, name)
       if(frameRevision === this.frameRevision) {
         this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
       }
-      this.backendDocumentId = null
       this.fileHandle = handle
-      this.fileName = this.baseFileName(handle.name)
-      this.fileFormat = selectedFormat
-      this.fileDirty = revision !== this.documentChangeSequence
-      const saved = await this.rememberOpenedDocument({id: crypto.randomUUID(), title: handle.name, openedAt: Date.now(), kind: "local", handle})
-      this.updateDocumentURL(documentOpenReference(saved))
+      this.downloadedFileName = name
+      if(!localCopy) {
+        this.backendDocumentId = null
+        this.fileName = this.baseFileName(name)
+        this.fileFormat = selectedFormat
+        this.fileDirty = revision !== this.documentChangeSequence
+        if(handle) {
+          const saved = await this.rememberOpenedDocument({id: crypto.randomUUID(), title: handle.name, openedAt: Date.now(), kind: "local", handle})
+          this.updateDocumentURL(documentOpenReference(saved))
+        }
+        else this.updateDocumentURL(null)
+      }
     }
-    catch(error) {
-      this.reportFileError(error)
-    }
+    catch(error) {this.reportFileError(error)}
   }
 
   private async openBackendDocument(id: string) {
@@ -3086,6 +3311,7 @@ export class DomEditor extends LitElement {
       await this.reloadDocument(document.content)
       this.backendDocumentId = document.id
       this.fileHandle = null
+      this.downloadedFileName = null
       this.storageLocation = "development-server"
       this.fileName = this.baseFileName(document.title)
       this.fileFormat = document.format
@@ -3108,10 +3334,10 @@ export class DomEditor extends LitElement {
       this.pendingCloudBundleSave = expected
       return
     }
-    await this.runFileOperation(() => this.saveBackendDocument(false, this.fileFormat, expected))
+    await this.runFileOperation(async () => {await this.saveBackendDocument(false, this.fileFormat, expected)})
   }
 
-  private async saveBackendDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat, expectedDocument?: {client: BackendClient, id: string}) {
+  private async saveBackendDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat, expectedDocument?: {client: BackendClient, id: string}, target?: {name: string, id?: string}) {
     if(!this.backendClient) return
     const revision = this.documentChangeSequence
     const client = this.backendClient
@@ -3122,24 +3348,29 @@ export class DomEditor extends LitElement {
         throw new TypeError("The editor returned an invalid save snapshot")
       }
       const {source, checkpointId} = snapshot
+      if(this.backendClient !== client) throw new Error("The cloud service changed while saving the document.")
       if(expectedDocument && (!this.settings.autosaveCloudOnBundleChange || this.backendClient !== expectedDocument.client
         || this.backendDocumentId !== expectedDocument.id || this.storageLocation !== "development-server")) return
-      const title = this.fileName.trim() || "Untitled"
-      const document = !saveAs && this.backendDocumentId
-        ? await client.updateDocument(this.backendDocumentId, {title, content: source, format: requestedFormat})
+      const title = target?.name ?? (this.fileName.trim() || "Untitled")
+      const targetId = target?.id ?? (!saveAs ? this.backendDocumentId : null)
+      const document = targetId
+        ? await client.updateDocument(targetId, {title, content: source, format: requestedFormat})
         : await client.createDocument({title, content: source, format: requestedFormat})
+      if(this.backendClient !== client) throw new Error("The cloud service changed while saving the document.")
       if(expectedDocument && (this.backendClient !== expectedDocument.client || this.backendDocumentId !== expectedDocument.id)) return
       if(frameRevision === this.frameRevision) {
         this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
       }
+      if(this.backendClient !== client) throw new Error("The cloud service changed while saving the document.")
       this.backendDocumentId = document.id
-      this.fileHandle = null
+      this.storageLocation = "development-server"
       this.fileName = this.baseFileName(document.title)
       this.fileFormat = document.format
       this.fileDirty = revision !== this.documentChangeSequence
       const {id, title: savedTitle, format, createdAt, updatedAt} = document
       this.savedDocuments = [{id, title: savedTitle, format, createdAt, updatedAt}, ...this.savedDocuments.filter(summary => summary.id !== id)]
       this.updateBackendDocumentURL(id, client)
+      return true
     }
     catch(error) {
       this.reportFileError(error)
@@ -3179,26 +3410,8 @@ export class DomEditor extends LitElement {
     catch(error) { this.reportFileError(error) }
   }
 
-  private async downloadDocument() {
-    try {
-      const source = await this.execute({
-        type: "serializeDocument",
-        offline: this.fileFormat === "offline",
-      })
-      if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
-
-      const format = this.fileFormat === "offline" ? "offline" : "html"
-      const filename = this.fileNameForFormat(format) || `document${format === "offline" ? ".offline" : ""}.html`
-      const url = URL.createObjectURL(new Blob([source], {type: "text/html;charset=utf-8"}))
-      const link = document.createElement("a")
-      link.href = url
-      link.download = filename
-      link.click()
-      URL.revokeObjectURL(url)
-    }
-    catch(error) {
-      this.reportFileError(error)
-    }
+  private downloadDocument(requestedFormat: FileFormat = this.fileFormat) {
+    return this.runFileOperation(() => this.performSaveDocument(false, requestedFormat, true))
   }
 
   private updateHistoryState(value: unknown) {
@@ -3370,8 +3583,16 @@ export class DomEditor extends LitElement {
       void this.saveDocument(true, label === "save-as:offline" ? "offline" : "html")
       return
     }
+    if(label === "download:html" || label === "download:offline") {
+      void this.downloadDocument(label === "download:offline" ? "offline" : "html")
+      return
+    }
     if(label === "Print") {
       this.printDocument()
+      return
+    }
+    if(label === "Upload") {
+      void this.runFileOperation(() => this.performOpenDocument())
       return
     }
     if(label === "Download") {
@@ -6139,6 +6360,7 @@ export class DomEditor extends LitElement {
     this.lang = this.settings.language
     this.localPackageManager.autoReload = this.settings.autoReloadPackages
     this.updateMotionPreference()
+    this.updateCloudExpiry()
     window.addEventListener("message", this.handleEditorMessage)
     window.addEventListener("beforeunload", this.handleBeforeUnload)
     window.addEventListener("blur", this.handleHostWindowBlur)
@@ -6150,7 +6372,7 @@ export class DomEditor extends LitElement {
     const open = new URL(location.href).searchParams.get("open")
     const reference = open === null ? null : parseDocumentOpenReference(open)
     const backendReady = !liveSessionId && import.meta.env.MODE !== "test" && reference?.kind !== "backend"
-      ? this.loginToBackend() : Promise.resolve()
+      ? this.loginToBackend(undefined, true) : Promise.resolve()
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
     this.restoreInstalledPackages()
     const catalog = this.loadPackageCatalog()
@@ -6178,6 +6400,7 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.cancelFileInput?.()
     this.recentRefreshGeneration++
     clearTimeout(this.frameStartTimer)
     this.frameStartTimer = undefined
@@ -6190,6 +6413,8 @@ export class DomEditor extends LitElement {
     this.frameRequests.clear()
     this.backendProbeController?.abort()
     this.backendProbeController = null
+    clearTimeout(this.cloudExpiryTimer)
+    this.cloudExpiryTimer = undefined
     window.removeEventListener("message", this.handleEditorMessage)
     window.removeEventListener("beforeunload", this.handleBeforeUnload)
     window.removeEventListener("blur", this.handleHostWindowBlur)
@@ -6415,19 +6640,18 @@ export class DomEditor extends LitElement {
           .liveSessionRole=${this.liveSessionRole}
           .liveSessionLink=${this.liveSessionLink}
           .liveLearners=${this.liveLearners}
-          .storageLocation=${this.storageLocation}
           .settings=${this.settings}
           .editingSnippetId=${this.editingSnippetId}
           @ribbon-label-change=${this.handleSnippetNameChange}
           .backendClient=${this.backendClient}
           .backendState=${this.backendState}
+          .cloudSessionWarning=${this.cloudSessionWarning}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}
           .aiEditReviewHandler=${this.handleAIEditReview}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @live-session-toggle=${this.toggleLiveSession}
           @live-learner-toggle=${this.handleLiveLearnerToggle}
           @file-name-change=${this.handleFileNameChange}
-          @storage-location-change=${this.handleStorageLocationChange}
           @backend-login-request=${this.loginToBackend}
           @backend-admin-request=${this.openBackendAdmin}
           @ai-toolbox-change=${this.handleAIToolboxChange}
@@ -6467,12 +6691,14 @@ export class DomEditor extends LitElement {
         `}
       </header>
       <open-document-menu
+        .mode=${this.documentDialogMode}
         .documents=${this.savedDocuments}
         .currentDocumentId=${this.backendDocumentId}
         .loading=${this.documentsLoading}
         .busy=${this.fileOperationActive}
         .error=${this.documentsError}
         @document-open=${this.handleSavedDocumentOpen}
+        @document-save=${this.handleSavedDocumentSave}
         @document-delete=${this.handleSavedDocumentDelete}
         @documents-retry=${this.loadSavedDocuments}
       ></open-document-menu>

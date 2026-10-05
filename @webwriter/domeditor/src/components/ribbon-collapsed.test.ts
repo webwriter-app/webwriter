@@ -72,7 +72,7 @@ describe("collapsed ribbon file menu", () => {
   it("shows editing menus only while collapsed and outside preview", async () => {
     const {ribbon, menu} = await mount()
     expect(menu.groups.flatMap(group => group.buttons).map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["New", "Open", "Save", "Format", "Insert", "Packages", "Hide breadcrumb", "Developer console", "Settings"])
+      .toEqual(["New", "Open", "Save", "Save as", "Format", "Insert", "Packages", "Hide breadcrumb", "Developer console", "Settings"])
     ribbon.expanded = true
     await ribbon.updateComplete
     await menu.updateComplete
