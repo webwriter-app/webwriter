@@ -94,6 +94,7 @@ import {
   markStateChangeEvent,
   commentStateChangeEvent,
   proofreadingStateChangeEvent,
+  proofreadingDictionaryAddEvent,
   historyStateChangeEvent,
   loadWidgetsMessage,
   selectionChangeEvent,
@@ -545,6 +546,7 @@ export class DomEditor extends LitElement {
     highlighting: true,
   }
   private proofreadingState: ProofreadingState = emptyProofreadingState()
+  private proofreadingReloading = false
   private listType: ListType | null = null
   private listStyle = ""
   private orderedList: ListSelectionState["ordered"] = undefined
@@ -1948,6 +1950,7 @@ export class DomEditor extends LitElement {
         username: this.username,
         disableAnimations: this.settings.disableAnimations,
         shortcuts: {...this.settings.shortcuts},
+        proofreadingDictionary: [...this.settings.proofreadingDictionary],
         ...(this.frameState ? {initialState: this.frameState} : {}),
       }
       const importMap = this.packageImportMap ?? undefined
@@ -2770,6 +2773,9 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
+    if(JSON.stringify(previous.proofreadingDictionary) !== JSON.stringify(settings.proofreadingDictionary)) {
+      void this.execute({type: "setProofreadingDictionary", words: [...settings.proofreadingDictionary]}).catch(() => {})
+    }
     const active = (value: AppSettings) => value.cloudServices.find(service => service.id === value.activeCloudServiceId)
     const connection = (service?: CloudService) => service?.authentication === "none" ? {...service, username: ""} : service
     if(previous.activeCloudServiceId !== settings.activeCloudServiceId
@@ -2916,6 +2922,7 @@ export class DomEditor extends LitElement {
     this.frameState = undefined
     this.documentHead = emptyDocumentHeadState()
     this.proofreadingState = emptyProofreadingState()
+    this.proofreadingReloading = false
     this.historyState = emptyVersionHistoryState()
     this.historyLoading = false
     this.historyOperationCount = 0
@@ -4612,7 +4619,7 @@ export class DomEditor extends LitElement {
     this.pendingExecutions.clear()
     this.frameState = snapshot
     this.installedPackages = nextPackages
-    this.proofreadingState = emptyProofreadingState()
+    this.retainProofreadingDuringReload()
     this.persistInstalledPackages()
     this.frameRevision++
     await this.updateComplete
@@ -4659,7 +4666,13 @@ export class DomEditor extends LitElement {
     this.frameState = undefined
     this.documentTree = null
     this.editorInitializedRevision = -1
-    this.proofreadingState = emptyProofreadingState()
+    this.retainProofreadingDuringReload()
+  }
+
+  private retainProofreadingDuringReload() {
+    this.proofreadingReloading = true
+    this.proofreadingState = {...this.proofreadingState, loading: true, ready: false,
+      checking: true, error: null, hoveredIssueId: null}
   }
 
   private async checkPackageDependencies() {
@@ -4918,9 +4931,10 @@ export class DomEditor extends LitElement {
   private handleProofreadingAction = (event: Event) => {
     const detail = (event as CustomEvent<{type?: unknown, id?: unknown, index?: unknown}>).detail
     if(!detail || this.htmlPending || this.historyState.preview !== null) return
+    if(this.proofreadingReloading && detail.type !== "retryProofreading") return
     let action: ProofreadingAction
     if(detail.type === "retryProofreading") action = {type: detail.type}
-    else if(typeof detail.id === "string" && (detail.type === "selectProofreadingIssue" || detail.type === "ignoreProofreadingIssue")) {
+    else if(typeof detail.id === "string" && (detail.type === "selectProofreadingIssue" || detail.type === "ignoreProofreadingIssue" || detail.type === "addProofreadingWord")) {
       action = {type: detail.type, id: detail.id}
     }
     else if(detail.type === "applyProofreadingSuggestion" && typeof detail.id === "string"
@@ -6132,17 +6146,31 @@ export class DomEditor extends LitElement {
       }))
       return
     }
+    if(event.data?.type === proofreadingDictionaryAddEvent) {
+      if(!this.isEditorMessage(event) || typeof event.data.word !== "string"
+        || !event.data.word.trim() || /\s/u.test(event.data.word)) return
+      const word = event.data.word as string
+      if(this.settings.proofreadingDictionary.some(entry => entry.toLowerCase() === word.toLowerCase())) return
+      const settings = {...this.settings, proofreadingDictionary: [...this.settings.proofreadingDictionary, word]}
+      persistAppSettings(settings)
+      this.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: settings}))
+      return
+    }
     if(isProofreadingStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
+      const state = event.data.detail
+      const retain = this.proofreadingReloading && state.enabled && (!state.ready || state.loading || state.checking)
+      if(!retain) this.proofreadingReloading = false
       this.proofreadingState = {
-        ...event.data.detail,
-        hoveredIssueId: event.data.detail.issues.some(issue => issue.id === event.data.detail.hoveredIssueId)
-          ? event.data.detail.hoveredIssueId
+        ...state,
+        ...(retain ? {loading: !state.error, ready: false} : {}),
+        hoveredIssueId: !retain && state.issues.some(issue => issue.id === state.hoveredIssueId)
+          ? state.hoveredIssueId
           : null,
-        issues: event.data.detail.issues.map(issue => ({...issue, suggestions: issue.suggestions.map(suggestion => ({...suggestion}))})),
+        issues: (retain ? this.proofreadingState.issues : state.issues).map(issue => ({...issue, suggestions: issue.suggestions.map(suggestion => ({...suggestion}))})),
       }
       this.dispatchEvent(new CustomEvent(proofreadingStateChangeEvent, {
-        detail: {...event.data.detail}, bubbles: true, composed: true,
+        detail: {...this.proofreadingState}, bubbles: true, composed: true,
       }))
       return
     }
@@ -6545,6 +6573,7 @@ export class DomEditor extends LitElement {
       highlighting: true,
     }
     this.proofreadingState = emptyProofreadingState()
+    this.proofreadingReloading = false
     this.mediaSelection = null
     this.dialogSelection = null
     this.tableSelection = null

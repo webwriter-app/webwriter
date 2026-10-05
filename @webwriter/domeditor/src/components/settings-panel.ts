@@ -15,6 +15,7 @@ import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} from "../cloud-services"
 import {connectCloudService} from "../backend-client"
+import {normalizeProofreadingDictionary} from "../proofreading"
 import componentLicenses from "virtual:component-licenses"
 
 const languageLabel = (code: string, fallback: string) => {
@@ -171,6 +172,11 @@ export class SettingsPanel extends LitElement {
     .local-settings #local-username { width: min(18rem, 100%); min-width: 0; margin: 0; }
     #local-username:disabled { color: #8993a1; background: #f2f4f7; }
     .cloud-service-header .provider-icon { flex: 0 0 1.1rem; }
+    .dictionary-words { display: flex; flex-wrap: wrap; gap: .4rem; margin: .65rem 0; padding: 0; list-style: none; }
+    .dictionary-word { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .35rem; border: 1px solid #c4ccd6; border-radius: .3rem; font-size: .72rem; overflow-wrap: anywhere; }
+    .dictionary-word button { border: 0; padding: 0; color: #687383; background: transparent; font: inherit; cursor: pointer; }
+    .dictionary-form { display: flex; gap: .4rem; }
+    .dictionary-form input { box-sizing: border-box; min-width: 0; flex: 1; padding: .4rem; border: 1px solid #c4ccd6; border-radius: .35rem; font: inherit; font-size: .75rem; }
     .provider-icon { display: block; width: 1.1rem; height: 1.1rem; }
     .provider-icon svg { display: block; width: 100%; height: 100%; }
     .cloud-service form, .cloud-identity, .new-provider { margin-top: .75rem; }
@@ -223,7 +229,8 @@ export class SettingsPanel extends LitElement {
     .provider-types button[aria-pressed="true"] { position: relative; color: #1e4f87; background: #e8f2fd; border-color: #3977c7; }
     .add-provider-label { margin-top: 1rem; }
     .cloud-button:focus-visible, .cloud-remove:focus-visible, .provider-types button:focus-visible,
-    .cloud-service input:focus-visible, .new-provider input:focus-visible, #local-username:focus-visible {
+    .cloud-service input:focus-visible, .new-provider input:focus-visible, #local-username:focus-visible,
+    .dictionary-form input:focus-visible, .dictionary-word button:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: 2px;
     }
@@ -563,6 +570,35 @@ export class SettingsPanel extends LitElement {
     }))
   }
 
+  private addDictionaryWord(event: SubmitEvent) {
+    event.preventDefault()
+    const input = (event.currentTarget as HTMLFormElement).querySelector<HTMLInputElement>("input")!
+    const word = normalizeProofreadingDictionary([input.value])
+    if(!word.length) return
+    const proofreadingDictionary = normalizeProofreadingDictionary([...this.settings.proofreadingDictionary, ...word])
+    if(proofreadingDictionary.length === this.settings.proofreadingDictionary.length) return
+    this.emitSettings({...this.settings, proofreadingDictionary})
+    input.value = ""
+  }
+
+  private renderProofreadingDictionary() {
+    const words = this.settings.proofreadingDictionary
+    return html`<section class="setting-card" aria-label="Local dictionary">
+      <h2 class="cloud-heading">Local dictionary</h2>
+      <p class="setting-description">Words in this list are accepted by proofreading for this browser.</p>
+      ${words.length ? html`<ul class="dictionary-words">${words.map((word, index) => html`<li class="dictionary-word">
+        <span>${word}</span><button type="button" aria-label=${`Remove ${word}`} @click=${() => this.emitSettings({...this.settings,
+          proofreadingDictionary: this.settings.proofreadingDictionary.filter((_, wordIndex) => wordIndex !== index)})}>×</button>
+      </li>`)}</ul>` : html`<p class="setting-description">No words added.</p>`}
+      <form class="dictionary-form" @submit=${this.addDictionaryWord}>
+        <input aria-label="Add dictionary word" autocomplete="off" placeholder="Add a word" required>
+        <button class="cloud-button primary" type="submit">Add</button>
+      </form>
+      <div class="cloud-actions"><button class="cloud-button" type="button" ?disabled=${!words.length}
+        @click=${() => this.emitSettings({...this.settings, proofreadingDictionary: []})}>Clear dictionary</button></div>
+    </section>`
+  }
+
   private changeLanguage(event: Event) {
     this.message = ""
     this.error = ""
@@ -759,6 +795,7 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        ${this.renderProofreadingDictionary()}
         <details class="command-category developer-settings">
           <summary>Developer settings</summary>
           <section class="setting-card" aria-label="Developer console">

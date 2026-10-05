@@ -28,6 +28,7 @@ export const selectionChangeEvent = "dom-editor-selection-change"
 export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const commentStateChangeEvent = "dom-editor-comment-state-change"
 export const proofreadingStateChangeEvent = "dom-editor-proofreading-state-change"
+export const proofreadingDictionaryAddEvent = "dom-editor-proofreading-dictionary-add"
 export const presenceChangeEvent = "dom-editor-presence-change"
 export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
 export const historyStateChangeEvent = "dom-editor-history-state-change"
@@ -109,6 +110,7 @@ export type InitializeEditorMessage = {
   username?: string
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
+  proofreadingDictionary?: string[]
 }
 
 export type LoadWidgetsMessage = {
@@ -161,6 +163,8 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
     && (message.language === undefined || typeof message.language === "string")
     && (message.username === undefined || typeof message.username === "string")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
+    && (message.proofreadingDictionary === undefined || Array.isArray(message.proofreadingDictionary)
+      && message.proofreadingDictionary.every(word => typeof word === "string" && Boolean(word.trim()) && !/\s/u.test(word)))
     && (message.shortcuts === undefined || !!message.shortcuts && typeof message.shortcuts === "object"
       && !Array.isArray(message.shortcuts) && Object.values(message.shortcuts).every(value => typeof value === "string"))
     && (message.initialState === undefined || (
@@ -401,6 +405,7 @@ export type ProofreadingAction =
   | {type: "selectProofreadingIssue", id: string}
   | {type: "applyProofreadingSuggestion", id: string, index: number}
   | {type: "ignoreProofreadingIssue", id: string}
+  | {type: "addProofreadingWord", id: string}
 
 export type ProofreadingStateChangeMessage = {
   type: typeof proofreadingStateChangeEvent

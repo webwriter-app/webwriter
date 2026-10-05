@@ -83,6 +83,40 @@ describe("settings panel", () => {
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...defaultAppSettings(), userSnippets: [null, {}, {id: "broken"}, ...userSnippets]}))
     expect(loadAppSettings().userSnippets).toEqual(userSnippets)
   })
+  it("roundtrips local dictionary words and cleans malformed entries", () => {
+    const settings = {...defaultAppSettings(), proofreadingDictionary: ["WebWriter", "HTML"]}
+    persistAppSettings(settings)
+    expect(loadAppSettings().proofreadingDictionary).toEqual(["WebWriter", "HTML"])
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings,
+      proofreadingDictionary: ["  Word ", "word", "", 3, null, " Another "]}))
+    expect(loadAppSettings().proofreadingDictionary).toEqual(["Word", "Another"])
+  })
+
+  it("adds, removes, and clears local dictionary words through settings changes", async () => {
+    const panel = await mountPanel()
+    const changes: AppSettings[] = []
+    panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
+    const root = panel.shadowRoot!
+    const input = root.querySelector<HTMLInputElement>('input[aria-label="Add dictionary word"]')!
+    input.value = " WebWriter "
+    input.closest("form")!.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}))
+    await panel.updateComplete
+    expect(changes.at(-1)?.proofreadingDictionary).toEqual(["WebWriter"])
+    expect(root.textContent).toContain("WebWriter")
+    expect(root.querySelector(".dictionary-word span")!.textContent).toBe("WebWriter")
+    root.querySelector<HTMLButtonElement>('button[aria-label="Remove WebWriter"]')!.click()
+    await panel.updateComplete
+    expect(changes.at(-1)?.proofreadingDictionary).toEqual([])
+    for(const word of ["one", "two"]) {
+      input.value = word
+      input.closest("form")!.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}))
+      await panel.updateComplete
+    }
+    const clear = [...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Clear dictionary")!
+    clear.click()
+    await panel.updateComplete
+    expect(changes.at(-1)?.proofreadingDictionary).toEqual([])
+  })
   it.each([true, false])("assigns unique shortcuts to every general command (Apple: %s)", apple => {
     const settings = defaultAppSettings(apple)
     const commands = appCommands.filter(command => !["Table", "Graphic"].includes(command.section))
@@ -571,7 +605,7 @@ describe("identity and cloud settings", () => {
     panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
     const password = panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
     password.value = "never-store-this"
-    panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", {cancelable: true}))
+    panel.shadowRoot!.querySelector(".cloud-service form")!.dispatchEvent(new Event("submit", {cancelable: true}))
     await vi.waitFor(() => expect(loadAppSettings().cloudServices[0].accessToken).toBe("access-token"))
     expect(loadAppSettings().activeCloudServiceId).toBe("cloud")
     expect(password.value).toBe("")
@@ -585,7 +619,7 @@ describe("identity and cloud settings", () => {
     const panel = await mountPanel({...defaultAppSettings(), cloudServices: [configuredService]})
     const password = panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
     password.value = "wrong"
-    panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", {cancelable: true}))
+    panel.shadowRoot!.querySelector(".cloud-service form")!.dispatchEvent(new Event("submit", {cancelable: true}))
     await vi.waitFor(() => expect(panel.shadowRoot!.querySelector('[role="alert"]')?.textContent).toContain("Invalid credentials"))
     expect(password.value).toBe("")
     expect(panel.settings.activeCloudServiceId).toBeNull()
@@ -616,7 +650,7 @@ it("cancels a settings sign-in when the panel closes and ignores the late result
   panel.addEventListener("settings-change", changes)
   const password = panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
   password.value = "transient-password"
-  panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", {cancelable: true}))
+  panel.shadowRoot!.querySelector(".cloud-service form")!.dispatchEvent(new Event("submit", {cancelable: true}))
   await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
   panel.remove()
   expect(password.value).toBe("")

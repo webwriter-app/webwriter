@@ -1,9 +1,9 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {createProofreader, type Proofreader, type ProofreadingIssue} from "../proofreading"
+import {createProofreader, normalizeProofreadingDictionary, type Proofreader, type ProofreadingIssue} from "../proofreading"
 import {$, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import type {Schema} from "../schema"
-import type {ProofreadingState} from "../editor-bridge"
+import {proofreadingDictionaryAddEvent, type ProofreadingState} from "../editor-bridge"
 
 type TextPart = {node: Text, start: number, value: string}
 type TextRun = {text: string, language: string, parts: TextPart[]}
@@ -90,6 +90,7 @@ export class ProofreadingFeature extends EditorFeature {
   private error: string | null = null
   private diagnostics: Diagnostic[] = []
   private ignored = new Set<string>()
+  private dictionary: string[] = []
   private reader: Promise<Proofreader> | null = null
   private readerAbort: AbortController | null = null
   private operation: Promise<void> | null = null
@@ -107,6 +108,8 @@ export class ProofreadingFeature extends EditorFeature {
     setProofreadingEnabled: ({enabled}: {type: "setProofreadingEnabled", enabled: boolean}) => this.setChecking(enabled),
     applyProofreadingSuggestion: ({id, index}: {type: "applyProofreadingSuggestion", id: string, index: number}) => this.applySuggestion(id, index),
     ignoreProofreadingIssue: ({id}: {type: "ignoreProofreadingIssue", id: string}) => this.ignore(id),
+    addProofreadingWord: ({id}: {type: "addProofreadingWord", id: string}) => this.addWord(id),
+    setProofreadingDictionary: ({words}: {type: "setProofreadingDictionary", words: string[]}) => this.setDictionary(words),
   } as const
 
   activeListeners: DocumentListenerMap = {
@@ -253,9 +256,10 @@ export class ProofreadingFeature extends EditorFeature {
     this.generation++
     clearTimeout(this.timer)
     const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
-    // Keep unaffected flows usable while waiting for their replacement results.
-    this.diagnostics = this.diagnostics.filter(diagnostic => runs.some(run => sameRun(run, diagnostic.run)))
+    // Keep the cards until the complete replacement check is ready. Stale
+    // ranges are no longer painted and commands still resolve against the DOM.
     for(const diagnostic of this.diagnostics) {
+      if(!runs.some(run => sameRun(run, diagnostic.run))) continue
       const range = runRange(diagnostic.run, diagnostic.start, diagnostic.end)!
       // Moving an intact paragraph can collapse its live Range even though
       // the text nodes and checking context remain unchanged.
@@ -352,6 +356,7 @@ export class ProofreadingFeature extends EditorFeature {
     issue.suggestions.forEach((suggestion, index) => button(suggestion.kind === "remove" ? "Remove"
       : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text,
       () => { this.applySuggestion(issue.id, index) }))
+    if(issue.kind === "spelling") button("Add to dictionary", () => { this.addWord(issue.id) })
     button("Ignore", () => { this.ignore(issue.id) })
     this.popup = popup
     this.popupIssueId = issue.id
@@ -406,11 +411,11 @@ export class ProofreadingFeature extends EditorFeature {
         if(runs.length) {
           for(const run of runs) {
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
-            const issues = await reader.check(run.text, run.language)
+            const issues = await reader.check(run.text, run.language, this.dictionary)
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
             for(const issue of issues) {
               const range = runRange(run, issue.start, issue.end)
-              if(range && !this.ignored.has(this.ignoreKey(run, issue))) {
+              if(range && !this.isDictionaryWord(run, issue) && !this.ignored.has(this.ignoreKey(run, issue))) {
                 const previous = this.diagnostics.find(diagnostic => sameRun(run, diagnostic.run)
                   && diagnostic.start === issue.start && diagnostic.end === issue.end
                   && diagnostic.kind === issue.kind && diagnostic.message === issue.message)
@@ -451,12 +456,14 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   private paint() {
-    if(this.hoveredIssueId && !this.diagnostics.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
-    if(this.popupIssueId && !this.diagnostics.some(issue => issue.id === this.popupIssueId
+    const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
+    const current = this.diagnostics.filter(issue => runs.some(run => sameRun(run, issue.run)))
+    if(this.hoveredIssueId && !current.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
+    if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId
       && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
     if(!globalThis.CSS?.highlights || typeof globalThis.Highlight !== "function") return
     for(const kind of ["spelling", "grammar"] as const) {
-      const ranges = new Set(this.diagnostics.filter(diagnostic => diagnostic.kind === kind).map(diagnostic => diagnostic.range))
+      const ranges = new Set(current.filter(diagnostic => diagnostic.kind === kind).map(diagnostic => diagnostic.range))
       const name = highlightNames[kind]
       if(!ranges.size) {
         CSS.highlights.delete(name)
@@ -530,6 +537,34 @@ export class ProofreadingFeature extends EditorFeature {
 
   private ignoreKey(run: TextRun, issue: ProofreadingIssue) {
     return JSON.stringify([run.language, run.text, issue.start, issue.end, issue.kind, issue.message])
+  }
+
+  private isDictionaryWord(run: TextRun, issue: ProofreadingIssue) {
+    return issue.kind === "spelling" && this.dictionary.some(word => word.toLowerCase() === run.text.slice(issue.start, issue.end).toLowerCase())
+  }
+
+  setDictionary(words: string[]) {
+    if(!Array.isArray(words) || !words.every(word => typeof word === "string")) return false
+    const dictionary = normalizeProofreadingDictionary(words)
+    if(JSON.stringify(dictionary) === JSON.stringify(this.dictionary)) return true
+    this.dictionary = dictionary
+    this.generation++
+    this.diagnostics = this.diagnostics.filter(issue => !this.isDictionaryWord(issue.run, issue))
+    this.paint()
+    this.postStatus()
+    if(this.enabled && this.isEnabled) void this.checkNow()
+    return true
+  }
+
+  addWord(id: string) {
+    if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked) return false
+    const issue = this.resolve(id)
+    if(!issue || issue.kind !== "spelling") return false
+    const [word] = normalizeProofreadingDictionary([issue.run.text.slice(issue.start, issue.end)])
+    if(!word) return false
+    this.setDictionary([...this.dictionary, word])
+    this.editor.postHostMessage({type: proofreadingDictionaryAddEvent, word})
+    return true
   }
 
   ignore(id: string) {

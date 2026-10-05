@@ -6,7 +6,7 @@ import {createProofreader, type ProofreadingIssue} from "../proofreading"
 import {proofreadingRuns} from "./proofreading"
 import {proofreadingStateChangeEvent} from "../editor-bridge"
 
-vi.mock("../proofreading", () => ({createProofreader: vi.fn()}))
+vi.mock("../proofreading", async importOriginal => ({...await importOriginal<typeof import("../proofreading")>(), createProofreader: vi.fn()}))
 
 let editor: DOMEditor
 let highlights: Map<string, unknown>
@@ -276,7 +276,7 @@ describe("proofreading feature", () => {
       content("<p>teh changed document.</p>")
       finish({check, dispose})
       await loading
-      expect(check).toHaveBeenCalledWith("teh changed document.", "en-US")
+      expect(check).toHaveBeenCalledWith("teh changed document.", "en-US", [])
       expect(editor.features.proofreading.state()).toMatchObject({enabled: true, loading: false, ready: true, error: null})
       expect(status.mock.calls.map(([event]) => event.detail)).toContainEqual(expect.objectContaining({enabled: true, loading: false, ready: true, error: null}))
       expect(editor.appendix.querySelector(".◆proofreading-panel")).toBeNull()
@@ -406,14 +406,14 @@ describe("proofreading feature", () => {
     expect([...painted][0]).toBe(range)
   })
 
-  it("removes changed runs while keeping other underlines and cards through the next check", async () => {
+  it("keeps all cards until replacement results are ready while removing stale underlines", async () => {
     content('<p>teh first.</p><aside><p>te<!--keep--><em>h</em> second.</p></aside>')
     check.mockImplementation(async text => text.startsWith("teh") ? [spelling()] : [])
     const [changed, unchanged] = await start()
     const painted = highlights.get("webwriter-spelling") as Set<Range>
     const range = [...painted][1]
     document.querySelector("p")!.firstChild!.textContent = "the first."
-    expect(editor.features.proofreading.state().issues).toEqual([unchanged])
+    expect(editor.features.proofreading.state().issues).toEqual([changed, unchanged])
     expect(editor.features.proofreading.selectIssue(changed.id)).toBe(false)
     expect(highlights.get("webwriter-spelling")).toBe(painted)
     expect([...painted]).toEqual([range])
@@ -421,7 +421,7 @@ describe("proofreading feature", () => {
     check.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
     const pending = editor.features.proofreading.checkNow()
     await vi.waitFor(() => expect(finish).toBeDefined())
-    expect(editor.features.proofreading.state()).toMatchObject({checking: true, issues: [unchanged]})
+    expect(editor.features.proofreading.state()).toMatchObject({checking: true, issues: [changed, unchanged]})
     expect(editor.features.proofreading.selectIssue(unchanged.id)).toBe(true)
     finish([])
     await pending
@@ -441,11 +441,14 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.applySuggestion(issue.id, 0)).toBe(false)
   })
 
-  it("drops issues when their flow becomes ineligible and clears retained results when disabled", async () => {
+  it("keeps ineligible cards until rechecked and clears retained results when disabled", async () => {
     content('<p>teh first.</p><p>teh second.</p>')
-    const [, unchanged] = await start()
+    const [changed, unchanged] = await start()
     document.querySelector("p")!.setAttribute("lang", "de")
-    expect(editor.features.proofreading.state().issues).toEqual([unchanged])
+    expect(editor.features.proofreading.state().issues).toEqual([changed, unchanged])
+    expect(editor.features.proofreading.selectIssue(changed.id)).toBe(false)
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
     editor.features.proofreading.setChecking(false)
     expect(editor.features.proofreading.state()).toMatchObject({enabled: false, issues: []})
     expect(highlights.has("webwriter-spelling")).toBe(false)
@@ -485,7 +488,7 @@ describe("proofreading feature", () => {
     editor.doc.doc.transact(() => { text.delete(0, 3); text.insert(0, "the") }, "remote-peer")
     expect(document.querySelector("p")!.textContent).toBe("the example.")
     expect(editor.features.proofreading.applySuggestion(issue.id, 0)).toBe(false)
-    expect(editor.features.proofreading.state().issues).toEqual([unchanged])
+    expect(editor.features.proofreading.state().issues).toEqual([issue, unchanged])
     expect(editor.features.proofreading.selectIssue(unchanged.id)).toBe(true)
   })
 
@@ -528,6 +531,60 @@ describe("proofreading feature", () => {
     expect(editor.appendix.querySelector(".◆proofreading-panel")).toBeNull()
   })
 
+  it("adds words from the appendix popup without authored artifacts and rechecks after removal", async () => {
+    content('<p>te<!--keep--><em>h</em> example.</p><p>Teh again.</p>')
+    const before = editor.toHTML(true), shared = editor.doc.body.toString()
+    const [issue] = await start()
+    issueRects()
+    contextMenu()
+    const post = vi.spyOn(editor, "postHostMessage")
+    const add = Array.from(editor.appendix.querySelectorAll<HTMLButtonElement>(".◆proofreading-popup button"))
+      .find(button => button.textContent === "Add to dictionary")!
+    add.click()
+    expect(post).toHaveBeenCalledWith({type: "dom-editor-proofreading-dictionary-add", word: "teh"})
+    expect(editor.features.proofreading.state().issues).toEqual([])
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    await editor.features.proofreading.checkNow()
+    expect(check).toHaveBeenLastCalledWith("Teh again.", "en-US", ["teh"])
+    expect(editor.features.proofreading.state().issues).toEqual([])
+    editor.features.proofreading.setDictionary([])
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(2)
+    expect(editor.features.proofreading.addWord(issue.id)).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+    expect(editor.doc.body.toString()).toBe(shared)
+  })
+
+  it("rejects dictionary additions for stale, grammar, and locked issues", async () => {
+    let [issue] = await start()
+    const lock = {}
+    editor.lockEditing(lock)
+    expect(editor.features.proofreading.addWord(issue.id)).toBe(false)
+    editor.unlockEditing(lock)
+    document.querySelector("p")!.textContent = "replaced"
+    expect(editor.features.proofreading.addWord(issue.id)).toBe(false)
+    check.mockResolvedValue([{...spelling(0, 3), kind: "grammar"}])
+    ;[issue] = await start()
+    expect(editor.features.proofreading.addWord(issue.id)).toBe(false)
+    expect(editor.features.proofreading.setDictionary([1] as unknown as string[])).toBe(false)
+  })
+
+  it("does not restore accepted words from an in-flight result and restores checking when cleared", async () => {
+    const [issue] = await start()
+    let finish!: (issues: ProofreadingIssue[]) => void
+    check.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const pending = editor.features.proofreading.checkNow()
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    expect(editor.features.proofreading.addWord(issue.id)).toBe(true)
+    finish([spelling()])
+    await pending
+    expect(editor.features.proofreading.state().issues).toEqual([])
+    expect(check).toHaveBeenLastCalledWith("teh example.", "en-US", ["teh"])
+    editor.features.proofreading.setDictionary([])
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+  })
+
   it("selects current issue ranges across formatting and rejects stale or locked issues", async () => {
     content('<p>te<!--keep--><em>h</em> example.</p>')
     const [issue] = await start()
@@ -543,7 +600,7 @@ describe("proofreading feature", () => {
     editor.unlockEditing(lock)
     document.querySelector("p")!.textContent = "changed"
     expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
-    expect(editor.features.proofreading.state().issues).toEqual([])
+    expect(editor.features.proofreading.state().issues).toEqual([issue])
   })
 
   it("reports unsupported languages and checking failures, and can retry", async () => {

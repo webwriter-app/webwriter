@@ -2,7 +2,8 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest"
 import {WebWriterPackageRegistry} from "../packages"
 import {DomEditor} from "./dom-editor"
-import {proofreadingStateChangeEvent, isProofreadingStateChangeMessage, emptyProofreadingState, type ProofreadingAction} from "../editor-bridge"
+import {proofreadingStateChangeEvent, proofreadingDictionaryAddEvent, isProofreadingStateChangeMessage, emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings, persistAppSettings} from "../app-settings"
 import type {DomEditorToolbox} from "./toolbox"
 
 beforeEach(() => {
@@ -12,6 +13,7 @@ beforeEach(() => {
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
 })
 
 it.each<ProofreadingAction>([
@@ -19,6 +21,7 @@ it.each<ProofreadingAction>([
   {type: "selectProofreadingIssue", id: "issue-1"},
   {type: "applyProofreadingSuggestion", id: "issue-1", index: 1},
   {type: "ignoreProofreadingIssue", id: "issue-1"},
+  {type: "addProofreadingWord", id: "issue-1"},
 ])("routes Review card action $type to the editor", async action => {
   const editor = new DomEditor()
   const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
@@ -103,8 +106,106 @@ it("relays cards and their invalidation over the authenticated bridge", async ()
   await toolbox.updateComplete
   expect(toolbox.shadowRoot!.querySelector(".proofreading-issue")?.textContent).toContain("teh")
   expect(toolbox.shadowRoot!.querySelector(".proofreading-suggestion")?.textContent).toContain("the")
+  const add = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".proofreading-add-word")!
+  const action = vi.fn()
+  toolbox.addEventListener("proofreading-action", action)
+  add.click()
+  expect(action.mock.calls.at(-1)![0].detail).toEqual({type: "addProofreadingWord", id: "1"})
+  relay([{...issue, kind: "grammar"}])
+  await editor.updateComplete
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-add-word")).toBeNull()
   relay([])
   await editor.updateComplete
   await toolbox.updateComplete
   expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBeNull()
+})
+
+it("keeps cards through a package reload, loading and checking, then replaces them together", async () => {
+  const editor = new DomEditor()
+  const execute = vi.spyOn(editor, "execute").mockResolvedValue({update: []})
+  const host = editor as unknown as {reloadEditor(packages: []): Promise<void>, waitForEditorWindow(): Promise<Window>}
+  vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(window)
+  Object.assign(editor, {frameStarted: true})
+  document.body.append(editor)
+  await editor.updateComplete
+  const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+  toolbox.selectTool("Review")
+  const issue: ProofreadingState["issues"][number] = {id: "old", start: 0, end: 3, text: "teh", kind: "spelling",
+    message: "Check this spelling", suggestions: [{kind: "replace", text: "the"}]}
+  const relay = (state: Partial<ProofreadingState>) => window.dispatchEvent(new MessageEvent("message", {
+    source: editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!.contentWindow, origin: window.location.origin,
+    data: {type: proofreadingStateChangeEvent, bridgeNonce: (editor as unknown as {bridgeNonce: string}).bridgeNonce,
+      detail: {...emptyProofreadingState(), ...state}},
+  }))
+  relay({ready: true, issues: [issue]})
+  await editor.updateComplete
+  await toolbox.updateComplete
+  const card = toolbox.shadowRoot!.querySelector(".proofreading-card")
+  await host.reloadEditor([])
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBe(card)
+  for(const state of [{loading: true}, {ready: true, checking: true}, {error: "WASM unavailable"}]) {
+    relay(state)
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBe(card)
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".proofreading-suggestion")!.disabled).toBe(true)
+  }
+  execute.mockClear()
+  toolbox.dispatchEvent(new CustomEvent("proofreading-action", {detail: {type: "addProofreadingWord", id: "old"}, bubbles: true, composed: true}))
+  expect(execute).not.toHaveBeenCalled()
+  const replacement = {...issue, id: "new", text: "recieve", end: 7}
+  relay({ready: true, checking: true, issues: [replacement]})
+  await editor.updateComplete
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBe(card)
+  relay({ready: true, issues: [replacement]})
+  await editor.updateComplete
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).not.toBe(card)
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-issue")?.textContent).toContain("recieve")
+  expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".proofreading-suggestion")!.disabled).toBe(false)
+  relay({ready: true, issues: []})
+  await editor.updateComplete
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBeNull()
+})
+
+it("persists authenticated dictionary additions and sends settings removals to the checker", async () => {
+  const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true})
+  const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+  document.body.append(editor)
+  await editor.updateComplete
+  const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!
+  const nonce = (editor as unknown as {bridgeNonce: string}).bridgeNonce
+  const add = (word: unknown, bridgeNonce = nonce, source: MessageEventSource | null = iframe.contentWindow) => {
+    window.dispatchEvent(new MessageEvent("message", {source, origin: window.location.origin,
+      data: {type: proofreadingDictionaryAddEvent, bridgeNonce, word}}))
+  }
+  for(const word of [null, "", "two words"]) add(word)
+  add("forged", "wrong")
+  add("forged", nonce, window)
+  expect(loadAppSettings().proofreadingDictionary).toEqual([])
+  add("WebWriter")
+  add("webwriter")
+  expect(loadAppSettings().proofreadingDictionary).toEqual(["WebWriter"])
+  expect(execute).toHaveBeenCalledWith({type: "setProofreadingDictionary", words: ["WebWriter"]})
+  editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+    detail: {...loadAppSettings(), proofreadingDictionary: []}, bubbles: true, composed: true,
+  }))
+  expect(execute).toHaveBeenLastCalledWith({type: "setProofreadingDictionary", words: []})
+})
+
+it("provides saved dictionary words when initializing the editor frame", async () => {
+  persistAppSettings({...defaultAppSettings(), proofreadingDictionary: ["WebWriter"]})
+  const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true})
+  const host = editor as unknown as {postToEditor(message: unknown): void, initializeEditorFrame(frame: HTMLIFrameElement): void}
+  const post = vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+  document.body.append(editor)
+  await editor.updateComplete
+  host.initializeEditorFrame(editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!)
+  expect(post).toHaveBeenCalledWith(expect.objectContaining({type: "initialize-editor", proofreadingDictionary: ["WebWriter"]}))
 })

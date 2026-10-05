@@ -6,6 +6,8 @@ const harness = vi.hoisted(() => ({
   instance: undefined as unknown as {
     setup: ReturnType<typeof vi.fn>
     setDialect: ReturnType<typeof vi.fn>
+    clearWords: ReturnType<typeof vi.fn>
+    importWords: ReturnType<typeof vi.fn>
     lint: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
     terminate: ReturnType<typeof vi.fn>
@@ -26,6 +28,8 @@ vi.mock("harper.js", () => ({
           if(harness.setupPending) await new Promise(() => {})
         }),
         setDialect: vi.fn(async () => {}),
+        clearWords: vi.fn(async () => {}),
+        importWords: vi.fn(async () => {}),
         lint: vi.fn(async () => []),
         dispose: vi.fn(async () => {}),
         terminate: this.worker.terminate,
@@ -162,6 +166,49 @@ describe("Harper proofreader adapter", () => {
       expect(harness.instance.setDialect).toHaveBeenLastCalledWith(dialect)
     }
     await proofreader.dispose()
+  })
+
+  it("imports local words, retains them across dialect changes, and replaces removed words", async () => {
+    const proofreader = await createProofreader()
+    await proofreader.check("WebWriter", "en-US", ["WebWriter"])
+    await proofreader.check("WebWriter", "en-US", ["WebWriter"])
+    expect(harness.instance.importWords).toHaveBeenCalledTimes(1)
+    await proofreader.check("WebWriter", "en-GB", ["WebWriter"])
+    expect(harness.instance.importWords).toHaveBeenCalledTimes(2)
+    await proofreader.check("WebWriter", "en-GB", [])
+    expect(harness.instance.clearWords).toHaveBeenCalledTimes(3)
+    expect(harness.instance.importWords).toHaveBeenCalledTimes(2)
+    await proofreader.dispose()
+  })
+
+  it("suppresses accepted spelling and typo words case-insensitively while preserving grammar", async () => {
+    const proofreader = await createProofreader()
+    const typo = lint({start: 0, end: 3, problem: "Teh", kind: "Typo"})
+    const grammar = lint({start: 0, end: 3, problem: "Teh", kind: "Agreement"})
+    harness.instance.lint.mockResolvedValue([typo.item, grammar.item])
+    expect((await proofreader.check("Teh", "en", ["teh"])).map(issue => issue.kind)).toEqual(["grammar"])
+    expect(typo.item.free).toHaveBeenCalledOnce()
+    expect(typo.span.free).toHaveBeenCalledOnce()
+    await proofreader.dispose()
+  })
+
+  it("uses Harper's real dictionary to accept unknown words and flag them again after removal", async () => {
+    const {LocalLinter} = await vi.importActual<typeof import("harper.js")>("harper.js")
+    const {binary} = await vi.importActual<typeof import("harper.js/binary")>("harper.js/binary")
+    const linter = new LocalLinter({binary})
+    const spellingCount = async () => {
+      const lints = await linter.lint("Quuxblorple", {language: "plaintext"})
+      try { return lints.filter(lint => lint.lint_kind() === "Spelling").length }
+      finally { lints.forEach(lint => lint.free()) }
+    }
+    try {
+      expect(await spellingCount()).toBe(1)
+      await linter.importWords(["Quuxblorple"])
+      expect(await spellingCount()).toBe(0)
+      await linter.clearWords()
+      expect(await spellingCount()).toBe(1)
+    }
+    finally { await linter.dispose() }
   })
 
   it("includes Harper's common typo rules in spelling and other rules in grammar", async () => {

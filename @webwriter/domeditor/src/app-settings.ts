@@ -3,6 +3,7 @@ import {excludedMarkNames, hasStandardMarkShortcut, primaryMarkOptions, secondar
 import {graphicArrangeOperations, graphicShapeOptions, graphicViewportOperations} from "./graphic"
 import type {DocumentLayoutMode} from "./document-layout"
 import {storedCloudServices, type CloudService} from "./cloud-services"
+import {normalizeProofreadingDictionary} from "./proofreading"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
 
@@ -148,6 +149,7 @@ export type AppSettings = {
   cloudServices: CloudService[]
   activeCloudServiceId: string | null
   cloudServicesConfigured: boolean
+  proofreadingDictionary: string[]
   userSnippets: UserSnippet[]
   language: string
   defaultLayout: DocumentLayoutMode
@@ -167,6 +169,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     cloudServices: [],
     activeCloudServiceId: null,
     cloudServicesConfigured: false,
+    proofreadingDictionary: [],
     userSnippets: [],
     language: "en",
     defaultLayout: "document",
@@ -225,6 +228,7 @@ export function loadAppSettings(): AppSettings {
       activeCloudServiceId: cloudServices.some(service => service.id === value.activeCloudServiceId)
         ? value.activeCloudServiceId! : null,
       cloudServicesConfigured: value.cloudServicesConfigured === true,
+      proofreadingDictionary: normalizeProofreadingDictionary(value.proofreadingDictionary),
       userSnippets: Array.isArray(value.userSnippets) ? value.userSnippets.filter((snippet): snippet is UserSnippet =>
         Boolean(snippet && typeof snippet.id === "string" && snippet.id && typeof snippet.label === "string"
           && snippet.label && typeof snippet.html === "string" && snippet.html)) : [],

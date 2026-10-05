@@ -7,8 +7,19 @@ export type ProofreadingIssue = {
 }
 
 export interface Proofreader {
-  check(text: string, language: string): Promise<ProofreadingIssue[]>
+  check(text: string, language: string, dictionary?: readonly string[]): Promise<ProofreadingIssue[]>
   dispose(): Promise<void>
+}
+
+export function normalizeProofreadingDictionary(value: unknown): string[] {
+  if(!Array.isArray(value)) return []
+  const words = new Map<string, string>()
+  for(const entry of value) {
+    if(typeof entry !== "string") continue
+    const word = entry.trim()
+    if(word && !/\s/u.test(word) && !words.has(word.toLowerCase())) words.set(word.toLowerCase(), word)
+  }
+  return [...words.values()]
 }
 
 type HarperApi = typeof import("harper.js")
@@ -41,6 +52,8 @@ export async function createProofreader(signal?: AbortSignal): Promise<Proofread
   const linter = new WorkerLinter({ binary })
   let disposed = false
   let queue: Promise<void> = Promise.resolve()
+  let currentDialect: number | undefined
+  let dictionaryKey = "[]"
   let resolveStopped: () => void = () => undefined
   const stopped = new Promise<void>((resolve) => {
     resolveStopped = resolve
@@ -107,13 +120,24 @@ export async function createProofreader(signal?: AbortSignal): Promise<Proofread
   }
 
   return {
-    check(text, language) {
+    check(text, language, dictionary = []) {
       if (disposed) return Promise.reject(new Error("Proofreader has been disposed"))
+      const words = normalizeProofreadingDictionary(dictionary)
+      const wordSet = new Set(words.map(word => word.toLowerCase()))
+      const nextDictionaryKey = JSON.stringify(words)
 
       const check = queue.then(() => {
         if (disposed) throw new Error("Proofreader has been disposed")
         return withTimeout((async () => {
-          await linter.setDialect(dialectForLanguage(language, Dialect))
+          const dialect = dialectForLanguage(language, Dialect)
+          await linter.setDialect(dialect)
+          // Harper rebuilds its dictionary when the dialect changes.
+          if(currentDialect !== dialect || dictionaryKey !== nextDictionaryKey) {
+            await linter.clearWords()
+            if(words.length) await linter.importWords(words)
+            currentDialect = dialect
+            dictionaryKey = nextDictionaryKey
+          }
           const lints = await linter.lint(text, { language: "plaintext" })
           const issues: ProofreadingIssue[] = []
           let lintIndex = 0
@@ -127,12 +151,15 @@ export async function createProofreader(signal?: AbortSignal): Promise<Proofread
                 const problemText = lint.get_problem_text()
                 const { start, end } = span
                 if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > text.length || text.slice(start, end) !== problemText) continue
+                const kind = ["spelling", "typo"].includes(lint.lint_kind().toLowerCase()) ? "spelling" : "grammar"
+                // Named typo rules can still flag an explicitly accepted word.
+                if(kind === "spelling" && wordSet.has(problemText.toLowerCase())) continue
 
                 suggestions = lint.suggestions()
                 issues.push({
                   start,
                   end,
-                  kind: ["spelling", "typo"].includes(lint.lint_kind().toLowerCase()) ? "spelling" : "grammar",
+                  kind,
                   message: lint.message(),
                   suggestions: suggestions.map((suggestion) => ({
                     kind: suggestion.kind() === SuggestionKind.Remove

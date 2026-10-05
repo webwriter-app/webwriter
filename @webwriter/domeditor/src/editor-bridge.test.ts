@@ -174,6 +174,14 @@ describe("editor bridge message guards", () => {
     ])
   })
 
+  it("validates local dictionary words provided to a new editor frame", () => {
+    const message = {type: initializeEditorMessage, syncUrl: "ws://localhost/session"}
+    expect(isInitializeEditorMessage({...message, proofreadingDictionary: []})).toBe(true)
+    expect(isInitializeEditorMessage({...message, proofreadingDictionary: ["WebWriter", "Quuxblorple"]})).toBe(true)
+    expectAllRejected(isInitializeEditorMessage, [null, "word", [1], [""], ["two words"]]
+      .map(proofreadingDictionary => ({...message, proofreadingDictionary})))
+  })
+
   it("validates widget references and supplied package collections", () => {
     expect(isLoadWidgetsMessage({
       type: loadWidgetsMessage,

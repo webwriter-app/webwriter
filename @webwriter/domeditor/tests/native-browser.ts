@@ -2886,6 +2886,8 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     const replacement = issue!.suggestions.findIndex(suggestion => suggestion.text === "the")
     assert(replacement >= 0, "Harper offered no correction")
     await bridgeClick(card.querySelectorAll<HTMLButtonElement>(".proofreading-suggestion")[replacement])
+    await feature.checkNow()
+    toolbox.proofreadingState = feature.state()
     await toolbox.updateComplete
     assert(!Array.from(toolbox.shadowRoot!.querySelectorAll(".proofreading-text")).some(element => element.textContent === "teh"), "accepted issue stayed in Review")
     assert(doc.querySelector("p")!.textContent === "😀 This is the example.", "correction changed unrelated text")

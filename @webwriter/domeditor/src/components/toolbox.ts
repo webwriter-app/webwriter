@@ -638,6 +638,7 @@ export class DomEditorToolbox extends EditingControls {
     const state = this.proofreadingState
     const hoveredIssue = state.issues.find(issue => issue.id === state.hoveredIssueId)
     const editingLocked = this.htmlPending || this.historyState.preview !== null
+    const cardsLocked = editingLocked || !state.ready || state.loading
     return html`<section class="proofreading-section" aria-labelledby="proofreading-title">
       <h2 id="proofreading-title">Spelling &amp; Grammar
         ${!state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling and grammar"></span>` : ""}
@@ -651,7 +652,7 @@ export class DomEditorToolbox extends EditingControls {
       ${state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling or grammar issues found.</p>` : ""}
       <div class="proofreading-issues">
         ${repeat(state.issues, issue => issue.id, issue => html`<article class="proofreading-card" data-hover-kind=${issue.id === hoveredIssue?.id ? issue.kind : nothing}>
-          <button class="proofreading-issue" type="button" ?disabled=${editingLocked}
+          <button class="proofreading-issue" type="button" ?disabled=${cardsLocked}
             aria-label=${`Go to ${issue.kind} issue: ${issue.text}`}
             @click=${() => this.dispatchProofreadingAction({type: "selectProofreadingIssue", id: issue.id})}>
             <span class="proofreading-kind">${issue.kind === "spelling" ? "Spelling" : "Grammar"}</span>
@@ -659,11 +660,14 @@ export class DomEditorToolbox extends EditingControls {
             <span class="proofreading-text">${issue.text}</span>
           </button>
           ${issue.suggestions.map((suggestion, index) => html`<button class="proofreading-suggestion" type="button"
-            ?disabled=${editingLocked} aria-label=${`Apply suggestion: ${suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text}`}
+            ?disabled=${cardsLocked} aria-label=${`Apply suggestion: ${suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text}`}
             @click=${() => this.dispatchProofreadingAction({type: "applyProofreadingSuggestion", id: issue.id, index})}>
             ${suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text}
           </button>`)}
-          <button class="proofreading-ignore" type="button" ?disabled=${editingLocked}
+          ${issue.kind === "spelling" ? html`<button class="proofreading-ignore proofreading-add-word" type="button" ?disabled=${cardsLocked}
+            aria-label=${`Add ${issue.text} to local dictionary`}
+            @click=${() => this.dispatchProofreadingAction({type: "addProofreadingWord", id: issue.id})}>Add to dictionary</button>` : ""}
+          <button class="proofreading-ignore" type="button" ?disabled=${cardsLocked}
             @click=${() => this.dispatchProofreadingAction({type: "ignoreProofreadingIssue", id: issue.id})}>Ignore</button>
         </article>`)}
       </div>

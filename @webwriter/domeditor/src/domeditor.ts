@@ -39,6 +39,7 @@ import {
   markStateChangeEvent,
   commentStateChangeEvent,
   proofreadingStateChangeEvent,
+  proofreadingDictionaryAddEvent,
   type ProofreadingState,
   selectionChangeEvent,
   presenceChangeEvent,
@@ -807,7 +808,7 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage) {
+    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent) {
       return
     }
 
