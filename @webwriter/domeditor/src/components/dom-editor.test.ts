@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {emptyVersionHistoryState} from "../editor-bridge"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {nothing} from "lit"
 import {DomEditor} from "./dom-editor"
@@ -141,6 +142,14 @@ const editableLocalPackageDirectory = () => {
     } as unknown as FileSystemFileHandle
   }
   return {directory, manifest: () => manifest}
+}
+
+function mockSaveSnapshot(editor: DomEditor, source: string) {
+  return vi.spyOn(editor, "execute").mockImplementation(async action => {
+    if(action.type === "prepareVersionSave") return {checkpointId: "saved-checkpoint", source}
+    if(action.type === "recordVersionSave") return emptyVersionHistoryState()
+    return source
+  })
 }
 
 function wirePackageLoadCompletion(editorWindow: Window) {
@@ -760,7 +769,7 @@ describe("DomEditor iframe setup", () => {
       name: "lesson.html", createWritable: async() => ({write, close: async() => {}}),
     }))
     host.backendClient = {createDocument: vi.fn(async() => { await write(); return {id: "saved", title: "lesson", format: "html"} })}
-    vi.spyOn(editor, "execute").mockResolvedValue("<p>Saved snapshot</p>")
+    mockSaveSnapshot(editor, "<p>Saved snapshot</p>")
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     const saving = host.saveDocument()
     await vi.waitFor(() => expect(write).toHaveBeenCalledOnce())
@@ -1644,12 +1653,12 @@ describe("Develop local packages", () => {
     const createDocument = vi.fn()
     host.backendClient = {updateDocument, createDocument}
     const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue("<html><body>Updated bundle</body></html>")
+    const execute = mockSaveSnapshot(editor, "<html><body>Updated bundle</body></html>")
     await host.localPackageManager.options.install(demoPackage, scenario.refreshing ? demoPackage.name : undefined)
     expect(reload).toHaveBeenCalledOnce()
     expect(createDocument).not.toHaveBeenCalled()
     if(scenario.saves) {
-      expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: false})
+      expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: false})
       expect(updateDocument).toHaveBeenCalledWith("saved", {title: "Lesson", content: "<html><body>Updated bundle</body></html>", format: "html"})
       expect(host.fileDirty).toBe(false)
     }
@@ -1665,7 +1674,7 @@ describe("Develop local packages", () => {
     const updateDocument = vi.fn().mockResolvedValue({id: "saved", title: "Lesson", format: "html", createdAt: "", updatedAt: ""})
     host.backendClient = {updateDocument}
     vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
-    vi.spyOn(editor, "execute").mockResolvedValue("<html><body>Latest bundle</body></html>")
+    mockSaveSnapshot(editor, "<html><body>Latest bundle</body></html>")
     let complete!: () => void
     const operation = host.runFileOperation(() => new Promise<void>(resolve => {complete = resolve}))
     await host.localPackageManager.options.install(demoPackage, demoPackage.name)
@@ -2654,7 +2663,7 @@ describe("DomEditor file actions", () => {
     }
     const picker = vi.fn().mockResolvedValue(handle)
     vi.stubGlobal("showSaveFilePicker", picker)
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue("<!DOCTYPE html><html><body><p>Saved</p></body></html>")
+    const execute = mockSaveSnapshot(editor, "<!DOCTYPE html><html><body><p>Saved</p></body></html>")
     ;(editor as any).fileDirty = true
 
     await (editor as any).saveDocument()
@@ -2666,12 +2675,13 @@ describe("DomEditor file actions", () => {
       ],
     }))
     expect(picker.mock.calls[0][0]).not.toHaveProperty("suggestedName")
-    expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: false})
+    expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: false})
     expect(handle.createWritable).toHaveBeenCalledTimes(1)
     expect(write).toHaveBeenCalledTimes(1)
     const blob = write.mock.calls[0][0] as Blob
     await expect(blob.text()).resolves.toContain("<p>Saved</p>")
     expect(close).toHaveBeenCalledTimes(1)
+    expect(execute).toHaveBeenCalledWith({type: "recordVersionSave", checkpointId: "saved-checkpoint"})
     expect((editor as any).fileName).toBe("lesson")
     expect((editor as any).fileDirty).toBe(false)
     expect(new URL(location.href).searchParams.get("open")).toBe(`local:${(editor as any).recentDocuments[0].id}`)
@@ -2689,7 +2699,7 @@ describe("DomEditor file actions", () => {
     }
     const picker = vi.fn().mockResolvedValue(handle)
     vi.stubGlobal("showSaveFilePicker", picker)
-    vi.spyOn(editor, "execute").mockResolvedValue("<!DOCTYPE html><html><body></body></html>")
+    mockSaveSnapshot(editor, "<!DOCTYPE html><html><body></body></html>")
 
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
@@ -2699,6 +2709,23 @@ describe("DomEditor file actions", () => {
 
     await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
     expect(picker).toHaveBeenCalledOnce()
+  })
+
+  it.each(["local", "development-server"])("records no saved version after a failed %s save", async storageLocation => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.storageLocation = storageLocation
+    host.fileDirty = true
+    vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    const failure = new Error("Save failed")
+    host.backendClient = {createDocument: vi.fn().mockRejectedValue(failure)}
+    vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({name: "failed.html",
+      createWritable: async () => ({write: async () => {}, close: async () => {throw failure}})}))
+    const execute = mockSaveSnapshot(editor, "<p>Unsaved</p>")
+    await host.saveDocument()
+    expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: false})
+    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "recordVersionSave"}))
+    expect(host.fileDirty).toBe(true)
   })
 
   it("opens an HTML file and associates its handle with the document", async () => {
@@ -2880,7 +2907,7 @@ describe("DomEditor file actions", () => {
     host.backendClient = client
     host.storageLocation = "development-server"
     host.backendDocumentId = "previous"
-    vi.spyOn(editor, "execute").mockResolvedValue("<p>Saved content</p>")
+    mockSaveSnapshot(editor, "<p>Saved content</p>")
     history.replaceState({}, "", "/?other=keep&open=local%3Aprevious")
     await host.saveDocument(true)
     const reference = "http://localhost:1234/api/documents/folder%2Fnew%20document"
@@ -3136,7 +3163,7 @@ describe("DomEditor file actions", () => {
     ;(editor as any).storageLocation = "development-server"
     ;(editor as any).fileName = "Lesson"
     ;(editor as any).fileDirty = true
-    vi.spyOn(editor, "execute").mockResolvedValue(saved.content)
+    mockSaveSnapshot(editor, saved.content)
 
     await (editor as any).saveDocument()
 
@@ -3162,7 +3189,7 @@ describe("DomEditor file actions", () => {
     }
     const picker = vi.fn().mockResolvedValue(handle)
     vi.stubGlobal("showSaveFilePicker", picker)
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue("<html></html>")
+    const execute = mockSaveSnapshot(editor, "<html></html>")
 
     await (editor as any).saveDocument(true, "offline")
 
@@ -3173,7 +3200,7 @@ describe("DomEditor file actions", () => {
       ],
     }))
     expect(picker.mock.calls[0][0]).not.toHaveProperty("suggestedName")
-    expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: true})
+    expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: true})
     expect((editor as any).fileName).toBe("lesson")
     expect((editor as any).fileFormat).toBe("offline")
   })
@@ -4251,145 +4278,67 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
   })
 
-  it("opens Review in the toolbox with version cards and card restore actions", async () => {
+  it("groups newest versions first, expands changes, and routes preview and restore for both tiers", async () => {
     const {editor} = await mountEditor()
-    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
-    const otherUser = {clientId: 8, name: "Grace Hopper", initials: "GH", color: "#2563eb"}
-    const currentTimestamp = Date.UTC(2026, 7, 19, 14, 35)
-    const earlierTimestamp = Date.UTC(2026, 7, 18, 9, 5)
+    const checkpoint = (id: string, timestamp: number) => ({id, timestamp, label: "Edited by Ada Lovelace",
+      user, changes: {added: 1, removed: 2, modified: 3}, commentCount: 0})
+    const saved = {...checkpoint("saved", 2), label: "Saved version", checkpointIds: ["second", "first"],
+      isUnsaved: false, isCurrent: false}
+    const unsaved = {...checkpoint("unsaved", 3), label: "Unsaved changes", checkpointIds: ["third"],
+      isUnsaved: true, isCurrent: true}
     const state: VersionHistoryState = {
-      checkpoints: [{
-        id: "current",
-        timestamp: currentTimestamp,
-        label: "Edited by Ada Lovelace",
-        user,
-        changes: {added: 1, removed: 0, modified: 1},
-        commentCount: 0,
-      }, {
-        id: "earlier",
-        timestamp: earlierTimestamp,
-        label: "Document created",
-        user: otherUser,
-        changes: {added: 0, removed: 0, modified: 0},
-        commentCount: 0,
-      }],
-      comments: [],
-      preview: null,
-      currentCheckpointId: "current",
-      currentUserId: user.clientId,
+      versions: [unsaved, saved], checkpoints: [checkpoint("third", 3), checkpoint("second", 2), checkpoint("first", 1)],
+      comments: [], preview: null, currentCheckpointId: "third", currentUserId: 7,
     }
-    const previewState: VersionHistoryState = {
-      ...state,
-      preview: {checkpointId: "earlier", added: 1, removed: 0, modified: 1, isCurrent: false},
-    }
-    const restoredState: VersionHistoryState = {
-      ...state,
-      currentCheckpointId: "earlier",
-    }
-    const resumedState = {...state, appliedQueuedChanges: true}
     const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
-      if(action.type === "previewVersionCheckpoint") {
-        return action.checkpointId === "current" ? resumedState : previewState
-      }
-      if(action.type === "revertVersionCheckpoint") return restoredState
+      if(action.type === "previewVersionCheckpoint") return {...state,
+        preview: {checkpointId: action.checkpointId, added: 1, removed: 2, modified: 3, isCurrent: action.checkpointId === "unsaved"}}
       return state
     })
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
-
     toolbox.selectTool("Review")
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
     await toolbox.updateComplete
+    const cards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
+    expect(cards.map(card => card.dataset.checkpointId)).toEqual(["unsaved", "saved"])
+    expect(cards[0].querySelector(".history-checkpoint-label")?.textContent).toBe("Unsaved changes")
+    expect(cards[1].querySelector(".history-checkpoint-meta")?.textContent).toBe("By you")
+    expect(cards[1].querySelector(".history-checkpoint-counts")?.textContent).toContain("+1")
+    const groups = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLDetailsElement>("details.history-version-changes"))
+    expect(groups.every(group => !group.open)).toBe(true)
+    groups[1].querySelector("summary")!.click()
+    expect(groups[1].open).toBe(true)
+    expect(Array.from(groups[1].querySelectorAll<HTMLElement>(".history-change-card"))
+      .map(card => card.dataset.checkpointId)).toEqual(["second", "first"])
 
-    expect(toolbox.activeTool).toBe("Review")
-    expect(Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer")).map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Comments", "Review", "Versions"])
-    expect(toolbox.shadowRoot!.querySelector(".history-change-panel")).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector(".history-comments-panel")).toBeNull()
-
-    const versionCards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
-    expect(versionCards).toHaveLength(2)
-    expect(versionCards[0].querySelector(".history-checkpoint-label")?.textContent).toBe(
-      `${new Intl.DateTimeFormat(undefined, {hour: "numeric", minute: "2-digit"}).format(new Date(earlierTimestamp))} · ${new Intl.DateTimeFormat(undefined, {dateStyle: "medium"}).format(new Date(earlierTimestamp))}`,
-    )
-    expect(versionCards[0].querySelector(".history-checkpoint-meta")?.textContent).toBe("By Grace Hopper")
-    expect(versionCards[1].querySelector(".history-checkpoint-meta")?.textContent).toBe("By you")
-    expect(versionCards[1].textContent).not.toContain("Current")
-    expect(versionCards[0].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(false)
-    expect(versionCards[1].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(true)
-
-    versionCards[0].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
-      type: "previewVersionCheckpoint",
-      checkpointId: "earlier",
-    }))
-    await toolbox.updateComplete
-    const restore = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(
-      '.history-card-restore-button[data-checkpoint-id="earlier"]',
-    )!
-    await vi.waitFor(() => expect(restore.disabled).toBe(false))
-    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true)
-    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Redo"]')!.disabled).toBe(true)
-    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Preview"]')!.disabled).toBe(true)
-
-    versionCards[1].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
-      type: "previewVersionCheckpoint",
-      checkpointId: "current",
-    }))
-    await vi.waitFor(() => expect(
-      ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled,
-    ).toBe(false))
-    expect((editor as unknown as {fileDirty: boolean}).fileDirty).toBe(true)
-
-    versionCards[0].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
-    await vi.waitFor(() => expect(
-      ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled,
-    ).toBe(true))
-    restore.click()
-    expect(execute).toHaveBeenCalledWith({type: "revertVersionCheckpoint", checkpointId: "earlier"})
-    await vi.waitFor(() => expect(
-      toolbox.shadowRoot!.querySelector('.history-version-card[data-after-current]'),
-    ).not.toBeNull())
-    await toolbox.updateComplete
-    const restoredCards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
-    expect(restoredCards).toHaveLength(2)
-    expect(restoredCards[0].hasAttribute("data-after-current")).toBe(false)
-    expect(restoredCards[1].dataset.afterCurrent).toBe("")
-    expect(restoredCards[0].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(true)
-    expect(restoredCards[1].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(false)
-    expect(restoredCards.some(card => card.textContent?.includes("Restored"))).toBe(false)
-
-    scrollIntoView.mockClear()
-    const newestTimestamp = Date.UTC(2026, 7, 19, 15, 5)
-    toolbox.historyState = {
-      ...restoredState,
-      checkpoints: [{
-        id: "newest",
-        timestamp: newestTimestamp,
-        label: "Edited by Ada Lovelace",
-        user,
-        changes: {added: 0, removed: 0, modified: 1},
-        commentCount: 0,
-      }, ...restoredState.checkpoints],
+    for(const id of ["saved", "first", "unsaved"]) {
+      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-checkpoint[data-checkpoint-id="${id}"]`)!.click()
+      await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "previewVersionCheckpoint", checkpointId: id}))
+      await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true))
+      await toolbox.updateComplete
+      expect(groups[1].open).toBe(true)
     }
+    for(const id of ["saved", "first"]) {
+      await vi.waitFor(() => expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.disabled).toBe(false))
+      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.click()
+      await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "revertVersionCheckpoint", checkpointId: id}))
+      await toolbox.updateComplete
+    }
+    await vi.waitFor(() => expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.disabled).toBe(false))
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.click()
+    await vi.waitFor(() => expect(toolbox.historyState.preview).not.toBeNull())
     await toolbox.updateComplete
-    const newestCard = toolbox.shadowRoot!.querySelector<HTMLElement>(
-      '.history-version-card[data-checkpoint-id="newest"]',
-    )!
-    expect(newestCard).toBe(restoredCards[1].nextElementSibling)
-    expect(scrollIntoView).toHaveBeenCalledWith({behavior: "smooth", block: "nearest", inline: "nearest"})
-    expect(scrollIntoView.mock.instances.at(-1)).toBe(newestCard)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".history-preview-clear")!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(false))
 
-    toolbox.showStyleToolbox = true
+    toolbox.historyState = {...state, versions: [{...saved, id: "newest", checkpointIds: []}, ...state.versions]}
     await toolbox.updateComplete
-    toolbox.selectTool("Style")
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
-    toolbox.selectTool("Review")
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
-    toolbox.selectTool(null)
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".history-version-card")!.dataset.checkpointId).toBe("newest")
+    expect(groups[1].open).toBe(true)
   })
 
   it("routes media ribbon commands through the iframe bridge", async () => {

@@ -88,7 +88,6 @@ export class DomEditorToolbox extends EditingControls {
 
     .history-version-card {
       flex: 0 0 auto;
-      min-height: 8rem;
     }
 
     :host {

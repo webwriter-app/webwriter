@@ -421,7 +421,7 @@ export class DOMEditor {
 
   readonly #editingLocks = new Set<unknown>()
   readonly #blockedEditingEventTypes = [
-    "beforeinput", "keydown", "paste", "cut", "drop", "compositionstart",
+    "beforeinput", "input", "keydown", "paste", "cut", "drop", "compositionstart",
   ] as const
   #editingState: {
     designMode: string
@@ -448,7 +448,7 @@ export class DOMEditor {
 
   /** Disables local authored-DOM interaction while keeping editor-owned UI
    * in BODY's shadow appendix available. Multiple features may hold locks. */
-  lockEditing(owner: unknown) {
+  lockEditing(owner: unknown, {keepEditingMode = false} = {}) {
     if(this.#editingLocks.has(owner)) return
     if(this.#editingLocks.size === 0) {
       const slot = this.defaultAppendixSlot
@@ -460,9 +460,9 @@ export class DOMEditor {
       this.#blockedEditingEventTypes.forEach(type => {
         document.addEventListener(type, this.#blockEditingInteraction, true)
       })
-      document.designMode = "off"
+      if(!keepEditingMode) document.designMode = "off"
       document.body.inert = false
-      slot.inert = true
+      slot.inert = !keepEditingMode
       document.body.classList.add("◆", "◆editing-locked")
       if(document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
         document.activeElement.blur()

@@ -31,6 +31,113 @@ afterEach(() => {
 })
 
 describe("collaborative version history", () => {
+  it("groups changes under distinct saves and keeps later edits in the unsaved version", async () => {
+    const history = editor.features.history
+    const initial = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    document.querySelector("p")!.textContent = "First change"
+    await mutationsDelivered()
+    const first = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    document.body.append(document.createElement("custom-widget"))
+    await mutationsDelivered()
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    expect(snapshot.source).toContain("First change")
+    document.querySelector("p")!.textContent = "While saving"
+    await mutationsDelivered()
+    const later = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    const saved = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId})
+    expect(saved.versions).toHaveLength(2)
+    expect(saved.versions[0]).toMatchObject({isUnsaved: true, checkpointIds: [later]})
+    expect(saved.versions[1]).toMatchObject({isUnsaved: false, checkpointIds: [snapshot.checkpointId, first, initial]})
+    const versionId = saved.versions[1].id
+    history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: versionId})
+    expect(document.body.textContent).toBe("First change")
+    expect(document.querySelector("custom-widget")).not.toBeNull()
+    history.clearPreview()
+    expect(document.body.textContent).toBe("While saving")
+
+    const next = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    const latest = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: next.checkpointId})
+    expect(latest.versions).toHaveLength(2)
+    expect(latest.versions[0]).toMatchObject({isUnsaved: false, checkpointIds: [later], isCurrent: true})
+    const repeated = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: next.checkpointId})
+    expect(repeated.versions).toHaveLength(3)
+    expect(repeated.versions[0].checkpointIds).toEqual([])
+    expect(repeated.versions[0].id).not.toBe(latest.versions[0].id)
+
+    const restored = history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: versionId})
+    expect(document.body.textContent).toBe("First change")
+    expect(restored.versions[0].isUnsaved).toBe(true)
+    expect(restored.versions[0].checkpointIds).toEqual([restored.checkpoints[0].id])
+    history.actions.undo({type: "undo"})
+    expect(document.body.textContent).toBe("While saving")
+    history.actions.redo({type: "redo"})
+    expect(document.body.textContent).toBe("First change")
+  })
+
+  it("keeps every selected entry in editing mode and rolls back direct DOM and widget mutations", async () => {
+    const history = editor.features.history
+    document.body.innerHTML = '<section><p>Hello</p><!--note--><custom-widget state="ready"></custom-widget><template><b>Template</b></template></section>'
+    await mutationsDelivered()
+    const checkpointId = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId})
+    expect(history.state().preview).toMatchObject({checkpointId, isCurrent: true})
+    expect(document.designMode).toBe("on")
+    const section = document.querySelector("section")!
+    const paragraph = document.querySelector("p")!
+    const widget = document.querySelector("custom-widget")!
+    const template = document.querySelector("template")!
+    const source = editor.toHTML(false, false)
+    const runtimeStyle = document.createElement("style")
+    runtimeStyle.classList.add("◆editor-only")
+    document.head.append(runtimeStyle)
+    paragraph.firstChild!.nodeValue = "Blocked"
+    paragraph.replaceWith(document.createElement("aside"))
+    section.prepend(widget)
+    widget.setAttribute("state", "changed")
+    section.append(document.createTextNode("extra"))
+    template.content.querySelector("b")!.textContent = "Blocked template"
+    document.documentElement.lang = "de"
+    document.head.append(document.createElement("title"))
+    await vi.waitFor(() => expect(editor.toHTML(false, false)).toBe(source))
+    expect(runtimeStyle.isConnected).toBe(true)
+    expect(document.querySelector("p")).toBe(paragraph)
+    expect(document.querySelector("custom-widget")).toBe(widget)
+    expect(editor.doc.body.toString()).not.toContain("Blocked")
+    history.clearPreview()
+    expect(document.body).not.toHaveClass("◆editing-locked")
+    document.querySelector("p")!.textContent = "Editable again"
+    await mutationsDelivered()
+    expect(editor.doc.body.toString()).toContain("Editable again")
+  })
+
+  it("shares save boundaries and their change entries with remote collaborators", async () => {
+    const history = editor.features.history
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    const state = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId})
+    const remote = new Y.Doc()
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+    expect(remote.getArray("version-history-saves").toArray()).toContainEqual(expect.objectContaining({
+      id: state.versions[0].id, checkpointIds: [snapshot.checkpointId],
+    }))
+    expect(editor.toHTML()).not.toContain("version-history-saves")
+    remote.destroy()
+  })
+
+  it("retains undo as a new change even when it returns to an earlier snapshot", async () => {
+    const history = editor.features.history
+    const initialId = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    document.querySelector("p")!.textContent = "Later"
+    await mutationsDelivered()
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    history.actions.undo({type: "undo"})
+    expect(history.state().currentCheckpointId).toBe(initialId)
+    const state = history.actions.getVersionHistory({type: "getVersionHistory"})
+    expect(state.checkpoints).toHaveLength(3)
+    expect(state.checkpoints[0].id).not.toBe(initialId)
+    expect(state.currentCheckpointId).toBe(state.checkpoints[0].id)
+    expect(document.body.textContent).toBe("Hello")
+  })
+
   it("preserves widget grouping instructions through preview, revert, undo, and redo", async () => {
     const history = editor.features.history
     document.body.innerHTML = '<data-widget id="grouped" shared="group"></data-widget><p>Hello</p>'
@@ -124,9 +231,9 @@ describe("collaborative version history", () => {
     const slot = Array.from(editor.appendix.children)
       .find(element => element.localName === "slot" && !element.hasAttribute("name")) as HTMLSlotElement
     expect(document.body.inert).toBe(false)
-    expect(slot.inert).toBe(true)
+    expect(slot.inert).toBe(false)
     expect(document.body.contentEditable).toBe("inherit")
-    expect(document.designMode).toBe("off")
+    expect(document.designMode).toBe("on")
     expect(document.body).toHaveClass("◆editing-locked")
     const lockedAffordanceRule = editor.appendix.adoptedStyleSheets
       .flatMap(stylesheet => Array.from(stylesheet.cssRules))
@@ -180,7 +287,8 @@ describe("collaborative version history", () => {
       type: "previewVersionCheckpoint",
       checkpointId: latestId,
     })
-    expect(latest.preview).toBeNull()
+    expect(latest.preview).toMatchObject({checkpointId: latestId, isCurrent: true})
+    history.clearPreview()
     expect(latest.appliedQueuedChanges).toBe(false)
     expect(document.querySelector("custom-widget")).not.toBeNull()
     expect(document.querySelector("custom-widget")?.getAttribute("data-state")).toBe("ready")
@@ -217,12 +325,12 @@ describe("collaborative version history", () => {
     expect(document.head.innerHTML).toBe("")
     expect(document.documentElement.hasAttribute("lang")).toBe(false)
     expect(editor.doc.body.toString()).toContain("<p>Hello</p>")
-    expect(restored.checkpoints).toHaveLength(beforeRestore.checkpoints.length)
-    expect(restored.checkpoints.map(checkpoint => checkpoint.id)).toEqual(
+    expect(restored.checkpoints).toHaveLength(beforeRestore.checkpoints.length + 1)
+    expect(restored.checkpoints.slice(1).map(checkpoint => checkpoint.id)).toEqual(
       beforeRestore.checkpoints.map(checkpoint => checkpoint.id),
     )
-    expect(restored.checkpoints.every(checkpoint => !checkpoint.label.startsWith("Restored "))).toBe(true)
-    expect(restored.currentCheckpointId).toBe(baselineId)
+    expect(restored.checkpoints[0].label).toBe("Restored Document created")
+    expect(restored.currentCheckpointId).toBe(restored.checkpoints[0].id)
     expect(restored.preview).toBeNull()
     expect(restored.currentUserId).toBe(editor.doc.awareness.clientID)
     expect(document.body.inert).toBe(false)
@@ -256,7 +364,7 @@ describe("collaborative version history", () => {
 
     expect(editor.doc.body.toString()).toContain("Remote")
     expect(document.body.innerHTML).toBe("<p>Hello</p>")
-    const resumed = history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: currentId})
+    const resumed = history.actions.clearVersionPreview({type: "clearVersionPreview"})
     expect(resumed.appliedQueuedChanges).toBe(true)
     expect(resumed.preview).toBeNull()
     expect(editor.toHTML(true)).toBe("<p>Remote</p>")

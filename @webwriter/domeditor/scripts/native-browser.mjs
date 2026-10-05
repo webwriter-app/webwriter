@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "version previews preserve editing mode and reject native and direct mutations",
   "collaborated scripts remain inert with namespace prefixes, clones and later edits",
   "new paragraphs and line breaks reveal the caret at the document end",
   "column groups expose independent gaps and stack with separator lines",

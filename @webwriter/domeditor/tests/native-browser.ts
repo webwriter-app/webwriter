@@ -2375,6 +2375,45 @@ await check("column groups expose independent gaps and stack with separator line
   }
 })
 
+await check("version previews preserve editing mode and reject native and direct mutations", async () => {
+  const section = document.createElement("section")
+  section.id = "native-history-section"
+  section.innerHTML = '<p>Hello</p><custom-history-widget state="ready"></custom-history-widget><template><b>Template</b></template><svg xmlns="http://www.w3.org/2000/svg"><use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#shape"></use></svg>'
+  fixture.append(section)
+  const history = editor.features.history
+  try {
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    const saved = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId})
+    history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: saved.versions[0].id})
+    assert(document.designMode === "on", "preview disabled editing mode")
+    const previewSection = document.querySelector("#native-history-section")!
+    const paragraph = previewSection.querySelector("p")!
+    const source = editor.toHTML(false, false)
+    const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Blocked"})
+    paragraph.dispatchEvent(beforeInput)
+    assert(beforeInput.defaultPrevented, "native mutation event was allowed")
+    const widget = previewSection.querySelector("custom-history-widget")!
+    paragraph.textContent = "Blocked"
+    widget.setAttribute("state", "changed")
+    previewSection.querySelector("template")!.content.querySelector("b")!.textContent = "Blocked template"
+    previewSection.querySelector("use")!.removeAttributeNS("http://www.w3.org/1999/xlink", "href")
+    previewSection.append(document.createElement("aside"))
+    await layoutFrame()
+    assert(editor.toHTML(false, false) === source, "preview mutations survived their observer boundary")
+    assert(previewSection.querySelector("p") === paragraph && previewSection.querySelector("custom-history-widget") === widget,
+      "mutation rollback replaced existing preview nodes")
+    history.clearPreview()
+    assert(!editor.isEditingLocked, "preview lock survived closing")
+    document.querySelector("#native-history-section p")!.textContent = "Editable again"
+    await layoutFrame()
+    assert(editor.doc.body.toString().includes("Editable again"), "closing preview did not resume editing")
+  }
+  finally {
+    history.clearPreview()
+    document.querySelector("#native-history-section")?.remove()
+  }
+})
+
 editor.destroy()
 
 await check("canvas and slide gestures relay pointer dismissal before feature capture", async () => {

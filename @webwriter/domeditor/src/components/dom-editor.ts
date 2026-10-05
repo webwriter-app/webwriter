@@ -3048,11 +3048,18 @@ export class DomEditor extends LitElement {
       }
       const selectedFormat = this.formatForFileName(handle.name, requestedFormat)
       const revision = this.documentChangeSequence
-      const source = await this.execute({type: "serializeDocument", offline: selectedFormat === "offline"})
-      if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
+      const frameRevision = this.frameRevision
+      const snapshot = await this.execute({type: "prepareVersionSave", offline: selectedFormat === "offline"})
+      if(!isRecord(snapshot) || typeof snapshot.source !== "string" || typeof snapshot.checkpointId !== "string") {
+        throw new TypeError("The editor returned an invalid save snapshot")
+      }
+      const {source, checkpointId} = snapshot
       const writable = await handle.createWritable()
       await writable.write(new Blob([source], {type: "text/html;charset=utf-8"}))
       await writable.close()
+      if(frameRevision === this.frameRevision) {
+        this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
+      }
       this.backendDocumentId = null
       this.fileHandle = handle
       this.fileName = this.baseFileName(handle.name)
@@ -3109,8 +3116,12 @@ export class DomEditor extends LitElement {
     const revision = this.documentChangeSequence
     const client = this.backendClient
     try {
-      const source = await this.execute({type: "serializeDocument", offline: requestedFormat === "offline"})
-      if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
+      const frameRevision = this.frameRevision
+      const snapshot = await this.execute({type: "prepareVersionSave", offline: requestedFormat === "offline"})
+      if(!isRecord(snapshot) || typeof snapshot.source !== "string" || typeof snapshot.checkpointId !== "string") {
+        throw new TypeError("The editor returned an invalid save snapshot")
+      }
+      const {source, checkpointId} = snapshot
       if(expectedDocument && (!this.settings.autosaveCloudOnBundleChange || this.backendClient !== expectedDocument.client
         || this.backendDocumentId !== expectedDocument.id || this.storageLocation !== "development-server")) return
       const title = this.fileName.trim() || "Untitled"
@@ -3118,6 +3129,9 @@ export class DomEditor extends LitElement {
         ? await client.updateDocument(this.backendDocumentId, {title, content: source, format: requestedFormat})
         : await client.createDocument({title, content: source, format: requestedFormat})
       if(expectedDocument && (this.backendClient !== expectedDocument.client || this.backendDocumentId !== expectedDocument.id)) return
+      if(frameRevision === this.frameRevision) {
+        this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
+      }
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.fileName = this.baseFileName(document.title)
@@ -3191,6 +3205,9 @@ export class DomEditor extends LitElement {
     const message = {type: historyStateChangeEvent, detail: value}
     if(!isHistoryStateChangeMessage(message)) throw new TypeError("The editor returned invalid version history")
     this.historyState = {
+      versions: message.detail.versions.map(version => ({
+        ...version, user: {...version.user}, changes: {...version.changes}, checkpointIds: [...version.checkpointIds],
+      })),
       checkpoints: message.detail.checkpoints.map(checkpoint => ({
         ...checkpoint,
         user: {...checkpoint.user},

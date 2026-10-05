@@ -68,6 +68,7 @@ describe("editor bridge message guards", () => {
           changes: {added: 0, removed: 0, modified: 0},
           commentCount: 0,
         }],
+        versions: [],
         comments: [],
         preview: null,
         currentCheckpointId: "checkpoint-1",
@@ -76,7 +77,13 @@ describe("editor bridge message guards", () => {
     }
     expect(isHistoryStateChangeMessage(message)).toBe(true)
     expect(isHistoryStateChangeMessage({...message, detail: {...message.detail, currentUserId: null}})).toBe(true)
+    const version = {...message.detail.checkpoints[0], checkpointIds: ["checkpoint-1"], isUnsaved: false, isCurrent: true}
+    expect(isHistoryStateChangeMessage({...message, detail: {...message.detail, versions: [version]}})).toBe(true)
     expectAllRejected(isHistoryStateChangeMessage, [
+      {...message, detail: {...message.detail, versions: undefined}},
+      {...message, detail: {...message.detail, versions: [{...version, checkpointIds: [1]}]}},
+      {...message, detail: {...message.detail, versions: [{...version, isUnsaved: "false"}]}},
+      {...message, detail: {...message.detail, versions: [{...version, changes: {added: -1, removed: 0, modified: 0}}]}},
       {...message, detail: {...message.detail, currentCheckpointId: undefined}},
       {...message, detail: {...message.detail, currentCheckpointId: 1}},
       {...message, detail: {...message.detail, currentUserId: undefined}},

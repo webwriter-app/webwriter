@@ -19,6 +19,7 @@ import {
   type ListSelectionState,
   type ListType,
   type VersionHistoryState,
+  type VersionHistoryCheckpoint,
 } from "../editor-bridge"
 import {widgetOptionValue, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
 import type {ElementAttributeState} from "../element-attributes"
@@ -2557,28 +2558,21 @@ export abstract class EditingControls extends LitElement {
 
   protected get selectedHistoryCheckpointId() {
     return this.historyState.preview?.checkpointId
-      ?? this.historyState.currentCheckpointId
-      ?? this.historyState.checkpoints[0]?.id
+      ?? this.historyState.versions.find(version => version.isCurrent)?.id
       ?? null
   }
 
   protected scrollNewHistoryCardIntoView(previousState: unknown) {
     if(!this.renderRoot.querySelector('.history-timeline')) return
-    const previousCheckpoints = previousState && typeof previousState === "object"
-      && Array.isArray((previousState as Partial<VersionHistoryState>).checkpoints)
-      ? (previousState as VersionHistoryState).checkpoints
-      : []
-    const previousIds = new Set(previousCheckpoints.map(checkpoint => checkpoint.id))
-    const added = this.historyState.checkpoints.filter(checkpoint => !previousIds.has(checkpoint.id))
-    if(!added.length) return
-    const checkpoint = added.find(candidate => candidate.id === this.historyState.currentCheckpointId) ?? added[0]
+    const previousVersions = previousState && typeof previousState === "object"
+      && Array.isArray((previousState as Partial<VersionHistoryState>).versions)
+      ? (previousState as VersionHistoryState).versions : []
+    const previousIds = new Set(previousVersions.map(version => version.id))
+    const added = this.historyState.versions.find(version => !previousIds.has(version.id))
+    if(!added) return
     const card = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".history-version-card"))
-      .find(candidate => candidate.dataset.checkpointId === checkpoint.id)
-    card?.scrollIntoView({
-      behavior: previousCheckpoints.length ? "smooth" : "auto",
-      block: "nearest",
-      inline: "nearest",
-    })
+      .find(candidate => candidate.dataset.checkpointId === added.id)
+    card?.scrollIntoView({behavior: previousVersions.length ? "smooth" : "auto", block: "nearest", inline: "nearest"})
   }
 
   protected historyTime(timestamp: number) {
@@ -2617,64 +2611,66 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
+  protected renderHistoryEntry(entry: VersionHistoryCheckpoint, isVersion: boolean, isCurrent: boolean, isUnsaved = false) {
+    const selected = this.selectedHistoryCheckpointId === entry.id
+    return html`
+      <div class=${isVersion ? "history-version-card" : "history-change-card"}
+        data-checkpoint-id=${entry.id} ?data-selected=${selected}>
+        <button class="history-checkpoint" type="button" data-checkpoint-id=${entry.id}
+          aria-pressed=${selected} title=${entry.label} ?disabled=${this.historyLoading}
+          @click=${this.selectHistoryCheckpoint}>
+          <span class="history-checkpoint-avatar" style=${`--history-user-color: ${entry.user.color}`}
+            aria-hidden="true">${entry.user.initials}</span>
+          <span class="history-checkpoint-label">${isUnsaved ? "Unsaved changes" : this.historyTimestamp(entry.timestamp)}</span>
+          <span class="history-checkpoint-meta">By ${this.historyAuthor(entry.user)}</span>
+          <span class="history-checkpoint-counts" aria-label=${`${entry.changes.added} added, ${entry.changes.removed} removed, ${entry.changes.modified} changed`}>
+            <span class="history-count" data-kind="added">+${entry.changes.added}</span>
+            <span class="history-count" data-kind="removed">−${entry.changes.removed}</span>
+            <span class="history-count" data-kind="modified">~${entry.changes.modified}</span>
+            ${entry.commentCount ? html`<span class="history-count" data-kind="comments">${entry.commentCount} 💬</span>` : nothing}
+          </span>
+        </button>
+        <button class="history-card-restore-button" type="button" data-checkpoint-id=${entry.id}
+          aria-label=${`Restore ${isVersion ? "version" : "change"} from ${this.historyTimestamp(entry.timestamp)}`}
+          title=${isCurrent ? "Already active" : entry.label}
+          ?disabled=${this.historyLoading || isCurrent} @click=${this.revertHistoryCheckpoint}>
+          <span class="history-card-restore-icon" aria-hidden="true">${ribbonIcon("Restore")}</span>
+          <span>Restore</span>
+        </button>
+      </div>
+    `
+  }
+
   protected renderHistoryVersionsDrawer() {
-    const selectedId = this.selectedHistoryCheckpointId
-    const checkpoints = [...this.historyState.checkpoints].reverse()
-    const currentIndex = checkpoints.findIndex(checkpoint =>
-      checkpoint.id === this.historyState.currentCheckpointId,
-    )
+    const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
     return html`
       <ribbon-drawer label="Versions" icon="History" layout="history-versions">
         <div class="history-timeline" role="list" aria-label="Document versions">
+          ${this.historyState.preview ? html`
+            <button class="history-preview-clear" type="button" ?disabled=${this.historyLoading}
+              @click=${() => this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))}>
+              Return to current document
+            </button>` : nothing}
           ${this.historyError ? html`<div class="history-error" role="alert">${this.historyError}</div>`
-          : this.historyLoading && !this.historyState.checkpoints.length
+          : this.historyLoading && !this.historyState.versions.length
             ? html`<div class="history-loading">Loading versions…</div>`
-            : !this.historyState.checkpoints.length
-              ? html`<div class="history-empty">No checkpoints yet</div>`
-              : checkpoints.map((checkpoint, index) => html`
-                <div
-                  class="history-version-card"
-                  role="listitem"
-                  data-checkpoint-id=${checkpoint.id}
-                  ?data-selected=${selectedId === checkpoint.id}
-                  ?data-after-current=${currentIndex >= 0 && index > currentIndex}
-                >
-                  <button
-                    class="history-checkpoint"
-                    type="button"
-                    data-checkpoint-id=${checkpoint.id}
-                    aria-pressed=${selectedId === checkpoint.id}
-                    title=${checkpoint.label}
-                    @click=${this.selectHistoryCheckpoint}
-                  >
-                    <span
-                      class="history-checkpoint-avatar"
-                      style=${`--history-user-color: ${checkpoint.user.color}`}
-                      aria-hidden="true"
-                    >${checkpoint.user.initials}</span>
-                    <span class="history-checkpoint-label">${this.historyTimestamp(checkpoint.timestamp)}</span>
-                    <span class="history-checkpoint-meta">By ${this.historyAuthor(checkpoint.user)}</span>
-                    <span class="history-checkpoint-counts" aria-label=${`${checkpoint.changes.added} added, ${checkpoint.changes.removed} removed, ${checkpoint.changes.modified} changed`}>
-                      <span class="history-count" data-kind="added">+${checkpoint.changes.added}</span>
-                      <span class="history-count" data-kind="removed">−${checkpoint.changes.removed}</span>
-                      <span class="history-count" data-kind="modified">~${checkpoint.changes.modified}</span>
-                      ${checkpoint.commentCount ? html`<span class="history-count" data-kind="comments">${checkpoint.commentCount} 💬</span>` : ""}
-                    </span>
-                  </button>
-                  <button
-                    class="history-card-restore-button"
-                    type="button"
-                    data-checkpoint-id=${checkpoint.id}
-                    aria-label=${`Restore version from ${this.historyTimestamp(checkpoint.timestamp)}`}
-                    title=${checkpoint.id === this.historyState.currentCheckpointId
-                      ? "Already active"
-                      : `Restore version from ${this.historyTimestamp(checkpoint.timestamp)}`}
-                    ?disabled=${this.historyLoading || checkpoint.id === this.historyState.currentCheckpointId}
-                    @click=${this.revertHistoryCheckpoint}
-                  >
-                    <span class="history-card-restore-icon" aria-hidden="true">${ribbonIcon("Restore")}</span>
-                    <span>Restore</span>
-                  </button>
+            : !this.historyState.versions.length
+              ? html`<div class="history-empty">No versions yet</div>`
+              : repeat(this.historyState.versions, version => version.id, version => html`
+                <div class="history-version-group" role="listitem">
+                  ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved)}
+                  ${version.checkpointIds.length ? html`
+                    <details class="history-version-changes">
+                      <summary>${version.checkpointIds.length} ${version.checkpointIds.length === 1 ? "change" : "changes"}</summary>
+                      <div role="list" aria-label=${`Changes in ${version.label}`}>
+                        ${version.checkpointIds.map(id => {
+                          const checkpoint = checkpoints.get(id)
+                          return checkpoint ? html`<div role="listitem">
+                            ${this.renderHistoryEntry(checkpoint, false, checkpoint.id === this.historyState.currentCheckpointId)}
+                          </div>` : nothing
+                        })}
+                      </div>
+                    </details>` : nothing}
                 </div>
               `)}
         </div>

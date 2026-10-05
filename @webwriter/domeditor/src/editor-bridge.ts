@@ -432,6 +432,12 @@ export type VersionHistoryComment = {
   user: VersionHistoryUser
 }
 
+export type VersionHistoryVersion = VersionHistoryCheckpoint & {
+  checkpointIds: string[]
+  isUnsaved: boolean
+  isCurrent: boolean
+}
+
 export type VersionHistoryPreview = VersionHistoryChanges & {
   checkpointId: string
   isCurrent: boolean
@@ -439,6 +445,7 @@ export type VersionHistoryPreview = VersionHistoryChanges & {
 
 export type VersionHistoryState = {
   checkpoints: VersionHistoryCheckpoint[]
+  versions: VersionHistoryVersion[]
   comments: VersionHistoryComment[]
   preview: VersionHistoryPreview | null
   currentCheckpointId: string | null
@@ -447,6 +454,7 @@ export type VersionHistoryState = {
 
 export const emptyVersionHistoryState = (): VersionHistoryState => ({
   checkpoints: [],
+  versions: [],
   comments: [],
   preview: null,
   currentCheckpointId: null,
@@ -484,8 +492,8 @@ export function isHistoryStateChangeMessage(value: unknown): value is HistorySta
   if(!value || typeof value !== "object") return false
   const message = value as Partial<HistoryStateChangeMessage>
   if(message.type !== historyStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
-  const {checkpoints, comments, preview, currentCheckpointId, currentUserId} = message.detail as Partial<VersionHistoryState>
-  if(!Array.isArray(checkpoints) || !Array.isArray(comments)) return false
+  const {checkpoints, versions, comments, preview, currentCheckpointId, currentUserId} = message.detail as Partial<VersionHistoryState>
+  if(!Array.isArray(checkpoints) || !Array.isArray(versions) || !Array.isArray(comments)) return false
   if(currentCheckpointId !== null && typeof currentCheckpointId !== "string") return false
   if(currentUserId !== null && (typeof currentUserId !== "number" || !Number.isInteger(currentUserId))) return false
   if(!checkpoints.every(checkpoint => !!checkpoint
@@ -505,6 +513,18 @@ export function isHistoryStateChangeMessage(value: unknown): value is HistorySta
     && typeof comment.timestamp === "number"
     && typeof comment.text === "string"
     && isVersionHistoryUser(comment.user))) return false
+  if(!versions.every(version => !!version
+    && typeof version === "object"
+    && typeof version.id === "string"
+    && typeof version.timestamp === "number"
+    && typeof version.label === "string"
+    && isVersionHistoryUser(version.user)
+    && isVersionHistoryChanges(version.changes)
+    && Number.isInteger(version.commentCount) && version.commentCount >= 0
+    && typeof version.isUnsaved === "boolean"
+    && typeof version.isCurrent === "boolean"
+    && Array.isArray(version.checkpointIds)
+    && version.checkpointIds.every((id: unknown) => typeof id === "string"))) return false
   return preview === null || !!preview
     && typeof preview === "object"
     && typeof preview.checkpointId === "string"

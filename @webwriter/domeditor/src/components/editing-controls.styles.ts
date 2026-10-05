@@ -14,28 +14,28 @@ export const editingControlStyles = css`
     .history-timeline {
       box-sizing: border-box;
       display: flex;
+      flex-direction: column;
       grid-row: 1 / 3;
       grid-column: 1 / -1;
       align-self: stretch;
       align-items: stretch;
       gap: 0.35rem;
       width: 100%;
-      height: 100%;
+      height: auto;
       min-width: 0;
       min-height: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
       padding: 0.35rem 0;
       scrollbar-color: #aab6c5 transparent;
       scrollbar-width: thin;
     }
 
-    .history-version-card {
+    .history-version-card,
+    .history-change-card {
       box-sizing: border-box;
       display: grid;
-      flex: 0 0 9rem;
-      grid-template-rows: minmax(0, 1fr) 1.35rem;
-      height: 100%;
+      grid-template-rows: auto 1.35rem;
       min-width: 0;
       overflow: hidden;
       border: 1px solid #c8d2df;
@@ -44,37 +44,24 @@ export const editingControlStyles = css`
       background: #ffffff;
     }
 
-    .history-version-card:hover {
+    .history-version-card:hover,
+    .history-change-card:hover {
       border-color: #8eb6df;
       background: #eef4fb;
     }
 
-    .history-version-card[data-selected] {
+    .history-version-card[data-selected],
+    .history-change-card[data-selected] {
       border-color: #3977c7;
       background: #dcecff;
       box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
-    }
-
-    .history-version-card[data-after-current] {
-      border-color: #d3d8df;
-      color: #7a818b;
-      background: #eef0f2;
-      filter: grayscale(0.8);
-      opacity: 0.55;
-    }
-
-    .history-version-card[data-after-current]:hover,
-    .history-version-card[data-after-current][data-selected] {
-      border-color: #aeb6c1;
-      background: #e5e8ec;
-      opacity: 0.72;
     }
 
     .history-checkpoint {
       box-sizing: border-box;
       display: grid;
       grid-template-columns: 1.35rem minmax(0, 1fr);
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto auto auto;
       column-gap: 0.35rem;
       align-content: center;
       width: 100%;
@@ -148,6 +135,11 @@ export const editingControlStyles = css`
     .history-count[data-kind="removed"] { color: #b42336; }
     .history-count[data-kind="modified"] { color: #9a6700; }
     .history-count[data-kind="comments"] { margin-left: auto; color: #526b86; }
+
+    .history-version-changes {font-size: .6rem; color: #526b86;}
+    .history-version-changes summary {padding: .3rem; cursor: pointer;}
+    .history-version-changes [role="list"] {display: grid; gap: .3rem; margin-left: .5rem;}
+    .history-preview-clear {padding: .4rem; font: inherit; font-size: .65rem; cursor: pointer;}
 
     .history-empty,
     .history-loading,
