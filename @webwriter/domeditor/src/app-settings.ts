@@ -150,6 +150,7 @@ export type AppSettings = {
   activeCloudServiceId: string | null
   cloudServicesConfigured: boolean
   proofreadingDictionary: string[]
+  disableSpellChecking: boolean
   userSnippets: UserSnippet[]
   language: string
   defaultLayout: DocumentLayoutMode
@@ -170,6 +171,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     activeCloudServiceId: null,
     cloudServicesConfigured: false,
     proofreadingDictionary: [],
+    disableSpellChecking: false,
     userSnippets: [],
     language: "en",
     defaultLayout: "document",
@@ -229,6 +231,8 @@ export function loadAppSettings(): AppSettings {
         ? value.activeCloudServiceId! : null,
       cloudServicesConfigured: value.cloudServicesConfigured === true,
       proofreadingDictionary: normalizeProofreadingDictionary(value.proofreadingDictionary),
+      disableSpellChecking: typeof value.disableSpellChecking === "boolean"
+        ? value.disableSpellChecking : defaults.disableSpellChecking,
       userSnippets: Array.isArray(value.userSnippets) ? value.userSnippets.filter((snippet): snippet is UserSnippet =>
         Boolean(snippet && typeof snippet.id === "string" && snippet.id && typeof snippet.label === "string"
           && snippet.label && typeof snippet.html === "string" && snippet.html)) : [],

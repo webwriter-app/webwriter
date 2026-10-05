@@ -35,11 +35,19 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("validates the optional global spell-checking preference in initialization messages", () => {
+    const message = {type: initializeEditorMessage, syncUrl: "ws://localhost/session"}
+    expect(isInitializeEditorMessage(message)).toBe(true)
+    for(const disableSpellChecking of [true, false]) expect(isInitializeEditorMessage({...message, disableSpellChecking})).toBe(true)
+    for(const disableSpellChecking of [null, "false", 0]) expect(isInitializeEditorMessage({...message, disableSpellChecking})).toBe(false)
+  })
+
   it("accepts the style proofreading category and rejects unknown categories", () => {
     const message = {
       type: proofreadingStateChangeEvent,
       detail: {
         enabled: true,
+        documentEnabled: true,
         loading: false,
         ready: true,
         checking: false,

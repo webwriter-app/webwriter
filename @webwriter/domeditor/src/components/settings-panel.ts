@@ -795,6 +795,15 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        <section class="setting-card" aria-label="Spell checking">
+          <label class="checkbox-setting">
+            <input type="checkbox" .checked=${this.settings.disableSpellChecking}
+              @change=${(event: Event) => this.emitSettings({...this.settings, disableSpellChecking: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Disable spell checking for all documents</span>
+            <span class="checkbox-description">Disable spelling, grammar, and style suggestions.</span>
+          </label>
+        </section>
         ${this.renderProofreadingDictionary()}
         <details class="command-category developer-settings">
           <summary>Developer settings</summary>

@@ -1951,6 +1951,7 @@ export class DomEditor extends LitElement {
         disableAnimations: this.settings.disableAnimations,
         shortcuts: {...this.settings.shortcuts},
         proofreadingDictionary: [...this.settings.proofreadingDictionary],
+        disableSpellChecking: this.settings.disableSpellChecking,
         ...(this.frameState ? {initialState: this.frameState} : {}),
       }
       const importMap = this.packageImportMap ?? undefined
@@ -2773,6 +2774,14 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
+    if(previous.disableSpellChecking !== settings.disableSpellChecking) {
+      if(settings.disableSpellChecking) {
+        this.proofreadingReloading = false
+        this.proofreadingState = {...this.proofreadingState, enabled: false, loading: false,
+          ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
+      }
+      void this.execute({type: "setProofreadingEnabled", enabled: !settings.disableSpellChecking}).catch(() => {})
+    }
     if(JSON.stringify(previous.proofreadingDictionary) !== JSON.stringify(settings.proofreadingDictionary)) {
       void this.execute({type: "setProofreadingDictionary", words: [...settings.proofreadingDictionary]}).catch(() => {})
     }
@@ -4670,9 +4679,10 @@ export class DomEditor extends LitElement {
   }
 
   private retainProofreadingDuringReload() {
-    this.proofreadingReloading = true
-    this.proofreadingState = {...this.proofreadingState, loading: true, ready: false,
-      checking: true, error: null, hoveredIssueId: null}
+    const checking = this.proofreadingState.enabled && !this.settings.disableSpellChecking
+    this.proofreadingReloading = checking
+    this.proofreadingState = {...this.proofreadingState, loading: checking, ready: false,
+      checking, error: null, hoveredIssueId: null}
   }
 
   private async checkPackageDependencies() {
@@ -4929,11 +4939,14 @@ export class DomEditor extends LitElement {
   }
 
   private handleProofreadingAction = (event: Event) => {
-    const detail = (event as CustomEvent<{type?: unknown, id?: unknown, index?: unknown}>).detail
+    const detail = (event as CustomEvent<{type?: unknown, id?: unknown, index?: unknown, enabled?: unknown}>).detail
     if(!detail || this.htmlPending || this.historyState.preview !== null) return
-    if(this.proofreadingReloading && detail.type !== "retryProofreading") return
+    if(this.proofreadingReloading && detail.type !== "retryProofreading" && detail.type !== "setDocumentProofreadingEnabled") return
     let action: ProofreadingAction
     if(detail.type === "retryProofreading") action = {type: detail.type}
+    else if(detail.type === "setDocumentProofreadingEnabled" && typeof detail.enabled === "boolean") {
+      action = {type: detail.type, enabled: detail.enabled}
+    }
     else if(typeof detail.id === "string" && (detail.type === "selectProofreadingIssue" || detail.type === "ignoreProofreadingIssue" || detail.type === "addProofreadingWord")) {
       action = {type: detail.type, id: detail.id}
     }
@@ -6158,7 +6171,10 @@ export class DomEditor extends LitElement {
     }
     if(isProofreadingStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
-      const state = event.data.detail
+      const state: ProofreadingState = this.settings.disableSpellChecking
+        ? {...event.data.detail, enabled: false, loading: false, ready: false, checking: false,
+          error: null, hoveredIssueId: null, issues: []}
+        : event.data.detail
       const retain = this.proofreadingReloading && state.enabled && (!state.ready || state.loading || state.checking)
       if(!retain) this.proofreadingReloading = false
       this.proofreadingState = {
@@ -6845,6 +6861,7 @@ export class DomEditor extends LitElement {
       </div>
       <dom-editor-toolbox
         .proofreadingState=${this.proofreadingState}
+        .disableSpellChecking=${this.settings.disableSpellChecking}
         .disableAI=${this.settings.disableAI}
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}

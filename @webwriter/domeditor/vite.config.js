@@ -56,9 +56,9 @@ export default defineConfig({
           },
         },
       },
-      // Happy DOM's asynchronous observers and FileReader tasks become
-      // unreliable when every available CPU is saturated by test workers.
-      maxWorkers: "50%",
+      // Happy DOM's CSS parsing and nested iframe tasks need headroom during
+      // full runs; a CPU percentage still saturates machines with many cores.
+      maxWorkers: 2,
       server: {
         deps: {
           inline: ["y-protocols", "y-websocket", "lib0"],

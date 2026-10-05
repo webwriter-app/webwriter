@@ -111,6 +111,7 @@ export type InitializeEditorMessage = {
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
   proofreadingDictionary?: string[]
+  disableSpellChecking?: boolean
 }
 
 export type LoadWidgetsMessage = {
@@ -163,6 +164,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
     && (message.language === undefined || typeof message.language === "string")
     && (message.username === undefined || typeof message.username === "string")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
+    && (message.disableSpellChecking === undefined || typeof message.disableSpellChecking === "boolean")
     && (message.proofreadingDictionary === undefined || Array.isArray(message.proofreadingDictionary)
       && message.proofreadingDictionary.every(word => typeof word === "string" && Boolean(word.trim()) && !/\s/u.test(word)))
     && (message.shortcuts === undefined || !!message.shortcuts && typeof message.shortcuts === "object"
@@ -380,6 +382,7 @@ export type CommentStateChangeMessage = {
 
 export type ProofreadingState = {
   enabled: boolean
+  documentEnabled: boolean
   loading: boolean
   ready: boolean
   checking: boolean
@@ -397,11 +400,12 @@ export type ProofreadingState = {
 }
 
 export function emptyProofreadingState(): ProofreadingState {
-  return {enabled: true, loading: false, ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
+  return {enabled: true, documentEnabled: true, loading: false, ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
 }
 
 export type ProofreadingAction =
   | {type: "retryProofreading"}
+  | {type: "setDocumentProofreadingEnabled", enabled: boolean}
   | {type: "selectProofreadingIssue", id: string}
   | {type: "applyProofreadingSuggestion", id: string, index: number}
   | {type: "ignoreProofreadingIssue", id: string}
@@ -817,6 +821,7 @@ export function isProofreadingStateChangeMessage(value: unknown): value is Proof
   if(message.type !== proofreadingStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
   const detail = message.detail as Partial<ProofreadingState>
   return typeof detail.enabled === "boolean" && typeof detail.loading === "boolean" && typeof detail.ready === "boolean"
+    && typeof detail.documentEnabled === "boolean"
     && typeof detail.checking === "boolean"
     && (detail.error === null || typeof detail.error === "string")
     && (detail.hoveredIssueId === null || typeof detail.hoveredIssueId === "string")

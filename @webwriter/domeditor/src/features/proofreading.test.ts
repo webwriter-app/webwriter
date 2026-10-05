@@ -23,6 +23,7 @@ beforeEach(() => {
   body.innerHTML = "<p>teh example.</p>"
   document.body.replaceWith(body)
   document.documentElement.setAttribute("lang", "en-US")
+  document.documentElement.removeAttribute("spellcheck")
   check = vi.fn(async () => [spelling()])
   dispose = vi.fn(async () => {})
   vi.mocked(createProofreader).mockResolvedValue({check, dispose})
@@ -40,6 +41,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
   document.documentElement.removeAttribute("lang")
+  document.documentElement.removeAttribute("spellcheck")
 })
 
 async function start() {
@@ -95,6 +97,90 @@ describe("proofreading prose extraction", () => {
 })
 
 describe("proofreading feature", () => {
+  it("does not load the checker for globally disabled initialization, even with dictionary words", async () => {
+    editor.features.proofreading.setChecking(false)
+    editor.features.proofreading.setDictionary(["Teh"])
+    await editor.features.proofreading.checkNow()
+    expect(createProofreader).not.toHaveBeenCalled()
+    expect(document.documentElement.hasAttribute("spellcheck")).toBe(false)
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: true, issues: []})
+    editor.features.proofreading.setChecking(true)
+    await editor.features.proofreading.checkNow()
+    expect(createProofreader).toHaveBeenCalledOnce()
+    expect(check).toHaveBeenCalledWith("teh example.", "en-US", ["Teh"])
+    expect(editor.features.proofreading.state().issues).toEqual([])
+  })
+
+  it("stores the document preference without changing its content, with undo and redo", async () => {
+    const [issue] = await start()
+    issueRects()
+    contextMenu()
+    const before = document.body.innerHTML
+    expect(editor.features.proofreading.actions.setDocumentProofreadingEnabled({type: "setDocumentProofreadingEnabled", enabled: false}))
+      .toMatchObject({enabled: false, documentEnabled: false, loading: false, checking: false, issues: []})
+    expect(document.body.innerHTML).toBe(before)
+    expect(editor.toHTML()).toContain('spellcheck="false"')
+    expect(editor.doc.documentAttributes!.getAttribute("spellcheck")).toBe("false")
+    expect(highlights.has("webwriter-spelling")).toBe(false)
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
+    const calls = check.mock.calls.length
+    editor.features.proofreading.retry()
+    await editor.features.proofreading.checkNow()
+    expect(check).toHaveBeenCalledTimes(calls)
+    editor.doc.undo()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: true, documentEnabled: true})
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    editor.doc.redo()
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false, issues: []})
+    expect(editor.features.proofreading.setDocumentChecking(true)).toMatchObject({enabled: true, documentEnabled: true})
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+  })
+
+  it("honours saved and remote document preferences, including while globally disabled", async () => {
+    editor.destroy()
+    document.documentElement.setAttribute("spellcheck", "false")
+    editor = new DOMEditor()
+    await start()
+    expect(createProofreader).not.toHaveBeenCalled()
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
+    editor.doc.doc.transact(() => editor.doc.documentAttributes!.removeAttribute("spellcheck"), "remote-peer")
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    editor.features.proofreading.setChecking(false)
+    expect(document.documentElement.hasAttribute("spellcheck")).toBe(false)
+    editor.doc.doc.transact(() => editor.doc.documentAttributes!.setAttribute("spellcheck", "false"), "remote-peer")
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
+    editor.features.proofreading.setChecking(true)
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false, issues: []})
+    editor.doc.doc.transact(() => editor.doc.documentAttributes!.removeAttribute("spellcheck"), "remote-peer")
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+  })
+
+  it("rejects locked document preference changes and cancels globally disabled loading", async () => {
+    let finish!: (reader: Awaited<ReturnType<typeof createProofreader>>) => void
+    vi.mocked(createProofreader).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    editor.features.proofreading.retry()
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    const lock = {}
+    editor.lockEditing(lock)
+    expect(editor.features.proofreading.setDocumentChecking(false)).toBe(false)
+    expect(document.documentElement.hasAttribute("spellcheck")).toBe(false)
+    editor.unlockEditing(lock)
+    const pending = editor.features.proofreading.checkNow()
+    editor.features.proofreading.setChecking(false)
+    editor.features.proofreading.retry()
+    finish({check, dispose})
+    await pending
+    expect(check).not.toHaveBeenCalled()
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: true, loading: false, checking: false, issues: []})
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
   it("anchors popups below the clicked issue line rather than at the pointer", async () => {
     await start()
     issueRects([new DOMRect(20, 30, 40, 20), new DOMRect(5, 60, 20, 20)])

@@ -3,7 +3,7 @@ import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
 import {$, caretRect} from "../src/utility"
 import {defaultDocumentTheme} from "../src/document-themes"
-import {initializeEditorMessage, replayHostDrag, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, type ProofreadingAction} from "../src/editor-bridge"
+import {initializeEditorMessage, replayHostDrag, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import * as Y from "yjs"
 
@@ -2868,7 +2868,7 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(registry.get("webwriter-spelling") === highlight, "rechecking replaced unchanged highlights")
     assert(!heading.querySelector(".proofreading-spinner"), "checking spinner did not stop")
     const issueButton = card.querySelector<HTMLButtonElement>(".proofreading-issue")!
-    const bridgeClick = async (button: HTMLButtonElement) => {
+    const bridgeClick = async (button: HTMLButtonElement | HTMLInputElement) => {
       const requestId = `proofreading-${crypto.randomUUID()}`
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => { cleanup(); reject(new Error("proofreading card command timed out")) }, 5000)
@@ -2876,7 +2876,8 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
           if(event.source !== frame.contentWindow || event.data?.detail?.requestId !== requestId) return
           if(event.data.type !== executeCompleteEvent && event.data.type !== executeFailureEvent) return
           cleanup()
-          if(event.data.type === executeFailureEvent || event.data.detail.result !== true) reject(new Error("proofreading card command failed"))
+          if(event.data.type === executeFailureEvent || (event.data.detail.result !== true
+            && !isProofreadingStateChangeMessage({type: proofreadingStateChangeEvent, detail: event.data.detail.result}))) reject(new Error("proofreading card command failed"))
           else resolve()
         }
         const action = (event: Event) => frame.contentWindow!.postMessage({
@@ -2991,7 +2992,31 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     child.doc.doc.transact(() => { ignoredShared.insert(ignoredText.data.indexOf("an\u00a0language"), "an language checker. ") }, "remote-peer")
     await feature.checkNow()
     assert(feature.state().issues.filter(issue => issue.text === "an").length === 3, "ignoring an occurrence suppressed identical text inserted remotely")
-    child.destroy()
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    const documentToggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
+    assert(documentToggle.checked && !documentToggle.disabled, "Review has no available document preference")
+    await bridgeClick(documentToggle)
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    assert(!documentToggle.checked && !feature.state().enabled, "Review did not disable document checking")
+    assert(!toolbox.shadowRoot!.querySelector(".proofreading-card") && !toolbox.shadowRoot!.querySelector(".proofreading-spinner"), "disabled checking left suggestions or a loading spinner")
+    const savedPreference = new DOMParser().parseFromString(child.toHTML(), "text/html")
+    assert(savedPreference.documentElement.getAttribute("spellcheck") === "false", "document preference was not serialized")
+    childWindow.reinitializeEditor!()
+    const restored = childWindow.editor!, restoredFeature = restored.features.proofreading
+    await restoredFeature.checkNow()
+    assert(!restoredFeature.state().enabled && !restoredFeature.state().documentEnabled, "frame reinitialization lost the document preference")
+    restoredFeature.setChecking(false)
+    restoredFeature.setChecking(true)
+    assert(!restoredFeature.state().enabled, "global re-enable overwrote the document preference")
+    restoredFeature.setChecking(false)
+    restoredFeature.setDocumentChecking(true)
+    assert(!restoredFeature.state().enabled && restoredFeature.state().documentEnabled, "document preference bypassed global disabling")
+    restoredFeature.setChecking(true)
+    await restoredFeature.checkNow()
+    assert(restoredFeature.state().ready && restoredFeature.state().issues.length > 0, "re-enabling checking did not restore findings")
+    restored.destroy()
     assert(!registry.has("webwriter-style"), "style underlines leaked on teardown")
     assert(!registry.has("webwriter-spelling") && !doc.body.shadowRoot!.querySelector(".◆proofreading-panel"), "proofreading leaked on teardown")
   }

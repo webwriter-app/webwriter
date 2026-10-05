@@ -51,6 +51,7 @@ export class DomEditorToolbox extends EditingControls {
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
     proofreadingState: {attribute: false},
+    disableSpellChecking: {type: Boolean},
   }
 
   disableAI = false
@@ -332,6 +333,8 @@ export class DomEditorToolbox extends EditingControls {
     }
     .proofreading-section h2 {display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0; font-size: .95rem; font-weight: 650}
     .proofreading-status {margin: 0; color: #64748b; font-size: .75rem}
+    .proofreading-toggle {display: flex; align-items: center; gap: .4rem; font-size: .75rem; color: #475569}
+    .proofreading-toggle input {margin: 0; accent-color: #1769aa}
     .proofreading-spinner {
       box-sizing: border-box;
       flex: 0 0 auto;
@@ -575,6 +578,7 @@ export class DomEditorToolbox extends EditingControls {
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
   documentLayoutError = ""
   proofreadingState: ProofreadingState = emptyProofreadingState()
+  disableSpellChecking = false
 
   private dispatchProofreadingAction(action: ProofreadingAction) {
     this.dispatchEvent(new CustomEvent<ProofreadingAction>("proofreading-action", {
@@ -587,20 +591,27 @@ export class DomEditorToolbox extends EditingControls {
     const hoveredIssue = state.issues.find(issue => issue.id === state.hoveredIssueId)
     const editingLocked = this.htmlPending || this.historyState.preview !== null
     const cardsLocked = editingLocked || !state.ready || state.loading
+    const checkingEnabled = state.enabled && !this.disableSpellChecking
     return html`<section class="proofreading-section" aria-labelledby="proofreading-title">
-      <h2 id="proofreading-title">Spelling, Grammar &amp; Style
-        ${!state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling, grammar and style"></span>` : ""}
-        ${state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling, grammar and style"></span>` : ""}
+      <h2 id="proofreading-title">Issues
+        ${checkingEnabled && !state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling, grammar and style"></span>` : ""}
+        ${checkingEnabled && state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling, grammar and style"></span>` : ""}
       </h2>
-      ${state.error ? html`<div class="proofreading-error" role="alert">
+      <label class="proofreading-toggle"><input type="checkbox" .checked=${state.documentEnabled}
+        ?disabled=${editingLocked || this.disableSpellChecking}
+        @change=${(event: Event) => this.dispatchProofreadingAction({type: "setDocumentProofreadingEnabled", enabled: (event.currentTarget as HTMLInputElement).checked})}>
+        Check spelling in this document</label>
+      ${this.disableSpellChecking ? html`<p class="proofreading-status">Spell checking is disabled for all documents. Enable it in Settings.</p>`
+        : !state.documentEnabled ? html`<p class="proofreading-status">Spell checking is disabled for this document.</p>` : ""}
+      ${checkingEnabled && state.error ? html`<div class="proofreading-error" role="alert">
         <span>Could not load proofreading.</span>
         <button class="proofreading-retry" type="button" ?disabled=${editingLocked}
           @click=${() => this.dispatchProofreadingAction({type: "retryProofreading"})}>Retry</button>
       </div>` : ""}
-      ${state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling, grammar or style issues found.</p>` : ""}
+      ${checkingEnabled && state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling, grammar or style issues found.</p>` : ""}
       <div class="proofreading-issues">
-        ${repeat(state.issues, issue => issue.id, issue => renderProofreadingCard(issue,
-          action => this.dispatchProofreadingAction(action), {disabled: cardsLocked, hovered: issue.id === hoveredIssue?.id}))}
+        ${checkingEnabled ? repeat(state.issues, issue => issue.id, issue => renderProofreadingCard(issue,
+          action => this.dispatchProofreadingAction(action), {disabled: cardsLocked, hovered: issue.id === hoveredIssue?.id})) : nothing}
       </div>
     </section>`
   }

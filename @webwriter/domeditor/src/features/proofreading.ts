@@ -88,6 +88,7 @@ export class ProofreadingFeature extends EditorFeature {
   private composing = false
   private requested = false
   private enabled = false
+  private checkingAllowed = true
   private loading = false
   private ready = false
   private lastStatus = ""
@@ -111,6 +112,7 @@ export class ProofreadingFeature extends EditorFeature {
     selectProofreadingIssue: ({id}: {type: "selectProofreadingIssue", id: string}) => this.selectIssue(id),
     getProofreadingState: ({}: {type: "getProofreadingState"}) => this.state(),
     setProofreadingEnabled: ({enabled}: {type: "setProofreadingEnabled", enabled: boolean}) => this.setChecking(enabled),
+    setDocumentProofreadingEnabled: ({enabled}: {type: "setDocumentProofreadingEnabled", enabled: boolean}) => this.setDocumentChecking(enabled),
     applyProofreadingSuggestion: ({id, index}: {type: "applyProofreadingSuggestion", id: string, index: number}) => this.applySuggestion(id, index),
     ignoreProofreadingIssue: ({id}: {type: "ignoreProofreadingIssue", id: string}) => this.ignore(id),
     addProofreadingWord: ({id}: {type: "addProofreadingWord", id: string}) => this.addWord(id),
@@ -154,17 +156,15 @@ export class ProofreadingFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     window.addEventListener("blur", this.handleBlur)
-    this.observer = new MutationObserver(records => {
-      if(this.hasProseChanges(records) && this.enabled) this.invalidate()
-    })
+    this.observer = new MutationObserver(records => this.handleMutations(records))
     this.observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true,
       attributeFilter: ["lang", "hidden", "inert", "contenteditable", "is", "style", "class"]})
-    this.observer.observe(document.documentElement, {attributes: true, attributeFilter: ["lang"]})
+    this.observer.observe(document.documentElement, {attributes: true, attributeFilter: ["lang", "spellcheck"]})
     this.observer.observe(document.head, {subtree: true, childList: true, characterData: true, attributes: true})
-    this.enabled = true
+    this.enabled = this.checkingAllowed && this.documentCheckingEnabled
     this.error = null
     // Let the editor finish starting before loading the local checker.
-    this.timer = setTimeout(() => { void this.checkNow() }, 0)
+    if(this.enabled) this.timer = setTimeout(() => { void this.checkNow() }, 0)
     this.postStatus()
   }
 
@@ -198,7 +198,8 @@ export class ProofreadingFeature extends EditorFeature {
 
   private snapshot(): ProofreadingState {
     return {
-      enabled: this.enabled, loading: this.loading, ready: this.ready, checking: this.checking, error: this.error,
+      enabled: this.enabled, documentEnabled: this.documentCheckingEnabled,
+      loading: this.loading, ready: this.ready, checking: this.checking, error: this.error,
       hoveredIssueId: this.hoveredIssueId,
       issues: this.diagnostics.map(({id, start, end, kind, message, suggestions, run}) => ({
         id, start, end, kind, message, text: run.text.slice(start, end), suggestions: suggestions.map(suggestion => ({...suggestion})),
@@ -207,8 +208,7 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   retry() {
-    if(!this.isEnabled) return
-    this.enabled = true
+    if(!this.isEnabled || !this.checkingAllowed || !this.documentCheckingEnabled) return this.state()
     this.error = null
     this.invalidate(false)
     void this.checkNow()
@@ -218,10 +218,35 @@ export class ProofreadingFeature extends EditorFeature {
 
   setChecking(enabled: boolean) {
     if(typeof enabled !== "boolean" || !this.isEnabled) return
+    this.checkingAllowed = enabled
+    this.updateChecking(enabled && this.documentCheckingEnabled)
+    return this.state()
+  }
+
+  private get documentCheckingEnabled() {
+    return document.documentElement.getAttribute("spellcheck")?.toLowerCase() !== "false"
+  }
+
+  setDocumentChecking(enabled: boolean) {
+    if(typeof enabled !== "boolean" || !this.isEnabled || this.editor.isEditingLocked) return false
+    const finish = this.editor.doc.beginUndoGroup()
+    try {
+      // The native HTML preference travels with the document and its history.
+      if(enabled) document.documentElement.removeAttribute("spellcheck")
+      else document.documentElement.setAttribute("spellcheck", "false")
+    }
+    finally { finish() }
+    this.updateChecking(this.checkingAllowed && this.documentCheckingEnabled)
+    return this.state()
+  }
+
+  private updateChecking(enabled: boolean) {
+    if(enabled === this.enabled) return
     this.enabled = enabled
     this.error = null
     this.invalidate(enabled)
     if(!enabled) {
+      this.checking = false
       this.clearDiagnostics()
       const reader = this.reader
       this.reader = null
@@ -232,7 +257,6 @@ export class ProofreadingFeature extends EditorFeature {
       void reader?.then(value => value.dispose()).catch(() => {})
     }
     this.postStatus()
-    return this.state()
   }
 
   private postStatus() {
@@ -244,7 +268,15 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   private flushMutations() {
-    if(this.enabled && this.hasProseChanges(this.observer?.takeRecords() ?? [])) this.invalidate()
+    this.handleMutations(this.observer?.takeRecords() ?? [])
+  }
+
+  private handleMutations(records: MutationRecord[]) {
+    if(!records.length) return
+    const enabled = this.checkingAllowed && this.documentCheckingEnabled
+    if(enabled !== this.enabled) this.updateChecking(enabled)
+    else if(this.enabled && this.hasProseChanges(records)) this.invalidate()
+    else this.postStatus()
   }
 
   private hasProseChanges(records: MutationRecord[]) {
@@ -364,9 +396,9 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   async checkNow() {
+    this.flushMutations()
     clearTimeout(this.timer)
     if(!this.enabled || !this.isEnabled || this.composing) return
-    this.flushMutations()
     this.requested = true
     if(this.operation) return this.operation
     this.operation = this.checkRuns().finally(() => {

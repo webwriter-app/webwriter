@@ -23,6 +23,50 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("offers a document spell-checking toggle even when the checker is loading or failed", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    const actions = vi.fn()
+    toolbox.addEventListener("proofreading-action", actions)
+    await toolbox.updateComplete
+    const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
+    expect(toggle.checked).toBe(true)
+    expect(toggle.disabled).toBe(false)
+    toggle.click()
+    expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setDocumentProofreadingEnabled", enabled: false})
+    toolbox.proofreadingState = {...emptyProofreadingState(), enabled: false, documentEnabled: false}
+    await toolbox.updateComplete
+    expect(toggle.checked).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).toContain("disabled for this document")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-spinner")).toBeNull()
+    toggle.click()
+    expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setDocumentProofreadingEnabled", enabled: true})
+    toolbox.proofreadingState = {...emptyProofreadingState(), error: "Could not load"}
+    await toolbox.updateComplete
+    expect(toggle.disabled).toBe(false)
+    toolbox.htmlPending = true
+    await toolbox.updateComplete
+    expect(toggle.disabled).toBe(true)
+  })
+
+  it("explains the global override and suppresses stale proofreading UI while keeping Review", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {...emptyProofreadingState(), loading: true,
+      issues: [{id: "stale", start: 0, end: 3, kind: "spelling", message: "Spelling", text: "teh", suggestions: []}]}
+    toolbox.disableSpellChecking = true
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!.disabled).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!.checked).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).toContain("disabled for all documents")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-spinner")).toBeNull()
+    expect(toolButton(toolbox, "Review")).not.toBeNull()
+    toolbox.disableSpellChecking = false
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!.disabled).toBe(false)
+  })
+
   it("shows creation and single-edit snapshots only as versions and retains earlier changes", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")
@@ -101,7 +145,7 @@ describe("toolbox", () => {
     }
     await toolbox.updateComplete
     const card = toolbox.shadowRoot!.querySelector(".proofreading-card")!
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling, Grammar & Style")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Issues")
     expect(card.textContent).toContain("Possible spelling mistake")
     expect(card.textContent).toContain("teh")
     const action = vi.fn()
@@ -731,7 +775,7 @@ describe("toolbox", () => {
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Versions"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling, Grammar & Style")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Issues")
     expect(drawers.find(drawer => drawer.label === "Comments")!
       .querySelector('textarea[aria-label="Comment text"]')).not.toBeNull()
 

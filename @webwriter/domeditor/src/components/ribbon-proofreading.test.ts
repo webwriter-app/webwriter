@@ -22,6 +22,8 @@ it.each<ProofreadingAction>([
   {type: "applyProofreadingSuggestion", id: "issue-1", index: 1},
   {type: "ignoreProofreadingIssue", id: "issue-1"},
   {type: "addProofreadingWord", id: "issue-1"},
+  {type: "setDocumentProofreadingEnabled", enabled: false},
+  {type: "setDocumentProofreadingEnabled", enabled: true},
 ])("routes Review card action $type to the editor", async action => {
   const editor = new DomEditor()
   const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
@@ -43,7 +45,8 @@ it("rejects malformed and locked Review card actions", async () => {
   await editor.updateComplete
   const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
   const send = (detail: unknown) => toolbox.dispatchEvent(new CustomEvent("proofreading-action", {detail, bubbles: true, composed: true}))
-  for(const detail of [null, {type: "other"}, {type: "selectProofreadingIssue", id: 1}, {type: "applyProofreadingSuggestion", id: "1", index: -1}]) send(detail)
+  for(const detail of [null, {type: "other"}, {type: "selectProofreadingIssue", id: 1}, {type: "applyProofreadingSuggestion", id: "1", index: -1},
+    {type: "setDocumentProofreadingEnabled", enabled: "false"}]) send(detail)
   Object.assign(editor, {htmlPending: true})
   send({type: "applyProofreadingSuggestion", id: "1", index: 0})
   expect(execute).not.toHaveBeenCalled()
@@ -208,4 +211,56 @@ it("provides saved dictionary words when initializing the editor frame", async (
   await editor.updateComplete
   host.initializeEditorFrame(editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!)
   expect(post).toHaveBeenCalledWith(expect.objectContaining({type: "initialize-editor", proofreadingDictionary: ["WebWriter"]}))
+})
+
+it("initializes new frames with the global preference and retains it during reload", async () => {
+  persistAppSettings({...defaultAppSettings(), disableSpellChecking: true})
+  const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true})
+  const host = editor as unknown as {postToEditor(message: unknown): void, initializeEditorFrame(frame: HTMLIFrameElement): void,
+    retainProofreadingDuringReload(): void, proofreadingState: ProofreadingState}
+  const post = vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+  document.body.append(editor)
+  await editor.updateComplete
+  host.initializeEditorFrame(editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!)
+  expect(post).toHaveBeenCalledWith(expect.objectContaining({type: "initialize-editor", disableSpellChecking: true}))
+  host.retainProofreadingDuringReload()
+  expect(host.proofreadingState).toMatchObject({loading: false, checking: false})
+  expect(editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!.disableSpellChecking).toBe(true)
+})
+
+it("applies global changes immediately and rejects stale enabled state without changing the document preference", async () => {
+  const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true, proofreadingState: {...emptyProofreadingState(), documentEnabled: false, enabled: false}})
+  const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+  document.body.append(editor)
+  await editor.updateComplete
+  const change = (disableSpellChecking: boolean) => editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+    detail: {...defaultAppSettings(), disableSpellChecking}, bubbles: true, composed: true,
+  }))
+  change(true)
+  expect(execute).toHaveBeenCalledWith({type: "setProofreadingEnabled", enabled: false})
+  const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!
+  window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, origin: window.location.origin,
+    data: {type: proofreadingStateChangeEvent, bridgeNonce: (editor as unknown as {bridgeNonce: string}).bridgeNonce,
+      detail: {...emptyProofreadingState(), documentEnabled: false, checking: true, error: "stale error"}}}))
+  await editor.updateComplete
+  const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+  expect(toolbox.proofreadingState).toMatchObject({enabled: false, documentEnabled: false, checking: false, error: null, issues: []})
+  change(false)
+  expect(execute).toHaveBeenLastCalledWith({type: "setProofreadingEnabled", enabled: true})
+  await editor.updateComplete
+  expect(toolbox.proofreadingState.documentEnabled).toBe(false)
+})
+
+it("allows disabling the current document while proofreading reloads", async () => {
+  const editor = new DomEditor()
+  Object.assign(editor, {proofreadingReloading: true})
+  const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+  document.body.append(editor)
+  await editor.updateComplete
+  editor.shadowRoot!.querySelector("dom-editor-toolbox")!.dispatchEvent(new CustomEvent("proofreading-action", {
+    detail: {type: "setDocumentProofreadingEnabled", enabled: false}, bubbles: true, composed: true,
+  }))
+  expect(execute).toHaveBeenCalledWith({type: "setDocumentProofreadingEnabled", enabled: false})
 })
