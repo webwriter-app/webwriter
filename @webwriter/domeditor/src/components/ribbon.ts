@@ -3309,7 +3309,7 @@ export class AppRibbon extends EditingControls {
                 ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
             ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
             {label: "Settings", buttons: [
-              ...(!this.previewActive ? [{label: this.breadcrumbVisible ? "Hide breadcrumb" : "Show breadcrumb", action: "toggle-breadcrumb"}] : []),
+              ...(!this.previewActive ? [{label: this.breadcrumbVisible ? "Hide breadcrumb" : "Show breadcrumb", icon: this.breadcrumbVisible ? "Hidden" : "Visible", action: "toggle-breadcrumb"}] : []),
               {label: "Settings"},
             ]},
           ]}

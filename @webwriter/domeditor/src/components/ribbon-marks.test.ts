@@ -882,11 +882,13 @@ describe("mark ribbon controls", () => {
     expect(dropdown.hidden).toBe(false)
     const href = dropdown.querySelector<HTMLInputElement>('input[aria-label="Link: Link"]')!
     expect(href.value).toBe("/page")
-    expect(getComputedStyle(href).width).toBe("288px")
+    expect(href.closest('[role="option"]')).toBe(options[0])
+    expect(href.previousElementSibling).toBeNull()
+    expect(href.hasAttribute("data-ribbon-input-persistent")).toBe(true)
     expect(dropdown.querySelector(".button-dropdown-more")).toBeNull()
     const advanced = dropdown.querySelector<HTMLElement>(".link-options")!
     expect(getComputedStyle(advanced).display).toBe("grid")
-    expect(getComputedStyle(advanced).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect(getComputedStyle(advanced).borderTopWidth).not.toBe("1px")
     const advancedInputs = Array.from(advanced.querySelectorAll<HTMLInputElement>("input"))
     expect(advancedInputs.map(input => input.getAttribute("aria-label"))).toEqual([
       "Link: Open in new tab",
@@ -897,10 +899,10 @@ describe("mark ribbon controls", () => {
     expect(advancedInputs[1].checked).toBe(false)
     const newTabLabel = advancedInputs[0].parentElement!
     const downloadLabel = advancedInputs[1].parentElement!
-    expect(newTabLabel.firstElementChild).toBe(advancedInputs[0])
+    expect(newTabLabel.lastElementChild).toBe(advancedInputs[0])
     expect(downloadLabel.lastElementChild).toBe(advancedInputs[1])
-    expect(getComputedStyle(newTabLabel).justifyContent).toBe("flex-start")
-    expect(getComputedStyle(newTabLabel).textAlign).toBe("left")
+    expect(getComputedStyle(newTabLabel).justifyContent).toBe("flex-end")
+    expect(getComputedStyle(newTabLabel).textAlign).toBe("right")
     expect(getComputedStyle(downloadLabel).justifyContent).toBe("flex-end")
     expect(getComputedStyle(downloadLabel).textAlign).toBe("right")
     const changed = vi.fn()

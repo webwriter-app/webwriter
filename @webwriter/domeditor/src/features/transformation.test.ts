@@ -88,15 +88,29 @@ async function mutationsDelivered() {
 }
 
 describe("selection-owned transformation", () => {
-  it.each(["pointerup", "pointercancel"])("handles %s after pressing a captured element's outline", ending => {
+  it.each([
+    {control: "outline", selector: ".◆transform-overlay-edge"},
+    {control: "resize", selector: "#◆transform-overlay-scale-down-right"},
+    {control: "move", selector: "#◆transform-overlay-mover"},
+  ])("switches capture to element selection on a $control click, but retains capture on cancellation", ({selector}) => {
     const target = targetElement("demo-widget")
+    target.innerHTML = "before<!--keep--><b>target</b><i>after</i>"
+    const children = Array.from(target.childNodes)
+    const section = document.createElement("section")
+    target.replaceWith(section)
+    section.append(target)
     mockRect(target)
-    captureNode(target)
-    const edge = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
-    edge.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer(ending, {pointerId: 3}))
-    expect(editor.features.selection.captureSelectedElement).toBe(ending === "pointercancel" ? target : null)
-    if(ending === "pointerup") expect($.selectedElement).toBe(target)
+    for(const ending of ["pointercancel", "pointerup"]) {
+      captureNode(target)
+      const handle = feature.overlay.querySelector<HTMLElement>(selector)!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+      document.dispatchEvent(pointer(ending, {pointerId: 3}))
+      expect(editor.features.selection.captureSelectedElement).toBe(ending === "pointercancel" ? target : null)
+      if(ending === "pointerup") expect($.selectedElement).toBe(target)
+      expect(target.parentElement).toBe(section)
+      expect(Array.from(target.childNodes)).toEqual(children)
+      expect(target.hasAttribute("style")).toBe(false)
+    }
   })
 
   describe.each(["canvas", "slides"] as const)("selections inside %s items", mode => {

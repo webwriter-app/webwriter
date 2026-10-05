@@ -41,6 +41,8 @@ export default defineConfig({
     },
     test: {
       execArgv: ["--max-old-space-size=8192"],
+      // Vitest 4 restores spies without clearing their retained DOM call history.
+      clearMocks: true,
       css: true,
       setupFiles: ["./tests/setup-happy-dom.mjs"],
       environmentOptions: {

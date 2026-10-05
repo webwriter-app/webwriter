@@ -2,6 +2,7 @@ import type {GitPackageSource} from "../git-package"
 import {ribbonIcon} from "../ribbon-icons"
 import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
+import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
@@ -1683,7 +1684,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
-    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     iframe.removeEventListener("focus", this.handleEditorFrameFocus)
@@ -1786,7 +1787,8 @@ export class DomEditor extends LitElement {
         this.documentTreeObserver = null
       }
     }
-    this.editorDocument?.addEventListener("pointerdown", this.handleEditorPointerDown)
+    // Observe before feature capture listeners can claim canvas/slide gestures.
+    if(!this.editorOpaque) this.editorWindow?.addEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.addEventListener("keydown", this.handleConfiguredShortcut, true)
     if(!this.editorOpaque) this.editorWindow?.addEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
@@ -2099,10 +2101,18 @@ export class DomEditor extends LitElement {
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     if(isWidgetShadowInteraction(event)) return
     this.focusEditor()
-    ribbon?.dismissCollapsedMenu()
+    this.dismissEditorMenus()
     if(!this.editorTargetSharesTextSelection(event.target)) {
       ribbon?.dismissDrawers()
     }
+  }
+
+  private dismissEditorMenus() {
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    ribbon?.dismissCollapsedMenu()
+    ribbon?.dismissMenus()
+    this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.dismissMenus()
+    this.renderRoot.querySelector<DeveloperConsole>("developer-console")?.dismissMenus()
   }
 
   /** Keeps the mark area open while the pointer starts another text selection
@@ -2746,7 +2756,7 @@ export class DomEditor extends LitElement {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
-    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
     this.editorWindow = null
@@ -4329,7 +4339,7 @@ export class DomEditor extends LitElement {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
-    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
     this.editorWindow = null
@@ -4381,7 +4391,7 @@ export class DomEditor extends LitElement {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
-    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.clearMotionStylesheet()
@@ -5754,9 +5764,9 @@ export class DomEditor extends LitElement {
     if(event.data?.type === "editor-frame-pointerdown") {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-        if(event.data.widgetShadow === true) return
+      if(event.data.widgetShadow === true) return
       this.focusEditor()
-      ribbon?.dismissCollapsedMenu()
+      this.dismissEditorMenus()
       const path = event.data.targetPath
       const target = Array.isArray(path) && path.every((index: unknown) => Number.isInteger(index) && (index as number) >= 0)
         ? path.reduce((node: Node | null, index: number) => node?.childNodes.item(index) ?? null, this.editorDocument?.body ?? null)
@@ -6175,7 +6185,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
-    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     const iframe = this.editorIframe()

@@ -781,9 +781,9 @@ export class ElementStyleEditor extends LitElement {
   private galleryPage = 0
   private customEffect: string | null = null
   private compactMenu: string | null = null
-  private readonly closeCompactMenus = (event: Event) => {
-    const path = event.composedPath()
-    const focused = event.type === "pointerdown" && this.mode === "compact" ? this.shadowRoot?.activeElement : null
+  readonly dismissMenus = (event?: Event) => {
+    const path = event?.composedPath() ?? []
+    const focused = event?.type === "pointerdown" && this.mode === "compact" ? this.shadowRoot?.activeElement : null
     // Toolbox buttons prevent pointer focus by design. Explicitly blur an
     // input on outside clicks so its native change/blur lifecycle still runs.
     if(focused instanceof HTMLInputElement
@@ -813,13 +813,13 @@ export class ElementStyleEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
-    this.ownerDocument.addEventListener("pointerdown", this.closeCompactMenus, true)
-    this.ownerDocument.addEventListener("focusin", this.closeCompactMenus, true)
+    this.ownerDocument.addEventListener("pointerdown", this.dismissMenus, true)
+    this.ownerDocument.addEventListener("focusin", this.dismissMenus, true)
   }
 
   disconnectedCallback() {
-    this.ownerDocument.removeEventListener("pointerdown", this.closeCompactMenus, true)
-    this.ownerDocument.removeEventListener("focusin", this.closeCompactMenus, true)
+    this.ownerDocument.removeEventListener("pointerdown", this.dismissMenus, true)
+    this.ownerDocument.removeEventListener("focusin", this.dismissMenus, true)
     this.compactMenu = null
     super.disconnectedCallback()
   }

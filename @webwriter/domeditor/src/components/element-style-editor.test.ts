@@ -435,6 +435,11 @@ describe("compact preset menus", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false")
     toggle.click()
     await editor.updateComplete
+    editor.dismissMenus()
+    await editor.updateComplete
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    toggle.click()
+    await editor.updateComplete
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     await editor.updateComplete
     expect(toggle.getAttribute("aria-expanded")).toBe("false")

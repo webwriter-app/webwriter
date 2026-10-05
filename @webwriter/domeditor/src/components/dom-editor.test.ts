@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+import {nothing} from "lit"
 import {DomEditor} from "./dom-editor"
 import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
@@ -174,8 +175,11 @@ function completePendingPackageLoad(editor: DomEditor) {
   }))
 }
 
+const mountedEditors = new Set<DomEditor>()
+
 async function mountEditor(configure?: (editor: DomEditor) => void) {
   const editor = new DomEditor()
+  mountedEditors.add(editor)
   Object.assign(editor, {frameStarted: true})
   configure?.(editor)
   document.body.append(editor)
@@ -190,16 +194,26 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
 afterEach(async() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  const editors = new Set([...mountedEditors, ...document.body.querySelectorAll<DomEditor>("dom-editor")])
   // Release Happy DOM's nested iframe documents before detaching editors. A
   // preview test can leave both the editor and preview browsing contexts alive
   // until the next GC cycle, which makes the later tests time out as a suite.
   const frames = [
     ...document.body.querySelectorAll<HTMLIFrameElement>("iframe"),
-    ...Array.from(document.body.querySelectorAll<DomEditor>("dom-editor"))
+    ...Array.from(editors)
       .flatMap(editor => Array.from(editor.shadowRoot?.querySelectorAll<HTMLIFrameElement>("iframe") ?? [])),
   ]
   frames.forEach(iframe => iframe.remove())
   document.body.replaceChildren()
+  // Vitest retains restored spies, including their target instances. Release
+  // each discarded fixture's Lit tree, even if a test detached its editor.
+  for(const editor of editors) {
+    editor.remove()
+    Object.assign(editor, {render: () => nothing})
+    editor.requestUpdate()
+    await editor.updateComplete
+  }
+  mountedEditors.clear()
   const url = new URL(location.href)
   url.searchParams.delete("open")
   history.replaceState(history.state, "", url.href)
@@ -6788,6 +6802,59 @@ describe("DomEditor.execute()", () => {
     await heading.updateComplete
 
     expect(submenu.hidden).toBe(true)
+  })
+
+  it.each(["canvas", "slides"])("dismisses transient menus before %s claims the pointer, preserving toolbox panes", async mode => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const doc = iframe.contentDocument!
+    doc.body.className = `ww-${mode}`
+    doc.body.innerHTML = '<section><p>Content</p></section>'
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    ;(editor as any).dialogSelection = {attributes: {}, initiallyOpen: false, closedBy: "", openerCount: 0, closeControlCount: 0, hasDialogForm: false}
+    await editor.updateComplete
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Heading"]')!
+    const attributes = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Attributes"]')!
+    await heading.updateComplete
+    await attributes.updateComplete
+    // Opening the second menu by keyboard keeps both menus present.
+    heading.shadowRoot!.querySelector<HTMLButtonElement>('.submenu-trigger')!.click()
+    attributes.shadowRoot!.querySelector<HTMLButtonElement>('.submenu-trigger')!.click()
+    await heading.updateComplete
+    await attributes.updateComplete
+    const headingMenu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    expect(headingMenu.hidden).toBe(false)
+    expect(attributes.shadowRoot!.querySelector('.submenu-trigger')!.getAttribute("aria-expanded")).toBe("true")
+    const claimed = vi.fn((event: Event) => event.stopImmediatePropagation())
+    doc.addEventListener("pointerdown", claimed, true)
+    try {
+      doc.querySelector("p")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
+      await heading.updateComplete
+      await attributes.updateComplete
+      expect(claimed).toHaveBeenCalledOnce()
+      expect(headingMenu.hidden).toBe(true)
+      expect(attributes.shadowRoot!.querySelector('.submenu-trigger')!.getAttribute("aria-expanded")).toBe("false")
+      expect(toolbox.activeTool).toBe("Edit")
+      // The same dismissal applies to authenticated cross-origin relays.
+      ;(editor as any).editorOpaque = true
+      heading.shadowRoot!.querySelector<HTMLButtonElement>('.submenu-trigger')!.click()
+      await heading.updateComplete
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+        data: {type: "editor-frame-pointerdown", widgetShadow: true, targetPath: [0, 0]}}))
+      await heading.updateComplete
+      expect(headingMenu.hidden).toBe(false)
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+        data: {type: "editor-frame-pointerdown", targetPath: [0, 0]}}))
+      await heading.updateComplete
+      expect(headingMenu.hidden).toBe(true)
+    }
+    finally {
+      ;(editor as any).editorOpaque = false
+      doc.removeEventListener("pointerdown", claimed, true)
+    }
   })
 
   it("does not expose Insert as a collapsed ribbon menu", async () => {

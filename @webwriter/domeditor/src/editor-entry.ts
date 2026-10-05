@@ -54,7 +54,8 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   const observer = new MutationObserver(publishSnapshot)
   observer.observe(document.documentElement, {attributes: true, characterData: true, childList: true, subtree: true})
   publishSnapshot()
-  document.addEventListener("pointerdown", event => {
+  // Run before feature capture listeners can claim canvas/slide gestures.
+  window.addEventListener("pointerdown", event => {
     const target = event.target as Node | null
     post({type: "editor-frame-pointerdown", widgetShadow: isWidgetShadowInteraction(event),
       targetPath: target && document.body.contains(target) ? pathFromNode(document.body, target) : null})

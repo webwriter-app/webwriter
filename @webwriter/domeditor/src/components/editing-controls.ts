@@ -4,6 +4,9 @@ import type {WidgetGroupingContext} from "../widget-grouping.js"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {isGraphicPresetType} from "../graphic-shapes"
 import {LitElement, html, nothing} from "lit"
+import type {RibbonButton} from "./ribbon-button"
+import type {RibbonCombobox} from "./ribbon-combobox"
+import type {ElementStyleEditor} from "./element-style-editor"
 import {repeat} from "lit/directives/repeat.js"
 import {appCommands, defaultAppSettings, formatShortcut, type AppSettings} from "../app-settings"
 import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
@@ -333,6 +336,15 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
+  dismissMenus() {
+    this.renderRoot.querySelectorAll<RibbonButton>("ribbon-button")
+      .forEach(button => button.closeSubmenu())
+    this.renderRoot.querySelectorAll<RibbonCombobox>("ribbon-combobox")
+      .forEach(combobox => combobox.close())
+    this.renderRoot.querySelectorAll<ElementStyleEditor>("element-style-editor")
+      .forEach(editor => editor.dismissMenus())
+  }
+
   dismissDrawers() {
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer")
       .forEach(drawer => drawer.closeDrawer())
@@ -409,6 +421,7 @@ export abstract class EditingControls extends LitElement {
     if(option.options) return html`
       <select
         class="mark-dropdown-attribute"
+        ?data-ribbon-input-persistent=${mark === "a"}
         aria-label=${`${this.markOption(mark).label}: ${option.label}`}
         title=${option.label}
         .value=${this.markAttributes[mark]?.[option.name] ?? option.options[0]?.value ?? ""}
@@ -419,6 +432,7 @@ export abstract class EditingControls extends LitElement {
     return html`
       <input
         class="mark-dropdown-attribute"
+        ?data-ribbon-input-persistent=${mark === "a"}
         type=${option.inputType ?? "text"}
         aria-label=${`${this.markOption(mark).label}: ${option.label}`}
         placeholder=${option.placeholder}
@@ -431,19 +445,17 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderLinkDropdown(active = true) {
-    const href = markAttributeOptionsFor("a").find(option => option.name === "href")
     const download = this.markAttributes.a?.download
     return html`
       <div class="button-dropdown-form" role="group" aria-label="Link options">
         <fieldset ?disabled=${!active || !this.canMark || this.math?.active}>
-        ${href ? this.renderMarkAttribute("a", href) : ""}
         <div class="link-options" role="group" aria-label="Link behavior">
           <label class="mark-attribute">
+            <span>Open in new tab</span>
             <input type="checkbox" aria-label="Link: Open in new tab" data-ribbon-input-persistent
               .checked=${this.markAttributes.a?.target === "_blank"}
               ?disabled=${!this.canMark}
               @change=${(event: Event) => this.dispatchMarkAttribute("a", "target", event)} />
-            <span>Open in new tab</span>
           </label>
           <label class="mark-attribute link-option-download">
             <span>Download</span>
@@ -537,9 +549,10 @@ export abstract class EditingControls extends LitElement {
 
   protected renderSpanDropdown(selected: readonly MarkName[]) {
     const linkActive = this.marks.includes("a")
+    const href = markAttributeOptionsFor("a").find(option => option.name === "href")
     return html`
       <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
-        <div class="mark-dropdown-option" role="option" aria-selected=${linkActive}>
+        <div class="mark-dropdown-option mark-dropdown-option-link" role="option" aria-selected=${linkActive}>
           <input type="checkbox" data-ribbon-input-persistent aria-label="Select Link"
             .checked=${linkActive} ?disabled=${!this.canMark || this.math?.active}
             @change=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
@@ -547,6 +560,7 @@ export abstract class EditingControls extends LitElement {
             }))} />
           <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("MarkLink")}</span>
           <span class="mark-dropdown-option-name">Link</span>
+          ${href ? html`<span class="mark-dropdown-link-url">${this.renderDropdownAttribute("a", href, linkActive && !this.math?.active)}</span>` : ""}
           ${this.commandShortcut("mark:a") ? html`<span class="mark-dropdown-shortcut">${this.commandShortcut("mark:a")}</span>` : ""}
         </div>
         ${this.renderLinkDropdown(linkActive)}

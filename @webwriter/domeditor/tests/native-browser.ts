@@ -3,7 +3,7 @@ import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
 import {$, caretRect} from "../src/utility"
 import {defaultDocumentTheme} from "../src/document-themes"
-import {replayHostDrag} from "../src/editor-bridge"
+import {initializeEditorMessage, replayHostDrag} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import * as Y from "yjs"
 
@@ -2332,6 +2332,46 @@ await check("column groups expose independent gaps and stack with separator line
 })
 
 editor.destroy()
+
+await check("canvas and slide gestures relay pointer dismissal before feature capture", async () => {
+  for(const mode of ["canvas", "slides"]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:800px;height:600px"
+    const nonce = crypto.randomUUID()
+    const messages: MessageEvent[] = []
+    const observe = (event: MessageEvent) => {
+      if(event.source === frame.contentWindow && event.data?.bridgeNonce === nonce
+        && event.data.type === "editor-frame-pointerdown") messages.push(event)
+    }
+    window.addEventListener("message", observe)
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = `<!doctype html><body class="ww-${mode}"><div class="ww-slides-viewport"><section class="ww-slide" id="slide"><p>Item</p><nav class="ww-slide-directions"><a href="#slide">Next</a></nav></section></div><script type="module" src="/src/editor-entry.ts"><\/script>`
+    document.body.append(frame)
+    try {
+      await loaded
+      frame.contentWindow!.postMessage({type: initializeEditorMessage, syncUrl: "ws://127.0.0.1:65534", bridgeNonce: nonce}, location.origin)
+      for(let attempt = 0; attempt < 200 && !(frame.contentWindow as any).editor; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      assert((frame.contentWindow as any).editor, `${mode} bridge did not initialize`)
+      await layoutFrame()
+      const doc = frame.contentDocument!, view = frame.contentWindow!
+      let bubbled = false
+      doc.addEventListener("pointerdown", () => { bubbled = true })
+      const target = mode === "canvas" ? doc.body : doc.querySelector("a")!
+      target.dispatchEvent(new (view as any).PointerEvent("pointerdown", {button: 0, pointerId: 1, bubbles: true, composed: true, cancelable: true, clientX: 700, clientY: 500}))
+      assert(!bubbled, `${mode} feature did not claim the test gesture`)
+      for(let attempt = 0; attempt < 100 && !messages.length; attempt++) await new Promise(resolve => setTimeout(resolve, 10))
+      assert(messages.length === 1, `${mode} gesture did not reach the host exactly once`)
+      assert(messages[0].data.widgetShadow === false, `${mode} gesture was mistaken for widget input`)
+    }
+    finally {
+      ;(frame.contentWindow as any)?.editor?.destroy()
+      window.removeEventListener("message", observe)
+      frame.remove()
+    }
+  }
+})
 
 await check("table commands complete across the real iframe bridge", async () => {
   const frame = document.createElement("iframe")

@@ -2,6 +2,83 @@ import {css} from "lit"
 
 /** Controls shared by ribbon button popovers and File submenus. */
 export const dropdownContentStyles = css`
+    .button-dropdown-form > fieldset {
+      border: 0;
+      margin: 0;
+      padding: 0;
+      min-width: 0;
+    }
+
+    .mark-dropdown-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .mark-dropdown-option {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: auto 1rem minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 2rem;
+      padding: 0.25rem 0.3rem;
+      border-radius: 0.25rem;
+    }
+
+    .mark-dropdown-option:hover,
+    .mark-dropdown-option[aria-selected="true"] {
+      background: #eef4fb;
+    }
+
+    .mark-dropdown-option > input[type="checkbox"] {
+      margin: 0;
+      accent-color: #3977c7;
+    }
+
+    .mark-dropdown-option-icon {
+      display: block;
+      width: 1rem;
+      height: 1rem;
+      color: #526b86;
+    }
+
+    .mark-dropdown-option-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .mark-dropdown-option-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mark-dropdown-shortcut {
+      grid-column: 5;
+      justify-self: end;
+      color: #687383;
+      font-size: 0.66rem;
+      white-space: nowrap;
+    }
+
+    .mark-dropdown-attributes {
+      grid-column: 4;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .mark-dropdown-attributes[aria-hidden="true"] {
+      visibility: hidden;
+    }
+
+    .mark-dropdown-attribute {
+      width: 7rem;
+    }
+
     .button-dropdown-form {
       display: flex;
       flex-direction: column;
@@ -50,8 +127,16 @@ export const dropdownContentStyles = css`
       outline: 1px solid #3977c7;
     }
 
-    .button-dropdown-content .mark-attribute-link input {
-      width: 18rem;
+    .mark-dropdown-option.mark-dropdown-option-link {
+      grid-template-columns: auto 1rem auto minmax(0, 1fr) auto;
+    }
+
+    .mark-dropdown-link-url {
+      min-width: 9rem;
+    }
+
+    .mark-dropdown-link-url .mark-dropdown-attribute {
+      width: 100%;
     }
 
     .button-dropdown-more {
@@ -132,15 +217,9 @@ export const dropdownContentStyles = css`
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.35rem;
       padding-top: 0.35rem;
-      border-top: 1px solid #d8dee6;
     }
 
     .button-dropdown-content .link-options > .mark-attribute {
-      justify-content: flex-start;
-      text-align: left;
-    }
-
-    .button-dropdown-content .link-options > .link-option-download {
       justify-content: flex-end;
       text-align: right;
     }

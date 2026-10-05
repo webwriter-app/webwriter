@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "collaborated scripts remain inert with namespace prefixes, clones and later edits",
   "new paragraphs and line breaks reveal the caret at the document end",
   "column groups expose independent gaps and stack with separator lines",
   "native MathML editing preserves inline rendering and argument hit targets",
@@ -24,6 +25,7 @@ const expectedChecks = [
   "bottom layout cards retain native editing focus after rendering",
   "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",
+  "canvas and slide gestures relay pointer dismissal before feature capture",
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",
   "selection feature treats custom element as atomic",
