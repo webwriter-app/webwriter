@@ -15,6 +15,7 @@ import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} from "../cloud-services"
 import {connectCloudService} from "../backend-client"
+import componentLicenses from "virtual:component-licenses"
 
 const languageLabel = (code: string, fallback: string) => {
   try {
@@ -53,6 +54,44 @@ export class SettingsPanel extends LitElement {
       min-height: 0;
       color: #2f3742;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .licenses-link {
+      display: block;
+      margin-top: 1.5rem;
+      padding: 0;
+      border: 0;
+      color: #3977c7;
+      background: transparent;
+      font: inherit;
+      font-size: .66rem;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .licenses-link:focus-visible { outline: 2px solid #3977c7; outline-offset: 3px; }
+    #licenses-dialog {
+      box-sizing: border-box;
+      width: min(48rem, calc(100vw - 2rem));
+      max-height: calc(100dvh - 2rem);
+      padding: 1rem;
+      border: 1px solid #c4ccd6;
+      border-radius: .65rem;
+      color: inherit;
+      background: white;
+      overflow: hidden;
+    }
+    #licenses-dialog[open] { display: flex; flex-direction: column; }
+    #licenses-dialog::backdrop { background: rgb(15 23 42 / 45%); }
+    #licenses-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    #licenses-dialog h2 { margin: 0; font-size: 1rem; }
+    #licenses-dialog pre {
+      min-height: 0;
+      margin: 1rem 0 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: .72rem;
+      line-height: 1.5;
     }
 
     .command-icon {
@@ -380,6 +419,8 @@ export class SettingsPanel extends LitElement {
   private signInController: AbortController | null = null
 
   disconnectedCallback() {
+    const licenses = this.renderRoot.querySelector<HTMLDialogElement>("#licenses-dialog")
+    if(licenses?.open) licenses.close()
     this.signInController?.abort()
     this.signingIn = ""
     this.providerType = null
@@ -764,7 +805,19 @@ export class SettingsPanel extends LitElement {
             ${this.renderCommands(section)}
           </details>
         `)}
+        <button class="licenses-link" type="button" aria-haspopup="dialog" aria-controls="licenses-dialog"
+          @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#licenses-dialog")?.showModal()}
+        >View licenses of components</button>
       </div>
+      <dialog id="licenses-dialog" aria-labelledby="licenses-title">
+        <header>
+          <h2 id="licenses-title">Licenses of components</h2>
+          <button class="cloud-button" type="button" aria-label="Close licenses"
+            @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#licenses-dialog")?.close()}
+          >Close</button>
+        </header>
+        <pre>${componentLicenses}</pre>
+      </dialog>
     `
   }
 }

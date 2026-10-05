@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {version} from "../../package.json"
+import {version, dependencies, devDependencies} from "../../package.json"
+import componentLicenses from "virtual:component-licenses"
 import {
   APP_SETTINGS_STORAGE_KEY,
   appCommands,
@@ -47,6 +48,34 @@ afterEach(() => {
 })
 
 describe("settings panel", () => {
+  it("opens all direct component licenses as plain text from a small link at the bottom", async () => {
+    const panel = await mountPanel()
+    const root = panel.shadowRoot!
+    const link = root.querySelector<HTMLButtonElement>(".licenses-link")!
+    const dialog = root.querySelector<HTMLDialogElement>("#licenses-dialog")!
+    expect(root.querySelector(".settings-panel")!.lastElementChild).toBe(link)
+    expect(link.textContent?.trim()).toBe("View licenses of components")
+    expect(getComputedStyle(link).fontSize).toBe("10.56px")
+    expect(getComputedStyle(link).textDecoration).toBe("underline")
+    expect(dialog.open).toBe(false)
+    link.click()
+    expect(dialog.open).toBe(true)
+    expect(dialog.getAttribute("aria-labelledby")).toBe("licenses-title")
+    const text = dialog.querySelector("pre")!
+    expect(text.textContent).toBe(componentLicenses)
+    expect(text.childElementCount).toBe(0)
+    for(const name of Object.keys({...dependencies, ...devDependencies})) {
+      expect(text.textContent).toContain(`${name} `)
+    }
+    expect(text.textContent).toContain("Permission is hereby granted")
+    dialog.querySelector<HTMLButtonElement>("button")!.click()
+    expect(dialog.open).toBe(false)
+    link.click()
+    expect(dialog.open).toBe(true)
+    panel.remove()
+    expect(dialog.open).toBe(false)
+  })
+
   it("persists user snippets in their saved order and ignores malformed stored entries", () => {
     const userSnippets = [{id: "new", label: "New", html: "<p>New</p>"}, {id: "old", label: "Old", html: "<p>Old</p>"}]
     persistAppSettings({...defaultAppSettings(), userSnippets})
@@ -196,7 +225,7 @@ describe("settings panel", () => {
 
     expect(categories.map(category => category.querySelector("summary")!.textContent))
       .toEqual(["Table commands", "Graphic commands"])
-    expect([...root.querySelector(".settings-panel")!.children].slice(-2)).toEqual(categories)
+    expect([...root.querySelector(".settings-panel")!.children].slice(-3, -1)).toEqual(categories)
     for(const [index, section] of ["Table", "Graphic"].entries()) {
       expect(categories[index].open).toBe(false)
       expect([...categories[index].querySelectorAll(".command-label")].map(label => label.textContent))
@@ -366,6 +395,13 @@ describe("settings dialog", () => {
     expect(getComputedStyle(dialog).overflow).toBe("hidden")
     expect(panel.shadowRoot!.querySelector(".settings-header")).toBeNull()
     expect(panel.shadowRoot!.querySelector(".reset-button")).toBeNull()
+    const licenses = panel.shadowRoot!.querySelector<HTMLDialogElement>("#licenses-dialog")!
+    panel.shadowRoot!.querySelector<HTMLButtonElement>(".licenses-link")!.click()
+    expect(licenses.open).toBe(true)
+    licenses.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
+    expect(licenses.open).toBe(false)
+    expect(dialog.open).toBe(true)
     expect(["", "none"]).toContain(getComputedStyle(panel.shadowRoot!.querySelector(".setting-card")!).borderTopStyle)
     expect(ribbon.activeMenu).toBe("Start")
     dialog.close()

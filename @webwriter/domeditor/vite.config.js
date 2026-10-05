@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
+import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
 
@@ -34,7 +35,7 @@ function localPackageServiceWorkerPlugin() {
 }
 
 export default defineConfig({
-    plugins: [localPackageServiceWorkerPlugin()],
+    plugins: [localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url)))],
     publicDir: "../../static",
     resolve: {
       dedupe: ["yjs"],
