@@ -1025,7 +1025,7 @@ export class DomEditor extends LitElement {
     const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script><script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
     const bootstrap = `${csp}${bridge}${bootstrapScripts}`
     if(documentHTML === null) {
-      return `<!-- frame ${this.frameRevision} -->${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}`
+      return `<!-- frame ${this.frameRevision} --><!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head>${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}</head><body></body></html>`
     }
 
     const parsed = new DOMParser().parseFromString(documentHTML, "text/html")
@@ -1832,7 +1832,7 @@ export class DomEditor extends LitElement {
     this.editorDocument = iframe.contentDocument
     this.editorWindow = iframe.contentWindow
     this.updateMotionPreference()
-    // Happy DOM parses the intentionally minimal initial srcdoc's metadata
+    // Happy DOM can parse the initial srcdoc's metadata
     // into the body. Browsers place it in the head, but keep the authored DOM
     // correct in either environment before observers and bridge state start.
     if(this.frameDocumentHTML === null) {
@@ -1844,7 +1844,6 @@ export class DomEditor extends LitElement {
       if(theme && theme.parentElement !== this.editorDocument?.head) {
         this.editorDocument?.head.append(theme)
       }
-      this.editorDocument?.documentElement.setAttribute("lang", this.settings.language)
     }
     if(this.breadcrumbHoverPath !== null) {
       void this.execute({

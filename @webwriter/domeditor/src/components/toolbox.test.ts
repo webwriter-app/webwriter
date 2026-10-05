@@ -5,6 +5,7 @@ import type {ElementStyleEditor} from "./element-style-editor"
 import type {RibbonButton} from "./ribbon-button"
 import {RibbonDrawer} from "./ribbon-drawer"
 import {AIProviderStore} from "../ai-provider"
+import {emptyVersionHistoryState} from "../editor-bridge"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -22,6 +23,41 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("shows creation and single-edit snapshots only as versions and retains earlier changes", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    const user = {clientId: 7, name: "Ada", initials: "AD", color: "#64748b"}
+    const checkpoint = (id: string, timestamp: number, modified = 1) => ({
+      id, timestamp, label: "Edited by Ada", user, changes: {added: 0, removed: 0, modified}, commentCount: 0,
+    })
+    const initial = {...checkpoint("initial", 0, 0), label: "Document created"}
+    const version = {...initial, id: "unsaved", label: "Unsaved changes", checkpointIds: [initial.id],
+      isUnsaved: true, isCurrent: true}
+    toolbox.historyState = {...emptyVersionHistoryState(), checkpoints: [initial], versions: [version], currentCheckpointId: initial.id}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelectorAll(".history-version-card")).toHaveLength(1)
+    expect(toolbox.shadowRoot!.querySelector(".history-version-changes")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".history-change-card")).toBeNull()
+
+    const first = checkpoint("first", 1)
+    toolbox.historyState = {...toolbox.historyState, checkpoints: [first, initial],
+      versions: [{...version, changes: first.changes, checkpointIds: [first.id, initial.id]}], currentCheckpointId: first.id}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".history-version-changes")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".history-checkpoint-counts")!.getAttribute("aria-label"))
+      .toBe("0 added, 0 removed, 1 changed")
+
+    const undo = checkpoint("undo", 2, 0)
+    const latest = checkpoint("latest", 3)
+    toolbox.historyState = {...toolbox.historyState, checkpoints: [latest, undo, first, initial],
+      versions: [{...version, checkpointIds: [latest.id, "missing", undo.id, first.id, initial.id]}], currentCheckpointId: latest.id}
+    await toolbox.updateComplete
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
+      .map(card => card.dataset.checkpointId)).toEqual([undo.id, first.id])
+    expect(toolbox.shadowRoot!.querySelector(".history-version-changes summary")!.textContent).toBe("2 changes")
+    expect(toolbox.historyState.versions[0].checkpointIds).toEqual([latest.id, "missing", undo.id, first.id, initial.id])
+  })
+
   it("marks Review when proofreading is unavailable and offers a retry inside the pane", async () => {
     const toolbox = await mountToolbox()
     toolbox.proofreadingError = "The local checker worker could not start."

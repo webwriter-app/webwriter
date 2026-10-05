@@ -2560,6 +2560,13 @@ await check("bottom layout cards retain native editing focus after rendering", a
     }
     assert(app && (app as any).editorWindow, `app editor did not initialize: app=${!!app} frame=${!!editingFrame} window=${!!(app as any)?.editorWindow} opaque=${(app as any)?.editorOpaque} error=${(app as any)?.packageError}`)
     await (app as any).waitForEditorWindow()
+    const initialHistory = await app!.execute({type: "getVersionHistory"}) as import("../src/editor-bridge").VersionHistoryState
+    assert(initialHistory.checkpoints.length === 1 && initialHistory.checkpoints[0].label === "Document created",
+      "automatic initialization was recorded as an edit")
+    assert(Object.values(initialHistory.versions[0].changes).every(count => count === 0), "fresh document has authored changes")
+    const initialSource = await app!.execute({type: "serializeDocument"}) as string
+    assert(new DOMParser().parseFromString(initialSource, "text/html").documentElement.lang === (app as any).settings.language,
+      "fresh document did not start with the preferred language")
     if(!editingFrame!.contentDocument) {
       assert(new URL(editingFrame!.src).origin !== frame.contentWindow!.location.origin, "editor frame stayed on the app origin")
       assert(editingFrame!.getAttribute("sandbox") === "allow-scripts allow-same-origin", "editor frame permissions changed")

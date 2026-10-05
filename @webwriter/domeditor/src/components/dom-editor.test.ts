@@ -200,6 +200,10 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
   document.body.append(editor)
   await editor.updateComplete
   const iframe = editor.shadowRoot!.querySelector("iframe")!
+  // Virtual frames do not execute DOMEditor, which supplies the initial paragraph.
+  if(!iframe.contentDocument!.body.childNodes.length) {
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+  }
   wirePackageLoadCompletion(iframe.contentWindow!)
   iframe.dispatchEvent(new Event("load"))
   await (editor as any).packageLoadPromise
@@ -840,6 +844,22 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.head.querySelector('meta[name="generator"]')?.getAttribute("content"))
       .toBe(WEBWRITER_GENERATOR)
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
+  })
+
+  it("includes the preferred language in fresh document HTML before initialization", async () => {
+    const {editor, iframe} = await mountEditor(editor => {
+      Object.assign(editor, {settings: {...defaultAppSettings(), language: "de"}})
+    })
+    const host = editor as any
+    const source = new DOMParser().parseFromString(host.editorSrcdocFromHTML(null), "text/html")
+    expect(source.documentElement.lang).toBe("de")
+    expect(source.head.querySelector('meta[name="generator"]')?.getAttribute("content")).toBe(WEBWRITER_GENERATOR)
+    expect(source.body.childNodes).toHaveLength(0)
+    expect(iframe.contentDocument!.documentElement.lang).toBe("de")
+
+    const loaded = new DOMParser().parseFromString(host.editorSrcdocFromHTML('<html lang="fr"><head></head><body><p>Bonjour</p></body></html>'), "text/html")
+    expect(loaded.documentElement.lang).toBe("fr")
+    expect(loaded.body.textContent).toBe("Bonjour")
   })
 
   it.each(["canvas", "slides"] as const)("uses the selected %s layout for File → New and keeps its fresh state clean", async mode => {
@@ -2535,7 +2555,7 @@ describe("DomEditor file actions", () => {
 
     const body = iframe.contentDocument!.body
     const paragraph = iframe.contentDocument!.createElement("p")
-    body.append(paragraph)
+    body.replaceChildren(paragraph)
 
     await new Promise(resolve => setTimeout(resolve, 0))
     expect((editor as any).fileDirty).toBe(false)
@@ -2598,7 +2618,7 @@ describe("DomEditor file actions", () => {
     const {editor, iframe} = await mountEditor()
     await new Promise(resolve => setTimeout(resolve, 0))
     const paragraph = iframe.contentDocument!.createElement("p")
-    iframe.contentDocument!.body.append(paragraph)
+    iframe.contentDocument!.body.replaceChildren(paragraph)
     paragraph.style.padding = "8px"
     await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
     paragraph.style.padding = ""
@@ -4510,12 +4530,13 @@ describe("DomEditor.execute()", () => {
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
     const checkpoint = (id: string, timestamp: number) => ({id, timestamp, label: "Edited by Ada Lovelace",
       user, changes: {added: 1, removed: 2, modified: 3}, commentCount: 0})
-    const saved = {...checkpoint("saved", 2), label: "Saved version", checkpointIds: ["second", "first"],
+    const initial = {...checkpoint("initial", 0), label: "Document created", changes: {added: 0, removed: 0, modified: 0}}
+    const saved = {...checkpoint("saved", 2), label: "Saved version", checkpointIds: ["second", "first", "initial"],
       isUnsaved: false, isCurrent: false}
     const unsaved = {...checkpoint("unsaved", 3), label: "Unsaved changes", checkpointIds: ["third"],
       isUnsaved: true, isCurrent: true}
     const state: VersionHistoryState = {
-      versions: [unsaved, saved], checkpoints: [checkpoint("third", 3), checkpoint("second", 2), checkpoint("first", 1)],
+      versions: [unsaved, saved], checkpoints: [checkpoint("third", 3), checkpoint("second", 2), checkpoint("first", 1), initial],
       comments: [], preview: null, currentCheckpointId: "third", currentUserId: 7,
     }
     const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
@@ -4534,18 +4555,20 @@ describe("DomEditor.execute()", () => {
     expect(cards[1].querySelector(".history-checkpoint-meta")?.textContent).toBe("By you")
     expect(cards[1].querySelector(".history-checkpoint-counts")?.textContent).toContain("+1")
     const groups = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLDetailsElement>("details.history-version-changes"))
+    expect(groups).toHaveLength(1)
     expect(groups.every(group => !group.open)).toBe(true)
-    groups[1].querySelector("summary")!.click()
-    expect(groups[1].open).toBe(true)
-    expect(Array.from(groups[1].querySelectorAll<HTMLElement>(".history-change-card"))
-      .map(card => card.dataset.checkpointId)).toEqual(["second", "first"])
+    expect(groups[0].querySelector("summary")!.textContent).toBe("1 change")
+    groups[0].querySelector("summary")!.click()
+    expect(groups[0].open).toBe(true)
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
+      .map(card => card.dataset.checkpointId)).toEqual(["first"])
 
     for(const id of ["saved", "first", "unsaved"]) {
       toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-checkpoint[data-checkpoint-id="${id}"]`)!.click()
       await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "previewVersionCheckpoint", checkpointId: id}))
       await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true))
       await toolbox.updateComplete
-      expect(groups[1].open).toBe(true)
+      expect(groups[0].open).toBe(true)
     }
     for(const id of ["saved", "first"]) {
       await vi.waitFor(() => expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.disabled).toBe(false))
@@ -4564,7 +4587,7 @@ describe("DomEditor.execute()", () => {
     toolbox.historyState = {...state, versions: [{...saved, id: "newest", checkpointIds: []}, ...state.versions]}
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".history-version-card")!.dataset.checkpointId).toBe("newest")
-    expect(groups[1].open).toBe(true)
+    expect(groups[0].open).toBe(true)
   })
 
   it("routes media ribbon commands through the iframe bridge", async () => {
@@ -5309,7 +5332,7 @@ describe("DomEditor.execute()", () => {
     expect(scripts[0].textContent).not.toContain("untrusted()")
     const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(scripts[0].getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])
-    expect(source.querySelector("script")!.textContent).toBe("untrusted()")
+    expect(source.getElementById("webwriter-canvas-viewer")!.textContent).toBe("untrusted()")
     source.body.className = "ww-slides"
     expect(preview().querySelector("script")).toBeNull()
   })

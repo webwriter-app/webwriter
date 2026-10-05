@@ -2643,6 +2643,7 @@ export abstract class EditingControls extends LitElement {
 
   protected renderHistoryVersionsDrawer() {
     const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
+    const initialCheckpointId = this.historyState.checkpoints.at(-1)?.id
     return html`
       <ribbon-drawer label="Versions" icon="History" layout="history-versions">
         <div class="history-timeline" role="list" aria-label="Document versions">
@@ -2656,14 +2657,19 @@ export abstract class EditingControls extends LitElement {
             ? html`<div class="history-loading">Loading versions…</div>`
             : !this.historyState.versions.length
               ? html`<div class="history-empty">No versions yet</div>`
-              : repeat(this.historyState.versions, version => version.id, version => html`
+              : repeat(this.historyState.versions, version => version.id, version => {
+                // The version card already represents its newest checkpoint.
+                // Creation is the baseline, rather than an authored change.
+                const changeIds = version.checkpointIds.slice(1)
+                  .filter(id => id !== initialCheckpointId && checkpoints.has(id))
+                return html`
                 <div class="history-version-group" role="listitem">
                   ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved)}
-                  ${version.checkpointIds.length ? html`
+                  ${changeIds.length ? html`
                     <details class="history-version-changes">
-                      <summary>${version.checkpointIds.length} ${version.checkpointIds.length === 1 ? "change" : "changes"}</summary>
+                      <summary>${changeIds.length} ${changeIds.length === 1 ? "change" : "changes"}</summary>
                       <div role="list" aria-label=${`Changes in ${version.label}`}>
-                        ${version.checkpointIds.map(id => {
+                        ${changeIds.map(id => {
                           const checkpoint = checkpoints.get(id)
                           return checkpoint ? html`<div role="listitem">
                             ${this.renderHistoryEntry(checkpoint, false, checkpoint.id === this.historyState.currentCheckpointId)}
@@ -2672,7 +2678,7 @@ export abstract class EditingControls extends LitElement {
                       </div>
                     </details>` : nothing}
                 </div>
-              `)}
+              `})}
         </div>
       </ribbon-drawer>
     `

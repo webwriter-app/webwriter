@@ -15,7 +15,6 @@ type SelectionBookmark = {
 
 /** Host-only frame operations. The document stays in this cross-origin realm. */
 const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings: {
-  language?: string
   username?: string
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
@@ -33,7 +32,6 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     motionSheet.replaceSync(":root { --ww-ui-transition: none; --ww-ui-animation: none; }")
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, motionSheet]
   }
-  if(settings.language) document.documentElement.lang = settings.language
   const setUsername = (name: string) => editor.doc?.setUser({name: name.trim() || `User ${editor.doc.doc.clientID.toString(36).toUpperCase()}`})
   if(settings.username !== undefined) setUsername(settings.username)
   setMotion(settings.disableAnimations === true)
