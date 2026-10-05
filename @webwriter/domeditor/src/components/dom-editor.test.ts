@@ -1302,6 +1302,7 @@ describe("DomEditor iframe setup", () => {
     expect(srcdoc).toContain("frame-src https:")
     expect(srcdoc).toContain("worker-src blob: https:")
     expect(srcdoc).not.toContain("'unsafe-eval'")
+    expect(srcdoc).toContain("'wasm-unsafe-eval'")
     expect(srcdoc).toContain('data-ww-theme="base"')
     expect(srcdoc).toContain("Pico CSS ✨ v2.1.1")
   })
@@ -1319,7 +1320,7 @@ describe("DomEditor iframe setup", () => {
   it("permits installed widget compilers while keeping authored scripts nonce-gated", () => {
     const editor = new DomEditor() as unknown as {installedPackages: WebWriterPackage[], readonly editorSrcdoc: string}
     editor.installedPackages = [demoPackage]
-    expect(editor.editorSrcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic' 'unsafe-eval';/)
+    expect(editor.editorSrcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic' 'unsafe-eval' 'wasm-unsafe-eval';/)
     expect(editor.editorSrcdoc).toContain("style-src-elem * data: blob: 'unsafe-inline'")
     editor.installedPackages = [{...demoPackage, scripts: []}]
     expect(editor.editorSrcdoc).not.toContain("'unsafe-eval'")

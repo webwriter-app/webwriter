@@ -2749,6 +2749,64 @@ await check("bottom layout cards retain native editing focus after rendering", a
   finally { frame.remove() }
 })
 
+await check("Harper checks English in a worker without authored DOM artifacts", async () => {
+  const {DomEditor} = await import("../src/components/dom-editor")
+  const host = new DomEditor()
+  const source = new DOMParser().parseFromString((host as unknown as {editorSrcdoc: string}).editorSrcdoc, "text/html")
+  const policy = source.querySelector('meta[http-equiv="Content-Security-Policy"]')!.outerHTML
+  const nonce = source.querySelector("script[nonce]")!.getAttribute("nonce")!
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:500px"
+  frame.srcdoc = `<!doctype html><html lang="en-US"><head>${policy}<script class="◆editor-only" nonce="${nonce}" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>😀 This is te<!--keep--><em class="meaning">h</em> example.</p></body></html>`
+  fixture.append(frame)
+  try {
+    for(let attempt = 0; !frame.contentWindow?.editor && !frame.contentWindow?.editorError && attempt < 100; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    assert(!frame.contentWindow?.editorError, frame.contentWindow?.editorError ?? "editor failed")
+    const child = frame.contentWindow!.editor!
+    assert(child, "iframe editor did not start")
+    const doc = frame.contentDocument!, feature = child.features.proofreading
+    const before = child.toHTML(true), shared = child.doc.body.toString()
+    for(let attempt = 0; (!feature.state().ready || feature.state().checking) && !feature.state().error && attempt < 1500; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    const state = feature.state()
+    assert(!state.error, state.error ?? "Harper failed")
+    const issue = state.issues.find(issue => issue.text === "teh")
+    assert(issue, `Harper missed the spelling error: ${JSON.stringify(state)}`)
+    assert(issue!.start === "😀 This is ".length, "Harper span did not use DOM UTF-16 offsets")
+    assert(child.toHTML(true) === before && child.doc.body.toString() === shared, "checking changed authored or shared content")
+    assert(!doc.body.shadowRoot!.querySelector(".◆proofreading-panel"), "background loading opened review UI")
+    const registry = (doc.defaultView as Window & typeof globalThis).CSS.highlights
+    const highlight = registry.get("webwriter-spelling")!
+    assert(highlight?.type === "spelling-error", "spelling ranges were not registered in the iframe")
+    assert(Array.from(highlight).some(range => {
+      const selected = doc.createRange()
+      selected.setStart(range.startContainer, range.startOffset)
+      selected.setEnd(range.endContainer, range.endOffset)
+      return selected.toString() === "teh"
+    }), `highlight did not cross inline formatting: ${JSON.stringify(Array.from(highlight).map(range => ({start: range.startOffset, end: range.endOffset, first: range.startContainer.textContent, last: range.endContainer.textContent})))}`)
+    feature.open()
+    await feature.checkNow()
+    assert(doc.body.shadowRoot!.querySelector(".◆proofreading-panel") && !doc.body.querySelector(".◆proofreading-panel"), "review UI escaped the appendix")
+    assert(doc.defaultView!.getComputedStyle(doc.querySelector("p")!, "::highlight(webwriter-spelling)").textDecorationStyle === "wavy", "spelling underline has no wavy decoration")
+    const replacement = issue!.suggestions.findIndex(suggestion => suggestion.text === "the")
+    assert(replacement >= 0, "Harper offered no correction")
+    const currentIssue = feature.state().issues.find(current => current.text === "teh")!
+    assert(feature.applySuggestion(currentIssue.id, replacement), "could not accept Harper's correction")
+    assert(doc.querySelector("p")!.textContent === "😀 This is the example.", "correction changed unrelated text")
+    assert(doc.querySelector("em.meaning") && doc.body.innerHTML.includes("<!--keep-->"), "correction removed formatting or comments")
+    child.doc.undo()
+    assert(child.toHTML(true) === before, "correction did not undo as one operation")
+    child.doc.redo()
+    assert(doc.querySelector("p")!.textContent === "😀 This is the example.", "correction did not redo")
+    child.destroy()
+    assert(!registry.has("webwriter-spelling") && !doc.body.shadowRoot!.querySelector(".◆proofreading-panel"), "proofreading leaked on teardown")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 const failed = checks.filter(item => item.error)
 document.querySelector("#status")!.textContent = `${checks.length - failed.length} passed, ${failed.length} failed`
 document.querySelector("#report")!.textContent = JSON.stringify(checks, null, 2)

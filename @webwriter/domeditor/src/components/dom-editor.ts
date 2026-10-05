@@ -85,10 +85,12 @@ import {
   isHistoryStateChangeMessage,
   isMarkStateChangeMessage,
   isCommentStateChangeMessage,
+  isProofreadingStateChangeMessage,
   isSelectionChangeMessage,
   isPresenceChangeMessage,
   markStateChangeEvent,
   commentStateChangeEvent,
+  proofreadingStateChangeEvent,
   historyStateChangeEvent,
   loadWidgetsMessage,
   selectionChangeEvent,
@@ -410,6 +412,7 @@ export class DomEditor extends LitElement {
     markAttributes: {attribute: false, state: true},
     ruby: {attribute: false, state: true},
     commentState: {attribute: false, state: true},
+    proofreadingError: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
     packages: {attribute: false, state: true},
     installedPackages: {attribute: false, state: true},
@@ -538,6 +541,7 @@ export class DomEditor extends LitElement {
     count: 0,
     highlighting: true,
   }
+  private proofreadingError = ""
   private listType: ListType | null = null
   private listStyle = ""
   private orderedList: ListSelectionState["ordered"] = undefined
@@ -1010,7 +1014,7 @@ export class DomEditor extends LitElement {
     // Libraries such as CodeMirror create their own style elements inside
     // widget shadows. They cannot inherit the nonce on their module script.
     const packageStyles = hasWidgetScripts ? "* data: blob: 'unsafe-inline'" : `'nonce-${nonce}'`
-    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
+    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
     const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">`
     const bridge = `<meta class="◆ ◆editor-only" name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeAttribute(window.location.origin)}">`
     // Happy DOM deliberately disables external script execution but reports
@@ -2909,6 +2913,7 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
     this.frameState = undefined
     this.documentHead = emptyDocumentHeadState()
+    this.proofreadingError = ""
     this.historyState = emptyVersionHistoryState()
     this.historyLoading = false
     this.historyOperationCount = 0
@@ -3514,6 +3519,11 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label === "Spelling" || label === "Grammar") {
+      void this.execute({type: "checkProofreading", kind: label === "Spelling" ? "spelling" : "grammar"})
+        .catch(error => { this.proofreadingError = error instanceof Error ? error.message : String(error) })
+      return
+    }
     if(label === "pin-snippet") {
       void this.pinSnippet()
       return
@@ -4600,6 +4610,7 @@ export class DomEditor extends LitElement {
     this.pendingExecutions.clear()
     this.frameState = snapshot
     this.installedPackages = nextPackages
+    this.proofreadingError = ""
     this.persistInstalledPackages()
     this.frameRevision++
     await this.updateComplete
@@ -4646,6 +4657,7 @@ export class DomEditor extends LitElement {
     this.frameState = undefined
     this.documentTree = null
     this.editorInitializedRevision = -1
+    this.proofreadingError = ""
   }
 
   private async checkPackageDependencies() {
@@ -6091,6 +6103,14 @@ export class DomEditor extends LitElement {
       }))
       return
     }
+    if(isProofreadingStateChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.proofreadingError = event.data.detail.error ?? ""
+      this.dispatchEvent(new CustomEvent(proofreadingStateChangeEvent, {
+        detail: {...event.data.detail}, bubbles: true, composed: true,
+      }))
+      return
+    }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       const path = event.data.detail.path.map(item => ({
@@ -6489,6 +6509,7 @@ export class DomEditor extends LitElement {
       count: 0,
       highlighting: true,
     }
+    this.proofreadingError = ""
     this.mediaSelection = null
     this.dialogSelection = null
     this.tableSelection = null
@@ -6759,6 +6780,7 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
+        .proofreadingError=${this.proofreadingError}
         .disableAI=${this.settings.disableAI}
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}

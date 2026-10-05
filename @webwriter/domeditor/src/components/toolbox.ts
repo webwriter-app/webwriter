@@ -47,6 +47,7 @@ export class DomEditorToolbox extends EditingControls {
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
+    proofreadingError: {attribute: false},
   }
 
   disableAI = false
@@ -292,10 +293,54 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     .toolbox-tab-icon {
+      position: relative;
       display: block;
       flex: 0 0 17px;
       width: 17px;
       height: 17px;
+    }
+
+    .proofreading-error-badge {
+      position: absolute;
+      top: -4px;
+      right: -5px;
+      display: grid;
+      place-items: center;
+      width: 12px;
+      height: 12px;
+      border: 1px solid #fff;
+      border-radius: 50%;
+      color: #fff;
+      background: #b42318;
+      font: 700 9px/1 system-ui, sans-serif;
+    }
+
+    .proofreading-error {
+      display: grid;
+      gap: .5rem;
+      margin: .5rem;
+      padding: .6rem;
+      border: 1px solid #f1b4ae;
+      border-radius: .35rem;
+      color: #6d1a14;
+      background: #fff5f4;
+      font-size: .75rem;
+    }
+
+    .proofreading-error button {
+      justify-self: start;
+      padding: .3rem .55rem;
+      border: 1px solid #b42318;
+      border-radius: .25rem;
+      color: #6d1a14;
+      background: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .proofreading-error button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 2px;
     }
 
     .toolbox-tab-label {
@@ -497,6 +542,7 @@ export class DomEditorToolbox extends EditingControls {
   htmlPending = false
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
   documentLayoutError = ""
+  proofreadingError = ""
 
   protected get elementStyleEditorOrientation(): "vertical" {
     return "vertical"
@@ -779,14 +825,21 @@ export class DomEditorToolbox extends EditingControls {
                     data-tool=${tool.label}
                     type="button"
                     role="tab"
-                    aria-label=${contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
-                    title=${contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
+                    aria-label=${tool.label === "Review" && this.proofreadingError
+                      ? "Review. Spell and grammar checking unavailable"
+                      : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
+                    title=${tool.label === "Review" && this.proofreadingError
+                      ? "Spell and grammar checking unavailable"
+                      : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
                     aria-controls="toolbox-pane"
                     aria-selected=${active}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
                     @click=${() => this.selectTool(tool.label)}
                   >
-                    <span class="toolbox-tab-icon" aria-hidden="true">${ribbonIcon(tool.icon)}</span>
+                    <span class="toolbox-tab-icon" aria-hidden="true">
+                      ${ribbonIcon(tool.icon)}
+                      ${tool.label === "Review" && this.proofreadingError ? html`<span class="proofreading-error-badge">!</span>` : ""}
+                    </span>
                     <span
                       class="toolbox-tab-label"
                       ?data-contextual=${contextualLabel !== null}
@@ -818,6 +871,14 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
+            ${this.activeTool === "Review" && this.proofreadingError ? html`
+              <div class="proofreading-error" role="alert">
+                <span><strong>Spell and grammar checking unavailable.</strong> ${this.proofreadingError}</span>
+                <button type="button" @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+                  detail: {label: "Spelling"}, bubbles: true, composed: true,
+                }))}>Retry</button>
+              </div>
+            ` : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
             ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}

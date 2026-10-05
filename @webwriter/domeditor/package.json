@@ -29,6 +29,7 @@
     "@tabler/icons": "^3.46.0",
     "lit": "^3.3.2",
     "esbuild-wasm": "^0.25.12",
+    "harper.js": "2.10.0",
     "qrcodejs": "^1.0.0",
     "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",

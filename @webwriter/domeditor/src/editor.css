@@ -1440,6 +1440,14 @@ body::part(presence-gap-caret-label) {
 ::highlight(webwriter-comments) {
   background-color: #fff3a3;
 }
+::highlight(webwriter-spelling) {
+  text-decoration: underline wavy #c62828;
+  text-underline-offset: 0.15em;
+}
+::highlight(webwriter-grammar) {
+  text-decoration: underline wavy #1769aa;
+  text-underline-offset: 0.15em;
+}
 body::part(transform-overlay) {
   --ww-transform-color: var(--sl-color-primary-400);
   --ww-transform-hover-color: var(--sl-color-primary-300);

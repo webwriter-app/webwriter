@@ -27,6 +27,7 @@ export const executeFailureEvent = "dom-editor-execute-failure"
 export const selectionChangeEvent = "dom-editor-selection-change"
 export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const commentStateChangeEvent = "dom-editor-comment-state-change"
+export const proofreadingStateChangeEvent = "dom-editor-proofreading-state-change"
 export const presenceChangeEvent = "dom-editor-presence-change"
 export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
 export const historyStateChangeEvent = "dom-editor-history-state-change"
@@ -371,6 +372,18 @@ export type MarkStateChangeMessage = {
 export type CommentStateChangeMessage = {
   type: typeof commentStateChangeEvent
   detail: CommentState
+}
+
+export type ProofreadingState = {
+  enabled: boolean
+  loading: boolean
+  ready: boolean
+  error: string | null
+}
+
+export type ProofreadingStateChangeMessage = {
+  type: typeof proofreadingStateChangeEvent
+  detail: ProofreadingState
 }
 
 export type CommentState = {
@@ -770,6 +783,15 @@ export function isCommentStateChangeMessage(value: unknown): value is CommentSta
     && Number.isInteger(detail.count)
     && detail.count >= detail.activeCount
     && typeof detail.highlighting === "boolean"
+}
+
+export function isProofreadingStateChangeMessage(value: unknown): value is ProofreadingStateChangeMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<ProofreadingStateChangeMessage>
+  if(message.type !== proofreadingStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
+  const detail = message.detail as Partial<ProofreadingState>
+  return typeof detail.enabled === "boolean" && typeof detail.loading === "boolean" && typeof detail.ready === "boolean"
+    && (detail.error === null || typeof detail.error === "string")
 }
 
 export function isPresenceChangeMessage(value: unknown): value is PresenceChangeMessage {

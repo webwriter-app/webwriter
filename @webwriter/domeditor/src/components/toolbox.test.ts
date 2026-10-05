@@ -22,6 +22,38 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("marks Review when proofreading is unavailable and offers a retry inside the pane", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.proofreadingError = "The local checker worker could not start."
+    await toolbox.updateComplete
+
+    const review = toolButton(toolbox, "Review")
+    expect(review.getAttribute("aria-label")).toBe("Review. Spell and grammar checking unavailable")
+    expect(review.title).toBe("Spell and grammar checking unavailable")
+    expect(review.querySelector(".proofreading-error-badge")?.textContent).toBe("!")
+
+    review.click()
+    await toolbox.updateComplete
+    const failure = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-error")!
+    expect(failure.getAttribute("role")).toBe("alert")
+    expect(failure.textContent).toContain("The local checker worker could not start.")
+
+    const retryRequest = vi.fn()
+    toolbox.addEventListener("ribbon-button-click", retryRequest)
+    failure.querySelector<HTMLButtonElement>("button")!.click()
+    expect(retryRequest).toHaveBeenCalledOnce()
+    expect(retryRequest.mock.calls[0][0]).toMatchObject({
+      detail: {label: "Spelling"},
+      bubbles: true,
+      composed: true,
+    })
+
+    toolbox.proofreadingError = ""
+    await toolbox.updateComplete
+    expect(toolButton(toolbox, "Review").querySelector(".proofreading-error-badge")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-error")).toBeNull()
+  })
+
   it("reserves both scrollbar gutters in Edit without extra content side spacing", async () => {
     const toolbox = await mountToolbox()
     toolbox.documentSelected = true

@@ -7,6 +7,7 @@ import { HistoryFeature } from "./features/history"
 import { ManipulationFeature } from "./features/manipulation"
 import { MarkFeature } from "./features/mark"
 import { CommentFeature } from "./features/comment"
+import { ProofreadingFeature } from "./features/proofreading"
 import { PlaceholderFeature } from "./features/placeholder"
 import { SelectionFeature } from "./features/selection"
 import { InsertionFeature } from "./features/insertion"
@@ -37,6 +38,8 @@ import {
   executeFailureEvent,
   markStateChangeEvent,
   commentStateChangeEvent,
+  proofreadingStateChangeEvent,
+  type ProofreadingState,
   selectionChangeEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
@@ -408,6 +411,7 @@ export class DOMEditor {
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
     "comment": new CommentFeature(this),
+    "proofreading": new ProofreadingFeature(this),
     "collaboration": new CollaborationFeature(this),
     "media": new MediaFeature(this),
     "widget": new WidgetFeature(this),
@@ -799,7 +803,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === proofreadingStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
       return
     }
     // The frame host handles controls on the same window message target.
@@ -918,6 +922,10 @@ export class DOMEditor {
 
   postHistoryState(state: VersionHistoryState) {
     this.postBridgeEvent(historyStateChangeEvent, state)
+  }
+
+  postProofreadingState(state: ProofreadingState) {
+    this.postBridgeEvent(proofreadingStateChangeEvent, state)
   }
 
   private selectedElementForPath() {
