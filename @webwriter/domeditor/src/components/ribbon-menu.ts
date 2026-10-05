@@ -1,4 +1,5 @@
 import {dropdownContentStyles} from "./dropdown-content.styles"
+import {SNIPPET_LABEL_MAX_LENGTH} from "../app-settings"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
@@ -31,6 +32,7 @@ export type RibbonMenuButton = string | {
   menuOnly?: boolean
   disabled?: boolean
   removeAction?: string
+  editingLabel?: boolean
 }
 
 /** A dropdown view of the commands in a collapsed ribbon menu. */
@@ -65,7 +67,7 @@ export class RibbonMenu extends LitElement {
 
     .item-label.italic { font-style: italic; }
     .item:disabled, .submenu-toggle:disabled { opacity: 0.5; cursor: default; }
-    .remove { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
+    .remove, .label-confirm { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
     .submenu-header { position: sticky; top: -0.35rem; background: white; z-index: 2; padding-bottom: 0.35rem; }
 
     :host([hidden]) {
@@ -162,9 +164,34 @@ export class RibbonMenu extends LitElement {
       flex: 1 1 auto;
     }
 
-    .item-row > .item.remove {
+    .item-row > .item.remove,
+    .item-row > .item.label-confirm {
       flex: 0 0 1.5rem;
       width: 1.5rem;
+    }
+
+    .item.label-editor {
+      min-width: 0;
+      cursor: text;
+    }
+
+    .item-label-input {
+      box-sizing: border-box;
+      field-sizing: content;
+      min-width: 1ch;
+      max-width: 100%;
+      min-height: 1lh;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      line-height: 1.1;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      resize: none;
     }
 
     .item-row.has-icon-action:hover,
@@ -454,6 +481,9 @@ export class RibbonMenu extends LitElement {
   label = ""
   private openSubmenu: string | null = null
   private openSubmenuToggle: HTMLButtonElement | null = null
+  private focusedLabelAction: string | null = null
+  private confirmedLabelAction: string | null = null
+  private confirmedLabelInputs = new WeakMap<HTMLTextAreaElement, string>()
 
   static properties = {
     groups: {attribute: false},
@@ -468,6 +498,67 @@ export class RibbonMenu extends LitElement {
 
   private buttonLabel(button: RibbonMenuButton) {
     return typeof button === "string" ? button : button.label
+  }
+
+  protected willUpdate(changed: Map<PropertyKey, unknown>) {
+    if(!changed.has("groups")) return
+    const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".item-label-input")
+    if(input && !this.groups.some(group => group.buttons.some(button =>
+      typeof button !== "string" && button.editingLabel && this.buttonAction(button) === input.dataset.action,
+    ))) input.blur()
+  }
+
+  protected updated() {
+    this.focusEditingLabel()
+    if(this.hidden || !this.confirmedLabelAction || this.renderRoot.querySelector(".item-label-input")) return
+    const button = Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>(".item[data-action]"))
+      .find(button => button.dataset.action === this.confirmedLabelAction)
+    if(button) {
+      this.confirmedLabelAction = null
+      button.focus()
+    }
+  }
+
+  focusEditingLabel() {
+    const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".item-label-input")
+    if(!input) {
+      this.focusedLabelAction = null
+      return
+    }
+    if(this.hidden || this.focusedLabelAction === input.dataset.action) return
+    input.focus()
+    if((this.renderRoot as ShadowRoot).activeElement !== input) return
+    input.select()
+    this.focusedLabelAction = input.dataset.action ?? null
+  }
+
+  private confirmLabel(button: RibbonMenuButton, input: HTMLTextAreaElement) {
+    const action = this.buttonAction(button)
+    if(this.confirmedLabelInputs.get(input) === action) return
+    this.confirmedLabelInputs.set(input, action)
+    this.dispatchEvent(new CustomEvent("ribbon-label-change", {
+      detail: {action, label: (input.value.replace(/\s+/g, " ").trim() || this.buttonLabel(button)).slice(0, SNIPPET_LABEL_MAX_LENGTH)},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private handleLabelKeydown(button: RibbonMenuButton, event: KeyboardEvent) {
+    if(event.key !== "Enter" || event.isComposing) return
+    event.preventDefault()
+    event.stopPropagation()
+    this.finishLabelInput(button, event.currentTarget as HTMLTextAreaElement)
+  }
+
+  private finishLabelInput(button: RibbonMenuButton, input: HTMLTextAreaElement) {
+    this.confirmedLabelAction = input.dataset.action ?? null
+    this.confirmLabel(button, input)
+    input.blur()
+  }
+
+  private handleLabelConfirm(button: RibbonMenuButton, event: Event) {
+    const input = (event.currentTarget as HTMLElement).closest(".item-row")?.querySelector<HTMLTextAreaElement>(".item-label-input")
+    if(input) this.finishLabelInput(button, input)
   }
 
   private buttonSubmenu(button: RibbonMenuButton) {
@@ -546,10 +637,9 @@ export class RibbonMenu extends LitElement {
 
   private handleClick(button: RibbonMenuButton, preserveSubmenu = false) {
     const label = this.buttonAction(button)
-    preserveSubmenu ||= label.startsWith("remove-user-snippet:")
+    preserveSubmenu ||= label === "pin-snippet" || label.startsWith("remove-user-snippet:")
     if(!preserveSubmenu) {
-      this.openSubmenu = null
-      this.openSubmenuToggle = null
+      this.closeSubmenus()
     }
     this.dispatchEvent(new CustomEvent<{label: string, keepDrawerOpen?: boolean}>("ribbon-button-click", {
       detail: {label, ...(preserveSubmenu ? {keepDrawerOpen: true} : {})},
@@ -567,7 +657,8 @@ export class RibbonMenu extends LitElement {
     }
   }
 
-  private dispatchIconHover(hovered: boolean) {
+  private dispatchIconHover(hovered: boolean, button?: RibbonMenuButton) {
+    if(button !== undefined && this.buttonAction(button) !== "pin-snippet") return
     this.dispatchEvent(new CustomEvent<{hovered: boolean}>("ribbon-icon-hover", {
       detail: {hovered}, bubbles: true, composed: true,
     }))
@@ -577,8 +668,7 @@ export class RibbonMenu extends LitElement {
     event.stopPropagation()
     const toggle = event.currentTarget as HTMLButtonElement
     if(this.openSubmenu === label) {
-      this.openSubmenu = null
-      this.openSubmenuToggle = null
+      this.closeSubmenus()
       return
     }
     this.showSubmenu(label, toggle)
@@ -616,9 +706,8 @@ export class RibbonMenu extends LitElement {
       if(!menu.classList.contains("submenu")) return
       event.preventDefault()
       event.stopPropagation()
-      this.openSubmenu = null
       const toggle = this.openSubmenuToggle
-      this.openSubmenuToggle = null
+      this.closeSubmenus()
       void this.updateComplete.then(() => toggle?.focus())
       return
     }
@@ -678,6 +767,8 @@ export class RibbonMenu extends LitElement {
   }
 
   closeSubmenus() {
+    this.confirmedLabelAction = null
+    this.renderRoot?.querySelector<HTMLTextAreaElement>(".item-label-input")?.blur()
     this.openSubmenu = null
     this.openSubmenuToggle = null
     this.renderRoot?.querySelectorAll<RibbonMenu>("ribbon-menu").forEach(menu => menu.closeSubmenus())
@@ -729,16 +820,32 @@ export class RibbonMenu extends LitElement {
                         ` : this.renderButtonIcon(button)}
                       </button>
                     ` : nothing}
-                    <button
+                    ${item.editingLabel ? html`
+                      <div class="item label-editor">
+                        ${this.renderButtonIcon(button)}
+                        <textarea class="item-label-input" aria-label="Snippet name" rows="1"
+                          maxlength=${SNIPPET_LABEL_MAX_LENGTH}
+                          data-ribbon-input-persistent data-action=${this.buttonAction(button)}
+                          .value=${label.slice(0, SNIPPET_LABEL_MAX_LENGTH)}
+                          @blur=${(event: FocusEvent) => this.confirmLabel(button, event.currentTarget as HTMLTextAreaElement)}
+                          @keydown=${(event: KeyboardEvent) => this.handleLabelKeydown(button, event)}
+                        ></textarea>
+                      </div>
+                    ` : html`<button
                       class="item"
                       type="button"
                       draggable=${String(Boolean(this.dragTag(button) || this.packageInsertionAction(button)) && !item.disabled && !item.menuOnly)}
                       role="menuitem"
                       tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
                       title=${label}
+                      data-action=${this.buttonAction(button)}
                       ?disabled=${item.disabled}
                       aria-haspopup=${item.menuOnly ? "menu" : nothing}
                       aria-expanded=${item.menuOnly ? isOpen : nothing}
+                      @mouseenter=${() => this.dispatchIconHover(true, button)}
+                      @mouseleave=${() => this.dispatchIconHover(false, button)}
+                      @focus=${() => this.dispatchIconHover(true, button)}
+                      @blur=${() => this.dispatchIconHover(false, button)}
                       @click=${(event: Event) => item.menuOnly ? this.toggleSubmenu(label, event) : this.handleClick(button)}
                       @dragstart=${(event: DragEvent) => this.startDrag(event, button)}
                     >
@@ -747,8 +854,13 @@ export class RibbonMenu extends LitElement {
                         <span class="item-icon-hover">${this.renderButtonIcon(button, true)}</span>
                       ` : this.renderButtonIcon(button)}
                       <span class=${`item-label${item.italic ? " italic" : ""}`}>${label}</span>
-                    </button>
-                    ${item.removeAction ? html`<button class="item remove" role="menuitem" tabindex="-1" aria-label=${`Remove ${label}`} ?disabled=${item.disabled} @click=${() => this.handleClick({label, action: item.removeAction})}>${ribbonIcon("Reject")}</button>` : nothing}
+                    </button>`}
+                    ${item.editingLabel ? html`<button class="item label-confirm" type="button" role="menuitem" tabindex="-1"
+                      aria-label="Confirm snippet name" title="Confirm snippet name" ?disabled=${item.disabled}
+                      @pointerdown=${(event: Event) => event.preventDefault()}
+                      @mousedown=${(event: Event) => event.preventDefault()}
+                      @click=${(event: Event) => this.handleLabelConfirm(button, event)}
+                    >${ribbonIcon("Accept")}</button>` : item.removeAction ? html`<button class="item remove" role="menuitem" tabindex="-1" aria-label=${`Remove ${label}`} ?disabled=${item.disabled} @click=${() => this.handleClick({label, action: item.removeAction})}>${ribbonIcon("Reject")}</button>` : nothing}
                     ${hasSubmenu ? html`
                       <button
                         class="submenu-toggle"

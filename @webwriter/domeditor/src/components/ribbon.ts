@@ -118,6 +118,7 @@ export class AppRibbon extends EditingControls {
     logoUrl: {type: String, attribute: "logo-url"},
     presenceUsers: {attribute: false},
     packages: {attribute: false},
+    editingSnippetId: {attribute: false},
     installedPackages: {attribute: false},
     consoleOpen: {type: Boolean, attribute: false},
     recentDocuments: {attribute: false},
@@ -988,6 +989,7 @@ export class AppRibbon extends EditingControls {
   presenceUsers: PresenceUser[] = []
 
   packages: WebWriterPackage[] = []
+  editingSnippetId: string | null = null
 
   installedPackages: WebWriterPackage[] = []
 
@@ -2049,14 +2051,26 @@ export class AppRibbon extends EditingControls {
     `
   }
 
-  private renderUserSnippetButton() {
-    const submenu = this.userSnippets.map(snippet => ({
+  private get userSnippetButtons(): RibbonMenuButton[] {
+    return [{label: "Add snippet", action: "pin-snippet", icon: "Plus"}, ...this.userSnippets.map(snippet => ({
       label: snippet.label,
       action: `user-snippet:${snippet.id}`,
       dragHTML: snippet.html,
       icon: "FileHorizontal",
       removeAction: `remove-user-snippet:${snippet.id}`,
-    }))
+      editingLabel: snippet.id === this.editingSnippetId,
+    }))]
+  }
+
+  private get userSnippetGroups(): RibbonMenuGroup[] {
+    return [{label: "Snippets", buttons: this.userSnippetButtons}, ...(!this.userSnippets.length ? [{
+      label: "Empty snippets",
+      content: html`<div class="snippet-empty-hint">Select something and click to store it here as a snippet to use later</div>`,
+      buttons: [],
+    }] : [])]
+  }
+
+  private renderUserSnippetButton() {
     return html`
       <ribbon-button
         variant="package"
@@ -2068,10 +2082,8 @@ export class AppRibbon extends EditingControls {
         dropdown-on-click
         dropdown-compact
         keep-drawer-open
-        .submenu=${submenu}
-        .dropdown=${this.userSnippets.length ? null : html`
-          <div class="snippet-empty-hint">Select something and click to store it here as a snippet to use later</div>
-        `}
+        .submenu=${this.userSnippetButtons}
+        .submenuGroups=${this.userSnippetGroups}
       ></ribbon-button>
     `
   }
@@ -2348,16 +2360,8 @@ export class AppRibbon extends EditingControls {
       iconActionLabel: "Add snippet",
       icon: "FileHorizontal",
       hoverIcon: "Plus",
-      submenu: this.userSnippets.map(snippet => ({
-        label: snippet.label,
-        action: `user-snippet:${snippet.id}`,
-        dragHTML: snippet.html,
-        icon: "FileHorizontal",
-        removeAction: `remove-user-snippet:${snippet.id}`,
-      })),
-      ...(!this.userSnippets.length ? {
-        submenuHeader: html`<div class="snippet-empty-hint">Select something and click to store it here as a snippet to use later</div>`,
-      } : {}),
+      submenu: this.userSnippetButtons,
+      submenuGroups: this.userSnippetGroups,
     }]
     packages.push(...this.filteredPackages.map((pkg): RibbonMenuButton => {
       const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)

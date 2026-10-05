@@ -4,7 +4,7 @@ import { ribbonIcon } from "../ribbon-icons"
 import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
 import "./qr-code"
-import type {RibbonMenuButton} from "./ribbon-menu"
+import type {RibbonMenu, RibbonMenuButton, RibbonMenuGroup} from "./ribbon-menu"
 import {ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
 export type RibbonButtonDetails = {
@@ -36,6 +36,7 @@ export class RibbonButton extends LitElement {
     qrValue: {type: String, attribute: "qr-value"},
     shortcut: {type: String},
     submenu: {attribute: false},
+    submenuGroups: {attribute: false},
     dropdown: {attribute: false},
     dropdownOnClick: {type: Boolean, attribute: "dropdown-on-click"},
     lazyDropdown: {type: Boolean, attribute: "lazy-dropdown"},
@@ -1055,6 +1056,7 @@ export class RibbonButton extends LitElement {
     }
 
     :host([variant="package"]) .has-icon-action .main-button {
+      padding-left: 0;
       border-radius: 0.25rem 0 0 0.25rem;
     }
 
@@ -1130,6 +1132,7 @@ export class RibbonButton extends LitElement {
   qrValue = ""
   shortcut = ""
   submenu: RibbonMenuButton[] = []
+  submenuGroups: RibbonMenuGroup[] | undefined
   dropdown: TemplateResult | null = null
   dropdownOnClick = false
   lazyDropdown = false
@@ -1177,7 +1180,8 @@ export class RibbonButton extends LitElement {
   private closeSubmenuPopover(restoreFocus = false) {
     const trigger = this.submenuTrigger
     this.submenuTrigger = null
-    const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
+    const submenu = this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")
+    submenu?.closeSubmenus()
     this.hidePopoverElement(submenu)
     submenu?.removeAttribute("data-connected")
     this.submenuOpen = false
@@ -1244,7 +1248,7 @@ export class RibbonButton extends LitElement {
 
   private dispatchIconAction() {
     this.dispatchClick(this.iconAction, false)
-    if(!this.submenuOpen && (this.submenu.length > 0 || this.dropdown !== null)) {
+    if(!this.submenuOpen && this.hasDropdown) {
       const trigger = this.renderRoot.querySelector<HTMLButtonElement>(".submenu-trigger")
       if(trigger) this.openSubmenu(trigger)
     }
@@ -1257,7 +1261,7 @@ export class RibbonButton extends LitElement {
   }
 
   private handleClick(event: Event) {
-    if(this.dropdownOnClick && (this.submenu.length > 0 || this.dropdown !== null)) {
+    if(this.dropdownOnClick && this.hasDropdown) {
       this.toggleSubmenu(event)
       return
     }
@@ -1283,7 +1287,7 @@ export class RibbonButton extends LitElement {
     this.submenuOpen = true
     this.dispatchEvent(new CustomEvent("ribbon-dropdown-open", {bubbles: true, composed: true}))
     void this.updateComplete.then(async () => {
-        const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
+        const submenu = this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")
         if(!submenu || !this.submenuOpen || !this.isConnected) return
         if(submenu instanceof LitElement) await submenu.updateComplete
         if(!this.submenuOpen || !this.isConnected) return
@@ -1305,6 +1309,7 @@ export class RibbonButton extends LitElement {
           : Math.max(margin, button.top - menu.height - gap)
         submenu.style.left = `${left}px`
         submenu.style.top = `${top}px`
+        submenu.focusEditingLabel()
         if(connected && (opensBelow || top + menu.height === button.top + 1)) {
           const placement = opensBelow ? "below" : "above"
           row.setAttribute("data-connected", placement)
@@ -1384,8 +1389,12 @@ export class RibbonButton extends LitElement {
     this.detailsOpen = false
   }
 
+  private get hasDropdown() {
+    return this.submenu.length > 0 || Boolean(this.submenuGroups?.length) || this.dropdown !== null
+  }
+
   render() {
-    const hasDropdown = this.submenu.length > 0 || this.dropdown !== null
+    const hasDropdown = this.hasDropdown
     const dragAction = this.action || this.label
     const dragTag = this.variant === "insertion" || dragAction === "Formula" ? ribbonElementTag(this.label, dragAction) : null
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
@@ -1471,7 +1480,7 @@ export class RibbonButton extends LitElement {
         <ribbon-menu
           variant="button"
           popover="manual"
-          .groups=${this.dropdown === null && (!shapeGallery || this.submenuOpen) ? [{label: `${this.label} options`, buttons: this.submenu}] : []}
+          .groups=${this.dropdown === null && (!shapeGallery || this.submenuOpen) ? this.submenuGroups ?? [{label: `${this.label} options`, buttons: this.submenu}] : []}
           .customContent=${this.dropdown !== null}
           .label=${`${this.label} options`}
           ?no-scroll=${this.dropdownNoScroll}

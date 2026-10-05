@@ -62,6 +62,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   document.addEventListener("focusin", event => {
     post({type: "editor-frame-focusin", widgetShadow: isWidgetShadowInteraction(event)})
   }, true)
+  // Reactivating Chrome can focus only this child Window; the already-focused
+  // body need not emit focusin, and cross-origin hosts cannot observe Window.focus.
+  window.addEventListener("focus", () => post({type: "editor-frame-window-focus"}))
+  window.addEventListener("blur", () => post({type: "editor-frame-window-blur"}))
   document.addEventListener("keydown", event => {
     if(event.defaultPrevented || event.isComposing) return
     const shortcut = shortcutFromEvent(event)

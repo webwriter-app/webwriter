@@ -75,7 +75,7 @@ Keyed by export name with or without extension (`./widgets/ww-quiz`, `./widgets/
 
 | Option | Type | Default | Effect |
 |---|---|---|---|
-| `label` | `LocalizedText` | Title-cased name | Menu label. On `.`: package label. |
+| `label` | `LocalizedText` | Title-cased name (widgets omit the first dash-separated part) | Menu label. On `.`: package label. |
 | `description` | `LocalizedText` | | Menu description. On `.`: package description. |
 | `uninsertable` | `boolean` | `false` | Hides the member from the insertion menu. |
 | `group` | `string` | `"flow"` | Space-separated schema groups. `widget` or `widgetinline` is always added. |

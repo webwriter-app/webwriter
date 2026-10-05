@@ -14,9 +14,11 @@ import {
   packageContents,
   packageInsertionItems,
   packageWidgetSchemaDefinitions,
+  refreshPackageLabels,
   sanitizePackageSnippet,
   webWriterPackageExportName,
   withPackageExportSource,
+  type WebWriterPackage,
 } from "./packages"
 
 describe("WebWriterPackageRegistry", () => {
@@ -333,6 +335,33 @@ describe("package contents", () => {
   const manifest = (exports: Record<string, string>) => ({name: "@webwriter/demo", version: "1.0.0", exports})
   const urlFor = (path: string) => `https://cdn.test/${path}`
 
+  it("pretty prints widget names without their first dash-separated part", () => {
+    const contents = packageContents(manifest({
+      "./widgets/webwriter-automaton-thing.*": "./dist/automaton.*",
+      "./widgets/acme-periodic-table.js": "./dist/table.js",
+      "./widgets/nested/webwriter-map.js": "./dist/map.js",
+      "./widgets/demo.js": "./dist/demo.js",
+      "./snippets/automaton-thing.html": "./snippets/automaton.html",
+    }), {}, urlFor, undefined, "en")
+    expect(contents.members.map(({member}) => [member.tagName, member.label])).toEqual([
+      ["webwriter-automaton-thing", "Automaton Thing"],
+      ["acme-periodic-table", "Periodic Table"],
+      ["webwriter-map", "Map"],
+      ["demo", "Demo"],
+      [undefined, "Automaton Thing"],
+    ])
+  })
+
+  it("preserves explicit widget label variants and formats names when none match", () => {
+    const exports = manifest({"./widgets/webwriter-automaton-thing.js": "./dist/automaton.js"})
+    const config = {"./widgets/webwriter-automaton-thing": {label: {de: "Automat", _: "Custom label"}}}
+    expect(packageContents(exports, config, urlFor, undefined, "de-DE").members[0].member.label).toBe("Automat")
+    expect(packageContents(exports, config, urlFor, undefined, "en").members[0].member.label).toBe("Custom label")
+    expect(packageContents(exports, {
+      "./widgets/webwriter-automaton-thing": {label: {de: "Automat"}},
+    }, urlFor, undefined, "en").members[0].member.label).toBe("Automaton Thing")
+  })
+
   it("groups separate script and stylesheet exports of one widget", () => {
     const contents = packageContents(manifest({
       "./widgets/demo-widget.js": "./dist/demo-widget.js",
@@ -380,6 +409,43 @@ describe("package contents", () => {
     })
     const [widget] = packageContents(manifest({"./widgets/demo-widget.*": "./dist/demo-widget.*"}), config, urlFor, undefined, "en").members
     expect(widget.member.label).toBe("Inline")
+  })
+})
+
+describe("stored package labels", () => {
+  const pkg: WebWriterPackage = {
+    name: "@webwriter/word-puzzle", version: "1.0.6", label: "Word Puzzle",
+    authors: [], keywords: [], links: {}, scripts: ["https://cdn.test/puzzle.js"], styles: [],
+    members: [{
+      id: "puzzle", packageName: "@webwriter/word-puzzle", packageVersion: "1.0.6",
+      exportName: "./widgets/webwriter-word-puzzle.*", kind: "widget", insertable: true,
+      tagName: "webwriter-word-puzzle", label: "Webwriter Word Puzzle",
+    }, {
+      id: "fruits", packageName: "@webwriter/word-puzzle", packageVersion: "1.0.6",
+      exportName: "./snippets/Find-The-Words-Fruits.html", kind: "snippet", insertable: true,
+      label: "Find The Words Fruits", htmlUrl: "https://cdn.test/fruits.html",
+    }],
+  }
+
+  it("updates legacy inferred labels without altering snippets, resources, or the stored object", () => {
+    const refreshed = refreshPackageLabels(pkg, "en")
+    expect(refreshed).toEqual({...pkg, members: [{...pkg.members[0], label: "Word Puzzle"}, pkg.members[1]]})
+    expect(pkg.members[0].label).toBe("Webwriter Word Puzzle")
+    expect(packageInsertionItems([refreshed])[0].name).toBe("Word Puzzle")
+    expect(refreshPackageLabels(refreshed, "en")).toEqual(refreshed)
+  })
+
+  it.each(["member", "package", "manifest"])("preserves explicit labels in %s config, even when they match the old inferred name", source => {
+    const config = {label: {_: "Webwriter Word Puzzle"}}
+    const configured = source === "member" ? {...pkg, members: [{...pkg.members[0], editingConfig: config}]}
+      : source === "package" ? {...pkg, editingConfig: {"./widgets/webwriter-word-puzzle": config}}
+      : {...pkg, manifest: {name: pkg.name, version: pkg.version, editingConfig: {"./widgets/webwriter-word-puzzle": config}}}
+    expect(refreshPackageLabels(configured, "en")).toEqual(configured)
+  })
+
+  it("preserves custom stored labels when their configuration is unavailable", () => {
+    const configured = {...pkg, members: [{...pkg.members[0], label: "Custom puzzle"}]}
+    expect(refreshPackageLabels(configured, "en")).toEqual(configured)
   })
 })
 

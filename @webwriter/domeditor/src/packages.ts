@@ -337,6 +337,8 @@ const titleCase = (value: string) => value
 
 export const packageNameLabel = (name: string) => titleCase(name.split("/").at(-1) ?? name)
 
+const widgetNameLabel = (name: string) => titleCase(name.replace(/^[^-]+-/, ""))
+
 /** The editing-config key of an export or config entry: its subpath without
  * a wildcard or file extension, so `./widgets/x`, `./widgets/x.*` and
  * `./widgets/x.js` address the same member. */
@@ -508,6 +510,18 @@ export function localizedText(value: LocalizedText | undefined, locale: string) 
 
 const localized = localizedText
 
+/** Updates previously stored inferred widget labels while preserving explicit
+ * labels and the package's resolved resources. */
+export function refreshPackageLabels(pkg: WebWriterPackage, locale: string) {
+  return {...pkg, members: pkg.members.map(member => {
+    if(member.kind !== "widget" || member.label !== titleCase(member.exportName)) return member
+    const key = configKey(member.exportName)
+    const config = member.editingConfig ?? pkg.editingConfig?.[key] ?? pkg.manifest?.editingConfig?.[key]
+    if(localized(config?.label, locale) !== undefined) return member
+    return {...member, label: widgetNameLabel(member.tagName ?? key.split("/").at(-1)!)}
+  })}
+}
+
 export function personLabel(person: PersonMetadata | undefined) {
   if(typeof person === "string") return person.trim() || undefined
   if(!person) return
@@ -601,12 +615,13 @@ export function packageContents(
     const isSnippet = exportName.startsWith("./snippets/")
     if(!isWidget && !isSnippet) continue
     const config = editingConfig[key] ?? {}
+    const tagName = key.split("/").at(-1)!
     const base = {
       id: `${manifest.name}@${manifest.version}:${key}`,
       packageName: manifest.name,
       packageVersion: manifest.version,
       exportName,
-      label: localized(config.label, locale) ?? titleCase(key),
+      label: localized(config.label, locale) ?? (isWidget ? widgetNameLabel(tagName) : titleCase(key)),
       description: localized(config.description, locale),
       insertable: config.uninsertable !== true,
       iconUrl,
@@ -619,7 +634,7 @@ export function packageContents(
     }
     let widget = widgets.get(key)
     if(!widget) {
-      widget = {source: {member: {...base, kind: "widget", tagName: key.split("/").at(-1)!}, requiredPaths: []}}
+      widget = {source: {member: {...base, kind: "widget", tagName}, requiredPaths: []}}
       widgets.set(key, widget)
       members.push(widget.source)
     }

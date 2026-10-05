@@ -22,6 +22,7 @@ const expectedChecks = [
   "blank space around a formula paragraph selects gaps for every click count",
   "leaving an empty inline formula removes it without moving the text caret",
   "bottom layout cards retain native editing focus after rendering",
+  "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",

@@ -167,7 +167,8 @@ describe("package ribbon controls", () => {
     expect(typeof button.submenu[0] === "string" ? undefined : button.submenu[0].dragHTML).toBeUndefined()
     const snippets = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
     await snippets.updateComplete
-    expect(snippets.submenu[0]).toMatchObject({dragHTML: "<p><b>Saved</b></p>"})
+    expect(snippets.submenu.find(item => typeof item !== "string" && item.action === "user-snippet:saved"))
+      .toMatchObject({dragHTML: "<p><b>Saved</b></p>"})
     ribbon.expanded = false
     ribbon.menuOpen = true
     await ribbon.updateComplete
@@ -179,6 +180,78 @@ describe("package ribbon controls", () => {
     await packages.updateComplete
     expect(dragData(packages.shadowRoot!.querySelector<HTMLButtonElement>('[title="Demo"]')!).getData("text/html"))
       .toBe("<webwriter-demo></webwriter-demo>")
+  })
+
+  it("confirms inline names once, retains defaults for blank input, and lets composition finish", async () => {
+    const menu = new RibbonMenu()
+    menu.variant = "nested"
+    menu.groups = [{label: "Snippets", buttons: [{label: "Default name", action: "user-snippet:first", editingLabel: true}]}]
+    const names = vi.fn()
+    menu.addEventListener("ribbon-label-change", names)
+    document.body.append(menu)
+    await menu.updateComplete
+    const input = menu.shadowRoot!.querySelector<HTMLTextAreaElement>("textarea")!
+    input.value = "   "
+    const composing = new KeyboardEvent("keydown", {key: "Enter", isComposing: true, cancelable: true, bubbles: true})
+    input.dispatchEvent(composing)
+    expect(composing.defaultPrevented).toBe(false)
+    expect(names).not.toHaveBeenCalled()
+    expect(menu.shadowRoot!.activeElement).toBe(input)
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", cancelable: true, bubbles: true}))
+    expect(names).toHaveBeenCalledTimes(1)
+    expect(names.mock.calls[0][0].detail).toEqual({action: "user-snippet:first", label: "Default name"})
+    input.dispatchEvent(new FocusEvent("blur"))
+    expect(names).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([249, 250, 251])("limits snippet names to 250 characters on confirmation (length: %s)", async length => {
+    const menu = new RibbonMenu()
+    menu.variant = "nested"
+    const defaultName = "Default ".repeat(40)
+    menu.groups = [{label: "Snippets", buttons: [{label: defaultName, action: "user-snippet:first", editingLabel: true}]}]
+    const names = vi.fn()
+    menu.addEventListener("ribbon-label-change", names)
+    document.body.append(menu)
+    await menu.updateComplete
+    const input = menu.shadowRoot!.querySelector<HTMLTextAreaElement>("textarea")!
+    expect(input.maxLength).toBe(250)
+    expect(input.value).toBe(defaultName.slice(0, 250))
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 250])
+    input.value = "x".repeat(length)
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", cancelable: true, bubbles: true}))
+    expect(names.mock.calls[0][0].detail.label).toBe("x".repeat(Math.min(length, 250)))
+  })
+
+  it("preserves a typed name through updates and confirms it before editing the next snippet", async () => {
+    const menu = new RibbonMenu()
+    menu.variant = "nested"
+    const first = {label: "First", action: "user-snippet:first", editingLabel: true}
+    menu.groups = [{label: "Snippets", buttons: [first]}]
+    const names = vi.fn()
+    menu.addEventListener("ribbon-label-change", names)
+    document.body.append(menu)
+    await menu.updateComplete
+    const input = menu.shadowRoot!.querySelector<HTMLTextAreaElement>("textarea")!
+    input.value = "First renamed"
+    input.setSelectionRange(3, 5)
+    menu.groups = [{label: "Snippets", buttons: [{...first}]}]
+    await menu.updateComplete
+    expect(input.value).toBe("First renamed")
+    expect([input.selectionStart, input.selectionEnd]).toEqual([3, 5])
+    expect(names).not.toHaveBeenCalled()
+
+    menu.groups = [{label: "Snippets", buttons: [
+      {label: "Second", action: "user-snippet:second", editingLabel: true},
+      {...first, editingLabel: false},
+    ]}]
+    await menu.updateComplete
+    expect(names.mock.calls[0][0].detail).toEqual({action: "user-snippet:first", label: "First renamed"})
+    const next = menu.shadowRoot!.querySelector<HTMLTextAreaElement>("textarea")!
+    expect(next.value).toBe("Second")
+    expect([next.selectionStart, next.selectionEnd]).toEqual([0, 6])
+    next.value = "Second renamed"
+    menu.closeSubmenus()
+    expect(names.mock.calls[1][0].detail).toEqual({action: "user-snippet:second", label: "Second renamed"})
   })
 
   it.each([true, false])("keeps the Snippets dropdown open through removal and the empty hint (expanded: %s)", async expanded => {
@@ -223,8 +296,9 @@ describe("package ribbon controls", () => {
       if(!expanded) expect(ribbon.menuOpen).toBe(true)
     }
     expect(ribbon.settings.userSnippets).toEqual([])
-    const emptyHint = expanded ? snippets.shadowRoot!.querySelector("ribbon-menu")! : snippets.shadowRoot!.querySelector(".submenu")!
-    expect(emptyHint.textContent).toContain("Select something and click to store it here as a snippet")
+    const emptyMenu = snippets.shadowRoot!.querySelector<RibbonMenu>(expanded ? "ribbon-menu" : ".submenu ribbon-menu")!
+    await emptyMenu.updateComplete
+    expect(emptyMenu.shadowRoot!.textContent).toContain("Select something and click to store it here as a snippet")
   })
 
   it("keeps Snippets first, saves from its icon, and lists newest snippets with removal actions", async () => {
@@ -248,12 +322,12 @@ describe("package ribbon controls", () => {
     expect(snippets.iconAction).toBe("pin-snippet")
     expect(snippets.iconActionLabel).toBe("Add snippet")
     expect(snippets.dropdownOnClick).toBe(true)
-    expect(snippets.submenu.map(item => typeof item === "string" ? item : item.label)).toEqual(["Newest", "Oldest"])
+    expect(snippets.submenu.map(item => typeof item === "string" ? item : item.label)).toEqual(["Add snippet", "Newest", "Oldest"])
     expect(snippets.submenu.map(item => typeof item === "string" ? "" : item.action)).toEqual([
-      "user-snippet:new", "user-snippet:old",
+      "pin-snippet", "user-snippet:new", "user-snippet:old",
     ])
     expect(snippets.submenu.map(item => typeof item === "string" ? "" : item.removeAction)).toEqual([
-      "remove-user-snippet:new", "remove-user-snippet:old",
+      undefined, "remove-user-snippet:new", "remove-user-snippet:old",
     ])
     await snippets.updateComplete
     const main = snippets.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
@@ -312,15 +386,72 @@ describe("package ribbon controls", () => {
     expect(snippets).not.toBeNull()
     expect(snippets.iconAction).toBe("pin-snippet")
     expect(snippets.dropdownCompact).toBe(true)
-    expect(snippets.submenu).toHaveLength(0)
+    expect(snippets.submenu).toEqual([{label: "Add snippet", action: "pin-snippet", icon: "Plus"}])
     await snippets.updateComplete
     snippets.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await snippets.updateComplete
-    expect(snippets.shadowRoot!.querySelector("ribbon-menu")?.textContent).toContain(
+    const menu = snippets.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    expect(menu.shadowRoot!.textContent).toContain(
       "Select something and click to store it here as a snippet to use later",
     )
 
   })
+
+  it.each([[true, false], [true, true], [false, false], [false, true]])(
+    "shows Add snippet first and preserves the dropdown on click (expanded=%s, populated=%s)", async (expanded, populated) => {
+      const ribbon = new AppRibbon()
+      ribbon.expanded = expanded
+      ribbon.menuOpen = !expanded
+      if(populated) ribbon.settings.userSnippets = [{id: "saved", label: "Saved", html: "<p>Saved</p>"}]
+      document.body.append(ribbon)
+      await ribbon.updateComplete
+      let controls: RibbonButton | RibbonMenu
+      if(expanded) controls = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+      else {
+        const root = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+        await root.updateComplete
+        root.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+        await root.updateComplete
+        controls = root.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+      }
+      await controls.updateComplete
+      const trigger = controls.shadowRoot!.querySelector<HTMLButtonElement>(expanded ? ".main-button" : '[title="Snippets"]')!
+      trigger.click()
+      await controls.updateComplete
+      const menu = controls.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await menu.updateComplete
+      const add = menu.shadowRoot!.querySelector<HTMLButtonElement>('[role="menuitem"]')!
+      expect(add.title).toBe("Add snippet")
+      expect(add.getAttribute("draggable")).toBe("false")
+      const hint = menu.shadowRoot!.querySelector(".snippet-empty-hint")
+      if(populated) {
+        expect(hint).toBeNull()
+        expect(menu.shadowRoot!.querySelector('[title="Saved"]')).not.toBeNull()
+      }
+      else {
+        expect(hint).not.toBeNull()
+        expect(add.compareDocumentPosition(hint!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      }
+      const actions = vi.fn()
+      ribbon.addEventListener("ribbon-button-click", actions)
+      const previews = vi.fn()
+      ribbon.addEventListener("snippet-hover-change", previews)
+      for(const type of ["mouseenter", "mouseleave", "focus", "blur"]) add.dispatchEvent(new Event(type))
+      expect(previews.mock.calls.map(([event]) => event.detail.hovered)).toEqual([true, false, true, false])
+      if(populated) {
+        menu.shadowRoot!.querySelector<HTMLElement>('[title="Saved"]')!.dispatchEvent(new Event("mouseenter"))
+        expect(previews).toHaveBeenCalledTimes(4)
+      }
+      expect(actions).not.toHaveBeenCalled()
+      add.click()
+      await controls.updateComplete
+      expect(actions).toHaveBeenCalledTimes(1)
+      expect(actions.mock.calls[0][0].detail).toEqual({label: "pin-snippet", keepDrawerOpen: true})
+      expect(trigger.getAttribute("aria-expanded")).toBe("true")
+      if(!expanded) expect(ribbon.menuOpen).toBe(true)
+    },
+  )
 
   it("opens the expanded snippets dropdown after adding and keeps it open through an empty-to-populated update", async () => {
     const snippets = new RibbonButton()

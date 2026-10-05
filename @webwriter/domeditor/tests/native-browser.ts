@@ -2362,6 +2362,65 @@ await check("table commands complete across the real iframe bridge", async () =>
   finally { frame.remove() }
 })
 
+await check("iframe reactivation restores hit testing without changing the document or selection", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
+  frame.src = "/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if((app as any)?.editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "app editor did not initialize")
+    await (app as any).waitForEditorWindow()
+    await app!.execute({type: "selectNode", path: [0]})
+    const root = app!.shadowRoot!, iframe = root.querySelector<HTMLIFrameElement>(".editor-frame")!
+    const doc = app!.ownerDocument, view = doc.defaultView!
+    const before = await app!.execute({type: "serializeDocument"})
+    const selection = JSON.stringify((app as any).selectionPath)
+    if(!iframe.contentDocument) {
+      const messages = new Set<string>()
+      const observe = (event: MessageEvent) => {
+        if(event.source === iframe.contentWindow && event.data?.type?.startsWith("editor-frame-window-")) messages.add(event.data.type)
+      }
+      const button = doc.createElement("button")
+      doc.body.append(button)
+      view.addEventListener("message", observe)
+      try {
+        button.focus()
+        for(let attempt = 0; attempt < 100 && !messages.has("editor-frame-window-blur"); attempt++) await new Promise(resolve => setTimeout(resolve, 10))
+        assert(messages.has("editor-frame-window-blur"), "opaque frame did not relay its native Window blur")
+        assert(view.getComputedStyle(iframe).pointerEvents !== "none", "moving focus to the host disabled iframe interaction")
+        ;(app as any).focusEditor()
+        for(let attempt = 0; attempt < 100 && !messages.has("editor-frame-window-focus"); attempt++) await new Promise(resolve => setTimeout(resolve, 10))
+        assert(messages.has("editor-frame-window-focus"), "opaque frame did not relay its native Window focus")
+      }
+      finally { view.removeEventListener("message", observe); button.remove() }
+    }
+    const rect = iframe.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + 40
+    assert(root.elementFromPoint(x, y) === iframe, "active iframe was not a native hit-test target")
+    // Model app deactivation without relying on a headless window manager.
+    Object.defineProperty(doc, "hasFocus", {configurable: true, value: () => false})
+    view.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    assert(view.getComputedStyle(iframe).pointerEvents === "none", "inactive iframe kept its pointer target")
+    assert(root.elementFromPoint(x, y) !== iframe, "inactive iframe remained in native hit testing")
+    Reflect.deleteProperty(doc, "hasFocus")
+    view.dispatchEvent(new Event("focus"))
+    assert(view.getComputedStyle(iframe).pointerEvents !== "none", "reactivated iframe remained disabled")
+    assert(root.elementFromPoint(x, y) === iframe, "reactivation did not restore native iframe hit testing")
+    assert(await app!.execute({type: "serializeDocument"}) === before, "reactivation changed authored content")
+    assert(JSON.stringify((app as any).selectionPath) === selection, "reactivation changed selection")
+  }
+  finally {
+    if(frame.contentDocument) Reflect.deleteProperty(frame.contentDocument, "hasFocus")
+    frame.remove()
+  }
+})
+
 await check("bottom layout cards retain native editing focus after rendering", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"

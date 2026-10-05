@@ -26,6 +26,7 @@ import {
   INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
   SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL as scopedCustomElementRegistryPolyfillUrl,
   packageMemberAction,
+  refreshPackageLabels,
   packageTestTimeout,
   WebWriterPackageRegistry,
   webWriterPackageExportName,
@@ -170,6 +171,7 @@ import {
   builtinShortcuts,
   loadAppSettings,
   persistAppSettings,
+  SNIPPET_LABEL_MAX_LENGTH,
   shortcutFromEvent,
   type AppSettings,
 } from "../app-settings"
@@ -477,6 +479,7 @@ export class DomEditor extends LitElement {
     documentLayout: {attribute: false, state: true},
     documentLayoutError: {attribute: false, state: true},
     settings: {attribute: false, state: true},
+    editingSnippetId: {state: true},
     breadcrumbVisible: {attribute: false, state: true},
     aiToolboxOpen: {state: true},
   }
@@ -671,6 +674,7 @@ export class DomEditor extends LitElement {
   private historyDocumentTransitionCount = 0
   private historyError = ""
   private settings: AppSettings = loadAppSettings()
+  private editingSnippetId: string | null = null
   private freshDocumentLayoutSnapshot: string | null = null
   private initialDocumentLayoutStarted = false
   private breadcrumbVisible = true
@@ -969,6 +973,10 @@ export class DomEditor extends LitElement {
 
     iframe[hidden] {
       display: none;
+    }
+
+    iframe.window-inactive {
+      pointer-events: none;
     }
   `
 
@@ -1673,6 +1681,8 @@ export class DomEditor extends LitElement {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
@@ -1780,6 +1790,8 @@ export class DomEditor extends LitElement {
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.addEventListener("keydown", this.handleConfiguredShortcut, true)
     if(!this.editorOpaque) this.editorWindow?.addEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
+    if(!this.editorOpaque) this.editorWindow?.addEventListener("focus", this.handleHostWindowFocus)
+    if(!this.editorOpaque) this.editorWindow?.addEventListener("blur", this.handleHostWindowBlur)
     iframe.addEventListener("focus", this.handleEditorFrameFocus)
     iframe.addEventListener("blur", this.handleEditorFrameBlur)
     if(this.editorWindow) {
@@ -2129,11 +2141,27 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorFrameFocus = () => {
+    this.handleHostWindowFocus()
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
   }
 
   private handleEditorFrameBlur = () => {
     this.saveEditorSelection()
+  }
+
+  private handleHostWindowBlur = () => {
+    // Entering a child frame also blurs the host Window. Check the completed
+    // focus change before treating it as a switch to another app/window.
+    queueMicrotask(() => {
+      if(!this.isConnected || this.ownerDocument.hasFocus()) return
+      // Retire Chrome's iframe hit-test target while inactive, so returning
+      // directly to the frame refreshes native cursors without a ribbon detour.
+      this.editorIframe()?.classList.add("window-inactive")
+    })
+  }
+
+  private handleHostWindowFocus = () => {
+    this.editorIframe()?.classList.remove("window-inactive")
   }
 
   private editorIframe() {
@@ -3252,6 +3280,7 @@ export class DomEditor extends LitElement {
     }
     if(label?.startsWith("remove-user-snippet:")) {
       const id = label.slice("remove-user-snippet:".length)
+      if(this.editingSnippetId === id) this.editingSnippetId = null
       this.settings = {...this.settings, userSnippets: this.settings.userSnippets.filter(snippet => snippet.id !== id)}
       persistAppSettings(this.settings)
       return
@@ -4169,12 +4198,28 @@ export class DomEditor extends LitElement {
       if(!snippet || typeof snippet !== "object" || !("html" in snippet) || typeof snippet.html !== "string"
         || !("label" in snippet) || typeof snippet.label !== "string" || !snippet.html) return
       if(this.settings.userSnippets.some(saved => saved.html === snippet.html)) return
-      this.settings = {...this.settings, userSnippets: [{id: crypto.randomUUID(), label: snippet.label, html: snippet.html},
+      const id = crypto.randomUUID()
+      this.editingSnippetId = id
+      this.settings = {...this.settings, userSnippets: [{id, label: snippet.label.slice(0, SNIPPET_LABEL_MAX_LENGTH), html: snippet.html},
         ...this.settings.userSnippets]}
       persistAppSettings(this.settings)
     }
     catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
-    finally { this.focusEditor() }
+    finally { if(!this.editingSnippetId) this.focusEditor() }
+  }
+
+  private handleSnippetNameChange(event: CustomEvent<{action: string, label: string}>) {
+    const {action, label} = event.detail
+    if(!action.startsWith("user-snippet:") || typeof label !== "string") return
+    const id = action.slice("user-snippet:".length)
+    if(!this.settings.userSnippets.some(snippet => snippet.id === id)) return
+    this.ribbonInputSession = false
+    this.restoreEditorAfterRibbonInput = false
+    if(this.editingSnippetId === id) this.editingSnippetId = null
+    this.settings = {...this.settings, userSnippets: this.settings.userSnippets.map(snippet =>
+      snippet.id === id ? {...snippet, label: (label.trim() || snippet.label).slice(0, SNIPPET_LABEL_MAX_LENGTH)} : snippet,
+    )}
+    persistAppSettings(this.settings)
   }
 
   /** Snippets are translated to the document language, else the UI's. */
@@ -4408,7 +4453,8 @@ export class DomEditor extends LitElement {
       if(serialized === null || serialized === undefined) return
       const stored = JSON.parse(serialized) as unknown
       if(!Array.isArray(stored)) return
-      this.installedPackages = stored.filter(isStoredPackage)
+      const locale = document.documentElement.lang || navigator.language || "en"
+      this.installedPackages = stored.filter(isStoredPackage).map(pkg => refreshPackageLabels(pkg, locale))
       const storedMap = globalThis.localStorage?.getItem(INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY)
       if(storedMap) {
         const saved: unknown = JSON.parse(storedMap)
@@ -5718,6 +5764,12 @@ export class DomEditor extends LitElement {
       if(!this.editorTargetSharesTextSelection(target)) ribbon?.dismissDrawers()
       return
     }
+    if(event.data?.type === "editor-frame-window-focus" || event.data?.type === "editor-frame-window-blur") {
+      if(!this.editorOpaque || !this.isEditorMessage(event)) return
+      if(event.data.type === "editor-frame-window-focus") this.handleHostWindowFocus()
+      else this.handleHostWindowBlur()
+      return
+    }
     if(event.data?.type === "editor-frame-focusin") {
       if(!this.editorOpaque || !this.isEditorMessage(event) || event.data.widgetShadow === true) return
       this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
@@ -6056,6 +6108,8 @@ export class DomEditor extends LitElement {
     this.updateMotionPreference()
     window.addEventListener("message", this.handleEditorMessage)
     window.addEventListener("beforeunload", this.handleBeforeUnload)
+    window.addEventListener("blur", this.handleHostWindowBlur)
+    window.addEventListener("focus", this.handleHostWindowFocus)
     this.addEventListener("dragstart", this.handleRibbonDragStart)
     this.addEventListener("dragend", this.handleRibbonDragEnd)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
@@ -6105,6 +6159,8 @@ export class DomEditor extends LitElement {
     this.backendProbeController = null
     window.removeEventListener("message", this.handleEditorMessage)
     window.removeEventListener("beforeunload", this.handleBeforeUnload)
+    window.removeEventListener("blur", this.handleHostWindowBlur)
+    window.removeEventListener("focus", this.handleHostWindowFocus)
     this.removeEventListener("dragstart", this.handleRibbonDragStart)
     this.removeEventListener("dragend", this.handleRibbonDragEnd)
     this.ribbonDrag = null
@@ -6117,10 +6173,13 @@ export class DomEditor extends LitElement {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     const iframe = this.editorIframe()
+    iframe?.classList.remove("window-inactive")
     iframe?.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe?.removeEventListener("blur", this.handleEditorFrameBlur)
     this.editorDocument = null
@@ -6325,6 +6384,8 @@ export class DomEditor extends LitElement {
           .liveLearners=${this.liveLearners}
           .storageLocation=${this.storageLocation}
           .settings=${this.settings}
+          .editingSnippetId=${this.editingSnippetId}
+          @ribbon-label-change=${this.handleSnippetNameChange}
           .backendClient=${this.backendClient}
           .backendState=${this.backendState}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}

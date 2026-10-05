@@ -139,6 +139,7 @@ export const appCommands: readonly AppCommand[] = [
   })),
 ] as const
 
+export const SNIPPET_LABEL_MAX_LENGTH = 250
 export type UserSnippet = {id: string, label: string, html: string}
 
 export type AppSettings = {

@@ -231,6 +231,83 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it.each(["host", "frame", "bridge"])("refreshes iframe hit testing on %s window reactivation without changing its selection", async source => {
+    const {editor, iframe} = await mountEditor()
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = '<p style="cursor: crosshair">Keep<!--comment--> this</p><demo-widget></demo-widget>'
+    const text = doc.querySelector("p")!.firstChild!
+    doc.getSelection()!.setBaseAndExtent(text, 1, text, 3)
+    const html = doc.body.innerHTML
+    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => {})
+    const relay = (type: "focus" | "blur", origin = window.location.origin, nonce = (editor as any).bridgeNonce, sender = iframe.contentWindow!) => window.dispatchEvent(new MessageEvent("message", {
+      origin, source: sender, data: {type: `editor-frame-window-${type}`, bridgeNonce: nonce},
+    }))
+    if(source === "host") window.dispatchEvent(new Event("blur"))
+    else if(source === "frame") iframe.contentWindow!.dispatchEvent(new Event("blur"))
+    else {
+      ;(editor as any).editorOpaque = true
+      relay("blur", "https://forged.example")
+      relay("blur", window.location.origin, "wrong")
+      relay("blur", window.location.origin, (editor as any).bridgeNonce, window)
+      await Promise.resolve()
+      expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+      relay("blur")
+    }
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    focus.mockReturnValue(true)
+    if(source === "host") window.dispatchEvent(new Event("focus"))
+    else if(source === "frame") iframe.contentWindow!.dispatchEvent(new Event("focus"))
+    else {
+      relay("focus", "https://forged.example")
+      relay("focus", window.location.origin, "wrong")
+      relay("focus", window.location.origin, (editor as any).bridgeNonce, window)
+      expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+      relay("focus")
+      ;(editor as any).editorOpaque = false
+    }
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    expect(iframe.contentDocument).toBe(doc)
+    expect(doc.body.innerHTML).toBe(html)
+    expect(doc.getSelection()!.anchorNode).toBe(text)
+    expect(doc.getSelection()!.anchorOffset).toBe(1)
+    expect(doc.getSelection()!.focusNode).toBe(text)
+    expect(doc.getSelection()!.focusOffset).toBe(3)
+    expect(post.mock.calls.some(([message]) => message?.type === editorFrameControlMessage)).toBe(false)
+  })
+
+  it("keeps iframe interaction enabled when focus moves within the page or returns before blur settles", async () => {
+    const {iframe} = await mountEditor()
+    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true)
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    focus.mockReturnValue(false)
+    window.dispatchEvent(new Event("blur"))
+    focus.mockReturnValue(true)
+    window.dispatchEvent(new Event("focus"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+  })
+
+  it("removes the inactive frame state and focus listeners on disconnect, including a pending blur", async () => {
+    const {editor, iframe} = await mountEditor()
+    const editorWindow = iframe.contentWindow!
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    window.dispatchEvent(new Event("blur"))
+    editor.remove()
+    await Promise.resolve()
+    expect(iframe.classList.contains("window-inactive")).toBe(false)
+    iframe.classList.add("window-inactive")
+    window.dispatchEvent(new Event("focus"))
+    editorWindow.dispatchEvent(new Event("focus"))
+    expect(iframe.classList.contains("window-inactive")).toBe(true)
+  })
+
   it("preserves the first widget's breadcrumb selection when refocusing the document", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body
@@ -1086,6 +1163,30 @@ describe("DomEditor iframe setup", () => {
       importMap: {},
       requestId: expect.any(String),
     }), window.location.origin))
+  })
+
+  it("refreshes restored widget labels before showing them in the package dropdown", async () => {
+    const pkg = {...demoPackage, members: [demoPackage.members[1], {
+      ...demoPackage.members[0],
+      exportName: "./widgets/webwriter-word-puzzle.*",
+      tagName: "webwriter-word-puzzle",
+      label: "Webwriter Word Puzzle",
+      editingConfig: {},
+    }]}
+    localStorage.setItem(INSTALLED_PACKAGES_STORAGE_KEY, JSON.stringify([pkg]))
+    const editor = new DomEditor()
+    Object.assign(editor, {frameStarted: true})
+    document.body.append(editor)
+    await editor.updateComplete
+
+    const installed = (editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages[0]
+    expect(installed.members[1]).toEqual({...pkg.members[1], label: "Word Puzzle"})
+    expect(installed.members[0]).toEqual(pkg.members[0])
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    expect(button.submenu[0]).toMatchObject({label: "Word Puzzle"})
   })
 
   it("refreshes an already requested package catalog and ignores duplicate in-flight requests", async () => {
@@ -3789,6 +3890,125 @@ describe("DomEditor.execute()", () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [true, "Enter", "icon"], [true, "blur", "icon"], [false, "Enter", "icon"], [false, "blur", "icon"],
+    [true, "Enter", "menu"], [true, "blur", "menu"], [false, "Enter", "menu"], [false, "blur", "menu"],
+    [true, "button", "icon"], [false, "button", "icon"], [true, "button", "menu"], [false, "button", "menu"],
+  ] as const)("names newly added snippets inline with expanded=%s, confirmation=%s, and source=%s", async (expanded, confirmation, source) => {
+    const {editor} = await mountEditor()
+    const focusEditor = vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Selected content</p>", label: "Selected content"})
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.expanded = expanded
+    ribbon.menuOpen = !expanded
+    await ribbon.updateComplete
+
+    let controls: RibbonButton | RibbonMenu
+    if(expanded) {
+      controls = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+    }
+    else {
+      const root = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await root.updateComplete
+      root.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+      await root.updateComplete
+      controls = root.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    }
+    await controls.updateComplete
+    if(source === "icon") controls.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Add snippet"]')!.click()
+    else {
+      controls.shadowRoot!.querySelector<HTMLButtonElement>(expanded ? ".main-button" : '[title="Snippets"]')!.click()
+      await controls.updateComplete
+      const menu = controls.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await menu.updateComplete
+      menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Add snippet"]')!.click()
+    }
+
+    const nameInput = () => controls.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")?.shadowRoot?.querySelector<HTMLTextAreaElement>(".item-label-input")
+    await vi.waitFor(() => expect(nameInput()).toBeTruthy())
+    const input = nameInput()!
+    expect((input.getRootNode() as ShadowRoot).activeElement).toBe(input)
+    expect(input.value).toBe("Selected content")
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length])
+    expect(input.closest("button")).toBeNull()
+    expect(getComputedStyle(input).borderWidth).toBe("0px")
+    expect(getComputedStyle(input).backgroundColor).toBe("transparent")
+    expect(getComputedStyle(input).overflow).toBe("hidden")
+    const menu = controls.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    const confirm = menu.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Confirm snippet name"]')!
+    expect(confirm).not.toBeNull()
+    expect(menu.shadowRoot!.querySelector('[aria-label="Remove Selected content"]')).toBeNull()
+    focusEditor.mockClear()
+
+    input.value = "My lesson example"
+    if(confirmation === "Enter") {
+      const enter = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+      input.dispatchEvent(enter)
+      expect(enter.defaultPrevented).toBe(true)
+    }
+    else if(confirmation === "button") {
+      const down = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+      confirm.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(true)
+      expect(menu.shadowRoot!.activeElement).toBe(input)
+      confirm.click()
+    }
+    else input.blur()
+    await vi.waitFor(() => expect(loadAppSettings().userSnippets[0]?.label).toBe("My lesson example"))
+    await vi.waitFor(() => expect(nameInput()).toBeNull())
+    expect(focusEditor).not.toHaveBeenCalledWith(true)
+    expect(controls.shadowRoot!.querySelector<HTMLButtonElement>(expanded ? ".main-button" : '[title="Snippets"]')!.getAttribute("aria-expanded")).toBe("true")
+    if(!expanded) expect(ribbon.menuOpen).toBe(true)
+    expect(menu.shadowRoot!.querySelector('[aria-label="Confirm snippet name"]')).toBeNull()
+    expect(menu.shadowRoot!.querySelector('[aria-label="Remove My lesson example"]')).not.toBeNull()
+    if(confirmation !== "blur") expect(menu.shadowRoot!.activeElement).toBe(menu.shadowRoot!.querySelector('[title="My lesson example"]'))
+    expect(loadAppSettings().userSnippets[0].html).toBe("<p>Selected content</p>")
+    expect(execute).toHaveBeenCalledWith({type: "getSnippet"})
+    expect(execute.mock.calls.some(([action]) => action.type === "insert")).toBe(false)
+  })
+
+  it("saves a pending name before another add and ignores confirmation of a removed snippet", async () => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    vi.spyOn(editor, "execute")
+      .mockResolvedValueOnce({html: "<p>First</p>", label: "First"})
+      .mockResolvedValueOnce({html: "<p>Second</p>", label: "Second"})
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const snippets = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+    await snippets.updateComplete
+    const add = snippets.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Add snippet"]')!
+    const menu = () => snippets.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    const nameInput = () => menu().shadowRoot?.querySelector<HTMLTextAreaElement>("textarea")
+    add.click()
+    await vi.waitFor(() => expect(nameInput()?.value).toBe("First"))
+    nameInput()!.value = "First renamed"
+    add.click()
+    await vi.waitFor(() => expect(nameInput()?.value).toBe("Second"))
+    expect(loadAppSettings().userSnippets.map(snippet => snippet.label)).toEqual(["Second", "First renamed"])
+    const removedInput = nameInput()!
+    removedInput.value = "Removed name"
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: `remove-user-snippet:${loadAppSettings().userSnippets[0].id}`}, bubbles: true, composed: true,
+    }))
+    removedInput.dispatchEvent(new FocusEvent("blur"))
+    await vi.waitFor(() => expect(loadAppSettings().userSnippets.map(snippet => snippet.label)).toEqual(["First renamed"]))
+  })
+
+  it.each([249, 250, 251])("enforces the snippet name limit when storing defaults and rename events (length: %s)", async length => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Saved</p>", label: "Default ".repeat(40)})
+    await (editor as any).pinSnippet()
+    const saved = loadAppSettings().userSnippets[0]
+    expect(saved.label).toBe("Default ".repeat(40).slice(0, 250))
+    const label = "x".repeat(length)
+    editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-label-change", {
+      detail: {action: `user-snippet:${saved.id}`, label}, bubbles: true, composed: true,
+    }))
+    expect(loadAppSettings().userSnippets[0]).toEqual({...saved, label: label.slice(0, 250)})
+  })
+
   it("ignores pinning a selection with no snippet target", async () => {
     const {editor} = await mountEditor()
     vi.spyOn(editor, "execute").mockResolvedValue(null)
@@ -3810,12 +4030,36 @@ describe("DomEditor.execute()", () => {
     expect(loadAppSettings().userSnippets.map(snippet => snippet.html)).toEqual(['<p class="different">Saved</p>', "<p>Saved</p>"])
   })
 
-  it("routes snippet icon hover to an editor preview without storing content", async () => {
+  it.each([true, false])("routes snippet hover and dropdown focus to an editor preview without storing content (expanded=%s)", async expanded => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     for(const hovered of [true, false]) ribbon.dispatchEvent(new CustomEvent("snippet-hover-change", {detail: {hovered}, bubbles: true, composed: true}))
     expect(execute.mock.calls.map(([action]) => action)).toEqual([{type: "hoverSnippet", hovered: true}, {type: "hoverSnippet", hovered: false}])
+    ribbon.expanded = expanded
+    ribbon.menuOpen = !expanded
+    await ribbon.updateComplete
+    let controls: RibbonButton | RibbonMenu
+    if(expanded) controls = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!
+    else {
+      const root = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await root.updateComplete
+      root.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+      await root.updateComplete
+      controls = root.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    }
+    await controls.updateComplete
+    controls.shadowRoot!.querySelector<HTMLButtonElement>(expanded ? ".main-button" : '[title="Snippets"]')!.click()
+    await controls.updateComplete
+    const menu = controls.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    const add = menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Add snippet"]')!
+    execute.mockClear()
+    for(const type of ["mouseenter", "mouseleave", "focus", "blur"]) add.dispatchEvent(new Event(type))
+    expect(execute.mock.calls.map(([action]) => action)).toEqual([
+      {type: "hoverSnippet", hovered: true}, {type: "hoverSnippet", hovered: false},
+      {type: "hoverSnippet", hovered: true}, {type: "hoverSnippet", hovered: false},
+    ])
     expect(loadAppSettings().userSnippets).toEqual([])
   })
 
