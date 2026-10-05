@@ -12,6 +12,7 @@ const assert = (condition: unknown, message: string) => { if(!condition) throw n
 const check = async (name: string, run: () => void | Promise<void>) => {
   const filter = new URLSearchParams(location.search).get("filter")
   if(filter && !name.includes(filter)) return
+  document.querySelector("#status")!.textContent = `Running: ${name}`
   try { await run(); checks.push({name}) }
   catch(error) { checks.push({name, error: String(error)}) }
 }
@@ -2767,7 +2768,7 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:500px"
   frame.srcdoc = `<!doctype html><html lang="en-US"><head>${policy}<script class="◆editor-only" nonce="${nonce}" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>😀 This is te<!--keep--><em class="meaning">h</em> example.</p></body></html>`
-  fixture.append(frame, toolbox)
+  document.body.append(frame, toolbox)
   const update = (event: MessageEvent) => {
     if(event.source === frame.contentWindow && isProofreadingStateChangeMessage(event.data)) toolbox.proofreadingState = event.data.detail
   }
@@ -2815,6 +2816,20 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(!toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Review"]'), "old Review buttons remain")
     const cards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
     const card = cards.find(card => card.querySelector(".proofreading-text")?.textContent === "teh")!
+    const verifyCardFooter = (card: HTMLElement, view: Window) => {
+      const footer = card.querySelector<HTMLElement>(".proofreading-actions")!
+      const add = footer.querySelector<HTMLButtonElement>(".proofreading-add-word")!
+      const ignore = footer.querySelector<HTMLButtonElement>(".proofreading-ignore")!
+      assert(footer === card.lastElementChild && !footer.querySelector(".proofreading-suggestion"), "card actions are mixed with suggestions")
+      const addRect = add.getBoundingClientRect(), ignoreRect = ignore.getBoundingClientRect()
+      assert(Math.abs(addRect.top + addRect.height / 2 - ignoreRect.top - ignoreRect.height / 2) < 1
+        && addRect.left < ignoreRect.left, `card actions do not share a left/right aligned footer: ${JSON.stringify({add: addRect.toJSON(), ignore: ignoreRect.toJSON()})}`)
+      for(const button of [add, ignore]) {
+        const style = view.getComputedStyle(button)
+        assert(style.backgroundColor === "rgba(0, 0, 0, 0)" && style.borderTopWidth === "0px" && style.outlineStyle === "none", "card footer actions have resting outlines or backgrounds")
+      }
+    }
+    verifyCardFooter(card, window)
     assert(card, "Review did not render Harper's issue card")
     assert(getComputedStyle(card).borderTopColor === "rgb(198, 40, 40)", "open Review did not highlight the hovered issue card")
     assert(getComputedStyle(reviewIcon).color !== "rgb(198, 40, 40)", "open Review still highlighted its icon")
@@ -2825,6 +2840,8 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     }
     assert(rightClick().defaultPrevented, "right-clicking an issue did not open its suggestions")
     const popup = doc.body.shadowRoot!.querySelector<HTMLElement>(".◆proofreading-popup")!
+    verifyCardFooter(popup.querySelector<HTMLElement>(".proofreading-card")!, childWindow)
+    assert(childWindow.getComputedStyle(popup.querySelector(".proofreading-message")!).fontSize === getComputedStyle(card.querySelector(".proofreading-message")!).fontSize, "popup and sidebar cards do not share typography")
     assert(popup?.matches(":popover-open"), "suggestions popup did not use the appendix top layer")
     const popupRect = popup.getBoundingClientRect()
     assert(popupRect.width > 0 && popupRect.height > 0 && popupRect.right <= childWindow.innerWidth && popupRect.bottom <= childWindow.innerHeight, "suggestions popup overflowed the iframe")
@@ -2839,7 +2856,7 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(toolbox.shadowRoot!.querySelector(".proofreading-card") === card, "checking replaced an unchanged issue card")
     const heading = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2")!
     const spinner = heading.querySelector<HTMLElement>(".proofreading-spinner")!
-    assert(spinner?.getAttribute("aria-label") === "Checking spelling and grammar", "heading has no accessible checking spinner")
+    assert(spinner?.getAttribute("aria-label") === "Checking spelling, grammar and style", "heading has no accessible checking spinner")
     assert(Math.abs(spinner.getBoundingClientRect().right - heading.getBoundingClientRect().right) < 1, "heading spinner is not aligned right")
     const recheck = feature.checkNow()
     assert(feature.state().issues.some(current => current.id === issue!.id), "rechecking removed the existing issue")
@@ -2913,7 +2930,69 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(child.toHTML(true) === before, "ignoring an issue changed the document")
     child.doc.redo()
     assert(doc.querySelector("p")!.textContent === "😀 This is the example.", "correction did not redo")
+    // Copying the demo from another editor can turn every space into NBSP.
+    // Check complete phrases without changing those authored spacing choices.
+    const demo = [
+      "There are some cases where the the standard grammar checkers don't cut it. That;s where Harper comes in handy.",
+      "Harper is an language checker for developers. It can detect improper capitalization and misspellled words, as well as a number of other issues. Like if you break up words you shoul dn't. Harper can be an lifesaver when writing technical documents, emails or other formal forms of communication.",
+      "Harper works everywhere, even when you're not online. Since your data never leaves your device, you don't ned too worry abuot us selling it or using it to train large language models.",
+      "The best part: Harper can give you feedback instantly. For most documents, Harper can serve up suggestions in under 10 ms, faster that Grammarly.",
+    ]
+    feature.setChecking(false)
+    doc.body.innerHTML = `<p><meta http-equiv="content-type" content="text/html; charset=utf-8"></p>${demo.map(text => `<p>${text.replaceAll(" ", "&nbsp;")}</p>`).join("")}`
+    child.doc.syncFromDOM()
+    const pasted = child.toHTML(true), pastedShared = child.doc.body.toString()
+    feature.setChecking(true)
+    await feature.checkNow()
+    const pastedIssues = feature.state().issues
+    assert(pastedIssues.length === 13, `NBSP demo lost findings: ${JSON.stringify(pastedIssues)}`)
+    assert(pastedIssues.filter(issue => issue.kind === "grammar").length === 1, "NBSP demo lost grammar findings")
+    assert(pastedIssues.filter(issue => issue.kind === "style").length === 7, "NBSP demo lost style findings")
+    assert(pastedIssues.some(issue => issue.text === "shoul\u00a0dn't" && issue.kind === "style"), "split-word correction lost authored spacing")
+    const repeated = pastedIssues.find(issue => issue.text === "the\u00a0the")!
+    assert(repeated && feature.selectIssue(repeated.id) && doc.getSelection()!.toString() === "the\u00a0the", "normalized phrase offsets do not select the authored text")
+    assert(registry.get("webwriter-grammar")?.size === 1, "NBSP grammar ranges are not painted")
+    const styleHighlight = registry.get("webwriter-style")!
+    assert(styleHighlight?.size === 7 && styleHighlight.type === "highlight", "style ranges are not painted")
+    const styleDecoration = childWindow.getComputedStyle(doc.querySelectorAll("p")[2], "::highlight(webwriter-style)")
+    assert(styleDecoration.textDecorationStyle === "wavy" && styleDecoration.textDecorationColor === "rgb(123, 63, 187)", "style underline is not purple and wavy")
+    const styleRange = Array.from(styleHighlight).find(range => range.toString() === "an")! as Range
+    const styleRect = styleRange.getBoundingClientRect()
+    const styleEvent = new childWindow.MouseEvent("contextmenu", {clientX: styleRect.left + styleRect.width / 2,
+      clientY: styleRect.top + styleRect.height / 2, button: 2, bubbles: true, composed: true, cancelable: true})
+    doc.elementFromPoint(styleEvent.clientX, styleEvent.clientY)!.dispatchEvent(styleEvent)
+    const stylePopup = doc.body.shadowRoot!.querySelector<HTMLElement>(".◆proofreading-popup")!
+    assert(styleEvent.defaultPrevented && stylePopup.getAttribute("aria-label") === "Style suggestions", "style popup does not show the category")
+    assert(!stylePopup.querySelector(".proofreading-add-word") && stylePopup.querySelector(".proofreading-actions") === stylePopup.querySelector(".proofreading-card")!.lastElementChild, "style popup has incorrect footer actions")
+    stylePopup.dispatchEvent(new childWindow.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    assert(child.toHTML(true) === pasted && child.doc.body.toString() === pastedShared, "checking normalized authored or shared HTML")
+    child.doc.stopCapturing()
+    assert(feature.applySuggestion(repeated.id, 0), "NBSP phrase correction failed")
+    assert(doc.querySelectorAll("p")[1].textContent === demo[0].replace("the the", "the").replaceAll(" ", "\u00a0"), "correction changed unrelated NBSP characters")
+    child.doc.undo()
+    assert(child.toHTML(true) === pasted, "NBSP phrase correction did not undo")
+    await feature.checkNow()
+    const ignored = feature.state().issues.find(issue => issue.text === "an")!
+    assert(feature.ignore(ignored.id), "could not ignore a style finding")
+    const ignoredParagraph = doc.querySelectorAll("p")[2]
+    const ignoredText = ignoredParagraph.firstChild as Text
+    ignoredText.insertData(0, "For example, ")
+    ignoredText.appendData(" More prose.")
+    await feature.checkNow()
+    assert(feature.state().issues.filter(issue => issue.text === "an").length === 1, "surrounding DOM edits restored the ignored occurrence")
+    ignoredText.insertData(ignoredText.data.indexOf("an"), "an language checker. ")
+    await feature.checkNow()
+    assert(feature.state().issues.filter(issue => issue.text === "an").length === 2, `ignoring an occurrence suppressed newly inserted identical text: ${JSON.stringify(feature.state().issues)}`)
+    const ignoredShared = (child.doc.body.toArray()[2] as Y.XmlElement).firstChild as Y.XmlText
+    child.doc.doc.transact(() => { ignoredShared.insert(0, "Remote ") }, "remote-peer")
+    await feature.checkNow()
+    assert(feature.state().issues.filter(issue => issue.text === "an").length === 2, "remote prose edits restored the ignored occurrence")
+    assert(ignoredParagraph.textContent!.startsWith("Remote For example, "), "remote edit did not reach the ignored paragraph")
+    child.doc.doc.transact(() => { ignoredShared.insert(ignoredText.data.indexOf("an\u00a0language"), "an language checker. ") }, "remote-peer")
+    await feature.checkNow()
+    assert(feature.state().issues.filter(issue => issue.text === "an").length === 3, "ignoring an occurrence suppressed identical text inserted remotely")
     child.destroy()
+    assert(!registry.has("webwriter-style"), "style underlines leaked on teardown")
     assert(!registry.has("webwriter-spelling") && !doc.body.shadowRoot!.querySelector(".◆proofreading-panel"), "proofreading leaked on teardown")
   }
   finally { window.removeEventListener("message", update); frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }

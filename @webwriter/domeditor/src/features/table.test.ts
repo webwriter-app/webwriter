@@ -75,13 +75,13 @@ describe("table grid", () => {
 
   it("returns an empty map when combined row and column spans exceed the occupancy limit", () => {
     const table = document.createElement("table")
-    table.innerHTML = `<tbody>${"<tr><td colspan='1000'></td></tr>".repeat(1001)}</tbody>`
+    table.innerHTML = `<tbody><tr>${"<td colspan='1000'></td>".repeat(10)}</tr>${"<tr></tr>".repeat(100)}</tbody>`
     document.body.replaceChildren(table)
 
     const map = buildTableMap(table)
     expect(map).toMatchObject({rows: [], matrix: [], placements: [], width: 0, limited: true})
     editor.features.table.actions.normalizeTable({type: "normalizeTable"})
-    expect(table.rows).toHaveLength(1001)
+    expect(table.rows).toHaveLength(101)
   })
 
   it("rejects paste growth beyond the map limit before changing the table", () => {

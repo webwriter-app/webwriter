@@ -54,8 +54,8 @@ function content(html: string) {
   editor.doc.stopCapturing()
 }
 
-function issueRects(rects = [new DOMRect(20, 30, 40, 20)]) {
-  const range = [...highlights.get("webwriter-spelling") as Set<Range>][0]
+function issueRects(rects = [new DOMRect(20, 30, 40, 20)], kind: "spelling" | "grammar" | "style" = "spelling") {
+  const range = [...highlights.get(`webwriter-${kind}`) as Set<Range>][0]
   vi.spyOn(range, "getClientRects").mockReturnValue(rects as unknown as DOMRectList)
 }
 
@@ -504,6 +504,37 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
   })
 
+  it("uses the shared style card in the appendix popup and removes its stylesheet on close and disable", async () => {
+    content("<p>teh example.</p><p>outside</p>")
+    check.mockResolvedValue([{...spelling(), kind: "style"}])
+    await start()
+    issueRects(undefined, "style")
+    const baseSheets = [...editor.appendix.adoptedStyleSheets]
+    contextMenu()
+    let popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    const card = popup.querySelector<HTMLElement>(".proofreading-card")!
+    const article = card.querySelector("article") ?? card
+    expect(popup.getAttribute("aria-label")).toBe("Style suggestions")
+    expect(card.querySelector(".proofreading-kind")?.textContent).toBe("Style")
+    expect(article.lastElementChild?.classList.contains("proofreading-actions")).toBe(true)
+    expect(article.querySelector(".proofreading-suggestions")?.nextElementSibling).toBe(article.lastElementChild)
+    expect(article.querySelector(".proofreading-add-word")).toBeNull()
+    expect(article.querySelector(".proofreading-ignore")).not.toBeNull()
+    expect(editor.appendix.adoptedStyleSheets.length).toBeGreaterThan(baseSheets.length)
+
+    contextMenu(document.querySelectorAll("p")[1], 500, 500)
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    expect([...editor.appendix.adoptedStyleSheets]).toEqual(baseSheets)
+
+    issueRects(undefined, "style")
+    contextMenu()
+    popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    expect(popup).not.toBeNull()
+    editor.features.proofreading.disable()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    expect([...editor.appendix.adoptedStyleSheets]).toEqual(baseSheets)
+  })
+
   it("defers checking during composition and forbids suggestions while editing is locked", async () => {
     const [issue] = await start()
     const lock = {}
@@ -529,6 +560,87 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.state().issues).toEqual([])
     expect(document.body.innerHTML).not.toContain("button")
     expect(editor.appendix.querySelector(".◆proofreading-panel")).toBeNull()
+  })
+
+  it("keeps only the ignored occurrence suppressed when surrounding paragraph text changes", async () => {
+    content("<p>teh example and teh again.</p>")
+    check.mockImplementation(async text => [...text.matchAll(/\bteh\b/g)].map(match => spelling(match.index, match.index + 3)))
+    const [issue] = await start()
+    const before = editor.toHTML(true), shared = editor.doc.body.toString()
+    expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
+    expect(editor.toHTML(true)).toBe(before)
+    expect(editor.doc.body.toString()).toBe(shared)
+    const text = document.querySelector("p")!.firstChild as Text
+    text.insertData(0, "Here is ")
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    text.replaceData(text.data.indexOf("example"), 7, "another example")
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toMatchObject([{start: text.data.lastIndexOf("teh"), text: "teh"}])
+    text.appendData(" More prose.")
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+  })
+
+  it("keeps an ignored phrase across inline formatting after remote edits and undo", async () => {
+    content('<p>Intro te<!--keep--><em>h</em> example.</p><p>teh elsewhere.</p>')
+    check.mockImplementation(async text => {
+      const start = text.indexOf("teh")
+      return start < 0 ? [] : [spelling(start, start + 3)]
+    })
+    const [issue] = await start()
+    expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
+    const paragraph = editor.doc.body.firstChild as Y.XmlElement
+    const text = paragraph.firstChild as Y.XmlText
+    editor.doc.doc.transact(() => { text.insert(0, "Remote ") }, "remote-peer")
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toMatchObject([{text: "teh"}])
+    expect(document.querySelectorAll("p")[0].textContent).toBe("Remote Intro teh example.")
+    const localText = document.querySelector("p")!.firstChild as Text
+    localText.insertData(0, "Local ")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    editor.doc.undo()
+    await editor.features.proofreading.checkNow()
+    expect(document.querySelector("p")!.textContent).toBe("Remote Intro teh example.")
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    editor.doc.redo()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    expect(document.querySelector("em")!.textContent).toBe("h")
+    expect(document.querySelector("p")!.innerHTML).toContain("<!--keep-->")
+  })
+
+  it("reviews changed ignored text and new occurrences after the original is removed", async () => {
+    const [issue] = await start()
+    expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
+    const text = document.querySelector("p")!.firstChild as Text
+    text.replaceData(0, 3, "tih")
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toMatchObject([{text: "tih"}])
+    document.querySelector("p")!.remove()
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "teh example."
+    document.body.append(paragraph)
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toMatchObject([{text: "teh"}])
+  })
+
+  it("reviews a different rule on ignored text and clears ignores when disabled", async () => {
+    const [issue] = await start()
+    expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
+    check.mockResolvedValue([{...spelling(), message: "Another spelling rule."}])
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    editor.features.proofreading.disable()
+    check.mockResolvedValue([spelling()])
+    editor.features.proofreading.enable()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
   })
 
   it("adds words from the appendix popup without authored artifacts and rechecks after removal", async () => {

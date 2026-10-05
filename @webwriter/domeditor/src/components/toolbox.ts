@@ -1,6 +1,7 @@
 import {css, html, nothing} from "lit"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
+import {proofreadingCardStyles, renderProofreadingCard} from "./proofreading-card"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
@@ -57,6 +58,7 @@ export class DomEditorToolbox extends EditingControls {
 
   static styles = css`
     ${aiChatStyles}
+    ${proofreadingCardStyles}
     ${EditingControls.styles}
 
   .developer-console-controls {display: flex; align-items: center; gap: 0; background: #e9e9e9}
@@ -290,6 +292,7 @@ export class DomEditorToolbox extends EditingControls {
 
     .toolbox-tab[data-hover-kind="spelling"] .toolbox-tab-icon {color: #c62828}
     .toolbox-tab[data-hover-kind="grammar"] .toolbox-tab-icon {color: #1769aa}
+    .toolbox-tab[data-hover-kind="style"] .toolbox-tab-icon {color: #7b3fbb}
 
     .toolbox-tab-button:focus-visible,
     .toolbox-tab-close:focus-visible {
@@ -372,61 +375,6 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     .proofreading-issues {display: grid; gap: .5rem}
-    .proofreading-card {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: .35rem;
-      padding: .55rem;
-      border: 1px solid #d5dce5;
-      border-radius: .4rem;
-      background: #fff;
-      box-shadow: 0 1px 2px rgb(31 41 55 / 5%);
-    }
-    .proofreading-card[data-hover-kind="spelling"] {border-color: #c62828; background: #fff6f6}
-    .proofreading-card[data-hover-kind="grammar"] {border-color: #1769aa; background: #f3f8fd}
-    .proofreading-issue {
-      grid-column: 1 / -1;
-      display: grid;
-      gap: .22rem;
-      width: 100%;
-      min-width: 0;
-      padding: 0;
-      border: 0;
-      text-align: left;
-      color: inherit;
-      background: transparent;
-      cursor: pointer;
-    }
-    .proofreading-issue:hover:not(:disabled) .proofreading-text {color: #175a9e}
-    .proofreading-kind {color: #64748b; font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase}
-    .proofreading-message, .proofreading-text {min-width: 0; overflow-wrap: anywhere}
-    .proofreading-message {font-size: .72rem; line-height: 1.35}
-    .proofreading-text {font-size: .78rem; font-weight: 650}
-    .proofreading-suggestion {
-      justify-self: start;
-      min-width: 0;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-      padding: .3rem .5rem;
-      border: 1px solid #b8d6f5;
-      border-radius: .3rem;
-      color: #154d80;
-      background: #eff7ff;
-      font: 600 .72rem/1.2 system-ui, sans-serif;
-      cursor: pointer;
-    }
-    .proofreading-ignore {
-      justify-self: end;
-      padding: .25rem .35rem;
-      border: 0;
-      color: #64748b;
-      background: transparent;
-      font: .68rem/1.2 system-ui, sans-serif;
-      cursor: pointer;
-    }
-    .proofreading-card button:disabled {opacity: .5; cursor: default}
-    .proofreading-card button:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
-
     .toolbox-tab-label {
       display: block;
       max-width: 0;
@@ -640,36 +588,19 @@ export class DomEditorToolbox extends EditingControls {
     const editingLocked = this.htmlPending || this.historyState.preview !== null
     const cardsLocked = editingLocked || !state.ready || state.loading
     return html`<section class="proofreading-section" aria-labelledby="proofreading-title">
-      <h2 id="proofreading-title">Spelling &amp; Grammar
-        ${!state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling and grammar"></span>` : ""}
-        ${state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling and grammar"></span>` : ""}
+      <h2 id="proofreading-title">Spelling, Grammar &amp; Style
+        ${!state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling, grammar and style"></span>` : ""}
+        ${state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling, grammar and style"></span>` : ""}
       </h2>
       ${state.error ? html`<div class="proofreading-error" role="alert">
-        <span>Could not load spelling &amp; grammar checking.</span>
+        <span>Could not load proofreading.</span>
         <button class="proofreading-retry" type="button" ?disabled=${editingLocked}
           @click=${() => this.dispatchProofreadingAction({type: "retryProofreading"})}>Retry</button>
       </div>` : ""}
-      ${state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling or grammar issues found.</p>` : ""}
+      ${state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling, grammar or style issues found.</p>` : ""}
       <div class="proofreading-issues">
-        ${repeat(state.issues, issue => issue.id, issue => html`<article class="proofreading-card" data-hover-kind=${issue.id === hoveredIssue?.id ? issue.kind : nothing}>
-          <button class="proofreading-issue" type="button" ?disabled=${cardsLocked}
-            aria-label=${`Go to ${issue.kind} issue: ${issue.text}`}
-            @click=${() => this.dispatchProofreadingAction({type: "selectProofreadingIssue", id: issue.id})}>
-            <span class="proofreading-kind">${issue.kind === "spelling" ? "Spelling" : "Grammar"}</span>
-            <span class="proofreading-message">${issue.message}</span>
-            <span class="proofreading-text">${issue.text}</span>
-          </button>
-          ${issue.suggestions.map((suggestion, index) => html`<button class="proofreading-suggestion" type="button"
-            ?disabled=${cardsLocked} aria-label=${`Apply suggestion: ${suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text}`}
-            @click=${() => this.dispatchProofreadingAction({type: "applyProofreadingSuggestion", id: issue.id, index})}>
-            ${suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text}
-          </button>`)}
-          ${issue.kind === "spelling" ? html`<button class="proofreading-ignore proofreading-add-word" type="button" ?disabled=${cardsLocked}
-            aria-label=${`Add ${issue.text} to local dictionary`}
-            @click=${() => this.dispatchProofreadingAction({type: "addProofreadingWord", id: issue.id})}>Add to dictionary</button>` : ""}
-          <button class="proofreading-ignore" type="button" ?disabled=${cardsLocked}
-            @click=${() => this.dispatchProofreadingAction({type: "ignoreProofreadingIssue", id: issue.id})}>Ignore</button>
-        </article>`)}
+        ${repeat(state.issues, issue => issue.id, issue => renderProofreadingCard(issue,
+          action => this.dispatchProofreadingAction(action), {disabled: cardsLocked, hovered: issue.id === hoveredIssue?.id}))}
       </div>
     </section>`
   }

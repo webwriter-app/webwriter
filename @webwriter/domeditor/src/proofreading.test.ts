@@ -137,6 +137,20 @@ describe("Harper proofreader adapter", () => {
     await proofreader.dispose()
   })
 
+  it("checks NBSP-separated phrases without changing their original UTF-16 offsets", async () => {
+    const record = lint({start: 3, end: 10, problem: "the the", kind: "Repetition"})
+    const proofreader = await createProofreader()
+    harness.instance.lint.mockResolvedValue([record.item])
+    const text = "😀\u00a0the\u00a0the"
+    const issues = await proofreader.check(text, "en-US")
+    expect(harness.instance.lint).toHaveBeenCalledWith("😀 the the", {language: "plaintext"})
+    expect(issues).toMatchObject([{start: 3, end: 10, kind: "grammar"}])
+    expect(text.slice(issues[0].start, issues[0].end)).toBe("the\u00a0the")
+    expect(record.span.free).toHaveBeenCalledOnce()
+    expect(record.item.free).toHaveBeenCalledOnce()
+    await proofreader.dispose()
+  })
+
 
   it("confirms Harper 2.10.0 worker-facing WASM spans use UTF-16 offsets", async () => {
     const { LocalLinter } = await vi.importActual<typeof import("harper.js")>("harper.js")
@@ -217,6 +231,23 @@ describe("Harper proofreader adapter", () => {
     const grammar = lint({start: 4, end: 6, problem: "is", kind: "Agreement"})
     harness.instance.lint.mockResolvedValue([typo.item, grammar.item])
     expect((await proofreader.check("teh is", "en")).map(issue => issue.kind)).toEqual(["spelling", "grammar"])
+    await proofreader.dispose()
+  })
+
+  it("maps Harper lint categories to spelling, style, or grammar", async () => {
+    const proofreader = await createProofreader()
+    const lints = [
+      lint({start: 0, end: 3, problem: "abc", kind: "Spelling"}),
+      lint({start: 0, end: 3, problem: "abc", kind: "tYpO"}),
+      lint({start: 0, end: 3, problem: "abc", kind: "Style"}),
+      lint({start: 0, end: 3, problem: "abc", kind: "WORDCHOICE"}),
+      lint({start: 0, end: 3, problem: "abc", kind: "mIsCeLlAnEoUs"}),
+      lint({start: 0, end: 3, problem: "abc", kind: "Agreement"}),
+    ]
+    harness.instance.lint.mockResolvedValue(lints.map(record => record.item))
+    expect((await proofreader.check("abc", "en")).map(issue => issue.kind)).toEqual([
+      "spelling", "spelling", "style", "style", "style", "grammar",
+    ])
     await proofreader.dispose()
   })
 

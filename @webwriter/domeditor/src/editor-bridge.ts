@@ -389,7 +389,7 @@ export type ProofreadingState = {
     id: string
     start: number
     end: number
-    kind: "spelling" | "grammar"
+    kind: "spelling" | "grammar" | "style"
     message: string
     text: string
     suggestions: {kind: "replace" | "remove" | "insertAfter", text: string}[]
@@ -824,7 +824,7 @@ export function isProofreadingStateChangeMessage(value: unknown): value is Proof
       if(!isRecord(issue)) return false
       return typeof issue.id === "string" && typeof issue.message === "string" && typeof issue.text === "string"
         && isNonnegativeInteger(issue.start) && isNonnegativeInteger(issue.end) && issue.end > issue.start
-        && (issue.kind === "spelling" || issue.kind === "grammar")
+        && (issue.kind === "spelling" || issue.kind === "grammar" || issue.kind === "style")
         && Array.isArray(issue.suggestions) && issue.suggestions.every(suggestion => isRecord(suggestion)
           && ["replace", "remove", "insertAfter"].includes(suggestion.kind as string) && typeof suggestion.text === "string")
     })

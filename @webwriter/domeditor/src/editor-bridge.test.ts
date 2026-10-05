@@ -13,11 +13,13 @@ import {
   isMarkStateChangeMessage,
   isCommentStateChangeMessage,
   isPresenceChangeMessage,
+  isProofreadingStateChangeMessage,
   isSelectionChangeMessage,
   loadWidgetsMessage,
   markStateChangeEvent,
   commentStateChangeEvent,
   presenceChangeEvent,
+  proofreadingStateChangeEvent,
   selectionChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
@@ -33,6 +35,29 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("accepts the style proofreading category and rejects unknown categories", () => {
+    const message = {
+      type: proofreadingStateChangeEvent,
+      detail: {
+        enabled: true,
+        loading: false,
+        ready: true,
+        checking: false,
+        error: null,
+        hoveredIssueId: null,
+        issues: [{
+          id: "issue-1", start: 0, end: 3, kind: "style", message: "Style suggestion", text: "abc",
+          suggestions: [{kind: "replace", text: "xyz"}],
+        }],
+      },
+    }
+    expect(isProofreadingStateChangeMessage(message)).toBe(true)
+    expectAllRejected(isProofreadingStateChangeMessage, [
+      {...message, detail: {...message.detail, issues: [{...message.detail.issues[0], kind: "tone"}]}},
+      {...message, detail: {...message.detail, issues: [{...message.detail.issues[0], kind: null}]}},
+    ])
+  })
+
   it("validates complete in-document comment state", () => {
     const message = {
       type: commentStateChangeEvent,

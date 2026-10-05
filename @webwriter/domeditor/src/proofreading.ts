@@ -1,7 +1,7 @@
 export type ProofreadingIssue = {
   start: number
   end: number
-  kind: "spelling" | "grammar"
+  kind: "spelling" | "grammar" | "style"
   message: string
   suggestions: { kind: "replace" | "remove" | "insertAfter"; text: string }[]
 }
@@ -122,6 +122,9 @@ export async function createProofreader(signal?: AbortSignal): Promise<Proofread
   return {
     check(text, language, dictionary = []) {
       if (disposed) return Promise.reject(new Error("Proofreader has been disposed"))
+      // Pasted HTML often uses NBSP between words. Harper's phrase rules
+      // require ordinary spaces; this one-to-one projection keeps DOM offsets.
+      const source = text.replaceAll("\u00a0", " ")
       const words = normalizeProofreadingDictionary(dictionary)
       const wordSet = new Set(words.map(word => word.toLowerCase()))
       const nextDictionaryKey = JSON.stringify(words)
@@ -138,7 +141,7 @@ export async function createProofreader(signal?: AbortSignal): Promise<Proofread
             currentDialect = dialect
             dictionaryKey = nextDictionaryKey
           }
-          const lints = await linter.lint(text, { language: "plaintext" })
+          const lints = await linter.lint(source, { language: "plaintext" })
           const issues: ProofreadingIssue[] = []
           let lintIndex = 0
           try {
@@ -150,8 +153,13 @@ export async function createProofreader(signal?: AbortSignal): Promise<Proofread
                 span = lint.span()
                 const problemText = lint.get_problem_text()
                 const { start, end } = span
-                if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > text.length || text.slice(start, end) !== problemText) continue
-                const kind = ["spelling", "typo"].includes(lint.lint_kind().toLowerCase()) ? "spelling" : "grammar"
+                if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > source.length || source.slice(start, end) !== problemText) continue
+                const lintKind = lint.lint_kind().toLowerCase()
+                const kind = ["spelling", "typo"].includes(lintKind)
+                  ? "spelling"
+                  : ["style", "wordchoice", "miscellaneous"].includes(lintKind)
+                    ? "style"
+                    : "grammar"
                 // Named typo rules can still flag an explicitly accepted word.
                 if(kind === "spelling" && wordSet.has(problemText.toLowerCase())) continue
 

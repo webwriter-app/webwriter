@@ -1,14 +1,18 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {createProofreader, normalizeProofreadingDictionary, type Proofreader, type ProofreadingIssue} from "../proofreading"
-import {$, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
+import {$, createStylesheet, adoptStylesheet, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
+import {render} from "lit"
+import {proofreadingCardStyles, proofreadingKindLabels, renderProofreadingCard} from "../components/proofreading-card"
 import {getDocumentRoot} from "../document-template"
 import type {Schema} from "../schema"
 import {proofreadingDictionaryAddEvent, type ProofreadingState} from "../editor-bridge"
+import type {RelativePosition} from "yjs"
 
 type TextPart = {node: Text, start: number, value: string}
 type TextRun = {text: string, language: string, parts: TextPart[]}
 type Diagnostic = ProofreadingIssue & {id: string, run: TextRun, range: Range}
-const highlightNames = {spelling: "webwriter-spelling", grammar: "webwriter-grammar"} as const
+type IgnoredIssue = {start: RelativePosition, end: RelativePosition, range: Range, language: string, text: string, kind: ProofreadingIssue["kind"], message: string}
+const highlightNames = {spelling: "webwriter-spelling", grammar: "webwriter-grammar", style: "webwriter-style"} as const
 
 /** A disposable projection of eligible prose, never an editor document model.
  * Formatting stays transparent; unrelated flows, languages and atomic hosts
@@ -89,13 +93,14 @@ export class ProofreadingFeature extends EditorFeature {
   private lastStatus = ""
   private error: string | null = null
   private diagnostics: Diagnostic[] = []
-  private ignored = new Set<string>()
+  private ignored: IgnoredIssue[] = []
   private dictionary: string[] = []
   private reader: Promise<Proofreader> | null = null
   private readerAbort: AbortController | null = null
   private operation: Promise<void> | null = null
   private hoveredIssueId: string | null = null
   private popup: HTMLElement | null = null
+  private popupStylesheet: CSSStyleSheet | null = null
   private popupIssueId: string | null = null
   private popupSuggestions = ""
   private readonly handleBlur = () => { this.closePopup(); this.setHoveredIssue(null) }
@@ -176,7 +181,7 @@ export class ProofreadingFeature extends EditorFeature {
     this.observer = null
     window.removeEventListener("blur", this.handleBlur)
     this.clearDiagnostics()
-    this.ignored.clear()
+    this.ignored = []
     const reader = this.reader
     this.reader = null
     this.readerAbort?.abort()
@@ -318,6 +323,10 @@ export class ProofreadingFeature extends EditorFeature {
     const focused = this.popup && this.popup.contains(this.editor.appendix.activeElement)
     this.popup?.remove()
     this.popup = null
+    if(this.popupStylesheet) {
+      this.editor.appendix.adoptedStyleSheets = this.editor.appendix.adoptedStyleSheets.filter(sheet => sheet !== this.popupStylesheet)
+      this.popupStylesheet = null
+    }
     this.popupIssueId = null
     this.popupSuggestions = ""
     if(restoreFocus && focused) document.body.focus()
@@ -331,37 +340,21 @@ export class ProofreadingFeature extends EditorFeature {
     popup.className = "◆ ◆editor-only ◆proofreading-popup"
     popup.setAttribute("part", "proofreading-popup")
     popup.setAttribute("role", "menu")
-    popup.setAttribute("aria-label", `${issue.kind === "spelling" ? "Spelling" : "Grammar"} suggestions`)
+    popup.setAttribute("aria-label", `${proofreadingKindLabels[issue.kind]} suggestions`)
     popup.setAttribute("popover", "manual")
-    const message = document.createElement("p")
-    message.setAttribute("part", "proofreading-popup-message")
-    message.textContent = issue.message
-    const text = document.createElement("strong")
-    text.setAttribute("part", "proofreading-popup-text")
-    text.textContent = issue.run.text.slice(issue.start, issue.end)
-    popup.append(text, message)
-    const button = (label: string, action: () => void) => {
-      const element = document.createElement("button")
-      element.type = "button"
-      element.setAttribute("role", "menuitem")
-      element.setAttribute("part", "proofreading-popup-button")
-      element.textContent = label
-      element.addEventListener("click", () => {
-        if(this.popup !== popup || !popup.isConnected) return
-        this.closePopup(true)
-        action()
-      })
-      popup.append(element)
-    }
-    issue.suggestions.forEach((suggestion, index) => button(suggestion.kind === "remove" ? "Remove"
-      : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text,
-      () => { this.applySuggestion(issue.id, index) }))
-    if(issue.kind === "spelling") button("Add to dictionary", () => { this.addWord(issue.id) })
-    button("Ignore", () => { this.ignore(issue.id) })
+    render(renderProofreadingCard({...issue, text: issue.run.text.slice(issue.start, issue.end)}, action => {
+      if(this.popup !== popup || !popup.isConnected) return
+      this.closePopup(true)
+      if(action.type === "applyProofreadingSuggestion") this.applySuggestion(action.id, action.index)
+      else if(action.type === "addProofreadingWord") this.addWord(action.id)
+      else if(action.type === "ignoreProofreadingIssue") this.ignore(action.id)
+    }, {popup: true}), popup)
     this.popup = popup
     this.popupIssueId = issue.id
     this.popupSuggestions = JSON.stringify(issue.suggestions)
     this.editor.addAppendix(popup)
+    this.popupStylesheet = createStylesheet(proofreadingCardStyles.cssText)
+    adoptStylesheet(this.editor.appendix, this.popupStylesheet)
     popup.showPopover?.()
     const rect = popup.getBoundingClientRect()
     popup.style.left = `${Math.max(6, Math.min(anchor.left, innerWidth - rect.width - 6))}px`
@@ -415,7 +408,7 @@ export class ProofreadingFeature extends EditorFeature {
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
             for(const issue of issues) {
               const range = runRange(run, issue.start, issue.end)
-              if(range && !this.isDictionaryWord(run, issue) && !this.ignored.has(this.ignoreKey(run, issue))) {
+              if(range && !this.isDictionaryWord(run, issue) && !this.isIgnored(run, issue, range)) {
                 const previous = this.diagnostics.find(diagnostic => sameRun(run, diagnostic.run)
                   && diagnostic.start === issue.start && diagnostic.end === issue.end
                   && diagnostic.kind === issue.kind && diagnostic.message === issue.message)
@@ -429,7 +422,7 @@ export class ProofreadingFeature extends EditorFeature {
         if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
         const current = proofreadingRuns(getDocumentRoot(), this.editor.schema)
         this.diagnostics = diagnostics.filter(diagnostic => current.some(run => sameRun(run, diagnostic.run))
-          && !this.ignored.has(this.ignoreKey(diagnostic.run, diagnostic)))
+          && !this.isIgnored(diagnostic.run, diagnostic, diagnostic.range))
         this.paint()
         this.postStatus()
       }
@@ -462,7 +455,7 @@ export class ProofreadingFeature extends EditorFeature {
     if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId
       && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
     if(!globalThis.CSS?.highlights || typeof globalThis.Highlight !== "function") return
-    for(const kind of ["spelling", "grammar"] as const) {
+    for(const kind of ["spelling", "grammar", "style"] as const) {
       const ranges = new Set(current.filter(diagnostic => diagnostic.kind === kind).map(diagnostic => diagnostic.range))
       const name = highlightNames[kind]
       if(!ranges.size) {
@@ -472,7 +465,7 @@ export class ProofreadingFeature extends EditorFeature {
       let highlight = CSS.highlights.get(name)
       if(!highlight) {
         highlight = new Highlight()
-        highlight.type = kind === "spelling" ? "spelling-error" : "grammar-error"
+        highlight.type = kind === "spelling" ? "spelling-error" : kind === "grammar" ? "grammar-error" : "highlight"
         CSS.highlights.set(name, highlight)
       }
       for(const range of highlight) if(!ranges.has(range as Range)) highlight.delete(range)
@@ -535,8 +528,31 @@ export class ProofreadingFeature extends EditorFeature {
     return true
   }
 
-  private ignoreKey(run: TextRun, issue: ProofreadingIssue) {
-    return JSON.stringify([run.language, run.text, issue.start, issue.end, issue.kind, issue.message])
+  private isIgnored(run: TextRun, issue: ProofreadingIssue, range: Range) {
+    return this.ignored.some(ignored => {
+      if(ignored.language !== run.language || ignored.kind !== issue.kind || ignored.message !== issue.message
+        || ignored.text !== run.text.slice(issue.start, issue.end)) return false
+      // Native ranges track separate DOM edits even when one reconciliation
+      // replaces the shared text between them. The end keeps the original
+      // occurrence anchored when text is inserted at its starting boundary.
+      let matches: boolean
+      if(ignored.range.endContainer.isConnected && ignored.range.toString().endsWith(ignored.text)) {
+        matches = ignored.range.endContainer === range.endContainer && ignored.range.endOffset === range.endOffset
+      }
+      else {
+        const start = this.editor.doc.domPointFromRelativePosition(ignored.start)
+        const end = this.editor.doc.domPointFromRelativePosition(ignored.end)
+        matches = start?.node === range.startContainer && start.offset === range.startOffset
+          && end?.node === range.endContainer && end.offset === range.endOffset
+      }
+      if(!matches) return false
+      // Refresh both anchors after a check so subsequent DOM or remote edits
+      // start from the same occurrence in the reconciled document.
+      ignored.range = range.cloneRange()
+      ignored.start = this.editor.doc.relativePositionFromDOMPoint(range.startContainer, range.startOffset) ?? ignored.start
+      ignored.end = this.editor.doc.relativePositionFromDOMPoint(range.endContainer, range.endOffset) ?? ignored.end
+      return true
+    })
   }
 
   private isDictionaryWord(run: TextRun, issue: ProofreadingIssue) {
@@ -570,7 +586,14 @@ export class ProofreadingFeature extends EditorFeature {
   ignore(id: string) {
     const diagnostic = this.resolve(id)
     if(!diagnostic) return false
-    this.ignored.add(this.ignoreKey(diagnostic.run, diagnostic))
+    // Stable shared positions keep this occurrence ignored as surrounding
+    // prose changes, without suppressing the same error elsewhere.
+    this.editor.doc.syncFromDOM()
+    const start = this.editor.doc.relativePositionFromDOMPoint(diagnostic.range.startContainer, diagnostic.range.startOffset)
+    const end = this.editor.doc.relativePositionFromDOMPoint(diagnostic.range.endContainer, diagnostic.range.endOffset)
+    if(!start || !end) return false
+    this.ignored.push({start, end, range: diagnostic.range.cloneRange(), language: diagnostic.run.language,
+      text: diagnostic.run.text.slice(diagnostic.start, diagnostic.end), kind: diagnostic.kind, message: diagnostic.message})
     this.diagnostics = this.diagnostics.filter(candidate => candidate.id !== id)
     this.paint()
     this.postStatus()

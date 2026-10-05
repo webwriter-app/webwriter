@@ -58,7 +58,7 @@ describe("toolbox", () => {
     expect(toolbox.historyState.versions[0].checkpointIds).toEqual([latest.id, "missing", undo.id, first.id, initial.id])
   })
 
-  it("shows generic loading failure in Spelling & Grammar and dispatches a retry", async () => {
+  it("shows a generic proofreading loading failure and dispatches a retry", async () => {
     const toolbox = await mountToolbox()
     toolbox.proofreadingState = {...emptyProofreadingState(), error: "worker stack trace", loading: false}
     await toolbox.updateComplete
@@ -72,7 +72,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const failure = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-error")!
     expect(failure.getAttribute("role")).toBe("alert")
-    expect(failure.textContent).toContain("Could not load spelling & grammar checking.")
+    expect(failure.textContent).toContain("Could not load proofreading.")
     expect(failure.textContent).not.toContain("worker stack trace")
 
     const retryRequest = vi.fn()
@@ -101,7 +101,7 @@ describe("toolbox", () => {
     }
     await toolbox.updateComplete
     const card = toolbox.shadowRoot!.querySelector(".proofreading-card")!
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling & Grammar")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling, Grammar & Style")
     expect(card.textContent).toContain("Possible spelling mistake")
     expect(card.textContent).toContain("teh")
     const action = vi.fn()
@@ -113,6 +113,36 @@ describe("toolbox", () => {
       {type: "selectProofreadingIssue", id: "issue-1"},
       {type: "applyProofreadingSuggestion", id: "issue-1", index: 0},
       {type: "ignoreProofreadingIssue", id: "issue-1"},
+    ])
+  })
+
+  it("renders style issue labels and hover state with only the Ignore card action", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {
+      ...emptyProofreadingState(), ready: true, hoveredIssueId: "style-1",
+      issues: [{id: "style-1", start: 0, end: 3, kind: "style", message: "Consider a clearer phrase", text: "abc",
+        suggestions: [{kind: "replace", text: "xyz"}]}],
+    }
+    await toolbox.updateComplete
+    const card = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-card")!
+    expect(card.querySelector(".proofreading-kind")?.textContent).toBe("Style")
+    expect(card.getAttribute("data-hover-kind")).toBe("style")
+    const article = card.querySelector("article") ?? card
+    expect(article.lastElementChild?.classList.contains("proofreading-actions")).toBe(true)
+    expect(article.querySelector(".proofreading-suggestions")?.nextElementSibling).toBe(article.lastElementChild)
+    expect(article.querySelector(".proofreading-add-word")).toBeNull()
+    expect(article.querySelector(".proofreading-ignore")).not.toBeNull()
+
+    const action = vi.fn()
+    toolbox.addEventListener("proofreading-action", action)
+    card.querySelector<HTMLButtonElement>(".proofreading-issue")!.click()
+    card.querySelector<HTMLButtonElement>(".proofreading-suggestion")!.click()
+    card.querySelector<HTMLButtonElement>(".proofreading-ignore")!.click()
+    expect(action.mock.calls.map(([event]) => event.detail)).toEqual([
+      {type: "selectProofreadingIssue", id: "style-1"},
+      {type: "applyProofreadingSuggestion", id: "style-1", index: 0},
+      {type: "ignoreProofreadingIssue", id: "style-1"},
     ])
   })
 
@@ -158,14 +188,14 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     let spinner = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2 .proofreading-spinner")!
     expect(spinner.getAttribute("role")).toBe("status")
-    expect(spinner.getAttribute("aria-label")).toBe("Loading spelling and grammar")
+    expect(spinner.getAttribute("aria-label")).toBe("Loading spelling, grammar and style")
 
     const issue = {id: "stable-issue", start: 0, end: 3, kind: "spelling" as const, message: "Possible spelling mistake", text: "teh", suggestions: []}
     toolbox.proofreadingState = {...emptyProofreadingState(), ready: true, checking: true, issues: [issue]}
     await toolbox.updateComplete
     const card = toolbox.shadowRoot!.querySelector(".proofreading-card")
     spinner = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2 .proofreading-spinner")!
-    expect(spinner.getAttribute("aria-label")).toBe("Checking spelling and grammar")
+    expect(spinner.getAttribute("aria-label")).toBe("Checking spelling, grammar and style")
     expect(toolbox.shadowRoot!.querySelector(".proofreading-status[role=status]")).toBeNull()
 
     toolbox.proofreadingState = {...emptyProofreadingState(), ready: true, issues: [issue]}
@@ -175,7 +205,7 @@ describe("toolbox", () => {
 
     toolbox.proofreadingState = {...emptyProofreadingState(), ready: true}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")?.textContent).toContain("No spelling or grammar issues found.")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")?.textContent).toContain("No spelling, grammar or style issues found.")
 
     toolbox.proofreadingState = {...emptyProofreadingState(), error: "unavailable"}
     await toolbox.updateComplete
@@ -701,7 +731,7 @@ describe("toolbox", () => {
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Versions"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling & Grammar")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling, Grammar & Style")
     expect(drawers.find(drawer => drawer.label === "Comments")!
       .querySelector('textarea[aria-label="Comment text"]')).not.toBeNull()
 
