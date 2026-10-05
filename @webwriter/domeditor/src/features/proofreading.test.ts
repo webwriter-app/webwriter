@@ -42,8 +42,8 @@ afterEach(() => {
   document.documentElement.removeAttribute("lang")
 })
 
-async function start(kind: "spelling" | "grammar" | "all" = "all") {
-  editor.features.proofreading.open(kind)
+async function start() {
+  editor.features.proofreading.retry()
   await editor.features.proofreading.checkNow()
   return editor.features.proofreading.state().issues
 }
@@ -52,6 +52,21 @@ function content(html: string) {
   document.body.innerHTML = html
   editor.doc.syncFromDOM()
   editor.doc.stopCapturing()
+}
+
+function issueRects(rects = [new DOMRect(20, 30, 40, 20)]) {
+  const range = [...highlights.get("webwriter-spelling") as Set<Range>][0]
+  vi.spyOn(range, "getClientRects").mockReturnValue(rects as unknown as DOMRectList)
+}
+
+function contextMenu(target: Element = document.querySelector("p")!, clientX = 25, clientY = 35) {
+  const event = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true, button: 2, clientX, clientY})
+  target.dispatchEvent(event)
+  return event
+}
+
+function hover(target: Element = document.querySelector("p")!, clientX = 25, clientY = 35) {
+  target.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, clientX, clientY}))
 }
 
 describe("proofreading prose extraction", () => {
@@ -80,6 +95,174 @@ describe("proofreading prose extraction", () => {
 })
 
 describe("proofreading feature", () => {
+  it("anchors popups below the clicked issue line rather than at the pointer", async () => {
+    await start()
+    issueRects([new DOMRect(20, 30, 40, 20), new DOMRect(5, 60, 20, 20)])
+    contextMenu(document.querySelector("p")!, 10, 65)
+    const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    expect(popup.style.left).toBe("6px")
+    expect(popup.style.top).toBe("86px")
+  })
+
+  it("keeps popups inside the viewport and flips above when there is no room below", async () => {
+    await start()
+    const left = innerWidth - 45, top = innerHeight - 30
+    issueRects([new DOMRect(left, top, 40, 20)])
+    const original = HTMLElement.prototype.getBoundingClientRect
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+      return this.classList.contains("◆proofreading-popup") ? new DOMRect(0, 0, 270, 150) : original.call(this)
+    })
+    try {
+      contextMenu(document.querySelector("p")!, left + 5, top + 5)
+      const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+      expect(popup.style.left).toBe(`${innerWidth - 270 - 6}px`)
+      expect(popup.style.top).toBe(`${top - 150 - 6}px`)
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it("keeps opening suggestions on repeated right-clicks without authored artifacts", async () => {
+    content('<p>te<!--keep--><em>h</em> example.</p>')
+    await start()
+    issueRects()
+    const before = editor.toHTML(true), shared = editor.doc.body.toString()
+    expect(contextMenu().defaultPrevented).toBe(true)
+    const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    expect(popup.getAttribute("role")).toBe("menu")
+    expect(popup.textContent).toContain("Check this spelling.")
+    expect(popup.querySelector("button")?.textContent).toBe("the")
+    expect(editor.toHTML(true)).toBe(before)
+    expect(editor.doc.body.toString()).toBe(shared)
+    expect(document.body.querySelector(".◆proofreading-popup")).toBeNull()
+    expect(contextMenu().defaultPrevented).toBe(true)
+    expect(popup.isConnected).toBe(false)
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).not.toBeNull()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")!.textContent).not.toContain("Right-click again")
+    editor.appendix.querySelector<HTMLButtonElement>(".◆proofreading-popup button")!.click()
+    expect(document.querySelector("p")!.textContent).toBe("the example.")
+    expect(document.body.innerHTML).toContain("<!--keep-->")
+    expect(document.querySelector("em")).not.toBeNull()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
+  it("allows the native menu after ignoring a popup issue and keeps it ignored on recheck", async () => {
+    await start()
+    issueRects()
+    const before = editor.toHTML(true)
+    hover()
+    expect(contextMenu().defaultPrevented).toBe(true)
+    const ignore = Array.from(editor.appendix.querySelectorAll<HTMLButtonElement>(".◆proofreading-popup button"))
+      .find(button => button.textContent === "Ignore")!
+    ignore.click()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    expect(editor.features.proofreading.state()).toMatchObject({issues: [], hoveredIssueId: null})
+    expect(highlights.has("webwriter-spelling")).toBe(false)
+    expect(contextMenu().defaultPrevented).toBe(false)
+    await editor.features.proofreading.checkNow()
+    expect(contextMenu().defaultPrevented).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
+  it("publishes hovered issues only over actual issue rectangles, including wrapped text", async () => {
+    const [issue] = await start()
+    issueRects([new DOMRect(20, 30, 40, 20), new DOMRect(5, 60, 20, 20)])
+    hover()
+    expect(editor.features.proofreading.state().hoveredIssueId).toBe(issue.id)
+    hover(document.querySelector("p")!, 10, 65)
+    expect(editor.features.proofreading.state().hoveredIssueId).toBe(issue.id)
+    hover(document.querySelector("p")!, 10, 40)
+    expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+    expect(contextMenu(document.querySelector("p")!, 10, 40).defaultPrevented).toBe(false)
+    hover()
+    document.querySelector("p")!.dispatchEvent(new PointerEvent("pointerout", {bubbles: true, relatedTarget: null}))
+    expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+  })
+
+  it("dismisses the popup with Escape, outside clicks, scrolling, and window blur", async () => {
+    await start()
+    issueRects()
+    contextMenu()
+    const first = editor.appendix.querySelector<HTMLButtonElement>(".◆proofreading-popup button")!
+    const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true})
+    first.dispatchEvent(escape)
+    expect(escape.defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    contextMenu()
+    const outside = new PointerEvent("pointerdown", {button: 0, bubbles: true, cancelable: true})
+    outside.preventDefault() // This synthetic DOM has no native caret hit testing.
+    document.querySelector("p")!.dispatchEvent(outside)
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    contextMenu()
+    document.dispatchEvent(new Event("scroll"))
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    hover()
+    contextMenu()
+    window.dispatchEvent(new Event("blur"))
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+  })
+
+  it("ignores widget shadow and unrelated appendix interactions, and native clicks outside issues", async () => {
+    content('<p>teh example.</p><atomic-widget></atomic-widget>')
+    await start()
+    issueRects()
+    hover()
+    const widget = document.querySelector("atomic-widget")!
+    widget.attachShadow({mode: "open"}).innerHTML = "<button>Private</button>"
+    const button = widget.shadowRoot!.querySelector("button")!
+    hover(button)
+    expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+    expect(contextMenu(button).defaultPrevented).toBe(false)
+    const overlay = document.createElement("button")
+    editor.addAppendix(overlay)
+    expect(contextMenu(overlay).defaultPrevented).toBe(false)
+    expect(contextMenu(document.querySelector("p")!, 200, 200).defaultPrevented).toBe(false)
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+  })
+
+  it("cleans stale hover and popup state and rejects disconnected suggestion buttons", async () => {
+    await start()
+    issueRects()
+    hover()
+    contextMenu()
+    const button = editor.appendix.querySelector<HTMLButtonElement>(".◆proofreading-popup button")!
+    document.querySelector("p")!.textContent = "changed remotely"
+    expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    button.click()
+    expect(document.querySelector("p")!.textContent).toBe("changed remotely")
+  })
+
+  it("dismisses outdated popup suggestions when a recheck changes their order or content", async () => {
+    const [issue] = await start()
+    issueRects()
+    contextMenu()
+    const button = editor.appendix.querySelector<HTMLButtonElement>(".◆proofreading-popup button")!
+    check.mockResolvedValueOnce([spelling(0, 3, "ten")])
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues[0].id).toBe(issue.id)
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    button.click()
+    expect(document.querySelector("p")!.textContent).toBe("teh example.")
+  })
+
+  it("forbids popup actions while locked and removes popup and hover state when disabled", async () => {
+    await start()
+    issueRects()
+    const lock = {}
+    editor.lockEditing(lock)
+    expect(contextMenu().defaultPrevented).toBe(false)
+    editor.unlockEditing(lock)
+    hover()
+    contextMenu()
+    editor.features.proofreading.disable()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+    expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+    expect(contextMenu().defaultPrevented).toBe(false)
+  })
+
   it("keeps editing usable while loading and checks the current DOM once ready", async () => {
     let finish!: (reader: Awaited<ReturnType<typeof createProofreader>>) => void
     vi.mocked(createProofreader).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
@@ -95,7 +278,7 @@ describe("proofreading feature", () => {
       await loading
       expect(check).toHaveBeenCalledWith("teh changed document.", "en-US")
       expect(editor.features.proofreading.state()).toMatchObject({enabled: true, loading: false, ready: true, error: null})
-      expect(status.mock.calls.map(([event]) => event.detail)).toContainEqual({enabled: true, loading: false, ready: true, error: null})
+      expect(status.mock.calls.map(([event]) => event.detail)).toContainEqual(expect.objectContaining({enabled: true, loading: false, ready: true, error: null}))
       expect(editor.appendix.querySelector(".◆proofreading-panel")).toBeNull()
     }
     finally { window.removeEventListener(proofreadingStateChangeEvent, status) }
@@ -120,7 +303,7 @@ describe("proofreading feature", () => {
       editor.features.proofreading.state()
       await vi.advanceTimersByTimeAsync(1000)
       expect(createProofreader).toHaveBeenCalledOnce()
-      editor.features.proofreading.open()
+      editor.features.proofreading.retry()
       await editor.features.proofreading.checkNow()
       expect(createProofreader).toHaveBeenCalledTimes(2)
       expect(editor.features.proofreading.state().error).toBeNull()
@@ -203,10 +386,89 @@ describe("proofreading feature", () => {
     expect(highlights.has("webwriter-spelling")).toBe(false)
   })
 
+  it("retains unchanged issue IDs and highlight ranges throughout a recheck", async () => {
+    const [issue] = await start()
+    const painted = highlights.get("webwriter-spelling") as Set<Range>
+    const range = [...painted][0]
+    let finish!: (issues: ProofreadingIssue[]) => void
+    check.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    editor.features.proofreading.retry()
+    const pending = editor.features.proofreading.checkNow()
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    expect(editor.features.proofreading.state()).toMatchObject({checking: true, issues: [issue]})
+    expect(highlights.get("webwriter-spelling")).toBe(painted)
+    expect([...painted]).toEqual([range])
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(true)
+    finish([spelling()])
+    await pending
+    expect(editor.features.proofreading.state()).toMatchObject({checking: false, issues: [issue]})
+    expect(highlights.get("webwriter-spelling")).toBe(painted)
+    expect([...painted][0]).toBe(range)
+  })
+
+  it("removes changed runs while keeping other underlines and cards through the next check", async () => {
+    content('<p>teh first.</p><aside><p>te<!--keep--><em>h</em> second.</p></aside>')
+    check.mockImplementation(async text => text.startsWith("teh") ? [spelling()] : [])
+    const [changed, unchanged] = await start()
+    const painted = highlights.get("webwriter-spelling") as Set<Range>
+    const range = [...painted][1]
+    document.querySelector("p")!.firstChild!.textContent = "the first."
+    expect(editor.features.proofreading.state().issues).toEqual([unchanged])
+    expect(editor.features.proofreading.selectIssue(changed.id)).toBe(false)
+    expect(highlights.get("webwriter-spelling")).toBe(painted)
+    expect([...painted]).toEqual([range])
+    let finish!: (issues: ProofreadingIssue[]) => void
+    check.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const pending = editor.features.proofreading.checkNow()
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    expect(editor.features.proofreading.state()).toMatchObject({checking: true, issues: [unchanged]})
+    expect(editor.features.proofreading.selectIssue(unchanged.id)).toBe(true)
+    finish([])
+    await pending
+    expect(editor.features.proofreading.state().issues).toEqual([unchanged])
+    expect([...painted][0]).toBe(range)
+    expect(editor.features.proofreading.applySuggestion(unchanged.id, 0)).toBe(true)
+    expect(document.querySelector("aside p")!.textContent).toBe("the second.")
+    expect(document.body.innerHTML).toContain("<!--keep-->")
+  })
+
+  it("reconciles changed results without retaining resolved issues", async () => {
+    const [issue] = await start()
+    check.mockResolvedValueOnce([])
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toEqual([])
+    expect(highlights.has("webwriter-spelling")).toBe(false)
+    expect(editor.features.proofreading.applySuggestion(issue.id, 0)).toBe(false)
+  })
+
+  it("drops issues when their flow becomes ineligible and clears retained results when disabled", async () => {
+    content('<p>teh first.</p><p>teh second.</p>')
+    const [, unchanged] = await start()
+    document.querySelector("p")!.setAttribute("lang", "de")
+    expect(editor.features.proofreading.state().issues).toEqual([unchanged])
+    editor.features.proofreading.setChecking(false)
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, issues: []})
+    expect(highlights.has("webwriter-spelling")).toBe(false)
+  })
+
+  it("keeps cards and repairs live ranges when intact paragraphs are moved", async () => {
+    content('<p>te<!--keep--><em>h</em> first.</p><p>teh second.</p>')
+    const [issue] = await start()
+    const paragraph = document.querySelector("p")!
+    document.body.append(paragraph)
+    expect(editor.features.proofreading.state().issues).toContainEqual(issue)
+    const painted = highlights.get("webwriter-spelling") as Set<Range>
+    const range = [...painted].find(range => range.startContainer === paragraph.firstChild)!
+    expect(range.toString()).toBe("teh")
+    expect(range.endContainer).toBe(paragraph.querySelector("em")!.firstChild)
+    expect(editor.features.proofreading.applySuggestion(issue.id, 0)).toBe(true)
+    expect(paragraph.textContent).toBe("the first.")
+  })
+
   it("rejects stale responses after document changes", async () => {
     let finish!: (issues: ProofreadingIssue[]) => void
     check.mockImplementation(() => new Promise<ProofreadingIssue[]>(resolve => { finish = resolve }))
-    editor.features.proofreading.open()
+    editor.features.proofreading.retry()
     await vi.waitFor(() => expect(check).toHaveBeenCalled())
     document.querySelector("p")!.firstChild!.textContent = "the example."
     finish([spelling()])
@@ -216,12 +478,15 @@ describe("proofreading feature", () => {
   })
 
   it("invalidates results after remote collaboration changes", async () => {
-    const [issue] = await start()
+    content("<p>teh example.</p><p>teh untouched.</p>")
+    const [issue, unchanged] = await start()
     const paragraph = editor.doc.body.firstChild as Y.XmlElement
     const text = paragraph.firstChild as Y.XmlText
     editor.doc.doc.transact(() => { text.delete(0, 3); text.insert(0, "the") }, "remote-peer")
     expect(document.querySelector("p")!.textContent).toBe("the example.")
     expect(editor.features.proofreading.applySuggestion(issue.id, 0)).toBe(false)
+    expect(editor.features.proofreading.state().issues).toEqual([unchanged])
+    expect(editor.features.proofreading.selectIssue(unchanged.id)).toBe(true)
   })
 
   it("does not recheck presentation marker changes or incidental widget shadow input", async () => {
@@ -251,22 +516,41 @@ describe("proofreading feature", () => {
     expect(check.mock.calls.length).toBeGreaterThan(count)
   })
 
-  it("offers corrections and ignore controls only in the appendix", async () => {
-    await start()
-    const panel = editor.appendix.querySelector(".◆proofreading-panel")!
-    const ignore = Array.from(panel.querySelectorAll("button")).find(button => button.textContent === "Ignore")!
-    ignore.click()
-    expect(editor.features.proofreading.state().issues).toEqual([])
+  it("publishes live issues for Review and removes ignored issues without document UI", async () => {
+    const status = vi.spyOn(editor, "postProofreadingState")
+    const [issue] = await start()
+    expect(status).toHaveBeenLastCalledWith(expect.objectContaining({checking: false, issues: [issue]}))
+    expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
+    expect(status).toHaveBeenLastCalledWith(expect.objectContaining({issues: []}))
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state().issues).toEqual([])
     expect(document.body.innerHTML).not.toContain("button")
+    expect(editor.appendix.querySelector(".◆proofreading-panel")).toBeNull()
+  })
+
+  it("selects current issue ranges across formatting and rejects stale or locked issues", async () => {
+    content('<p>te<!--keep--><em>h</em> example.</p>')
+    const [issue] = await start()
+    const scroll = vi.spyOn(document.querySelector("p")!, "scrollIntoView")
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(true)
+    const selected = document.getSelection()!.getRangeAt(0)
+    expect([selected.startContainer, selected.startOffset, selected.endContainer, selected.endOffset])
+      .toEqual([document.querySelector("p")!.firstChild, 0, document.querySelector("em")!.firstChild, 1])
+    expect(scroll).toHaveBeenCalledWith({block: "nearest"})
+    const lock = {}
+    editor.lockEditing(lock)
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
+    editor.unlockEditing(lock)
+    document.querySelector("p")!.textContent = "changed"
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
+    expect(editor.features.proofreading.state().issues).toEqual([])
   })
 
   it("reports unsupported languages and checking failures, and can retry", async () => {
     document.documentElement.setAttribute("lang", "de-DE")
     await start()
     expect(createProofreader).toHaveBeenCalledOnce()
-    expect(editor.appendix.querySelector(".◆proofreading-panel")!.textContent).toContain("Harper checks English")
+    expect(editor.features.proofreading.state()).toMatchObject({ready: true, issues: []})
     document.documentElement.setAttribute("lang", "en-US")
     check.mockRejectedValueOnce(new Error("Cannot load checker"))
     await start()
@@ -276,16 +560,14 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
   })
 
-  it("cleans up its own highlights, styles, observers and checker on destruction", async () => {
+  it("cleans up its own highlights, observers and checker on destruction", async () => {
     await start()
     highlights.set("webwriter-comments", "preserve")
-    const panelStyles = [...editor.appendix.adoptedStyleSheets]
     editor.features.proofreading.disable()
     expect(highlights.has("webwriter-spelling")).toBe(false)
     expect(highlights.has("webwriter-grammar")).toBe(false)
     expect(highlights.get("webwriter-comments")).toBe("preserve")
     expect(editor.appendix.querySelector(".◆proofreading-panel")).toBeNull()
-    expect(editor.appendix.adoptedStyleSheets.length).toBeLessThan(panelStyles.length)
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
     check.mockClear()
     document.querySelector("p")!.textContent = "Changed"

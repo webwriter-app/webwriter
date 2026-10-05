@@ -5,7 +5,7 @@ import type {ElementStyleEditor} from "./element-style-editor"
 import type {RibbonButton} from "./ribbon-button"
 import {RibbonDrawer} from "./ribbon-drawer"
 import {AIProviderStore} from "../ai-provider"
-import {emptyVersionHistoryState} from "../editor-bridge"
+import {emptyProofreadingState, emptyVersionHistoryState} from "../editor-bridge"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -58,9 +58,9 @@ describe("toolbox", () => {
     expect(toolbox.historyState.versions[0].checkpointIds).toEqual([latest.id, "missing", undo.id, first.id, initial.id])
   })
 
-  it("marks Review when proofreading is unavailable and offers a retry inside the pane", async () => {
+  it("shows generic loading failure in Spelling & Grammar and dispatches a retry", async () => {
     const toolbox = await mountToolbox()
-    toolbox.proofreadingError = "The local checker worker could not start."
+    toolbox.proofreadingState = {...emptyProofreadingState(), error: "worker stack trace", loading: false}
     await toolbox.updateComplete
 
     const review = toolButton(toolbox, "Review")
@@ -72,22 +72,115 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const failure = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-error")!
     expect(failure.getAttribute("role")).toBe("alert")
-    expect(failure.textContent).toContain("The local checker worker could not start.")
+    expect(failure.textContent).toContain("Could not load spelling & grammar checking.")
+    expect(failure.textContent).not.toContain("worker stack trace")
 
     const retryRequest = vi.fn()
-    toolbox.addEventListener("ribbon-button-click", retryRequest)
+    toolbox.addEventListener("proofreading-action", retryRequest)
     failure.querySelector<HTMLButtonElement>("button")!.click()
     expect(retryRequest).toHaveBeenCalledOnce()
     expect(retryRequest.mock.calls[0][0]).toMatchObject({
-      detail: {label: "Spelling"},
+      detail: {type: "retryProofreading"},
       bubbles: true,
       composed: true,
     })
 
-    toolbox.proofreadingError = ""
+    toolbox.proofreadingState = {...emptyProofreadingState(), ready: true}
     await toolbox.updateComplete
     expect(toolButton(toolbox, "Review").querySelector(".proofreading-error-badge")).toBeNull()
     expect(toolbox.shadowRoot!.querySelector(".proofreading-error")).toBeNull()
+  })
+
+  it("lists issues as cards with selection, suggestions, and ignore actions", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {
+      ...emptyProofreadingState(), ready: true,
+      issues: [{id: "issue-1", start: 4, end: 7, kind: "spelling", message: "Possible spelling mistake", text: "teh",
+        suggestions: [{kind: "replace", text: "the"}]}],
+    }
+    await toolbox.updateComplete
+    const card = toolbox.shadowRoot!.querySelector(".proofreading-card")!
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling & Grammar")
+    expect(card.textContent).toContain("Possible spelling mistake")
+    expect(card.textContent).toContain("teh")
+    const action = vi.fn()
+    toolbox.addEventListener("proofreading-action", action)
+    card.querySelector<HTMLButtonElement>(".proofreading-issue")!.click()
+    card.querySelector<HTMLButtonElement>(".proofreading-suggestion")!.click()
+    card.querySelector<HTMLButtonElement>(".proofreading-ignore")!.click()
+    expect(action.mock.calls.map(([event]) => event.detail)).toEqual([
+      {type: "selectProofreadingIssue", id: "issue-1"},
+      {type: "applyProofreadingSuggestion", id: "issue-1", index: 0},
+      {type: "ignoreProofreadingIssue", id: "issue-1"},
+    ])
+  })
+
+  it("indicates the hovered issue on the Review icon or matching card", async () => {
+    const toolbox = await mountToolbox()
+    const issues = [
+      {id: "spell", start: 0, end: 3, kind: "spelling" as const, message: "Spelling", text: "teh", suggestions: []},
+      {id: "grammar", start: 4, end: 7, kind: "grammar" as const, message: "Grammar", text: "is", suggestions: []},
+    ]
+    toolbox.proofreadingState = {...emptyProofreadingState(), issues, hoveredIssueId: "spell"}
+    await toolbox.updateComplete
+    expect(toolButton(toolbox, "Review").closest(".toolbox-tab")?.getAttribute("data-hover-kind")).toBe("spelling")
+    expect(toolbox.shadowRoot!.querySelector('[data-tool="Review"] .toolbox-tab-label')?.getAttribute("data-hover-kind")).toBeNull()
+
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    expect(toolButton(toolbox, "Review").closest(".toolbox-tab")?.hasAttribute("data-hover-kind")).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector('[data-hover-kind="spelling"].proofreading-card')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[data-hover-kind="grammar"].proofreading-card')).toBeNull()
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, hoveredIssueId: "grammar"}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[data-hover-kind="grammar"].proofreading-card')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[data-hover-kind="spelling"].proofreading-card')).toBeNull()
+    toolbox.selectTool(null)
+    await toolbox.updateComplete
+    expect(toolButton(toolbox, "Review").closest(".toolbox-tab")?.getAttribute("data-hover-kind")).toBe("grammar")
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, hoveredIssueId: "missing"}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-card[data-hover-kind]")).toBeNull()
+    toolbox.proofreadingState = {...toolbox.proofreadingState, hoveredIssueId: null}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-card[data-hover-kind]")).toBeNull()
+  })
+
+  it("shows an accessible heading spinner while loading or checking and preserves cards", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {...emptyProofreadingState(), loading: true}
+    await toolbox.updateComplete
+    let spinner = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2 .proofreading-spinner")!
+    expect(spinner.getAttribute("role")).toBe("status")
+    expect(spinner.getAttribute("aria-label")).toBe("Loading spelling and grammar")
+
+    const issue = {id: "stable-issue", start: 0, end: 3, kind: "spelling" as const, message: "Possible spelling mistake", text: "teh", suggestions: []}
+    toolbox.proofreadingState = {...emptyProofreadingState(), ready: true, checking: true, issues: [issue]}
+    await toolbox.updateComplete
+    const card = toolbox.shadowRoot!.querySelector(".proofreading-card")
+    spinner = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2 .proofreading-spinner")!
+    expect(spinner.getAttribute("aria-label")).toBe("Checking spelling and grammar")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-status[role=status]")).toBeNull()
+
+    toolbox.proofreadingState = {...emptyProofreadingState(), ready: true, issues: [issue]}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-spinner")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBe(card)
+
+    toolbox.proofreadingState = {...emptyProofreadingState(), ready: true}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")?.textContent).toContain("No spelling or grammar issues found.")
+
+    toolbox.proofreadingState = {...emptyProofreadingState(), error: "unavailable"}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-spinner")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-error")).not.toBeNull()
   })
 
   it("reserves both scrollbar gutters in Edit without extra content side spacing", async () => {
@@ -606,14 +699,9 @@ describe("toolbox", () => {
     toolButton(toolbox, "Review").click()
     await toolbox.updateComplete
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Review", "Versions"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Versions"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
-    const review = drawers.find(drawer => drawer.label === "Review")!
-    expect(Array.from(review.querySelectorAll<RibbonButton>("ribbon-button"))
-      .map(button => button.label)).toEqual([
-        "Spelling", "Grammar", "Translate",
-        "Track Changes", "Accept", "Reject",
-      ])
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Spelling & Grammar")
     expect(drawers.find(drawer => drawer.label === "Comments")!
       .querySelector('textarea[aria-label="Comment text"]')).not.toBeNull()
 

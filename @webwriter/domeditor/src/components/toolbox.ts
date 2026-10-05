@@ -1,8 +1,10 @@
-import {css, html} from "lit"
+import {css, html, nothing} from "lit"
+import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
+import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
 import {ribbonIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
@@ -47,7 +49,7 @@ export class DomEditorToolbox extends EditingControls {
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
-    proofreadingError: {attribute: false},
+    proofreadingState: {attribute: false},
   }
 
   disableAI = false
@@ -286,6 +288,9 @@ export class DomEditorToolbox extends EditingControls {
       color: #243447;
     }
 
+    .toolbox-tab[data-hover-kind="spelling"] .toolbox-tab-icon {color: #c62828}
+    .toolbox-tab[data-hover-kind="grammar"] .toolbox-tab-icon {color: #1769aa}
+
     .toolbox-tab-button:focus-visible,
     .toolbox-tab-close:focus-visible {
       outline: 2px solid #3977c7;
@@ -315,6 +320,27 @@ export class DomEditorToolbox extends EditingControls {
       font: 700 9px/1 system-ui, sans-serif;
     }
 
+    .proofreading-section {
+      display: grid;
+      align-content: start;
+      gap: .55rem;
+      padding: .75rem;
+      color: #2f3742;
+    }
+    .proofreading-section h2 {display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0; font-size: .95rem; font-weight: 650}
+    .proofreading-status {margin: 0; color: #64748b; font-size: .75rem}
+    .proofreading-spinner {
+      box-sizing: border-box;
+      flex: 0 0 auto;
+      width: .9rem;
+      height: .9rem;
+      border: 2px solid #cbd5e1;
+      border-top-color: #3977c7;
+      border-radius: 50%;
+      animation: proofreading-spin .75s linear infinite;
+    }
+    @keyframes proofreading-spin {to {transform: rotate(360deg)}}
+    @media (prefers-reduced-motion: reduce) {.proofreading-spinner {animation-duration: 2s}}
     .proofreading-error {
       display: grid;
       gap: .5rem;
@@ -327,7 +353,8 @@ export class DomEditorToolbox extends EditingControls {
       font-size: .75rem;
     }
 
-    .proofreading-error button {
+    .proofreading-error button,
+    .proofreading-retry {
       justify-self: start;
       padding: .3rem .55rem;
       border: 1px solid #b42318;
@@ -338,10 +365,67 @@ export class DomEditorToolbox extends EditingControls {
       cursor: pointer;
     }
 
-    .proofreading-error button:focus-visible {
+    .proofreading-error button:focus-visible,
+    .proofreading-retry:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: 2px;
     }
+
+    .proofreading-issues {display: grid; gap: .5rem}
+    .proofreading-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: .35rem;
+      padding: .55rem;
+      border: 1px solid #d5dce5;
+      border-radius: .4rem;
+      background: #fff;
+      box-shadow: 0 1px 2px rgb(31 41 55 / 5%);
+    }
+    .proofreading-card[data-hover-kind="spelling"] {border-color: #c62828; background: #fff6f6}
+    .proofreading-card[data-hover-kind="grammar"] {border-color: #1769aa; background: #f3f8fd}
+    .proofreading-issue {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: .22rem;
+      width: 100%;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      text-align: left;
+      color: inherit;
+      background: transparent;
+      cursor: pointer;
+    }
+    .proofreading-issue:hover:not(:disabled) .proofreading-text {color: #175a9e}
+    .proofreading-kind {color: #64748b; font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase}
+    .proofreading-message, .proofreading-text {min-width: 0; overflow-wrap: anywhere}
+    .proofreading-message {font-size: .72rem; line-height: 1.35}
+    .proofreading-text {font-size: .78rem; font-weight: 650}
+    .proofreading-suggestion {
+      justify-self: start;
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      padding: .3rem .5rem;
+      border: 1px solid #b8d6f5;
+      border-radius: .3rem;
+      color: #154d80;
+      background: #eff7ff;
+      font: 600 .72rem/1.2 system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .proofreading-ignore {
+      justify-self: end;
+      padding: .25rem .35rem;
+      border: 0;
+      color: #64748b;
+      background: transparent;
+      font: .68rem/1.2 system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .proofreading-card button:disabled {opacity: .5; cursor: default}
+    .proofreading-card button:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
 
     .toolbox-tab-label {
       display: block;
@@ -542,7 +626,49 @@ export class DomEditorToolbox extends EditingControls {
   htmlPending = false
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
   documentLayoutError = ""
-  proofreadingError = ""
+  proofreadingState: ProofreadingState = emptyProofreadingState()
+
+  private dispatchProofreadingAction(action: ProofreadingAction) {
+    this.dispatchEvent(new CustomEvent<ProofreadingAction>("proofreading-action", {
+      detail: action, bubbles: true, composed: true,
+    }))
+  }
+
+  private renderProofreadingSection() {
+    const state = this.proofreadingState
+    const hoveredIssue = state.issues.find(issue => issue.id === state.hoveredIssueId)
+    const editingLocked = this.htmlPending || this.historyState.preview !== null
+    return html`<section class="proofreading-section" aria-labelledby="proofreading-title">
+      <h2 id="proofreading-title">Spelling &amp; Grammar
+        ${!state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling and grammar"></span>` : ""}
+        ${state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling and grammar"></span>` : ""}
+      </h2>
+      ${state.error ? html`<div class="proofreading-error" role="alert">
+        <span>Could not load spelling &amp; grammar checking.</span>
+        <button class="proofreading-retry" type="button" ?disabled=${editingLocked}
+          @click=${() => this.dispatchProofreadingAction({type: "retryProofreading"})}>Retry</button>
+      </div>` : ""}
+      ${state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling or grammar issues found.</p>` : ""}
+      <div class="proofreading-issues">
+        ${repeat(state.issues, issue => issue.id, issue => html`<article class="proofreading-card" data-hover-kind=${issue.id === hoveredIssue?.id ? issue.kind : nothing}>
+          <button class="proofreading-issue" type="button" ?disabled=${editingLocked}
+            aria-label=${`Go to ${issue.kind} issue: ${issue.text}`}
+            @click=${() => this.dispatchProofreadingAction({type: "selectProofreadingIssue", id: issue.id})}>
+            <span class="proofreading-kind">${issue.kind === "spelling" ? "Spelling" : "Grammar"}</span>
+            <span class="proofreading-message">${issue.message}</span>
+            <span class="proofreading-text">${issue.text}</span>
+          </button>
+          ${issue.suggestions.map((suggestion, index) => html`<button class="proofreading-suggestion" type="button"
+            ?disabled=${editingLocked} aria-label=${`Apply suggestion: ${suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text}`}
+            @click=${() => this.dispatchProofreadingAction({type: "applyProofreadingSuggestion", id: issue.id, index})}>
+            ${suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text}
+          </button>`)}
+          <button class="proofreading-ignore" type="button" ?disabled=${editingLocked}
+            @click=${() => this.dispatchProofreadingAction({type: "ignoreProofreadingIssue", id: issue.id})}>Ignore</button>
+        </article>`)}
+      </div>
+    </section>`
+  }
 
   protected get elementStyleEditorOrientation(): "vertical" {
     return "vertical"
@@ -818,6 +944,7 @@ export class DomEditorToolbox extends EditingControls {
                   ?data-active=${active}
                   ?data-contextual=${contextualLabel !== null}
                   ?data-available=${contextualLabel !== null && this.activeTool === null}
+                  data-hover-kind=${tool.label === "Review" && this.activeTool !== "Review" ? this.proofreadingState.issues.find(issue => issue.id === this.proofreadingState.hoveredIssueId)?.kind ?? nothing : nothing}
                 >
                   <button
                     id=${tabId}
@@ -825,10 +952,10 @@ export class DomEditorToolbox extends EditingControls {
                     data-tool=${tool.label}
                     type="button"
                     role="tab"
-                    aria-label=${tool.label === "Review" && this.proofreadingError
+                    aria-label=${tool.label === "Review" && this.proofreadingState.error
                       ? "Review. Spell and grammar checking unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
-                    title=${tool.label === "Review" && this.proofreadingError
+                    title=${tool.label === "Review" && this.proofreadingState.error
                       ? "Spell and grammar checking unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
                     aria-controls="toolbox-pane"
@@ -838,7 +965,7 @@ export class DomEditorToolbox extends EditingControls {
                   >
                     <span class="toolbox-tab-icon" aria-hidden="true">
                       ${ribbonIcon(tool.icon)}
-                      ${tool.label === "Review" && this.proofreadingError ? html`<span class="proofreading-error-badge">!</span>` : ""}
+                      ${tool.label === "Review" && this.proofreadingState.error ? html`<span class="proofreading-error-badge">!</span>` : ""}
                     </span>
                     <span
                       class="toolbox-tab-label"
@@ -871,14 +998,7 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
-            ${this.activeTool === "Review" && this.proofreadingError ? html`
-              <div class="proofreading-error" role="alert">
-                <span><strong>Spell and grammar checking unavailable.</strong> ${this.proofreadingError}</span>
-                <button type="button" @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
-                  detail: {label: "Spelling"}, bubbles: true, composed: true,
-                }))}>Retry</button>
-              </div>
-            ` : ""}
+            ${this.activeTool === "Review" ? this.renderProofreadingSection() : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
             ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}

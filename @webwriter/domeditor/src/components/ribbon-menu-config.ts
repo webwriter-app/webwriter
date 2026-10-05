@@ -292,7 +292,7 @@ const toolboxContextPriority = [
 export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGroup[] {
   if(context.surface === "toolbox" && context.activeTool === "Style") return menuGroups.Style
   if(context.surface === "toolbox" && context.activeTool === "Review") {
-    return [...menuGroups.Edit.filter(group => group.label === "Comments" || group.label === "Review"), ...menuGroups.History]
+    return [...menuGroups.Edit.filter(group => group.label === "Comments"), ...menuGroups.History]
   }
   if(context.surface === "toolbox" && context.activeTool !== "Edit") return []
   if(context.surface === "toolbox" && context.developMode) return menuGroups.Develop

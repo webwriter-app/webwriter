@@ -29,6 +29,11 @@ describe("context drawer policy", () => {
     expect(labels("ribbon", {attributes: true})).toEqual(["Attributes"])
   })
 
+  it("keeps Comments and Versions in Review without the old Review button group", () => {
+    expect(contextDrawerPolicy({menu: "Edit", surface: "toolbox", activeTool: "Review"}).map(group => group.label))
+      .toEqual(["Comments", "Versions"])
+  })
+
   it("shows widget options with the widget's attributes", () => {
     expect(labels("toolbox", {widget: true, attributes: true})).toEqual(["Widget", "Attributes"])
     expect(labels("ribbon", {widget: true, media: true})).toEqual(["Widget"])

@@ -3,7 +3,7 @@ import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
 import {$, caretRect} from "../src/utility"
 import {defaultDocumentTheme} from "../src/document-themes"
-import {initializeEditorMessage, replayHostDrag} from "../src/editor-bridge"
+import {initializeEditorMessage, replayHostDrag, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import * as Y from "yjs"
 
@@ -2759,13 +2759,19 @@ await check("bottom layout cards retain native editing focus after rendering", a
 await check("Harper checks English in a worker without authored DOM artifacts", async () => {
   const {DomEditor} = await import("../src/components/dom-editor")
   const host = new DomEditor()
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const toolbox = new DomEditorToolbox()
   const source = new DOMParser().parseFromString((host as unknown as {editorSrcdoc: string}).editorSrcdoc, "text/html")
   const policy = source.querySelector('meta[http-equiv="Content-Security-Policy"]')!.outerHTML
   const nonce = source.querySelector("script[nonce]")!.getAttribute("nonce")!
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:500px"
   frame.srcdoc = `<!doctype html><html lang="en-US"><head>${policy}<script class="◆editor-only" nonce="${nonce}" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>😀 This is te<!--keep--><em class="meaning">h</em> example.</p></body></html>`
-  fixture.append(frame)
+  fixture.append(frame, toolbox)
+  const update = (event: MessageEvent) => {
+    if(event.source === frame.contentWindow && isProofreadingStateChangeMessage(event.data)) toolbox.proofreadingState = event.data.detail
+  }
+  window.addEventListener("message", update)
   try {
     for(let attempt = 0; !frame.contentWindow?.editor && !frame.contentWindow?.editorError && attempt < 100; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 20))
@@ -2794,24 +2800,121 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
       selected.setEnd(range.endContainer, range.endOffset)
       return selected.toString() === "teh"
     }), `highlight did not cross inline formatting: ${JSON.stringify(Array.from(highlight).map(range => ({start: range.startOffset, end: range.endOffset, first: range.startContainer.textContent, last: range.endContainer.textContent})))}`)
-    feature.open()
-    await feature.checkNow()
-    assert(doc.body.shadowRoot!.querySelector(".◆proofreading-panel") && !doc.body.querySelector(".◆proofreading-panel"), "review UI escaped the appendix")
+    const childWindow = doc.defaultView as Window & typeof globalThis
+    const issueRect = (Array.from(highlight)[0] as Range).getClientRects()[0]
+    const hit = {clientX: issueRect.left + issueRect.width / 2, clientY: issueRect.top + issueRect.height / 2}
+    const paragraph = doc.querySelector("p")!
+    paragraph.dispatchEvent(new childWindow.PointerEvent("pointermove", {...hit, bubbles: true, composed: true}))
+    assert(feature.state().hoveredIssueId === issue!.id, "hovering the underline did not identify its issue")
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    const reviewIcon = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-tool="Review"] .toolbox-tab-icon')!
+    assert(getComputedStyle(reviewIcon).color === "rgb(198, 40, 40)", "closed Review icon did not match the spelling underline")
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    assert(!toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Review"]'), "old Review buttons remain")
+    const cards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
+    const card = cards.find(card => card.querySelector(".proofreading-text")?.textContent === "teh")!
+    assert(card, "Review did not render Harper's issue card")
+    assert(getComputedStyle(card).borderTopColor === "rgb(198, 40, 40)", "open Review did not highlight the hovered issue card")
+    assert(getComputedStyle(reviewIcon).color !== "rgb(198, 40, 40)", "open Review still highlighted its icon")
+    const rightClick = () => {
+      const event = new childWindow.MouseEvent("contextmenu", {...hit, button: 2, bubbles: true, composed: true, cancelable: true})
+      doc.elementFromPoint(hit.clientX, hit.clientY)!.dispatchEvent(event)
+      return event
+    }
+    assert(rightClick().defaultPrevented, "right-clicking an issue did not open its suggestions")
+    const popup = doc.body.shadowRoot!.querySelector<HTMLElement>(".◆proofreading-popup")!
+    assert(popup?.matches(":popover-open"), "suggestions popup did not use the appendix top layer")
+    const popupRect = popup.getBoundingClientRect()
+    assert(popupRect.width > 0 && popupRect.height > 0 && popupRect.right <= childWindow.innerWidth && popupRect.bottom <= childWindow.innerHeight, "suggestions popup overflowed the iframe")
+    assert(Math.abs(popupRect.left - issueRect.left) < 1 && Math.abs(popupRect.top - (issueRect.bottom + 6)) < 1, "suggestions popup is not below the issue underline")
+    assert(child.toHTML(true) === before && child.doc.body.toString() === shared, "suggestions popup added authored or shared artifacts")
+    assert(rightClick().defaultPrevented, "repeated right-click did not reopen suggestions")
+    const reopened = doc.body.shadowRoot!.querySelector<HTMLElement>(".◆proofreading-popup")!
+    assert(reopened, "repeated right-click switched to the native menu")
+    reopened.dispatchEvent(new childWindow.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    toolbox.proofreadingState = {...state, checking: true}
+    await toolbox.updateComplete
+    assert(toolbox.shadowRoot!.querySelector(".proofreading-card") === card, "checking replaced an unchanged issue card")
+    const heading = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2")!
+    const spinner = heading.querySelector<HTMLElement>(".proofreading-spinner")!
+    assert(spinner?.getAttribute("aria-label") === "Checking spelling and grammar", "heading has no accessible checking spinner")
+    assert(Math.abs(spinner.getBoundingClientRect().right - heading.getBoundingClientRect().right) < 1, "heading spinner is not aligned right")
+    const recheck = feature.checkNow()
+    assert(feature.state().issues.some(current => current.id === issue!.id), "rechecking removed the existing issue")
+    assert(registry.get("webwriter-spelling") === highlight, "rechecking removed the existing underline")
+    await recheck
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    assert(toolbox.shadowRoot!.querySelector(".proofreading-card") === card, "rechecking replaced an unchanged issue card")
+    assert(registry.get("webwriter-spelling") === highlight, "rechecking replaced unchanged highlights")
+    assert(!heading.querySelector(".proofreading-spinner"), "checking spinner did not stop")
+    const issueButton = card.querySelector<HTMLButtonElement>(".proofreading-issue")!
+    const bridgeClick = async (button: HTMLButtonElement) => {
+      const requestId = `proofreading-${crypto.randomUUID()}`
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { cleanup(); reject(new Error("proofreading card command timed out")) }, 5000)
+        const reply = (event: MessageEvent) => {
+          if(event.source !== frame.contentWindow || event.data?.detail?.requestId !== requestId) return
+          if(event.data.type !== executeCompleteEvent && event.data.type !== executeFailureEvent) return
+          cleanup()
+          if(event.data.type === executeFailureEvent || event.data.detail.result !== true) reject(new Error("proofreading card command failed"))
+          else resolve()
+        }
+        const action = (event: Event) => frame.contentWindow!.postMessage({
+          ...(event as CustomEvent<ProofreadingAction>).detail, requestId, bridgeNonce: child.trustedScriptNonce,
+        }, location.origin)
+        const cleanup = () => {
+          clearTimeout(timer)
+          window.removeEventListener("message", reply)
+          toolbox.removeEventListener("proofreading-action", action)
+        }
+        window.addEventListener("message", reply)
+        toolbox.addEventListener("proofreading-action", action)
+        button.click()
+      })
+    }
+    await bridgeClick(issueButton)
+    assert(doc.getSelection()!.toString() === "teh", "clicking the card did not select the document issue")
     assert(doc.defaultView!.getComputedStyle(doc.querySelector("p")!, "::highlight(webwriter-spelling)").textDecorationStyle === "wavy", "spelling underline has no wavy decoration")
+    for(const element of [doc.documentElement, doc.body, doc.querySelector("p")!, doc.querySelector("em")!]) {
+      for(const pseudo of ["::spelling-error", "::grammar-error"]) {
+        assert(doc.defaultView!.getComputedStyle(element, pseudo).textDecorationLine === "none", "native proofreading added a second underline")
+      }
+    }
     const replacement = issue!.suggestions.findIndex(suggestion => suggestion.text === "the")
     assert(replacement >= 0, "Harper offered no correction")
-    const currentIssue = feature.state().issues.find(current => current.text === "teh")!
-    assert(feature.applySuggestion(currentIssue.id, replacement), "could not accept Harper's correction")
+    await bridgeClick(card.querySelectorAll<HTMLButtonElement>(".proofreading-suggestion")[replacement])
+    await toolbox.updateComplete
+    assert(!Array.from(toolbox.shadowRoot!.querySelectorAll(".proofreading-text")).some(element => element.textContent === "teh"), "accepted issue stayed in Review")
     assert(doc.querySelector("p")!.textContent === "😀 This is the example.", "correction changed unrelated text")
     assert(doc.querySelector("em.meaning") && doc.body.innerHTML.includes("<!--keep-->"), "correction removed formatting or comments")
     child.doc.undo()
     assert(child.toHTML(true) === before, "correction did not undo as one operation")
+    await feature.checkNow()
+    assert(rightClick().defaultPrevented, "right-click suggestions did not reopen after undo")
+    const correction = Array.from(doc.body.shadowRoot!.querySelectorAll<HTMLButtonElement>(".◆proofreading-popup button")).find(button => button.textContent === "the")!
+    assert(correction, "right-click popup offered no correction")
+    correction.click()
+    assert(doc.querySelector("p")!.textContent === "😀 This is the example.", "right-click correction did not apply")
+    assert(!doc.body.shadowRoot!.querySelector(".◆proofreading-popup"), "right-click correction left its popup behind")
+    child.doc.undo()
+    assert(child.toHTML(true) === before, "right-click correction did not undo as one operation")
+    await feature.checkNow()
+    assert(rightClick().defaultPrevented, "right-click suggestions did not reopen before ignoring")
+    const ignore = Array.from(doc.body.shadowRoot!.querySelectorAll<HTMLButtonElement>(".◆proofreading-popup button")).find(button => button.textContent === "Ignore")!
+    ignore.click()
+    assert(!rightClick().defaultPrevented, "ignoring the issue did not allow the native menu")
+    await feature.checkNow()
+    assert(!rightClick().defaultPrevented, "rechecking restored the ignored issue's popup")
+    assert(child.toHTML(true) === before, "ignoring an issue changed the document")
     child.doc.redo()
     assert(doc.querySelector("p")!.textContent === "😀 This is the example.", "correction did not redo")
     child.destroy()
     assert(!registry.has("webwriter-spelling") && !doc.body.shadowRoot!.querySelector(".◆proofreading-panel"), "proofreading leaked on teardown")
   }
-  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  finally { window.removeEventListener("message", update); frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }
 })
 
 const failed = checks.filter(item => item.error)

@@ -378,8 +378,29 @@ export type ProofreadingState = {
   enabled: boolean
   loading: boolean
   ready: boolean
+  checking: boolean
   error: string | null
+  hoveredIssueId: string | null
+  issues: {
+    id: string
+    start: number
+    end: number
+    kind: "spelling" | "grammar"
+    message: string
+    text: string
+    suggestions: {kind: "replace" | "remove" | "insertAfter", text: string}[]
+  }[]
 }
+
+export function emptyProofreadingState(): ProofreadingState {
+  return {enabled: true, loading: false, ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
+}
+
+export type ProofreadingAction =
+  | {type: "retryProofreading"}
+  | {type: "selectProofreadingIssue", id: string}
+  | {type: "applyProofreadingSuggestion", id: string, index: number}
+  | {type: "ignoreProofreadingIssue", id: string}
 
 export type ProofreadingStateChangeMessage = {
   type: typeof proofreadingStateChangeEvent
@@ -791,7 +812,17 @@ export function isProofreadingStateChangeMessage(value: unknown): value is Proof
   if(message.type !== proofreadingStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
   const detail = message.detail as Partial<ProofreadingState>
   return typeof detail.enabled === "boolean" && typeof detail.loading === "boolean" && typeof detail.ready === "boolean"
+    && typeof detail.checking === "boolean"
     && (detail.error === null || typeof detail.error === "string")
+    && (detail.hoveredIssueId === null || typeof detail.hoveredIssueId === "string")
+    && Array.isArray(detail.issues) && detail.issues.every(issue => {
+      if(!isRecord(issue)) return false
+      return typeof issue.id === "string" && typeof issue.message === "string" && typeof issue.text === "string"
+        && isNonnegativeInteger(issue.start) && isNonnegativeInteger(issue.end) && issue.end > issue.start
+        && (issue.kind === "spelling" || issue.kind === "grammar")
+        && Array.isArray(issue.suggestions) && issue.suggestions.every(suggestion => isRecord(suggestion)
+          && ["replace", "remove", "insertAfter"].includes(suggestion.kind as string) && typeof suggestion.text === "string")
+    })
 }
 
 export function isPresenceChangeMessage(value: unknown): value is PresenceChangeMessage {

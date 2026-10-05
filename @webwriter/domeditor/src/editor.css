@@ -1440,6 +1440,11 @@ body::part(presence-gap-caret-label) {
 ::highlight(webwriter-comments) {
   background-color: #fff3a3;
 }
+/* Harper supplies the underlines; hide the browser's overlapping decorations. */
+::spelling-error,
+::grammar-error {
+  text-decoration: none;
+}
 ::highlight(webwriter-spelling) {
   text-decoration: underline wavy #c62828;
   text-underline-offset: 0.15em;
@@ -1447,6 +1452,54 @@ body::part(presence-gap-caret-label) {
 ::highlight(webwriter-grammar) {
   text-decoration: underline wavy #1769aa;
   text-underline-offset: 0.15em;
+}
+body::part(proofreading-popup) {
+  position: fixed;
+  /* Leave top/left to the popup's coordinates inside the shadow appendix. */
+  right: auto;
+  bottom: auto;
+  z-index: 2147483647;
+  display: grid;
+  gap: .4rem;
+  box-sizing: border-box;
+  width: 270px;
+  max-width: calc(100vw - 12px);
+  max-height: calc(100vh - 12px);
+  overflow: auto;
+  margin: 0;
+  padding: .65rem;
+  border: 1px solid #b9c5d2;
+  border-radius: .4rem;
+  background: #fff;
+  color: #26313d;
+  box-shadow: 0 3px 12px #0002;
+  font: 14px/1.35 system-ui, sans-serif;
+  pointer-events: auto;
+  user-select: none;
+}
+body::part(proofreading-popup-message) {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+body::part(proofreading-popup-text) {
+  overflow-wrap: anywhere;
+}
+body::part(proofreading-popup-button) {
+  padding: .35rem .5rem;
+  border: 1px solid #d5dce5;
+  border-radius: .25rem;
+  background: #f6f9fc;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+body::part(proofreading-popup-button):hover {
+  background: #e3efff;
+}
+body::part(proofreading-popup-button):focus-visible {
+  outline: 2px solid #3977c7;
+  outline-offset: 1px;
 }
 body::part(transform-overlay) {
   --ww-transform-color: var(--sl-color-primary-400);

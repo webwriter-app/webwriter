@@ -86,6 +86,9 @@ import {
   isMarkStateChangeMessage,
   isCommentStateChangeMessage,
   isProofreadingStateChangeMessage,
+  emptyProofreadingState,
+  type ProofreadingState,
+  type ProofreadingAction,
   isSelectionChangeMessage,
   isPresenceChangeMessage,
   markStateChangeEvent,
@@ -412,7 +415,7 @@ export class DomEditor extends LitElement {
     markAttributes: {attribute: false, state: true},
     ruby: {attribute: false, state: true},
     commentState: {attribute: false, state: true},
-    proofreadingError: {attribute: false, state: true},
+    proofreadingState: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
     packages: {attribute: false, state: true},
     installedPackages: {attribute: false, state: true},
@@ -541,7 +544,7 @@ export class DomEditor extends LitElement {
     count: 0,
     highlighting: true,
   }
-  private proofreadingError = ""
+  private proofreadingState: ProofreadingState = emptyProofreadingState()
   private listType: ListType | null = null
   private listStyle = ""
   private orderedList: ListSelectionState["ordered"] = undefined
@@ -2912,7 +2915,7 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
     this.frameState = undefined
     this.documentHead = emptyDocumentHeadState()
-    this.proofreadingError = ""
+    this.proofreadingState = emptyProofreadingState()
     this.historyState = emptyVersionHistoryState()
     this.historyLoading = false
     this.historyOperationCount = 0
@@ -3520,7 +3523,7 @@ export class DomEditor extends LitElement {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     if(label === "Spelling" || label === "Grammar") {
       void this.execute({type: "checkProofreading", kind: label === "Spelling" ? "spelling" : "grammar"})
-        .catch(error => { this.proofreadingError = error instanceof Error ? error.message : String(error) })
+        .catch(error => { this.proofreadingState = {...this.proofreadingState, error: error instanceof Error ? error.message : String(error), loading: false, checking: false} })
       return
     }
     if(label === "pin-snippet") {
@@ -4609,7 +4612,7 @@ export class DomEditor extends LitElement {
     this.pendingExecutions.clear()
     this.frameState = snapshot
     this.installedPackages = nextPackages
-    this.proofreadingError = ""
+    this.proofreadingState = emptyProofreadingState()
     this.persistInstalledPackages()
     this.frameRevision++
     await this.updateComplete
@@ -4656,7 +4659,7 @@ export class DomEditor extends LitElement {
     this.frameState = undefined
     this.documentTree = null
     this.editorInitializedRevision = -1
-    this.proofreadingError = ""
+    this.proofreadingState = emptyProofreadingState()
   }
 
   private async checkPackageDependencies() {
@@ -4910,6 +4913,33 @@ export class DomEditor extends LitElement {
       return
     }
     void this.execute({type: "setSectionType", section}).finally(() => this.focusEditor())
+  }
+
+  private handleProofreadingAction = (event: Event) => {
+    const detail = (event as CustomEvent<{type?: unknown, id?: unknown, index?: unknown}>).detail
+    if(!detail || this.htmlPending || this.historyState.preview !== null) return
+    let action: ProofreadingAction
+    if(detail.type === "retryProofreading") action = {type: detail.type}
+    else if(typeof detail.id === "string" && (detail.type === "selectProofreadingIssue" || detail.type === "ignoreProofreadingIssue")) {
+      action = {type: detail.type, id: detail.id}
+    }
+    else if(detail.type === "applyProofreadingSuggestion" && typeof detail.id === "string"
+      && typeof detail.index === "number" && Number.isInteger(detail.index) && detail.index >= 0) {
+      action = {type: detail.type, id: detail.id, index: detail.index}
+    }
+    else return
+    const revision = this.frameRevision
+    void this.execute(action).then(result => {
+      if(revision !== this.frameRevision) return
+      if(result === true && (action.type === "selectProofreadingIssue" || action.type === "applyProofreadingSuggestion")) this.focusEditor()
+    }).catch(() => {
+      // A replaced frame or stale command should refresh the cards safely.
+      if(revision !== this.frameRevision) return
+      void this.execute({type: "getProofreadingState"}).then(detail => {
+        const message = {type: proofreadingStateChangeEvent, detail}
+        if(revision === this.frameRevision && isProofreadingStateChangeMessage(message)) this.proofreadingState = message.detail
+      }).catch(() => {})
+    })
   }
 
   private handleCommentAction = (event: Event) => {
@@ -6104,7 +6134,13 @@ export class DomEditor extends LitElement {
     }
     if(isProofreadingStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
-      this.proofreadingError = event.data.detail.error ?? ""
+      this.proofreadingState = {
+        ...event.data.detail,
+        hoveredIssueId: event.data.detail.issues.some(issue => issue.id === event.data.detail.hoveredIssueId)
+          ? event.data.detail.hoveredIssueId
+          : null,
+        issues: event.data.detail.issues.map(issue => ({...issue, suggestions: issue.suggestions.map(suggestion => ({...suggestion}))})),
+      }
       this.dispatchEvent(new CustomEvent(proofreadingStateChangeEvent, {
         detail: {...event.data.detail}, bubbles: true, composed: true,
       }))
@@ -6508,7 +6544,7 @@ export class DomEditor extends LitElement {
       count: 0,
       highlighting: true,
     }
-    this.proofreadingError = ""
+    this.proofreadingState = emptyProofreadingState()
     this.mediaSelection = null
     this.dialogSelection = null
     this.tableSelection = null
@@ -6779,7 +6815,7 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
-        .proofreadingError=${this.proofreadingError}
+        .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
@@ -6795,6 +6831,7 @@ export class DomEditor extends LitElement {
         .aiSidebar=${!this.breadcrumbVisible && this.aiToolboxOpen}
         ?hidden=${(!this.breadcrumbVisible && !this.aiToolboxOpen) || this.previewActive || this.liveSessionActive}
         @toolbox-change=${this.handleToolboxChange}
+        @proofreading-action=${this.handleProofreadingAction}
         @document-layout-change=${this.handleDocumentLayoutChange}
         @developer-console-change=${this.handleDeveloperConsoleChange}
         @developer-console-pin-change=${this.handleDeveloperConsolePinChange}

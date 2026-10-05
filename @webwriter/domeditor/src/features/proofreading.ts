@@ -1,30 +1,14 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {createProofreader, type Proofreader, type ProofreadingIssue} from "../proofreading"
-import {adoptStylesheet, createStylesheet, isAtomicEditingElement} from "../utility"
+import {$, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import type {Schema} from "../schema"
+import type {ProofreadingState} from "../editor-bridge"
 
 type TextPart = {node: Text, start: number, value: string}
 type TextRun = {text: string, language: string, parts: TextPart[]}
-type Diagnostic = ProofreadingIssue & {id: string, run: TextRun}
-type ReviewKind = "spelling" | "grammar" | "all"
-
+type Diagnostic = ProofreadingIssue & {id: string, run: TextRun, range: Range}
 const highlightNames = {spelling: "webwriter-spelling", grammar: "webwriter-grammar"} as const
-const panelStyles = createStylesheet(`
-  .◆proofreading-panel {
-    position: fixed; right: 1rem; bottom: 1rem; z-index: 2147483646;
-    width: min(24rem, calc(100vw - 2rem)); max-height: min(34rem, calc(100vh - 2rem));
-    overflow: auto; box-sizing: border-box; padding: 1rem; border: 1px solid #cbd5e1;
-    border-radius: .5rem; background: white; color: #172033; box-shadow: 0 .5rem 2rem #0003;
-    font: 14px/1.4 system-ui, sans-serif; pointer-events: auto; user-select: text;
-  }
-  .◆proofreading-panel header {display: flex; align-items: center; justify-content: space-between; gap: 1rem}
-  .◆proofreading-panel h2 {font: inherit; font-weight: 600; margin: 0}
-  .◆proofreading-panel button {font: inherit; cursor: pointer; margin: .2rem; padding: .25rem .5rem}
-  .◆proofreading-panel li {margin: .75rem 0; border-top: 1px solid #e2e8f0; padding-top: .5rem}
-  .◆proofreading-panel ul {list-style: none; padding: 0; margin: 0}
-  .◆proofreading-panel p {margin: .5rem 0}
-`)
 
 /** A disposable projection of eligible prose, never an editor document model.
  * Formatting stays transparent; unrelated flows, languages and atomic hosts
@@ -85,7 +69,12 @@ function runRange(run: TextRun, start: number, end: number) {
   return range.toString() === run.text.slice(start, end) ? range : null
 }
 
-/** Local proofreading uses ranges for paint and the shadow appendix for UI. */
+function sameRange(first: Range, second: Range) {
+  return first.startContainer === second.startContainer && first.startOffset === second.startOffset
+    && first.endContainer === second.endContainer && first.endOffset === second.endOffset
+}
+
+/** Local proofreading paints ranges and publishes cards through the editor bridge. */
 export class ProofreadingFeature extends EditorFeature {
   private observer: MutationObserver | null = null
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -98,17 +87,22 @@ export class ProofreadingFeature extends EditorFeature {
   private loading = false
   private ready = false
   private lastStatus = ""
-  private kind: ReviewKind = "all"
   private error: string | null = null
   private diagnostics: Diagnostic[] = []
   private ignored = new Set<string>()
   private reader: Promise<Proofreader> | null = null
   private readerAbort: AbortController | null = null
   private operation: Promise<void> | null = null
-  private panel: HTMLElement | null = null
+  private hoveredIssueId: string | null = null
+  private popup: HTMLElement | null = null
+  private popupIssueId: string | null = null
+  private popupSuggestions = ""
+  private readonly handleBlur = () => { this.closePopup(); this.setHoveredIssue(null) }
 
   actions = {
-    checkProofreading: ({kind = "all"}: {type: "checkProofreading", kind?: ReviewKind}) => this.open(kind),
+    checkProofreading: ({}: {type: "checkProofreading", kind?: "spelling" | "grammar" | "all"}) => this.retry(),
+    retryProofreading: ({}: {type: "retryProofreading"}) => this.retry(),
+    selectProofreadingIssue: ({id}: {type: "selectProofreadingIssue", id: string}) => this.selectIssue(id),
     getProofreadingState: ({}: {type: "getProofreadingState"}) => this.state(),
     setProofreadingEnabled: ({enabled}: {type: "setProofreadingEnabled", enabled: boolean}) => this.setChecking(enabled),
     applyProofreadingSuggestion: ({id, index}: {type: "applyProofreadingSuggestion", id: string, index: number}) => this.applySuggestion(id, index),
@@ -116,13 +110,42 @@ export class ProofreadingFeature extends EditorFeature {
   } as const
 
   activeListeners: DocumentListenerMap = {
-    compositionstart: () => { this.composing = true; this.invalidate() },
+    compositionstart: () => { this.composing = true; this.closePopup(); this.setHoveredIssue(null); this.invalidate() },
     compositionend: () => { this.composing = false; this.invalidate() },
+  }
+
+  captureListeners: DocumentListenerMap = {
+    contextmenu: event => this.contextMenu(event),
+    pointermove: event => this.setHoveredIssue(event.buttons ? null : this.issueAtPoint(event)?.id ?? null),
+    pointerout: event => { if(!event.relatedTarget) this.setHoveredIssue(null) },
+    pointerdown: event => {
+      if(event.button === 0 && !this.isPopupEvent(event)) this.closePopup()
+    },
+    keydown: event => {
+      if(!this.popup) return
+      if(event.key === "Escape") {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        this.closePopup(true)
+      }
+      else if(this.isPopupEvent(event) && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        const buttons = Array.from(this.popup.querySelectorAll<HTMLButtonElement>("button"))
+        const index = buttons.indexOf(this.editor.appendix.activeElement as HTMLButtonElement)
+        const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+          : (index + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length
+        buttons[next]?.focus()
+      }
+      else if(!this.isPopupEvent(event)) this.closePopup()
+    },
+    scroll: event => { if(!this.isPopupEvent(event)) { this.closePopup(); this.setHoveredIssue(null) } },
   }
 
   enable() {
     if(this.isEnabled) return
     super.enable()
+    window.addEventListener("blur", this.handleBlur)
     this.observer = new MutationObserver(records => {
       if(this.hasProseChanges(records) && this.enabled) this.invalidate()
     })
@@ -148,8 +171,8 @@ export class ProofreadingFeature extends EditorFeature {
     clearTimeout(this.timer)
     this.observer?.disconnect()
     this.observer = null
+    window.removeEventListener("blur", this.handleBlur)
     this.clearDiagnostics()
-    this.close()
     this.ignored.clear()
     const reader = this.reader
     this.reader = null
@@ -162,39 +185,27 @@ export class ProofreadingFeature extends EditorFeature {
 
   state() {
     this.flushMutations()
+    return this.snapshot()
+  }
+
+  private snapshot(): ProofreadingState {
     return {
       enabled: this.enabled, loading: this.loading, ready: this.ready, checking: this.checking, error: this.error,
+      hoveredIssueId: this.hoveredIssueId,
       issues: this.diagnostics.map(({id, start, end, kind, message, suggestions, run}) => ({
-        id, start, end, kind, message, text: run.text.slice(start, end), suggestions,
+        id, start, end, kind, message, text: run.text.slice(start, end), suggestions: suggestions.map(suggestion => ({...suggestion})),
       })),
     }
   }
 
-  open(kind: ReviewKind = "all") {
-    if(!this.isEnabled || !["spelling", "grammar", "all"].includes(kind)) return
-    this.kind = kind
+  retry() {
+    if(!this.isEnabled) return
     this.enabled = true
     this.error = null
-    if(!this.panel) {
-      this.panel = document.createElement("section")
-      this.panel.className = "◆proofreading-panel"
-      this.panel.setAttribute("aria-label", "Spelling and grammar")
-      adoptStylesheet(this.editor.appendix, panelStyles)
-      this.editor.addAppendix(this.panel)
-    }
     this.invalidate(false)
     void this.checkNow()
-    this.render()
-    // Starting a worker can take longer than a normal bridge command. Results
-    // update the appendix asynchronously; the command itself opens it promptly.
+    // Worker loading must not delay a normal bridge command.
     return this.state()
-  }
-
-  close() {
-    this.panel?.remove()
-    this.panel = null
-    const appendix = document.body.shadowRoot
-    if(appendix) appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(sheet => sheet !== panelStyles)
   }
 
   setChecking(enabled: boolean) {
@@ -203,6 +214,7 @@ export class ProofreadingFeature extends EditorFeature {
     this.error = null
     this.invalidate(enabled)
     if(!enabled) {
+      this.clearDiagnostics()
       const reader = this.reader
       this.reader = null
       this.readerAbort?.abort()
@@ -212,12 +224,11 @@ export class ProofreadingFeature extends EditorFeature {
       void reader?.then(value => value.dispose()).catch(() => {})
     }
     this.postStatus()
-    this.render()
     return this.state()
   }
 
   private postStatus() {
-    const status = {enabled: this.enabled, loading: this.loading, ready: this.ready, error: this.error}
+    const status = this.snapshot()
     const key = JSON.stringify(status)
     if(key === this.lastStatus) return
     this.lastStatus = key
@@ -241,16 +252,117 @@ export class ProofreadingFeature extends EditorFeature {
   private invalidate(schedule = true) {
     this.generation++
     clearTimeout(this.timer)
-    this.clearDiagnostics()
+    const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
+    // Keep unaffected flows usable while waiting for their replacement results.
+    this.diagnostics = this.diagnostics.filter(diagnostic => runs.some(run => sameRun(run, diagnostic.run)))
+    for(const diagnostic of this.diagnostics) {
+      const range = runRange(diagnostic.run, diagnostic.start, diagnostic.end)!
+      // Moving an intact paragraph can collapse its live Range even though
+      // the text nodes and checking context remain unchanged.
+      if(!sameRange(diagnostic.range, range)) diagnostic.range = range
+    }
+    this.paint()
     if(schedule && this.enabled && !this.composing && !this.error) {
       this.timer = setTimeout(() => { void this.checkNow() }, 500)
     }
-    this.render()
+    this.postStatus()
   }
 
   private clearDiagnostics() {
     this.diagnostics = []
+    this.hoveredIssueId = null
+    this.closePopup()
     for(const name of Object.values(highlightNames)) globalThis.CSS?.highlights?.delete(name)
+  }
+
+  private setHoveredIssue(id: string | null) {
+    if(this.hoveredIssueId === id) return
+    this.hoveredIssueId = id
+    this.postStatus()
+  }
+
+  private isPopupEvent(event: Event) {
+    return Boolean(this.popup && event.composedPath().includes(this.popup))
+  }
+
+  private issueAtPoint(event: MouseEvent) {
+    if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked
+      || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema)
+      || isFormControlInteraction(event)) return null
+    this.flushMutations()
+    const target = event.composedPath()[0]
+    if(!(target instanceof Node)) return null
+    return this.diagnostics.find(diagnostic => diagnostic.run.parts.some(part => target.contains(part.node))
+      && Array.from(diagnostic.range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0
+        && event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom + 3)) ?? null
+  }
+
+  private contextMenu(event: MouseEvent) {
+    if(event.defaultPrevented) return
+    if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked) { this.closePopup(); return }
+    const issue = this.isPopupEvent(event) && this.popupIssueId
+      ? this.resolve(this.popupIssueId) : this.issueAtPoint(event)
+    if(!issue) { this.closePopup(); return }
+    this.closePopup()
+    this.openPopup(issue, event.clientX, event.clientY)
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  private closePopup(restoreFocus = false) {
+    const focused = this.popup && this.popup.contains(this.editor.appendix.activeElement)
+    this.popup?.remove()
+    this.popup = null
+    this.popupIssueId = null
+    this.popupSuggestions = ""
+    if(restoreFocus && focused) document.body.focus()
+  }
+
+  private openPopup(issue: Diagnostic, x: number, y: number) {
+    const anchor = Array.from(issue.range.getClientRects()).find(rect => rect.width > 0 && rect.height > 0
+      && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom + 3)
+      ?? issue.range.getBoundingClientRect()
+    const popup = document.createElement("aside")
+    popup.className = "◆ ◆editor-only ◆proofreading-popup"
+    popup.setAttribute("part", "proofreading-popup")
+    popup.setAttribute("role", "menu")
+    popup.setAttribute("aria-label", `${issue.kind === "spelling" ? "Spelling" : "Grammar"} suggestions`)
+    popup.setAttribute("popover", "manual")
+    const message = document.createElement("p")
+    message.setAttribute("part", "proofreading-popup-message")
+    message.textContent = issue.message
+    const text = document.createElement("strong")
+    text.setAttribute("part", "proofreading-popup-text")
+    text.textContent = issue.run.text.slice(issue.start, issue.end)
+    popup.append(text, message)
+    const button = (label: string, action: () => void) => {
+      const element = document.createElement("button")
+      element.type = "button"
+      element.setAttribute("role", "menuitem")
+      element.setAttribute("part", "proofreading-popup-button")
+      element.textContent = label
+      element.addEventListener("click", () => {
+        if(this.popup !== popup || !popup.isConnected) return
+        this.closePopup(true)
+        action()
+      })
+      popup.append(element)
+    }
+    issue.suggestions.forEach((suggestion, index) => button(suggestion.kind === "remove" ? "Remove"
+      : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text,
+      () => { this.applySuggestion(issue.id, index) }))
+    button("Ignore", () => { this.ignore(issue.id) })
+    this.popup = popup
+    this.popupIssueId = issue.id
+    this.popupSuggestions = JSON.stringify(issue.suggestions)
+    this.editor.addAppendix(popup)
+    popup.showPopover?.()
+    const rect = popup.getBoundingClientRect()
+    popup.style.left = `${Math.max(6, Math.min(anchor.left, innerWidth - rect.width - 6))}px`
+    const below = anchor.bottom + 6
+    popup.style.top = `${below + rect.height <= innerHeight - 6 ? below : Math.max(6, anchor.top - rect.height - 6)}px`
+    popup.querySelector<HTMLButtonElement>("button")?.focus()
   }
 
   async checkNow() {
@@ -272,7 +384,6 @@ export class ProofreadingFeature extends EditorFeature {
     this.checking = true
     this.error = null
     this.postStatus()
-    this.render()
     try {
       if(!this.reader) {
         this.loading = true
@@ -295,9 +406,16 @@ export class ProofreadingFeature extends EditorFeature {
         if(runs.length) {
           for(const run of runs) {
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
-            for(const issue of await reader.check(run.text, run.language)) {
-              if(runRange(run, issue.start, issue.end) && !this.ignored.has(this.ignoreKey(run, issue))) {
-                diagnostics.push({...issue, run, id: String(++this.sequence)})
+            const issues = await reader.check(run.text, run.language)
+            if(generation !== this.generation || !this.enabled || !this.isEnabled) break
+            for(const issue of issues) {
+              const range = runRange(run, issue.start, issue.end)
+              if(range && !this.ignored.has(this.ignoreKey(run, issue))) {
+                const previous = this.diagnostics.find(diagnostic => sameRun(run, diagnostic.run)
+                  && diagnostic.start === issue.start && diagnostic.end === issue.end
+                  && diagnostic.kind === issue.kind && diagnostic.message === issue.message)
+                diagnostics.push({...issue, run, id: previous?.id ?? String(++this.sequence),
+                  range: previous && sameRange(previous.range, range) ? previous.range : range})
               }
             }
           }
@@ -305,8 +423,10 @@ export class ProofreadingFeature extends EditorFeature {
         this.flushMutations()
         if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
         const current = proofreadingRuns(getDocumentRoot(), this.editor.schema)
-        this.diagnostics = diagnostics.filter(diagnostic => current.some(run => sameRun(run, diagnostic.run)))
+        this.diagnostics = diagnostics.filter(diagnostic => current.some(run => sameRun(run, diagnostic.run))
+          && !this.ignored.has(this.ignoreKey(diagnostic.run, diagnostic)))
         this.paint()
+        this.postStatus()
       }
     }
     catch(error) {
@@ -314,7 +434,6 @@ export class ProofreadingFeature extends EditorFeature {
         this.requested = false
         clearTimeout(this.timer)
         this.error = error instanceof Error ? error.message : String(error)
-        this.clearDiagnostics()
         const reader = this.reader
         this.reader = null
         this.readerAbort?.abort()
@@ -327,18 +446,30 @@ export class ProofreadingFeature extends EditorFeature {
     }
     finally {
       this.checking = false
-      if(this.isEnabled) this.render()
+      if(this.isEnabled) this.postStatus()
     }
   }
 
   private paint() {
+    if(this.hoveredIssueId && !this.diagnostics.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
+    if(this.popupIssueId && !this.diagnostics.some(issue => issue.id === this.popupIssueId
+      && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
     if(!globalThis.CSS?.highlights || typeof globalThis.Highlight !== "function") return
     for(const kind of ["spelling", "grammar"] as const) {
-      const ranges = this.diagnostics.filter(diagnostic => diagnostic.kind === kind)
-        .map(diagnostic => runRange(diagnostic.run, diagnostic.start, diagnostic.end)).filter((range): range is Range => range !== null)
-      const highlight = new Highlight(...ranges)
-      highlight.type = kind === "spelling" ? "spelling-error" : "grammar-error"
-      CSS.highlights.set(highlightNames[kind], highlight)
+      const ranges = new Set(this.diagnostics.filter(diagnostic => diagnostic.kind === kind).map(diagnostic => diagnostic.range))
+      const name = highlightNames[kind]
+      if(!ranges.size) {
+        CSS.highlights.delete(name)
+        continue
+      }
+      let highlight = CSS.highlights.get(name)
+      if(!highlight) {
+        highlight = new Highlight()
+        highlight.type = kind === "spelling" ? "spelling-error" : "grammar-error"
+        CSS.highlights.set(name, highlight)
+      }
+      for(const range of highlight) if(!ranges.has(range as Range)) highlight.delete(range)
+      for(const range of ranges) if(!highlight.has(range)) highlight.add(range)
     }
   }
 
@@ -407,79 +538,20 @@ export class ProofreadingFeature extends EditorFeature {
     this.ignored.add(this.ignoreKey(diagnostic.run, diagnostic))
     this.diagnostics = this.diagnostics.filter(candidate => candidate.id !== id)
     this.paint()
-    this.render()
+    this.postStatus()
     return true
   }
 
-  private select(diagnostic: Diagnostic) {
-    const current = this.resolve(diagnostic.id)
+  selectIssue(id: string) {
+    if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked) return false
+    const current = this.resolve(id)
     const range = current && runRange(current.run, current.start, current.end)
-    if(!range) return
+    if(!range) return false
     const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
+    if(!selection) return false
+    $.selectRanges([range])
     this.editor.doc.updateLocalSelection()
     range.startContainer.parentElement?.scrollIntoView({block: "nearest"})
-  }
-
-  private render() {
-    if(!this.panel) return
-    const active = this.panel.getRootNode() instanceof ShadowRoot ? this.editor.appendix.activeElement : null
-    // Retain keyboard focus when a background check refreshes the issue list.
-    const focusKey = active?.getAttribute("data-proofreading-control")
-    const fragment = document.createDocumentFragment()
-    const button = (label: string, action: () => void, key: string) => {
-      const element = document.createElement("button")
-      element.type = "button"
-      element.textContent = label
-      element.setAttribute("data-proofreading-control", key)
-      element.addEventListener("click", action)
-      return element
-    }
-    const header = document.createElement("header")
-    const title = document.createElement("h2")
-    title.textContent = "Spelling and grammar"
-    header.append(title, button("Close", () => this.close(), "close"))
-    fragment.append(header)
-    const label = document.createElement("label"), checkbox = document.createElement("input")
-    checkbox.type = "checkbox"
-    checkbox.checked = this.enabled
-    checkbox.setAttribute("data-proofreading-control", "enabled")
-    checkbox.addEventListener("change", () => this.setChecking(checkbox.checked))
-    label.append(checkbox, " Check as I type")
-    fragment.append(label)
-    const status = document.createElement("p")
-    status.setAttribute("role", "status")
-    const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
-    const issues = this.diagnostics.filter(diagnostic => this.kind === "all" || diagnostic.kind === this.kind)
-    status.textContent = !this.enabled ? "Checking is off." : this.error ? this.error : this.loading ? "Loading spelling and grammar checker…" : this.checking ? "Checking…"
-      : !runs.length ? "Harper checks English text. Set the document or passage language to English to check it."
-      : `${issues.length} ${issues.length === 1 ? "suggestion" : "suggestions"}. English text is checked locally.`
-    fragment.append(status)
-    if(this.error) fragment.append(button("Retry", () => { void this.checkNow() }, "retry"))
-    if(this.kind !== "all") fragment.append(button("Show spelling and grammar", () => { this.kind = "all"; this.render() }, "all"))
-    const list = document.createElement("ul")
-    for(const diagnostic of issues.slice(0, 50)) {
-      const item = document.createElement("li")
-      item.append(button(diagnostic.run.text.slice(diagnostic.start, diagnostic.end), () => this.select(diagnostic), `${diagnostic.id}:select`))
-      const message = document.createElement("p")
-      message.textContent = diagnostic.message
-      item.append(message)
-      diagnostic.suggestions.slice(0, 5).forEach((suggestion, index) => {
-        item.append(button(suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add “${suggestion.text}”` : suggestion.text,
-          () => this.applySuggestion(diagnostic.id, index), `${diagnostic.id}:${index}`))
-      })
-      item.append(button("Ignore", () => this.ignore(diagnostic.id), `${diagnostic.id}:ignore`))
-      list.append(item)
-    }
-    fragment.append(list)
-    if(issues.length > 50) {
-      const remainder = document.createElement("p")
-      remainder.textContent = "Showing the first 50 suggestions. Resolve these to review the rest."
-      fragment.append(remainder)
-    }
-    this.panel.replaceChildren(fragment)
-    if(focusKey) Array.from(this.panel.querySelectorAll<HTMLElement>("[data-proofreading-control]"))
-      .find(element => element.getAttribute("data-proofreading-control") === focusKey)?.focus({preventScroll: true})
+    return true
   }
 }
