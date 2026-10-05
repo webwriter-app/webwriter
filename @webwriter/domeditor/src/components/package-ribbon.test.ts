@@ -61,6 +61,23 @@ function dragData(target: HTMLElement) {
 }
 
 describe("package ribbon controls", () => {
+  it("keeps wrapped package labels compact within their rows", async () => {
+    for(const label of ["Map", "PhET Simulation", "Interactive Video", "Neural Network", "Branching Scenario"]) {
+      const button = new RibbonButton()
+      button.variant = "package"
+      button.label = label
+      document.body.append(button)
+      await button.updateComplete
+
+      const text = button.shadowRoot!.querySelector(".button-label-text")!
+      const labelStyle = getComputedStyle(button.shadowRoot!.querySelector(".button-label")!)
+      expect(text.textContent).toBe(label)
+      expect(getComputedStyle(text).whiteSpace).toBe("normal")
+      expect(labelStyle.lineHeight).toBe("1.1")
+      expect(labelStyle.getPropertyValue("-webkit-line-clamp")).toBe("2")
+    }
+  })
+
   it("drags package, member, and saved snippet actions from expanded and collapsed ribbon items", async () => {
     expect(ribbonInsertionAction("package:@webwriter/demo")).toBe(true)
     expect(ribbonInsertionAction("package-member:@webwriter/demo:./widgets/demo")).toBe(true)
