@@ -335,6 +335,7 @@ describe("DomEditor document loading", () => {
     await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull())
     expect(initialize).toHaveBeenCalledOnce()
     expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBe(iframe)
+    expect(editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!.inert).toBe(true)
     historyReady()
     catalogReady()
     await host.recentDocumentsReady
@@ -1113,7 +1114,7 @@ describe("DomEditor iframe setup", () => {
 
     await host.newDocument()
 
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining('<meta name="generator"'))
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining('<meta name="generator"'), true)
     expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode, expectedMode: "document"})
     expect(host.fileDirty).toBe(false)
     expect(host.isFreshDocumentUnchanged()).toBe(true)
@@ -5967,6 +5968,48 @@ describe("DomEditor.execute()", () => {
     }
     expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).not.toBeNull()
     expect(editor.querySelector(".document-layouts-bar")).toBeNull()
+  })
+
+  it.each([
+    ["local", "<p>Opened document</p>"], ["local", "<p></p>"],
+    ["backend", "<p>Opened document</p>"], ["backend", "<p></p>"],
+  ])("hides Layouts when opening an existing %s document containing %s", async (storage, content) => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(undefined)
+    vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "opened", kind: "local"})
+    expect(editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!.inert).toBe(false)
+
+    if(storage === "local") {
+      const file = new File([content], "opened.html", {type: "text/html"})
+      vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async () => file}]))
+      await host.openDocument()
+    }
+    else {
+      host.backendClient = {getDocument: vi.fn().mockResolvedValue({id: "opened", title: "Opened", format: "html", content})}
+      await host.openBackendDocument("opened")
+    }
+    await editor.updateComplete
+
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!
+    expect(panel.inert).toBe(true)
+    expect(panel.getAttribute("aria-hidden")).toBe("true")
+  })
+
+  it.each([false, true])("restores Layouts for a new empty document unless the developer console is pinned (%s)", async pinned => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(undefined)
+    await host.reloadDocument("<p>Existing document</p>")
+    host.settings = {...host.settings, pinDeveloperConsole: pinned}
+
+    await host.newDocument("document")
+    await editor.updateComplete
+
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!
+    expect(panel.inert).toBe(pinned)
+    expect(panel.getAttribute("aria-hidden")).toBe(String(pinned))
+    expect(new DOMParser().parseFromString(host.frameDocumentHTML, "text/html").body.innerHTML).toBe("")
   })
 
   it("keeps Layouts visible when synchronization reapplies the document language", async () => {

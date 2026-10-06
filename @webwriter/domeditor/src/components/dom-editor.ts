@@ -2935,7 +2935,7 @@ export class DomEditor extends LitElement {
     return !this.fileDirty || window.confirm("Discard the unsaved changes to this document?")
   }
 
-  private async reloadDocument(htmlSource: string) {
+  private async reloadDocument(htmlSource: string, isNewDocument = false) {
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
@@ -2967,7 +2967,7 @@ export class DomEditor extends LitElement {
     this.historyError = ""
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
-    this.documentLayoutsDismissed = this.settings.pinDeveloperConsole
+    this.documentLayoutsDismissed = !isNewDocument || this.settings.pinDeveloperConsole
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
@@ -3213,7 +3213,7 @@ export class DomEditor extends LitElement {
       this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
-      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
+      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true)
       await this.applyDefaultLayout(layout, this.frameRevision)
       this.fileDirty = !this.isFreshDocumentUnchanged()
       this.updateDocumentURL(null)
