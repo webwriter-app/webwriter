@@ -247,7 +247,8 @@ export function mediaDefaultHTML(type: MediaType) {
 
 export function mediaSourceAttribute(elementOrType: Element | MediaType) {
   const type = typeof elementOrType === "string" ? elementOrType : elementOrType.localName
-  return type === "object" ? "data" : "src"
+  return type === "object" ? "data" : type === "image" && typeof elementOrType !== "string"
+    && elementOrType.namespaceURI === "http://www.w3.org/2000/svg" ? "href" : "src"
 }
 
 export function mediaSourceTarget(element: Element, create = true) {
@@ -263,6 +264,9 @@ export function mediaSourceTarget(element: Element, create = true) {
 }
 
 export function isEmptyMedia(element: Element) {
+  if(element.namespaceURI === "http://www.w3.org/2000/svg" && element.localName === "image") {
+    return !element.getAttribute("href")?.trim() && !element.getAttributeNS("http://www.w3.org/1999/xlink", "href")?.trim()
+  }
   if(element.matches("picture")) {
     return !element.querySelector("img[src]:not([src='']), img[srcset]:not([srcset='']), source[srcset]:not([srcset=''])")
   }

@@ -1,7 +1,8 @@
 import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, atomicEditingContainer, isAppendixInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
+import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {
   SVG_NAMESPACE,
@@ -164,6 +165,7 @@ const cleanNumber = (value: number) => {
 
 const polygonShapeTypes = new Set<GraphicShapeType>(["triangle", "diamond", "hexagon", "star", "arrow", "polygon"])
 const naturalGraphicShapeSize: Partial<Record<GraphicShapeType, {width: number, height: number}>> = {
+  image: {width: 320, height: 240},
   rectangle: {width: 240, height: 240},
   ellipse: {width: 240, height: 240},
   triangle: {width: 240, height: 240},
@@ -327,6 +329,7 @@ const shapeBounds = (shape: Element): Bounds => {
   const preset = readGraphicPreset(geometry)
   if(preset) return preset.bounds
   switch(graphicShapeType(shape)) {
+    case "image":
     case "rectangle": return {
       x: attributeNumber(geometry, "x"),
       y: attributeNumber(geometry, "y"),
@@ -482,7 +485,7 @@ const setRotation = (shape: Element, angle: number) => {
 
 const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPoints: Array<{x: number, y: number}>) => {
   const geometry = shapeGeometry(shape)
-  const minimum = graphicShapeType(shape) === "rectangle" || graphicShapeType(shape) === "ellipse" ? 1 : 0
+  const minimum = ["rectangle", "ellipse", "image"].includes(graphicShapeType(shape) ?? "") ? 1 : 0
   const safe = {
     x: next.x,
     y: next.y,
@@ -500,6 +503,7 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
     return
   }
   switch(graphicShapeType(shape)) {
+    case "image":
     case "rectangle":
       geometry.setAttribute("x", cleanNumber(safe.x))
       geometry.setAttribute("y", cleanNumber(safe.y))
@@ -543,6 +547,7 @@ export class GraphicFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
 
   protected handlesCapturedElementInteractions = true
+  #imageReaders = new Set<FileReader>()
   #cancelImport: (() => void) | null = null
   #selectedShapes = new Set<SVGGraphicsElement>()
   #primaryShape: SVGGraphicsElement | null = null
@@ -572,6 +577,8 @@ export class GraphicFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.#cancelImport?.()
+    this.#imageReaders.forEach(reader => { if(reader.readyState === 1) reader.abort() })
+    this.#imageReaders.clear()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
     document.removeEventListener("scroll", this.#scheduleRefresh, true)
@@ -799,6 +806,81 @@ export class GraphicFeature extends EditorFeature {
     this.#refresh()
   }
 
+  // Claim graphic image drops before document insertion resolves a text caret.
+  captureListeners: DocumentListenerMap = {
+    dragover: event => {
+      if(!this.#imageDropGraphic(event) || !event.dataTransfer) return
+      const data = event.dataTransfer
+      if(!Array.from(data.items).some(item => item.kind === "file" && item.type.startsWith("image/"))
+        && !Array.from(data.types).some(type => type === "text/html" || type === "text/uri-list")) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      data.dropEffect = "copy"
+    },
+    drop: event => this.#dropImage(event),
+  }
+
+  #imageDropGraphic(event: DragEvent) {
+    if(this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
+    const placeholder = this.editor.features.media.placeholder
+    const target = event.composedPath().includes(placeholder.element) ? placeholder.target
+      : event.target instanceof Node ? event.target : null
+    const graphic = graphicContainerForNode(target)
+    return graphic?.isConnected && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
+  }
+
+  #dropImage(event: DragEvent) {
+    const graphic = this.#imageDropGraphic(event)
+    const data = event.dataTransfer
+    if(!graphic || !data) return
+    const files = Array.from(data.files).filter(file => file.type.startsWith("image/"))
+    const template = document.createElement("template")
+    template.innerHTML = data.getData("text/html")
+    stripActiveContent(template.content)
+    const sourceImage = template.content.querySelector("img[src], image[href]")
+    const source = sourceImage?.getAttribute(sourceImage.localName === "image" ? "href" : "src")
+      ?? data.getData("text/uri-list").split(/\r?\n/).find(line => line.trim() && !line.startsWith("#"))
+    const safeSource = source && /^(https?:|data:image\/|blob:)/i.test(source.trim()) ? source.trim() : null
+    if(!files.length && !safeSource) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const point = applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})
+    const candidate = event.composedPath().includes(this.editor.features.media.placeholder.element)
+      ? this.editor.features.media.placeholder.target
+      : graphicShapeGeometry(graphicShapeForNode(event.target instanceof Node ? event.target : null))
+    const target = candidate?.localName === "image" && isEmptyMedia(candidate) && !this.#isLocked(candidate) ? candidate : null
+    const commit = (source: string, index: number) => {
+      if(!this.isEnabled || this.editor.isEditingLocked || !graphic.isConnected
+        || atomicEditingContainer(graphic.parentElement, this.editor.schema)) return
+      if(target && (!graphic.contains(target) || !isEmptyMedia(target) || this.#isLocked(target)
+        || atomicEditingContainer(target.parentElement, this.editor.schema) !== graphic)) return
+      const image = target ?? this.#createShape("image", index, graphic)
+      if(!target) {
+        const bounds = shapeBounds(image)
+        image.setAttribute("x", cleanNumber(point.x - bounds.width / 2 + index * 24))
+        image.setAttribute("y", cleanNumber(point.y - bounds.height / 2 + index * 24))
+      }
+      this.editor.doc.stopCapturing()
+      image.setAttribute("href", source)
+      if(!target) graphic.append(image)
+      this.editor.features.selection.captureElement(graphic)
+      this.#selectShape(image as SVGGraphicsElement)
+      this.#refresh()
+      this.editor.postSelectionPath()
+      this.editor.doc.stopCapturing()
+    }
+    if(files.length) files.forEach((file, index) => {
+      const reader = new FileReader()
+      this.#imageReaders.add(reader)
+      reader.addEventListener("load", () => {
+        if(this.#imageReaders.delete(reader) && typeof reader.result === "string") commit(reader.result, index)
+      }, {once: true})
+      reader.addEventListener("error", () => this.#imageReaders.delete(reader), {once: true})
+      reader.readAsDataURL(file)
+    })
+    else if(safeSource) commit(safeSource, 0)
+  }
+
   activeListeners: DocumentListenerMap = {
     pointerdown: event => this.#handlePointerDown(event),
     dblclick: event => this.#handleDoubleClick(event),
@@ -832,12 +914,14 @@ export class GraphicFeature extends EditorFeature {
     },
     wheel: event => this.#handleWheel(event),
     beforeinput: event => {
+      if(isAppendixInteraction(event) && (!this.#labelEditor || !event.composedPath().includes(this.#labelEditor.element))) return
       if(this.textEditingRange) this.#labelInput(event)
       else this.#blockCapturedEditingEvent(event)
     },
     compositionstart: event => this.#blockCapturedEditingEvent(event),
     paste: event => this.#blockCapturedEditingEvent(event),
     keydown: event => {
+      if(isAppendixInteraction(event) && (!this.#labelEditor || !event.composedPath().includes(this.#labelEditor.element))) return
       if(this.#labelEditor && this.editor.features.mark.isSVGTextSelection) { this.#labelKeydown(event); return }
       if(event.key === "Escape" && this.#standaloneShape() && (this.#interaction || this.#labelEditor)) {
         this.#claimKeyboardEvent(event)
@@ -931,7 +1015,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #blockCapturedEditingEvent(event: Event) {
-    if(!this.#capturedGraphic() || this.editor.features.mark.isSVGTextSelection) return
+    if(isAppendixInteraction(event) || !this.#capturedGraphic() || this.editor.features.mark.isSVGTextSelection) return
     event.preventDefault()
     event.stopImmediatePropagation()
   }
@@ -1036,6 +1120,14 @@ export class GraphicFeature extends EditorFeature {
       shape.setAttribute("stroke-width", definition.open ? "6" : "4")
       shape.setAttribute("stroke-linejoin", "round")
       shape.setAttribute("vector-effect", "non-scaling-stroke")
+      return shape
+    }
+    if(type === "image") {
+      shape = document.createElementNS(SVG_NAMESPACE, "image")
+      shape.setAttribute("x", cleanNumber(bounds.x))
+      shape.setAttribute("y", cleanNumber(bounds.y))
+      shape.setAttribute("width", cleanNumber(bounds.width))
+      shape.setAttribute("height", cleanNumber(bounds.height))
       return shape
     }
     if(type === "rectangle") {
@@ -3006,6 +3098,7 @@ export class GraphicFeature extends EditorFeature {
 
   #refresh() {
     if(!this.isEnabled) return
+    this.editor.features.media.refreshPlaceholder()
     if(!this.#activeGraphic()) this.#clearShapeSelection()
     this.#syncCanvasPresentation()
     this.#positionLabelEditor()

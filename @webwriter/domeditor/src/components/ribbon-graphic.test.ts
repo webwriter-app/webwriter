@@ -13,9 +13,10 @@ beforeEach(() => document.body.replaceChildren())
 describe("graphic ribbon", () => {
   it("offers the requested text and line presets and omits removed shapes", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Lines").map(option => option.type)).toEqual([
-      "text-box", "line", "line-start-arrow", "line-end-arrow", "connector",
+      "text-box", "image", "line", "connector",
     ])
-    expect(graphicShapeOptions.some(option => ["polygon", "not-equal", "multidocument", "line-callout-2", "line-both-arrows"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions.some(option => ["polygon", "not-equal", "multidocument", "line-callout-2", "line-start-arrow", "line-end-arrow", "line-both-arrows"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions.find(option => option.type === "image")).toMatchObject({label: "Image", icon: "Image", category: "Lines"})
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
   })
 

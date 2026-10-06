@@ -34,6 +34,14 @@ function clickShape(shape: Element, shiftKey = false) {
   document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, shiftKey}))
 }
 
+// Happy DOM does not carry DragEventInit.dataTransfer through its constructor.
+function imageDragEvent(type: string, init: DragEventInit) {
+  const event = new DragEvent(type, init)
+  Object.defineProperty(event, "dataTransfer", {value: init.dataTransfer})
+  Object.assign(event, {clientX: init.clientX ?? 0, clientY: init.clientY ?? 0})
+  return event
+}
+
 beforeEach(() => {
   document.body.replaceChildren()
   editor = new DOMEditor()
@@ -43,6 +51,128 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it("reuses image source controls for a native SVG image and preserves canvas capture", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
+    const graphic = document.querySelector("svg")!
+    const image = graphic.querySelector("image")!
+    const placeholder = editor.features.media.placeholder
+    expect(placeholder.target).toBe(image)
+    expect(placeholder.element.getRootNode()).toBe(editor.appendix)
+    expect(placeholder.root.querySelector<HTMLInputElement>(".picker")!.accept).toBe("image/*")
+    expect(placeholder.root.querySelector<HTMLButtonElement>(".screen")!.hidden).toBe(false)
+    expect(placeholder.root.querySelector<HTMLButtonElement>(".record")!.hidden).toBe(false)
+    placeholder.root.querySelector(".url")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    for(const event of [
+      new KeyboardEvent("keydown", {key: "Delete", bubbles: true, composed: true, cancelable: true}),
+      new KeyboardEvent("keydown", {key: "a", bubbles: true, composed: true, cancelable: true}),
+      new InputEvent("beforeinput", {inputType: "insertText", data: "a", bubbles: true, composed: true, cancelable: true}),
+      new Event("paste", {bubbles: true, composed: true, cancelable: true}),
+    ]) {
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(image.isConnected).toBe(true)
+    }
+    input.value = "https://example.com/photo.png"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(image).toHaveAttribute("href", input.value)
+    expect(placeholder.element).not.toHaveAttribute("data-open")
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "480"})
+    expect(image).toHaveAttribute("width", "480")
+    await mutationsDelivered()
+    expect(editor.toHTML(true)).toContain('href="https://example.com/photo.png"')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(editor.doc.body.toString()).toContain("https://example.com/photo.png")
+    expect(editor.toHTML(true)).not.toContain("media-placeholder")
+  })
+
+  it("loads a graphic image from the shared file picker", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "image"})
+    const image = document.querySelector("svg image")!
+    const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
+    Object.defineProperty(picker, "files", {value: [new File(["image"], "photo.png", {type: "image/png"})]})
+    picker.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^data:image\/png;base64,/))
+  })
+
+  it("drops image URLs at SVG coordinates without changing unfamiliar siblings, with undo and redo", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.insertAdjacentHTML("beforeend", '<!--keep--><g><path d="M0 0L5 5"/></g>')
+    const sibling = graphic.lastElementChild!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    data.setData("text/html", '<img src="https://example.com/photo.png">')
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
+    graphic.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const event = imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 500, clientY: 350})
+    graphic.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    const image = graphic.querySelector("image")!
+    expect(image).toHaveAttribute("href", "https://example.com/photo.png")
+    expect(image).toHaveAttribute("x", "120")
+    expect(image).toHaveAttribute("y", "90")
+    expect(graphic.children[0]).toBe(sibling)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.querySelector("image")).toBeNull()
+    expect(graphic.children[0]).toBe(sibling)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("image")).toHaveAttribute("href", "https://example.com/photo.png")
+  })
+
+  it.each(["filled", "removed", "disabled", "moved into widget"])("ignores a delayed image drop after the target is %s", state => {
+    let reader: FileReader | undefined
+    const readFile = vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) { reader = this })
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
+    const graphic = document.querySelector("svg")!
+    const image = graphic.querySelector("image")!
+    const data = new DataTransfer()
+    data.items.add(new File(["image"], "photo.png", {type: "image/png"}))
+    image.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    expect(reader).toBeDefined()
+    if(state === "filled") image.setAttribute("href", "remote.png")
+    else if(state === "removed") image.remove()
+    else if(state === "disabled") editor.features.graphic.disable()
+    else {
+      const widget = document.createElement("image-widget")
+      graphic.replaceWith(widget)
+      widget.append(graphic)
+    }
+    Object.defineProperty(reader!, "result", {value: "data:image/png;base64,bG9jYWw="})
+    reader!.dispatchEvent(new Event("load"))
+    expect(image.getAttribute("href")).toBe(state === "filled" ? "remote.png" : null)
+    expect(graphic.querySelectorAll("image")).toHaveLength(state === "removed" ? 0 : 1)
+    readFile.mockRestore()
+  })
+
+  it("fills an empty image on file drop and removes source controls after external changes", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
+    const image = document.querySelector("svg image")!
+    const data = new DataTransfer()
+    data.items.add(new File(["image"], "photo.png", {type: "image/png"}))
+    const drop = imageDragEvent("drop", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
+    editor.features.media.placeholder.element.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^data:image\/png;base64,/))
+    expect(document.querySelectorAll("svg image")).toHaveLength(1)
+    image.removeAttribute("href")
+    await mutationsDelivered()
+    expect(editor.features.media.placeholder.target).toBe(image)
+    image.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "remote.png")
+    await mutationsDelivered()
+    expect(editor.features.media.placeholder.target).toBeNull()
+    expect(image).not.toHaveClass("◆media-empty")
+  })
+
   it("imports SVG in place, preserving unfamiliar content, and exports without markers", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const old = document.querySelector("svg")!
@@ -225,7 +355,7 @@ describe("graphic editing", () => {
     expect(shape.namespaceURI).toBe(SVG_NAMESPACE)
     const polygonal = ["triangle", "diamond", "hexagon", "star", "arrow", "polygon"].includes(option.type)
     expect(shape.localName).toBe(option.type === "text-box" ? "g" : isGraphicPresetType(option.type) ? "path" : option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type.startsWith("line-") ? "line" : option.type)
-    expect(shape.localName === "g" ? shape.firstElementChild : shape).toHaveAttribute("stroke")
+    if(option.type !== "image") expect(shape.localName === "g" ? shape.firstElementChild : shape).toHaveAttribute("stroke")
     expect($.selectedElement).toBe(graphic)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
     expect(graphic).toHaveClass("◆element-selected")
@@ -236,7 +366,7 @@ describe("graphic editing", () => {
     expect(editor.appendix.querySelector('[part~="selection-caret-node"]')).not.toBeNull()
     expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
     expect(editor.appendix.querySelector('.◆graphic-selection-outline')).toHaveAttribute("display", "none")
-    expect(editor.appendix.querySelectorAll('.◆graphic-specific-handles button').length).toBeGreaterThan(0)
+    if(option.type !== "image") expect(editor.appendix.querySelectorAll('.◆graphic-specific-handles button').length).toBeGreaterThan(0)
     expect(editor.appendix.querySelector('.◆graphic-ports')?.children).toHaveLength(0)
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(document.body.querySelector('[data-graphic-handle]')).toBeNull()
@@ -489,8 +619,8 @@ describe("graphic editing", () => {
 
     expect(Number(transformed.width)).toBeCloseTo(Number(baseline.width), 2)
     expect(Number(transformed.height) * 0.5).toBeCloseTo(Number(baseline.height), 2)
-    expect(baselineShape.localName === "g" ? baselineShape.firstElementChild : baselineShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
-    expect(transformedShape.localName === "g" ? transformedShape.firstElementChild : transformedShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
+    if(option.type !== "image") expect(baselineShape.localName === "g" ? baselineShape.firstElementChild : baselineShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
+    if(option.type !== "image") expect(transformedShape.localName === "g" ? transformedShape.firstElementChild : transformedShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
     if(option.type === "rectangle") {
       expect(Number(transformedShape.getAttribute("rx"))).toBeCloseTo(Number(baselineShape.getAttribute("rx")), 2)
       expect(Number(transformedShape.getAttribute("ry")) * 0.5).toBeCloseTo(Number(baselineShape.getAttribute("ry")), 2)

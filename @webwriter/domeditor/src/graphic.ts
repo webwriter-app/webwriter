@@ -12,6 +12,7 @@ const basicGraphicShapeOptions = [
   {type: "arrow", label: "Arrow", icon: "Arrow", category: "Block arrows"},
   {type: "polygon", label: "Polygon", icon: "Polygon", category: "Basic shapes"},
   {type: "line", label: "Line", icon: "Line", category: "Lines"},
+  {type: "image", label: "Image", icon: "Image", category: "Lines"},
   {type: "connector", label: "Connector", icon: "Connector", category: "Lines"},
 ] as const
 
@@ -24,9 +25,9 @@ const lineArrowOptions = [
 
 export const graphicShapeOptions = [
   ...graphicPresetOptions.filter(option => option.type === "text-box").map(option => ({...option, category: "Lines"})),
+  ...basicGraphicShapeOptions.filter(option => option.type === "image"),
   ...basicGraphicShapeOptions.filter(option => option.type === "line"),
-  ...lineArrowOptions.filter(option => option.type !== "line-both-arrows"),
-  ...basicGraphicShapeOptions.filter(option => option.type !== "line" && option.type !== "polygon"),
+  ...basicGraphicShapeOptions.filter(option => option.type !== "line" && option.type !== "image" && option.type !== "polygon"),
   ...graphicPresetOptions.filter(option => option.category !== "Lines"
     && !["text-box", "not-equal", "multidocument", "line-callout-2"].includes(option.type)),
 ]
@@ -113,6 +114,7 @@ function primitiveGraphicShapeType(element: Element | null): GraphicShapeType | 
   if(element.localName === "rect") return "rectangle"
   if(element.localName === "ellipse" || element.localName === "circle") return "ellipse"
   if(element.localName === "line") return "line"
+  if(element.localName === "image") return "image"
   if(element.localName === "polyline") return "connector"
   if(element.localName !== "polygon") return null
   const coordinateCount = element.getAttribute("points")?.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)?.length ?? 0

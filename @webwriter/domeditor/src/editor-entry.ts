@@ -1,7 +1,7 @@
 import { DOMEditor } from "./domeditor"
 import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
-import {isWidgetShadowInteraction, pathFromNode} from "./utility"
+import {isAppendixInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
 
 /** Shortest time between two document snapshots posted to the host. */
 const snapshotInterval = 250
@@ -58,7 +58,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {
     const target = event.target as Node | null
-    post({type: "editor-frame-pointerdown", widgetShadow: isWidgetShadowInteraction(event),
+    post({type: "editor-frame-pointerdown", widgetShadow: isWidgetShadowInteraction(event), appendix: isAppendixInteraction(event),
       targetPath: target && document.body.contains(target) ? pathFromNode(document.body, target) : null})
   }, true)
   document.addEventListener("focusin", event => {

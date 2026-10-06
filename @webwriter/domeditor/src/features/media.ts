@@ -1,4 +1,5 @@
 import {EditorFeature} from "."
+import {SVG_NAMESPACE, graphicShapeGeometry} from "../graphic"
 import type {Schema} from "../schema"
 import {MediaCapture} from "../components/media-capture"
 import {stripActiveContent} from "../active-content"
@@ -7,7 +8,7 @@ import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
-import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
+import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -37,6 +38,16 @@ import {
 } from "../media"
 
 const mediaSelector = mediaElementSelector
+const placeholderMediaType = (target: Element): MediaType => target.namespaceURI === SVG_NAMESPACE && target.localName === "image" ? "img" : target.localName as MediaType
+const isGraphicImage = (target: Element) => target.namespaceURI === SVG_NAMESPACE && target.localName === "image"
+const sourceEditingBlocked = (target: Element, schema: Schema) => {
+  if(!isGraphicImage(target)) return Boolean(atomicEditingContainer(target.parentElement, schema))
+  // SVG is atomic to text editing, but its native images are editable by graphics.
+  for(let parent = target.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+    if(isAtomicEditingElement(parent, schema) && !(parent.namespaceURI === SVG_NAMESPACE && parent.localName === "svg")) return true
+  }
+  return false
+}
 const htmlNamespace = "http://www.w3.org/1999/xhtml"
 const maximumMediaFallbackLength = 1_000_000
 
@@ -275,7 +286,7 @@ class MediaPlaceholder {
     for(const source of ["screen", "record"] as const) {
       root.querySelector<HTMLButtonElement>(`.${source}`)!.addEventListener("click", () => {
         if(!this.target) return
-        const option = mediaCaptureOptions(this.target.localName as MediaType)
+        const option = mediaCaptureOptions(placeholderMediaType(this.target))
           .find(option => option.mode.startsWith("screen-") === (source === "screen"))
         if(option) this.onCapture?.(this.target, option.mode)
       })
@@ -300,7 +311,7 @@ class MediaPlaceholder {
         if(this.fileReader !== reader || generation !== this.fileReadGeneration) return
         this.fileReader = null
         if(this.target !== target || !document.body.contains(target) || !isEmptyMedia(target)
-          || atomicEditingContainer(target.parentElement, this.schema)) return
+          || sourceEditingBlocked(target, this.schema)) return
         if(typeof reader.result === "string") this.onSource?.(target, reader.result)
       }, {once: true})
       reader.addEventListener("error", () => {
@@ -341,7 +352,7 @@ class MediaPlaceholder {
 
   private applyUrl() {
     if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)
-      || atomicEditingContainer(this.target.parentElement, this.schema)) return
+      || sourceEditingBlocked(this.target, this.schema)) return
     const input = this.root.querySelector<HTMLInputElement>(".url")!
     const source = input.value.trim()
     let url: URL | undefined
@@ -382,7 +393,7 @@ class MediaPlaceholder {
       this.clearUrlError()
     }
     this.target = target
-    const type = target.localName as MediaType
+    const type = placeholderMediaType(target)
     this.element.setAttribute("data-media", type)
     const noun = type === "picture" || type === "img" ? "image"
       : isWebsiteType(type) ? "website" : type
@@ -910,6 +921,8 @@ export class MediaFeature extends EditorFeature {
   private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
   private imageMapOverlayController: ImageMapOverlay | null = null
   private readonly interactionShields = new Map<Element, MediaInteractionShield>()
+  private readonly graphicImagePlaceholders = new Map<SVGGraphicsElement, HTMLDivElement>()
+  private readonly observedGraphicImageTargets = new Set<Element>()
   private readonly shieldReleasePending = new Set<Element>()
   private readonly observedShieldTargets = new Set<Element>()
   private bodyResizeObserved = false
@@ -925,7 +938,7 @@ export class MediaFeature extends EditorFeature {
       this.mediaPlaceholder.onCapture = (target, mode) => this.openCapture(target, mode)
       this.mediaPlaceholder.onFocus = target => {
         if(!document.body.contains(target) || !isEmptyMedia(target)) return
-        this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
+        if(!isGraphicImage(target)) this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
         this.editor.postSelectionPath()
       }
       this.mediaPlaceholder.onInteractionChange = this.scheduleRefresh
@@ -1023,6 +1036,73 @@ export class MediaFeature extends EditorFeature {
     }
   }
 
+  private syncGraphicImagePlaceholders() {
+    const desired = new Set<SVGGraphicsElement>()
+    document.querySelectorAll<SVGGraphicsElement>("svg image").forEach(image => {
+      if(isGraphicImage(image) && isEmptyMedia(image) && !sourceEditingBlocked(image, this.editor.schema)) desired.add(image)
+    })
+    this.graphicImagePlaceholders.forEach((placeholder, image) => {
+      if(desired.has(image)) return
+      placeholder.remove()
+      this.graphicImagePlaceholders.delete(image)
+    })
+    desired.forEach(image => {
+      let placeholder = this.graphicImagePlaceholders.get(image)
+      if(!placeholder) {
+        placeholder = document.createElement("div")
+        placeholder.classList.add("◆", "◆editor-only", "◆graphic-image-placeholder")
+        placeholder.contentEditable = "false"
+        placeholder.setAttribute("part", "graphic-image-placeholder")
+        placeholder.setAttribute("aria-hidden", "true")
+        placeholder.textContent = "Add an image"
+        this.graphicImagePlaceholders.set(image, placeholder)
+        this.editor.addAppendix(placeholder)
+      }
+      const rect = image.getBoundingClientRect()
+      const style = getComputedStyle(image)
+      placeholder.hidden = rect.width <= 0 || rect.height <= 0
+        || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
+      if(placeholder.hidden) return
+      Object.assign(placeholder.style, {
+        left: `${rect.left}px`, top: `${rect.top}px`,
+        width: `${rect.width}px`, height: `${rect.height}px`, transform: "none",
+      })
+      // Preserve native SVG transforms, including those on unfamiliar groups.
+      // DOM shims without SVG geometry APIs use the bounding rectangle above.
+      const box = image.getBBox?.()
+      const matrix = image.getScreenCTM?.()
+      if(box && matrix && box.width > 0 && box.height > 0) {
+        const widthScale = Math.hypot(matrix.a, matrix.b)
+        const heightScale = Math.hypot(matrix.c, matrix.d)
+        if(!widthScale || !heightScale) return
+        const x = matrix.a * box.x + matrix.c * box.y + matrix.e
+        const y = matrix.b * box.x + matrix.d * box.y + matrix.f
+        // Keep the caption and dashed border the same size as HTML images,
+        // while following SVG rotation, skew and editor zoom.
+        Object.assign(placeholder.style, {
+          left: "0", top: "0", width: `${box.width * widthScale}px`, height: `${box.height * heightScale}px`,
+          transform: `matrix(${matrix.a / widthScale}, ${matrix.b / widthScale}, ${matrix.c / heightScale}, ${matrix.d / heightScale}, ${x}, ${y})`,
+        })
+      }
+    })
+    if(this.resizeObserver) {
+      const observed = new Set<Element>(desired)
+      desired.forEach(image => {
+        for(let owner = image.ownerSVGElement; owner; owner = owner.ownerSVGElement) observed.add(owner)
+      })
+      this.observedGraphicImageTargets.forEach(target => {
+        if(observed.has(target)) return
+        this.resizeObserver!.unobserve(target)
+        this.observedGraphicImageTargets.delete(target)
+      })
+      observed.forEach(target => {
+        if(this.observedGraphicImageTargets.has(target)) return
+        this.resizeObserver!.observe(target)
+        this.observedGraphicImageTargets.add(target)
+      })
+    }
+  }
+
   private cancelPendingShield = () => {
     if(!this.shieldReleasePending.size) return
     this.shieldReleasePending.clear()
@@ -1064,6 +1144,7 @@ export class MediaFeature extends EditorFeature {
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.observedShieldTargets.clear()
+    this.observedGraphicImageTargets.clear()
     this.bodyResizeObserved = false
     window.removeEventListener("resize", this.scheduleRefresh)
     window.removeEventListener("blur", this.cancelPendingShield)
@@ -1074,6 +1155,8 @@ export class MediaFeature extends EditorFeature {
     this.imageMapOverlayController = null
     this.interactionShields.forEach(shield => shield.remove())
     this.interactionShields.clear()
+    this.graphicImagePlaceholders.forEach(placeholder => placeholder.remove())
+    this.graphicImagePlaceholders.clear()
     this.shieldReleasePending.clear()
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
     super.disable()
@@ -1483,23 +1566,27 @@ export class MediaFeature extends EditorFeature {
   }
 
   private setSource(element: Element, source: string) {
-    if(!element.isConnected || !document.body.contains(element) || !element.matches(mediaSelector)
-      || !isEmptyMedia(element) || atomicEditingContainer(element.parentElement, this.editor.schema)) return false
+    if(!element.isConnected || !document.body.contains(element) || !(element.matches(mediaSelector) || isGraphicImage(element))
+      || !isEmptyMedia(element) || sourceEditingBlocked(element, this.editor.schema)) return false
     const target = mediaSourceTarget(element)
+    if(isGraphicImage(element)) this.editor.doc.stopCapturing()
     target.setAttribute(mediaSourceAttribute(target), source)
     if(element.matches("audio, video")) element.setAttribute("controls", "")
-    $.selectElement(element)
-    this.editor.features.selection.processSelection()
+    if(!isGraphicImage(element)) {
+      $.selectElement(element)
+      this.editor.features.selection.processSelection()
+    }
     this.editor.postSelectionPath()
     this.refresh()
+    if(isGraphicImage(element)) this.editor.doc.stopCapturing()
     return true
   }
 
   private openCapture(target: Element, mode: MediaCaptureMode) {
     const sourceTarget = mediaSourceTarget(target, false)
     const valid = () => this.isEnabled && document.body.contains(target)
-      && !atomicEditingContainer(target.parentElement, this.editor.schema)
-      && mediaCaptureOptions(target.localName as MediaType).some(option => option.mode === mode)
+      && !sourceEditingBlocked(target, this.editor.schema)
+      && mediaCaptureOptions(placeholderMediaType(target)).some(option => option.mode === mode)
       && isEmptyMedia(target) && mediaSourceTarget(target, false) === sourceTarget
     if(!valid()) return false
     this.mediaCapture?.controller.close()
@@ -1509,7 +1596,7 @@ export class MediaFeature extends EditorFeature {
     }, () => {
       if(this.mediaCapture?.controller !== controller) return
       this.mediaCapture = null
-      if(valid()) {
+      if(valid() && !isGraphicImage(target)) {
         $.selectElement(target)
         this.editor.features.selection.processSelection()
         this.editor.postSelectionPath()
@@ -1537,6 +1624,22 @@ export class MediaFeature extends EditorFeature {
     })
   }
 
+  refreshPlaceholder() {
+    if(!this.isEnabled) return null
+    this.syncGraphicImagePlaceholders()
+    // A control pointerdown can clear the authored Selection before focusin.
+    // Keep the affordance bound to its existing media for the full interaction
+    // without restoring the Selection, which would steal focus from the input.
+    const retained = this.mediaPlaceholder?.isInteracting ? this.mediaPlaceholder.target : null
+    const shape = this.editor.features.graphic.selectedShapes.length === 1
+      ? graphicShapeGeometry(this.editor.features.graphic.selectedShape) : null
+    const selected = retained ?? (shape && isGraphicImage(shape) ? shape : this.selectedMedia())
+    if(!this.mediaCapture && selected?.isConnected && isEmptyMedia(selected)) this.placeholder.showFor(selected)
+    else this.placeholder.hide()
+
+    return selected
+  }
+
   private refresh() {
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
     const selectedBefore = $.selectedElement
@@ -1548,18 +1651,15 @@ export class MediaFeature extends EditorFeature {
       this.editor.features.selection.processSelection()
       if(capturedBefore === selectedBefore) this.editor.features.selection.captureElement(replacement)
     }
-    document.querySelectorAll(mediaSelector).forEach(element => {
-      if(atomicEditingContainer(element.parentElement, this.editor.schema)) return
+    document.querySelectorAll(`${mediaSelector}, svg image`).forEach(element => {
+      if(sourceEditingBlocked(element, this.editor.schema)) {
+        if(element.classList.contains("◆media-empty")) this.setEmptyMarker(element, false)
+        return
+      }
       const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))
       if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
     })
-    // A control pointerdown can clear the authored Selection before focusin.
-    // Keep the affordance bound to its existing media for the full interaction
-    // without restoring the Selection, which would steal focus from the input.
-    const retained = this.mediaPlaceholder?.isInteracting ? this.mediaPlaceholder.target : null
-    const selected = retained ?? this.selectedMedia()
-    if(!this.mediaCapture && selected?.isConnected && isEmptyMedia(selected)) this.placeholder.showFor(selected)
-    else this.placeholder.hide()
+    const selected = this.refreshPlaceholder()
 
     const image = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null
     const map = image ? this.associatedImageMap(image) : null

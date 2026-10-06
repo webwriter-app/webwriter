@@ -159,14 +159,18 @@ body:has(> :last-child) {
   aspect-ratio: 16 / 9;
 }
 
+:is(picture, img, video, iframe, embed, object).◆media-empty,
+body::part(graphic-image-placeholder) {
+  box-sizing: border-box;
+  border: 1px dashed #6b7280;
+  background: #1f2937;
+}
+
 :is(picture, img, video, iframe, embed, object).◆media-empty {
   display: block;
-  box-sizing: border-box;
   width: 100%;
   min-height: 15rem;
-  border: 1px dashed #6b7280;
   color: transparent;
-  background: #1f2937;
   object-fit: contain;
 }
 
@@ -184,16 +188,31 @@ picture.◆media-empty {
   position: relative;
 }
 
-picture.◆media-empty::before {
-  content: "Add an image";
-  position: absolute;
-  inset: 0;
+picture.◆media-empty::before,
+body::part(graphic-image-placeholder) {
   display: grid;
   place-items: center;
   color: #d1d5db;
   font: 600 0.9rem/1.3 system-ui, sans-serif;
   pointer-events: none;
   user-select: none;
+}
+
+picture.◆media-empty::before {
+  content: "Add an image";
+  position: absolute;
+  inset: 0;
+}
+
+body::part(graphic-image-placeholder) {
+  position: fixed;
+  z-index: 2147483641;
+  transform-origin: 0 0;
+  overflow: hidden;
+}
+
+body::part(graphic-image-placeholder)[hidden] {
+  display: none;
 }
 
 picture.◆media-empty > img:not([src]):not([srcset]) {
@@ -2090,4 +2109,9 @@ svg text::selection, svg text *::selection {
   user-select: text !important;
   -webkit-user-select: text !important;
   cursor: text;
+}
+
+/* Empty native SVG images retain a surface for selecting their source controls. */
+svg image.◆media-empty {
+  pointer-events: all;
 }

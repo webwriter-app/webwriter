@@ -207,6 +207,68 @@ describe("media editing", () => {
     expect(editor.features.media.placeholder.element).toHaveAttribute("data-media", "video")
   })
 
+  it("shows passive SVG image placeholders in the appendix without changing authored structure", async () => {
+    document.body.innerHTML = '<svg viewBox="0 0 800 600"><!--keep--><g transform="translate(10 20)"><image x="5" y="7" width="100" height="60"></image><title>Image group</title></g><image width="200" height="100"></image><image href="photo.png"></image></svg>'
+    const images = Array.from(document.querySelectorAll<SVGGraphicsElement>("svg image"))
+    images.forEach((image, index) => vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20 + index * 120, 60, 100, 60)))
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll('[part="graphic-image-placeholder"]')).toHaveLength(2))
+    const placeholders = Array.from(editor.appendix.querySelectorAll<HTMLDivElement>('[part="graphic-image-placeholder"]'))
+    expect(placeholders.map(placeholder => placeholder.textContent)).toEqual(["Add an image", "Add an image"])
+    expect(placeholders.every(placeholder => !placeholder.hidden && placeholder.getRootNode() === editor.appendix)).toBe(true)
+    expect(placeholders[0].style.left).toBe("20px")
+    expect(placeholders[0].style.width).toBe("100px")
+    expect(editor.features.media.placeholder.element).not.toHaveAttribute("data-open")
+    editor.doc.syncFromDOM()
+    const html = editor.toHTML(true)
+    expect(html).toContain('<!--keep--><g transform="translate(10 20)"><image x="5" y="7" width="100" height="60"></image><title>Image group</title></g>')
+    expect(html).not.toMatch(/◆|placeholder|Add an image/)
+    expect(editor.doc.body.toString()).not.toMatch(/◆|placeholder|Add an image/)
+  })
+
+  it("positions SVG image placeholders using current native geometry and group transforms", async () => {
+    document.body.innerHTML = '<svg><g transform="rotate(90)"><image x="5" y="7" width="100" height="60"></image></g></svg>'
+    const image = document.querySelector<SVGGraphicsElement>("svg image")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 120, 200))
+    Object.defineProperty(image, "getBBox", {value: () => new DOMRect(5, 7, 100, 60)})
+    let matrix = {a: 0, b: 2, c: -2, d: 0, e: 100, f: 50}
+    Object.defineProperty(image, "getScreenCTM", {value: () => matrix})
+    await vi.waitFor(() => expect(editor.appendix.querySelector('[part="graphic-image-placeholder"]')).not.toBeNull())
+    const placeholder = editor.appendix.querySelector<HTMLDivElement>('[part="graphic-image-placeholder"]')!
+    expect(placeholder.style.transform).toBe("matrix(0, 1, -1, 0, 86, 60)")
+    expect([placeholder.style.width, placeholder.style.height]).toEqual(["200px", "120px"])
+    matrix = {...matrix, e: 150, f: 90}
+    document.dispatchEvent(new Event("scroll"))
+    await vi.waitFor(() => expect(placeholder.style.transform).toBe("matrix(0, 1, -1, 0, 136, 100)"))
+    image.setAttribute("style", "visibility: hidden")
+    await vi.waitFor(() => expect(placeholder.hidden).toBe(true))
+    image.removeAttribute("style")
+    await vi.waitFor(() => expect(placeholder.hidden).toBe(false))
+  })
+
+  it("removes SVG image placeholders after source updates, removal, widget moves and disable", async () => {
+    document.body.innerHTML = '<svg><image width="100" height="60"></image></svg><media-widget></media-widget>'
+    const image = document.querySelector("svg image")!
+    const count = () => editor.appendix.querySelectorAll('[part="graphic-image-placeholder"]').length
+    await vi.waitFor(() => expect(count()).toBe(1))
+    image.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "remote.png")
+    await vi.waitFor(() => expect(count()).toBe(0))
+    image.removeAttributeNS("http://www.w3.org/1999/xlink", "href")
+    await vi.waitFor(() => expect(count()).toBe(1))
+    const svg = image.parentElement!
+    document.querySelector("media-widget")!.append(svg)
+    await vi.waitFor(() => expect(count()).toBe(0))
+    expect(image).not.toHaveClass("◆media-empty")
+    document.body.prepend(svg)
+    await vi.waitFor(() => expect(count()).toBe(1))
+    image.remove()
+    await vi.waitFor(() => expect(count()).toBe(0))
+    svg.append(image)
+    await vi.waitFor(() => expect(count()).toBe(1))
+    editor.features.media.disable()
+    expect(count()).toBe(0)
+    expect(image).not.toHaveClass("◆media-empty")
+  })
+
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
     "overlays the %s input affordance with the same translucent background", media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})

@@ -7038,6 +7038,40 @@ describe("DomEditor.execute()", () => {
     expect(submenu.hidden).toBe(true)
   })
 
+  it.each(["same-origin", "isolated"])("preserves focus in appendix URL controls in a %s frame", async mode => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = '<picture><img></picture><svg xmlns="http://www.w3.org/2000/svg"><image width="320" height="240"/></svg>'
+    const appendix = doc.body.attachShadow({mode: "open"})
+    appendix.append(doc.createElement("slot"))
+    const placeholder = doc.createElement("div")
+    appendix.append(placeholder)
+    const root = placeholder.attachShadow({mode: "open"})
+    const input = doc.createElement("input")
+    input.type = "url"
+    root.append(input)
+    const focus = vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const dismiss = vi.spyOn(editor as any, "dismissEditorMenus")
+    input.focus()
+    if(mode === "same-origin") {
+      input.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
+    }
+    else {
+      ;(editor as any).editorOpaque = true
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+        data: {type: "editor-frame-pointerdown", appendix: true, targetPath: null}}))
+    }
+    expect(focus).not.toHaveBeenCalled()
+    expect(dismiss).not.toHaveBeenCalled()
+    expect(root.activeElement).toBe(input)
+    // Authored document clicks must still activate normal editing focus.
+    if(mode === "same-origin") doc.querySelector("picture")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
+    else window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: "editor-frame-pointerdown", appendix: false, targetPath: [0]}}))
+    expect(focus).toHaveBeenCalledOnce()
+    ;(editor as any).editorOpaque = false
+  })
+
   it.each(["canvas", "slides"])("dismisses transient menus before %s claims the pointer, preserving toolbox panes", async mode => {
     const {editor, iframe, editorWindow} = await mountEditor()
     vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})

@@ -2245,7 +2245,8 @@ export class DomEditor extends LitElement {
 
   private handleEditorPointerDown = (event: PointerEvent) => {
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-    if(isWidgetShadowInteraction(event)) return
+    const appendix = this.editorDocument?.body.shadowRoot
+    if(isWidgetShadowInteraction(event) || appendix && event.composedPath().includes(appendix)) return
     this.focusEditor()
     this.dismissEditorMenus()
     if(!this.editorTargetSharesTextSelection(event.target)) {
@@ -6076,7 +6077,7 @@ export class DomEditor extends LitElement {
     if(event.data?.type === "editor-frame-pointerdown") {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-      if(event.data.widgetShadow === true) return
+      if(event.data.widgetShadow === true || event.data.appendix === true) return
       this.focusEditor()
       this.dismissEditorMenus()
       const path = event.data.targetPath
