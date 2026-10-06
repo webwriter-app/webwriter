@@ -1,5 +1,4 @@
 import {DOMEditor} from "../src/domeditor"
-import {defaultDocumentTheme} from "../src/document-themes"
 import {$} from "../src/utility"
 
 customElements.define("float-layout-widget", class extends HTMLElement {
@@ -56,41 +55,25 @@ button.onclick = async () => {
     catch(error) { failed++; results.push(`FAIL ${name}: ${error}`) }
   }
   try {
-    for(const tag of ["float-layout-widget", "picture"]) for(const atEnd of [false, true]) for(const side of ["left", "right"] as const) {
-      check(`column layout: ${tag}, ${side}, caret at ${atEnd ? "end" : "start"}`, () => {
-        const theme = document.createElement("style")
-        theme.textContent = defaultDocumentTheme.source
-        document.head.append(theme)
-        try {
-          feature.clearTransform()
-          const paragraph = document.createElement("p")
-          paragraph.style.cssText = "width: 600px; max-width: 100%; line-height: 24px"
-          const text = document.createTextNode("Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(8))
-          paragraph.append(text)
-          const target = document.createElement(tag)
-          if(tag === "picture") target.append(document.createElement("img"))
-          document.body.replaceChildren(paragraph, target)
-          $.move(text, atEnd ? text.length : 0)
-          assert(editor.features.manipulation.placeFloat(target, paragraph, side), "Placement creates a column group")
-          const group = target.parentElement!
-          assert(group.classList.contains("ww-column-group"), "Placement creates a column group")
-          assert(group.children.length === 2 && group.contains(paragraph), "Column group preserves both authored nodes")
-          assert(target.classList.contains(`ww-column-${side}`), "Widget receives its requested column")
-          assert(paragraph.classList.contains(`ww-column-${side === "left" ? "right" : "left"}`), "Text receives the opposite column")
-          group.style.inlineSize = "600px"
-          const left = side === "left" ? target.getBoundingClientRect() : paragraph.getBoundingClientRect()
-          const right = side === "left" ? paragraph.getBoundingClientRect() : target.getBoundingClientRect()
-          const columns = window.innerWidth > 960
-          assert(target.getBoundingClientRect().width > 0, "Placed content has a rendered width")
-          if(columns) assert(Math.abs(left.top - right.top) < 1 && right.left > left.left, "Column items render side by side")
-          else assert(right.top >= left.bottom, "Column items stack in reading order on narrow viewports")
-          group.style.inlineSize = "280px"
-          const width = group.getBoundingClientRect().width
-          assert(target.getBoundingClientRect().width <= (columns ? width / 2 : width) + 1, "Placed content adapts to a narrower group")
-        }
-        finally { theme.remove() }
-      })
-    }
+    check("native floats preserve authored structure and serialize without editor artifacts", () => {
+      const section = document.createElement("section")
+      section.innerHTML = '<p style="color: rebeccapurple; width: 240px">Before</p><demo-widget style="color: teal; width: 180px; height: 90px; margin: 7px">Widget</demo-widget><p>After</p>'
+      document.body.replaceChildren(section)
+      const target = section.querySelector("demo-widget") as HTMLElement
+      const siblings = Array.from(section.childNodes)
+      for(const side of ["left", "none", "right"] as const) {
+        $.selectElement(target)
+        assert(editor.features.layout.actions.setFloat({type: "setFloat", side}), `Could not set ${side} float`)
+        assert(target.style.float === (side === "none" ? "" : side), `${side} float was not applied`)
+        assert(target.style.width === "180px" && target.style.height === "90px" && target.style.color === "teal", "Float changed unrelated styles")
+        assert(target.style.margin === (side === "none" ? "" : "5px"), "Float did not apply or clear its 5px margin")
+        assert(Array.from(section.childNodes).every((node, index) => node === siblings[index]), "Float changed authored siblings")
+        assert(!section.querySelector(".ww-column-group, [class*=ww-column-]"), "Float created column markup")
+      }
+      editor.doc.syncFromDOM()
+      const html = editor.toHTML(true)
+      assert(html.includes("float: right") && !html.includes("◆") && !html.includes("ww-column"), "Float serialization retained editing artifacts or lost the authored float")
+    })
     for(const writingMode of ["horizontal-tb", "vertical-rl", "vertical-lr", "sideways-rl"]) {
       for(const edge of ["left", "right", "up", "down"]) {
         check(`${writingMode}, ${edge} edge`, () => {

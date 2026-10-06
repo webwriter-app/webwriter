@@ -437,6 +437,7 @@ describe("selection-owned transformation", () => {
     target.style.width = "100px"
     target.style.height = "50px"
     mockRect(target)
+    vi.spyOn($, "pointFromCoords").mockReturnValue(undefined)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 120, clientY: 100}))
     feature.handleMoveEnd()
@@ -672,6 +673,7 @@ describe("transform controls and geometry", () => {
   })
 
   it("detaches a static target into absolute positioning after the threshold", () => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
     const target = targetElement()
     target.style.width = "100px"
     target.style.height = "50px"
@@ -687,6 +689,7 @@ describe("transform controls and geometry", () => {
   })
 
   it("constrains movement to one axis with Shift and keeps unsnapped coordinates with Alt", () => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
@@ -705,6 +708,7 @@ describe("transform controls and geometry", () => {
   })
 
   it("keeps a paused drag in one undo item and restores exact states", async () => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
@@ -827,7 +831,8 @@ describe("transform controls and geometry", () => {
     expect(sibling).toHaveAttribute("data-after", "later")
   })
 
-  it.each(["relative", "sticky", "fixed"] as const)("retains %s positioning while moving", position => {
+  it.each(["relative", "sticky", "fixed"] as const)("retains %s positioning while moving in canvas", position => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
     const target = targetElement()
     Object.assign(target.style, {position, width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
@@ -840,6 +845,7 @@ describe("transform controls and geometry", () => {
   })
 
   it("retains zero offsets instead of falling back to resolved right and bottom offsets", () => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", left: "0px", top: "0px", right: "960px", bottom: "696px", width: "320px", height: "24px"})
     mockRect(target)
@@ -1126,62 +1132,26 @@ describe("transform controls and geometry", () => {
 })
 
 describe("drop, cancellation, and document ownership", () => {
-  it.each(["img", "demo-widget"])("repairs an existing paragraph float and retains %s selection", tag => {
+  it.each(["img", "demo-widget"])("changes native float without moving %s or changing its contents", tag => {
     const paragraph = targetElement()
-    const text = paragraph.firstChild!
     const target = paragraph.appendChild(document.createElement(tag))
-    target.style.float = "right"
-    target.style.maxWidth = "50%"
-    if(tag === "demo-widget") captureNode(target)
-    else selectNode(target)
-    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-float-right")!.click()
-    expect(paragraph.nextElementSibling).toBe(target)
-    expect(paragraph.lastChild).toBe(text)
-    expect(target.style.maxWidth).toBe("")
-    expect(target.style.float).toBe("")
-    expect(target).toHaveClass("ww-column-right")
-    if(tag === "demo-widget") expect(editor.features.selection.captureSelectedElement).toBe(target)
-    else expect($.selectedElement).toBe(target)
-  })
-
-  it.each(["img", "demo-widget"])("keeps %s and its text in reading order when switching sides", tag => {
-    const paragraph = targetElement()
-    const text = paragraph.textContent
-    const target = paragraph.appendChild(document.createElement(tag))
+    target.style.maxWidth = "30rem"
+    const text = paragraph.firstChild
     if(tag === "demo-widget") captureNode(target)
     else selectNode(target)
     const click = (side: string) => feature.overlay.querySelector<HTMLButtonElement>(`#◆transform-overlay-float-${side}`)!.click()
-
     click("left")
-    expect(target).toHaveClass("ww-column-left")
-    expect(target).toHaveClass("ww-column-left")
+    expect(target.style.float).toBe("left")
     click("right")
-    expect(target.parentElement).toBe(paragraph.parentElement)
-    expect(target).toHaveClass("ww-column-right")
-    click("left")
-    expect(target).toHaveClass("ww-column-left")
-    expect(paragraph.textContent).toBe(text)
+    expect(target.style.float).toBe("right")
+    click("none")
     expect(target.style.float).toBe("")
-    expect(target.style.maxWidth).toBe("")
+    expect(target.style.maxWidth).toBe("30rem")
+    expect(target.parentElement).toBe(paragraph)
+    expect(paragraph.firstChild).toBe(text)
+    expect(document.querySelector(".ww-column-group")).toBeNull()
     if(tag === "demo-widget") expect(editor.features.selection.captureSelectedElement).toBe(target)
     else expect($.selectedElement).toBe(target)
-  })
-
-  it("sets column placement through the appendix buttons", () => {
-    const target = targetElement()
-    selectNode(target)
-    const click = (id: string) => feature.overlay.querySelector<HTMLElement>(id)!.dispatchEvent(new MouseEvent("click", {bubbles: true}))
-
-    click("#◆transform-overlay-float-left")
-    expect(target).toHaveClass("ww-column-left")
-    click("#◆transform-overlay-float-right")
-    expect(target).toHaveClass("ww-column-right")
-    expect(target.style.float).toBe("")
-    expect(target.style.maxWidth).toBe("")
-    click("#◆transform-overlay-float-none")
-    expect(target.classList.contains("ww-column-left")).toBe(false)
-    expect(target.classList.contains("ww-column-right")).toBe(false)
-    expect(target.style.float).toBe("")
   })
 
   it("restores transform properties while retaining unrelated styling", () => {
@@ -1198,9 +1168,9 @@ describe("drop, cancellation, and document ownership", () => {
     selectNode(target)
     feature.restore()
     expect(target).toHaveClass("authored")
-    expect(target.classList.contains("ww-column-left")).toBe(false)
+    expect(target.classList.contains("ww-column-left")).toBe(true)
 
-    for(const property of ["--ww-column", "width", "height", "max-width", "max-height", "rotate", "float", "position", "top", "left", "z-index"]) {
+    for(const property of ["width", "height", "max-width", "max-height", "rotate", "float", "position", "top", "left", "z-index"]) {
       expect(target.style.getPropertyValue(property)).toBe("")
     }
     expect(target.style.color).toBe("rebeccapurple")
@@ -1255,6 +1225,7 @@ describe("drop, cancellation, and document ownership", () => {
   })
 
   it("disables the feature by removing overlay and active gesture markers", () => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
@@ -1270,6 +1241,27 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target).not.toHaveClass("◆transform-target")
   })
 
+  it.each([[125, "left"], [175, "right"]] as const)("uses the source element's own rectangle when dragging over it at x=%i", (x, side) => {
+    const target = targetElement()
+    Object.assign(target.style, {width: "100px", color: "red", float: "left"})
+    const children = Array.from(target.childNodes)
+    mockRect(target)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [target, document.body])})
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 125}))
+    expect(target.style.float).toBe("left")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+    feature.handleMoveEnd()
+    expect(target.style.float).toBe(side)
+    expect(target.style.width).toBe("100px")
+    expect(target.style.color).toBe("red")
+    expect(target.style.position).toBe("")
+    expect(target.parentElement).toBe(document.body)
+    expect(Array.from(target.childNodes)).toEqual(children)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
   it.each([[310, "left"], [390, "right"]] as const)("floats media before a paragraph at x=%i", (x, side) => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()
@@ -1283,20 +1275,20 @@ describe("drop, cancellation, and document ownership", () => {
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(preview).not.toBeNull()
     expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
-    expect(preview.style.left).toBe(side === "left" ? "300px" : "350px")
+    expect(parseFloat(preview.style.left)).toBeCloseTo(300 + (side === "left" ? 0 : 50))
     expect(preview.style.top).toBe("100px")
-    expect(preview.style.width).toBe("50px")
+    expect(parseFloat(preview.style.width)).toBeCloseTo(50)
     expect(preview.style.height).toBe("100px")
     expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
     feature.handleMoveEnd()
     expect(target.parentElement!.parentElement).toBe(paragraph.parentElement!.parentElement)
-    expect(target).toHaveClass(`ww-column-${side}`)
+    expect(target.style.float).toBe(side)
     expect(paragraph.textContent).toBe("keep text")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("moves the float preview between paragraph halves and removes it on cancellation", () => {
+  it("moves the float preview between target halves and removes it on cancellation", () => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()
     mockRect(target)
@@ -1310,7 +1302,7 @@ describe("drop, cancellation, and document ownership", () => {
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 150, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(editor.appendix.querySelectorAll("#◆float-drop-preview")).toHaveLength(1)
-    expect(preview.style.left).toBe("350px")
+    expect(parseFloat(preview.style.left)).toBeCloseTo(350)
     expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
@@ -1318,7 +1310,49 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target.parentElement).toBe(document.body)
   })
 
-  it("clears inline size and placement on a Ctrl/Cmd flow drop while preserving unrelated styling, structure, and undo/redo", async () => {
+  it.each([[110, "before"], [190, "after"]] as const)("uses ordinary %s placement outside the target rectangle", (y, placement) => {
+    const target = append(document.createElement("img"))
+    const paragraph = targetElement()
+    paragraph.textContent = "keep text"
+    mockRect(target)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 250, clientY: y, ctrlKey: true}))
+
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(paragraph).toHaveClass(`◆drop-caret-${placement}`)
+    feature.handleMoveEnd()
+
+    expect(target.style.float).toBe("")
+    expect(target.style.marginLeft).toBe("")
+    expect(target.style.marginRight).toBe("")
+    expect(target.parentElement).toBe(paragraph.parentElement)
+    expect(target[placement === "before" ? "nextElementSibling" : "previousElementSibling"]).toBe(paragraph)
+    expect(paragraph.textContent).toBe("keep text")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("places a drag at a normal body gap when hit testing finds no element", () => {
+    const target = append(document.createElement("img"))
+    const existing = targetElement()
+    mockRect(target)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [])})
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: document.body.childNodes.length})
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 500, clientY: 300, ctrlKey: true}))
+
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    feature.handleMoveEnd()
+    expect(target.parentElement).toBe(document.body)
+    expect(target.previousElementSibling).toBe(existing)
+    expect(target.style.float).toBe("")
+    expect(target.style.margin).toBe("")
+  })
+
+  it("preserves authored styles and structure on a document float drop through undo/redo", async () => {
     const target = targetElement()
     const child = target.appendChild(document.createElement("unfamiliar-node"))
     Object.assign(target.style, {position: "absolute", width: "80px", height: "40px", maxInlineSize: "100px", color: "red"})
@@ -1339,14 +1373,16 @@ describe("drop, cancellation, and document ownership", () => {
     const startingHTML = editor.toHTML(true)
 
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 150, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 120, ctrlKey: true}))
     feature.handleMoveEnd()
     await mutationsDelivered()
     editor.doc.syncFromDOM()
 
     expect(target.parentElement).toBe(dropTarget.parentElement)
     expect(dropTarget.previousElementSibling).toBe(target)
-    expect(target.style.cssText).toBe("color: red;")
+    expect(target.style.width).toBe("80px")
+    expect(target.style.color).toBe("red")
+    expect(target.style.float).toBe("left")
     expect(target.firstElementChild).toBe(child)
     const droppedHTML = editor.toHTML(true)
     editor.doc.undo()
@@ -1368,11 +1404,11 @@ describe("drop, cancellation, and document ownership", () => {
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [child, floating, dropTarget])})
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 160, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 120, ctrlKey: true}))
     feature.handleMoveEnd()
     expect(dropTarget.previousElementSibling).toBe(target)
     expect(floating.firstElementChild).toBe(child)
-    expect(target.parentElement).toHaveClass("ww-column-group")
+    expect(target.parentElement).toBe(document.body)
   })
 
   it("reverts only properties owned by an Escape-cancelled gesture", () => {
@@ -1380,6 +1416,7 @@ describe("drop, cancellation, and document ownership", () => {
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
     mockRect(target)
+    vi.spyOn($, "pointFromCoords").mockReturnValue(undefined)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 130, clientY: 100}))
     target.style.width = "140px"
@@ -1394,6 +1431,7 @@ describe("drop, cancellation, and document ownership", () => {
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
     mockRect(target)
+    vi.spyOn($, "pointFromCoords").mockReturnValue(undefined)
     feature.handleMoveStart(new PointerEvent("pointerdown", {button: 0, pointerId: 7, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new PointerEvent("pointermove", {button: 0, pointerId: 7, buttons: 1, clientX: 130, clientY: 100}))
     target.style.height = "70px"

@@ -133,25 +133,6 @@ const checkFreeformCapture = async (editor: DOMEditor, parent: HTMLElement) => {
   }
 }
 
-const createLayout = (cssText: string, children: Array<{text?: string, style?: string}> = []) => {
-  const section = document.createElement("section")
-  section.style.cssText = cssText
-  children.forEach(({text = "", style = ""}) => {
-    const child = document.createElement("div")
-    child.textContent = text
-    child.style.cssText = style
-    section.append(child)
-  })
-  fixture.append(section)
-  editor.features.selection.selectSectionElement(section)
-  return section
-}
-
-const removeLayout = (section: HTMLElement) => {
-  editor.features.selection.clearSelectedSection(section)
-  section.remove()
-}
-
 customElements.define("native-audit-widget", class extends HTMLElement {
   connectedCallback() { if(!this.shadowRoot) this.attachShadow({mode: "open"}).innerHTML = "<button>private</button>" }
 })
@@ -741,331 +722,6 @@ await check("layout based hit testing returns the rendered target", async () => 
   assert(point?.node, "editor hit testing returned no point")
 })
 
-await check("layout insertion retains its selected grid wrapper after two frames", async () => {
-  const paragraph = document.createElement("p")
-  paragraph.textContent = "insertion point"
-  fixture.append(paragraph)
-  try {
-    $.selectRange(document.body, document.body.childNodes.length)
-    editor.features.selection.processSelection()
-    const inserted = editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "four-panels"})
-    assert(inserted === true, "layout insertion was rejected at a valid caret")
-    await layoutFrame()
-    const section = document.body.querySelector<HTMLElement>(":scope > section")
-    assert(section, "layout insertion did not create a section")
-    assert(editor.features.selection.selectedSectionElement === section, "inserted layout lost its explicit section selection")
-    assert(editor.features.layout.getState()?.kind === "grid", "inserted layout did not retain grid state")
-    assert(editor.appendix.querySelector<HTMLElement>(".◆layout-overlay")?.hidden === false, "inserted layout overlay was not retained")
-    editor.features.selection.clearSelectedSection()
-    $.move(section!.firstElementChild!, 0)
-    const contents = section!.innerHTML
-    assert(editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"}) === false, "nested preset was accepted")
-    assert(editor.features.manipulation.placeFloat(document.createElement("img"), section!.firstElementChild!, "left") === false, "nested side-drop group was accepted")
-    assert(section!.innerHTML === contents, "rejected layout operation changed existing content")
-  }
-  finally {
-    document.body.querySelectorAll(":scope > section").forEach(section => section.remove())
-    paragraph.remove()
-    editor.features.selection.clearSelectedSection()
-  }
-})
-
-await check("layout presets create direct paragraph children", async () => {
-  const paragraph = document.createElement("p")
-  paragraph.textContent = "preset insertion"
-  fixture.append(paragraph)
-  try {
-    $.selectRange(document.body, document.body.childNodes.length)
-    editor.features.selection.processSelection()
-    const inserted = editor.features.layout.actions.insertLayout({type: "insertLayout", preset: "two-columns"})
-    assert(inserted === true, "layout preset insertion was rejected at a valid caret")
-    const section = document.body.querySelector<HTMLElement>(":scope > section")
-    assert(section, "layout preset did not create a section")
-    const children = Array.from(section!.children)
-    assert(children.length === 2 && children.every(child => child.localName === "p"), "layout preset did not create direct paragraph children")
-    assert(children.every(child => {
-      const element = child as HTMLElement
-      return Number.parseFloat(element.style.getPropertyValue("min-inline-size")) === 0
-        && getComputedStyle(element).minInlineSize === "0px"
-    }), "preset paragraphs did not receive min-inline-size")
-  }
-  finally {
-    document.body.querySelectorAll(":scope > section").forEach(section => section.remove())
-    paragraph.remove()
-    editor.features.selection.clearSelectedSection()
-  }
-})
-
-await check("layout geometry accounts for padding, gaps, and RTL", async () => {
-  const section = createLayout(
-    "display:grid;width:360px;height:140px;box-sizing:border-box;padding:10px 30px 10px 20px;border:2px solid #222;gap:20px;grid-template-columns:1fr 2fr;grid-template-rows:1fr;direction:rtl",
-    [{text: "one"}, {text: "two"}],
-  )
-  try {
-    await layoutFrame()
-    const style = getComputedStyle(section)
-    const rect = section.getBoundingClientRect()
-    const contentWidth = rect.width
-      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-      - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
-    const gap = parseFloat(style.columnGap)
-    const expectedFirst = (contentWidth - gap) / 3
-    const first = section.children[0].getBoundingClientRect()
-    const second = section.children[1].getBoundingClientRect()
-    assert(Math.abs(first.width - expectedFirst) < 1, `first RTL track width was ${first.width}, expected ${expectedFirst}`)
-    assert(Math.abs(first.left - second.right - gap) < 1, "grid gap did not match the rendered separation")
-    assert(first.left > second.left, "direction:rtl did not reverse grid placement")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("keyboard separator resizing keeps adjacent fractions fluid", async () => {
-  const section = createLayout(
-    "display:grid;width:480px;height:140px;grid-template-columns:1fr 2fr;grid-template-rows:1fr;gap:16px",
-    [{text: "left"}, {text: "right"}],
-  )
-  try {
-    await layoutFrame()
-    const handle = editor.appendix.querySelector<HTMLElement>('[data-axis="column"][data-operation="resize"]')
-    assert(handle, "fractional grid separator was not rendered")
-    handle!.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, composed: true}))
-    await layoutFrame()
-    const tracks = section.style.gridTemplateColumns.trim().split(/\s+/)
-    const values = tracks.map(track => Number.parseFloat(track))
-    assert(tracks.length === 2 && tracks.every(track => track.endsWith("fr")), `resize changed fractions into ${tracks.join(" ")}`)
-    assert(Math.abs(values[0] + values[1] - 3) < 0.01, `fraction total changed from 3: ${tracks.join(" ")}`)
-    assert(values[0] > 1 && values[1] < 2, `ArrowRight did not grow the first track: ${tracks.join(" ")}`)
-  }
-  finally { removeLayout(section) }
-})
-
-await check("cancelled layout gestures preserve remote style ownership", async () => {
-  const section = createLayout(
-    "display:grid;width:480px;height:140px;grid-template-columns:1fr 2fr;grid-template-rows:1fr;gap:16px",
-    [{text: "left"}, {text: "right"}],
-  )
-  const layout = editor.features.layout as any
-  try {
-    await layoutFrame()
-    const handle = editor.appendix.querySelector<HTMLElement>('[data-axis="column"][data-operation="resize"]')!
-    const initial = section.style.gridTemplateColumns
-    layout.begin(handle, {pointerId: -1, clientX: 0, clientY: 0})
-    layout.resizeBy(24)
-    assert(section.style.gridTemplateColumns !== initial, "private gesture setup did not resize the grid")
-    section.style.gridTemplateColumns = "2fr 1fr"
-    layout.finish(true)
-    assert(section.style.gridTemplateColumns === "2fr 1fr", "cancel restored over a newer remote style write")
-
-    section.style.gridTemplateColumns = initial
-    await layoutFrame()
-    const nextHandle = editor.appendix.querySelector<HTMLElement>('[data-axis="column"][data-operation="resize"]')!
-    layout.begin(nextHandle, {pointerId: -1, clientX: 0, clientY: 0})
-    layout.resizeBy(24)
-    section.append(document.createElement("div"))
-    layout.resizeBy(24)
-    assert(section.style.gridTemplateColumns === initial, "topology change did not cancel and restore the gesture")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("one layout drag is one undoable operation", async () => {
-  const section = createLayout(
-    "display:grid;width:480px;height:140px;grid-template-columns:1fr 2fr;grid-template-rows:1fr;gap:16px",
-    [{text: "left"}, {text: "right"}],
-  )
-  const layout = editor.features.layout as any
-  try {
-    await layoutFrame()
-    editor.doc.syncFromDOM()
-    const handle = editor.appendix.querySelector<HTMLElement>('[data-axis="column"][data-operation="resize"]')!
-    const initial = section.style.gridTemplateColumns
-    layout.begin(handle, {pointerId: -1, clientX: 0, clientY: 0})
-    layout.resizeBy(24)
-    layout.finish(false)
-    await layoutFrame()
-    const changed = section.style.gridTemplateColumns
-    assert(changed !== initial, "drag did not change the authored track declaration")
-    editor.doc.undo()
-    assert(section.style.gridTemplateColumns === initial, `undo did not restore ${initial}: ${section.style.gridTemplateColumns}`)
-    editor.doc.redo()
-    assert(section.style.gridTemplateColumns === changed, "redo did not restore the complete drag declaration")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("auto rows use explicit minmax sizing after a keyboard resize", async () => {
-  const section = createLayout(
-    "display:grid;width:360px;height:220px;grid-template-columns:1fr;grid-template-rows:auto auto;gap:12px",
-    [{text: "row one", style: "min-height:30px"}, {text: "row two", style: "min-height:30px"}],
-  )
-  try {
-    await layoutFrame()
-    const handle = editor.appendix.querySelector<HTMLElement>('[data-axis="row"][data-operation="resize"]')
-    assert(handle, "auto-row separator was not rendered")
-    handle!.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, composed: true}))
-    await layoutFrame()
-    assert(/^minmax\([^,]+, auto\) auto$/.test(section.style.gridTemplateRows), `auto row was not converted to minmax: ${section.style.gridTemplateRows}`)
-  }
-  finally { removeLayout(section) }
-})
-
-await check("removing an explicit row preserves content and exposes automatic tracks", async () => {
-  const section = createLayout(
-    "display:grid;width:320px;height:280px;grid-template-columns:1fr 1fr;grid-template-rows:100px 100px;gap:10px",
-    Array.from({length: 5}, (_, index) => ({text: `content-${index}`})),
-  )
-  try {
-    await layoutFrame()
-    const children = Array.from(section.children)
-    const changed = editor.features.layout.actions.removeLayoutTrack({type: "removeLayoutTrack", axis: "row", index: 0})
-    assert(changed === true, "row removal was rejected")
-    assert(Array.from(section.children).every((child, index) => child === children[index]), "row removal replaced authored content nodes")
-    assert(section.textContent?.includes("content-4"), "row removal discarded authored content")
-    const state = editor.features.layout.getState()
-    assert(state?.rows.tracks?.length === 1, "remaining explicit row definition was not preserved")
-    assert((state?.rows.automatic ?? 0) > 0, "implicit surviving rows were not reported as automatic")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("empty grid cells accept authored regions and survive export reload", async () => {
-  const section = createLayout(
-    "display:grid;width:320px;height:180px;grid-template-columns:140px 140px;grid-template-rows:80px 80px;gap:10px",
-    [{text: "existing", style: "grid-row:1 / 2;grid-column:1 / 2"}],
-  )
-  try {
-    await layoutFrame()
-    const existing = section.children[0]
-    const inserted = editor.features.layout.actions.insertLayoutRegion({type: "insertLayoutRegion", row: 1, column: 1})
-    assert(inserted === true, "empty explicit grid cell rejected region insertion")
-    const region = section.children[1] as HTMLElement | undefined
-    assert(region?.localName === "p", "region insertion did not create a direct paragraph")
-    const regionStyle = getComputedStyle(region!)
-    assert(regionStyle.gridRowStart === "2" && regionStyle.gridColumnStart === "2", "inserted paragraph did not inherit its empty cell placement")
-    assert(section.children[0] === existing, "region insertion replaced the existing authored node")
-    const exported = await editor.serializeHTML()
-    const reloaded = new DOMParser().parseFromString(exported, "text/html")
-    const reloadedSection = reloaded.querySelector("section")
-    assert(reloadedSection?.querySelectorAll(":scope > p").length === 1, "export/reload lost the inserted paragraph")
-    const reloadedRegion = reloadedSection?.querySelector<HTMLElement>(":scope > p")
-    let reloadedRowStart = "", reloadedColumnStart = ""
-    if(reloadedSection && reloadedRegion) {
-      fixture.append(reloadedSection)
-      const reloadedStyle = getComputedStyle(reloadedRegion)
-      reloadedRowStart = reloadedStyle.gridRowStart
-      reloadedColumnStart = reloadedStyle.gridColumnStart
-      reloadedSection.remove()
-    }
-    assert(reloadedRegion && reloadedRowStart === "2" && reloadedColumnStart === "2", "export/reload lost the inserted paragraph placement")
-    assert(!exported.includes("◆") && !reloaded.querySelector("[class*='◆']"), "editor markers leaked into exported layout HTML")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("splitting a grid paragraph preserves column placement", async () => {
-  const section = createLayout(
-    "display:grid;width:360px;min-height:180px;grid-template-columns:1fr 1fr;grid-template-rows:auto auto auto;gap:10px",
-    [],
-  )
-  const first = document.createElement("p")
-  first.textContent = "split this paragraph"
-  first.style.cssText = "grid-row:1 / 2;grid-column:1 / 2;min-inline-size:0"
-  const other = document.createElement("p")
-  other.textContent = "other column"
-  other.style.cssText = "grid-row:1 / 2;grid-column:2 / 3;min-inline-size:0"
-  section.append(first, other)
-  try {
-    await layoutFrame()
-    editor.features.selection.clearSelectedSection(section)
-    const text = first.firstChild!
-    $.move(text, 5)
-    const event = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"})
-    document.dispatchEvent(event)
-    await layoutFrame()
-    const paragraphs = Array.from(section.children).filter((child): child is HTMLParagraphElement => child.localName === "p")
-    assert(event.defaultPrevented, "Enter was not handled by the editor")
-    assert(paragraphs.length === 3, "Enter did not split the grid paragraph")
-    const [left, right, columnTwo] = paragraphs
-    const leftStyle = getComputedStyle(left), rightStyle = getComputedStyle(right), otherStyle = getComputedStyle(columnTwo)
-    assert(leftStyle.gridColumnStart === "1" && rightStyle.gridColumnStart === "1", "split paragraphs moved to different columns")
-    assert(leftStyle.gridRowStart === "1" && rightStyle.gridRowStart === "2" && rightStyle.gridRowEnd === "3", "split paragraphs did not occupy successive explicit rows")
-    assert(otherStyle.gridColumnStart === "2" && otherStyle.gridRowStart === "1" && otherStyle.gridRowEnd === "3", `other column lost its placement (${otherStyle.gridColumnStart}/${otherStyle.gridRowStart}/${otherStyle.gridRowEnd})`)
-    const leftRect = left.getBoundingClientRect(), rightRect = right.getBoundingClientRect(), otherRect = columnTwo.getBoundingClientRect()
-    assert(rightRect.top >= leftRect.bottom - 1, "split paragraphs overlap instead of occupying successive rows")
-    assert(Math.abs(otherRect.top - leftRect.top) < 1, "other column moved away from the first row")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("block widgets inherit empty grid paragraph placement", async () => {
-  const section = createLayout(
-    "display:grid;width:360px;min-height:120px;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:10px",
-    [],
-  )
-  const paragraph = document.createElement("p")
-  paragraph.style.cssText = "grid-column:2;grid-row:2;min-inline-size:0"
-  section.append(paragraph)
-  try {
-    $.move(paragraph, 0)
-    const widget = document.createElement("native-audit-widget")
-    editor.features.manipulation.insert(widget)
-    const replacement = section.querySelector<HTMLElement>("native-audit-widget")
-    assert(replacement, "empty paragraph was not replaced by the block widget")
-    const replacementStyle = getComputedStyle(replacement!)
-    assert(replacementStyle.gridColumnStart === "2", "widget did not inherit grid-column")
-    assert(replacementStyle.gridRowStart === "2", "widget did not inherit grid-row")
-    assert(replacementStyle.minInlineSize === "0px", "widget did not inherit min-inline-size")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("removing a track preserves independent important grid placement longhands", async () => {
-  const section = createLayout(
-    "display:grid;width:320px;height:180px;grid-template-columns:100px 100px;grid-template-rows:80px 80px;gap:10px",
-    [{text: "spanning", style: "grid-column-start:1 !important;grid-column-end:3 !important;grid-row:1"}, {text: "other", style: "grid-column:2 / 3;grid-row:2"}],
-  )
-  try {
-    await layoutFrame()
-    const item = section.children[0] as HTMLElement
-    const changed = editor.features.layout.actions.removeLayoutTrack({type: "removeLayoutTrack", axis: "column", index: 0})
-    assert(changed === true, "important longhand placement made track removal fail")
-    assert(item.style.getPropertyValue("grid-column-start") === "1", "unchanged important grid-column-start was lost")
-    assert(item.style.getPropertyValue("grid-column-end") === "2", "grid-column-end was not remapped to the surviving line")
-    assert(item.style.getPropertyPriority("grid-column-start") === "important", "grid-column-start priority was lost")
-    assert(item.style.getPropertyPriority("grid-column-end") === "important", "grid-column-end priority was lost")
-    assert(section.textContent?.includes("spanning") && section.textContent.includes("other"), "track removal discarded placed content")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("flex wrapping produces a second rendered line", async () => {
-  const section = createLayout(
-    "display:flex;width:220px;height:100px;flex-flow:row wrap;gap:10px",
-    Array.from({length: 3}, (_, index) => ({text: `card-${index}`, style: "width:100px;height:20px"})),
-  )
-  try {
-    await layoutFrame()
-    const first = section.children[0].getBoundingClientRect()
-    const third = section.children[2].getBoundingClientRect()
-    assert(third.top > first.bottom - 1, "flex-wrap did not move the third item to another line")
-  }
-  finally { removeLayout(section) }
-})
-
-await check("transformed grid geometry withholds misleading resize handles", async () => {
-  const section = createLayout(
-    "display:grid;width:360px;height:120px;grid-template-columns:1fr 1fr;grid-template-rows:1fr;gap:12px;transform:scale(0.8)",
-    [{text: "one"}, {text: "two"}],
-  )
-  try {
-    await layoutFrame()
-    const overlay = editor.appendix.querySelector<HTMLElement>(".◆layout-overlay")
-    assert(overlay && !overlay.hidden, "transformed layout did not retain its selection overlay")
-    assert(!overlay!.querySelector('[data-operation="resize"]'), "transformed layout exposed a misleading separator")
-  }
-  finally { removeLayout(section) }
-})
-
 await check("focused AI previews preserve widgets, contextual HTML, and rendered styles", async () => {
   const paragraph = document.createElement("p")
   paragraph.id = "ai-native-paragraph"
@@ -1112,30 +768,6 @@ await check("focused AI previews preserve widgets, contextual HTML, and rendered
     paragraph.remove()
     table.remove()
   }
-})
-
-await check("selection markers and appendix layout artifacts tear down cleanly", async () => {
-  const section = createLayout(
-    "display:grid;width:360px;height:120px;grid-template-columns:1fr 1fr;grid-template-rows:1fr;gap:12px",
-    [{text: "one"}, {text: "two"}],
-  )
-  await layoutFrame()
-  assert(section.classList.contains("◆layout-selected"), "layout selection marker missing")
-  const overlay = editor.appendix.querySelector<HTMLElement>(".◆layout-overlay")
-  assert(overlay, "layout overlay was not placed in the appendix")
-  assert(getComputedStyle(overlay!).position === "fixed", `layout overlay position was ${getComputedStyle(overlay!).position}`)
-  const separator = overlay!.querySelector<HTMLElement>('[data-axis="column"][data-operation="resize"]')
-  assert(separator && getComputedStyle(separator).position === "absolute", `resize handle position was ${separator ? getComputedStyle(separator).position : "missing"}`)
-  assert(!section.querySelector("[class*='◆']"), "editor artifacts entered authored layout content")
-  editor.features.selection.clearSelectedSection(section)
-  $.selectDocumentStart()
-  editor.features.selection.processSelection()
-  await layoutFrame()
-  assert(!section.classList.contains("◆layout-selected"), "layout marker survived deselection")
-  assert(editor.appendix.querySelector<HTMLElement>(".◆layout-overlay")?.hidden === true, "layout overlay stayed visible after deselection")
-  editor.features.layout.disable()
-  assert(!editor.appendix.querySelector(".◆layout-overlay"), "layout overlay survived feature teardown")
-  section.remove()
 })
 
 await check("shape labels retain capture while typing and selecting text", async () => {
@@ -2285,124 +1917,158 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
   finally { frame.remove(); URL.revokeObjectURL(url) }
 })
 
-await check("column groups expose independent gaps and stack with separator lines", async () => {
-  for(const [width, count] of [[1200, 2], [640, 2], [1200, 3], [640, 3]]) {
-    const frame = document.createElement("iframe")
-    frame.style.cssText = `position:fixed;inset:0;inline-size:${width}px;min-inline-size:${width}px;max-inline-size:none;height:600px;border:0`
-    const id = `column-group-${width}-${count}`
-    const result = new Promise<string | null>(resolve => {
-      const receive = (event: MessageEvent) => {
-        if(event.source !== frame.contentWindow || event.data?.id !== id) return
-        window.removeEventListener("message", receive)
-        resolve(event.data.error ?? null)
-      }
-      window.addEventListener("message", receive)
-    })
-    frame.srcdoc = `<!doctype html><body><p>Left text</p><script type="module">
-      import {DOMEditor} from "/src/domeditor.ts";
-      import {$} from "/src/utility.ts";
-      import {defaultDocumentTheme} from "/src/document-themes.ts";
-      const assert = (condition, message) => {if(!condition) throw new Error(message)};
-      let editor;
-      try {
-        const style = document.createElement("style");
-        style.textContent = defaultDocumentTheme.source;
-        document.head.append(style, document.querySelector("script"));
-        editor = new DOMEditor({bridgeOrigin: parent.location.origin});
-        const paragraph = document.querySelector("p");
-        let media = document.createElement("img");
-        media.alt = "Media";
-        media.style.height = "160px";
-        assert(editor.features.manipulation.placeFloat(media, paragraph, "right"), "could not create group");
-        const group = document.querySelector(".ww-column-group");
-        if(${count} === 3) {
-          group.classList.add("ww-column-three");
-          const middle = document.createElement("p");
-          middle.className = "ww-column-middle";
-          middle.textContent = "Middle";
-          media.before(middle);
-        }
-        assert(group.firstElementChild === paragraph && group.lastElementChild === media, "incorrect group reading order");
-        await new Promise(requestAnimationFrame);
-        await new Promise(requestAnimationFrame);
-        media = group.querySelector(":scope > .ww-column-right");
-        assert(media && group.isConnected, "image normalization lost its column placement");
-        const columns = Array.from(group.children);
-        const left = columns[0].getBoundingClientRect(), right = columns[columns.length - 1].getBoundingClientRect();
-        assert(${width} > 960 ? Math.abs(left.top - right.top) < 1 && right.left > left.left : right.top >= left.bottom, "wrong column geometry " + JSON.stringify({left:left.toJSON(),right:right.toJSON(),grid:getComputedStyle(group).gridTemplateColumns,html:group.outerHTML}));
-        assert((parseFloat(getComputedStyle(group).borderTopWidth) > 0) === (${width} <= 960), "wrong group separator visibility");
-        assert((parseFloat(getComputedStyle(group).borderBottomWidth) > 0) === (${width} <= 960), "missing bottom separator");
-        for(const child of columns) {
-          const side = child === paragraph ? "left" : child === media ? "right" : "middle";
-          for(const edge of ["before", "after"]) {
-            const rect = child.getBoundingClientRect();
-            $.selectCoords(rect.left + rect.width / 2, edge === "before" ? rect.top + 2 : rect.bottom - 2, false, child, editor.schema);
-            editor.features.selection.processSelection();
-            assert($.columnGap?.side === side && $.columnGap?.element === child, "gap escaped its column");
-          }
-          $.selectGap(child, "after");
-          editor.features.selection.processSelection();
-          const columnCursor = editor.features.selection.selectionCaret.getBoundingClientRect();
-          const inserted = editor.features.manipulation.ensureTextBlock();
-          assert(inserted?.parentElement === group && inserted.classList.contains("ww-column-" + side), "new block escaped column " + JSON.stringify({count:${count},side,group:group.outerHTML,inserted:inserted?.outerHTML,parent:inserted?.parentElement?.localName,connected:group.isConnected}));
-          inserted.textContent = "Another block";
-          const insertedRect = inserted.getBoundingClientRect();
-          assert(Math.abs(columnCursor.left - insertedRect.left) < 2 && Math.abs(columnCursor.top - insertedRect.top) < 2, "column cursor differs from insertion");
-        }
-        await new Promise(requestAnimationFrame);
-        const secondLeft = paragraph.nextElementSibling.getBoundingClientRect();
-        const secondRight = media.nextElementSibling.getBoundingClientRect();
-        const firstLeft = paragraph.getBoundingClientRect(), firstRight = media.getBoundingClientRect();
-        assert(Math.abs(secondLeft.top - firstLeft.bottom - 20) < 2, "left flow waits for tall right content");
-        assert(Math.abs(secondRight.top - firstRight.bottom - 20) < 2, "right flow has incorrect spacing");
-        for(const child of group.querySelectorAll(":scope > .ww-column-right")) child.remove();
-        $.selectColumnGap(group, "right");
-        editor.features.selection.processSelection();
-        assert(editor.features.selection.selectionCaret?.getRootNode() === editor.appendix, "gap caret left appendix");
-        const emptyInserted = editor.features.manipulation.ensureTextBlock();
-        assert(emptyInserted?.parentElement === group && emptyInserted.classList.contains("ww-column-right"), "empty-column insertion escaped");
-        emptyInserted.textContent = "Right content";
-        for(const edge of ["before", "after"]) {
-          $.selectGap(group, edge);
-          editor.features.selection.processSelection();
-          await new Promise(requestAnimationFrame);
-          const cursor = editor.features.selection.selectionCaret.getBoundingClientRect();
-          const inserted = editor.features.manipulation.ensureTextBlock();
-          assert(inserted?.parentElement === group.parentElement, "outer gap inserted into group");
-          await new Promise(requestAnimationFrame);
-          const block = inserted.getBoundingClientRect();
-          assert(Math.abs(cursor.left - block.left) < 2 && Math.abs(cursor.top - block.top) < 2, "outer cursor differs from insertion: " + JSON.stringify({edge, cursor:cursor.toJSON(),block:block.toJSON()}));
-          inserted.remove();
-        }
-        const html = new DOMParser().parseFromString(editor.toHTML(true), "text/html").body.innerHTML;
-        assert(html.includes("ww-column-group") && html.includes("ww-column-left") && html.includes("ww-column-right") && !html.includes("◆"), "group serialization lost content or retained editing artifacts: " + html);
-        const dragged = document.createElement("p"), dropTarget = document.createElement("picture");
-        dragged.textContent = "Drag a paragraph";
-        dropTarget.innerHTML = '<img alt="Drop target">';
-        dropTarget.style.cssText = "height:80px;min-height:80px";
-        document.body.append(dragged, dropTarget);
-        $.selectElement(dragged);
-        editor.features.selection.processSelection();
+await check("native drag floats in target halves and preserves ordinary gap drops", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;inline-size:900px;min-inline-size:900px;max-inline-size:none;height:700px;border:0"
+  const id = "native-float-halves"
+  const result = new Promise<string | null>(resolve => {
+    const receive = (event: MessageEvent) => {
+      if(event.source !== frame.contentWindow || event.data?.id !== id) return
+      window.removeEventListener("message", receive)
+      resolve(event.data.error ?? null)
+    }
+    window.addEventListener("message", receive)
+  })
+  frame.srcdoc = `<!doctype html><body><main style="width:600px"><p id="peer" style="width:320px;height:80px;margin-left:200px;color:rebeccapurple">Peer</p><p id="source" style="width:120px;height:50px;margin:9px;color:teal">Source</p><p>Following sibling</p></main><script type="module">
+    import {DOMEditor} from "/src/domeditor.ts";
+    import {defaultDocumentTheme} from "/src/document-themes.ts";
+    const assert = (condition, message) => {if(!condition) throw new Error(message)};
+    let editor;
+    try {
+      editor = new DOMEditor({bridgeOrigin: parent.location.origin});
+      const peer = document.querySelector("#peer"), source = document.querySelector("#source"), main = peer.parentElement;
+      const siblings = Array.from(main.childNodes), originalStyle = source.style.cssText;
+      for(const [fraction, side, placement] of [[0.35, "left", "before"], [0.5, "right", "before"], [0.65, "right", "before"]]) {
+        source.style.cssText = originalStyle;
+        editor.features.selection.selectElement(source);
         const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
-        assert(dragSurface, "paragraph has no drag surface");
+        assert(dragSurface, "source has no drag surface");
         const dataTransfer = new DataTransfer();
         dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
-        dropTarget.scrollIntoView();
+        const rect = peer.getBoundingClientRect();
+        const init = {dataTransfer, clientX:Math.ceil(rect.left + rect.width * fraction), clientY:placement === "before" ? rect.top + 3 : rect.bottom - 3, bubbles:true, cancelable:true, composed:true};
+        peer.dispatchEvent(new DragEvent("dragover", init));
+        peer.dispatchEvent(new DragEvent("drop", init));
+        assert(source.parentElement === main && source.style.float === side, "drop did not apply the expected half float: " + side);
+        assert(source.style.width === "120px" && source.style.height === "50px" && source.style.color === "teal", "float changed unrelated source styles");
+        assert(source.style.margin === "5px", "float margin did not follow its half: " + side);
+        assert(source.style.maxWidth === "50%", "float cap did not follow its half: " + side);
+        assert(siblings.length === main.childNodes.length && siblings.every(node => main.contains(node)), "drag removed authored siblings or added a wrapper");
+        assert(placement === "before" ? source.compareDocumentPosition(peer) & Node.DOCUMENT_POSITION_FOLLOWING : source.compareDocumentPosition(peer) & Node.DOCUMENT_POSITION_PRECEDING, "drop ignored vertical before/after placement");
+        assert(!main.querySelector(".ww-column-group, [class*=ww-column-]"), "drag created column markup");
+      }
+      const leading = document.createElement("p");
+      leading.textContent = "Leading paragraph";
+      main.prepend(leading);
+      for(const placement of ["before", "after", "outside-left"]) {
+        source.style.cssText = originalStyle;
+        main.append(source);
+        editor.features.selection.selectElement(source);
         await new Promise(requestAnimationFrame);
-        const dropRect = dropTarget.getBoundingClientRect();
-        const dragInit = {dataTransfer, clientX:dropRect.left + dropRect.width * 0.2, clientY:dropRect.top + dropRect.height / 2, bubbles:true, cancelable:true, composed:true};
-        dropTarget.dispatchEvent(new DragEvent("dragover", dragInit));
-        dropTarget.dispatchEvent(new DragEvent("drop", dragInit));
-        assert(dragged.parentElement === dropTarget.parentElement && dragged.parentElement.classList.contains("ww-column-group"), "paragraph-on-media drop did not form a group");
-        assert(dragged.classList.contains("ww-column-left") && dropTarget.classList.contains("ww-column-right"), "paragraph-on-media drop reversed sides");
-        parent.postMessage({id:${JSON.stringify(id)}}, "*");
-      } catch(error) {parent.postMessage({id:${JSON.stringify(id)}, error:String(error)}, "*")}
-      finally {editor?.destroy()}
-    <\/script>`
-    document.body.append(frame)
-    try { assert(await result === null, `column group check at ${width}px: ${await result}`) }
-    finally { frame.remove() }
-  }
+        const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
+        const dataTransfer = new DataTransfer();
+        dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
+        const rect = peer.getBoundingClientRect();
+        const init = {dataTransfer, clientX:placement === "outside-left" ? rect.left - 5 : rect.left + rect.width / 2,
+          clientY:placement === "before" ? rect.top - 5 : placement === "after" ? rect.bottom + 5 : rect.top + rect.height / 2,
+          bubbles:true, cancelable:true, composed:true};
+        main.dispatchEvent(new DragEvent("dragover", init));
+        assert(!editor.appendix.querySelector("#◆float-drop-preview"), "gap incorrectly showed a float preview");
+        main.dispatchEvent(new DragEvent("drop", init));
+        assert(source.parentElement === main && source.getAttribute("style") === originalStyle, "ordinary gap drop changed source styles or nesting");
+        if(placement === "before") assert(source.nextElementSibling === peer, "drop above peer did not insert before it");
+        if(placement === "after") assert(source.previousElementSibling === peer, "drop below peer did not insert after it");
+      }
+      for(const overElement of [false, true]) {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.setData("text/html", '<picture><img alt="Dropped image"></picture>');
+        const rect = peer.getBoundingClientRect();
+        const init = {dataTransfer, clientX:Math.ceil(rect.left + rect.width * 0.35), clientY:overElement ? rect.top + 3 : rect.bottom + 5,
+          bubbles:true, cancelable:true, composed:true};
+        (overElement ? peer : main).dispatchEvent(new DragEvent("dragover", init));
+        (overElement ? peer : main).dispatchEvent(new DragEvent("drop", init));
+        const dropped = main.querySelector("picture");
+        assert(dropped, "external image drop lost its content");
+        assert(dropped.style.float === (overElement ? "left" : ""), "external image drop ignored element bounds");
+        assert(dropped.style.margin === (overElement ? "5px" : ""), "external image gap drop acquired a float margin: " + dropped.outerHTML);
+        dropped.remove();
+      }
+      for(const fraction of [0.35, 0.5, 0.65, null]) {
+        source.style.cssText = originalStyle;
+        main.append(source);
+        editor.features.selection.selectElement(source);
+        editor.features.transformation.startTransform(source);
+        const start = source.getBoundingClientRect(), rect = peer.getBoundingClientRect();
+        editor.features.transformation.handleMoveStart(new MouseEvent("mousedown", {button:0, clientX:start.left, clientY:start.top}));
+        editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {clientX:Math.ceil(rect.left + rect.width * (fraction ?? 0.5)), clientY:fraction === null ? rect.bottom + 5 : rect.top + 3}));
+        const preview = editor.appendix.querySelector("#◆float-drop-preview");
+        assert(fraction === null ? !preview || preview.hidden : preview && !preview.hidden, "drag handle preview ignored element bounds");
+        editor.features.transformation.handleMoveEnd();
+        assert(source.style.float === (fraction === null ? "" : fraction < 0.5 ? "left" : "right"), "drag handle did not use the target halves");
+        assert(source.style.margin === (fraction === null ? "9px" : "5px"), "ordinary handle drop changed source margin");
+        if(fraction === null) assert(source.previousElementSibling === peer, "handle gap drop did not place source after the paragraph");
+      }
+      const picture = document.createElement("picture"), image = document.createElement("img"), text = document.createElement("p");
+      const theme = document.createElement("style");
+      theme.textContent = defaultDocumentTheme.source;
+      document.head.append(theme);
+      picture.style.cssText = "display:block;width:100%;height:120px;background:#eee";
+      image.alt = "Empty image placeholder";
+      image.style.cssText = "display:block;width:100%;height:100%";
+      picture.append(image);
+      text.textContent = "A long paragraph wraps beside the empty image placeholder. ".repeat(8);
+      text.style.cssText = "line-height:24px";
+      main.replaceChildren(picture, text);
+      editor.features.manipulation.setFloat(picture, "right");
+      await new Promise(requestAnimationFrame);
+      const pictureRect = picture.getBoundingClientRect(), parentRect = main.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const firstLine = range.getClientRects()[0];
+      assert(firstLine && Math.abs(firstLine.top - pictureRect.top) < 8, "first line is offset below the floated picture: " + JSON.stringify({picture:pictureRect.top, text:firstLine?.top, margin:getComputedStyle(text).marginTop}));
+      assert(pictureRect.width <= parentRect.width / 2 + 1, "empty picture did not shrink to half the parent");
+      assert(picture.style.margin === "5px", "floated picture did not receive a 5px margin");
+      assert(firstLine && firstLine.bottom > pictureRect.top && firstLine.top < pictureRect.top + 24 && firstLine.right <= pictureRect.left - 5, "paragraph did not wrap beside the floated placeholder: " + JSON.stringify({picture:pictureRect, firstLine, parent:parentRect}));
+      text.dispatchEvent(new PointerEvent("pointerover", {bubbles:true}));
+      const hover = editor.features.selection.hoverCaret;
+      assert(hover.getAttribute("part").includes("hover-caret-floats") && getComputedStyle(hover).outlineStyle === "none", "paragraph hover outline still spans its floated sibling");
+      const outline = hover.querySelector('[part="hover-float-outline"]');
+      assert(outline?.querySelector("mask path"), "float hover outline did not exclude the image box");
+      const hoverPath = [];
+      for(let node = text; node !== document.body; node = node.parentNode) hoverPath.unshift(Array.from(node.parentNode.childNodes).indexOf(node));
+      editor.features.selection.actions.hoverNode({type:"hoverNode", path:hoverPath});
+      assert(getComputedStyle(hover).outlineStyle === "none", "breadcrumb hover restored an outline over the float");
+      const hoveredHTML = new DOMParser().parseFromString(editor.toHTML(true), "text/html").querySelector("main").outerHTML;
+      assert(!main.querySelector("svg") && !hoveredHTML.includes("hover-float-mask"), "float hover outline leaked into authored HTML");
+      editor.features.selection.actions.hoverNode({type:"hoverNode", path:null});
+      picture.dispatchEvent(new PointerEvent("pointerover", {bubbles:true}));
+      assert(!hover.querySelector('[part="hover-float-outline"]'), "floated image lost its own ordinary outline");
+      const preceding = document.createElement("p");
+      preceding.textContent = "Preceding paragraph";
+      main.prepend(preceding);
+      await new Promise(requestAnimationFrame);
+      assert(Math.abs(range.getClientRects()[0].top - picture.getBoundingClientRect().top) < 8, "text and image did not align after a preceding block");
+      preceding.remove();
+      const html = new DOMParser().parseFromString(editor.toHTML(true), "text/html").querySelector("main").outerHTML;
+      assert(html.includes("float: right") && !html.includes("◆") && !html.includes("ww-column"), "float serialization retained editing artifacts or lost native CSS");
+      editor.features.manipulation.setFloat(picture, "none");
+      assert(picture.style.margin === "", "clearing float retained its 5px margin");
+      await new Promise(requestAnimationFrame);
+      assert(Math.abs(picture.getBoundingClientRect().width - parentRect.width) < 1, "clearing float did not restore the full-width image placeholder");
+      const first = document.createElement("p"), second = document.createElement("p");
+      first.textContent = "First paragraph";
+      second.textContent = "Second paragraph";
+      main.replaceChildren(first, second);
+      const spacing = parseFloat(getComputedStyle(first).marginBottom);
+      assert(spacing > 0 && Math.abs(second.getBoundingClientRect().top - first.getBoundingClientRect().bottom - spacing) < 1, "ordinary paragraphs lost their block spacing");
+      assert(getComputedStyle(second).marginBottom === "0px", "last paragraph retained an extra trailing gap");
+      parent.postMessage({id:${JSON.stringify(id)}}, "*");
+    } catch(error) {parent.postMessage({id:${JSON.stringify(id)}, error:String(error)}, "*")}
+    finally {editor?.destroy()}
+  <\/script>`
+  document.body.append(frame)
+  try { assert(await result === null, `native float drag check: ${await result}`) }
+  finally { frame.remove() }
 })
 
 await check("version previews preserve editing mode and reject native and direct mutations", async () => {

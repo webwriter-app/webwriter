@@ -163,4 +163,57 @@ describe("layout host and toolbox integration", () => {
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     expect(ribbon.shadowRoot!.querySelector(".layout-gallery, .layout-opener")).toBeNull()
   })
+
+  it("uses float controls for authored content instead of arrangement controls", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
+    const toolbox = await settle(editor)
+    toolbox.elementStyle = {...styleState("flex"), computed: {display: "flex", float: "right"}}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Arrangement"]')).toBeNull()
+    const group = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
+    expect(group).not.toBeNull()
+    const actions: unknown[] = []
+    toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"])
+    for(const button of buttons) button.click()
+    expect(actions).toEqual(["left", "none", "right"].map(side => ({type: "setFloat", side})))
+    expect(execute.mock.calls.map(([action]) => action)).toEqual(actions)
+  })
+
+  it("exposes narrow preview in the document layout drawer", async () => {
+    const {editor} = await mountEditor()
+    const toolbox = await settle(editor)
+    toolbox.activeTool = "Edit"
+    toolbox.documentSelected = true
+    await toolbox.updateComplete
+
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layouts"]')!
+    const button = drawer.querySelector<HTMLButtonElement>('button[aria-label="Narrow preview (360 px)"]')!
+    expect(button.title).toBe("Narrow preview (360 px)")
+    expect(button.getAttribute("aria-pressed")).toBe("false")
+
+    const changes: unknown[] = []
+    toolbox.addEventListener("document-width-preview-change", (event: Event) => changes.push((event as CustomEvent).detail))
+    button.click()
+    expect(changes).toEqual([{narrow: true}])
+
+    toolbox.narrowLayoutPreview = true
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layouts"] button[aria-label="Narrow preview (360 px)"]')!
+      .getAttribute("aria-pressed")).toBe("true")
+  })
+
+  it.each(["canvas", "slides"] as const)("withholds float and former block controls in %s", async mode => {
+    const {editor} = await mountEditor()
+    const toolbox = await settle(editor)
+    toolbox.activeTool = "Edit"
+    toolbox.elementStyle = styleState("grid")
+    toolbox.documentLayout = {...toolbox.documentLayout, mode}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Block layout"]')).toBeNull()
+  })
 })

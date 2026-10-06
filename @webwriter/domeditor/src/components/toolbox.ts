@@ -1,4 +1,4 @@
-import {css, html, nothing} from "lit"
+import {css, html, nothing, type TemplateResult} from "lit"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
 import {proofreadingCardStyles, renderProofreadingCard} from "./proofreading-card"
@@ -50,12 +50,14 @@ export class DomEditorToolbox extends EditingControls {
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
+    narrowLayoutPreview: {type: Boolean, attribute: false},
     proofreadingState: {attribute: false},
     disableSpellChecking: {type: Boolean},
   }
 
   disableAI = false
   aiSidebar = false
+  narrowLayoutPreview = false
 
   static styles = css`
     ${aiChatStyles}
@@ -85,6 +87,13 @@ export class DomEditorToolbox extends EditingControls {
     .grouping-remove {position: absolute; top: .2rem; right: .2rem; padding: .2rem; border: 0; background: transparent; cursor: pointer; color: inherit}
     .grouping-remove svg {width: 1rem; height: 1rem}
     .add-grouping {padding: .5rem; background: transparent; color: inherit; border: 1px solid var(--sl-color-neutral-300, #ccc); border-radius: .4rem; cursor: pointer}
+
+    .layout-action-controls {grid-column: 1 / -1; display: grid; gap: .45rem; padding: .4rem .5rem; font: 12px/1.35 system-ui, sans-serif}
+    .layout-action-controls button {min-height: 1.8rem; padding: .25rem .45rem; border: 1px solid #a8a8a8; border-radius: .2rem; background: #f7f7f7; color: #2f3742; font: inherit; cursor: pointer}
+    .layout-action-controls button:hover:not(:disabled) {background: #e9eef5}
+    .layout-action-controls button[aria-pressed="true"] {background: #dbe9fb; border-color: #3977c7; color: #174c91}
+    .layout-action-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
+    .layout-action-row {display: flex; flex-wrap: wrap; gap: .25rem}
 
     .history-timeline {
       flex-direction: column;
@@ -725,16 +734,18 @@ export class DomEditorToolbox extends EditingControls {
     `
   }
 
-  protected renderDrawers() {
+  protected renderDrawers(): TemplateResult<1>[] {
     if(this.activeTool === "Edit" && !this.elementAttributes
       && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
-      return [html`
+      const drawers = [html`
         <ribbon-drawer label="Attributes" icon="Develop" layout="attributes">
           <element-attribute-editor disabled></element-attribute-editor>
         </ribbon-drawer>
       `]
+      this.appendLayoutDrawers(drawers)
+      return drawers
     }
-    const drawers = super.renderDrawers()
+    const drawers: TemplateResult<1>[] = super.renderDrawers().filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
     if(this.activeTool === "Edit" && this.documentSelected) {
       drawers.push(html`
         <ribbon-drawer label="Layouts" icon="Layout" layout="document-layout">
@@ -755,6 +766,12 @@ export class DomEditorToolbox extends EditingControls {
                 ))}
               </div>
             </details>
+            <button type="button" class="layout-preview-toggle" title="Narrow preview (360 px)"
+              aria-label="Narrow preview (360 px)" aria-pressed=${this.narrowLayoutPreview}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("document-width-preview-change", {
+                detail: {narrow: !this.narrowLayoutPreview}, bubbles: true, composed: true,
+              }))}>Narrow preview</button>
             <p class="document-layout-zoom">Zoom: <strong>${this.documentLayout.zoom}%</strong></p>
             ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
           </div>
@@ -780,7 +797,31 @@ export class DomEditorToolbox extends EditingControls {
         </ribbon-drawer>
       `)
     }
+    this.appendLayoutDrawers(drawers)
     return drawers
+  }
+
+  private appendLayoutDrawers(drawers: TemplateResult<1>[]) {
+    const target = this.elementStyle.target
+    if(this.activeTool !== "Edit" || this.documentLayout.mode !== "document" || !target
+      || this.documentSelected || target.documentRoot || target.localName === "body") return
+    const float = this.elementStyle.computed.float || "none"
+    drawers.push(html`
+      <ribbon-drawer label="Float" icon="Layout" layout="float">
+        <div class="layout-action-controls">
+          <div class="layout-action-row" role="group" aria-label="Float">
+            ${(["left", "none", "right"] as const).map(side => html`<button type="button"
+              aria-label=${side === "none" ? "Clear float" : `Float ${side}`} aria-pressed=${float === side}
+              ?disabled=${this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setFloat", side}, bubbles: true, composed: true,
+              }))}>${side === "none" ? "None" : side === "left" ? "Left" : "Right"}</button>`)}
+          </div>
+          ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
+        </div>
+      </ribbon-drawer>
+    `)
   }
 
   private selectDocumentLayout(mode: DocumentLayoutMode) {

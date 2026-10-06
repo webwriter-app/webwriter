@@ -5,7 +5,6 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {slidesStyles} from "../document-layout"
-import {authoredLayoutKind} from "../layouts"
 import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 
 let editor: DOMEditor
@@ -94,17 +93,16 @@ describe("CSS-only Slides layout", () => {
     expect(convert("slides")).toBe(true)
     const slide = slides()[0], viewport = slide.parentElement!
     expect(getComputedStyle(viewport).display).toBe("flex")
-    for(const element of [viewport, slide, ...document.querySelectorAll("nav")]) expect(authoredLayoutKind(element)).toBeNull()
     $.move(slide.querySelector("p")!)
     expect(editor.features.layout.getState()).toBeNull()
     const before = viewport.getAttribute("style")
-    expect(editor.features.layout.actions.setLayoutStyles({type: "setLayoutStyles", styles: {"flex-direction": "column"}})).toBe(false)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "left"})).toBe(false)
     expect(viewport.getAttribute("style")).toBe(before)
     const nested = document.createElement("article")
     nested.style.display = "flex"; nested.innerHTML = "<p>Nested</p><p>Layout</p>"
     slide.append(nested)
     $.move(nested.firstElementChild!)
-    expect(editor.features.layout.getState()).toMatchObject({kind: "flex", item: true})
+    expect(editor.features.layout.getState()).toBeNull()
   })
 
   it("initializes empty documents and added slides with aligned heading and paragraph boxes", async () => {

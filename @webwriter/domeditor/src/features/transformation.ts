@@ -1,6 +1,5 @@
-import {canPlaceLayouts} from "../layouts"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isColumnGroup, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
 import {isSlide} from "../document-layout"
@@ -35,10 +34,10 @@ type Gesture = {
 
 /** Selection-owned spatial controls in the shadow appendix.
  *
- * Move: drag at least 8 CSS pixels to detach a static element into absolute
- * positioning. Relative, sticky and fixed elements retain their mode.
- * Ctrl/Cmd previews a gap and returns the element to normal flow on release.
- * Shift constrains movement to one axis; Alt disables snapping.
+ * Move: in document mode, drag at least 8 CSS pixels to preview float left
+ * or right over a target element's halves, then apply it on release.
+ * Canvas and slide items retain spatial positioning. Ctrl/Cmd previews a flow
+ * gap; Shift constrains spatial movement to one axis; Alt disables snapping.
  *
  * Resize: corners set max-inline/block-size; edges constrain one logical axis.
  * Existing dimensions and intrinsic content can keep the element smaller.
@@ -66,6 +65,7 @@ export class TransformationFeature extends EditorFeature {
   #panFrame: number | null = null
   #panEvent: MouseEvent | null = null
   #drop: {element: Element, placement: "before" | "after", parent: Node, float?: "left" | "right"} | null = null
+  #normalDropRange: Range | null = null
   #suppressClick = false
   readonly #cancelGesture = () => this.#finish(true)
 
@@ -116,29 +116,7 @@ export class TransformationFeature extends EditorFeature {
   set #float(value: "none" | "left" | "right") {
     const target = this.target
     if(!target || this.editor.isEditingLocked) return
-    const manipulation = this.editor.features.manipulation
-    if(isColumnGroup(target.parentElement)) {
-      const captured = this.editor.features.selection.isCaptureSelection
-      manipulation.setColumn(target, value)
-      if(captured) this.editor.features.selection.captureElement(target)
-      else $.selectElement(target)
-      this.arranger?.toggleAttribute("data-open", false)
-      this.updateInfo()
-      return
-    }
-    const column = target.classList.contains("ww-column-left") ? "1" : target.classList.contains("ww-column-right") ? "2" : ""
-    const sibling = column === "1" ? target.nextElementSibling
-      : column === "2" ? target.previousElementSibling
-      : value === "left" ? target.nextElementSibling : target.previousElementSibling
-    const container = target.parentElement && manipulation.floatContainer(target.parentElement, target)
-      || sibling && manipulation.floatContainer(sibling, target)
-    if(value !== "none" && container) {
-      const captured = this.editor.features.selection.isCaptureSelection
-      this.editor.features.manipulation.placeFloat(target, container, value)
-      if(captured) this.editor.features.selection.captureElement(target)
-      else $.selectElement(target)
-    }
-    else this.editor.features.manipulation.setColumn(target, value)
+    this.editor.features.manipulation.setFloat(target, value)
     this.arranger?.setAttribute("data-float", value)
     this.arranger?.toggleAttribute("data-open", false)
     this.updateInfo()
@@ -501,7 +479,7 @@ export class TransformationFeature extends EditorFeature {
     const rotateTop = centerY + matrix.d * (-height / 2 - 34) - controlRadius
     const ordererTop = centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 22) - controlRadius
     setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop) < 0)
-    overlay.classList.toggle("◆transform-overlay-changed", target.matches(".ww-column-left, .ww-column-right") || ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
+    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
     const style = getComputedStyle(target)
     const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
     const block = findContainingBlock(target as HTMLElement, position)
@@ -519,8 +497,7 @@ export class TransformationFeature extends EditorFeature {
         })
       }
     }
-    const column = target.classList.contains("ww-column-left") ? "1" : target.classList.contains("ww-column-right") ? "2" : ""
-    this.arranger.setAttribute("data-float", column === "1" ? "left" : column === "2" ? "right" : style.float || "none")
+    this.arranger.setAttribute("data-float", style.float || "none")
     this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
     this.#syncControlParts()
     this.#updateContextMarkers()
@@ -713,7 +690,7 @@ export class TransformationFeature extends EditorFeature {
     if(!gesture.moved && Math.hypot(dx, dy) < 8) return
     gesture.moved = true
     document.body.classList.add("◆transform-moving")
-    if(gesture.mode === "anchor" || modifierKeyDown(event)) {
+    if(gesture.mode === "anchor" || modifierKeyDown(event) || !this.editor.features.canvas.active && !this.editor.features.slides.active) {
       if(this.#panFrame !== null) cancelAnimationFrame(this.#panFrame)
       this.#panFrame = null
       this.#panEvent = null
@@ -835,9 +812,24 @@ export class TransformationFeature extends EditorFeature {
   #previewDrop(event: MouseEvent) {
     this.#clearDrop(true)
     const target = this.target!
-    const hit = document.elementsFromPoint(event.clientX, event.clientY).find(element =>
+    const manipulation = this.editor.features.manipulation
+    const floatElement = manipulation.floatDropTarget(event, target)
+    if(floatElement) {
+      const float = manipulation.floatSide(floatElement, event.clientX)
+      this.#drop = {element: floatElement, placement: "before", parent: floatElement.parentElement!, float}
+      manipulation.showFloatDropPreview(floatElement, float, "transformation")
+      return
+    }
+    const hit = document.elementsFromPoint?.(event.clientX, event.clientY).find(element =>
       getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && !target.contains(element) && !element.contains(target))
-    if(!hit) return
+    if(!hit) {
+      const range = manipulation.dropRange(event, target)
+      if(range) {
+        this.#normalDropRange = range
+        this.editor.features.selection.selectDropRange(range)
+      }
+      return
+    }
     // Widgets are atomic, including their authored light-DOM contents.
     let element = hit
     for(let parent = hit.parentElement; parent && !isDocumentRoot(parent); parent = parent.parentElement) {
@@ -846,21 +838,17 @@ export class TransformationFeature extends EditorFeature {
     if(isDocumentRoot(element) || !element.parentNode || element.contains(target)) return
     const container = this.editor.features.manipulation.floatContainer(element, target)
     if(container) element = container
-    if(!container && !canPlaceLayouts([target], element.parentNode!)) return
     const rect = element.getBoundingClientRect()
     const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
-    const float = container ? event.clientX < rect.left + rect.width / 2 ? "left" as const : "right" as const : undefined
-    this.#drop = {element, placement, parent: element.parentNode!, ...(float ? {float} : {})}
-    if(float) this.editor.features.manipulation.showFloatDropPreview(element, float, "transformation")
-    else {
-      element.classList.add(`◆drop-caret-${placement}`)
-      this.editor.features.selection.showDropCaret(placement)
-    }
+    this.#drop = {element, placement, parent: element.parentNode!}
+    element.classList.add(`◆drop-caret-${placement}`)
+    this.editor.features.selection.showDropCaret(placement)
   }
 
   #clearDrop(keepFloatPreview = false) {
     if(this.#drop) removeEditorMarker(this.#drop.element, `◆drop-caret-${this.#drop.placement}`)
     this.#drop = null
+    this.#normalDropRange = null
     this.editor.features.manipulation.clearFloatDropPreview("transformation", keepFloatPreview)
     this.editor.features.selection.clearDropCaret()
   }
@@ -887,14 +875,20 @@ export class TransformationFeature extends EditorFeature {
     }
     else if(gesture.moved && this.#drop) {
       const {element, placement, parent, float} = this.#drop
-      if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
-        && (float ? this.editor.features.manipulation.floatContainer(element, target) === element : canPlaceLayouts([target], parent))) {
-        if(gesture.mode === "move") clearInlinePlacement(target)
+      if(element === target && float && target.parentNode === parent) this.editor.features.manipulation.setFloat(target, float)
+      else if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
+        && (float === undefined || this.editor.features.manipulation.floatContainer(element, target) === element)) {
+        if(gesture.mode === "move" && float === undefined) clearInlinePlacement(target)
         if(float) {
-          this.editor.features.manipulation.placeFloat(target, element, float)
+          this.editor.features.manipulation.placeFloat(target, element, float, placement)
         }
         else element[placement](target)
       }
+    }
+    else if(gesture.moved && this.#normalDropRange && getDocumentRoot().contains(this.#normalDropRange.startContainer)
+      && !target.contains(this.#normalDropRange.startContainer)) {
+      if(gesture.mode === "move") clearInlinePlacement(target)
+      this.#normalDropRange.insertNode(target)
     }
     this.#gesture = null
     this.#suppressClick = gesture.moved
@@ -907,7 +901,9 @@ export class TransformationFeature extends EditorFeature {
       if(gesture.captured && !cancel && !gesture.moved && (gesture.mode === "move" || gesture.mode === "scale")) {
         this.editor.features.selection.selectElement(target)
       }
-      else if(gesture.captured) this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
+      else if(gesture.captured) this.editor.features.selection.captureElement(target, {
+        preserveNativeSelection: gesture.mode !== "move" && gesture.mode !== "anchor",
+      })
       else this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     }
     this.updateInfo()

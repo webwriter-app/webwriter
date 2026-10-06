@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, isColumnGroup, columnSides, type ColumnSide, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -380,29 +380,6 @@ export class SelectionFeature extends EditorFeature {
     if(!(adjacent instanceof HTMLElement) || !(adjacent.localName.includes("-") || adjacent.hasAttribute("is"))
       || isContentfulWidget(adjacent, this.editor.schema)) return false
     this.selectElement(adjacent)
-    return true
-  }
-
-  /** Each column exposes its own block boundaries, including both outer edges. */
-  #navigateColumnGap(direction: "backward" | "forward", vertical: boolean) {
-    if(!$.isEmpty) return false
-    if(isColumnGroup($.anchor) && $.isGapSelection) {
-      const child = direction === "backward" ? $.elementBefore : $.elementAfter
-      if(!child) return false
-      if(isAtomicEditingElement(child, this.editor.schema)) $.selectElement(child)
-      else {
-        const edge = this.#disclosureEdge(child, direction === "backward" ? "forward" : "backward")
-        if(!edge) return false
-        $.move(edge, direction === "backward" ? -1 : 0)
-      }
-    }
-    else {
-      const block = this.#selectionBlock()
-      if(!block || !isColumnGroup(block.parentElement)
-        || !this.#atDisclosureEdge(block, direction, vertical)) return false
-      $.selectGap(block, direction === "backward" ? "before" : "after")
-    }
-    this.processSelection()
     return true
   }
 
@@ -1296,27 +1273,56 @@ export class SelectionFeature extends EditorFeature {
     const caret = this.hoverCaret
     if(!caret) return
     for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) caret.style.removeProperty(property)
+    caret.replaceChildren()
+    setPart(caret, "hover-caret-floats", false)
     setPart(caret, "hover-caret-transformed", false)
     setPart(caret, "hover-caret-selected-root", false)
   }
 
-  /** Native hover follows the freeform item; breadcrumb/style previews keep
-   * their explicit target. Refresh live geometry for zoom and authored edits. */
+  /** Resolve native and explicit hover against the live DOM. Freeform items
+   * track transforms; document contours exclude overlapping floats. */
   #refreshHoverGeometry = () => {
     if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
     this.#hoverFrame = null
     const explicit = document.querySelector(".◆element-hovered, .◆style-target-hovered")
-    const target = explicit ?? this.#layoutSelectionItem(this.#nativeHoverTarget, this.#nativeHoverTarget)
-    if(!this.isEnabled || !this.editor.features.canvas.active && !this.editor.features.slides.active
-      || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !target.isConnected || isDocumentRoot(target)) {
+    const freeform = this.editor.features.canvas.active || this.editor.features.slides.active
+    const native = this.#nativeHoverTarget
+    const target = explicit ?? (freeform ? this.#layoutSelectionItem(native, native)
+      : atomicEditingContainer(native, this.editor.schema) ?? (native ? mediaContainerForNode(native) ?? graphicContainerForNode(native) : null) ?? this.#modifierSelectionTarget(native))
+    if(!this.isEnabled
+      || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target)) {
       this.#clearHoverGeometry()
       return
     }
     if(this.#hoverOwner && this.#hoverOwner !== target && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
     this.#hoverOwner = target
     const caret = this.#ensureHoverCaret()
-    const {styles} = this.editor.features.transformation.boxGeometry(target)
-    for(const [property, value] of Object.entries(styles)) caret.style.setProperty(property, value, "important")
+    if(!freeform) {
+      const rect = target.getBoundingClientRect()
+      const float = getComputedStyle(target).float
+      const floats = ["left", "right"].includes(float) ? []
+        : Array.from(getDocumentRoot().querySelectorAll("*")).filter(element => element !== target && !element.contains(target) && !target.contains(element)
+          && !atomicEditingContainer(element.parentElement, this.editor.schema)
+          && ["left", "right"].includes(getComputedStyle(element).float)).flatMap(element => {
+          const box = element.getBoundingClientRect(), style = getComputedStyle(element)
+          return box.width > 0 && box.height > 0 ? [{left: box.left - Math.max(0, parseFloat(style.marginLeft) || 0), right: box.right + Math.max(0, parseFloat(style.marginRight) || 0),
+            top: box.top - Math.max(0, parseFloat(style.marginTop) || 0), bottom: box.bottom + Math.max(0, parseFloat(style.marginBottom) || 0)}] : []
+        }).filter(box => box.left < rect.right && box.right > rect.left && box.top < rect.bottom && box.bottom > rect.top)
+      if(!floats.length) {
+        this.#clearHoverGeometry()
+        this.#hoverOwner = target
+        this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
+        return
+      }
+      for(const [property, value] of Object.entries({left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transform: "none"})) caret.style.setProperty(property, value, "important")
+      this.#floatHoverOutline(caret, rect, floats)
+    }
+    else {
+      caret.replaceChildren()
+      setPart(caret, "hover-caret-floats", false)
+      const {styles} = this.editor.features.transformation.boxGeometry(target)
+      for(const [property, value] of Object.entries(styles)) caret.style.setProperty(property, value, "important")
+    }
     caret.style.setProperty("position-anchor", "auto", "important")
     caret.style.setProperty("position-area", "none", "important")
     caret.style.setProperty("translate", "none", "important")
@@ -1325,6 +1331,43 @@ export class SelectionFeature extends EditorFeature {
     setPart(caret, "hover-caret-selected-root", target.classList.contains("◆element-selected")
       && this.#layoutSelectionItem(target, target) === target)
     this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
+  }
+
+  /** Native paragraph boxes include the space occupied by floats. Draw their
+   * hover contour in the appendix, masking those boxes and their margins. */
+  #floatHoverOutline(caret: HTMLElement, rect: DOMRect, floats: {left: number, right: number, top: number, bottom: number}[]) {
+    const rectangle = (left: number, top: number, right: number, bottom: number) => `M ${left} ${top} H ${right} V ${bottom} H ${left} Z`
+    // Carry edge-touching cutouts beyond the outline's offset as well.
+    const holes = floats.map(box => rectangle(box.left <= rect.left ? -4 : box.left - rect.left,
+      box.top <= rect.top ? -4 : box.top - rect.top,
+      box.right >= rect.right ? rect.width + 4 : box.right - rect.left,
+      box.bottom >= rect.bottom ? rect.height + 4 : box.bottom - rect.top))
+    const contour = [rectangle(-2, -2, rect.width + 2, rect.height + 2), ...holes].join(" ")
+    const viewBox = `-4 -4 ${rect.width + 8} ${rect.height + 8}`
+    const svg = caret.firstElementChild ?? document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    if(svg.getAttribute("viewBox") === viewBox && svg.lastElementChild?.getAttribute("d") === contour) return
+    svg.setAttribute("part", "hover-float-outline")
+    svg.setAttribute("viewBox", viewBox)
+    const mask = document.createElementNS(svg.namespaceURI!, "mask")
+    mask.id = "◆hover-float-mask"
+    mask.setAttribute("maskUnits", "userSpaceOnUse")
+    mask.setAttribute("stroke", "none")
+    for(const [name, value] of Object.entries({x: -4, y: -4, width: rect.width + 8, height: rect.height + 8})) mask.setAttribute(name, String(value))
+    const background = document.createElementNS(svg.namespaceURI!, "rect")
+    for(const [name, value] of Object.entries({x: -4, y: -4, width: rect.width + 8, height: rect.height + 8, fill: "white"})) background.setAttribute(name, String(value))
+    mask.append(background)
+    for(const points of holes) {
+      const hole = document.createElementNS(svg.namespaceURI!, "path")
+      hole.setAttribute("d", points)
+      hole.setAttribute("fill", "black")
+      mask.append(hole)
+    }
+    const path = document.createElementNS(svg.namespaceURI!, "path")
+    path.setAttribute("d", contour)
+    path.setAttribute("mask", `url(#${mask.id})`)
+    svg.replaceChildren(mask, path)
+    caret.replaceChildren(svg)
+    setPart(caret, "hover-caret-floats")
   }
 
   /** Creates the shared selection caret in BODY's shadow tree. */
@@ -1381,36 +1424,6 @@ export class SelectionFeature extends EditorFeature {
     setPart(caret, "gap-caret", false)
     ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"]
       .forEach(state => setPart(caret, `gap-caret-${state}`, false))
-  }
-
-  /** Place group gaps at the prospective content edge, not the full-width wrapper edge. */
-  #positionGroupGap(caret: HTMLElement, group: HTMLElement, placement: "before" | "after", side?: ColumnSide, element?: Element | null) {
-    const parent = side ? group : group.parentElement
-    if(!parent) return
-    const style = getComputedStyle(parent), rect = parent.getBoundingClientRect(), groupRect = group.getBoundingClientRect()
-    const insetLeft = parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth)
-    const insetRight = parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth)
-    const left = rect.left + (insetLeft || 0)
-    const width = Math.max(0, rect.width - (insetLeft || 0) - (insetRight || 0))
-    const count = side ? Number(style.columnCount) || (style.gridTemplateColumns.trim().split(/\s+/).length > 1 ? 2 : 1) : 1
-    const multipleColumns = count > 1
-    const columnIndex = side ? columnSides(group).indexOf(side) : 0
-    const gap = parseFloat(style.columnGap) || 0
-    const available = multipleColumns ? (width - gap * (count - 1)) / count : width
-    const measure = `min(${style.getPropertyValue("--ww-prose-max").trim() || "45rem"}, ${available}px)`
-    const rowGap = style.rowGap && style.rowGap !== "normal" ? style.rowGap
-      : style.getPropertyValue("--ww-block-spacing").trim() || "0px"
-    // Outer ::part rules otherwise override normal declarations inside the appendix.
-    const set = (property: string, value: string) => caret.style.setProperty(property, value, "important")
-    set("position-area", "none")
-    set("position-anchor", "auto")
-    set("width", measure)
-    set("left", `${multipleColumns ? left + columnIndex * (available + gap) + (side === "left" ? available : side === "middle" ? available / 2 : 0) : left + width / 2}px`)
-    set("translate", multipleColumns ? side === "left" ? "-100% 0" : side === "middle" ? "-50% 0" : "none" : "-50% 0")
-    const box = element?.getBoundingClientRect() ?? groupRect
-    const after = element ? placement === "after" : side ? !multipleColumns && side !== "left" : placement === "after"
-    set("top", after ? `calc(${box.bottom}px + ${rowGap})` : `${box.top}px`)
-
   }
 
   /** Shows the shared caret using one of its selection presentations. */
@@ -1872,18 +1885,7 @@ export class SelectionFeature extends EditorFeature {
     if((kind === "text" || kind === "element") && !this.editor.features.mark.isSVGTextSelection) this.#showAtomicOverlays(sel)
     if(kind === "gap") {
       const children = sel.anchorNode!.childNodes
-      const columnGap = $.columnGap
-      if(columnGap) {
-        const element = columnGap.element ?? columnGap.group
-        const placement = columnGap.placement
-        this.#markSelection(element, `◆gap-${placement}-selected`)
-        const caret = this.#showSelectionCaret("gap")
-        caret.classList.add(`◆gap-${placement}-selected`)
-        setPart(caret, `gap-caret-gap-${placement}-selected`)
-        this.#positionGroupGap(caret, columnGap.group, placement, columnGap.side, columnGap.element)
-        document.body.classList.add("◆gap-caret-visible")
-      }
-      else if(children.length) {
+      if(children.length) {
         const i = sel.anchorOffset
         const before = Array.from(children).slice(0, i).reverse().find((node): node is Element => isElement(node) && !isOutOfFlow(node))
         const after = Array.from(children).slice(i).find((node): node is Element => isElement(node) && !isOutOfFlow(node))
@@ -1892,7 +1894,7 @@ export class SelectionFeature extends EditorFeature {
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
         const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap
-        const placement = structuralGap?.placement ?? (isColumnGroup(after) || !before || nestedListAfter ? "before": "after")
+        const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
           return
@@ -1901,16 +1903,9 @@ export class SelectionFeature extends EditorFeature {
         if(element) this.#markSelection(element, `◆gap-${placement}-selected`)
         gapCaret.classList.add(`◆gap-${placement}-selected`)
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
-        if(isColumnGroup(element)) this.#positionGroupGap(gapCaret, element, placement)
         document.body.classList.add("◆gap-caret-visible")
       }
-      else if(isColumnGroup(sel.anchorNode)) {
-        this.#markSelection(sel.anchorNode, "◆gap-before-selected")
-        const gapCaret = this.#showSelectionCaret("gap")
-        gapCaret.classList.add("◆gap-before-selected")
-        setPart(gapCaret, "gap-caret-gap-before-selected")
-        document.body.classList.add("◆gap-caret-visible")
-      }
+
     }
     else if(kind === "element") {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
@@ -2038,8 +2033,7 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
-        && (this.#navigateColumnGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
-          || this.#navigateMathBoundary(direction)
+        && (this.#navigateMathBoundary(direction)
           || this.#navigateDisclosureGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
         ev.preventDefault()

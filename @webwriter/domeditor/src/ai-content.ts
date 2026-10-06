@@ -158,7 +158,7 @@ export function validateAIFragmentStructure(fragment: ParentNode, existing?: Par
         if(!isExisting && disposition === "unnecessary" && !allowedAsLayoutItem) {
           throw new Error(
             `AI fragment adds an unnecessary <${child.localName}> wrapper at child ${childPath}. `
-            + "Keep headings, paragraphs, and widgets as direct siblings; use a grid or flex wrapper only for layout.",
+            + "Keep headings, paragraphs, and widgets as direct siblings; use float for text wrapping.",
           )
         }
       }

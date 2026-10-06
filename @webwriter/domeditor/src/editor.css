@@ -495,6 +495,29 @@ body:has(.◆element-hovered)::part(hover-caret) {
   outline: 2px dotted var(--sl-color-primary-400);
 }
 
+body::part(hover-caret-floats),
+body:has(.◆element-hovered)::part(hover-caret-floats) {
+  outline: none;
+}
+
+body::part(hover-float-outline) {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  overflow: hidden;
+  fill: none;
+  stroke: var(--sl-color-gray-400, black);
+  stroke-width: 1px;
+  stroke-dasharray: 1 3;
+}
+
+body:has(.◆element-hovered)::part(hover-float-outline) {
+  stroke: var(--sl-color-primary-400);
+  stroke-width: 2px;
+}
+
 body:is(.ww-canvas, .ww-slides)::part(hover-caret-selected-root) {
   display: none;
 }

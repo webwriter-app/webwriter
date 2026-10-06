@@ -19,7 +19,7 @@ describe("document themes", () => {
     expect(source).toContain("--ww-page-max: 2160px;")
     expect(source).toContain("--ww-prose-max: 45rem;")
     expect(source).toContain("--ww-page-gutter: clamp(1rem, 2vw, 2rem);")
-    expect(landmarks).toContain("max-inline-size: calc(var(--ww-page-max) + 2 * var(--ww-page-gutter));")
+    expect(landmarks).toContain("max-inline-size: calc(var(--ww-prose-max) + 2 * var(--ww-page-gutter));")
     expect(landmarks).toContain("min-inline-size: 0;")
     expect(landmarks).toContain("margin: 0 auto;")
     expect(landmarks).toContain("min-block-size: 100vh;")
@@ -28,10 +28,11 @@ describe("document themes", () => {
     expect(landmarks).not.toMatch(/min-(?:inline-size|width):\s*280px|overflow(?:-x)?:\s*hidden/)
   })
 
-  it("owns configurable spacing between blocks without Pico paragraph bottom margins", () => {
+  it("spaces blocks with trailing margins so floated siblings do not offset text", () => {
     const source = defaultDocumentTheme.source
     expect(source).toContain("--ww-block-spacing: 1.25em;")
-    expect(source).toContain(":is(body, body > main, body > article, body > section) > * + * {\n  margin-block-start: var(--ww-block-spacing);")
+    expect(source).toContain(":is(body, body > main, body > article, body > section) > :not(:last-child) {\n  margin-block-end: var(--ww-block-spacing);")
+    expect(source).not.toContain("> * + * {\n  margin-block-start: var(--ww-block-spacing);")
     const rules = source.replaceAll(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)
     for(const [, selector, declarations] of rules) {
       if(selector.split(",").some(part => part.trim() === "p")) {
@@ -42,65 +43,13 @@ describe("document themes", () => {
     expect(source).toMatch(/\bp\s*\{[^}]*padding:\s*2px;/)
   })
 
-  it("uses two automatic-row tracks with full-width items and centered reading blocks", () => {
+  it("uses one reading column with normal flow for authored floats", () => {
     const source = defaultDocumentTheme.source
-    expect(source).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));")
-    expect(source).toContain("grid-auto-rows: auto;")
-    expect(source).toContain("grid-column: 1 / -1;\n  inline-size: 100%;\n  min-inline-size: 0;")
-    expect(source).toContain("max-inline-size: min(100%, var(--ww-prose-max));\n  margin-inline: auto;")
-    expect(source).toContain("grid-auto-flow: row;")
-    expect(source).toMatch(/> \*\s*\{\s*grid-column: 1 \/ -1;/)
-    expect(source).toContain("> :where(h1, h2, h3, h4, h5, h6, p, hr, details, ul, ol, dl, blockquote, pre, table):where(:not([is]))")
-    expect(source).toContain("max-inline-size: var(--ww-prose-max);\n  margin-inline: auto;")
-  })
-
-  it("pairs column sides with text in reading order and collapses placements on narrow pages", () => {
-    const source = defaultDocumentTheme.source
-    for(const [side, column, textColumn] of [["left", 1, 2], ["right", 2, 1]] as const) {
-      const selector = `:where(.ww-column-${side})`
-      expect(source).toContain(`> ${selector} {\n  grid-column: ${column};`)
-      const paired = side === "left"
-        ? source.slice(source.indexOf(`> ${selector} +`))
-        : source.slice(source.indexOf(`:has(+ ${selector})`))
-      expect(paired.slice(0, paired.indexOf("}"))).toContain(`grid-column: ${textColumn};`)
-    }
-    expect(source).toContain("grid-column: 1;\n  margin-inline: auto 0;")
-    expect(source).toContain("grid-column: 2;\n  margin-inline: 0 auto;")
-    const responsive = source.slice(source.indexOf("@media (max-width: 60rem)"))
-    expect(responsive).toContain("grid-template-columns: minmax(0, 1fr);")
-    expect(responsive).toMatch(/> \*\s*\{\s*grid-column: 1 \/ -1;/)
-  })
-
-  it("lays out flat column groups with independent flow and narrow-page borders", () => {
-    const source = defaultDocumentTheme.source
-    const group = source.slice(source.indexOf(".ww-column-group {"))
-    expect(source).not.toContain(":where(body, body > main, body > article, body > section)\n  > :where(.ww-column-group)")
-    expect(group).toContain("grid-column: 1 / -1;")
-    expect(group).toContain("inline-size: 100%;")
-    expect(group).toContain("min-block-size: 1.5em;")
-    expect(group).toContain("column-count: 2;")
-    expect(group).toContain("break-before: column;")
-    expect(group).toContain("column-gap: var(--ww-page-gutter);")
-    expect(group).toContain("row-gap: var(--ww-block-spacing);")
-    expect(group).toContain(".ww-column-group > :is(.ww-column-left, .ww-column-middle, .ww-column-right) {")
-    expect(group).toContain("max-inline-size: var(--ww-prose-max);")
-    expect(group).toContain("margin-block: 0;")
-
-    const narrow = source.slice(source.indexOf("@media (max-width: 60rem)", source.indexOf(".ww-column-group {")))
-    expect(narrow).toContain("column-count: auto;")
-    expect(narrow).toContain(".ww-column-group > * {")
-    expect(narrow).toContain("float: none;")
-    expect(narrow).toContain("border-block: var(--pico-border-width) solid var(--pico-muted-border-color);")
-  })
-
-  it("uses row gaps instead of item block margins only on wide pages", () => {
-    const source = defaultDocumentTheme.source
-    const wide = source.slice(source.indexOf("@media (width > 60rem)"))
-    expect(wide).toContain("row-gap: var(--ww-block-spacing);")
-    expect(wide).toContain(":is(body, body > main, body > article, body > section) > * {\n    margin-block: 0;")
-    expect(wide).not.toContain(".ww-column-right")
-    expect(source.indexOf("@media (width > 60rem)")).toBeGreaterThan(source.lastIndexOf("margin-bottom:"))
-    expect(source).toContain("margin-block-start: var(--ww-block-spacing);")
+    const landmarks = source.slice(source.indexOf(" * Landmarks"), source.indexOf(" * Section\n"))
+    expect(landmarks).toContain("display: flow-root;")
+    expect(landmarks).not.toMatch(/display:\s*(?:grid|flex)|grid-|column-count/)
+    expect(source).not.toContain("ww-column-")
+    expect(source).not.toContain("@media (width > 60rem)")
   })
 
   it("lets widget hosts inherit document sizing tokens when adopting the theme", () => {
@@ -111,7 +60,7 @@ describe("document themes", () => {
     expect(sizingRules.map(([, selector]) => selector.trim())).toEqual([":root"])
   })
 
-  it("uses a layered Pico theme with explicit column-group classes as the document default", () => {
+  it("uses a layered Pico theme as the document default", () => {
     const source = documentTheme("base")!.source
 
     expect(source).toContain("Pico CSS ✨ v2.1.1")

@@ -7,7 +7,6 @@ import {captureRangeIdentity, cloneRangeContents, cloneWithoutEditorMarkers, rem
 import {aiPage, validateAIChangeOperations, type AIReadDocumentOptions, type AIInspectOptions, type AIChangeOperation, type AIInsertPosition} from "../ai-tools"
 import {htmlElementCapabilities} from "../html-element-capabilities"
 import {elementStyleCategories} from "../element-styles"
-import {canPlaceLayouts, canBecomeLayout, applyColumnPreset, layoutPresets} from "../layouts"
 import {validateAIFragmentStructure} from "../ai-content"
 
 const maximumAIHTMLLength = 1_000_000
@@ -181,7 +180,6 @@ export class StateFeature extends EditorFeature {
       }
     }
     visit(fragment)
-    if(!canPlaceLayouts(fragment.childNodes, range.startContainer)) throw new Error("Layouts can only appear at the document top level")
     validateAIFragmentStructure(fragment, existing)
     return fragment
   }
@@ -238,13 +236,10 @@ export class StateFeature extends EditorFeature {
         }
         return () => Object.entries(operation.attributes).forEach(([name, value]) => this.editor.features.manipulation.setAuthoredElementAttribute(target, name, value))
       }
-      if(operation.type === "set_styles" || operation.type === "set_layout") {
+      if(operation.type === "set_styles") {
         if(!(target instanceof Element)) throw new TypeError("Styles need an element target")
         if(target.localName.includes("-") && !availableWidgets.includes(target.localName)) throw new Error("Read this widget's README before configuring it")
-        const preset = operation.type === "set_layout" ? layoutPresets.find(preset => preset.id === operation.preset) : undefined
-        if(operation.type === "set_layout" && (!preset || atomicEditingContainer(target, this.editor.schema) === target)) throw new Error("Choose an available layout preset and a native container")
-        if(preset && !canBecomeLayout(target)) throw new Error("Layouts can only appear at the document top level")
-        const styles = operation.type === "set_styles" ? operation.styles : preset!.styles
+        const styles = operation.styles
         const entries = this.editor.features.manipulation.validateElementStyles(styles)
         const fragment = getInertDocument().createDocumentFragment()
         const probe = getInertDocument().createElement("div")
@@ -253,10 +248,7 @@ export class StateFeature extends EditorFeature {
         if(stripActiveContent(fragment)) throw new Error("Unsupported active CSS in proposal")
         return () => {
           if(!document.body.contains(target)) throw new Error("The style target is unavailable")
-          if(preset && !canBecomeLayout(target)) throw new Error("Layouts can only appear at the document top level")
           this.editor.features.manipulation.setElementStyles(target, styles)
-          if(preset) applyColumnPreset(target, preset)
-          if(preset) for(const child of target.children) this.editor.features.manipulation.setElementStyles(child, preset.itemStyles)
         }
       }
       if(operation.type === "remove") {
@@ -271,33 +263,18 @@ export class StateFeature extends EditorFeature {
         if(target === destination || target.contains(destination)) throw new Error("Cannot move a node into itself")
         this.aiInsertionRange(destination, operation.position)
         invalidated.add(target)
-        if(!canPlaceLayouts([target], this.aiInsertionRange(destination, operation.position).startContainer)) throw new Error("Layouts can only appear at the document top level")
         return () => {
           const current = this.aiInsertionRange(destination, operation.position)
-          if(!canPlaceLayouts([target], current.startContainer)) throw new Error("Layouts can only appear at the document top level")
           current.insertNode(target)
         }
       }
       if(operation.type === "insert_widget") throw new Error("Resolve the widget package before previewing")
-      if(!["insert_html", "replace_html", "replace_document", "insert_layout"].includes(operation.type)) throw new TypeError("Unsupported document operation")
+      if(!["insert_html", "replace_html", "replace_document"].includes(operation.type)) throw new TypeError("Unsupported document operation")
       let range: Range
       let source: string
-      if(operation.type === "insert_html" || operation.type === "insert_layout") {
+      if(operation.type === "insert_html") {
         range = this.aiInsertionRange(target, operation.position)
-        if(operation.type === "insert_layout") {
-          const preset = layoutPresets.find(preset => preset.id === operation.preset)
-          if(!preset) throw new Error("Choose an available layout preset")
-          const section = getInertDocument().createElement("section")
-          Object.entries(preset.styles).forEach(([name, value]) => section.style.setProperty(name, value))
-          for(let index = 0; index < preset.items; index++) {
-            const paragraph = getInertDocument().createElement("p")
-            Object.entries(preset.itemStyles).forEach(([name, value]) => paragraph.style.setProperty(name, value))
-            section.append(paragraph)
-          }
-          applyColumnPreset(section, preset)
-          source = section.outerHTML
-        }
-        else source = operation.html
+        source = operation.html
       }
       else {
         if((operation.type === "replace_document") !== (target === document.body)) throw new Error("Use replace_document only for an explicit whole-body rewrite")
@@ -310,11 +287,10 @@ export class StateFeature extends EditorFeature {
       const fragment = this.aiFragment(source, range, availableWidgets)
       return () => {
         const nodes = Array.from(fragment.childNodes)
-        const current = operation.type === "insert_html" || operation.type === "insert_layout"
+        const current = operation.type === "insert_html"
           ? this.aiInsertionRange(target, operation.position) : document.createRange()
         if(operation.type === "replace_document") current.selectNodeContents(target)
         else if(operation.type === "replace_html") current.selectNode(target)
-        if(!canPlaceLayouts(fragment.childNodes, current.startContainer)) throw new Error("Layouts can only appear at the document top level")
         current.deleteContents()
         current.insertNode(fragment)
         nodes.forEach(node => targets.add(node))
@@ -489,7 +465,6 @@ export class StateFeature extends EditorFeature {
     }
     const {fragment, removedUnsafeItems} = this.editor.parseHTMLFragment(checkedAIHTML(html))
     const nodes = Array.from(fragment.childNodes)
-    if(!canPlaceLayouts(nodes, range.startContainer)) throw new Error("Layouts can only appear at the document top level")
     this.clearHTMLSelectionPending()
     this.clearHTMLSelectionHover()
     try {
@@ -529,7 +504,6 @@ export class StateFeature extends EditorFeature {
     incoming.append(...Array.from(parsed.body.childNodes, node => inert.importNode(node, true)))
     const {fragment, removedUnsafeItems} = this.editor.prepareHTMLFragment(incoming)
     const nodes = Array.from(fragment.childNodes)
-    if(!canPlaceLayouts(nodes, document.body, document.body)) throw new Error("Layouts can only appear at the document top level")
     document.body.replaceChildren(...nodes)
     const selection = document.getSelection()
     selection?.removeAllRanges()
@@ -554,7 +528,6 @@ export class StateFeature extends EditorFeature {
     const fallbackTarget = range.startContainer instanceof Element
       ? range.startContainer
       : range.startContainer.parentElement
-    if(!canPlaceLayouts(nodes, range.startContainer)) throw new Error("Layouts can only appear at the document top level")
     range.deleteContents()
     range.insertNode(fragment)
     selection.removeAllRanges()
@@ -714,11 +687,11 @@ export class StateFeature extends EditorFeature {
     readAIDocument: (options: {type: "readAIDocument"} & AIReadDocumentOptions) => this.readAIDocument(options),
     inspectAIElements: (options: {type: "inspectAIElements"} & AIInspectOptions) => this.inspectAIElements(options),
     readAIEditorCapabilities: ({topic = "overview"}: {type: "readAIEditorCapabilities", topic?: string}) => {
-      if(!["overview", "elements", "styles", "layouts"].includes(topic)) throw new TypeError("Unknown capability topic")
+      if(!["overview", "elements", "styles"].includes(topic)) throw new TypeError("Unknown capability topic")
       return {
         documentModel: "The live authored DOM is authoritative. Preserve unfamiliar valid content and custom elements.",
         ...(topic === "overview" ? {
-          topics: ["elements", "styles", "layouts"],
+          topics: ["elements", "styles"],
           proposalTool: "queue_document_change",
           restrictions: ["Read complete current targets before editing", "Widget internals are atomic; read README before configuring hosts", "Head writes are unavailable", "Do not add unsupported active content"],
         } : {}),
@@ -728,7 +701,6 @@ export class StateFeature extends EditorFeature {
           ...(["dialog", "hgroup"].includes(tag) ? {aiNote: "The AI proposal path preserves this element without transfer/schema unwrapping"} : {}),
         }]))} : {}),
         ...(topic === "styles" ? {categories: elementStyleCategories, writes: "Use set_styles on an exact target; computed CSS and document head are read-only"} : {}),
-        ...(topic === "layouts" ? {presets: layoutPresets, guidance: "Use an existing layout container when possible; sections are only necessary for grouping layout items"} : {}),
       }
     },
     readAISelection: ({}: {type: "readAISelection"}) => {

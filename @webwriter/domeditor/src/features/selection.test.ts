@@ -124,6 +124,122 @@ describe.each(["canvas", "slides"] as const)("transformed hover outlines in %s",
   })
 })
 
+describe("document hover outlines around native floats", () => {
+  const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  const rect = (element: HTMLElement, x: number, y: number, width: number, height: number) =>
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(x, y, width, height))
+  const hover = (target: HTMLElement, source: "pointer" | "breadcrumb" = "pointer") => {
+    if(source === "pointer") target.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    else {
+      const path: number[] = []
+      for(let node: Node = target; node !== document.body; node = node.parentNode!) path.unshift(Array.from(node.parentNode!.childNodes).indexOf(node as ChildNode))
+      feature.actions.hoverNode({type: "hoverNode", path})
+    }
+    return feature.hoverCaret!
+  }
+
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it.each(["left", "right"] as const)("cuts a %s float out of a sibling's hover outline", side => {
+    const float = el("aside") as HTMLElement
+    const target = el("p", "text") as HTMLElement
+    float.style.float = side
+    float.style.margin = "5px"
+    rect(float, side === "left" ? 0 : 60, 0, 40, 50)
+    rect(target, 0, 0, 100, 80)
+
+    const caret = hover(target)
+    const outline = caret.querySelector<SVGSVGElement>('[part~="hover-float-outline"]')
+
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    expect(outline).toBeInstanceOf(SVGSVGElement)
+    expect(outline?.querySelector("mask rect")?.getAttribute("fill")).toBe("white")
+    expect(outline?.querySelector("mask path")?.getAttribute("fill")).toBe("black")
+    expect(outline?.querySelector("path")?.getAttribute("d")).toContain("M")
+    expect(outline?.querySelector("mask path")?.getAttribute("d")).toContain(side === "left" ? "45" : "55")
+    expect(caret.style.width).toBe("100px")
+    expect(editor.toHTML(true)).not.toContain("hover-float-outline")
+  })
+
+  it("cuts two overlapping floats and leaves a floated hover target's own outline intact", () => {
+    const firstFloat = el("aside") as HTMLElement
+    const target = el("p", "text") as HTMLElement
+    const secondFloat = el("aside") as HTMLElement
+    firstFloat.style.float = "left"
+    secondFloat.style.float = "right"
+    rect(firstFloat, 0, 0, 30, 30)
+    rect(target, 0, 0, 100, 80)
+    rect(secondFloat, 70, 40, 30, 30)
+
+    const caret = hover(target)
+    expect(caret.querySelectorAll('[part~="hover-float-outline"]')).toHaveLength(1)
+    expect(caret.querySelectorAll('[part~="hover-float-outline"] mask path')).toHaveLength(2)
+
+    hover(firstFloat, "breadcrumb")
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).toBeNull()
+    expect(caret.style.width).toBe("")
+    expect(caret.style.getPropertyValue("position-anchor")).toBe("")
+  })
+
+  it("does not add float cutouts without overlap and refreshes them with live geometry", async () => {
+    const float = el("aside") as HTMLElement
+    const target = el("p", "text") as HTMLElement
+    float.style.float = "left"
+    const floatRect = rect(float, 150, 0, 30, 30)
+    const targetRect = rect(target, 0, 0, 100, 80)
+    const caret = hover(target, "breadcrumb")
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).toBeNull()
+
+    floatRect.mockReturnValue(new DOMRect(0, 0, 30, 30))
+    await frame()
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    const outline = caret.querySelector('[part~="hover-float-outline"] > path')!
+    const before = outline.getAttribute("d")
+    targetRect.mockReturnValue(new DOMRect(0, 0, 120, 80))
+    await frame()
+    expect(caret.style.width).toBe("120px")
+    expect(caret.querySelector('[part~="hover-float-outline"] > path')?.getAttribute("d")).not.toBe(before)
+  })
+
+  it("clears float outline state after a float is removed, the target changes, hover ends, or hover is disabled", async () => {
+    const float = el("aside") as HTMLElement
+    const target = el("p", "text") as HTMLElement
+    const next = el("p", "next") as HTMLElement
+    float.style.float = "left"
+    rect(float, 0, 0, 30, 30)
+    rect(target, 0, 0, 100, 80)
+    rect(next, 200, 0, 100, 80)
+    const caret = hover(target, "breadcrumb")
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+
+    float.remove()
+    await frame()
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).toBeNull()
+
+    document.body.append(float)
+    rect(float, 0, 0, 30, 30)
+    hover(next, "breadcrumb")
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-floats")
+
+    hover(target, "breadcrumb")
+    target.remove()
+    await frame()
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).toBeNull()
+
+    feature.actions.hoverNode({type: "hoverNode", path: null})
+    expect(caret.querySelector('[part~="hover-float-outline"]')).toBeNull()
+    document.body.append(target)
+    hover(target, "breadcrumb")
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    feature.disable()
+    expect(editor.appendix.querySelector("[part~='hover-float-outline']")).toBeNull()
+  })
+})
+
 it("keeps summary editable without allowing element or capture selection", () => {
   document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
   const summary = document.querySelector("summary")!
@@ -3614,63 +3730,5 @@ describe("disclosure gap navigation", () => {
     expect(paragraph?.textContent).toBe("New")
     expect(details.innerHTML).toBe(original)
     expect(details.open).toBe(false)
-  })
-})
-
-describe("column group gap selection", () => {
-  it.each(["left", "right"] as const)("paints before/after and empty gaps in the %s column without wrappers", side => {
-    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
-    const group = document.querySelector<HTMLElement>(".ww-column-group")!
-    const block = group.querySelector(`.ww-column-${side}`)!
-    for(const edge of ["before", "after"] as const) {
-      $.selectGap(block, edge)
-      feature.processSelection()
-      expect($.isGapSelection).toBe(true)
-      expect($.anchor).toBe(group)
-      expect($.columnGap?.side).toBe(side)
-      expect(block).toHaveClass(`◆gap-${edge}-selected`)
-      expect(feature.selectionCaret?.getRootNode()).toBe(editor.appendix)
-    }
-    group.before(document.createElement("p"))
-    group.after(document.createElement("p"))
-    block.remove()
-    $.selectColumnGap(group, side)
-    feature.processSelection()
-    expect(group).toHaveClass("◆gap-before-selected")
-    expect(group.children).toHaveLength(1)
-    group.append(block)
-    for(const edge of ["before", "after"] as const) {
-      $.selectGap(group, edge)
-      feature.processSelection()
-      expect($.anchor).toBe(document.body)
-      expect($.columnGap).toBeNull()
-      expect(group).toHaveClass(`◆gap-${edge}-selected`)
-      expect(feature.selectionCaret!.style.left).not.toBe("")
-    }
-    feature.disable()
-    expect(group.className).toBe("ww-column-group")
-  })
-
-  it.each(["left", "right"] as const)("navigates both edges of a paragraph in the %s column", side => {
-    document.body.innerHTML = '<div class="ww-column-group"><p class="ww-column-left">left</p><p class="ww-column-right">right</p></div>'
-    const group = document.querySelector<HTMLElement>(".ww-column-group")!
-    const text = group.querySelector(`.ww-column-${side}`)!.firstChild!
-    const key = (key: string) => {
-      const event = new KeyboardEvent("keydown", {key, cancelable: true})
-      feature.activeListeners.keydown!(event)
-      expect(event.defaultPrevented).toBe(true)
-    }
-    $.move(text, 0)
-    key("ArrowLeft")
-    expect($.anchor).toBe(group)
-    expect($.columnGap?.side).toBe(side)
-    key("ArrowRight")
-    expect($.anchor).toBe(text)
-    $.move(text, -1)
-    key("ArrowRight")
-    expect($.anchor).toBe(group)
-    expect($.columnGap?.side).toBe(side)
-    key("ArrowLeft")
-    expect($.anchor).toBe(text)
   })
 })

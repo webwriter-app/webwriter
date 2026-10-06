@@ -16,7 +16,6 @@ import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
-import type {LayoutEditorAction} from "./layout-editor"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, emptyElementHTML, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
@@ -5302,11 +5301,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<LayoutEditorAction>).detail
-    if(!action || !["setLayoutStyles", "insertLayoutTrack", "removeLayoutTrack", "setLayoutTrackSize"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: "left" | "none" | "right"}>).detail
+    if(!action || action.type !== "setFloat") return
     this.layoutError = ""
     void this.execute(action).then(changed => {
-      if(changed === false) this.layoutError = "The layout changed or this operation is unavailable. Select the layout again."
+      if(changed === false) this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
   }
 

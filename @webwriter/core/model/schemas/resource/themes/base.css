@@ -570,7 +570,7 @@ progress,
 body {
   inline-size: 100%;
   min-inline-size: 0;
-  max-inline-size: calc(var(--ww-page-max) + 2 * var(--ww-page-gutter));
+  max-inline-size: calc(var(--ww-prose-max) + 2 * var(--ww-page-gutter));
   margin: 0 auto;
   min-block-size: 100vh;
   padding-block: 1.25rem;
@@ -588,142 +588,15 @@ body > footer {
   padding-block: var(--pico-block-spacing-vertical);
 }
 
-/* Full-width blocks occupy both tracks. Sparse row placement preserves
- * document reading order instead of backfilling earlier gaps. */
+/* Normal block flow lets text wrap around authored floats. Each document
+ * container contains its floats without isolating individual paragraphs. */
 :where(body, body > main, body > article, body > section) {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: auto;
-  grid-auto-flow: row;
-  align-content: start;
-  column-gap: var(--ww-page-gutter);
+  display: flow-root;
 }
 
 :where(body, body > main, body > article, body > section) > * {
-  grid-column: 1 / -1;
-  inline-size: 100%;
-  min-inline-size: 0;
-  max-inline-size: min(100%, var(--ww-prose-max));
-  margin-inline: auto;
-}
-
-/* Structural containers retain both tracks for their own content. */
-:where(body) > :where(main, article, section) {
-  max-inline-size: 100%;
-  margin-inline: 0;
-}
-
-:where(body, body > main, body > article, body > section)
-  > :where(h1, h2, h3, h4, h5, h6, p, hr, details, ul, ol, dl, blockquote, pre, table):where(:not([is])) {
-  inline-size: 100%;
-  max-inline-size: var(--ww-prose-max);
-  margin-inline: auto;
-}
-
-/* Authored column classes place content and align it toward the gutter. */
-:where(body, body > main, body > article, body > section) > :where(.ww-column-left) {
-  grid-column: 1;
-  margin-inline: auto 0;
-}
-
-:where(body, body > main, body > article, body > section) > :where(.ww-column-right) {
-  grid-column: 2;
-  margin-inline: 0 auto;
-}
-
-:where(body, body > main, body > article, body > section)
-  > :where(.ww-column-left) + :where(h1, h2, h3, h4, h5, h6, p, hr, details, ul, ol, dl, blockquote, pre, table):where(:not([is])) {
-  grid-column: 2;
-  margin-inline: 0 auto;
-}
-
-:where(body, body > main, body > article, body > section)
-  > :where(h1, h2, h3, h4, h5, h6, p, hr, details, ul, ol, dl, blockquote, pre, table):where(:not([is])):has(+ :where(.ww-column-right)) {
-  grid-column: 1;
-  margin-inline: auto 0;
-}
-
-@media (max-width: 60rem) {
-  :where(body, body > main, body > article, body > section) {
-    grid-template-columns: minmax(0, 1fr);
-    column-gap: 0;
-  }
-
-  :where(body, body > main, body > article, body > section) > * {
-    grid-column: 1 / -1;
-    margin-inline: auto;
-  }
-}
-
-/* A forced column break separates two independent flows in a flat group. */
-.ww-column-group {
-  grid-column: 1 / -1;
-  inline-size: 100%;
   min-inline-size: 0;
   max-inline-size: 100%;
-  min-block-size: 1.5em;
-  margin-inline: 0;
-  display: block;
-  column-count: 2;
-  column-gap: var(--ww-page-gutter);
-}
-
-.ww-column-group > * {
-  break-inside: avoid;
-  break-before: avoid-column;
-}
-
-.ww-column-group > :is(.ww-column-left, .ww-column-middle, .ww-column-right) {
-  min-inline-size: 0;
-  inline-size: 100%;
-  max-inline-size: var(--ww-prose-max);
-  margin-block: 0;
-}
-
-.ww-column-group > .ww-column-left {
-  margin-inline: auto 0;
-}
-
-.ww-column-group > .ww-column-right {
-  margin-inline: 0 auto;
-}
-
-.ww-column-group > .ww-column-middle:not(.ww-column-middle ~ .ww-column-middle),
-.ww-column-group > .ww-column-right:not(.ww-column-right ~ .ww-column-right) {
-  break-before: column;
-}
-
-.ww-column-group > .ww-column-left ~ .ww-column-left,
-.ww-column-group > .ww-column-middle ~ .ww-column-middle,
-.ww-column-group > .ww-column-right ~ .ww-column-right {
-  margin-block-start: var(--ww-block-spacing);
-}
-
-.ww-column-group.ww-column-three {
-  column-count: 3;
-}
-
-.ww-column-group > .ww-column-middle {
-  margin-inline: auto;
-}
-
-@media (max-width: 60rem) {
-  .ww-column-group,
-  .ww-column-group.ww-column-three {
-    column-count: auto;
-    border-block: var(--pico-border-width) solid var(--pico-muted-border-color);
-  }
-
-  .ww-column-group > * {
-    float: none;
-    break-before: auto;
-    max-inline-size: 100%;
-    margin-inline: 0;
-  }
-
-  .ww-column-group > :nth-child(n + 2) {
-    margin-block-start: var(--ww-block-spacing);
-  }
 }
 
 /**
@@ -830,8 +703,11 @@ p {
   padding: 2px;
 }
 
-:is(body, body > main, body > article, body > section) > * + * {
-  margin-block-start: var(--ww-block-spacing);
+/* Trailing margins space normal-flow blocks without pushing text down
+ * when its preceding sibling floats beside it. Inline float margins retain
+ * their authored spacing. */
+:is(body, body > main, body > article, body > section) > :not(:last-child) {
+  margin-block-end: var(--ww-block-spacing);
 }
 
 
@@ -2546,17 +2422,6 @@ textarea,
     scroll-behavior: auto;
     transition-delay: 0s;
     transition-duration: 0s;
-  }
-}
-/* Grid rows own vertical spacing so paired items share the same top edge.
- * Keep this after Pico's block margins; authored styles still override the layer. */
-@media (width > 60rem) {
-  :is(body, body > main, body > article, body > section) {
-    row-gap: var(--ww-block-spacing);
-  }
-
-  :is(body, body > main, body > article, body > section) > * {
-    margin-block: 0;
   }
 }
 }

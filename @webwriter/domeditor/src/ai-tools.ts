@@ -21,8 +21,6 @@ const operationFields = {
   move: ["target", "destination", "position"],
   set_attributes: ["target", "attributes"],
   set_styles: ["target", "styles"],
-  set_layout: ["target", "preset"],
-  insert_layout: ["target", "position", "preset"],
   insert_widget: ["target", "position", "memberId"],
 } as const satisfies Record<AIChangeOperation["type"], readonly string[]>
 
@@ -41,7 +39,6 @@ const operations = {type: "array", minItems: 1, maxItems: 50, items: object({
   destination: {...string, description: "Previously read destination target ID for move."},
   attributes: {...attributes, description: "Authored attribute names mapped to strings, or null to remove. Required by set_attributes; optional for insert_widget."},
   styles: {...styleDeclarations, description: "CSS property names mapped to authored values, null to remove, or {value, priority}. Required by set_styles."},
-  preset: {...string, description: "Layout preset ID from read_editor_capabilities(topic=layouts)."},
   memberId: {...string, description: "Exact available member ID from list_widgets; read its README before insert_widget."},
 }, ["type"])}
 
@@ -67,8 +64,8 @@ export function validateAIChangeOperations(value: unknown): asserts value is AIC
 /** One source for the advertised tool names, schemas and read/write routing. */
 export const aiToolDefinitions = {
   read_editor_capabilities: {
-    kind: "read", description: "Read actual editor support and restrictions. Valid preserved HTML is not necessarily insertable/editable. Read before choosing elements, styles, or layouts.",
-    parameters: object({topic: {type: "string", enum: ["overview", "elements", "styles", "layouts"]}}),
+    kind: "read", description: "Read actual editor support and restrictions. Valid preserved HTML is not necessarily insertable/editable. Read before choosing elements or styles.",
+    parameters: object({topic: {type: "string", enum: ["overview", "elements", "styles"]}}),
   },
   read_current_document: {
     kind: "read", description: "Read authored DOM, an outline, or a target region. With no target, returns BODY contents and a BODY target ID, not an ID for the first child. To add content to that body, use insert_html with its target ID, position append/prepend, and html. Follow pagination; truncated HTML is not a complete document.",
@@ -91,7 +88,7 @@ export const aiToolDefinitions = {
     parameters: object({packageName: string, version: string, localRevision: {type: "integer", minimum: 0}, startLine: {type: "integer", minimum: 1}, lineCount: {type: "integer", minimum: 1, maximum: 200}}, ["packageName", "version"]),
   },
   queue_document_change: {
-    kind: "edit", description: `Queue one atomic batch of effective changes for review. Each operation is an object with type and the required fields listed here: ${operationSignatures}. Use these exact names; HTML goes in html, not content. Example: {"summary":"Add a heading and introduction.","operations":[{"type":"insert_html","target":"COPY_THE_READ_TARGET_ID","position":"append","html":"<h2>Topic</h2><p>Introduction</p>"}]}. Use target/selection IDs from current complete reads; re-read stale targets. Prefer focused operations. replace_html replaces one node, never BODY. replace_document replaces BODY contents and requires a complete BODY read and an explicit whole-document rewrite or empty document. set_text only changes a text node or an element without child elements. Widgets require list_widgets and README inspection. Layout presets style an existing container or insert one necessary section with direct content. Never pass arbitrary editor actions or scripts.`,
+    kind: "edit", description: `Queue one atomic batch of effective changes for review. Each operation is an object with type and the required fields listed here: ${operationSignatures}. Use these exact names; HTML goes in html, not content. Example: {"summary":"Add a heading and introduction.","operations":[{"type":"insert_html","target":"COPY_THE_READ_TARGET_ID","position":"append","html":"<h2>Topic</h2><p>Introduction</p>"}]}. Use target/selection IDs from current complete reads; re-read stale targets. Prefer focused operations. replace_html replaces one node, never BODY. replace_document replaces BODY contents and requires a complete BODY read and an explicit whole-document rewrite or empty document. set_text only changes a text node or an element without child elements. Widgets require list_widgets and README inspection. Never pass arbitrary editor actions or scripts.`,
     parameters: object({summary: string, operations}, ["summary", "operations"]),
   },
   replace_current_document: {
@@ -132,6 +129,4 @@ export type AIChangeOperation =
   | {type: "move", target: string, destination: string, position: AIInsertPosition}
   | {type: "set_attributes", target: string, attributes: Record<string, string | null>}
   | {type: "set_styles", target: string, styles: Record<string, ElementStyleMutation>}
-  | {type: "set_layout", target: string, preset: string}
-  | {type: "insert_layout", target: string, position: AIInsertPosition, preset: string}
   | {type: "insert_widget", target: string, position: AIInsertPosition, memberId: string, attributes?: Record<string, string | null>, html?: string}

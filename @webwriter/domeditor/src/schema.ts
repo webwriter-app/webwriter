@@ -1,5 +1,5 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
-import { $, cloneInert, columnSide, isColumnGroup, getContainer, getIndexBefore, getInertDocument } from "./utility"
+import { $, cloneInert, getContainer, getIndexBefore, getInertDocument } from "./utility"
 import {isWidgetDataContainer} from "./active-content"
 import {normalizeTableStructure} from "./table"
 
@@ -1088,14 +1088,6 @@ export class Schema {
           }
           if(entry?.wrapper && node.parentNode && node.parentElement?.localName !== entry.wrapper) {
             const wrapper = node.ownerDocument.createElement(entry.wrapper)
-            const side = isColumnGroup(node.parentElement) ? columnSide(node) : null
-            if(side) {
-              // Column placement belongs to the direct child of the group.
-              // Preserve it when an image becomes the child of a picture.
-              wrapper.classList.add(`ww-column-${side}`)
-              node.classList.remove(`ww-column-${side}`)
-              if(!node.classList.length) node.removeAttribute("class")
-            }
             replacements.set(node, wrapper)
             node.replaceWith(wrapper)
             wrapper.append(node)

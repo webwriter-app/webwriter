@@ -179,19 +179,12 @@ describe("Focused AI proposals", () => {
     })
   })
 
-  it("rejects unknown widgets and no-op proposals and creates layouts with direct children", async () => {
+  it("rejects unknown widgets and no-op proposals", async () => {
     await withAIEditor("<p>Before</p>", editor => {
       let target = aiElementTarget(editor, "p")
       const preview = editor.getActionHandler("previewAIOperations")
       expect(() => preview({type: "previewAIOperations", editId: "widget", summary: "Add widget", operations: [{type: "insert_html", target, position: "after", html: "<invented-widget></invented-widget>"}]})).toThrow("unavailable or undocumented")
       expect(() => preview({type: "previewAIOperations", editId: "noop", summary: "Edit", operations: [{type: "set_text", target, text: "Before"}]})).toThrow("does not change")
-      target = aiElementTarget(editor, "p")
-      preview({type: "previewAIOperations", editId: "layout", summary: "Add two columns", operations: [{type: "insert_layout", target, position: "after", preset: "two-columns"}]})
-      expect(document.querySelector("section")?.style.display).toBe("block")
-      expect(document.querySelector("section")?.classList.contains("ww-column-group")).toBe(true)
-      expect(document.querySelector("section > p")?.classList.contains("ww-column-left")).toBe(true)
-      expect(document.querySelectorAll("section > p")).toHaveLength(2)
-      expect(document.querySelector("section section")).toBeNull()
     })
   })
 })
@@ -802,19 +795,37 @@ describe("StateFeature", () => {
   })
 })
 
-describe("top-level layout operations", () => {
-  it.each(["insert_layout", "set_layout", "insert_html", "move"] as const)("rejects nested %s proposals without changing content", async type => {
+describe("AI document operations preserve authored layout DOM", () => {
+  it("allows nested authored grid/flex markup and nested moves", async () => {
     await withAIEditor('<section style="display:grid"><p>existing</p></section><article><div><p>nested</p></div></article>', editor => {
       const nested = aiElementTarget(editor, "article div")
       const existing = aiElementTarget(editor, "body > section")
-      const operation: AIChangeOperation = type === "insert_layout"
-        ? {type, target: nested, position: "append", preset: "two-columns"}
-        : type === "set_layout" ? {type, target: nested, preset: "wrapping-cards"}
-        : type === "move" ? {type, target: existing, destination: nested, position: "append"}
-        : {type, target: nested, position: "append", html: '<section style="display:grid"><p>new</p></section>'}
-      const before = editor.toHTML(true)
-      expect(() => editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: "nested", summary: "Nested layout", operations: [operation]})).toThrow(/top level/)
-      expect(editor.toHTML(true)).toBe(before)
+      editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: "nested", summary: "Arrange content", operations: [
+        {type: "insert_html", target: nested, position: "append", html: '<section style="display:grid"><p>Grid</p></section><div style="display:flex"><p>Flex</p></div>'},
+        {type: "move", target: existing, destination: nested, position: "append"},
+      ]})
+      const nestedElement = document.querySelector("article div")!
+      expect(nestedElement.querySelector('section[style="display:grid"] p')?.textContent).toBe("Grid")
+      expect(nestedElement.querySelector('div[style="display:flex"] p')?.textContent).toBe("Flex")
+      expect(Array.from(document.querySelectorAll("p"), paragraph => paragraph.textContent)).toContain("existing")
+      expect(nestedElement.textContent).toContain("existing")
+    })
+  })
+
+  it.each(["insert_layout", "set_layout"] as const)("rejects the removed AI %s operation", async type => {
+    await withAIEditor("<section><p>Existing</p></section>", editor => {
+      const target = aiElementTarget(editor, "section")
+      const operation = (type === "insert_layout"
+        ? {type, target, position: "after", preset: "two-columns"}
+        : {type, target, preset: "two-columns"}) as unknown as AIChangeOperation
+      expect(() => editor.getActionHandler("previewAIOperations")({type: "previewAIOperations", editId: type, summary: "Arrange", operations: [operation]})).toThrow(/Unsupported operation type/)
+    })
+  })
+
+  it("no longer advertises a layouts capability topic", async () => {
+    await withAIEditor("<p>Text</p>", editor => {
+      expect(editor.getActionHandler("readAIEditorCapabilities")({type: "readAIEditorCapabilities"}) as any).toMatchObject({topics: ["elements", "styles"]})
+      expect(() => editor.getActionHandler("readAIEditorCapabilities")({type: "readAIEditorCapabilities", topic: "layouts"})).toThrow("Unknown capability topic")
     })
   })
 })
@@ -826,7 +837,7 @@ it("rejects combining a nested move and layout conversion", async () => {
     expect(() => editor.getActionHandler("previewAIOperations")({
       type: "previewAIOperations", editId: "moved-layout", summary: "Move and lay out", operations: [
         {type: "move", target, destination, position: "append"},
-        {type: "set_layout", target, preset: "two-columns"},
+        {type: "set_styles", target, styles: {display: "flex"}},
       ],
     })).toThrow(/overlap/)
     expect(editor.toHTML(true)).toBe(before)
