@@ -451,6 +451,8 @@ export class DomEditor extends LitElement {
     documentLayoutsDismissed: {attribute: false, state: true},
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
+    documentLoading: {attribute: false, state: true},
+    linkedDocumentLoading: {attribute: false, state: true},
     savedDocuments: {attribute: false, state: true},
     recentDocuments: {attribute: false, state: true},
     accessibleRecentDocumentIds: {attribute: false, state: true},
@@ -634,6 +636,8 @@ export class DomEditor extends LitElement {
   private documentLayoutConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
+  private documentLoading = false
+  private linkedDocumentLoading = false
   private downloadedFileName: string | null = null
   private cancelFileInput?: () => void
   private documentDialogMode: "open" | "save" = "open"
@@ -784,6 +788,29 @@ export class DomEditor extends LitElement {
       width: 100%;
       overflow: hidden;
     }
+
+    .document-loading {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      display: grid;
+      place-items: center;
+      background: rgb(255 255 255 / 75%);
+      cursor: wait;
+    }
+
+    .document-loading-spinner {
+      box-sizing: border-box;
+      width: 5rem;
+      height: 5rem;
+      border: 0.4rem solid #dbe3ed;
+      border-top-color: #3977c7;
+      border-radius: 50%;
+      animation: var(--ww-ui-animation, document-loading-spin .8s linear infinite);
+    }
+
+    @keyframes document-loading-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .document-loading-spinner { animation: none; } }
 
     .math-keyboard-area {
       position: absolute;
@@ -1608,7 +1635,7 @@ export class DomEditor extends LitElement {
         connectedService ? () => this.expireCloudService(connectedService) : undefined) : null
       this.savedDocuments = []
       this.backendState = session ? "connected" : "unavailable"
-      this.storageLocation = session ? "development-server" : "local"
+      this.storageLocation = session && !this.fileHandle ? "development-server" : "local"
       this.updateCloudExpiry()
       this.updateUserIdentity()
       if(session) void this.loadSavedDocuments()
@@ -2948,7 +2975,8 @@ export class DomEditor extends LitElement {
       reject(reloadError)
     })
     this.pendingExecutions.clear()
-    this.frameRevision++
+    if(this.frameStarted) this.frameRevision++
+    else this.frameStarted = true
     await this.updateComplete
     await this.waitForEditorWindow()
   }
@@ -3068,36 +3096,39 @@ export class DomEditor extends LitElement {
     if(apiBaseUrl) this.updateDocumentURL(`${apiBaseUrl.replace(/\/$/, "")}/documents/${encodeURIComponent(id)}`)
   }
 
-  private async restoreLinkedDocument(value: string, backendReady: Promise<void> = Promise.resolve()) {
+  private async restoreLinkedDocument(value: string, startupReady: Promise<void> = Promise.resolve()) {
     const initialReference = new URL(location.href).searchParams.get("open")
     const currentLink = () => new URL(location.href).searchParams.get("open") === initialReference
+    this.linkedDocumentLoading = true
     try {
       const reference = parseDocumentOpenReference(value)
       if(!reference) throw new Error("The document link is invalid.")
-      await Promise.all([this.recentDocumentsReady, backendReady])
       if(!this.isConnected || this.liveSessionActive || !currentLink()) return
-      const revision = this.frameRevision
-      await this.waitForEditorWindow()
-      if(!this.isConnected || this.frameRevision !== revision || this.liveSessionActive || !currentLink()) return
+      const beforeLoad = async () => {
+        await startupReady
+        return this.isConnected && !this.liveSessionActive && currentLink()
+      }
       await this.runFileOperation(async () => {
         if(reference.kind === "local") {
           const document = this.recentDocuments.find(document => document.kind === "local" && document.id === reference.id)
             ?? await readLocalDocumentReference(reference.id)
+          if(!this.isConnected || !currentLink()) return
           if(!document || document.kind !== "local") throw new Error("This local document is not stored in this browser. Open the file again to create a new link.")
           if(!await recentDocumentAccessible(document, null, new Set())) throw new Error("This browser no longer has access to the linked local file. Open the file again to grant access.")
-          if(!this.isConnected || this.frameRevision !== revision || !currentLink()) return
-          await this.performOpenDocument(document.handle, document.id)
+          if(!this.isConnected || !currentLink()) return
+          await this.performOpenDocument(document.handle, document.id, beforeLoad)
         }
         else {
           if(this.backendClient?.apiBaseUrl !== reference.apiBaseUrl) await this.loginToBackend(reference.apiBaseUrl)
-          if(!this.isConnected || this.frameRevision !== revision || !currentLink()) return
+          if(!this.isConnected || !currentLink()) return
           if(this.backendClient?.apiBaseUrl !== reference.apiBaseUrl) throw new Error("Could not connect to the document storage in this link.")
-          await this.openBackendDocument(reference.documentId)
+          await this.openBackendDocument(reference.documentId, beforeLoad)
           if(this.documentsError) throw new Error(this.documentsError)
         }
       })
     }
     catch(error) {this.reportFileError(error)}
+    finally { this.linkedDocumentLoading = false }
   }
 
   private handleRecentDocumentsRefresh = () => {
@@ -3175,6 +3206,7 @@ export class DomEditor extends LitElement {
 
   private async performNewDocument(layout: DocumentLayoutMode) {
     if(!this.confirmDiscardChanges()) return
+    this.documentLoading = true
     try {
       this.fileHandle = null
       this.downloadedFileName = null
@@ -3190,6 +3222,7 @@ export class DomEditor extends LitElement {
     catch(error) {
       this.reportFileError(error)
     }
+    finally { this.documentLoading = false }
   }
 
   private async applyDefaultLayout(mode: DocumentLayoutMode, revision: number) {
@@ -3205,15 +3238,18 @@ export class DomEditor extends LitElement {
     finally { this.documentLayoutConversionCount-- }
   }
 
-  private async performOpenDocument(storedHandle?: LocalFileHandle, storedId?: string) {
+  private async performOpenDocument(storedHandle?: LocalFileHandle, storedId?: string, beforeLoad?: () => Promise<boolean>) {
     if(!this.confirmDiscardChanges()) return
     const revision = this.documentChangeSequence
     const picker = this.filePickerWindow().showOpenFilePicker
     try {
       const handle = storedHandle ?? (picker ? (await picker.call(window, this.htmlFilePickerOptions()))[0] : null)
+      if(handle) this.documentLoading = true
       const file = handle ? await handle.getFile() : picker ? null : await this.pickFileInput()
       if(!file) return
+      this.documentLoading = true
       const source = await file.text()
+      if(beforeLoad && !await beforeLoad()) return
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       await this.reloadDocument(source)
       this.backendDocumentId = null
@@ -3234,6 +3270,7 @@ export class DomEditor extends LitElement {
     catch(error) {
       this.reportFileError(error)
     }
+    finally { this.documentLoading = false }
   }
 
   private pickFileInput(): Promise<File | null> {
@@ -3322,14 +3359,16 @@ export class DomEditor extends LitElement {
     catch(error) {this.reportFileError(error)}
   }
 
-  private async openBackendDocument(id: string) {
+  private async openBackendDocument(id: string, beforeLoad?: () => Promise<boolean>) {
     if(!this.backendClient || !this.confirmDiscardChanges()) return
     const revision = this.documentChangeSequence
     const client = this.backendClient
     const session = this.backendSession
+    this.documentLoading = true
     try {
       this.documentsError = ""
       const document = await client.getDocument(id)
+      if(beforeLoad && !await beforeLoad()) return
       if(this.backendClient !== client) throw new Error("The document storage connection changed while opening the file.")
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       await this.reloadDocument(document.content)
@@ -3349,6 +3388,7 @@ export class DomEditor extends LitElement {
     catch(error) {
       this.documentsError = error instanceof Error ? error.message : String(error)
     }
+    finally { this.documentLoading = false }
   }
 
   private async autosaveCloudAfterBundleReload(expected: {client: BackendClient, id: string}) {
@@ -6471,13 +6511,13 @@ export class DomEditor extends LitElement {
     const liveSessionId = this.liveSessionIdFromURL()
     const open = new URL(location.href).searchParams.get("open")
     const reference = open === null ? null : parseDocumentOpenReference(open)
-    const backendReady = !liveSessionId && import.meta.env.MODE !== "test" && reference?.kind !== "backend"
-      ? this.loginToBackend(undefined, true) : Promise.resolve()
+    const openingLinkedDocument = !liveSessionId && open !== null
+    if(!liveSessionId && reference?.kind !== "backend" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
     this.restoreInstalledPackages()
     const catalog = this.loadPackageCatalog()
     const restoration = this.restoreLocalPackages()
-    const timer = this.frameStarted ? undefined : setTimeout(() => startFrame(), 250)
+    const timer = this.frameStarted || openingLinkedDocument ? undefined : setTimeout(() => startFrame(), 250)
     this.frameStartTimer = timer
     const startFrame = () => {
       if(!this.isConnected || this.frameStartTimer !== timer) return
@@ -6489,13 +6529,18 @@ export class DomEditor extends LitElement {
       if(restored.status === "rejected") {
         this.localPackageError = restored.reason instanceof Error ? restored.reason.message : String(restored.reason)
       }
-      startFrame()
+      if(!openingLinkedDocument) startFrame()
     })
     this.localPackageManager.connect()
-    // Package restoration can replace the initial iframe. Open only after
-    // that startup work finishes, then wait for the current frame.
-    if(!liveSessionId && open !== null) void this.restoreLinkedDocument(open,
-      Promise.allSettled([backendReady, restoration]).then(() => {}))
+    // Fetch linked content alongside package restoration, then mount the first
+    // frame with that content once its local packages are available.
+    if(openingLinkedDocument) {
+      const startupReady = Promise.allSettled([restoration]).then(() => {})
+      void this.restoreLinkedDocument(open!, startupReady).finally(async () => {
+        await startupReady
+        startFrame()
+      })
+    }
     if(this.settings.pinDeveloperConsole) this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
   }
 
@@ -6715,6 +6760,7 @@ export class DomEditor extends LitElement {
   }
 
   render() {
+    const documentLoading = this.documentLoading || this.linkedDocumentLoading
     return html`
       <header class="app-bar">
         <app-ribbon
@@ -6804,7 +6850,12 @@ export class DomEditor extends LitElement {
         @document-delete=${this.handleSavedDocumentDelete}
         @documents-retry=${this.loadSavedDocuments}
       ></open-document-menu>
-      <div class="document-stage" aria-busy=${this.previewFramePending ? "true" : "false"}>
+      <div class="document-stage" aria-busy=${documentLoading || this.previewFramePending ? "true" : "false"}>
+        ${documentLoading ? html`
+          <div class="document-loading" role="status" aria-label="Loading document">
+            <div class="document-loading-spinner" aria-hidden="true"></div>
+          </div>
+        ` : ""}
         ${this.fileError ? html`
           <div class="file-error" role="alert">
             <span>${this.fileError}</span>

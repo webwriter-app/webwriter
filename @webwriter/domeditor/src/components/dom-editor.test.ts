@@ -263,6 +263,241 @@ beforeEach(() => {
   })
 })
 
+describe("DomEditor document loading", () => {
+  it("does not show a spinner while the initial empty preset is loading", async () => {
+    const editor = new DomEditor()
+    mountedEditors.add(editor)
+    Object.assign(editor, {frameStarted: true})
+    document.body.append(editor)
+    await editor.updateComplete
+    const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => {})
+    iframe.dispatchEvent(new Event("load"))
+    await editor.updateComplete
+
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("false")
+    completePendingPackageLoad(editor)
+    await (editor as any).packageLoadPromise
+  })
+
+  it.each(["local:stored", "http://localhost:5678/api/documents/lesson"])("fetches a startup ?open document before packages and history finish, then initializes one populated frame: %s", async reference => {
+    history.replaceState({}, "", `/?open=${encodeURIComponent(reference)}`)
+    const editor = new DomEditor()
+    const host = editor as any
+    mountedEditors.add(editor)
+    const source = '<section><!--keep--><demo-widget data-answer="42"></demo-widget><p>Linked lesson</p></section>'
+    const file = new File([source], "Lesson.html")
+    const read = vi.spyOn(file, "text")
+    const handle = {name: file.name, getFile: vi.fn().mockResolvedValue(file), createWritable: vi.fn(), queryPermission: vi.fn().mockResolvedValue("granted")}
+    vi.spyOn(recentDocumentStorage, "readLocalDocumentReference").mockResolvedValue({id: "stored", kind: "local", title: file.name, openedAt: 1, handle})
+    let historyReady!: () => void
+    vi.spyOn(recentDocumentStorage, "readRecentDocuments").mockReturnValue(new Promise(resolve => { historyReady = () => resolve([]) }))
+    const getDocument = vi.fn().mockResolvedValue({id: "lesson", title: "Lesson", format: "html", content: source})
+    const login = vi.spyOn(host, "loginToBackend").mockImplementation(async () => {
+      host.backendClient = {apiBaseUrl: "http://localhost:5678/api", getDocument}
+    })
+    vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "stored", kind: "local"})
+    const initializeFrame = host.initializeEditorFrame.bind(host)
+    const initialize = vi.spyOn(host as {initializeEditorFrame(iframe: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(iframe => {
+      vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => {})
+      initializeFrame(iframe)
+    })
+    let restored!: () => void
+    const pkg = {...demoPackage, scripts: [], styles: []}
+    vi.spyOn(host.localPackageManager, "restore").mockReturnValue(new Promise(resolve => { restored = () => resolve([pkg]) }))
+    let catalogReady!: () => void
+    vi.mocked(WebWriterPackageRegistry.prototype.search).mockReturnValue(new Promise(resolve => { catalogReady = () => resolve([]) }))
+    document.body.append(editor)
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("true")
+    if(reference.startsWith("local:")) {
+      await vi.waitFor(() => expect(read).toHaveBeenCalledOnce())
+      expect(login).not.toHaveBeenCalled()
+    }
+    else await vi.waitFor(() => expect(getDocument).toHaveBeenCalledWith("lesson"))
+    expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+
+    restored()
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBeNull())
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+    const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    expect(iframe.srcdoc).toContain(source)
+    expect(host.installedPackages).toEqual([pkg])
+    expect(host.frameRevision).toBe(0)
+    await vi.waitFor(() => expect(initialize).toHaveBeenCalledOnce())
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+    completePendingPackageLoad(editor)
+    await host.packageLoadPromise
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull())
+    expect(initialize).toHaveBeenCalledOnce()
+    expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBe(iframe)
+    historyReady()
+    catalogReady()
+    await host.recentDocumentsReady
+  })
+
+  it("keeps the spinner visible through linked document lookup and clears it on failure", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    let lookup!: (value: null) => void
+    vi.spyOn(recentDocumentStorage, "readLocalDocumentReference").mockReturnValue(new Promise(resolve => { lookup = resolve }))
+    vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    const restoring = host.restoreLinkedDocument("local:missing")
+    await vi.waitFor(() => expect(recentDocumentStorage.readLocalDocumentReference).toHaveBeenCalledWith("missing"))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+    lookup(null)
+    await restoring
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+  })
+
+  it.each(["URL changed", "disconnected", "storage changed"])("discards a fetched startup document when %s", async cancellation => {
+    history.replaceState({}, "", "/?open=http%3A%2F%2Flocalhost%3A5678%2Fapi%2Fdocuments%2Flesson")
+    const editor = new DomEditor()
+    const host = editor as any
+    mountedEditors.add(editor)
+    let fetched!: (value: unknown) => void
+    const getDocument = vi.fn().mockReturnValue(new Promise(resolve => { fetched = resolve }))
+    vi.spyOn(host, "loginToBackend").mockImplementation(async () => {
+      host.backendClient = {apiBaseUrl: "http://localhost:5678/api", getDocument}
+    })
+    let restored!: () => void
+    vi.spyOn(host.localPackageManager, "restore").mockReturnValue(new Promise(resolve => { restored = () => resolve([]) }))
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const reload = vi.spyOn(host, "reloadDocument")
+    document.body.append(editor)
+    await vi.waitFor(() => expect(getDocument).toHaveBeenCalledOnce())
+    if(cancellation === "disconnected") editor.remove()
+    else if(cancellation === "URL changed") host.updateDocumentURL(null)
+    else host.backendClient = null
+    fetched({id: "lesson", title: "Lesson", format: "html", content: "<p>Stale lesson</p>"})
+    restored()
+    await vi.waitFor(() => expect(host.linkedDocumentLoading).toBe(false))
+    await editor.updateComplete
+    expect(reload).not.toHaveBeenCalled()
+    expect(host.frameDocumentHTML).toBeNull()
+    if(cancellation === "disconnected") expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+    else await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBeNull())
+    if(cancellation === "storage changed") expect(host.fileError).toContain("storage connection changed")
+  })
+
+  it("starts a usable empty frame after an invalid startup link and package restoration", async () => {
+    history.replaceState({}, "", "/?open=invalid")
+    const editor = new DomEditor()
+    const host = editor as any
+    mountedEditors.add(editor)
+    let restored!: () => void
+    vi.spyOn(host.localPackageManager, "restore").mockReturnValue(new Promise(resolve => { restored = () => resolve([]) }))
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const initializeFrame = host.initializeEditorFrame.bind(host)
+    vi.spyOn(host as {initializeEditorFrame(iframe: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(iframe => {
+      wirePackageLoadCompletion(iframe.contentWindow!)
+      initializeFrame(iframe)
+    })
+    document.body.append(editor)
+    await editor.updateComplete
+    expect(host.fileError).toBe("The document link is invalid.")
+    expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBeNull()
+    restored()
+    await vi.waitFor(() => expect(host.editorWindow).not.toBeNull())
+    await host.packageLoadPromise
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".file-error")!.textContent).toContain("The document link is invalid.")
+  })
+
+  it("shows a spinner through a local file read and frame resource loading", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    let read!: (source: string) => void
+    const file = new File([], "lesson.html")
+    vi.spyOn(file, "text").mockReturnValue(new Promise(resolve => { read = resolve }))
+    const handle = {name: file.name, getFile: vi.fn().mockResolvedValue(file)}
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
+    vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "lesson", kind: "local"})
+    vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => {})
+
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull())
+    const overlay = editor.shadowRoot!.querySelector(".document-loading")!
+    expect(overlay.getAttribute("role")).toBe("status")
+    expect(overlay.getAttribute("aria-label")).toBe("Loading document")
+    expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("true")
+    expect(iframe.contentDocument!.querySelector(".document-loading")).toBeNull()
+
+    read("<p>Loaded lesson</p>")
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    await editor.updateComplete
+    iframe.dispatchEvent(new Event("load"))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+    completePendingPackageLoad(editor)
+    await opening
+    await editor.updateComplete
+
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it("keeps the spinner visible while a new empty document's preset is applied", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    let applied!: () => void
+    vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    vi.spyOn(host, "applyDefaultLayout").mockReturnValue(new Promise<void>(resolve => { applied = resolve }))
+    const creating = host.newDocument("canvas")
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+    applied()
+    await creating
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+  })
+
+  it.each(["success", "failure"])("clears the spinner after a cloud load: %s", async outcome => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    let fetched!: (value: unknown) => void
+    let failed!: (error: Error) => void
+    host.backendClient = {getDocument: vi.fn().mockReturnValue(new Promise((resolve, reject) => { fetched = resolve; failed = reject }))}
+    let ready!: () => void
+    vi.spyOn(host, "reloadDocument").mockReturnValue(new Promise<void>(resolve => { ready = resolve }))
+
+    const opening = host.openBackendDocument("lesson")
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+    if(outcome === "failure") failed(new Error("Could not load lesson"))
+    else {
+      fetched({id: "lesson", title: "Lesson", format: "html", content: "<p>Lesson</p>"})
+      await Promise.resolve()
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+      ready()
+    }
+    await opening
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    if(outcome === "failure") expect(host.documentsError).toBe("Could not load lesson")
+  })
+
+  it("does not show a spinner for a cancelled file picker", async () => {
+    const {editor} = await mountEditor()
+    vi.stubGlobal("showOpenFilePicker", undefined)
+    const opening = (editor as any).openDocument()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    editor.shadowRoot!.querySelector('input[type="file"]')!.dispatchEvent(new Event("cancel"))
+    await opening
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+  })
+})
+
 describe("DomEditor iframe setup", () => {
   it.each(["host", "frame", "bridge"])("refreshes iframe hit testing on %s window reactivation without changing its selection", async source => {
     const {editor, iframe} = await mountEditor()
@@ -1132,7 +1367,7 @@ describe("DomEditor iframe setup", () => {
     await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
   })
 
-  it("automatically logs in when the no-auth development backend answers the probe", async () => {
+  it.each(["empty", "local"])("automatically logs in when the no-auth backend answers without changing the %s document's storage", async documentKind => {
     const sessionResponse = new Response(JSON.stringify({
       kind: "webwriter-dev-server",
       version: 1,
@@ -1149,13 +1384,16 @@ describe("DomEditor iframe setup", () => {
         headers: {"Content-Type": "application/json"},
       })))
     const {editor} = await mountEditor()
-    await (editor as any).loginToBackend()
+    const host = editor as any
+    const login = host.loginToBackend()
+    if(documentKind === "local") host.fileHandle = {name: "Linked.html"}
+    await login
 
     await vi.waitFor(() => expect((editor as any).backendState).toBe("connected"))
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
 
-    expect((editor as any).storageLocation).toBe("development-server")
+    expect(host.storageLocation).toBe(documentKind === "local" ? "local" : "development-server")
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".login-button")?.textContent).toContain("Local dev")
     expect(getComputedStyle(ribbon.shadowRoot!.querySelector(".login-button")!).display).toBe("none")
   })
