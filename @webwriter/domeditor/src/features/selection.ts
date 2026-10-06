@@ -53,6 +53,7 @@ export class SelectionFeature extends EditorFeature {
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
   #selectedSection: Element | null = null
+  #atomicExtension: {range: Range, backwards: boolean} | null = null
   #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
   #settingBoxSelection = false
   #boxDrag: {x: number, y: number, pointerId?: number, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
@@ -248,9 +249,8 @@ export class SelectionFeature extends EditorFeature {
     this.processSelection()
   }
 
-  #selectionBlock() {
+  #selectionBlock(node = $.anchor) {
     const root = getDocumentRoot()
-    let node = $.anchor
     while(node && node !== root) {
       if(node instanceof Element && !isSectionElement(node) && this.editor.schema.isBlock(node)) return node
       node = node.parentElement
@@ -261,16 +261,16 @@ export class SelectionFeature extends EditorFeature {
   /** Whether the caret is at the requested edge of its text block. Editor-only
    * helpers, comments, formatting whitespace, and a browser placeholder BR do
    * not count as content beyond the caret. */
-  #isCaretAtBlockBoundary(block: Element, direction: "backward" | "forward") {
+  #isCaretAtBlockBoundary(block: Element, direction: "backward" | "forward", extend = false) {
     const selection = document.getSelection()
-    if(!selection?.isCollapsed || !selection.anchorNode || !block.contains(selection.anchorNode)) return false
+    if(!selection || !extend && !selection.isCollapsed || !selection.focusNode || !block.contains(selection.focusNode)) return false
     const remainder = document.createRange()
     if(direction === "backward") {
       remainder.setStart(block, 0)
-      remainder.setEnd(selection.anchorNode, selection.anchorOffset)
+      remainder.setEnd(selection.focusNode, selection.focusOffset)
     }
     else {
-      remainder.setStart(selection.anchorNode, selection.anchorOffset)
+      remainder.setStart(selection.focusNode, selection.focusOffset)
       remainder.setEnd(block, block.childNodes.length)
     }
     const hasEditingContent = (node: Node): boolean => {
@@ -292,13 +292,14 @@ export class SelectionFeature extends EditorFeature {
 
   /** Finds an element immediately beside the live caret or the edge of its
    * containing block, ignoring invisible formatting nodes between siblings. */
-  #adjacentNavigationElement(direction: "backward" | "forward", fromBlockBoundary = false) {
+  #adjacentNavigationElement(direction: "backward" | "forward", fromBlockBoundary = false, extend = false) {
     const selection = document.getSelection()
-    if(!selection?.isCollapsed || !selection.anchorNode) return null
-    let node: Node = selection.anchorNode
-    let offset = selection.anchorOffset
+    if(!selection || !extend && !selection.isCollapsed || !selection.focusNode
+      || !selection.anchorNode || !getDocumentRoot().contains(selection.anchorNode)) return null
+    let node: Node = selection.focusNode
+    let offset = selection.focusOffset
     if(fromBlockBoundary) {
-      const block = this.#selectionBlock()
+      const block = this.#selectionBlock(selection.focusNode)
       const parent = block?.parentNode
       if(!block || !parent) return null
       const index = Array.from(parent.childNodes).indexOf(block)
@@ -335,22 +336,37 @@ export class SelectionFeature extends EditorFeature {
     return null
   }
 
-  /** Selects an adjacent atomic node, or collapses an atomic node selection
-   * into the boundary in the requested direction. */
-  #navigateAtomicSelection(direction: "backward" | "forward", vertical = false) {
+  /** Selects an adjacent atomic node, extends across it with a fixed anchor,
+   * or collapses a node selection into the requested boundary. */
+  #navigateAtomicSelection(direction: "backward" | "forward", vertical = false, extend = false) {
     const selectedElement = $.selectedElement
-    if(selectedElement && isAtomicEditingElement(selectedElement, this.editor.schema)) {
+    if(!extend && selectedElement && isAtomicEditingElement(selectedElement, this.editor.schema)) {
       $.selectGap(selectedElement, direction === "backward" ? "before" : "after")
     }
     else {
-      let adjacent = this.#adjacentNavigationElement(direction)
+      const atomicEdge = (element: Element | null) => element && extend
+        ? this.#disclosureEdge(element, direction === "forward" ? "backward" : "forward") : element
+      let adjacent = atomicEdge(this.#adjacentNavigationElement(direction, false, extend))
       if(adjacent && !isAtomicEditingElement(adjacent, this.editor.schema)) adjacent = null
-      const block = this.#selectionBlock()
-      if(!adjacent && block && (vertical || this.#isCaretAtBlockBoundary(block, direction))) {
-        adjacent = this.#adjacentNavigationElement(direction, true)
+      const block = this.#selectionBlock(extend ? $.focus : $.anchor)
+      if(!adjacent && block && (vertical || this.#isCaretAtBlockBoundary(block, direction, extend))) {
+        adjacent = atomicEdge(this.#adjacentNavigationElement(direction, true, extend))
       }
       if(!adjacent || !isAtomicEditingElement(adjacent, this.editor.schema)) return false
-      $.selectElement(adjacent)
+      if(extend) {
+        const parent = adjacent.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(adjacent)
+        // Native extension can synchronously focus the editing surface and
+        // refresh selection. Install both endpoints before normalizing it.
+        const settingRanges = $.isSettingRanges
+        $.isSettingRanges = true
+        try {
+          $.extend(parent, index + (direction === "forward" ? 1 : 0))
+          this.#atomicExtension = {range: $.range.cloneRange(), backwards: $.isBackwards}
+        }
+        finally { $.isSettingRanges = settingRanges }
+      }
+      else $.selectElement(adjacent)
     }
     this.processSelection()
     return true
@@ -599,6 +615,7 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
     this.#endDrag()
+    this.#atomicExtension = null
     $.clearLayoutRanges()
     this.#releaseCaptureSelection()
     if(this.#revealSelectionFrame !== null) cancelAnimationFrame(this.#revealSelectionFrame)
@@ -1550,13 +1567,22 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Replaces malformed or newly entered element selections with one
-   * canonical forward range. This resets browser selection direction/state
+   * canonical forward range, preserving explicit Shift-arrow extensions.
+   * This resets browser selection direction/state
    * left over from a preceding text selection, regardless of who changed the
    * document Selection. */
   #normalizeNativeSelection() {
     if(this.editor.features.mark.isSVGTextSelection || $.isMultiElementSelection) return
     let selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
+    // A Shift-arrow range owns its anchor, even when it spans exactly one
+    // atomic node. Live Range boundaries follow concurrent DOM mutations.
+    const extended = this.#atomicExtension
+    const range = selection.rangeCount === 1 ? selection.getRangeAt(0) : null
+    if(extended && range && extended.backwards === $.isBackwards
+      && extended.range.startContainer === range.startContainer && extended.range.startOffset === range.startOffset
+      && extended.range.endContainer === range.endContainer && extended.range.endOffset === range.endOffset) return
+    this.#atomicExtension = null
     if(selection.isCollapsed) {
       const summary = $.summaryAtLeadingBoundary(selection.anchorNode, selection.anchorOffset)
       if(summary) $.move(summary)
@@ -1582,8 +1608,8 @@ export class SelectionFeature extends EditorFeature {
       && selection.focusNode === parent
       && selection.focusOffset === index + 1
     // Selection.direction is separate browser state that can survive an
-    // in-place Range mutation. A node selection is always represented by the
-    // forward parent range [index, index + 1].
+    // in-place Range mutation. Ordinary node selections use the forward parent
+    // range [index, index + 1].
     const hasCanonicalDirection = selection.direction === undefined || selection.direction === "forward"
     if(!hasCanonicalEndpoints || !hasCanonicalDirection) {
       selection.setBaseAndExtent(parent, index, parent, index + 1)
@@ -2016,6 +2042,10 @@ export class SelectionFeature extends EditorFeature {
           || this.#navigateMathBoundary(direction)
           || this.#navigateDisclosureGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
+        ev.preventDefault()
+      }
+      else if(direction && ev.shiftKey && !ev.defaultPrevented && !ev.altKey && !ev.ctrlKey && !ev.metaKey
+        && this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown", true)) {
         ev.preventDefault()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !$.isElementSelection

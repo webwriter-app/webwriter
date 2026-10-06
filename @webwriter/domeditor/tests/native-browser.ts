@@ -662,7 +662,7 @@ await check("editor command preserves a live selection", () => {
   assert(document.querySelector("#before > span")?.textContent === " inserted", `command did not insert at the selected caret: ${document.body.innerHTML}`)
 })
 
-await check("selection feature treats custom element as atomic", () => {
+await check("selection feature treats custom element as atomic", async () => {
   const widget = fixture.querySelector("native-audit-widget")!
   $.selectElement(widget)
   editor.features.selection.processSelection()
@@ -670,6 +670,35 @@ await check("selection feature treats custom element as atomic", () => {
   assert(widget.classList.contains("◆element-selected"), "selection marker missing from widget host")
   assert(widget.shadowRoot!.querySelector("button"), "widget shadow DOM missing")
   assert(widget.getAttribute("contenteditable") === "false", "editor changed authored widget editability")
+  const paragraph = document.createElement("p")
+  paragraph.innerHTML = '<b>before</b><native-audit-widget></native-audit-widget><video></video><i>after</i>'
+  fixture.append(paragraph)
+  try {
+    const leaves = [paragraph.querySelector("native-audit-widget")!, paragraph.querySelector("video")!]
+    let step = 0
+    const press = (key: string) => {
+      step++
+      const before = $.toString()
+      const event = new KeyboardEvent("keydown", {key, shiftKey: true, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      assert(event.defaultPrevented, `Step ${step}: ${key} did not extend across an atomic element from ${before} to ${$.toString()} (capture: ${editor.features.selection.isCaptureSelection})`)
+    }
+    for(const backward of [false, true]) {
+      $.move(paragraph, backward ? 3 : 1)
+      press(backward ? "ArrowLeft" : "ArrowRight")
+      document.dispatchEvent(new KeyboardEvent("keyup", {key: "Shift", bubbles: true}))
+      await layoutFrame()
+      assert($.anchor === paragraph && $.anchorOffset === (backward ? 3 : 1), "Shift-arrow moved its anchor")
+      assert($.isBackwards === backward, "selection refresh lost the Shift-arrow direction")
+      press(backward ? "ArrowLeft" : "ArrowRight")
+      assert(leaves.every(element => element.classList.contains("◆atomic-range-selected")), "consecutive leaves were not selected")
+      press(backward ? "ArrowRight" : "ArrowLeft")
+      press(backward ? "ArrowRight" : "ArrowLeft")
+      assert($.isEmpty && $.anchorOffset === (backward ? 3 : 1), "reversing Shift-arrow did not shrink to its anchor")
+      assert(leaves.every(element => !element.classList.contains("◆atomic-range-selected")), "shrinking left an atomic marker")
+    }
+  }
+  finally { paragraph.remove(); $.selectElement(widget); editor.features.selection.processSelection() }
 })
 
 await check("node drag borders leave native text and table editing reachable", async () => {

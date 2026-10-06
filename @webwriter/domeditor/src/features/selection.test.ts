@@ -2666,24 +2666,170 @@ describe("document listeners", () => {
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(placement === "before" ? index : index + 1)
   })
-  it("does not arrow-select an atomic element while extending a selection", () => {
-    const widget = el("interactive-widget")
-    $.selectGap(widget, "before")
-    const event = new KeyboardEvent("keydown", {key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true})
+  it.each([
+    '<interactive-widget></interactive-widget>',
+    '<interactive-widget><p>Private light DOM</p></interactive-widget>',
+    '<img src="data:,">', '<picture><img src="data:,"></picture>',
+    '<audio><source src="data:,"></audio>', '<video><track></video>',
+    '<iframe></iframe>', '<embed>', '<object>Fallback</object>', '<hr>',
+    '<input>', '<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>',
+  ])("extends and shrinks Shift-arrow ranges across %s without moving their anchor", html => {
+    for(const [key, reverse, backward] of [
+      ["ArrowRight", "ArrowLeft", false], ["ArrowDown", "ArrowUp", false],
+      ["ArrowLeft", "ArrowRight", true], ["ArrowUp", "ArrowDown", true],
+    ] as const) {
+      document.body.innerHTML = html
+      const element = document.body.firstElementChild!
+      const anchor = backward ? 1 : 0
+      $.move(document.body, anchor)
+      const press = (key: string) => {
+        const event = new KeyboardEvent("keydown", {key, shiftKey: true, bubbles: true, cancelable: true})
+        document.dispatchEvent(event)
+        return event
+      }
 
+      expect(press(key).defaultPrevented).toBe(true)
+      document.dispatchEvent(new KeyboardEvent("keyup", {key: "Shift", bubbles: true}))
+      document.dispatchEvent(new Event("selectionchange"))
+      feature.processSelection()
+      expect($.anchor).toBe(document.body)
+      expect($.anchorOffset).toBe(anchor)
+      expect($.focus).toBe(document.body)
+      expect($.focusOffset).toBe(backward ? 0 : 1)
+      expect($.isBackwards).toBe(backward)
+      expect($.selectedElement).toBe(element)
+      expect(element).toHaveClass("◆atomic-range-selected")
+      const overlays = editor.appendix.querySelectorAll('[part="atomic-selection-overlay"]')
+      expect(overlays).toHaveLength(1)
+      expect(overlays[0].getRootNode()).toBe(editor.appendix)
+      expect(editor.toHTML(true)).not.toContain("◆")
+
+      expect(press(reverse).defaultPrevented).toBe(true)
+      expect($.isEmpty).toBe(true)
+      expect($.anchorOffset).toBe(anchor)
+      expect(element).not.toHaveClass("◆atomic-range-selected", "◆element-selected")
+      expect(editor.appendix.querySelector('[part="atomic-selection-overlay"]')).toBeNull()
+    }
+  })
+  it.each([false, true])("grows and shrinks an existing text range across consecutive leaves (backward: %s)", backward => {
+    document.body.innerHTML = '<p>before</p><!--keep-->\n<interactive-widget></interactive-widget><video></video>\n<p>after</p>'
+    const widget = document.querySelector("interactive-widget")!
+    const video = document.querySelector("video")!
+    const text = document.querySelectorAll("p")[backward ? 1 : 0].firstChild as Text
+    const direction = backward ? "ArrowLeft" : "ArrowRight"
+    const reverse = backward ? "ArrowRight" : "ArrowLeft"
+    $.selectRange(text, 2, text, backward ? 0 : text.length)
+    const press = (key: string) => {
+      const event = new KeyboardEvent("keydown", {key, shiftKey: true, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+    }
+
+    press(direction)
+    expect(backward ? video : widget).toHaveClass("◆atomic-range-selected")
+    expect(backward ? widget : video).not.toHaveClass("◆atomic-range-selected")
+    press(direction)
+    expect(widget).toHaveClass("◆atomic-range-selected")
+    expect(video).toHaveClass("◆atomic-range-selected")
+    press(reverse)
+    expect(backward ? video : widget).toHaveClass("◆atomic-range-selected")
+    expect(backward ? widget : video).not.toHaveClass("◆atomic-range-selected")
+    expect(document.body.innerHTML).toContain("<!--keep-->")
+  })
+  it("preserves the backward anchor when focusing synchronously refreshes selection", () => {
+    document.body.innerHTML = '<interactive-widget></interactive-widget><video></video>'
+    $.move(document.body, 2)
+    const focus = vi.spyOn(window, "focus").mockImplementation(() => feature.processSelection())
+    try {
+      for(const key of ["ArrowLeft", "ArrowLeft", "ArrowRight", "ArrowRight"]) {
+        document.dispatchEvent(new KeyboardEvent("keydown", {key, shiftKey: true, bubbles: true, cancelable: true}))
+        expect($.anchor).toBe(document.body)
+        expect($.anchorOffset).toBe(2)
+      }
+      expect($.isEmpty).toBe(true)
+    }
+    finally { focus.mockRestore() }
+  })
+  it.each([
+    ["ArrowRight", false, 6], ["ArrowDown", false, 2],
+    ["ArrowLeft", true, 0], ["ArrowUp", true, 2],
+  ] as const)("extends %s from a neighboring paragraph while keeping its text anchor", (key, backward, offset) => {
+    document.body.innerHTML = '<section><p>before</p></section><!--keep--><section><video></video></section><p>after</p>'
+    const video = document.querySelector("video")!
+    const text = document.querySelectorAll("p")[backward ? 1 : 0].firstChild!
+    $.move(text, offset)
+    const event = new KeyboardEvent("keydown", {key, shiftKey: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(offset)
+    expect($.focus).toBe(video.parentNode)
+    expect($.focusOffset).toBe(backward ? 0 : 1)
+    expect(video).toHaveClass("◆atomic-range-selected")
+  })
+  it.each([false, true])("extends through nested inline and section wrappers (backward: %s)", backward => {
+    document.body.innerHTML = '<section><p><b>before</b><span><!--keep--><img src="data:,"></span><i>after</i></p></section>'
+    const image = document.querySelector("img")!
+    const text = document.querySelector(backward ? "i" : "b")!.firstChild as Text
+    $.selectRange(text, 2, text, backward ? 0 : text.length)
+    const event = new KeyboardEvent("keydown", {key: backward ? "ArrowLeft" : "ArrowRight", shiftKey: true, bubbles: true, cancelable: true})
     document.dispatchEvent(event)
 
-    expect(event.defaultPrevented).toBe(false)
-    expect($.selectedElement).toBeUndefined()
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+    expect($.focus).toBe(image.parentNode)
+    expect($.focusOffset).toBe(backward ? 1 : 2)
+    expect(image).toHaveClass("◆atomic-range-selected")
   })
-  it("leaves arrow navigation to a capture-selected widget", () => {
+  it("reads replaced leaves from the live DOM and cleans disconnected selection markers", () => {
+    document.body.innerHTML = '<interactive-widget></interactive-widget><img src="data:,">'
+    const widget = document.querySelector("interactive-widget")!
+    const image = document.querySelector("img")!
+    $.move(document.body, 2)
+    const press = () => document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowLeft", shiftKey: true, bubbles: true, cancelable: true}))
+    press()
+    expect(image).toHaveClass("◆atomic-range-selected")
+    const replacement = document.createElement("video")
+    widget.replaceWith(replacement)
+    press()
+    expect(replacement).toHaveClass("◆atomic-range-selected")
+    expect($.anchorOffset).toBe(2)
+    image.remove()
+    feature.processSelection()
+    expect(image).not.toHaveClass("◆atomic-range-selected")
+    expect($.anchorOffset).toBe(1)
+    expect($.focusOffset).toBe(0)
+    expect($.isBackwards).toBe(true)
+    feature.disable()
+    expect(replacement.className).not.toContain("◆")
+    expect(editor.appendix.querySelector('[part="atomic-selection-overlay"]')).toBeNull()
+  })
+  it.each([
+    ["<p>before</p><interactive-widget></interactive-widget>", {shiftKey: true}],
+    ["<timeline-widget></timeline-widget>", {shiftKey: true}],
+    ["<interactive-widget></interactive-widget>", {shiftKey: true, ctrlKey: true}],
+    ["<interactive-widget></interactive-widget>", {shiftKey: true, metaKey: true}],
+    ["<interactive-widget></interactive-widget>", {shiftKey: true, altKey: true}],
+  ])("leaves native text, contentful widgets, and modified arrows alone (%s, %j)", (html, modifiers) => {
+    editor.schema.extendWidgets([{tagName: "timeline-widget", editingConfig: {content: "flow*"}}])
+    document.body.innerHTML = html
+    const text = document.querySelector("p")?.firstChild
+    $.move(text ?? document.body, text ? 2 : 0)
+    const event = new KeyboardEvent("keydown", {key: "ArrowRight", ...modifiers, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  })
+  it.each([false, true])("leaves arrow navigation to a capture-selected widget (shift: %s)", shiftKey => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
     appendToBody(widget)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     button.focus()
-    const event = new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true})
+    const event = new KeyboardEvent("keydown", {key: "ArrowRight", shiftKey, bubbles: true, cancelable: true})
 
     document.dispatchEvent(event)
 
