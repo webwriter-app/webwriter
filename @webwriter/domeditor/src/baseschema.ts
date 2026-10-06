@@ -35,13 +35,16 @@ export const baseSchema = {
     headOnly: true
   },
   "link": {
-    group: ["metadata", "phrasing", "flow"]
+    group: ["metadata"],
+    headOnly: true
   },
   "meta": {
-    group: ["metadata", "phrasing", "flow"]
+    group: ["metadata"],
+    headOnly: true
   },
   "noscript": {
-    group: ["metadata", "phrasing", "flow"],
+    group: ["metadata"],
+    headOnly: true,
     content: { options: [{selector: "link"}, {selector: "style"}, {selector: "meta"}], min: 0, max: Infinity }
   }, // !
   "style": {
@@ -55,10 +58,10 @@ export const baseSchema = {
     content: { selector: { type: "text" }, min: 0, max: Infinity }, headOnly: true
   },
   "script": {
-    group: ["metadata", "phrasing", "scriptsupporting", "flow"], content: { selector: { type: "text" }, min: 0, max: Infinity }, sideEffects: true
+    group: ["metadata"], content: { selector: { type: "text" }, min: 0, max: Infinity }, headOnly: true, sideEffects: true
   },
   "template": {
-    group: ["metadata", "phrasing", "scriptsupporting", "flow"], templateContent: true
+    group: ["metadata"], headOnly: true, templateContent: true
   },
 
   // Sectioning elements
@@ -412,8 +415,6 @@ export const baseSchema = {
       {selector: "dt"},
       {selector: "dd"},
       {selector: "div"},
-      {selector: "script"},
-      {selector: "template"},
     ], min: 0, max: Infinity}
   },
   "figure": {
@@ -440,11 +441,11 @@ export const baseSchema = {
   },
   "menu": {
     group: ["flow"],
-    content: {options: [{selector: "li"}, {selector: "script"}, {selector: "template"}], min: 0, max: Infinity}
+    content: {selector: "li", min: 0, max: Infinity}
   },
   "ol": {
     group: ["flow"],
-    content: {options: [{selector: "li"}, {selector: "script"}, {selector: "template"}], min: 0, max: Infinity}
+    content: {selector: "li", min: 0, max: Infinity}
   },
   "p": {
     defaultNode: true,
@@ -472,7 +473,7 @@ export const baseSchema = {
   },
   "ul": {
     group: ["flow"],
-    content: {options: [{selector: "li"}, {selector: "script"}, {selector: "template"}], min: 0, max: Infinity}
+    content: {selector: "li", min: 0, max: Infinity}
   },
 
   // Non-flow elements
@@ -532,7 +533,7 @@ export const baseSchema = {
   },
   "tr": {
     directlyInsertable: false,
-    content: {options: [{selector: "td"}, {selector: "th"}, {selector: "script"}, {selector: "template"}], min: 0, max: Infinity}
+    content: {options: [{selector: "td"}, {selector: "th"}], min: 0, max: Infinity}
   },
   "track": {}
 } as const

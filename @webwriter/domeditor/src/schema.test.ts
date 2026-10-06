@@ -29,6 +29,61 @@ describe("create()", () => {
   })
 })
 
+describe("head element placement", () => {
+  const headTags = ["base", "link", "meta", "noscript", "style", "title", "script", "template"]
+
+  it.each(headTags)("rejects <%s> in body content and insertion options", tag => {
+    for(const parentTag of ["body", "section", "p", "ul", "ol", "menu", "dl", "tr", "picture"]) {
+      const container = document.createElement(parentTag)
+      const element = document.createElement(tag)
+      expect(editor.schema.canInsert(container, element, 0), parentTag).toBe(false)
+      expect(editor.schema.findValidContentTypes(container), parentTag).not.toContain(tag)
+      container.append(element)
+      expect(editor.schema.isNodeValid(element), parentTag).toBe(false)
+      expect(editor.schema.isContentValid(container), parentTag).toBe(false)
+    }
+  })
+
+  it.each(headTags)("allows <%s> in the head", tag => {
+    const head = document.createElement("head")
+    const element = document.createElement(tag)
+    expect(editor.schema.canInsert(head, element, 0)).toBe(true)
+    expect(editor.schema.findValidContentTypes(head)).toContain(tag)
+    head.append(element)
+    expect(editor.schema.isNodeValid(element)).toBe(true)
+    expect(editor.schema.isContentValid(head)).toBe(true)
+  })
+
+  it.each(headTags)("removes <%s> during body repair without wrapping it in another head element", tag => {
+    document.body.innerHTML = '<!--keep--><section><p>Keep</p></section><demo-widget></demo-widget>'
+    const section = document.querySelector("section")!
+    const paragraph = section.firstElementChild
+    const widget = document.querySelector("demo-widget")!
+    section.append(document.createElement(tag))
+
+    editor.schema.checkAndCorrect(document.body, true)
+
+    expect(document.body.innerHTML).toBe('<!--keep--><section><p>Keep</p></section><demo-widget></demo-widget>')
+    expect(document.querySelector("section")).toBe(section)
+    expect(section.firstElementChild).toBe(paragraph)
+    expect(document.querySelector("demo-widget")).toBe(widget)
+  })
+
+  it("preserves widget data scripts under the widget's content contract", () => {
+    const schema = new Schema()
+    schema.extendWidgets([{tagName: "demo-widget", editingConfig: {content: "p*", sharedData: true}}])
+    document.body.innerHTML = '<demo-widget><script type="application/json" slot="data">{"value":1}</script><p>Keep</p></demo-widget>'
+    const widget = document.querySelector("demo-widget")!
+    const data = widget.firstElementChild!
+    expect(schema.isNodeValid(data)).toBe(true)
+    expect(schema.isContentValid(widget)).toBe(true)
+    const original = document.body.innerHTML
+    schema.checkAndCorrect(document.body, true)
+    expect(document.body.innerHTML).toBe(original)
+    expect(widget.firstElementChild).toBe(data)
+  })
+})
+
 describe("findWrapping()", () => {
   // it("can fix an invalid tree by lifting", () => {})
   it("can find a <li> wrapping", () => {
@@ -936,7 +991,7 @@ describe("Schema methods", () => {
 
   describe("findValidContentTypes()", () => {
     it("lists the selector options of a type", () => {
-      expect(schema.findValidContentTypes("ul")).toEqual(["li", "script", "template"])
+      expect(schema.findValidContentTypes("ul")).toEqual(["li"])
     })
     it("lists group members for group rules", () => {
       const types = schema.findValidContentTypes("body")
