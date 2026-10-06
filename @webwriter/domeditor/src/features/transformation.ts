@@ -280,7 +280,7 @@ export class TransformationFeature extends EditorFeature {
       if(mode) button.dataset.transformMode = mode
       return button
     }
-    const mover = control("mover", "Move", "move")
+    const selector = control("selector", "Select")
     const rotator = control("rotator", "Rotate", "rotate")
     const anchor = control("anchor", "Position anchor: drag to relocate; Ctrl/Cmd-click to cycle position; Shift-click for fixed", "anchor")
     const sticky = control("anchor-sticky", "Toggle sticky positioning")
@@ -303,7 +303,7 @@ export class TransformationFeature extends EditorFeature {
         point.title = `Resize ${dir}`
         return point
       }),
-      mover, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
+      selector, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
     )
     overlay.querySelectorAll("button").forEach(button => {
       button.type = "button"
@@ -392,7 +392,7 @@ export class TransformationFeature extends EditorFeature {
     }
     hidden("rotator", position !== "absolute")
     hidden("orderer", moveEdges || position !== "absolute")
-    hidden("mover", moveEdges)
+    hidden("selector", moveEdges)
     hidden("arranger", true)
     hidden("anchor", true)
     hidden("anchor-sticky", true)
@@ -698,7 +698,7 @@ export class TransformationFeature extends EditorFeature {
     this.updateInfo()
   }
 
-  handleMoveStart(event: MouseEvent) { this.#begin(event, "move", this.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!) }
+  handleMoveStart(event: MouseEvent) { this.#begin(event, "move", this.anchor) }
   handleScaleStart(event: MouseEvent) {
     const handle = event.composedPath()[0] ?? event.target
     if(handle instanceof HTMLElement && handle.dataset.transformMode === "scale") this.#begin(event, "scale", handle)
@@ -1037,6 +1037,13 @@ export class TransformationFeature extends EditorFeature {
         this.#suppressClick = false
         event.preventDefault()
         event.stopImmediatePropagation()
+        return
+      }
+      const handle = event.composedPath()[0]
+      if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-selector" && this.overlay.contains(handle)) {
+        const target = this.target
+        if(target && !this.#gesture && !this.editor.isEditingLocked) this.editor.features.selection.selectElement(target)
+        event.stopPropagation()
       }
     },
   }

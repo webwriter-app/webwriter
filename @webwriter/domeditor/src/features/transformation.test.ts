@@ -88,10 +88,77 @@ async function mutationsDelivered() {
 }
 
 describe("selection-owned transformation", () => {
+  it.each(["p", "demo-widget", "svg"])("element-selects a %s with the Select affordance without moving it", async tag => {
+    const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
+    target.innerHTML = tag === "svg" ? '<g><circle r="5"/></g><!--keep-->' : "before<!--keep--><b>target</b><i>after</i>"
+    const section = document.createElement("section")
+    target.replaceWith(section)
+    section.append(target)
+    const children = Array.from(target.childNodes)
+    mockRect(target)
+    captureNode(target)
+    const selector = feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-selector")!
+    expect(selector).toHaveAccessibleName("Select")
+    expect(selector.title).toBe("Select")
+    expect(selector.dataset.transformMode).toBeUndefined()
+    expect(feature.overlay.querySelector("#◆transform-overlay-mover")).toBeNull()
+    selector.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 130, clientY: 140}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    selector.click()
+
+    expect($.selectedElement).toBe(target)
+    expect($.isElementSelection).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(target.parentElement).toBe(section)
+    expect(Array.from(target.childNodes)).toEqual(children)
+    expect(target.hasAttribute("style")).toBe(false)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).not.toMatch(/◆|transform-overlay/)
+    expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+    editor.destroy()
+    expect(target.getAttribute("class") ?? "").not.toContain("◆")
+  })
+
+  it("clears table-cell selection when the Select affordance selects the table", () => {
+    const table = append(document.createElement("table"))
+    table.innerHTML = "<tbody><tr><td>A</td><td>B</td></tr></tbody>"
+    const cells = table.querySelectorAll("td")
+    editor.features.table.selectCells(cells[0], cells[1])
+    feature.startTransform(table)
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-selector")!.click()
+    expect($.selectedElement).toBe(table)
+    expect(editor.features.table.hasCellSelection).toBe(false)
+  })
+
+  it("retains capture if the Select pointer interaction is cancelled", () => {
+    const target = targetElement("demo-widget")
+    captureNode(target)
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-selector")!
+      .dispatchEvent(pointer("pointerdown", {pointerId: 3}))
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(editor.features.selection.captureSelectedElement).toBe(target)
+    expect(target.hasAttribute("style")).toBe(false)
+  })
+
+  it("uses the current target and ignores a disconnected target on Select", () => {
+    const first = targetElement(), second = targetElement("demo-widget")
+    captureNode(first)
+    const selector = feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-selector")!
+    captureNode(second)
+    selector.click()
+    expect($.selectedElement).toBe(second)
+    captureNode(first)
+    first.remove()
+    selector.click()
+    expect($.selectedElement).not.toBe(first)
+    expect(second.isConnected).toBe(true)
+  })
+
   it.each([
     {control: "outline", selector: ".◆transform-overlay-edge"},
     {control: "resize", selector: "#◆transform-overlay-scale-down-right"},
-    {control: "move", selector: "#◆transform-overlay-mover"},
   ])("switches capture to element selection on a $control click, but retains capture on cancellation", ({selector}) => {
     const target = targetElement("demo-widget")
     target.innerHTML = "before<!--keep--><b>target</b><i>after</i>"
@@ -236,7 +303,7 @@ describe("selection-owned transformation", () => {
         expect(edge.title).toBe("Move")
       }
       for(const corner of feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale")) expect(corner.dataset.transformMode).toBe("scale")
-      expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!.hidden).toBe(true)
+      expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-selector")!.hidden).toBe(true)
       expect(feature.orderer.hidden).toBe(true)
       expect(feature.overlay.querySelectorAll(".◆transform-overlay-midpoint:not([hidden])")).toHaveLength(4)
     })
@@ -392,7 +459,7 @@ describe("selection-owned transformation", () => {
     for(const direction of ["up-up", "left-left", "right-right", "down-down"]) {
       expect(editor.appendix.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!.hidden).toBe(true)
     }
-    expect(editor.appendix.querySelector("#◆transform-overlay-mover")).not.toBeNull()
+    expect(editor.appendix.querySelector("#◆transform-overlay-selector")).not.toBeNull()
     expect(editor.appendix.querySelector("#◆transform-overlay-restorer")).toBeNull()
     expect(editor.appendix.querySelector<HTMLElement>("#◆transform-overlay-arranger")).toHaveProperty("hidden", true)
     expect(editor.appendix.querySelector<HTMLElement>("#◆transform-overlay-rotator")).toHaveProperty("hidden", true)
@@ -610,8 +677,7 @@ describe("transform controls and geometry", () => {
     target.style.height = "50px"
     selectNode(target)
     mockRect(target)
-    feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
-      .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    feature.handleMoveStart(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 120, clientY: 100}))
 
     expect(target.style.position).toBe("absolute")
