@@ -17,7 +17,7 @@ import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
-import {elementDragType, emptyElementHTML, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
+import {elementDragType, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
   describePackageExport,
@@ -77,7 +77,6 @@ import {
   executeCompleteEvent,
   emptyVersionHistoryState,
   initializeEditorMessage,
-  isBlockFormatTag,
   isAIEditReviewMessage,
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
@@ -3729,6 +3728,14 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
+    if(label?.startsWith("element:")) {
+      const tag = label.slice("element:".length)
+      if(insertionMenuItems.some(item => item.tag === tag)) {
+        void this.execute({type: "insertElement", tag}).finally(() => this.focusEditor())
+      }
+      else this.focusEditor()
+      return
+    }
     if(label === "Undo") {
       void this.execute({type: "undo"}).finally(() => this.focusEditor())
       return
@@ -3929,45 +3936,7 @@ export class DomEditor extends LitElement {
     }
     if(!item.tag) return
 
-    if(item.tag === "ul" || item.tag === "ol" || item.tag === "dl" || item.tag === "menu") {
-      void this.execute({type: "toggleList", listType: item.tag}).finally(() => this.focusEditor())
-      return
-    }
-    if(item.tag === "details") {
-      void this.execute({type: "insertDetails"}).finally(() => this.focusEditor())
-      return
-    }
-
-    if(item.tag === "table") {
-      void this.execute({type: "insertTable", rows: 2, columns: 2})
-        .finally(() => this.focusEditor())
-      return
-    }
-
-    if(item.tag === "math") {
-      void this.execute({type: "insertMath"}).finally(() => this.focusEditor())
-      return
-    }
-    if(item.tag === "svg") {
-      void this.execute({type: "insertGraphic"})
-        .finally(() => this.focusEditor())
-      return
-    }
-
-    if(isMediaType(item.tag)) {
-      void this.execute({type: "insertMedia", media: item.tag}).finally(() => this.focusEditor())
-      return
-    }
-
-    if(isBlockFormatTag(item.tag)) {
-      void this.execute({type: "setBlockType", tag: item.tag}).finally(() => this.focusEditor())
-      return
-    }
-
-    void this.execute({
-      type: "insert",
-      html: item.html ?? emptyElementHTML(item.tag),
-    }).finally(() => this.focusEditor())
+    void this.execute({type: "insertElement", tag: item.tag}).finally(() => this.focusEditor())
   }
 
   private selectLocalPackage(name: string) {
@@ -6718,6 +6687,10 @@ export class DomEditor extends LitElement {
       "snippet-hover-change": (event: Event) => {
         const hovered = Boolean((event as CustomEvent<{hovered: boolean}>).detail?.hovered)
         void this.execute({type: "hoverSnippet", hovered}).catch(() => {})
+      },
+      "insertion-hover-change": (event: Event) => {
+        const hovered = Boolean((event as CustomEvent<{hovered: boolean}>).detail?.hovered)
+        void this.execute({type: "hoverInsertion", hovered}).catch(() => {})
       },
       "ribbon-combobox-change": this.handleRibbonComboboxChange.bind(this),
       "section-type-change": this.handleSectionTypeChange.bind(this),

@@ -86,7 +86,12 @@ export class ManipulationFeature extends EditorFeature {
   private readonly dragGeometryCleanup: (() => void)[] = []
   private nodeDrag: {element: Element, token: string} | null = null
   private originalDropSelection: Range | null = null
-  private floatDropPreviewOwner: "transfer" | "transformation" | null = null
+  private floatDropPreviewOwner: "transfer" | "transformation" | "insertion" | null = null
+  private insertionHovered = false
+  private commandPlacement = false
+  private insertionPreviewObserver: MutationObserver | null = null
+  private insertionPreviewResizeObserver: ResizeObserver | null = null
+  private insertionPreviewTarget: Element | null = null
   private readonly dragType = "application/x-webwriter-node"
 
   /** A native draggable surface lives in the appendix, leaving authored
@@ -225,6 +230,7 @@ export class ManipulationFeature extends EditorFeature {
 
   disable() {
     this.insertionGeneration++
+    this.hoverInsertion(false)
     this.endNodeDrag(false)
     super.disable()
   }
@@ -404,12 +410,12 @@ export class ManipulationFeature extends EditorFeature {
     if(!style.length) element.removeAttribute("style")
   }
 
-  floatContainer(node: Node, element: Element): Element | null {
+  floatContainer(node: Node, element?: Element): Element | null {
     if(this.editor.features.canvas.active || this.editor.features.slides.active) return null
     let container = atomicEditingContainer(node, this.editor.schema) ?? (node instanceof Element ? node : node.parentElement)
     while(container && isMarkElement(container)) container = container.parentElement
     const root = getDocumentRoot()
-    return container && container !== root && root.contains(container) && !element.contains(container)
+    return container && container !== root && root.contains(container) && !element?.contains(container)
       && container.parentElement && !atomicEditingContainer(container.parentElement, this.editor.schema) ? container : null
   }
 
@@ -445,7 +451,7 @@ export class ManipulationFeature extends EditorFeature {
   /** A fixed appendix overlay shared by native transfer and transformation
    * drags. Ownership prevents selection cleanup in one path from flickering a
    * preview currently maintained by the other. */
-  showFloatDropPreview(container: Element, side: "left" | "right", owner: "transfer" | "transformation") {
+  showFloatDropPreview(container: Element, side: "left" | "right", owner: "transfer" | "transformation" | "insertion") {
     const rect = container.getBoundingClientRect()
     const existing = this.editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")
     const overlay = existing ?? document.createElement("div")
@@ -464,7 +470,7 @@ export class ManipulationFeature extends EditorFeature {
     overlay.style.height = `${rect.height}px`
   }
 
-  clearFloatDropPreview(owner: "transfer" | "transformation", keep = false) {
+  clearFloatDropPreview(owner: "transfer" | "transformation" | "insertion", keep = false) {
     if(this.floatDropPreviewOwner !== owner) return
     const preview = this.editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")
     if(keep && preview) preview.hidden = true
@@ -474,20 +480,108 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false) {
-    const element = node instanceof DocumentFragment && node.childNodes.length === 1 ? node.firstChild : node
+  private floatInsertionContainer(element?: Element, allowEmpty = false) {
     const selection = document.getSelection()
-    if(!isElement(element) || !(element.matches(mediaElementSelector) || this.insertedWidget(element) && !isContentfulWidget(element, this.editor.schema))
-      || !selection?.rangeCount || !selection.isCollapsed
-      || this.editor.features.canvas.active || this.editor.features.slides.active) return false
-    const range = selection.getRangeAt(0)
-    const container = this.floatContainer(range.startContainer, element)
-    if(!container || !(this.isTextBlock(container) || isSectionElement(container) && this.editor.schema.isBlock(container)
+    if(!selection?.rangeCount || !selection.isCollapsed || $.isGapSelection
+      || this.editor.features.canvas.active || this.editor.features.slides.active) return null
+    const container = this.floatContainer(selection.getRangeAt(0).startContainer, element)
+    return container && !container.matches("details > summary") && (this.isTextBlock(container) || isSectionElement(container) && this.editor.schema.isBlock(container)
       && Array.from(container.childNodes).some(child => child instanceof Text || isElement(child) && isMarkElement(child)))
-      || !allowEmpty && container.localName === "p" && !container.textContent?.trim()) return false
+      && (allowEmpty || container.localName !== "p" || Boolean(container.textContent?.trim())) ? container : null
+  }
+
+  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false, anyBlock = false) {
+    const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : null
+    const element = node instanceof DocumentFragment && (node.childNodes.length === 1 || anyBlock && node.children.length === 1
+      && Array.from(node.childNodes).every(child => isElement(child) || child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim()))
+      ? node.firstElementChild : node
+    if(!isElement(element) || element.namespaceURI === MATH_NAMESPACE
+      || !(element.matches(mediaElementSelector) || this.insertedWidget(element) && !isContentfulWidget(element, this.editor.schema)
+        || anyBlock && !this.editor.schema.isPhrasing(element) && this.editor.schema.get(element).group?.includes("flow"))) return false
+    const container = this.floatInsertionContainer(element, allowEmpty)
+    if(!container) return false
+    if(anyBlock && !element.matches(mediaElementSelector) && !this.insertedWidget(element)
+      && !this.editor.schema.canInsert(container.parentElement!, element, Array.from(container.parentElement!.childNodes).indexOf(container))) return false
     if(!this.placeFloat(element, container, side)) return false
+    if(nodes && anyBlock) container.before(...nodes)
     if(this.insertedWidget(element)) this.editor.features.selection.captureElement(element)
     else $.selectElement(element)
+    this.editor.postSelectionPath(true)
+    return true
+  }
+
+  private hoverInsertion(hovered: boolean) {
+    this.insertionHovered = hovered && this.isEnabled && !this.editor.isEditingLocked
+    if(this.insertionHovered && !this.insertionPreviewObserver) {
+      this.insertionPreviewObserver = new MutationObserver(() => this.refreshInsertionPreview())
+      this.insertionPreviewObserver.observe(document.body, {subtree: true, childList: true, attributes: true})
+      this.insertionPreviewResizeObserver = new ResizeObserver(() => this.refreshInsertionPreview())
+      this.insertionPreviewResizeObserver.observe(document.body)
+    }
+    if(!this.insertionHovered) {
+      this.insertionPreviewObserver?.disconnect()
+      this.insertionPreviewObserver = null
+      this.insertionPreviewResizeObserver?.disconnect()
+      this.insertionPreviewResizeObserver = null
+      this.insertionPreviewTarget = null
+    }
+    this.refreshInsertionPreview()
+  }
+
+  private insertionReplacement() {
+    const target = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    return target?.isConnected && getDocumentRoot().contains(target) && target !== getDocumentRoot() && target !== document.body ? target : null
+  }
+
+  private refreshInsertionPreview() {
+    const active = this.insertionHovered && !this.editor.isEditingLocked && document.getSelection()?.rangeCount
+    const target = active ? this.insertionReplacement() ?? ($.isDocumentSelection ? getDocumentRoot() : null) : null
+    const gap = Boolean(active && !target && ($.isGapSelection || $.isEmptyDocumentSelection))
+    const container = active && !target && !gap ? this.floatInsertionContainer(undefined, true) : null
+    const measured = target ?? container
+    if(measured !== this.insertionPreviewTarget) {
+      if(this.insertionPreviewTarget) this.insertionPreviewResizeObserver?.unobserve(this.insertionPreviewTarget)
+      if(measured) this.insertionPreviewResizeObserver?.observe(measured)
+      this.insertionPreviewTarget = measured
+    }
+    if(document.body.classList.contains("◆insertion-gap-preview") !== gap) document.body.classList.toggle("◆insertion-gap-preview", gap)
+    let overlay = this.editor.appendix.querySelector<HTMLElement>("#◆insertion-preview")
+    if(target) {
+      this.clearFloatDropPreview("insertion")
+      if(!overlay) {
+        overlay = document.createElement("div")
+        overlay.id = "◆insertion-preview"
+        overlay.setAttribute("part", "insertion-preview")
+        overlay.setAttribute("aria-hidden", "true")
+        this.editor.addAppendix(overlay)
+      }
+      const rect = target.getBoundingClientRect()
+      Object.assign(overlay.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+    }
+    else {
+      overlay?.remove()
+      if(container) this.showFloatDropPreview(container, "right", "insertion")
+      else this.clearFloatDropPreview("insertion")
+    }
+  }
+
+  /** Command insertion replaces an explicitly selected host as a whole. */
+  private replaceInsertionElement(node: Node) {
+    const target = this.insertionReplacement()
+    const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
+    if(!target || !nodes.length || !target.parentElement
+      || nodes.some(child => target.contains(child) || child.contains(target))) return false
+    const children = Array.from(target.parentElement.childNodes)
+    children.splice(children.indexOf(target), 1, ...nodes as ChildNode[])
+    if(!this.editor.schema.isContentValid(target.parentElement, children)) return false
+    this.withNormalization(() => {
+      target.replaceWith(...nodes)
+      const last = nodes.at(-1)!
+      const widget = nodes.length === 1 ? this.insertedWidget(last) : null
+      if(widget) this.editor.features.selection.captureElement(widget)
+      else if(nodes.length === 1 && isElement(last)) $.selectElement(last)
+      else this.moveAfterInsertedNode(last)
+    })
     this.editor.postSelectionPath(true)
     return true
   }
@@ -610,7 +704,7 @@ export class ManipulationFeature extends EditorFeature {
     const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
     if(migrated === null || generation !== this.insertionGeneration || this.editor.isEditingLocked) return false
     return this.insertAtRibbonDrop(position, () => {
-      if(position.layout === "document") this.insertHTML(migrated)
+      if(position.layout === "document") this.insertHTML(migrated, false, false)
       else {
         // Freeform roots have no flow content model to repair. Keep saved
         // valid nesting and comments intact while applying import sanitization.
@@ -631,6 +725,11 @@ export class ManipulationFeature extends EditorFeature {
 
   private createRibbonElement(tag: string) {
     if(tag === "table") this.editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
+    else if(tag === "details" && this.commandPlacement) {
+      const details = this.ribbonElement(tag)
+      this.insert(details)
+      if(details.isConnected) $.move(details.firstElementChild!)
+    }
     else if(tag === "details") this.editor.features.list.actions.insertDetails({type: "insertDetails"})
     else if(tag === "svg") this.editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     else if(isMediaType(tag)) this.editor.features.media.actions.insertMedia({type: "insertMedia", media: tag})
@@ -1518,10 +1617,14 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
-  private insertClipboardFragment(fragment: DocumentFragment, allowFloat = true) {
+  private insertClipboardFragment(fragment: DocumentFragment, allowFloat = true, commandInsertion = false) {
     if(!this.editor.features.slides.allowsSelection()) return
+    if(commandInsertion) {
+      this.hoverInsertion(false)
+      if(this.replaceInsertionElement(fragment)) return
+    }
     this.selectCapturedElementForInsertion()
-    if(allowFloat && this.insertFloat(fragment)) return
+    if(allowFloat && this.insertFloat(fragment, "right", commandInsertion, commandInsertion)) return
     for(const math of Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
       let ancestor = math.parentElement
@@ -1760,6 +1863,15 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Action handlers, addressable by action type through the editor. */
   actions = {
+    hoverInsertion: ({hovered}: {type: "hoverInsertion", hovered: boolean}) => this.hoverInsertion(hovered),
+    insertElement: ({tag}: {type: "insertElement", tag: string}) => {
+      if(this.editor.isEditingLocked || !insertionMenuItems.some(item => item.tag === tag)) return
+      this.hoverInsertion(false)
+      const previous = this.commandPlacement
+      this.commandPlacement = true
+      try { this.createRibbonElement(tag) }
+      finally { this.commandPlacement = previous }
+    },
     insertRibbonDrop: ({html, position}: {type: "insertRibbonDrop", html: string, position: RibbonDropPosition}) => this.insertRibbonDrop(html, position),
     insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => (
       this.editor.features.migration.needsMigration(html)
@@ -1918,6 +2030,7 @@ export class ManipulationFeature extends EditorFeature {
   // Floated and freeform text roots retain their structure on Enter. Deliberate drags
   // can also target widget/control surfaces and the canvas's shadow slot.
   captureListeners: DocumentListenerMap = {
+    "scroll": () => { if(this.insertionHovered) this.refreshInsertionPreview() },
     "keydown": event => {
       if(event.key !== "Enter" || event.isComposing || !this.freeformTextBreak(event)) return
       event.preventDefault()
@@ -1936,6 +2049,10 @@ export class ManipulationFeature extends EditorFeature {
     "drop": event => {
       if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
     },
+  }
+
+  passiveListeners: DocumentListenerMap = {
+    "selectionchange": () => { if(this.insertionHovered) this.refreshInsertionPreview() },
   }
 
   /** Keyboard and input behavior: Enter splits the containing block
@@ -2109,10 +2226,14 @@ export class ManipulationFeature extends EditorFeature {
    * one split); <body> and <html> are never split. Splitting continues the
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
-  insert(node?: Node, splitDepth=0, strict=false) {
+  insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement) {
     if(!this.editor.features.slides.allowsSelection()) return
-    if(node) this.selectCapturedElementForInsertion()
-    if(node && this.insertFloat(node)) return
+    if(node) {
+      this.hoverInsertion(false)
+      if(this.replaceInsertionElement(node)) return
+      this.selectCapturedElementForInsertion()
+    }
+    if(node && this.insertFloat(node, "right", commandInsertion, commandInsertion)) return
     if(!node && this.ensureTextBlock()) {
       return
     }
@@ -2644,10 +2765,10 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Sanitizes, schema-corrects, and inserts arbitrary HTML through the same
    * structural placement path as HTML clipboard content. */
-  insertHTML(html: string, strict=false) {
+  insertHTML(html: string, strict=false, commandInsertion = true) {
     const {fragment} = this.editor.parseHTMLFragment(html)
-    if(strict) this.insert(fragment, 0, true)
-    else this.insertClipboardFragment(fragment)
+    if(strict) this.insert(fragment, 0, true, commandInsertion)
+    else this.insertClipboardFragment(fragment, true, commandInsertion)
   }
 
   /** Runs package migrations on `html`, then restores the selection captured

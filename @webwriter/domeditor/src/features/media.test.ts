@@ -50,7 +50,9 @@ describe("media editing", () => {
     const frame = document.querySelector("iframe")!
     expect(frame).not.toBeNull()
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
-    expect(editor.toHTML(true)).toContain('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" sandbox="allow-scripts"></iframe>')
+    expect(frame.getAttribute("src")).toBe("https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html")
+    expect(frame.style.float).toBe("right")
+    expect(editor.toHTML(true)).toContain('sandbox="allow-scripts"')
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(

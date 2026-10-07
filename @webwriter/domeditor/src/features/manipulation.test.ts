@@ -182,6 +182,190 @@ describe("migrated insertion selection", () => {
   })
 })
 
+describe("insertable element placement and previews", () => {
+  const hover = (hovered = true) => editor.features.manipulation.actions.hoverInsertion({type: "hoverInsertion", hovered})
+  const insert = (html: string) => editor.features.manipulation.actions.insert({type: "insert", html})
+
+  it.each(["p", "table", "section", "custom-widget"])("previews and inserts %s as a right float at a text caret", tag => {
+    document.body.innerHTML = '<p>ab<b>cd</b></p><p>Neighbor</p>'
+    const paragraph = document.querySelector("p")!, neighbor = paragraph.nextElementSibling!
+    const before = paragraph.outerHTML, neighborHTML = neighbor.outerHTML
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 100, 40))
+    $.move(paragraph.querySelector("b")!.firstChild!, 1)
+    hover()
+    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+    expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
+    expect(preview.style.left).toBe("70px")
+    expect(preview.style.width).toBe("50px")
+    expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("preview")
+    insert(`<${tag}></${tag}>`)
+    const inserted = paragraph.previousElementSibling as HTMLElement
+    expect(inserted.localName).toBe(tag)
+    expect(inserted.style.float).toBe("right")
+    expect(inserted.style.marginRight).toBe("0px")
+    expect(cloneWithoutEditorMarkers(paragraph, true).outerHTML).toBe(before)
+    expect(cloneWithoutEditorMarkers(neighbor, true).outerHTML).toBe(neighborHTML)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("floats an insertable element beside an empty paragraph", () => {
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+    hover()
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "table"})
+    expect(paragraph.isConnected).toBe(true)
+    expect(paragraph.previousElementSibling?.localName).toBe("table")
+    expect((paragraph.previousElementSibling as HTMLElement).style.float).toBe("right")
+  })
+
+  it("keeps comments and whitespace around a floated snippet", () => {
+    document.body.innerHTML = '<p>Text</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    insert('<!--before-->\n<aside title="Keep">Snippet</aside><!--after-->')
+    const aside = document.querySelector("aside")!
+    expect(aside.style.float).toBe("right")
+    expect(aside.getAttribute("title")).toBe("Keep")
+    expect(Array.from(document.body.childNodes).map(node => node.nodeType)).toEqual([Node.COMMENT_NODE, Node.TEXT_NODE, Node.ELEMENT_NODE, Node.COMMENT_NODE, Node.ELEMENT_NODE])
+    expect(aside.nextSibling!.textContent).toBe("after")
+    expect(paragraph.textContent).toBe("Text")
+  })
+
+  it("uses float placement for strict insertion commands", () => {
+    document.body.innerHTML = '<p>Text</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    editor.features.manipulation.actions.insert({type: "insert", html: "<aside>New</aside>", strict: true})
+    expect((paragraph.previousElementSibling as HTMLElement).style.float).toBe("right")
+    expect(paragraph.textContent).toBe("Text")
+  })
+
+  it.each(["float", "gap", "replace", "capture"])("synchronizes and undoes %s insertion without preview artifacts", mode => {
+    document.body.innerHTML = '<p>Text</p><hr><p>After</p>'
+    const paragraph = document.querySelector("p")!, divider = document.querySelector("hr")!
+    if(mode === "float") $.move(paragraph.firstChild!, 1)
+    else if(mode === "gap") $.move(document.body, 1)
+    else if(mode === "capture") editor.features.selection.captureElement(divider)
+    else $.selectElement(divider)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    hover()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "table"})
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(after).toContain("<table")
+    expect(after).not.toContain("◆")
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("preview")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("highlights the gap caret and inserts at a nested gap without float spacing", () => {
+    document.body.innerHTML = '<section><p>Before</p><!--keep--><hr></section>'
+    const section = document.querySelector("section")!, before = section.firstChild!, comment = before.nextSibling!, after = section.lastChild!
+    $.move(section, 2)
+    editor.features.selection.processSelection()
+    hover()
+    expect(document.body).toHaveClass("◆insertion-gap-preview")
+    expect(editor.features.selection.gapCaret).not.toBeNull()
+    expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
+    insert('<aside title="Inserted">Content</aside>')
+    const inserted = section.querySelector("aside")!
+    expect(Array.from(section.childNodes)).toEqual([before, comment, inserted, after])
+    expect(inserted.style.float).toBe("")
+    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+  })
+
+  it.each([false, true])("previews and replaces a selected host including its floated descendants (capture: %s)", capture => {
+    document.body.innerHTML = '<p>Before</p><custom-widget title="Keep"><span style="float: left">Child</span></custom-widget><p>After</p>'
+    const target = document.querySelector("custom-widget")!, before = target.previousSibling!, after = target.nextSibling!
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 90, 60))
+    if(capture) editor.features.selection.captureElement(target)
+    else $.selectElement(target)
+    hover()
+    const overlay = editor.appendix.querySelector<HTMLElement>("#◆insertion-preview")!
+    expect(overlay.style.left).toBe("10px")
+    expect(overlay.style.width).toBe("90px")
+    expect(overlay.style.height).toBe("60px")
+    expect(editor.toHTML(true)).not.toContain("preview")
+    insert('<section title="Replacement"><p>New</p></section>')
+    expect(target.isConnected).toBe(false)
+    const replacement = document.querySelector("section")!
+    expect(Array.from(document.body.childNodes)).toEqual([before, replacement, after])
+    expect(replacement.style.float).toBe("")
+    expect(document.querySelector("span")).toBeNull()
+    expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
+  })
+
+  it.each(["p", "h1", "ul", "ol", "details", "table", "picture", "svg", "section"])("replaces a selected paragraph with a fresh %s element", tag => {
+    document.body.innerHTML = '<p>Replace<span style="float: left">Floated child</span></p><p>After</p>'
+    const target = document.querySelector("p")!, neighbor = target.nextElementSibling!
+    $.selectElement(target)
+    hover()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+    expect(target.isConnected).toBe(false)
+    expect(document.body.firstElementChild!.localName).toBe(tag)
+    expect(document.body.lastElementChild).toBe(neighbor)
+    expect(document.body.textContent).toBe("After")
+    expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
+  })
+
+  it("replaces the whole selected host with a snippet containing comments and multiple roots", () => {
+    document.body.innerHTML = '<p>Replace<span style="float: left">Floated child</span></p><p>After</p>'
+    const target = document.querySelector("p")!, neighbor = target.nextElementSibling!
+    $.selectElement(target)
+    hover()
+    insert('<!--before--><h2>Heading</h2><p>Snippet</p><!--after-->')
+    expect(target.isConnected).toBe(false)
+    expect(document.body.lastElementChild).toBe(neighbor)
+    expect(document.body.textContent).toBe("HeadingSnippetAfter")
+    expect(document.body.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(document.body.firstChild!.textContent).toBe("before")
+    expect(neighbor.previousSibling!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(neighbor.previousSibling!.textContent).toBe("after")
+    expect(document.querySelector("span")).toBeNull()
+    expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
+  })
+
+  it("updates preview mode on selection changes and cleans up on hover exit and disable", () => {
+    document.body.innerHTML = '<p>Text</p><hr><p>After</p>'
+    const paragraph = document.querySelector("p")!, divider = document.querySelector("hr")!
+    $.move(paragraph.firstChild!, 1)
+    hover()
+    $.selectElement(divider)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.appendix.querySelector("#◆insertion-preview")).not.toBeNull()
+    $.move(document.body, 1)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(document.body).toHaveClass("◆insertion-gap-preview")
+    expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
+    hover(false)
+    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+    hover()
+    editor.features.manipulation.disable()
+    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+    expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
+  })
+
+  it("follows the live selection after the hovered element is removed", async () => {
+    document.body.innerHTML = '<p>Before</p><hr><p>After</p>'
+    const divider = document.querySelector("hr")!
+    editor.features.selection.captureElement(divider)
+    hover()
+    divider.remove()
+    $.move(document.body, 1)
+    await vi.waitFor(() => expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull())
+    hover(false)
+    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+  })
+})
+
 describe("deleting the selected document", () => {
   it.each(["Delete", "Backspace", "beforeinput"])("removes floated descendants with %s and supports undo and redo", input => {
     document.body.innerHTML = '<p>before<span style="float: left">nested</span></p><!--keep--><custom-widget style="float: right">widget</custom-widget><aside style="float: left"><p>floating</p></aside><p>after</p>'
@@ -833,7 +1017,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
   it("inserts HTML through its action handler", () => {
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
-    expectBodyToBe("<p></p>")
+    expectBodyToBe('<p style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;"></p><p></p>')
   })
   it("sanitizes arbitrary HTML while preserving safe inline styles", () => {
     editor.features.manipulation.actions.insert({
@@ -841,7 +1025,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       html: '<style>body { display: none }</style><link rel="stylesheet"><dialog><p style="color: red" onclick="evil()">Safe<script>while(true) {}</script></p></dialog>',
     })
 
-    expectBodyToBe('<p style="color: red">Safe</p>')
+    expectBodyToBe('<p style="color: red; margin: 5px 0px 5px 5px; max-width: 50%; float: right;">Safe</p><p></p>')
     expect(document.querySelector("script, style, link[rel~='stylesheet']")).toBeNull()
   })
   it("schema-corrects arbitrary HTML before insertion", () => {
@@ -869,7 +1053,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
-    expect(editor.toHTML(true)).toBe("<section><webwriter-demo></webwriter-demo></section>")
+    expect(editor.toHTML(true)).toBe('<section style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;"><webwriter-demo></webwriter-demo></section><p></p>')
   })
   it("preserves authored contenteditable through inserted widget undo and redo", async () => {
     editor.features.manipulation.actions.insert({
@@ -896,7 +1080,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expectBodyToBe("<webwriter-demo></webwriter-demo>")
+    expectBodyToBe('<webwriter-demo style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;"></webwriter-demo><p></p>')
   })
   it.each(["node", "HTML"] as const)("replaces a capture-selected widget through %s insertion", kind => {
     document.body.innerHTML = "<p>before</p><opaque-widget><span>Authored fallback</span></opaque-widget><p>after</p>"

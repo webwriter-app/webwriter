@@ -342,7 +342,8 @@ body::part(node-drag-surface) {
   z-index: 2147483646;
 }
 
-body::part(float-drop-preview) {
+body::part(float-drop-preview),
+body::part(insertion-preview) {
   position: fixed;
   box-sizing: border-box;
   pointer-events: none;
@@ -1461,12 +1462,15 @@ body::part(selection-caret-text) {
 
 body.◆drop-selection-active::part(selection-caret-text),
 body.◆drop-selection-active::part(selection-caret-gap),
+body.◆insertion-gap-preview::part(selection-caret-gap),
+body.◆insertion-gap-preview::part(empty-document-caret),
 body.◆drop-selection-active::part(empty-document-caret) {
   color: var(--sl-color-primary-400, #0078d7);
   animation: none;
 }
 
-body.◆drop-selection-active::part(selection-caret-gap)::after {
+body.◆drop-selection-active::part(selection-caret-gap)::after,
+body.◆insertion-gap-preview::part(selection-caret-gap)::after {
   animation: none;
 }
 /* Match the slightly heavier stroke used by remote text and element carets

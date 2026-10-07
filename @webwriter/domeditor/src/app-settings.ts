@@ -73,8 +73,8 @@ export const appCommands: readonly AppCommand[] = [
   {id: "insert.paragraph", section: "Insert", label: "Paragraph", description: "Insert paragraph content", icon: "Paragraph", action: "Paragraph", defaultShortcut: alternate("Enter")},
   ...[
     ["heading", "Heading", "Heading", "Heading 1", "1"],
-    ["details", "Details", "Details", "insert-details", "2"],
-    ["list", "List", "List", "toggle-list:ul", "3"],
+    ["details", "Details", "Details", "element:details", "2"],
+    ["list", "List", "List", "element:ul", "3"],
     ["table", "Table", "Table", "Table", "4"],
     ["image", "Image", "Image", "Image", "5"],
     ["graphic", "Graphic", "Graphic", "Graphic", "6"],

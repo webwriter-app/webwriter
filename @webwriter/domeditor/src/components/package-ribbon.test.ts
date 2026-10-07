@@ -61,6 +61,65 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("announces hover and focus for element and package insertions only", async () => {
+    const button = new RibbonButton()
+    button.variant = "insertion"
+    button.label = "Paragraph"
+    button.action = "Paragraph"
+    document.body.append(button)
+    await button.updateComplete
+
+    const menu = new RibbonMenu()
+    menu.groups = [{label: "Insertions", buttons: [
+      {label: "Paragraph", action: "element:p"},
+      {label: "Saved snippet", action: "user-snippet:snippet-1"},
+      {label: "Bold", action: "mark:b"},
+      {label: "Disc marker", action: "list-style:ul:disc"},
+      {label: "Fraction", action: "insert-math:frac"},
+    ]}]
+    document.body.append(menu)
+    await menu.updateComplete
+
+    const events = vi.fn()
+    button.addEventListener("insertion-hover-change", events)
+    menu.addEventListener("insertion-hover-change", events)
+    const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    for(const type of ["mouseenter", "mouseleave", "focus", "blur"]) main.dispatchEvent(new Event(type))
+    const paragraph = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="element:p"]')!
+    const snippet = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="user-snippet:snippet-1"]')!
+    const bold = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="mark:b"]')!
+    const listStyle = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="list-style:ul:disc"]')!
+    const fraction = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="insert-math:frac"]')!
+    for(const type of ["mouseenter", "mouseleave", "focus", "blur"]) paragraph.dispatchEvent(new Event(type))
+    paragraph.dispatchEvent(new Event("mouseenter"))
+    paragraph.dispatchEvent(new Event("dragstart", {bubbles: true, cancelable: true}))
+    for(const type of ["mouseenter", "mouseleave", "focus", "blur"]) snippet.dispatchEvent(new Event(type))
+    for(const type of ["mouseenter", "focus"]) bold.dispatchEvent(new Event(type))
+    for(const type of ["mouseenter", "focus"]) listStyle.dispatchEvent(new Event(type))
+    for(const type of ["mouseenter", "focus"]) fraction.dispatchEvent(new Event(type))
+    for(const type of ["mouseenter", "focus", "mouseleave", "blur"]) main.dispatchEvent(new Event(type))
+    snippet.dispatchEvent(new Event("mouseenter"))
+    menu.closeSubmenus()
+    snippet.dispatchEvent(new Event("mouseenter"))
+    menu.groups = [{label: "Changed", buttons: []}]
+    await menu.updateComplete
+    menu.groups = [{label: "Restored", buttons: [{label: "Paragraph", action: "element:p"}]}]
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="element:p"]')!.dispatchEvent(new Event("mouseenter"))
+    menu.remove()
+
+    expect(events.mock.calls.map(([event]) => event.detail.hovered)).toEqual([
+      true, false, true, false,
+      true, false, true, false,
+      true, false,
+      true, false,
+      true, false,
+      true, false,
+      true, false, true, false,
+      true, false,
+    ])
+  })
+
   it("keeps wrapped package labels compact without cropping underlines", async () => {
     for(const label of ["Map", "Algebra Term", "PhET Simulation", "Interactive Video", "Neural Network", "Branching Scenario"]) {
       const button = new RibbonButton()

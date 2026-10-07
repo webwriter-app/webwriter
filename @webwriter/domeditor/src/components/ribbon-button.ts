@@ -5,7 +5,7 @@ import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
 import "./qr-code"
 import type {RibbonMenu, RibbonMenuButton, RibbonMenuGroup} from "./ribbon-menu"
-import {ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
+import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
 export type RibbonButtonDetails = {
   heading: string
@@ -1088,6 +1088,9 @@ export class RibbonButton extends LitElement {
   private detailsOpen = false
   private detailsPosition = {left: 8, top: 8}
   private submenuTrigger: HTMLButtonElement | null = null
+  private insertionHoverPointer = false
+  private insertionHoverFocus = false
+  private insertionHoverActive = false
 
   private showPopoverElement(element: HTMLElement | null) {
     if(typeof element?.showPopover !== "function") return
@@ -1141,6 +1144,7 @@ export class RibbonButton extends LitElement {
   }
 
   disconnectedCallback() {
+    this.clearInsertionHover()
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
     document.removeEventListener("keydown", this.handleDocumentKeydown)
     this.closeSubmenuPopover()
@@ -1150,6 +1154,7 @@ export class RibbonButton extends LitElement {
   }
 
   protected updated(changedProperties: Map<PropertyKey, unknown>) {
+    if(changedProperties.has("disabled") && this.disabled) this.clearInsertionHover()
     if(changedProperties.has("disabled") && this.disabled && this.submenuOpen) {
       this.closeSubmenuPopover()
     }
@@ -1189,6 +1194,31 @@ export class RibbonButton extends LitElement {
   private dispatchIconHover(hovered: boolean) {
     this.dispatchEvent(new CustomEvent<{hovered: boolean}>("ribbon-icon-hover", {
       detail: {hovered}, bubbles: true, composed: true,
+    }))
+  }
+
+  private dispatchInsertionHover(hovered: boolean, source: "pointer" | "focus") {
+    if(source === "pointer") this.insertionHoverPointer = hovered
+    else this.insertionHoverFocus = hovered
+    const action = this.action || this.label
+    const insertable = !action.startsWith("insert-math:") && !action.startsWith("list-style:") && action !== "element:math"
+      && ((this.variant === "insertion" && Boolean(ribbonElementTag(this.label, action)))
+        || ribbonInsertionAction(action) || ribbonElementInsertionAction(action))
+    const active = insertable && !this.disabled && (this.insertionHoverPointer || this.insertionHoverFocus)
+    if(active === this.insertionHoverActive) return
+    this.insertionHoverActive = active
+    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("insertion-hover-change", {
+      detail: {hovered: active}, bubbles: true, composed: true,
+    }))
+  }
+
+  private clearInsertionHover() {
+    this.insertionHoverPointer = false
+    this.insertionHoverFocus = false
+    if(!this.insertionHoverActive) return
+    this.insertionHoverActive = false
+    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("insertion-hover-change", {
+      detail: {hovered: false}, bubbles: true, composed: true,
     }))
   }
 
@@ -1361,10 +1391,13 @@ export class RibbonButton extends LitElement {
           aria-expanded=${this.dropdownOnClick && hasDropdown ? String(this.submenuOpen) : nothing}
           title=${title}
           ?disabled=${this.disabled}
-          @focus=${this.showDetails}
-          @blur=${this.hideDetails}
+          @mouseenter=${() => this.dispatchInsertionHover(true, "pointer")}
+          @mouseleave=${() => this.dispatchInsertionHover(false, "pointer")}
+          @focus=${() => { this.showDetails(); this.dispatchInsertionHover(true, "focus") }}
+          @blur=${() => { this.hideDetails(); this.dispatchInsertionHover(false, "focus") }}
           @click=${this.handleClick}
           @dragstart=${(event: DragEvent) => {
+            this.clearInsertionHover()
             const icon = (event.currentTarget as HTMLElement).querySelector(".button-icon")
             if(dragTag) startElementDrag(event, dragTag, icon)
             else if(dragPackageInsertion) startRibbonInsertionDrag(event, dragAction, icon, this.dragHTML)

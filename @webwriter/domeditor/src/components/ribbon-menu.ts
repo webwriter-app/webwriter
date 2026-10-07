@@ -486,6 +486,8 @@ export class RibbonMenu extends LitElement {
   private focusedLabelAction: string | null = null
   private confirmedLabelAction: string | null = null
   private confirmedLabelInputs = new WeakMap<HTMLTextAreaElement, string>()
+  private insertionHoverSources = new WeakMap<Element, {pointer: boolean, focus: boolean, active: boolean}>()
+  private activeInsertionHoverTarget: Element | null = null
 
   static properties = {
     groups: {attribute: false},
@@ -510,7 +512,10 @@ export class RibbonMenu extends LitElement {
     ))) input.blur()
   }
 
-  protected updated() {
+  protected updated(changed: Map<PropertyKey, unknown>) {
+    if(changed.has("groups") && this.activeInsertionHoverTarget && !this.activeInsertionHoverTarget.isConnected) {
+      this.clearInsertionHover()
+    }
     this.focusEditingLabel()
     if(this.hidden || !this.confirmedLabelAction || this.renderRoot.querySelector(".item-label-input")) return
     const button = Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>(".item[data-action]"))
@@ -581,6 +586,7 @@ export class RibbonMenu extends LitElement {
   }
 
   private startDrag(event: DragEvent, button: RibbonMenuButton) {
+    this.clearInsertionHover()
     const tag = this.dragTag(button)
     const action = this.packageInsertionAction(button)
     const icon = (event.currentTarget as HTMLElement).querySelector(".item-icon")
@@ -663,6 +669,50 @@ export class RibbonMenu extends LitElement {
     if(button !== undefined && this.buttonAction(button) !== "pin-snippet") return
     this.dispatchEvent(new CustomEvent<{hovered: boolean}>("ribbon-icon-hover", {
       detail: {hovered}, bubbles: true, composed: true,
+    }))
+  }
+
+  private dispatchInsertionHover(hovered: boolean, button: RibbonMenuButton, source: "pointer" | "focus", target: Element) {
+    const state = this.insertionHoverSources.get(target) ?? {pointer: false, focus: false, active: false}
+    state[source] = hovered
+    this.insertionHoverSources.set(target, state)
+    const action = this.buttonAction(button)
+    const eligible = !action.startsWith("insert-math:") && !action.startsWith("list-style:") && action !== "element:math"
+      && (Boolean(this.dragTag(button)) || Boolean(this.packageInsertionAction(button)))
+      && !(typeof button !== "string" && button.disabled)
+    const active = eligible && (state.pointer || state.focus)
+    if(active === state.active) return
+    if(active && this.activeInsertionHoverTarget && this.activeInsertionHoverTarget !== target) {
+      const previous = this.insertionHoverSources.get(this.activeInsertionHoverTarget)
+      if(previous) {
+        previous.pointer = false
+        previous.focus = false
+        previous.active = false
+      }
+      this.dispatchEvent(new CustomEvent<{hovered: boolean}>("insertion-hover-change", {
+        detail: {hovered: false}, bubbles: true, composed: true,
+      }))
+    }
+    state.active = active
+    if(active) this.activeInsertionHoverTarget = target
+    else if(this.activeInsertionHoverTarget === target) this.activeInsertionHoverTarget = null
+    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("insertion-hover-change", {
+      detail: {hovered: active}, bubbles: true, composed: true,
+    }))
+  }
+
+  private clearInsertionHover() {
+    const target = this.activeInsertionHoverTarget
+    if(!target) return
+    const state = this.insertionHoverSources.get(target)
+    if(state) {
+      state.pointer = false
+      state.focus = false
+      state.active = false
+    }
+    this.activeInsertionHoverTarget = null
+    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("insertion-hover-change", {
+      detail: {hovered: false}, bubbles: true, composed: true,
     }))
   }
 
@@ -769,11 +819,17 @@ export class RibbonMenu extends LitElement {
   }
 
   closeSubmenus() {
+    this.clearInsertionHover()
     this.confirmedLabelAction = null
     this.renderRoot?.querySelector<HTMLTextAreaElement>(".item-label-input")?.blur()
     this.openSubmenu = null
     this.openSubmenuToggle = null
     this.renderRoot?.querySelectorAll<RibbonMenu>("ribbon-menu").forEach(menu => menu.closeSubmenus())
+  }
+
+  disconnectedCallback() {
+    this.clearInsertionHover()
+    super.disconnectedCallback()
   }
 
   render() {
@@ -844,10 +900,10 @@ export class RibbonMenu extends LitElement {
                       ?disabled=${item.disabled}
                       aria-haspopup=${item.menuOnly ? "menu" : nothing}
                       aria-expanded=${item.menuOnly ? isOpen : nothing}
-                      @mouseenter=${() => this.dispatchIconHover(true, button)}
-                      @mouseleave=${() => this.dispatchIconHover(false, button)}
-                      @focus=${() => this.dispatchIconHover(true, button)}
-                      @blur=${() => this.dispatchIconHover(false, button)}
+                      @mouseenter=${(event: Event) => { this.dispatchIconHover(true, button); this.dispatchInsertionHover(true, button, "pointer", event.currentTarget as Element) }}
+                      @mouseleave=${(event: Event) => { this.dispatchIconHover(false, button); this.dispatchInsertionHover(false, button, "pointer", event.currentTarget as Element) }}
+                      @focus=${(event: Event) => { this.dispatchIconHover(true, button); this.dispatchInsertionHover(true, button, "focus", event.currentTarget as Element) }}
+                      @blur=${(event: Event) => { this.dispatchIconHover(false, button); this.dispatchInsertionHover(false, button, "focus", event.currentTarget as Element) }}
                       @click=${(event: Event) => item.menuOnly ? this.toggleSubmenu(label, event) : this.handleClick(button)}
                       @dragstart=${(event: DragEvent) => this.startDrag(event, button)}
                     >

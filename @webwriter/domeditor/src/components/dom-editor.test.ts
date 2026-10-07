@@ -1295,7 +1295,7 @@ describe("DomEditor iframe setup", () => {
     })
     iframe.contentDocument!.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
-    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "insertMedia", media: "picture"})
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "insertElement", tag: "picture"})
   })
 
   it.each([true, false])("dispatches all numbered insertion shortcuts (Apple: %s)", async apple => {
@@ -1305,16 +1305,16 @@ describe("DomEditor iframe setup", () => {
       detail: defaultAppSettings(apple), bubbles: true, composed: true,
     }))
     const commands = [
-      {type: "setBlockType", tag: "h1"},
-      {type: "insertDetails"},
-      {type: "toggleList", listType: "ul"},
-      {type: "insertTable", rows: 2, columns: 2},
-      {type: "insertMedia", media: "picture"},
-      {type: "insertGraphic"},
-      {type: "insertMedia", media: "audio"},
-      {type: "insertMedia", media: "iframe"},
-      {type: "insertMedia", media: "video"},
-      {type: "insertMath"},
+      {type: "insertElement", tag: "h1"},
+      {type: "insertElement", tag: "details"},
+      {type: "insertElement", tag: "ul"},
+      {type: "insertElement", tag: "table"},
+      {type: "insertElement", tag: "picture"},
+      {type: "insertElement", tag: "svg"},
+      {type: "insertElement", tag: "audio"},
+      {type: "insertElement", tag: "iframe"},
+      {type: "insertElement", tag: "video"},
+      {type: "insertElement", tag: "math"},
     ]
     for(const [index, command] of commands.entries()) {
       execute.mockClear()
@@ -4218,7 +4218,7 @@ describe("DomEditor.execute()", () => {
     }
   })
 
-  it("executes the paragraph-format action from the Start ribbon", async () => {
+  it("inserts a paragraph from the Start ribbon", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
@@ -4226,7 +4226,7 @@ describe("DomEditor.execute()", () => {
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
 
-    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "p"})
+    expect(execute).toHaveBeenCalledWith({type: "insertElement", tag: "p"})
   })
 
   it("opens Edit after inserting an element with contextual edit options", async () => {
@@ -4598,6 +4598,10 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     for(const hovered of [true, false]) ribbon.dispatchEvent(new CustomEvent("snippet-hover-change", {detail: {hovered}, bubbles: true, composed: true}))
     expect(execute.mock.calls.map(([action]) => action)).toEqual([{type: "hoverSnippet", hovered: true}, {type: "hoverSnippet", hovered: false}])
+    for(const hovered of [true, false]) ribbon.dispatchEvent(new CustomEvent("insertion-hover-change", {detail: {hovered}, bubbles: true, composed: true}))
+    expect(execute.mock.calls.slice(2).map(([action]) => action)).toEqual([
+      {type: "hoverInsertion", hovered: true}, {type: "hoverInsertion", hovered: false},
+    ])
     ribbon.expanded = expanded
     ribbon.menuOpen = !expanded
     await ribbon.updateComplete
@@ -5102,7 +5106,7 @@ describe("DomEditor.execute()", () => {
       composed: true,
     }))
 
-    expect(execute).toHaveBeenNthCalledWith(1, {type: "insertGraphic"})
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "insertElement", tag: "svg"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "insertGraphic", shape: "ellipse"})
     expect(execute).toHaveBeenNthCalledWith(3, {type: "addGraphicShape", shape: "line"})
     expect(execute).toHaveBeenNthCalledWith(4, {type: "setGraphicParameter", name: "stroke-width", value: "24"})
@@ -7300,7 +7304,7 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Preformatted Text"]')).toBeNull()
     paragraph.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
-    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "p"})
+    expect(execute).toHaveBeenCalledWith({type: "insertElement", tag: "p"})
   })
 
   it("closes expanded ribbon-button menus when the editor receives focus", async () => {

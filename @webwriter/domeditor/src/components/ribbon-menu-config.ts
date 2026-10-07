@@ -72,7 +72,7 @@ export const graphicOrderButtons: RibbonMenuButton[] = [
 const insertionButtonForTag = (tag: string): RibbonMenuButton => {
   const item = insertionMenuItems.find(candidate => candidate.tag === tag)
   if(!item) throw new TypeError(`Missing insertion menu item for <${tag}>`)
-  return {label: item.name, action: item.name, icon: item.icon ?? item.name}
+  return {label: item.name, action: `element:${tag}`, icon: item.icon ?? item.name}
 }
 
 const insertionSubmenuForTags = (tags: readonly string[]) => tags.map(insertionButtonForTag)
@@ -90,7 +90,7 @@ export const orderedListStyles: RibbonMenuButton[] = [
 export const listInsertionOptions: RibbonMenuButton[] = [
   {
     label: "Enumeration",
-    action: "toggle-list:ol",
+    action: "element:ol",
     icon: "Enumeration",
     submenu: orderedListStyles,
   },
@@ -112,7 +112,7 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       if(item.tag === "ul") {
         return [{
           label: item.name,
-          action: "toggle-list:ul",
+          action: "element:ul",
           icon: "List",
           submenu: listInsertionOptions,
         }]
@@ -120,7 +120,7 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       if(item.tag === "ol") return []
       return [{
         label: item.name,
-        action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
+        action: `element:${item.tag}`,
         icon: item.icon ?? item.name,
       } satisfies RibbonMenuButton]
     }
@@ -128,22 +128,22 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
     if(item.section === "Text" && item.tag === "h1") {
       return [{
         label: "Heading",
-        action: item.name,
+        action: `element:${item.tag}`,
         submenu: insertionSubmenuForTags(headingInsertionTags),
       } satisfies RibbonMenuButton]
     }
     if(item.section === "Text" && headingInsertionTags.includes(item.tag as typeof headingInsertionTags[number])) return []
     if(item.section === "Media" && item.tag === "section") {
-      return [{label: item.name, action: "toggle-section", icon: item.icon ?? item.name}]
+      return [{label: item.name, action: `element:${item.tag}`, icon: item.icon ?? item.name}]
     }
     if(item.section === "Media" && groupedMediaInsertionTags.has(item.tag)) return []
     if(item.section === "Media" && item.tag === "svg") {
-      return [{label: item.name, action: item.name, icon: "Graphic", submenu: groupedGraphicShapeButtons}]
+      return [{label: item.name, action: `element:${item.tag}`, icon: "Graphic", submenu: groupedGraphicShapeButtons}]
     }
     if(item.section === "Media" && item.tag === "math") {
       return [{label: item.name, action: item.name, icon: "Formula", submenu: insertMathStructureButtons}]
     }
-    return [item.name]
+    return [{label: item.name, action: `element:${item.tag}`, icon: item.icon ?? item.name}]
   })
 
 const insertionButtonLabel = (button: RibbonMenuButton) => typeof button === "string" ? button : button.label
