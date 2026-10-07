@@ -1938,6 +1938,31 @@ await check("native drag floats in target halves and preserves ordinary gap drop
       editor = new DOMEditor({bridgeOrigin: parent.location.origin});
       const peer = document.querySelector("#peer"), source = document.querySelector("#source"), main = peer.parentElement;
       const siblings = Array.from(main.childNodes), originalStyle = source.style.cssText;
+      const selfChild = source.appendChild(document.createElement("span"));
+      selfChild.textContent = "nested";
+      for(const mode of ["transfer", "transformation"]) for(const fraction of [0.25, 0.75]) {
+        source.style.cssText = originalStyle;
+        editor.features.selection.selectElement(source);
+        const rect = source.getBoundingClientRect();
+        const init = {clientX:rect.left + rect.width * fraction, clientY:rect.top + rect.height / 2, bubbles:true, cancelable:true, composed:true};
+        if(mode === "transfer") {
+          const dataTransfer = new DataTransfer();
+          const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
+          dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
+          selfChild.dispatchEvent(new DragEvent("dragover", {...init, dataTransfer}));
+          assert(!editor.appendix.querySelector("#◆float-drop-preview"), "self transfer shows a float preview");
+          selfChild.dispatchEvent(new DragEvent("drop", {...init, dataTransfer}));
+        }
+        else {
+          const transform = editor.features.transformation;
+          transform.handleMoveStart(new MouseEvent("mousedown", {...init, button:0, clientX:rect.left + rect.width / 2}));
+          transform.handleMoveDrag(new MouseEvent("mousemove", {...init, button:0}));
+          assert(!editor.appendix.querySelector("#◆float-drop-preview"), "self transformation shows a float preview");
+          transform.handleMoveEnd();
+        }
+        assert(source.style.cssText === originalStyle && source.parentElement === main, "self drop changed authored float or styles");
+      }
+      selfChild.remove();
       for(const [fraction, side, placement] of [[0.35, "left", "before"], [0.5, "right", "before"], [0.65, "right", "before"]]) {
         source.style.cssText = originalStyle;
         editor.features.selection.selectElement(source);
@@ -1963,6 +1988,7 @@ await check("native drag floats in target halves and preserves ordinary gap drop
       for(const placement of ["before", "after", "outside-left"]) {
         source.style.cssText = originalStyle;
         main.append(source);
+        editor.features.manipulation.setFloat(source, "right");
         editor.features.selection.selectElement(source);
         await new Promise(requestAnimationFrame);
         const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
@@ -1975,13 +2001,14 @@ await check("native drag floats in target halves and preserves ordinary gap drop
         main.dispatchEvent(new DragEvent("dragover", init));
         assert(!editor.appendix.querySelector("#◆float-drop-preview"), "gap incorrectly showed a float preview");
         main.dispatchEvent(new DragEvent("drop", init));
-        assert(source.parentElement === main && source.getAttribute("style") === originalStyle, "ordinary gap drop changed source styles or nesting");
+        assert(source.parentElement === main && getComputedStyle(source).float === "none" && !source.style.margin && !source.style.maxWidth, "ordinary gap drop retained float spacing or nesting");
+        assert(source.style.width === "120px" && source.style.height === "50px" && source.style.color === "teal", "ordinary gap drop changed unrelated styles");
         if(placement === "before") assert(source.nextElementSibling === peer, "drop above peer did not insert before it");
         if(placement === "after") assert(source.previousElementSibling === peer, "drop below peer did not insert after it");
       }
       for(const overElement of [false, true]) {
         const dataTransfer = new DataTransfer();
-        dataTransfer.setData("text/html", '<picture><img alt="Dropped image"></picture>');
+        dataTransfer.setData("text/html", '<picture style="float:right;margin:5px;max-width:50%;color:red"><img alt="Dropped image"></picture>');
         const rect = peer.getBoundingClientRect();
         const init = {dataTransfer, clientX:Math.ceil(rect.left + rect.width * 0.35), clientY:overElement ? rect.top + 3 : rect.bottom + 5,
           bubbles:true, cancelable:true, composed:true};
@@ -1996,6 +2023,7 @@ await check("native drag floats in target halves and preserves ordinary gap drop
       for(const fraction of [0.35, 0.5, 0.65, null]) {
         source.style.cssText = originalStyle;
         main.append(source);
+        editor.features.manipulation.setFloat(source, "left");
         editor.features.selection.selectElement(source);
         editor.features.transformation.startTransform(source);
         const start = source.getBoundingClientRect(), rect = peer.getBoundingClientRect();
@@ -2005,7 +2033,7 @@ await check("native drag floats in target halves and preserves ordinary gap drop
         assert(fraction === null ? !preview || preview.hidden : preview && !preview.hidden, "drag handle preview ignored element bounds");
         editor.features.transformation.handleMoveEnd();
         assert(source.style.float === (fraction === null ? "" : fraction < 0.5 ? "left" : "right"), "drag handle did not use the target halves");
-        assert(source.style.margin === (fraction === null ? "9px" : "5px"), "ordinary handle drop changed source margin");
+        assert(source.style.margin === (fraction === null ? "" : "5px"), "handle gap drop retained float spacing");
         if(fraction === null) assert(source.previousElementSibling === peer, "handle gap drop did not place source after the paragraph");
       }
       const picture = document.createElement("picture"), image = document.createElement("img"), text = document.createElement("p");
@@ -2043,6 +2071,46 @@ await check("native drag floats in target halves and preserves ordinary gap drop
       editor.features.selection.actions.hoverNode({type:"hoverNode", path:null});
       picture.dispatchEvent(new PointerEvent("pointerover", {bubbles:true}));
       assert(!hover.querySelector('[part="hover-float-outline"]'), "floated image lost its own ordinary outline");
+      const paragraphText = text.textContent;
+      for(const side of ["left", "right"]) for(const long of [false, true]) {
+        editor.features.manipulation.setFloat(picture, side);
+        text.textContent = long ? paragraphText : "Text flows beside the floated image.";
+        editor.features.selection.selectElement(text);
+        text.dispatchEvent(new PointerEvent("pointerover", {bubbles:true}));
+        await new Promise(requestAnimationFrame);
+        const selected = editor.features.selection.selectionCaret;
+        assert(selected.getAttribute("part").includes("selection-caret-floats") && getComputedStyle(selected).outlineStyle === "none", "selection outline crosses the floated image");
+        assert(selected.querySelector('[part~="selection-float-outline"] mask').id !== hover.querySelector("mask").id, "selection and hover contours share a mask ID");
+        const imageBox = picture.getBoundingClientRect();
+        const controls = editor.features.transformation.overlay.querySelectorAll(".◆transform-overlay-scale, #◆transform-overlay-selector");
+        for(const control of controls) {
+          if(control.hidden) continue;
+          const box = control.getBoundingClientRect();
+          assert(!(box.left < imageBox.right && box.right > imageBox.left && box.top < imageBox.bottom && box.bottom > imageBox.top), "selection handle overlaps the floated image: " + control.id);
+        }
+        editor.features.selection.captureElement(text);
+        assert(selected.querySelectorAll(".◆capture-edge").length === 4, "float contour replaced capture edges");
+        assert(getComputedStyle(selected.querySelector('[part~="selection-float-outline"]')).strokeDasharray === "none", "captured contour is still dotted");
+      }
+      text.textContent = paragraphText;
+      range.selectNodeContents(text);
+      for(const side of ["left", "right"]) {
+        editor.features.manipulation.setFloat(picture, side);
+        const line = range.getClientRects()[0];
+        const init = {bubbles:true, cancelable:true, button:0, buttons:1, pointerId:88, clientX:line.left + 10, clientY:line.top + line.height / 2};
+        text.dispatchEvent(new PointerEvent("pointerover", init));
+        text.dispatchEvent(new PointerEvent("pointerdown", init));
+        // Pointer capture retargets boundary and move events to BODY.
+        document.body.dispatchEvent(new PointerEvent("pointerover", init));
+        document.body.dispatchEvent(new PointerEvent("pointermove", {...init, clientX:line.left + 30}));
+        await new Promise(requestAnimationFrame);
+        assert(hover.getAttribute("part").includes("hover-caret-floats") && getComputedStyle(hover).outlineStyle === "none", "held pointer restored the rectangular hover outline");
+        assert(hover.querySelector('[part~="hover-float-outline"] mask path'), "held pointer lost the float contour");
+        document.body.dispatchEvent(new PointerEvent("pointerup", {...init, buttons:0}));
+      }
+      editor.features.manipulation.setFloat(picture, "right");
+      editor.features.selection.selectElement(picture);
+      assert(!editor.features.selection.selectionCaret.querySelector('[part~="selection-float-outline"]'), "floated image lost its own full selection outline");
       const preceding = document.createElement("p");
       preceding.textContent = "Preceding paragraph";
       main.prepend(preceding);

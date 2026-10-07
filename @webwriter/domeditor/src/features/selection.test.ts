@@ -240,6 +240,118 @@ describe("document hover outlines around native floats", () => {
   })
 })
 
+describe("selected outlines around native floats", () => {
+  const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  const rect = (element: HTMLElement, x: number, y: number, width: number, height: number) =>
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(x, y, width, height))
+
+  const outline = () => feature.selectionCaret?.querySelector<SVGSVGElement>('[part~="selection-float-outline"]') ?? null
+
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it.each(["left", "right"] as const)("masks a %s float around a selected element", side => {
+    const float = el("aside") as HTMLElement
+    const target = el("p", "selected") as HTMLElement
+    float.style.float = side
+    float.style.margin = "5px"
+    target.style.width = "100px"
+    target.style.height = "80px"
+    rect(float, side === "left" ? 0 : 60, 0, 40, 50)
+    rect(target, 0, 0, 100, 80)
+    const authored = editor.toHTML(true)
+
+    feature.selectElement(target)
+    const caret = feature.selectionCaret!
+    const selectionOutline = outline()
+
+    expect(caret.getAttribute("part")).toContain("selection-caret-floats")
+    expect(selectionOutline).toBeInstanceOf(SVGSVGElement)
+    expect(selectionOutline?.getAttribute("part")).toContain("selection-float-outline")
+    expect(selectionOutline?.querySelector("mask path")?.getAttribute("fill")).toBe("black")
+    expect(selectionOutline?.querySelector("mask path")?.getAttribute("d")).toContain(side === "left" ? "45" : "55")
+    expect(selectionOutline?.querySelector("mask")?.id).toBe("◆selection-float-mask")
+    expect(selectionOutline?.querySelector("mask")?.id).not.toBe("◆hover-float-mask")
+    expect(caret.querySelectorAll(".◆capture-edge")).toHaveLength(4)
+    expect(editor.toHTML(true)).toBe(authored)
+    expect(JSON.stringify(editor.doc.body.toJSON())).not.toContain("selection-float")
+    expect(editor.appendix.contains(selectionOutline)).toBe(true)
+  })
+
+  it("masks multiple floats, refreshes live geometry, and leaves a floated selection's native outline intact", async () => {
+    const firstFloat = el("aside") as HTMLElement
+    const target = el("p", "selected") as HTMLElement
+    const secondFloat = el("aside") as HTMLElement
+    firstFloat.style.float = "left"
+    secondFloat.style.float = "right"
+    target.style.width = "100px"
+    target.style.height = "80px"
+    const firstRect = rect(firstFloat, 0, 0, 30, 30)
+    rect(target, 0, 0, 100, 80)
+    const secondRect = rect(secondFloat, 70, 40, 30, 30)
+
+    feature.selectElement(target)
+    const caret = feature.selectionCaret!
+    expect(caret.getAttribute("part")).toContain("selection-caret-floats")
+    expect(outline()?.querySelectorAll("mask path")).toHaveLength(2)
+    const outlinePath = () => Array.from(outline()?.children ?? []).find(child => child.localName === "path")
+    const before = outlinePath()?.getAttribute("d")
+
+    firstRect.mockReturnValue(new DOMRect(150, 0, 30, 30))
+    secondRect.mockReturnValue(new DOMRect(0, 0, 30, 30))
+    await frame()
+    expect(outline()?.querySelectorAll("mask path")).toHaveLength(1)
+    expect(outlinePath()?.getAttribute("d")).not.toBe(before)
+
+    feature.selectElement(secondFloat)
+    expect(caret.getAttribute("part")).not.toContain("selection-caret-floats")
+    expect(outline()).toBeNull()
+    expect(secondFloat.style.float).toBe("right")
+  })
+
+  it("cleans selection float geometry on removal, selection changes, and disable", async () => {
+    const float = el("aside") as HTMLElement
+    const target = el("p", "selected") as HTMLElement
+    const other = el("p", "other") as HTMLElement
+    float.style.float = "left"
+    target.style.width = "100px"
+    target.style.height = "80px"
+    rect(float, 0, 0, 30, 30)
+    rect(target, 0, 0, 100, 80)
+    rect(other, 110, 0, 100, 80)
+    feature.captureElement(target)
+    const caret = feature.selectionCaret!
+    const edgeParts = [...caret.querySelectorAll(".◆capture-edge")].map(edge => edge.getAttribute("part"))
+    expect(caret.getAttribute("part")).toContain("selection-caret-floats")
+    expect(caret.querySelectorAll(".◆capture-edge")).toHaveLength(4)
+    expect(caret.querySelectorAll('[part~="selection-capture-edge"]')).toHaveLength(4)
+
+    float.remove()
+    await frame()
+    expect(caret.getAttribute("part")).not.toContain("selection-caret-floats")
+    expect(outline()).toBeNull()
+
+    document.body.append(float)
+    rect(float, 0, 0, 30, 30)
+    feature.selectElement(target)
+    expect(caret.getAttribute("part")).toContain("selection-caret-floats")
+    feature.selectElement(other)
+    expect(caret.getAttribute("part")).not.toContain("selection-caret-floats")
+    expect(outline()).toBeNull()
+    expect([...caret.querySelectorAll(".◆capture-edge")].map(edge => edge.getAttribute("part"))).toEqual(edgeParts)
+
+    feature.selectElement(target)
+    expect(caret.getAttribute("part")).toContain("selection-caret-floats")
+    feature.selectElement(el("p", "next"))
+    expect(caret.getAttribute("part")).not.toContain("selection-caret-floats")
+    expect(outline()).toBeNull()
+
+    feature.selectElement(target)
+    expect(caret.getAttribute("part")).toContain("selection-caret-floats")
+    feature.disable()
+    expect(editor.appendix.querySelector('[part~="selection-float-outline"]')).toBeNull()
+  })
+})
+
 it("keeps summary editable without allowing element or capture selection", () => {
   document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
   const summary = document.querySelector("summary")!
@@ -3286,6 +3398,70 @@ describe("selection invariants", () => {
     if(ending === "blur") window.dispatchEvent(new Event("blur"))
     else feature.disable()
     expect(paragraph).not.toHaveClass("◆pointer-hovered")
+  })
+
+  it.each(["left", "right"] as const)("keeps the %s float cutout while extending a captured text selection", async side => {
+    document.body.innerHTML = '<aside></aside><p>hello<mark>world</mark></p><p>world</p>'
+    const float = document.querySelector("aside")! as HTMLElement
+    const paragraph = document.querySelector("p")! as HTMLElement
+    const mark = paragraph.querySelector("mark")!
+    const next = document.querySelectorAll("p")[1] as HTMLElement
+    float.style.float = side
+    vi.spyOn(float, "getBoundingClientRect").mockReturnValue(new DOMRect(side === "left" ? 0 : 60, 0, 40, 50))
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 80))
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 90, 100, 80))
+    vi.spyOn(document, "caretPositionFromPoint").mockImplementation((x) => ({offsetNode: paragraph.firstChild!, offset: Math.min(5, Math.floor(x / 10))} as unknown as CaretPosition))
+    const hit = vi.spyOn(document, "elementFromPoint").mockReturnValue(paragraph)
+    const caret = feature.hoverCaret!
+
+    paragraph.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 17, button: 0, clientX: 20, clientY: 25}))
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).not.toBeNull()
+
+    paragraph.dispatchEvent(new PointerEvent("pointerout", {bubbles: true, pointerId: 17, buttons: 1, relatedTarget: document.body}))
+    document.body.dispatchEvent(new PointerEvent("pointerover", {bubbles: true, pointerId: 17, buttons: 1}))
+    document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, buttons: 1, clientX: 21, clientY: 25}))
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).not.toBeNull()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).not.toBeNull()
+
+    hit.mockReturnValue(mark)
+    document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, buttons: 1, clientX: 30, clientY: 25}))
+    expect(mark).toHaveClass("◆pointer-hovered")
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    hit.mockReturnValue(next)
+    document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, buttons: 1, clientX: 30, clientY: 100}))
+    expect(next).toHaveClass("◆pointer-hovered")
+    expect(caret.getAttribute("part")).not.toContain("hover-caret-floats")
+    expect(caret.querySelector('[part~="hover-float-outline"]')).toBeNull()
+
+    document.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 17}))
+    expect(document.body.querySelector(".◆pointer-hovered")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["pointerup", "pointercancel", "disable"] as const)("clears float hover after a captured drag ends by %s", ending => {
+    document.body.innerHTML = '<aside></aside><p>hello</p>'
+    const float = document.querySelector("aside")! as HTMLElement
+    const paragraph = document.querySelector("p")! as HTMLElement
+    float.style.float = "left"
+    vi.spyOn(float, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 40, 50))
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 80))
+    hitTest()
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(paragraph)
+    const caret = feature.hoverCaret!
+    paragraph.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 18, button: 0, clientX: 20, clientY: 25}))
+    expect(caret.getAttribute("part")).toContain("hover-caret-floats")
+    document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 18, buttons: 1, clientX: 21, clientY: 25}))
+    if(ending === "disable") feature.disable()
+    else document.body.dispatchEvent(new PointerEvent(ending, {bubbles: true, pointerId: 18}))
+    expect(paragraph).not.toHaveClass("◆pointer-hovered")
+    expect(document.querySelector(".◆pointer-hovered")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it.each(["pointerup", "pointercancel"])("captures paragraph drags on the body and releases on %s", ending => {

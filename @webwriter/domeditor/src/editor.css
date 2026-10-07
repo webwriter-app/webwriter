@@ -500,7 +500,8 @@ body:has(.◆element-hovered)::part(hover-caret-floats) {
   outline: none;
 }
 
-body::part(hover-float-outline) {
+body::part(hover-float-outline),
+body::part(selection-float-outline) {
   position: absolute;
   left: -4px;
   top: -4px;
@@ -516,6 +517,15 @@ body::part(hover-float-outline) {
 body:has(.◆element-hovered)::part(hover-float-outline) {
   stroke: var(--sl-color-primary-400);
   stroke-width: 2px;
+}
+
+body::part(selection-float-outline) {
+  stroke: var(--sl-color-primary-400);
+  stroke-width: 2px;
+}
+
+body::part(selection-float-outline-capture) {
+  stroke-dasharray: none;
 }
 
 body:is(.ww-canvas, .ww-slides)::part(hover-caret-selected-root) {
@@ -570,6 +580,10 @@ body::part(selection-caret-capture) {
   outline: 2px solid var(--sl-color-primary-400);
 }
 
+body::part(selection-caret-floats) {
+  outline: none;
+}
+
 body::part(selection-capture-edge) {
   display: none;
   position: absolute;
@@ -581,22 +595,30 @@ body:has(.◆element-capture-selected)::part(selection-capture-edge) {
 }
 
 body::part(selection-capture-edge-top) {
-  inset: -4px -4px auto;
+  top: -4px;
+  left: calc(var(--selection-flow-top-left, 0px) - 4px);
+  width: calc(var(--selection-flow-top-right, 100%) - var(--selection-flow-top-left, 0px) + 8px);
   height: 8px;
 }
 
 body::part(selection-capture-edge-bottom) {
-  inset: auto -4px -4px;
+  bottom: -4px;
+  left: calc(var(--selection-flow-bottom-left, 0px) - 4px);
+  width: calc(var(--selection-flow-bottom-right, 100%) - var(--selection-flow-bottom-left, 0px) + 8px);
   height: 8px;
 }
 
 body::part(selection-capture-edge-left) {
-  inset: 0 auto 0 -4px;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--selection-flow-left, 0px) - 4px);
   width: 8px;
 }
 
 body::part(selection-capture-edge-right) {
-  inset: 0 -4px 0 auto;
+  top: 0;
+  bottom: 0;
+  right: calc(100% - var(--selection-flow-right, 100%) - 4px);
   width: 8px;
 }
 
@@ -1608,8 +1630,6 @@ body::part(transform-overlay-edge) {
 }
 body::part(transform-overlay-edge-up),
 body::part(transform-overlay-edge-down) {
-  left: 0;
-  width: 100%;
   height: 8px;
   cursor: ns-resize;
 }
@@ -1620,30 +1640,38 @@ body::part(transform-overlay-edge-right) {
   height: 100%;
   cursor: ew-resize;
 }
-body::part(transform-overlay-edge-up) { top: -7px; }
-body::part(transform-overlay-edge-down) { bottom: -7px; }
-body::part(transform-overlay-edge-left) { left: -7px; }
-body::part(transform-overlay-edge-right) { right: -7px; }
+body::part(transform-overlay-edge-up) {
+  top: -7px;
+  left: var(--selection-flow-top-left, 0px);
+  width: calc(var(--selection-flow-top-right, 100%) - var(--selection-flow-top-left, 0px));
+}
+body::part(transform-overlay-edge-down) {
+  bottom: -7px;
+  left: var(--selection-flow-bottom-left, 0px);
+  width: calc(var(--selection-flow-bottom-right, 100%) - var(--selection-flow-bottom-left, 0px));
+}
+body::part(transform-overlay-edge-left) { left: calc(var(--selection-flow-left, 0px) + var(--selection-flow-handle-left, -7px)); }
+body::part(transform-overlay-edge-right) { right: calc(100% - var(--selection-flow-right, 100%) + var(--selection-flow-handle-right, -7px)); }
 body::part(transform-overlay-edge-move) { cursor: move; }
 /* Center 8px handles on the existing 2px selection outline, offset by 2px. */
 body::part(transform-overlay-scale-up-left) {
   top: -7px;
-  left: -7px;
+  left: calc(var(--selection-flow-top-left, 0px) + var(--selection-flow-handle-top-left, -7px));
   cursor: nwse-resize;
 }
 body::part(transform-overlay-scale-up-right) {
   top: -7px;
-  right: -7px;
+  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, -7px));
   cursor: nesw-resize;
 }
 body::part(transform-overlay-scale-down-left) {
   bottom: -7px;
-  left: -7px;
+  left: calc(var(--selection-flow-bottom-left, 0px) + var(--selection-flow-handle-bottom-left, -7px));
   cursor: nesw-resize;
 }
 body::part(transform-overlay-scale-down-right) {
   bottom: -7px;
-  right: -7px;
+  right: calc(100% - var(--selection-flow-bottom-right, 100%) + var(--selection-flow-handle-bottom-right, -7px));
   cursor: nwse-resize;
 }
 body::part(transform-overlay-scale-up-up) { top: -7px; left: calc(50% - 4px); cursor: ns-resize; }
@@ -1907,7 +1935,7 @@ body::part(transform-overlay-z-front)::before {
 }
 body::part(transform-overlay-selector) {
   position: absolute;
-  left: calc(50% - 10px);
+  left: calc((var(--selection-flow-top-left, 0px) + var(--selection-flow-top-right, 100%)) / 2 - 10px);
   top: -13px;
   width: 20px;
   height: 20px;

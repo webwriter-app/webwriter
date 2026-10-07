@@ -472,7 +472,9 @@ export class TransformationFeature extends EditorFeature {
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
     Object.assign(overlay.style, styles)
-    this.editor.features.selection.positionTransformCaret(target, overlay.style)
+    const floats = this.editor.features.selection.floatExclusions(target, rect, styles)
+    this.#positionFlowControls(width, height, floats)
+    this.editor.features.selection.positionTransformCaret(target, overlay.style, floats)
     overlay.classList.toggle("◆transform-overlay-narrow", rect.width < 120)
     const centerY = rect.top + rect.height / 2
     const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
@@ -501,6 +503,32 @@ export class TransformationFeature extends EditorFeature {
     this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
     this.#syncControlParts()
     this.#updateContextMarkers()
+  }
+
+  /** Place controls on the text spans at the contour's top and bottom. The
+   * authored border box remains the source of truth for resize gestures. */
+  #positionFlowControls(width: number, height: number, floats: {left: number, right: number, top: number, bottom: number}[]) {
+    const overlay = this.overlay
+    const frames = [overlay, this.editor.features.selection.selectionCaret].filter((frame): frame is HTMLElement => Boolean(frame))
+    if(!floats.length) {
+      for(const frame of frames) for(const property of Array.from(frame.style)) if(property.startsWith("--selection-flow-")) frame.style.removeProperty(property)
+      return
+    }
+    const span = (y: number) => {
+      let spans = [{left: 0, right: width}]
+      for(const box of floats.filter(box => box.top <= y && box.bottom >= y)) {
+        spans = spans.flatMap(part => box.right <= part.left || box.left >= part.right ? [part]
+          : [...(box.left > part.left ? [{left: part.left, right: box.left}] : []), ...(box.right < part.right ? [{left: box.right, right: part.right}] : [])])
+      }
+      return spans.sort((a, b) => (b.right - b.left) - (a.right - a.left))[0] ?? {left: 0, right: 0}
+    }
+    const top = span(0), bottom = span(height)
+    const bounds = {"top-left": top.left, "top-right": top.right, "bottom-left": bottom.left, "bottom-right": bottom.right,
+      left: Math.min(top.left, bottom.left), right: Math.max(top.right, bottom.right),
+      "handle-top-left": top.left > 0 ? -4 : -7, "handle-top-right": top.right < width ? -4 : -7,
+      "handle-bottom-left": bottom.left > 0 ? -4 : -7, "handle-bottom-right": bottom.right < width ? -4 : -7,
+      "handle-left": Math.min(top.left, bottom.left) > 0 ? -4 : -7, "handle-right": Math.max(top.right, bottom.right) < width ? -4 : -7}
+    for(const frame of frames) for(const [property, value] of Object.entries(bounds)) frame.style.setProperty(`--selection-flow-${property}`, `${value}px`)
   }
 
   #scheduleFrame() {
@@ -875,20 +903,23 @@ export class TransformationFeature extends EditorFeature {
     }
     else if(gesture.moved && this.#drop) {
       const {element, placement, parent, float} = this.#drop
-      if(element === target && float && target.parentNode === parent) this.editor.features.manipulation.setFloat(target, float)
-      else if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
+      if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
         && (float === undefined || this.editor.features.manipulation.floatContainer(element, target) === element)) {
         if(gesture.mode === "move" && float === undefined) clearInlinePlacement(target)
         if(float) {
           this.editor.features.manipulation.placeFloat(target, element, float, placement)
         }
-        else element[placement](target)
+        else {
+          element[placement](target)
+          this.editor.features.manipulation.clearDropFloat(target)
+        }
       }
     }
     else if(gesture.moved && this.#normalDropRange && getDocumentRoot().contains(this.#normalDropRange.startContainer)
       && !target.contains(this.#normalDropRange.startContainer)) {
       if(gesture.mode === "move") clearInlinePlacement(target)
       this.#normalDropRange.insertNode(target)
+      this.editor.features.manipulation.clearDropFloat(target)
     }
     this.#gesture = null
     this.#suppressClick = gesture.moved
@@ -962,6 +993,7 @@ export class TransformationFeature extends EditorFeature {
     this.editor.features.selection.clearTransformCaret()
     if(this.#target) removeEditorMarker(this.#target, "◆transform-target")
     this.#target = null
+    this.#positionFlowControls(0, 0, [])
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)
     this.#frame = null
     this.#clearDrop()

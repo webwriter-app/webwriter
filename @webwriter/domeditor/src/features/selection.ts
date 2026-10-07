@@ -642,6 +642,10 @@ export class SelectionFeature extends EditorFeature {
     }
     for(const element of hovered) element.classList.add("◆", "◆pointer-hovered")
     this.#pointerHovered = hovered
+    if(this.#drag) {
+      this.#nativeHoverTarget = target
+      this.#refreshHoverGeometry()
+    }
   }
 
   /** Pointer capture keeps the whole editor drag in the outer document, even
@@ -946,19 +950,23 @@ export class SelectionFeature extends EditorFeature {
     },
     pointermove: event => {
       this.#handleKeyState(event)
-      this.#nativeHoverTarget = event.target instanceof Element ? event.target : null
-      this.#refreshHoverGeometry()
       if(this.#drag && this.#drag.pointerId === event.pointerId) {
         this.#updatePointerHover(document.elementFromPoint(event.clientX, event.clientY))
+      }
+      else {
+        this.#nativeHoverTarget = event.target instanceof Element ? event.target : null
+        this.#refreshHoverGeometry()
       }
       if(this.isInDragSelection) event.preventDefault()
       if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
     },
     pointerover: event => {
+      if(this.#drag && this.#drag.pointerId === event.pointerId) return
       this.#nativeHoverTarget = event.target instanceof Element ? event.target : null
       this.#refreshHoverGeometry()
     },
     pointerout: event => {
+      if(this.#drag && this.#drag.pointerId === event.pointerId) return
       this.#nativeHoverTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null
       this.#refreshHoverGeometry()
     },
@@ -1299,15 +1307,7 @@ export class SelectionFeature extends EditorFeature {
     const caret = this.#ensureHoverCaret()
     if(!freeform) {
       const rect = target.getBoundingClientRect()
-      const float = getComputedStyle(target).float
-      const floats = ["left", "right"].includes(float) ? []
-        : Array.from(getDocumentRoot().querySelectorAll("*")).filter(element => element !== target && !element.contains(target) && !target.contains(element)
-          && !atomicEditingContainer(element.parentElement, this.editor.schema)
-          && ["left", "right"].includes(getComputedStyle(element).float)).flatMap(element => {
-          const box = element.getBoundingClientRect(), style = getComputedStyle(element)
-          return box.width > 0 && box.height > 0 ? [{left: box.left - Math.max(0, parseFloat(style.marginLeft) || 0), right: box.right + Math.max(0, parseFloat(style.marginRight) || 0),
-            top: box.top - Math.max(0, parseFloat(style.marginTop) || 0), bottom: box.bottom + Math.max(0, parseFloat(style.marginBottom) || 0)}] : []
-        }).filter(box => box.left < rect.right && box.right > rect.left && box.top < rect.bottom && box.bottom > rect.top)
+      const floats = this.floatExclusions(target, rect)
       if(!floats.length) {
         this.#clearHoverGeometry()
         this.#hoverOwner = target
@@ -1315,7 +1315,7 @@ export class SelectionFeature extends EditorFeature {
         return
       }
       for(const [property, value] of Object.entries({left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transform: "none"})) caret.style.setProperty(property, value, "important")
-      this.#floatHoverOutline(caret, rect, floats)
+      this.#floatOutline(caret, rect, floats, "hover")
     }
     else {
       caret.replaceChildren()
@@ -1333,9 +1333,32 @@ export class SelectionFeature extends EditorFeature {
     this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
   }
 
-  /** Native paragraph boxes include the space occupied by floats. Draw their
-   * hover contour in the appendix, masking those boxes and their margins. */
-  #floatHoverOutline(caret: HTMLElement, rect: DOMRect, floats: {left: number, right: number, top: number, bottom: number}[]) {
+  /** Float boxes shared by hover, selection outlines, and their controls.
+   * Optional geometry expresses viewport exclusions in the overlay's axes. */
+  floatExclusions(target: Element, rect = target.getBoundingClientRect(), geometry?: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">) {
+    if(this.editor.features.canvas.active || this.editor.features.slides.active || ["left", "right"].includes(getComputedStyle(target).float)) return []
+    const floats = Array.from(getDocumentRoot().querySelectorAll("*")).filter(element => element !== target && !element.contains(target) && !target.contains(element)
+      && !atomicEditingContainer(element.parentElement, this.editor.schema)
+      && ["left", "right"].includes(getComputedStyle(element).float)).flatMap(element => {
+      const box = element.getBoundingClientRect(), style = getComputedStyle(element)
+      return box.width > 0 && box.height > 0 ? [{left: box.left - Math.max(0, parseFloat(style.marginLeft) || 0), right: box.right + Math.max(0, parseFloat(style.marginRight) || 0),
+        top: box.top - Math.max(0, parseFloat(style.marginTop) || 0), bottom: box.bottom + Math.max(0, parseFloat(style.marginBottom) || 0)}] : []
+    }).filter(box => box.left < rect.right && box.right > rect.left && box.top < rect.bottom && box.bottom > rect.top)
+    if(!geometry || !floats.length) return floats
+    const width = parseFloat(geometry.width), height = parseFloat(geometry.height)
+    const center = {x: parseFloat(geometry.left) + width / 2, y: parseFloat(geometry.top) + height / 2}
+    const inverse = new DOMMatrix(geometry.transform || undefined).inverse()
+    return floats.map(box => {
+      const points = [[box.left, box.top], [box.right, box.top], [box.right, box.bottom], [box.left, box.bottom]]
+        .map(([x, y]) => ({x: inverse.a * (x - center.x) + inverse.c * (y - center.y), y: inverse.b * (x - center.x) + inverse.d * (y - center.y)}))
+      return {left: Math.min(...points.map(point => point.x)) + width / 2, right: Math.max(...points.map(point => point.x)) + width / 2,
+        top: Math.min(...points.map(point => point.y)) + height / 2, bottom: Math.max(...points.map(point => point.y)) + height / 2}
+    })
+  }
+
+  /** Native boxes include the space occupied by floats. Draw their contour
+   * in the appendix, masking those boxes and their margins. */
+  #floatOutline(caret: HTMLElement, rect: DOMRect, floats: {left: number, right: number, top: number, bottom: number}[], kind: "hover" | "selection") {
     const rectangle = (left: number, top: number, right: number, bottom: number) => `M ${left} ${top} H ${right} V ${bottom} H ${left} Z`
     // Carry edge-touching cutouts beyond the outline's offset as well.
     const holes = floats.map(box => rectangle(box.left <= rect.left ? -4 : box.left - rect.left,
@@ -1344,12 +1367,12 @@ export class SelectionFeature extends EditorFeature {
       box.bottom >= rect.bottom ? rect.height + 4 : box.bottom - rect.top))
     const contour = [rectangle(-2, -2, rect.width + 2, rect.height + 2), ...holes].join(" ")
     const viewBox = `-4 -4 ${rect.width + 8} ${rect.height + 8}`
-    const svg = caret.firstElementChild ?? document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const svg = caret.querySelector(`[part~="${kind}-float-outline"]`) ?? document.createElementNS("http://www.w3.org/2000/svg", "svg")
     if(svg.getAttribute("viewBox") === viewBox && svg.lastElementChild?.getAttribute("d") === contour) return
-    svg.setAttribute("part", "hover-float-outline")
+    svg.setAttribute("part", `${kind}-float-outline`)
     svg.setAttribute("viewBox", viewBox)
     const mask = document.createElementNS(svg.namespaceURI!, "mask")
-    mask.id = "◆hover-float-mask"
+    mask.id = `◆${kind}-float-mask`
     mask.setAttribute("maskUnits", "userSpaceOnUse")
     mask.setAttribute("stroke", "none")
     for(const [name, value] of Object.entries({x: -4, y: -4, width: rect.width + 8, height: rect.height + 8})) mask.setAttribute(name, String(value))
@@ -1366,8 +1389,8 @@ export class SelectionFeature extends EditorFeature {
     path.setAttribute("d", contour)
     path.setAttribute("mask", `url(#${mask.id})`)
     svg.replaceChildren(mask, path)
-    caret.replaceChildren(svg)
-    setPart(caret, "hover-caret-floats")
+    if(svg.parentElement !== caret) caret.append(svg)
+    setPart(caret, `${kind}-caret-floats`)
   }
 
   /** Creates the shared selection caret in BODY's shadow tree. */
@@ -1402,6 +1425,7 @@ export class SelectionFeature extends EditorFeature {
   #hideSelectionCaret() {
     const caret = this.selectionCaret
     if(!caret) return
+    this.#clearSelectionFloatOutline()
     caret.setAttribute("visibility", "hidden")
     setPart(caret, "selection-caret-hidden")
     caret.style.removeProperty("left")
@@ -1440,7 +1464,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Reuse the transform controls' border box instead of the axis-aligned
    * CSS anchor box. Only the element owning this outline may position it. */
-  positionTransformCaret(element: Element, geometry: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">) {
+  positionTransformCaret(element: Element, geometry: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">, floats = this.floatExclusions(element, element.getBoundingClientRect(), geometry)) {
     const caret = this.selectionCaret
     const owner = this.captureSelectedElement ?? this.selectedSectionElement ?? $.selectedElement
     if(owner !== element || !element.isConnected || !caret
@@ -1452,11 +1476,24 @@ export class SelectionFeature extends EditorFeature {
     caret.style.setProperty("position-area", "none", "important")
     caret.style.setProperty("translate", "none", "important")
     caret.style.setProperty("transform-origin", "center", "important")
+    if(floats.length) this.#floatOutline(caret, new DOMRect(0, 0, parseFloat(geometry.width), parseFloat(geometry.height)), floats, "selection")
+    else this.#clearSelectionFloatOutline()
+    const outline = caret.querySelector('[part~="selection-float-outline"]')
+    if(outline) setPart(outline, "selection-float-outline-capture", caret.classList.contains("◆selection-caret-capture"))
+  }
+
+  #clearSelectionFloatOutline() {
+    const caret = this.selectionCaret
+    if(!caret) return
+    caret.querySelector('[part~="selection-float-outline"]')?.remove()
+    setPart(caret, "selection-caret-floats", false)
+    for(const property of Array.from(caret.style)) if(property.startsWith("--selection-flow-")) caret.style.removeProperty(property)
   }
 
   /** Return to native anchor geometry when transform controls stop tracking. */
   clearTransformCaret() {
     const caret = this.selectionCaret
+    this.#clearSelectionFloatOutline()
     if(!caret?.style.transform) return
     for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) {
       caret.style.removeProperty(property)

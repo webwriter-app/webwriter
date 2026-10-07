@@ -2953,6 +2953,41 @@ describe("unified content transfer", () => {
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
+  it("rejects a dragged inline element's descendants before resolving the containing paragraph", () => {
+    document.body.innerHTML = '<p><strong>source <span>nested</span></strong> rest</p>'
+    const source = document.querySelector("strong")!
+    const child = source.querySelector("span")!
+    vi.spyOn(editor, "hitTestBeneathAppendix").mockReturnValue(child)
+    vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 125, clientY: 50}), source)).toBeNull()
+  })
+
+  it.each([
+    ["the dragged element", "source"],
+    ["a descendant", "nested"],
+  ] as const)("does not float or preview a drop onto %s in either half", (_description, hitSelector) => {
+    for(const x of [125, 175]) {
+      document.body.innerHTML = '<aside style="color: red; float: left; margin: 8px; width: 80px"><p>source <strong>nested</strong></p></aside><p>end</p>'
+      const source = document.querySelector("aside") as HTMLElement
+      const hit = hitSelector === "source" ? source : source.querySelector("strong")!
+      const originalStyle = source.getAttribute("style")
+      const originalOrder = Array.from(document.body.childNodes)
+      vi.spyOn(hit, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+      const {data} = beginDrag(source)
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: hit, offset: hit === source ? 0 : 1})
+
+      hit.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50}))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+      hit.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 50}))
+
+      expect(source.getAttribute("style")).toBe(originalStyle)
+      expect(Array.from(document.body.childNodes)).toEqual(originalOrder)
+      expect(document.body.firstElementChild).toBe(source)
+      expect(document.body.lastElementChild?.textContent).toBe("end")
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    }
+  })
+
   it.each([false, true])("floats a dragged media element beside the target paragraph in reading order (copy: %s)", copy => {
     for(const [x, side] of [[125, "left"], [175, "right"]] as const) {
       document.body.innerHTML = '<picture style="position: absolute; width: 40px"><img alt="dragged"></picture><p>target</p>'
@@ -3007,7 +3042,6 @@ describe("unified content transfer", () => {
     const media = document.querySelector("picture") as HTMLElement
     const target = document.querySelector("p")!
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
-    const originalStyle = media.getAttribute("style")
     const {data} = beginDrag(media)
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 3})
 
@@ -3017,7 +3051,11 @@ describe("unified content transfer", () => {
 
     expect(media.querySelector("source")?.getAttribute("srcset")).toBe("wide.webp")
     expect(media.querySelector("img")?.getAttribute("src")).toBe("fallback.png")
-    expect(media.getAttribute("style")).toBe(originalStyle)
+    expect(media.style.float).toBe("")
+    expect(media.style.margin).toBe("")
+    expect(media.style.marginInlineStart).toBe("")
+    expect(media.style.marginInlineEnd).toBe("")
+    expect(media.style.color).toBe("red")
     expect(target.textContent).toBe("target")
   })
 
@@ -3037,6 +3075,63 @@ describe("unified content transfer", () => {
     expect(media.style.float).toBe("")
     expect(media.style.maxWidth).toBe("")
     expect(media.style.margin).toBe("")
+  })
+
+  it.each(["before", "after"] as const)("clears float and margin declarations on a dragged gap drop %s the target", position => {
+    document.body.innerHTML = '<picture style="float: left; max-width: 50%; margin: 5px; margin-inline-start: 8px; margin-block-end: 9px"><img alt="media"></picture><p>target</p>'
+    const source = document.querySelector("picture") as HTMLElement
+    const target = document.querySelector("p")!
+    const originalStyle = source.getAttribute("style")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const {data} = beginDrag(source)
+
+    dropAt(data, document.body, position === "before" ? 1 : 2)
+
+    expect(source.parentElement).toBe(document.body)
+    expect(source.style.float).toBe("")
+    expect(source.style.margin).toBe("")
+    expect(source.style.marginInlineStart).toBe("")
+    expect(source.style.marginBlockEnd).toBe("")
+    expect(source.nextElementSibling === target).toBe(position === "before")
+    expect(source.previousElementSibling === target).toBe(position === "after")
+    editor.doc.syncFromDOM()
+    const droppedStyle = source.getAttribute("style")
+    editor.doc.undo()
+    expect(document.querySelector("picture")?.getAttribute("style")).toBe(originalStyle)
+    editor.doc.redo()
+    expect(document.querySelector("picture")?.getAttribute("style")).toBe(droppedStyle)
+  })
+
+  it("clears float and margins from a copied gap drop while preserving the original", () => {
+    document.body.innerHTML = '<picture style="float: left; margin: 5px; margin-inline-start: 8px"><img alt="media"></picture><p>target</p>'
+    const source = document.querySelector("picture") as HTMLElement
+    const originalStyle = source.getAttribute("style")
+    const {data} = beginDrag(source)
+
+    dropAt(data, document.body, 2, {ctrlKey: true})
+
+    const copy = document.querySelectorAll("picture")[1] as HTMLElement
+    expect(copy).not.toBe(source)
+    expect(copy.style.float).toBe("")
+    expect(copy.style.margin).toBe("")
+    expect(copy.style.marginInlineStart).toBe("")
+    expect(source.getAttribute("style")).toBe(originalStyle)
+  })
+
+  it("clears float and margins from externally dropped styled media at a gap", () => {
+    document.body.innerHTML = "<p>first</p><p>last</p>"
+    const data = new DataTransfer()
+    data.setData("text/html", '<picture style="color: red; float: right; margin: 5px; margin-inline-start: 8px; margin-block-end: 9px"><img alt="external"></picture>')
+
+    dropAt(data, document.body, 1)
+
+    const media = document.querySelector("picture") as HTMLElement
+    expect(media.style.float).toBe("")
+    expect(media.style.margin).toBe("")
+    expect(media.style.marginInlineStart).toBe("")
+    expect(media.style.marginBlockEnd).toBe("")
+    expect(media.nextElementSibling?.textContent).toBe("last")
   })
 
   it("does not float a drop into a section background gap between its paragraphs", () => {
@@ -3376,7 +3471,7 @@ describe("unified content transfer", () => {
     expect(document.querySelector("test-widget")!.getAttribute("style")).toBe(droppedStyle)
   })
 
-  it.each(["aside", "svg"])("preserves inline styles and descendants when floating a dropped %s", tag => {
+  it.each(["aside", "svg"])("clears float and margin while preserving other styles and descendants on a gap drop of %s", tag => {
     document.body.innerHTML = `<${tag} style="position: absolute !important; inset: 30px 40px; inset-block: 10px 20px; inset-inline: 5px 15px; width: 80px; height: 50px; min-width: 20px; max-width: 100px; min-height: 30px; max-height: 90px; inline-size: 80px; block-size: 50px; min-inline-size: 20px; max-inline-size: 100px; min-block-size: 30px; max-block-size: 90px; aspect-ratio: 2; float: left; z-index: 7; transform: translateX(10px); translate: 5px; rotate: 15deg; scale: 2; color: red; margin: 8px; --authored: value"><unfamiliar-node style="position: absolute; width: 12px">keep</unfamiliar-node></${tag}><p>end</p>`
     const source = document.body.firstElementChild! as HTMLElement | SVGSVGElement
     const child = source.firstElementChild!
@@ -3389,9 +3484,9 @@ describe("unified content transfer", () => {
     expect(source.style.position).toBe("absolute")
     expect(source.style.width).toBe("80px")
     expect(source.style.maxWidth).toBe("100px")
-    expect(source.style.float).toBe("left")
+    expect(source.style.float).toBe("")
     expect(source.style.color).toBe("red")
-    expect(source.style.margin).toBe("8px")
+    expect(source.style.margin).toBe("")
     expect(source.style.getPropertyValue("--authored")).toBe("value")
     expect(source.firstElementChild).toBe(child)
     expect(editor.toHTML(true)).toContain(content)

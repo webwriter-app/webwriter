@@ -395,6 +395,14 @@ export class ManipulationFeature extends EditorFeature {
     return true
   }
 
+  /** A gap drop returns to ordinary flow without float spacing. */
+  clearDropFloat(element: Element) {
+    if(!this.setFloat(element, "none")) return
+    const style = this.inlineStyleOf(element)!
+    for(const property of Array.from(style)) if(property === "margin" || property.startsWith("margin-")) style.removeProperty(property)
+    if(!style.length) element.removeAttribute("style")
+  }
+
   floatContainer(node: Node, element: Element): Element | null {
     if(this.editor.features.canvas.active || this.editor.features.slides.active) return null
     let container = atomicEditingContainer(node, this.editor.schema) ?? (node instanceof Element ? node : node.parentElement)
@@ -416,13 +424,13 @@ export class ManipulationFeature extends EditorFeature {
     const hit = this.editor.hitTestBeneathAppendix(() => document.elementsFromPoint?.(event.clientX, event.clientY).find(element => root.contains(element) && element !== root))
     const text = range?.startContainer instanceof Text ? range.startContainer : null
     const node = hit ?? (pointer && !isSectionElement(pointer) ? pointer : text ?? pointer)
-    const container = node && source.contains(node) ? source : node ? this.floatContainer(node, source) : null
+    const container = node && !source.contains(node) ? this.floatContainer(node, source) : null
     if(!container || !root.contains(container) || !container.parentElement) return null
     // Section backgrounds contain ordinary insertion gaps between their blocks.
-    if(container !== source && isSectionElement(container) && (!text || this.floatContainer(text, source) !== container)) return null
+    if(isSectionElement(container) && (!text || this.floatContainer(text, source) !== container)) return null
     const rect = container.getBoundingClientRect()
     if(event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) return null
-    return container === source || source.parentElement === container.parentElement
+    return source.parentElement === container.parentElement
       || this.editor.schema.canInsert(container.parentElement, source, Array.from(container.parentElement.childNodes).indexOf(container)) ? container : null
   }
 
@@ -485,6 +493,7 @@ export class ManipulationFeature extends EditorFeature {
 
   dropRange(event: MouseEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
+    if(source && event.target instanceof Node && source.contains(event.target)) return null
     // Overlays such as the selected element's drag surface cover authored
     // content, which native hit testing would otherwise resolve to the appendix.
     // Bound the hit test to the editing root so its geometry fallback also
@@ -495,11 +504,8 @@ export class ManipulationFeature extends EditorFeature {
     ))
     if(!point || !getDocumentRoot().contains(point.node)) return null
     const range = document.createRange()
-    if(source?.contains(point.node)) {
-      if(event.target !== source && event.target !== this.dragSurface) return null
-      range.setStartBefore(source)
-    }
-    else range.setStart(point.node, point.offset)
+    if(source?.contains(point.node)) return null
+    range.setStart(point.node, point.offset)
     range.collapse(true)
     if(source && !this.floatDropTarget(event, source, range) && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
@@ -703,10 +709,12 @@ export class ManipulationFeature extends EditorFeature {
         const container = this.floatDropTarget(event, source, range)
         if(container) {
           const side = this.floatSide(container, event.clientX)
-          if(container === inserted) this.setFloat(inserted, side)
-          else this.placeFloat(inserted, container, side)
+          this.placeFloat(inserted, container, side)
         }
-        else range.insertNode(inserted)
+        else {
+          range.insertNode(inserted)
+          this.clearDropFloat(inserted)
+        }
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
       }
       else {
@@ -734,7 +742,11 @@ export class ManipulationFeature extends EditorFeature {
     const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
     const container = isElement(element) && element.namespaceURI !== MATH_NAMESPACE ? this.floatDropTarget(event, element, range) : null
     if(container && isElement(element) && this.placeFloat(element, container, this.floatSide(container, event.clientX))) $.selectElement(element)
-    else this.insertClipboardFragment(fragment, false)
+    else {
+      const elements = Array.from(fragment.children)
+      this.insertClipboardFragment(fragment, false)
+      for(const element of elements) if(element.isConnected) this.clearDropFloat(element)
+    }
   }
 
   private activeFigure() {
