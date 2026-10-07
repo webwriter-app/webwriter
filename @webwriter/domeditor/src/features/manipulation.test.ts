@@ -187,28 +187,23 @@ describe("insertable element placement and previews", () => {
   const hover = (hovered = true) => editor.features.manipulation.actions.hoverInsertion({type: "hoverInsertion", hovered})
   const insert = (html: string) => editor.features.manipulation.actions.insert({type: "insert", html})
 
-  it.each(["p", "table", "section", "custom-widget"])("previews and inserts %s as a right float at a text caret", tag => {
+  it.each(["p", "table", "section", "custom-widget"])("previews the caret and inserts %s in the content column", tag => {
     document.body.innerHTML = '<p>ab<b>cd</b></p><p>Neighbor</p>'
     const paragraph = document.querySelector("p")!, neighbor = paragraph.nextElementSibling!
-    const before = paragraph.outerHTML, neighborHTML = neighbor.outerHTML
-    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 100, 40))
+    const neighborHTML = neighbor.outerHTML
     $.move(paragraph.querySelector("b")!.firstChild!, 1)
     hover()
-    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
-    expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
-    expect(preview.getAttribute("part")).toContain("insertion-preview")
-    expect(preview.style.left).toBe("20px")
-    expect(preview.style.width).toBe("100px")
-    expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(document.body).toHaveClass("◆insertion-gap-preview")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("preview")
     insert(`<${tag}></${tag}>`)
-    const inserted = paragraph.previousElementSibling as HTMLElement
+    const inserted = paragraph.nextElementSibling as HTMLElement
     expect(inserted.localName).toBe(tag)
-    expect(inserted.style.float).toBe("right")
-    expect(inserted.style.marginRight).toBe("var(--ww-float-outset)")
-    expect(cloneWithoutEditorMarkers(paragraph, true).outerHTML).toBe(before)
+    expect(inserted.style.float).toBe("")
+    expect(paragraph.textContent).toBe("abc")
+    expect(inserted.nextElementSibling?.textContent).toBe("d")
     expect(cloneWithoutEditorMarkers(neighbor, true).outerHTML).toBe(neighborHTML)
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
   })
 
   it.each(["", " ", "<br>", "<b><em></em></b>"])("replaces an empty paragraph on command insertion: %s", html => {
@@ -273,32 +268,59 @@ describe("insertable element placement and previews", () => {
     expect(child.parentNode).toBe(paragraph)
   })
 
-  it("keeps comments and whitespace around a floated snippet", () => {
+  it("keeps comments around a content-column snippet", () => {
     document.body.innerHTML = '<p>Text</p>'
     const paragraph = document.querySelector("p")!
     $.move(paragraph.firstChild!, 1)
     insert('<!--before-->\n<aside title="Keep">Snippet</aside><!--after-->')
     const aside = document.querySelector("aside")!
-    expect(aside.style.float).toBe("right")
+    expect(aside.style.float).toBe("")
     expect(aside.getAttribute("title")).toBe("Keep")
-    expect(Array.from(document.body.childNodes).map(node => node.nodeType)).toEqual([Node.COMMENT_NODE, Node.TEXT_NODE, Node.ELEMENT_NODE, Node.COMMENT_NODE, Node.ELEMENT_NODE])
-    expect(aside.nextSibling!.textContent).toBe("after")
-    expect(paragraph.textContent).toBe("Text")
+    expect(editor.toHTML(true)).toContain("<!--before-->")
+    expect(editor.toHTML(true)).toContain("<!--after-->")
+    expect(document.body.textContent).toContain("Snippet")
   })
 
-  it("uses float placement for strict insertion commands", () => {
+  it.each(["picture", "video", "iframe", "table", "section", "custom-widget"])("inserts ribbon %s at a text caret without floating", tag => {
+    if(tag === "custom-widget") editor.schema.extendWidgets([{tagName: tag, editingConfig: {}}])
+    document.body.innerHTML = '<p>Before after</p>'
+    $.move(document.querySelector("p")!.firstChild!, 7)
+    if(tag === "custom-widget") insert('<custom-widget></custom-widget>')
+    else editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+    const inserted = document.querySelector<HTMLElement>(tag)!
+    expect(inserted).not.toBeNull()
+    expect(inserted.style.float).toBe("")
+    expect(inserted.style.getPropertyValue("--ww-float-size")).toBe("")
+    expect(document.body.textContent).toContain("Before ")
+    expect(document.body.textContent).toContain("after")
+  })
+
+  it("inserts ribbon media outside a float containing the text caret", () => {
+    document.body.innerHTML = '<aside style="float:left"><p>Floating text</p></aside><p>Keep</p>'
+    const floated = document.querySelector("aside")!, paragraph = floated.querySelector("p")!
+    $.move(paragraph.firstChild!, 3)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "video"})
+    const video = document.querySelector("video")!
+    expect(video.parentElement).toBe(document.body)
+    expect(video.previousElementSibling).toBe(floated)
+    expect(video.style.float).toBe("")
+    expect(floated.textContent).toBe("Floating text")
+  })
+
+  it("uses content-column placement for strict insertion commands", () => {
     document.body.innerHTML = '<p>Text</p>'
     const paragraph = document.querySelector("p")!
     $.move(paragraph.firstChild!, 1)
     editor.features.manipulation.actions.insert({type: "insert", html: "<aside>New</aside>", strict: true})
-    expect((paragraph.previousElementSibling as HTMLElement).style.float).toBe("right")
-    expect(paragraph.textContent).toBe("Text")
+    expect((paragraph.nextElementSibling as HTMLElement).style.float).toBe("")
+    expect(paragraph.textContent).toBe("T")
+    expect(document.body.textContent).toBe("TNewext")
   })
 
-  it.each(["float", "gap", "replace", "capture"])("synchronizes and undoes %s insertion without preview artifacts", mode => {
+  it.each(["caret", "gap", "replace", "capture"])("synchronizes and undoes %s insertion without preview artifacts", mode => {
     document.body.innerHTML = '<p>Text</p><hr><p>After</p>'
     const paragraph = document.querySelector("p")!, divider = document.querySelector("hr")!
-    if(mode === "float") $.move(paragraph.firstChild!, 1)
+    if(mode === "caret") $.move(paragraph.firstChild!, 1)
     else if(mode === "gap") $.move(document.body, 1)
     else if(mode === "capture") editor.features.selection.captureElement(divider)
     else $.selectElement(divider)

@@ -91,7 +91,9 @@ reservation is based on the configured lane width plus gap. Floats are bounded
 by the lane width and floats on the same side clear one another when their
 vertical space overlaps. Canvas and slide scopes are excluded.
 
-Float previews cover the projected element box, including reading content that will move after insertion. Moving elements use their live dimensions; built-in insertion templates are measured with the document styles. Unknown widgets and snippets use a lane-width 16:9 footprint until their dimensions are known. These overlays and temporary measurements stay in the editor’s shadow appendix.
+Ribbon clicks insert into the content column. An empty paragraph is replaced; replacing an existing float preserves its authored side and size. Ribbon hover highlights the insertion caret or the element being replaced. Dragging into a float drop zone remains an explicit way to insert into a side lane.
+
+Float drag previews cover the projected element box, including reading content that will move after insertion. Moving elements use their live dimensions; built-in insertion templates are measured with the document styles. Unknown widgets and snippets use a lane-width 16:9 footprint until their dimensions are known. These overlays and temporary measurements stay in the editor’s shadow appendix.
 
 Float drop zones use the same projected boxes. Releasing over a preview keeps its side and insertion point, even outside the current content column or over text that will be displaced. Drops outside these boxes use ordinary flow placement. Projected drop rectangles are prepared when a document drag starts, or when a ribbon drag first enters the editor. Hover hit testing and previews reuse those rectangles. Document changes and resize schedule a refresh; window scrolling shifts the stored coordinates without remeasurement.
 

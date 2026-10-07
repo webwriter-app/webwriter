@@ -2044,20 +2044,20 @@ await check("float previews match projected media bounds", async () => {
       frame.style.width = `${width}px`
       for(const tag of ["picture", "video", "iframe"]) {
         const range = doc.createRange()
-        range.setStart(target.firstChild!, 2); range.collapse(true)
+        range.setStart(target.firstChild!, target.firstChild!.textContent!.length); range.collapse(true)
         view.getSelection()!.removeAllRanges(); view.getSelection()!.addRange(range)
         editor.features.selection.processSelection()
         editor.features.manipulation.actions.hoverInsertion({type:"hoverInsertion", hovered:true, tag})
         await layoutFrame()
-        assert(editor.appendix.querySelector("#◆float-drop-preview"), `missing ${tag} float preview at ${width}px`)
-        const preview = previewRect()
-        assert(!doc.body.querySelector("#◆float-drop-preview") && editor.appendix.querySelector("#◆float-drop-preview")!.childElementCount === 0, "preview measurement leaked into the document or persisted")
+        assert(!editor.appendix.querySelector("#◆float-drop-preview"), "ribbon hover preview suggested automatic floating")
+        assert(doc.body.classList.contains("◆insertion-gap-preview"), "ribbon insertion did not highlight its caret")
         editor.features.manipulation.actions.insertElement({type:"insertElement", tag})
         await layoutFrame()
-        const inserted = target.previousElementSibling
-        assert(inserted, `missing inserted ${tag} at ${width}px: ${doc.body.innerHTML}`)
-        matches(preview, inserted!.getBoundingClientRect(), `${tag} insertion at ${width}px`)
-        inserted!.remove()
+        const inserted = doc.querySelector<HTMLElement>(tag)!
+        assert(inserted && !inserted.style.float, `ribbon ${tag} was automatically floated`)
+        const box = inserted.getBoundingClientRect(), column = target.getBoundingClientRect()
+        assert(box.left >= column.left - 1 && box.right <= column.right + 1, `ribbon ${tag} escaped the content column`)
+        inserted.remove()
         await layoutFrame()
       }
       for(const tag of ["table", "svg"]) {

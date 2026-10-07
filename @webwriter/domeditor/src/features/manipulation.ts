@@ -832,9 +832,8 @@ export class ManipulationFeature extends EditorFeature {
   private refreshInsertionPreview() {
     const active = this.insertionHovered && !this.editor.isEditingLocked && document.getSelection()?.rangeCount
     const target = active ? this.insertionReplacement() ?? ($.isDocumentSelection ? getDocumentRoot() : null) : null
-    const gap = Boolean(active && !target && ($.isGapSelection || $.isEmptyDocumentSelection))
-    const container = active && !target && !gap ? this.floatInsertionContainer(undefined, true) : null
-    const measured = target ?? container
+    const gap = Boolean(active && !target)
+    const measured = target
     if(measured !== this.insertionPreviewTarget) {
       if(this.insertionPreviewTarget) this.insertionPreviewResizeObserver?.unobserve(this.insertionPreviewTarget)
       if(measured) this.insertionPreviewResizeObserver?.observe(measured)
@@ -856,8 +855,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     else {
       overlay?.remove()
-      if(container) this.showFloatDropPreview(container, "right", "insertion", this.insertionPreviewSource)
-      else this.clearFloatDropPreview("insertion")
+      this.clearFloatDropPreview("insertion")
     }
   }
 
@@ -896,6 +894,15 @@ export class ManipulationFeature extends EditorFeature {
     })
     this.editor.postSelectionPath(true)
     return true
+  }
+
+  private moveCommandInsertionOutsideFloat() {
+    const root = getDocumentRoot()
+    let target: Element | null = null
+    for(let element = $.anchorContainer; element && element !== root; element = element.parentElement) {
+      if(floatSideFromStyles(getComputedStyle(element).float, this.inlineStyleOf(element) ?? {getPropertyValue: () => ""}) !== "none") target = element
+    }
+    if(target?.parentElement && root.contains(target)) $.move(target.parentElement, Array.from(target.parentElement.childNodes).indexOf(target) + 1)
   }
 
   dropRange(event: MouseEvent, source: Element | null) {
@@ -1955,9 +1962,10 @@ export class ManipulationFeature extends EditorFeature {
     if(commandInsertion) {
       this.hoverInsertion(false)
       if(this.replaceInsertionElement(fragment)) return
+      this.moveCommandInsertionOutsideFloat()
     }
     this.selectCapturedElementForInsertion()
-    if(allowFloat && this.insertFloat(fragment, "right", commandInsertion, commandInsertion)) return
+    if(allowFloat && !commandInsertion && this.insertFloat(fragment)) return
     for(const math of Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
       let ancestor = math.parentElement
@@ -2564,9 +2572,10 @@ export class ManipulationFeature extends EditorFeature {
     if(node) {
       this.hoverInsertion(false)
       if(this.replaceInsertionElement(node)) return
+      if(commandInsertion) this.moveCommandInsertionOutsideFloat()
       this.selectCapturedElementForInsertion()
     }
-    if(node && this.insertFloat(node, "right", commandInsertion, commandInsertion)) return
+    if(node && !commandInsertion && this.insertFloat(node)) return
     if(!node && this.ensureTextBlock()) {
       return
     }

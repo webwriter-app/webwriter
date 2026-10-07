@@ -1469,6 +1469,7 @@ body::part(selection-caret-text) {
 body.◆drop-selection-active::part(selection-caret-text),
 body.◆drop-selection-active::part(selection-caret-gap),
 body.◆insertion-gap-preview::part(selection-caret-gap),
+body.◆insertion-gap-preview::part(selection-caret-text),
 body.◆insertion-gap-preview::part(empty-document-caret),
 body.◆drop-selection-active::part(empty-document-caret) {
   color: var(--sl-color-primary-400, #0078d7);
@@ -1476,6 +1477,7 @@ body.◆drop-selection-active::part(empty-document-caret) {
 }
 
 body.◆insertion-gap-preview::part(selection-caret-gap),
+body.◆insertion-gap-preview::part(selection-caret-text),
 body.◆insertion-gap-preview::part(empty-document-caret) {
   color: #c8d2df;
 }
