@@ -408,6 +408,7 @@ export function emptyProofreadingState(): ProofreadingState {
 }
 
 export type ProofreadingAction =
+  | {type: "checkProofreading"}
   | {type: "retryProofreading"}
   | {type: "setDocumentProofreadingEnabled", enabled: boolean}
   | {type: "selectProofreadingIssue", id: string}

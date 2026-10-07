@@ -350,6 +350,11 @@ export class DomEditorToolbox extends EditingControls {
       color: #2f3742;
     }
     .proofreading-section h2 {display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0; font-size: .95rem; font-weight: 650}
+    .proofreading-check {display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; margin-left: auto; padding: .25rem; border: 0; border-radius: .25rem; color: inherit; background: transparent; cursor: pointer}
+    .proofreading-check svg {display: block; width: 1rem; height: 1rem}
+    .proofreading-check:hover:not(:disabled) {background: #e7eef5}
+    .proofreading-check:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
+    .proofreading-check:disabled {opacity: .45; cursor: default}
     .proofreading-status {margin: 0; color: #64748b; font-size: .75rem}
     .proofreading-toggle {display: flex; align-items: center; gap: .4rem; font-size: .75rem; color: #475569}
     .proofreading-toggle input {margin: 0; accent-color: #1769aa}
@@ -614,13 +619,16 @@ export class DomEditorToolbox extends EditingControls {
       <h2 id="proofreading-title">Issues
         ${checkingEnabled && !state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling, grammar and style"></span>` : ""}
         ${checkingEnabled && state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling, grammar and style"></span>` : ""}
+        <button class="proofreading-check" type="button" title="Check for issues" aria-label="Check for issues"
+          ?disabled=${editingLocked || this.disableSpellChecking || state.loading || state.checking}
+          @click=${() => this.dispatchProofreadingAction({type: "checkProofreading"})}>${ribbonIcon("Refresh")}</button>
       </h2>
       <label class="proofreading-toggle"><input type="checkbox" .checked=${state.documentEnabled}
         ?disabled=${editingLocked || this.disableSpellChecking}
         @change=${(event: Event) => this.dispatchProofreadingAction({type: "setDocumentProofreadingEnabled", enabled: (event.currentTarget as HTMLInputElement).checked})}>
-        Check spelling in this document</label>
+        Check for issues automatically</label>
       ${this.disableSpellChecking ? html`<p class="proofreading-status">Spell checking is disabled for all documents. Enable it in Settings.</p>`
-        : !state.documentEnabled ? html`<p class="proofreading-status">Spell checking is disabled for this document.</p>` : ""}
+        : !state.documentEnabled ? html`<p class="proofreading-status">Automatic checking is disabled for this document.</p>` : ""}
       ${checkingEnabled && state.error ? html`<div class="proofreading-error" role="alert">
         <span>Could not load proofreading.</span>
         <button class="proofreading-retry" type="button" ?disabled=${editingLocked}

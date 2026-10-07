@@ -30,6 +30,7 @@ describe("toolbox", () => {
     toolbox.addEventListener("proofreading-action", actions)
     await toolbox.updateComplete
     const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
+    expect(toggle.parentElement!.textContent?.trim()).toBe("Check for issues automatically")
     expect(toggle.checked).toBe(true)
     expect(toggle.disabled).toBe(false)
     toggle.click()
@@ -47,6 +48,40 @@ describe("toolbox", () => {
     toolbox.htmlPending = true
     await toolbox.updateComplete
     expect(toggle.disabled).toBe(true)
+  })
+
+  it("offers a manual check beside Issues even when automatic checking is off, with busy and editing locks", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {...emptyProofreadingState(), enabled: false, documentEnabled: false}
+    const actions = vi.fn()
+    toolbox.addEventListener("proofreading-action", actions)
+    await toolbox.updateComplete
+    const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>("#proofreading-title .proofreading-check")!
+    expect(button.getAttribute("aria-label")).toBe("Check for issues")
+    expect(button.querySelector("svg")).not.toBeNull()
+    expect(button.disabled).toBe(false)
+    button.click()
+    expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "checkProofreading"})
+    for(const state of [{loading: true}, {checking: true}]) {
+      toolbox.proofreadingState = {...emptyProofreadingState(), ...state}
+      await toolbox.updateComplete
+      expect(button.disabled).toBe(true)
+    }
+    toolbox.proofreadingState = {...emptyProofreadingState(), error: "Failed"}
+    await toolbox.updateComplete
+    expect(button.disabled).toBe(false)
+    toolbox.htmlPending = true
+    await toolbox.updateComplete
+    expect(button.disabled).toBe(true)
+    toolbox.htmlPending = false
+    toolbox.historyState = {...emptyVersionHistoryState(), preview: {checkpointId: "version", isCurrent: false, added: 0, removed: 0, modified: 0}}
+    await toolbox.updateComplete
+    expect(button.disabled).toBe(true)
+    toolbox.historyState = emptyVersionHistoryState()
+    toolbox.disableSpellChecking = true
+    await toolbox.updateComplete
+    expect(button.disabled).toBe(true)
   })
 
   it("explains the global override and suppresses stale proofreading UI while keeping Review", async () => {

@@ -88,6 +88,7 @@ export class ProofreadingFeature extends EditorFeature {
   private composing = false
   private requested = false
   private enabled = false
+  private manualChecking = false
   private checkingAllowed = true
   private loading = false
   private ready = false
@@ -107,7 +108,7 @@ export class ProofreadingFeature extends EditorFeature {
   private readonly handleBlur = () => { this.closePopup(); this.setHoveredIssue(null) }
 
   actions = {
-    checkProofreading: ({}: {type: "checkProofreading", kind?: "spelling" | "grammar" | "all"}) => this.retry(),
+    checkProofreading: ({}: {type: "checkProofreading", kind?: "spelling" | "grammar" | "all"}) => this.checkManually(),
     retryProofreading: ({}: {type: "retryProofreading"}) => this.retry(),
     selectProofreadingIssue: ({id}: {type: "selectProofreadingIssue", id: string}) => this.selectIssue(id),
     getProofreadingState: ({}: {type: "getProofreadingState"}) => this.state(),
@@ -171,6 +172,7 @@ export class ProofreadingFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.enabled = false
+    this.manualChecking = false
     this.loading = false
     this.ready = false
     this.error = null
@@ -208,7 +210,7 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   retry() {
-    if(!this.isEnabled || !this.checkingAllowed || !this.documentCheckingEnabled) return this.state()
+    if(!this.isEnabled || !this.checkingAllowed || (!this.documentCheckingEnabled && !this.manualChecking)) return this.state()
     this.error = null
     this.invalidate(false)
     void this.checkNow()
@@ -216,9 +218,21 @@ export class ProofreadingFeature extends EditorFeature {
     return this.state()
   }
 
+  private checkManually() {
+    this.flushMutations()
+    if(!this.isEnabled || !this.checkingAllowed || this.composing || this.editor.isEditingLocked) return this.state()
+    this.manualChecking = true
+    this.enabled = true
+    this.error = null
+    this.invalidate(false)
+    void this.checkNow()
+    return this.state()
+  }
+
   setChecking(enabled: boolean) {
     if(typeof enabled !== "boolean" || !this.isEnabled) return
     this.checkingAllowed = enabled
+    this.manualChecking = false
     this.updateChecking(enabled && this.documentCheckingEnabled)
     return this.state()
   }
@@ -229,6 +243,7 @@ export class ProofreadingFeature extends EditorFeature {
 
   setDocumentChecking(enabled: boolean) {
     if(typeof enabled !== "boolean" || !this.isEnabled || this.editor.isEditingLocked) return false
+    this.manualChecking = false
     const finish = this.editor.doc.beginUndoGroup()
     try {
       // The native HTML preference travels with the document and its history.
@@ -273,7 +288,9 @@ export class ProofreadingFeature extends EditorFeature {
 
   private handleMutations(records: MutationRecord[]) {
     if(!records.length) return
-    const enabled = this.checkingAllowed && this.documentCheckingEnabled
+    // Manual results remain usable until the authored document changes.
+    if(this.hasProseChanges(records)) this.manualChecking = false
+    const enabled = this.checkingAllowed && (this.documentCheckingEnabled || this.manualChecking)
     if(enabled !== this.enabled) this.updateChecking(enabled)
     else if(this.enabled && this.hasProseChanges(records)) this.invalidate()
     else this.postStatus()
@@ -303,7 +320,7 @@ export class ProofreadingFeature extends EditorFeature {
       if(!sameRange(diagnostic.range, range)) diagnostic.range = range
     }
     this.paint()
-    if(schedule && this.enabled && !this.composing && !this.error) {
+    if(schedule && this.enabled && this.documentCheckingEnabled && !this.composing && !this.error) {
       this.timer = setTimeout(() => { void this.checkNow() }, 500)
     }
     this.postStatus()

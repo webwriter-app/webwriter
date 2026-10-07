@@ -97,6 +97,51 @@ describe("proofreading prose extraction", () => {
 })
 
 describe("proofreading feature", () => {
+  it("checks manually with automatic checking off without changing the preference or scheduling later checks", async () => {
+    editor.features.proofreading.setDocumentChecking(false)
+    const before = editor.toHTML()
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    await editor.features.proofreading.checkNow()
+    const state = editor.features.proofreading.state()
+    expect(state).toMatchObject({enabled: true, documentEnabled: false, ready: true, checking: false})
+    expect(state.issues).toHaveLength(1)
+    expect(editor.toHTML()).toBe(before)
+    expect(editor.features.proofreading.selectIssue(state.issues[0].id)).toBe(true)
+    check.mockClear()
+    document.querySelector("p")!.textContent = "New prose."
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false, issues: []})
+    await new Promise(resolve => setTimeout(resolve, 550))
+    expect(check).not.toHaveBeenCalled()
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    await editor.features.proofreading.checkNow()
+    expect(check).toHaveBeenCalledWith("New prose.", "en-US", [])
+  })
+
+  it("rejects manual checks while globally disabled or editing is locked", async () => {
+    editor.features.proofreading.setDocumentChecking(false)
+    const lock = {}
+    editor.lockEditing(lock)
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    editor.unlockEditing(lock)
+    editor.features.proofreading.setChecking(false)
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    await editor.features.proofreading.checkNow()
+    expect(createProofreader).not.toHaveBeenCalled()
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
+  })
+
+  it("retries a failed manual check with automatic checking off", async () => {
+    editor.features.proofreading.setDocumentChecking(false)
+    vi.mocked(createProofreader).mockRejectedValueOnce(new Error("Unavailable"))
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().error).toBe("Unavailable")
+    editor.features.proofreading.retry()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state()).toMatchObject({documentEnabled: false, ready: true, error: null})
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+  })
+
   it("does not load the checker for globally disabled initialization, even with dictionary words", async () => {
     editor.features.proofreading.setChecking(false)
     editor.features.proofreading.setDictionary(["Teh"])

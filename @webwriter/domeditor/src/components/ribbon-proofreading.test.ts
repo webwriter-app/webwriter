@@ -17,6 +17,7 @@ afterEach(() => {
 })
 
 it.each<ProofreadingAction>([
+  {type: "checkProofreading"},
   {type: "retryProofreading"},
   {type: "selectProofreadingIssue", id: "issue-1"},
   {type: "applyProofreadingSuggestion", id: "issue-1", index: 1},

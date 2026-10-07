@@ -4950,9 +4950,9 @@ export class DomEditor extends LitElement {
   private handleProofreadingAction = (event: Event) => {
     const detail = (event as CustomEvent<{type?: unknown, id?: unknown, index?: unknown, enabled?: unknown}>).detail
     if(!detail || this.htmlPending || this.historyState.preview !== null) return
-    if(this.proofreadingReloading && detail.type !== "retryProofreading" && detail.type !== "setDocumentProofreadingEnabled") return
+    if(this.proofreadingReloading && detail.type !== "retryProofreading" && detail.type !== "checkProofreading" && detail.type !== "setDocumentProofreadingEnabled") return
     let action: ProofreadingAction
-    if(detail.type === "retryProofreading") action = {type: detail.type}
+    if(detail.type === "retryProofreading" || detail.type === "checkProofreading") action = {type: detail.type}
     else if(detail.type === "setDocumentProofreadingEnabled" && typeof detail.enabled === "boolean") {
       action = {type: detail.type, enabled: detail.enabled}
     }
