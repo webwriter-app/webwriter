@@ -577,6 +577,20 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.classList.contains("window-inactive")).toBe(true)
   })
 
+  it.each([false, true])("lets the opaque frame preserve selection before focusing (restore: %s)", async restoreSelection => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    const post = vi.spyOn(host, "postFrameControl")
+    const focus = vi.spyOn(iframe, "focus")
+
+    host.focusEditor(restoreSelection)
+
+    expect(post).toHaveBeenCalledExactlyOnceWith("focus", {restoreSelection})
+    expect(focus).not.toHaveBeenCalled()
+    expect(host.savedEditorSelection).toBeNull()
+  })
+
   it("preserves the first widget's breadcrumb selection when refocusing the document", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body

@@ -20,6 +20,15 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   shortcuts?: Record<string, string>
 }) => {
   let bookmark: SelectionBookmark | null = null
+  const saveSelection = () => {
+    bookmark = null
+    const selection = document.getSelection()
+    if(selection?.anchorNode && selection.focusNode && document.body.contains(selection.anchorNode)
+      && document.body.contains(selection.focusNode)) bookmark = {
+      anchorNode: selection.anchorNode, anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode, focusOffset: selection.focusOffset,
+    }
+  }
   let motionSheet: CSSStyleSheet | null = null
   let shortcuts = settings.shortcuts ?? {}
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, origin)
@@ -81,7 +90,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   window.addEventListener("message", event => {
     if(event.source !== window.parent || event.origin !== origin || event.data?.bridgeNonce !== nonce
       || event.data?.type !== editorFrameControlMessage) return
-    const data = event.data as {command?: string, requestId?: string, disabled?: boolean,
+    const data = event.data as {command?: string, requestId?: string, disabled?: boolean, restoreSelection?: boolean,
       shortcuts?: Record<string, string>, tags?: string[], username?: string}
     if(data.command === "snapshot") {
       post({type: "editor-frame-response", requestId: data.requestId, html: snapshot()})
@@ -91,15 +100,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
         tags: (data.tags ?? []).filter(tag => typeof tag === "string" && !!customElements.get(tag))})
     }
     else if(data.command === "save-selection") {
-      bookmark = null
-      const selection = document.getSelection()
-      if(selection?.anchorNode && selection.focusNode && document.body.contains(selection.anchorNode)
-        && document.body.contains(selection.focusNode)) bookmark = {
-        anchorNode: selection.anchorNode, anchorOffset: selection.anchorOffset,
-        focusNode: selection.focusNode, focusOffset: selection.focusOffset,
-      }
+      saveSelection()
     }
     else if(data.command === "focus") {
+      if(!data.restoreSelection) saveSelection()
       window.focus()
       document.body.focus({preventScroll: true})
       if(bookmark) {

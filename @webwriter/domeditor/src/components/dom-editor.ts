@@ -2410,9 +2410,9 @@ export class DomEditor extends LitElement {
 
   private focusEditor(restoreSelection = false) {
     if(this.editorOpaque) {
-      if(!restoreSelection) this.saveEditorSelection()
-      this.editorIframe()?.focus({preventScroll: true})
-      this.postFrameControl("focus")
+      // The frame must save its range before activating designMode. Focusing
+      // here can collapse it before an asynchronous save-selection arrives.
+      this.postFrameControl("focus", {restoreSelection})
       this.savedEditorSelection = null
       return
     }

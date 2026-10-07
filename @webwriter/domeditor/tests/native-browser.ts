@@ -633,6 +633,33 @@ await check("leaving an empty inline formula removes it without moving the text 
   paragraph.remove()
 })
 
+await check("audio insertion retains element selection at the document start", async () => {
+  const frame = document.createElement("iframe")
+  frame.src = "/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if((app as any)?.editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "app editor did not initialize")
+    await (app as any).waitForEditorWindow()
+    assert(String(await app!.execute({type: "serializeDocument"})).includes("<p></p>"), "document did not start empty")
+    ;(app as any).focusEditor()
+    const button = frame.contentDocument!.createElement("button")
+    frame.contentDocument!.body.append(button)
+    button.focus()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    ;(app as any).handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "Audio"}}))
+    await new Promise(resolve => setTimeout(resolve, 500))
+    assert((app as any).nodeSelection, `app lost audio selection: ${JSON.stringify((app as any).selectionPath)}`)
+    assert((app as any).selectionPath.at(-1)?.name === "Audio", "the selected element is not audio")
+  }
+  finally { frame.remove() }
+})
+
 await check("editor command preserves a live selection", () => {
   const text = document.querySelector("#before")!.firstChild!
   const selection = getSelection()!
