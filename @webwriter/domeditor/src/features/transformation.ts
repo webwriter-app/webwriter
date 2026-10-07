@@ -3,6 +3,7 @@ import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScro
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
 import {isSlide} from "../document-layout"
+import {floatSideFromStyles, type FloatSide} from "../element-styles"
 
 type TransformElement = HTMLElement | SVGSVGElement
 type Mode = "move" | "scale" | "rotate" | "anchor"
@@ -59,7 +60,7 @@ export class TransformationFeature extends EditorFeature {
   protected handlesCapturedElementInteractions = true
   #target: TransformElement | null = null
   #gesture: Gesture | null = null
-  #floatValues = ["none", "left", "right"] as const
+  #floatValues: readonly FloatSide[] = ["none", "left", "right", "far-left", "far-right"]
   #observer: MutationObserver | null = null
   #frame: number | null = null
   #panFrame: number | null = null
@@ -113,7 +114,7 @@ export class TransformationFeature extends EditorFeature {
 
   /** The target's float value, mirrored on the arranger's data-float
    * attribute. */
-  set #float(value: "none" | "left" | "right") {
+  set #float(value: FloatSide) {
     const target = this.target
     if(!target || this.editor.isEditingLocked) return
     this.editor.features.manipulation.setFloat(target, value)
@@ -123,7 +124,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   get #float() {
-    return this.arranger?.getAttribute("data-float") as "none" | "left" | "right" ?? "none"
+    return this.arranger?.getAttribute("data-float") as FloatSide ?? "none"
   }
 
   /** Explicit position controls use the live computed position. */
@@ -139,30 +140,21 @@ export class TransformationFeature extends EditorFeature {
     this.#setPosition(getComputedStyle(this.target).position === "sticky" ? "relative" : "sticky")
   }
 
-  /** Creates the float menu (none/left/right) of the arranger. */
+  /** Creates the float menu of the arranger. */
   #createArrangerMenu() {
-    const floatNone = document.createElement("button")
-    floatNone.id = `◆transform-overlay-float-none`
-    floatNone.setAttribute("part", "transform-overlay-button transform-overlay-float-none")
-    floatNone.addEventListener("click", ev => {this.#float = "none"; ev.stopPropagation()})
-    floatNone.classList.add("◆transform-overlay-button")
-    
-    const floatLeft = document.createElement("button")
-    floatLeft.id = `◆transform-overlay-float-left`
-    floatLeft.setAttribute("part", "transform-overlay-button transform-overlay-float-left")
-    floatLeft.addEventListener("click", ev => {this.#float = "left"; ev.stopPropagation()})
-    floatLeft.classList.add("◆transform-overlay-button")
-    
-    const floatRight = document.createElement("button") 
-    floatRight.id = `◆transform-overlay-float-right`
-    floatRight.setAttribute("part", "transform-overlay-button transform-overlay-float-right")
-    floatRight.addEventListener("click", ev => {this.#float = "right"; ev.stopPropagation()})
-    floatRight.classList.add("◆transform-overlay-button")
+    const buttons = this.#floatValues.map(side => {
+      const button = document.createElement("button")
+      button.id = `◆transform-overlay-float-${side}`
+      button.setAttribute("part", `transform-overlay-button transform-overlay-float-${side}`)
+      button.addEventListener("click", ev => {this.#float = side; ev.stopPropagation()})
+      button.classList.add("◆transform-overlay-button")
+      return button
+    })
     
     const menu = document.createElement("div")
     menu.id = "◆transform-overlay-arranger-menu"
     menu.setAttribute("part", "transform-overlay-arranger-menu transform-overlay-arranger-menu-hidden")
-    menu.append(floatNone, floatLeft, floatRight)
+    menu.append(...buttons)
     return menu
   }
 
@@ -288,6 +280,7 @@ export class TransformationFeature extends EditorFeature {
       const label = button.title || ({
         restorer: "Reset transformations", arranger: "Float", orderer: "Stacking order",
         "float-none": "No float", "float-left": "Float left", "float-right": "Float right",
+        "float-far-left": "Float far left", "float-far-right": "Float far right",
         "z-back": "Send to back", "z-backward": "Send backward", "z-forward": "Bring forward", "z-front": "Bring to front",
       } as Record<string, string>)[button.id.replace("◆transform-overlay-", "")]
       if(label) { button.title = label; button.setAttribute("aria-label", label) }
@@ -499,7 +492,7 @@ export class TransformationFeature extends EditorFeature {
         })
       }
     }
-    this.arranger.setAttribute("data-float", style.float || "none")
+    this.arranger.setAttribute("data-float", floatSideFromStyles(style.float || "none", target.style))
     this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
     this.#syncControlParts()
     this.#updateContextMarkers()

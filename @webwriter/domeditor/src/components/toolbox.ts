@@ -13,6 +13,7 @@ import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, renderDocumentLayoutPreview, documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
+import {floatSideFromStyles, type FloatSide} from "../element-styles"
 
 export type ToolboxTool = "Edit" | "Style" | "AI" | "Review"
 
@@ -805,18 +806,20 @@ export class DomEditorToolbox extends EditingControls {
     const target = this.elementStyle.target
     if(this.activeTool !== "Edit" || this.documentLayout.mode !== "document" || !target
       || this.documentSelected || target.documentRoot || target.localName === "body") return
-    const float = this.elementStyle.computed.float || "none"
+    const float = floatSideFromStyles(this.elementStyle.computed.float || "none", {
+      getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
+    })
     drawers.push(html`
       <ribbon-drawer label="Float" icon="Layout" layout="float">
         <div class="layout-action-controls">
           <div class="layout-action-row" role="group" aria-label="Float">
-            ${(["left", "none", "right"] as const).map(side => html`<button type="button"
+            ${(["far-left", "left", "none", "right", "far-right"] as const satisfies readonly FloatSide[]).map(side => html`<button type="button"
               aria-label=${side === "none" ? "Clear float" : `Float ${side}`} aria-pressed=${float === side}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setFloat", side}, bubbles: true, composed: true,
-              }))}>${side === "none" ? "None" : side === "left" ? "Left" : "Right"}</button>`)}
+              }))}>${side === "none" ? "None" : side === "far-left" ? "Far left" : side === "far-right" ? "Far right" : side === "left" ? "Left" : "Right"}</button>`)}
           </div>
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>

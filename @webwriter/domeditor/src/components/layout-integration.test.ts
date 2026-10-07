@@ -168,7 +168,11 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
-    toolbox.elementStyle = {...styleState("flex"), computed: {display: "flex", float: "right"}}
+    toolbox.elementStyle = {
+      ...styleState("flex"),
+      inline: {"margin-right": {value: "var(--ww-float-outset)", priority: ""}},
+      computed: {display: "flex", float: "right"},
+    }
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Arrangement"]')).toBeNull()
     const group = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
@@ -177,10 +181,40 @@ describe("layout host and toolbox integration", () => {
     toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
-    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"])
+    expect(buttons.map(button => button.textContent?.trim())).toEqual(["Far left", "Left", "None", "Right", "Far right"])
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "false", "false", "true"])
     for(const button of buttons) button.click()
-    expect(actions).toEqual(["left", "none", "right"].map(side => ({type: "setFloat", side})))
+    expect(actions).toEqual(["far-left", "left", "none", "right", "far-right"].map(side => ({type: "setFloat", side})))
     expect(execute.mock.calls.map(([action]) => action)).toEqual(actions)
+  })
+
+  it("keeps an inline float selection visible when a narrow style overrides it", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
+    const toolbox = await settle(editor)
+    toolbox.elementStyle = {
+      ...styleState("flex"),
+      inline: {
+        float: {value: "right", priority: ""},
+        "margin-right": {value: "var(--ww-float-outset)", priority: ""},
+      },
+      computed: {display: "flex", float: "none"},
+    }
+    await toolbox.updateComplete
+    let buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
+      .querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-pressed")))
+      .toEqual(["false", "false", "false", "false", "true"])
+
+    toolbox.elementStyle = {
+      ...toolbox.elementStyle!,
+      inline: {"margin-right": {value: "var(--ww-float-outset)", priority: ""}},
+    }
+    await toolbox.updateComplete
+    buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
+      .querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-pressed")))
+      .toEqual(["false", "false", "true", "false", "false"])
   })
 
   it("exposes narrow preview in the document layout drawer", async () => {

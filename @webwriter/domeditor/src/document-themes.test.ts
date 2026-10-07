@@ -2,6 +2,7 @@ import {describe, expect, it} from "vitest"
 
 import {
   defaultDocumentTheme,
+  documentThemes,
   documentTheme,
   editingDocumentThemeSource,
 } from "./document-themes"
@@ -12,6 +13,20 @@ const ruleHeaders = (source: string) => Array.from(
 ).filter(header => !header.startsWith("@") && !/^(?:from|to|\d+%)$/.test(header))
 
 describe("document themes", () => {
+  it("includes responsive float geometry in every saved and editing theme", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain("container-type: inline-size;")
+      expect(theme.source).toContain("--ww-float-width: 16rem;")
+      expect(theme.source).toContain("--ww-float-gap: 1rem;")
+      expect(theme.source).toContain("--ww-float-space: max(0px, calc((100cqw - 100%) / 2 - var(--ww-page-gutter, 1rem)));")
+      expect(editingDocumentThemeSource(theme)).toContain("--ww-float-space:")
+      expect(theme.source).toMatch(/p:not\(\[is\]\)\s*\{\s*display: flow-root;\s*min-inline-size: min\(300px, 100%\);/)
+      expect(theme.source).toContain("@container (width < 600px)")
+      expect(theme.source).toContain("float: none !important;")
+      expect(theme.source).toContain("margin-left: auto !important;")
+      expect(theme.source).toContain("margin-right: auto !important;")
+    }
+  })
   it("shares a fluid page and stable reading measure with standalone documents", () => {
     const source = defaultDocumentTheme.source
     const landmarks = source.slice(source.indexOf(" * Landmarks"), source.indexOf(" * Section\n"))
@@ -68,7 +83,8 @@ describe("document themes", () => {
 
     expect(source).toContain("Pico CSS ✨ v2.1.1")
     expect(source).toContain("@layer webwriter-theme")
-    expect(source).not.toContain("!important")
+    // Only the responsive float rule overrides authored inline placement.
+    expect(source.match(/!important/g)).toHaveLength(3)
     expect(source).toContain("--pico-font-size: 100%")
     expect(source).not.toMatch(/@media \(min-width: \d+px\)\s*\{\s*:root,\s*:host\s*\{\s*--pico-font-size:/)
     expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-column-(?:group|left|middle|right|three)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])

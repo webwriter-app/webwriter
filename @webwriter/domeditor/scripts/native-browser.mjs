@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "far floats adapt to column margins and survive standalone export",
   "Harper checks English in a worker without authored DOM artifacts",
   "version previews preserve editing mode and reject native and direct mutations",
   "collaborated scripts remain inert with namespace prefixes, clones and later edits",

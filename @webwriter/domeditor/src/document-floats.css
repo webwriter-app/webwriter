@@ -1,0 +1,35 @@
+/* Shared by editing and exported themes. The document has one centered column. */
+@layer webwriter-theme {
+  html {
+    container-type: inline-size;
+    --ww-float-width: 16rem;
+    --ww-float-gap: 1rem;
+  }
+
+  body {
+    /* Percentages resolve against the float's containing column. */
+    --ww-float-space: max(0px, calc((100cqw - 100%) / 2 - var(--ww-page-gutter, 1rem)));
+  }
+
+  /* Move paragraphs below floats instead of squeezing their text into a
+   * narrow strip. The percentage cap keeps smaller columns from overflowing. */
+  p:not([is]) {
+    display: flow-root;
+    min-inline-size: min(300px, 100%);
+  }
+
+  /* CSS cannot query whether a float wrapped. Use a mobile breakpoint for
+   * the shared column geometry, and retain the authored float for wider views.
+   * Both spellings also cover existing documents before CSSOM serialization. */
+  @container (width < 600px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) :is(
+      [style*="float: left"], [style*="float:left"],
+      [style*="float: right"], [style*="float:right"]
+    ) {
+      display: flow-root;
+      float: none !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
+  }
+}

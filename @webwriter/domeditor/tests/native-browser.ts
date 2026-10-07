@@ -3,6 +3,7 @@ import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
 import {$, caretRect} from "../src/utility"
 import {defaultDocumentTheme} from "../src/document-themes"
+import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import * as Y from "yjs"
@@ -1915,6 +1916,104 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
     assert(frame.contentDocument === previewDoc && previewViewport.scrollLeft > previewViewport.clientWidth / 2, "native preview links did not stay inside srcdoc")
   }
   finally { frame.remove(); URL.revokeObjectURL(url) }
+})
+
+await check("far floats adapt to column margins and survive standalone export", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><aside id="float">Float content</aside><p id="text">Following text remains in the reading column.</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "far float fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const target = doc.querySelector<HTMLElement>("#float")!
+    const siblings = Array.from(doc.body.childNodes)
+    for(const side of ["left", "right", "far-left", "far-right"] as const) {
+      assert(editor.features.manipulation.setFloat(target, side), "far float command refused connected target")
+      const physical = side.endsWith("left") ? "left" : "right"
+      const far = side.startsWith("far-")
+      for(const width of [1400, 1000, 610, 590, 360]) {
+        frame.style.width = `${width}px`
+        await layoutFrame()
+        const column = doc.body.getBoundingClientRect(), box = target.getBoundingClientRect()
+        const style = view.getComputedStyle(target)
+        const stacked = doc.documentElement.clientWidth < 600
+        const gap = parseFloat(physical === "left" ? style.marginRight : style.marginLeft)
+        const outward = -parseFloat(physical === "left" ? style.marginLeft : style.marginRight)
+        assert(box.left >= -1 && box.right <= doc.documentElement.clientWidth + 1, "far float escaped the viewport")
+        if(far && width === 1400) assert(physical === "left" ? box.right <= column.left - gap + 1 : box.left >= column.right + gap - 1, "wide far float did not leave the column")
+        if(far && width === 1000) assert(outward > 0 && outward < box.width + gap, "partial margin did not keep wrapping inside the column")
+        assert(floatSideFromStyles(style.float, target.style) === side, "responsive centering lost the authored float setting")
+        if(stacked) {
+          assert(style.float === "none", "mobile element remained floated")
+          assert(Math.abs((box.left + box.right) / 2 - (column.left + column.right) / 2) < 1, "mobile element was not centered in the column")
+        }
+        else assert(style.float === physical, "wider document did not restore authored float placement")
+        const paragraph = doc.querySelector<HTMLElement>("#text")!.getBoundingClientRect()
+        assert(paragraph.width >= Math.min(300, column.width) - 1, "paragraph was squeezed below its minimum width")
+        if(stacked) assert(paragraph.top >= box.bottom - 1, "mobile paragraph did not move below the centered element")
+      }
+      assert(Array.from(doc.body.childNodes).every((node, index) => node === siblings[index]), "far float rebuilt document structure")
+    }
+    frame.style.width = "280px"
+    await layoutFrame()
+    const narrowParagraph = doc.querySelector<HTMLElement>("#text")!.getBoundingClientRect()
+    const narrowColumn = doc.body.getBoundingClientRect()
+    assert(narrowParagraph.width <= narrowColumn.width + 1 && narrowParagraph.left >= narrowColumn.left - 1 && narrowParagraph.right <= narrowColumn.right + 1, "paragraph minimum overflowed a column narrower than 300px")
+    frame.style.width = "360px"
+    const widget = doc.createElement("native-centered-widget"), image = doc.createElement("picture")
+    widget.attachShadow({mode: "open"}).innerHTML = '<style>:host {display:inline-block;width:120px;height:80px}</style>Widget'
+    image.append(doc.createElement("img"))
+    image.style.width = "80px"; image.style.height = "60px"
+    doc.querySelector("#text")!.before(widget, image)
+    try {
+      editor.features.manipulation.setFloat(widget, "left")
+      editor.features.manipulation.setFloat(image, "right")
+      await layoutFrame()
+      const column = doc.body.getBoundingClientRect()
+      let previous = target.getBoundingClientRect()
+      for(const element of [widget, image]) {
+        const box = element.getBoundingClientRect()
+        assert(view.getComputedStyle(element).float === "none" && !element.style.getPropertyPriority("float"), "mobile float command overrode CSS centering")
+        assert(Math.abs((box.left + box.right) / 2 - (column.left + column.right) / 2) < 1, `mobile ${element.localName} was not centered: box=${box.left},${box.right} column=${column.left},${column.right} display=${view.getComputedStyle(element).display} width=${view.getComputedStyle(element).width} margins=${view.getComputedStyle(element).marginLeft},${view.getComputedStyle(element).marginRight}`)
+        assert(box.top >= previous.bottom - 1, "opposing mobile floats did not stack in document order")
+        previous = box
+      }
+    }
+    finally { widget.remove(); image.remove() }
+    frame.style.width = "1400px"
+    doc.documentElement.style.setProperty("--ww-float-width", "12rem")
+    doc.documentElement.style.setProperty("--ww-float-gap", "12px")
+    await layoutFrame()
+    assert(Math.abs(target.getBoundingClientRect().width - 192) < 1, "theme float width did not update live")
+    const exported = editor.toHTML()
+    const saved = document.createElement("iframe")
+    saved.style.cssText = frame.style.cssText
+    saved.setAttribute("sandbox", "allow-same-origin")
+    const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
+    saved.srcdoc = exported
+    document.body.append(saved)
+    try {
+      await loaded
+      const box = saved.contentDocument!.querySelector("#float")!.getBoundingClientRect()
+      const column = saved.contentDocument!.body.getBoundingClientRect()
+      assert(Math.abs(box.width - 192) < 1 && box.left >= column.right + 11, "standalone export lost float geometry")
+      saved.style.width = "360px"
+      await layoutFrame()
+      const mobileBox = saved.contentDocument!.querySelector("#float")!.getBoundingClientRect()
+      const mobileColumn = saved.contentDocument!.body.getBoundingClientRect()
+      assert(Math.abs((mobileBox.left + mobileBox.right) / 2 - (mobileColumn.left + mobileColumn.right) / 2) < 1, "standalone mobile export lost centering")
+    }
+    finally { saved.remove() }
+    editor.features.manipulation.setFloat(target, "none")
+    assert(!target.style.width && !target.style.margin && !target.style.float, "clearing far float retained layout declarations")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("native drag floats in target halves and preserves ordinary gap drops", async () => {

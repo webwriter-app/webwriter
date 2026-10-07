@@ -16,7 +16,7 @@ import {
   type HeadingGroupSelectionState,
   type RibbonDropPosition,
 } from "../editor-bridge"
-import {paragraphStylePropertyNameSet} from "../element-styles"
+import {type FloatSide, paragraphStylePropertyNameSet} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
@@ -374,31 +374,52 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Floats are authored CSS; no wrapper or companion layout is created. */
-  setFloat(element: Element, side: "left" | "right" | "none") {
+  setFloat(element: Element, side: FloatSide) {
     if(this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
-      || !["left", "right", "none"].includes(side) || element === getDocumentRoot()
+      || !["left", "right", "none", "far-left", "far-right"].includes(side) || element === getDocumentRoot()
       || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)) return false
     const style = this.inlineStyleOf(element)
     if(!style) return false
+    const far = side === "far-left" || side === "far-right"
+    const desired = side === "far-left" ? "left" : side === "far-right" ? "right" : side
+    const wasFar = ["margin-left", "margin-right"].some(name => style.getPropertyValue(name).includes("var(--ww-float-outset"))
+    const defaultWidth = "var(--ww-float-width)"
+    const authoredWidth = style.getPropertyValue("width")
+    const floatWidth = authoredWidth && authoredWidth !== "auto" ? authoredWidth : defaultWidth
     const width = style.getPropertyValue("max-width")
     const cappedWidth = /^min\(50%, ([\s\S]+)\)$/.exec(width)
     const originalWidth = cappedWidth?.[1] ?? width
     const maxWidth = side === "none" ? cappedWidth ? originalWidth : width === "50%" ? null : undefined
       : originalWidth && originalWidth !== "50%" && originalWidth !== "none" ? `min(50%, ${originalWidth})` : "50%"
-    const margin = side === "left" ? "5px 5px 5px 0px" : side === "right" ? "5px 0px 5px 5px"
-      : ["5px", "5px 5px 5px 0px", "5px 0px 5px 5px"].includes(style.getPropertyValue("margin")) ? null : undefined
-    this.setElementStyles(element, {...(margin !== undefined ? {margin} : {}), ...(maxWidth !== undefined ? {"max-width": maxWidth === null ? null : {
+    const gap = "var(--ww-float-gap)"
+    const sizeLimit = originalWidth && originalWidth !== "none" && originalWidth !== "50%" ? `, ${originalWidth}` : ""
+    // Cap the negative margin at the used width plus gap so text can reclaim
+    // the entire column, without pulling a small float past the column edge.
+    const outset = `calc(0px - min(var(--ww-float-space, 0px), calc(min(50%, ${floatWidth}${sizeLimit}) + ${gap})))`
+    const margin = far ? null : desired === "left" ? "5px 5px 5px 0px" : desired === "right" ? "5px 0px 5px 5px"
+      : wasFar || ["5px", "5px 5px 5px 0px", "5px 0px 5px 5px"].includes(style.getPropertyValue("margin")) ? null : undefined
+    this.setElementStyles(element, {
+      ...(far && floatWidth === defaultWidth ? {width: defaultWidth} : !far && authoredWidth === defaultWidth ? {width: null} : {}),
+      ...(margin !== undefined ? {margin} : {}),
+      ...(far ? {
+        "--ww-float-outset": outset,
+        "margin-top": "5px", "margin-bottom": "5px",
+        "margin-left": desired === "left" ? "var(--ww-float-outset)" : gap,
+        "margin-right": desired === "right" ? "var(--ww-float-outset)" : gap,
+      } : wasFar ? {"--ww-float-outset": null} : {}),
+      ...(maxWidth !== undefined ? {"max-width": maxWidth === null ? null : {
       value: maxWidth, priority: style.getPropertyPriority("max-width") === "important" ? "important" as const : "" as const,
     }} : {}), float: side === "none" ? null : {
-      value: side, priority: style.getPropertyPriority("float") === "important" ? "important" : "",
+      value: desired, priority: style.getPropertyPriority("float") === "important" ? "important" : "",
     }})
     // Clearing an inline declaration must also clear a float inherited from
     // an authored stylesheet; otherwise the center control has no effect.
     const computed = getComputedStyle(element).float
     if(side === "none" && computed && computed !== "none") this.setElementStyles(element, {float: "none"})
-    const desired = side === "none" ? "none" : side
     const applied = getComputedStyle(element).float
-    if(applied && applied !== desired) this.setElementStyles(element, {float: {value: desired, priority: "important"}})
+    // Responsive theme CSS can deliberately stack floats as normal blocks.
+    // Keep their authored side so widening the document restores placement.
+    if(applied && applied !== "none" && applied !== desired) this.setElementStyles(element, {float: {value: desired, priority: "important"}})
     return true
   }
 

@@ -10,6 +10,7 @@ import { $, cloneWithoutEditorMarkers } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {mathElement} from "../math"
+import {floatSideFromStyles} from "../element-styles"
 import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
 import {replayHostDrag, type RibbonDropPosition} from "../editor-bridge"
 
@@ -697,6 +698,89 @@ describe("column insertion", () => {
     expect(document.querySelector("img")).toBeNull()
     editor.doc.redo()
     expect(editor.toHTML(true)).toBe(inserted)
+  })
+
+  it.each(["far-left", "far-right"] as const)("sets and clears %s using only authored inline styles", side => {
+    document.body.innerHTML = '<p>before</p><!--keep--><custom-widget title="Keep"><unfamiliar-node>content</unfamiliar-node></custom-widget><p>after</p>'
+    const widget = document.querySelector<HTMLElement>("custom-widget")!
+    const siblings = Array.from(document.body.childNodes)
+    $.selectElement(widget)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side})).toBe(true)
+    const physicalSide = side === "far-left" ? "left" : "right"
+    expect(widget.style.float).toBe(physicalSide)
+    expect(widget.style.width).toBe("var(--ww-float-width)")
+    expect(widget.style.getPropertyValue(`margin-${physicalSide}`)).toContain("var(--ww-float-outset)")
+    expect(floatSideFromStyles(widget.style.float, widget.style)).toBe(side)
+    expect(Array.from(document.body.childNodes)).toEqual(siblings)
+    expect(widget.innerHTML).toBe("<unfamiliar-node>content</unfamiliar-node>")
+    expect(Array.from(widget.attributes, attr => attr.name).sort()).toEqual(["style", "title"])
+    expect(editor.toHTML(true)).toContain("var(--ww-float-outset)")
+    expect(editor.features.manipulation.setFloat(widget, "none")).toBe(true)
+    expect(widget.getAttribute("style")).toBeNull()
+  })
+
+  it("switches far sides and ordinary floats without retaining the outset or preferred width", () => {
+    const image = document.createElement("img")
+    document.body.append(image)
+    const manipulation = editor.features.manipulation
+    manipulation.setFloat(image, "far-left")
+    manipulation.setFloat(image, "far-right")
+    expect(floatSideFromStyles(image.style.float, image.style)).toBe("far-right")
+    expect(image.style.marginLeft).toBe("var(--ww-float-gap)")
+    manipulation.setFloat(image, "left")
+    expect(image.style.margin).toBe("5px 5px 5px 0px")
+    expect(image.style.width).toBe("")
+    expect(floatSideFromStyles(image.style.float, image.style)).toBe("left")
+    manipulation.setFloat(image, "none")
+    expect(image.getAttribute("style")).toBeNull()
+  })
+
+  it("clears far margins after another source removes the native float declaration", () => {
+    const target = document.createElement("aside")
+    document.body.append(target)
+    editor.features.manipulation.setFloat(target, "far-right")
+    target.style.removeProperty("float")
+    editor.features.manipulation.setFloat(target, "none")
+    expect(target.getAttribute("style")).toBeNull()
+  })
+
+  it("preserves authored widths and unrelated styles when clearing a far float", () => {
+    document.body.innerHTML = '<section><aside style="width: 80px; max-width: 120px; color: red">keep<!--note--></aside></section>'
+    const target = document.querySelector("aside")!
+    editor.features.manipulation.setFloat(target, "far-right")
+    expect(target.style.getPropertyValue("--ww-float-outset")).toContain("min(50%, 80px, 120px)")
+    editor.features.manipulation.setFloat(target, "none")
+    expect(target.style.width).toBe("80px")
+    expect(target.style.maxWidth).toBe("120px")
+    expect(target.style.color).toBe("red")
+    expect(target.style.margin).toBe("")
+    expect(target.innerHTML).toBe("keep<!--note-->")
+  })
+
+  it("refuses far floating disconnected targets, the document root and widget internals", () => {
+    const target = document.createElement("aside")
+    expect(editor.features.manipulation.setFloat(target, "far-left")).toBe(false)
+    expect(target.getAttribute("style")).toBeNull()
+    expect(editor.features.manipulation.setFloat(document.body, "far-right")).toBe(false)
+    document.body.innerHTML = '<custom-widget><aside>private</aside></custom-widget>'
+    expect(editor.features.manipulation.setFloat(document.querySelector("aside")!, "far-right")).toBe(false)
+  })
+
+  it("shares, undoes and redoes a far float without DOM artifacts", () => {
+    document.body.innerHTML = '<p>before</p><aside title="Keep">content</aside><p>after</p>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    editor.features.manipulation.setFloat(document.querySelector("aside")!, "far-left")
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(after).toContain("var(--ww-float-outset)")
+    expect(after).not.toContain("◆")
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("var(--ww-float-outset)")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
   })
 })
 

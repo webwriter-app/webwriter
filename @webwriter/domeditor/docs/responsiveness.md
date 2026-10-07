@@ -80,6 +80,44 @@ The base theme applies border-box sizing globally. The parent page remains fluid
 
 Exported documents include their theme CSS. If an existing document contains an older copy of the base theme, update that copy to use these defaults in preview and export as well.
 
+## Float outside the reading column
+
+The Float controls offer **Far left** and **Far right** alongside ordinary floats.
+They use native `float` and negative outer margins, without wrappers or classes.
+On a wide page, the element moves entirely into the side margin. With less room,
+it remains partly inside the column and text wraps around that portion. On a
+document viewport below 600px, floated elements become centered blocks in a
+single column. Widening the viewport restores their authored left/right setting.
+This CSS container breakpoint approximates the stacked layout; CSS cannot query
+whether an individual float has wrapped. It also applies to existing inline
+left/right floats and standalone exports. Canvas and slide layouts are excluded.
+
+Paragraphs use `display: flow-root` and `min-inline-size: min(300px, 100%)`.
+They move below a float when the remaining space is less than 300px, and fit
+the full column when the column itself is narrower than 300px.
+
+The shared theme assumes one centered reading column and exposes these settings:
+
+```css
+:root {
+  --ww-float-width: 16rem;
+  --ww-float-gap: 1rem;
+}
+```
+
+An explicit inline width takes precedence over the preferred theme width. The
+existing 50% float maximum still applies. The theme measures available margin
+space through the root's inline-size container and `--ww-page-gutter`. Each far
+float stores its negative margin calculation in the authored inline
+`--ww-float-outset` property; the physical outer margin references that property.
+This keeps the setting recognizable even when the computed margin becomes zero.
+Switching to an ordinary float or None removes the far-float calculation and any
+preferred width added by the command, while retaining explicit authored widths.
+
+The shared float stylesheet is included in saved theme CSS, so the layout also
+works in standalone exports without editor JavaScript. Keep the reading column
+centered and avoid clipping overflow on its ancestors.
+
 ## Use more space
 
 The default block widget matches the prose width so it aligns with surrounding reading content. For a widget directly inside `body`, remove its maximum with an authored document rule:

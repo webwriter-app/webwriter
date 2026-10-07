@@ -115,7 +115,7 @@ import {
   type RibbonDropPosition,
   type HostDragDetail,
 } from "../editor-bridge"
-import {elementStylePropertyNames, paragraphStylePropertyNameSet} from "../element-styles"
+import {elementStylePropertyNames, paragraphStylePropertyNameSet, type FloatSide} from "../element-styles"
 import "./breadcrumb"
 import "./toolbox"
 import "./ribbon"
@@ -5270,7 +5270,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: "left" | "none" | "right"}>).detail
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide}>).detail
     if(!action || action.type !== "setFloat") return
     this.layoutError = ""
     void this.execute(action).then(changed => {

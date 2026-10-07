@@ -1768,15 +1768,19 @@ body::part(transform-overlay-arranger-float-none) {
 body::part(transform-overlay-float-none-hidden) {
       display: none;
 }
+body::part(transform-overlay-arranger-float-far-left),
 body::part(transform-overlay-arranger-float-left) {
     --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-float-left"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /><path d="M14 7l6 0" /><path d="M14 11l6 0" /><path d="M4 15l16 0" /><path d="M4 19l16 0" /></svg>');
 }
+body::part(transform-overlay-float-far-left-hidden),
 body::part(transform-overlay-float-left-hidden) {
       display: none;
 }
+body::part(transform-overlay-arranger-float-far-right),
 body::part(transform-overlay-arranger-float-right) {
     --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-float-right"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /><path d="M4 7l6 0" /><path d="M4 11l6 0" /><path d="M4 15l16 0" /><path d="M4 19l16 0" /></svg>');
 }
+body::part(transform-overlay-float-far-right-hidden),
 body::part(transform-overlay-float-right-hidden) {
       display: none;
 }
@@ -1807,27 +1811,35 @@ body::part(transform-overlay-float-none):active {background: var(--sl-color-prim
 body::part(transform-overlay-float-none)::before {
     background-color: white;
 }
+body::part(transform-overlay-float-far-left),
 body::part(transform-overlay-float-left) {
   background: var(--sl-color-primary-300);
   border-radius: 2px;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-float-left"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /><path d="M14 7l6 0" /><path d="M14 11l6 0" /><path d="M4 15l16 0" /><path d="M4 19l16 0" /></svg>');
 }
+body::part(transform-overlay-float-far-left):hover,
 body::part(transform-overlay-float-left):hover {background: var(--sl-color-primary-400);
 }
+body::part(transform-overlay-float-far-left):active,
 body::part(transform-overlay-float-left):active {background: var(--sl-color-primary-500);
 }
+body::part(transform-overlay-float-far-left)::before,
 body::part(transform-overlay-float-left)::before {
     background-color: white;
 }
+body::part(transform-overlay-float-far-right),
 body::part(transform-overlay-float-right) {
   background: var(--sl-color-primary-300);
   border-radius: 2px;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-float-right"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /><path d="M4 7l6 0" /><path d="M4 11l6 0" /><path d="M4 15l16 0" /><path d="M4 19l16 0" /></svg>');
 }
+body::part(transform-overlay-float-far-right):hover,
 body::part(transform-overlay-float-right):hover {background: var(--sl-color-primary-400);
 }
+body::part(transform-overlay-float-far-right):active,
 body::part(transform-overlay-float-right):active {background: var(--sl-color-primary-500);
 }
+body::part(transform-overlay-float-far-right)::before,
 body::part(transform-overlay-float-right)::before {
     background-color: white;
 }

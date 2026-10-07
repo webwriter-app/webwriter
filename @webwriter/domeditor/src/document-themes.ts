@@ -4,14 +4,15 @@ import picoSource from "../../core/model/schemas/resource/themes/pico.css?raw"
 import sakuraSource from "../../core/model/schemas/resource/themes/sakura.css?raw"
 import simpleSource from "../../core/model/schemas/resource/themes/simple.css?raw"
 import waterSource from "../../core/model/schemas/resource/themes/water.css?raw"
+import floatSource from "./document-floats.css?raw"
 
 export const documentThemes = [
-  {value: "base", label: "Base", source: baseSource},
-  {value: "water", label: "Water", source: waterSource},
-  {value: "simple", label: "Simple", source: simpleSource},
-  {value: "sakura", label: "Sakura", source: sakuraSource},
-  {value: "pico", label: "Pico", source: picoSource},
-  {value: "holiday", label: "Holiday", source: holidaySource},
+  {value: "base", label: "Base", source: baseSource + "\n" + floatSource},
+  {value: "water", label: "Water", source: waterSource + "\n" + floatSource},
+  {value: "simple", label: "Simple", source: simpleSource + "\n" + floatSource},
+  {value: "sakura", label: "Sakura", source: sakuraSource + "\n" + floatSource},
+  {value: "pico", label: "Pico", source: picoSource + "\n" + floatSource},
+  {value: "holiday", label: "Holiday", source: holidaySource + "\n" + floatSource},
 ] as const
 
 export type DocumentThemeName = typeof documentThemes[number]["value"]
