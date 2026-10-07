@@ -1663,7 +1663,7 @@ body::part(transform-overlay-edge-down) {
 }
 body::part(transform-overlay-edge-left) { left: calc(var(--selection-flow-left, 0px) + var(--selection-flow-handle-left, -7px)); }
 body::part(transform-overlay-edge-right) { right: calc(100% - var(--selection-flow-right, 100%) + var(--selection-flow-handle-right, -7px)); }
-body::part(transform-overlay-edge-move) { cursor: move; }
+body::part(transform-overlay-edge-move) { cursor: grab; }
 /* Center 8px handles on the existing 2px selection outline, offset by 2px. */
 body::part(transform-overlay-scale-up-left) {
   top: -7px;
@@ -1971,7 +1971,7 @@ body::part(transform-overlay-delete) {
 }
 body::part(transform-overlay-mover) {
   left: calc((var(--selection-flow-top-left, 0px) + var(--selection-flow-top-right, 100%)) / 2 - 10px);
-  cursor: move;
+  cursor: grab;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9l3 3l-3 3M15 12h6M6 9l-3 3l3 3M3 12h6M9 18l3 3l3 -3M12 15v6M15 6l-3 -3l-3 3M12 3v6"/></svg>');
 }
 body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-mover),

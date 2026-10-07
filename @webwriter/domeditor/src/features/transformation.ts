@@ -35,8 +35,7 @@ type Gesture = {
 
 /** Selection-owned spatial controls in the shadow appendix.
  *
- * Move: in document mode, drag at least 8 CSS pixels to preview float left
- * or right over a target element's halves, then apply it on release.
+ * Move: the document mover and borders use the element's native node drag.
  * Canvas and slide items retain spatial positioning. Ctrl/Cmd previews a flow
  * gap; Shift constrains spatial movement to one axis; Alt disables snapping.
  *
@@ -358,6 +357,7 @@ export class TransformationFeature extends EditorFeature {
     }
     for(const edge of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
       edge.dataset.transformMode = "move"
+      edge.draggable = !this.editor.features.canvas.active && !this.editor.features.slides.active
       edge.title = "Move"
       setPart(edge, "transform-overlay-edge-move", true)
     }
@@ -371,6 +371,8 @@ export class TransformationFeature extends EditorFeature {
     hidden("rotator", position !== "absolute")
     hidden("orderer", freeform || position !== "absolute")
     hidden("mover", freeform)
+    overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
+      !this.editor.features.canvas.active && !this.editor.features.slides.active
     hidden("delete", freeform)
     hidden("arranger", true)
     hidden("anchor", true)
@@ -1060,11 +1062,31 @@ export class TransformationFeature extends EditorFeature {
       const handle = event.composedPath()[0]
       if(!(handle instanceof HTMLElement) || !this.overlay.contains(handle)) return
       if(this.editor.isEditingLocked) { event.preventDefault(); event.stopImmediatePropagation(); return }
+      if(handle.dataset.transformMode === "move" && handle.draggable) {
+        // Leave the native default available so the button can start a node drag.
+        event.stopImmediatePropagation()
+        return
+      }
       if(handle.dataset.transformMode) {
         this.#begin(event, handle.dataset.transformMode as Mode, handle)
         event.stopImmediatePropagation()
       }
       else event.preventDefault() // Keep authored selection while using menus.
+    },
+    dragstart: event => {
+      const handle = event.composedPath()[0]
+      if(!(handle instanceof HTMLElement) || handle.dataset.transformMode !== "move"
+        || !handle.draggable || !this.overlay.contains(handle)) return
+      const target = this.target
+      if(!this.isEnabled || this.editor.isEditingLocked || !target) { event.preventDefault(); return }
+      this.editor.features.selection.selectElement(target)
+      this.editor.features.manipulation.startNodeDrag(event, target)
+    },
+    dragend: event => {
+      const handle = event.composedPath()[0]
+      if(handle instanceof HTMLElement && handle.dataset.transformMode === "move" && handle.draggable && this.overlay.contains(handle)) {
+        this.editor.features.manipulation.endNodeDrag()
+      }
     },
     pointermove: event => {
       if(!this.#gesture || this.#gesture.pointerId !== event.pointerId) return
@@ -1087,7 +1109,7 @@ export class TransformationFeature extends EditorFeature {
         return
       }
       const handle = event.composedPath()[0]
-      if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-mover" && this.overlay.contains(handle)) {
+      if(handle instanceof HTMLElement && handle.dataset.transformMode === "move" && handle.draggable && this.overlay.contains(handle)) {
         const target = this.target
         if(target && !this.#gesture && !this.editor.isEditingLocked) this.editor.features.selection.selectElement(target)
         event.stopPropagation()

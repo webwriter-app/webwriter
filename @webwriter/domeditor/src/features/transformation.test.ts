@@ -125,23 +125,6 @@ describe("selection-owned transformation", () => {
     expect(target.getAttribute("class") ?? "").not.toContain("◆")
   })
 
-  it.each(["mover", "scale-up"])("moves document content with the %s affordance", name => {
-    const target = targetElement("demo-widget")
-    const paragraph = targetElement()
-    mockRect(target)
-    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
-    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
-    captureNode(target)
-    const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${name}`)!
-    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 310, clientY: 125}))
-    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
-    expect(target).toHaveClass("ww-float-left")
-    expect(target.style.width).toBe("")
-    expect(target.style.maxHeight).toBe("")
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-  })
-
   it.each(["p", "demo-widget", "svg"])("deletes the current %s and supports undo/redo", async tag => {
     const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
     target.innerHTML = tag === "svg" ? '<g><circle r="5"/></g><!--keep-->' : 'before<!--keep--><unfamiliar-node>keep</unfamiliar-node>'
@@ -237,6 +220,7 @@ describe("selection-owned transformation", () => {
       const handle = feature.overlay.querySelector<HTMLElement>(selector)!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
       document.dispatchEvent(pointer(ending, {pointerId: 3}))
+      if(ending === "pointerup") handle.click()
       expect(editor.features.selection.captureSelectedElement).toBe(ending === "pointercancel" ? target : null)
       if(ending === "pointerup") expect($.selectedElement).toBe(target)
       expect(target.parentElement).toBe(section)

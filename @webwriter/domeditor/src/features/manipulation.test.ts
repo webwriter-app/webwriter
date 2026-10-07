@@ -3498,6 +3498,46 @@ describe("unified content transfer", () => {
     return event
   }
 
+  it.each(["mover", "scale-up", "scale-right", "scale-down", "scale-left"].flatMap(handle =>
+    [false, true].map(copy => ({handle, copy}))))("uses native element drag semantics from $handle (copy: $copy)", ({handle, copy}) => {
+    document.body.innerHTML = '<section><demo-widget draggable="false">before<!--keep--><b>content</b></demo-widget></section><p>target</p>'
+    const source = document.querySelector("demo-widget")!, section = source.parentElement!
+    const children = Array.from(source.childNodes)
+    editor.features.selection.captureElement(source)
+    const mover = editor.features.transformation.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${handle}`)!
+    expect(mover.draggable).toBe(true)
+    const down = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0})
+    mover.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(false)
+    const data = new DataTransfer()
+    const start = transferEvent("dragstart", data)
+    mover.dispatchEvent(start)
+    expect(start.defaultPrevented).toBe(false)
+    expect(data.effectAllowed).toBe("copyMove")
+    expect(data.getData("application/x-webwriter-node")).not.toBe("")
+    expect(data.getData("text/html")).not.toContain("◆")
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 2})
+    const over = transferEvent("dragover", data, {ctrlKey: copy})
+    document.body.dispatchEvent(over)
+    expect(data.dropEffect).toBe(copy ? "copy" : "move")
+    dropAt(data, document.body, 2, {ctrlKey: copy})
+    const result = document.body.lastElementChild!
+    expect(result.localName).toBe("demo-widget")
+    expect(result.getAttribute("draggable")).toBe("false")
+    if(copy) {
+      expect(source.parentElement).toBe(section)
+      expect(result).not.toBe(source)
+    }
+    else {
+      expect(result).toBe(source)
+      expect(Array.from(source.childNodes)).toEqual(children)
+    }
+    mover.dispatchEvent(transferEvent("dragend", data))
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.toHTML(true)).not.toMatch(/◆|transform-overlay|node-drag-surface/)
+  })
+
   it.each([[125, "left"], [150, "right"], [175, "right"]] as const)("floats dragged content at x=%i with native CSS", (x, side) => {
     document.body.innerHTML = '<p>source</p><article><p>nested</p></article>'
     const source = document.querySelector("body > p") as HTMLParagraphElement, target = document.querySelector("article")!

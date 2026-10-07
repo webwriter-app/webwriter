@@ -253,7 +253,7 @@ export class ManipulationFeature extends EditorFeature {
     super.disable()
   }
 
-  private startNodeDrag(event: DragEvent, element: Element) {
+  startNodeDrag(event: DragEvent, element: Element) {
     if(!this.isEnabled || event.defaultPrevented || !event.dataTransfer || element !== ($.selectedElement ?? this.editor.features.math.selectedMath)
       || !getDocumentRoot().contains(element) || element === getDocumentRoot()) {
       event.preventDefault()
@@ -2624,10 +2624,10 @@ export class ManipulationFeature extends EditorFeature {
       this.insertBreak("br")
     },
     "dragover": event => {
-      if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
+      if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
     },
     "drop": event => {
-      if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
+      if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
     },
   }
 
