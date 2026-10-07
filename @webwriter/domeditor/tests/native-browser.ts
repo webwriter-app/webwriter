@@ -2519,7 +2519,7 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
         assert(selected.getAttribute("part").includes("selection-caret-floats") && getComputedStyle(selected).outlineStyle === "none", "selection outline crosses the floated image");
         assert(selected.querySelector('[part~="selection-float-outline"] mask').id !== hover.querySelector("mask").id, "selection and hover contours share a mask ID");
         const imageBox = picture.getBoundingClientRect();
-        const controls = editor.features.transformation.overlay.querySelectorAll(".◆transform-overlay-scale, #◆transform-overlay-selector");
+        const controls = editor.features.transformation.overlay.querySelectorAll(".◆transform-overlay-scale, #◆transform-overlay-mover, #◆transform-overlay-delete");
         for(const control of controls) {
           if(control.hidden) continue;
           const box = control.getBoundingClientRect();

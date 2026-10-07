@@ -40,7 +40,8 @@ type Gesture = {
  * Canvas and slide items retain spatial positioning. Ctrl/Cmd previews a flow
  * gap; Shift constrains spatial movement to one axis; Alt disables snapping.
  *
- * Resize: corners set max-inline/block-size; edges constrain one logical axis.
+ * Resize: document mode exposes only the bottom-right corner. Freeform
+ * corners set max-inline/block-size; midpoints constrain one logical axis.
  * Existing dimensions and intrinsic content can keep the element smaller.
  * Canvas and slide items also set dimensions so they can grow with the handles.
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
@@ -250,7 +251,8 @@ export class TransformationFeature extends EditorFeature {
       if(mode) button.dataset.transformMode = mode
       return button
     }
-    const selector = control("selector", "Select")
+    const mover = control("mover", "Move", "move")
+    const deleter = control("delete", "Delete")
     const rotator = control("rotator", "Rotate", "rotate")
     const anchor = control("anchor", "Position anchor: drag to relocate; Ctrl/Cmd-click to cycle position; Shift-click for fixed", "anchor")
     const sticky = control("anchor-sticky", "Toggle sticky positioning")
@@ -273,7 +275,7 @@ export class TransformationFeature extends EditorFeature {
         point.title = `Resize ${dir}`
         return point
       }),
-      selector, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
+      mover, deleter, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
     )
     overlay.querySelectorAll("button").forEach(button => {
       button.type = "button"
@@ -342,17 +344,22 @@ export class TransformationFeature extends EditorFeature {
   #syncControlParts() {
     const overlay = this.overlay
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
-    const moveEdges = Boolean(this.target && this.#isFreeformItem(this.target))
-    setPart(overlay, "transform-overlay-freeform", moveEdges)
-    setPart(overlay, "transform-overlay-capture-selected", moveEdges && this.editor.features.selection.captureSelectedElement === this.target)
+    const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
+    setPart(overlay, "transform-overlay-freeform", freeform)
+    setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      midpoint.hidden = !moveEdges
-      setPart(midpoint, "transform-overlay-scale-hidden", !moveEdges)
+      midpoint.hidden = !freeform
+      setPart(midpoint, "transform-overlay-scale-hidden", !freeform)
+    }
+    for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
+      const hide = !freeform && scaler.id !== "◆transform-overlay-scale-down-right"
+      scaler.hidden = hide
+      setPart(scaler, "transform-overlay-scale-hidden", hide)
     }
     for(const edge of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
-      edge.dataset.transformMode = moveEdges ? "move" : "scale"
-      edge.title = moveEdges ? "Move" : `Resize ${edge.id.replace("◆transform-overlay-scale-", "")}`
-      setPart(edge, "transform-overlay-edge-move", moveEdges)
+      edge.dataset.transformMode = "move"
+      edge.title = "Move"
+      setPart(edge, "transform-overlay-edge-move", true)
     }
     setPart(overlay, "transform-overlay-hidden", overlay.hasAttribute("visibility"))
     setPart(overlay, "transform-overlay-narrow", this.isNarrow)
@@ -362,8 +369,9 @@ export class TransformationFeature extends EditorFeature {
       control.hidden = hide
     }
     hidden("rotator", position !== "absolute")
-    hidden("orderer", moveEdges || position !== "absolute")
-    hidden("selector", moveEdges)
+    hidden("orderer", freeform || position !== "absolute")
+    hidden("mover", freeform)
+    hidden("delete", freeform)
     hidden("arranger", true)
     hidden("anchor", true)
     hidden("anchor-sticky", true)
@@ -1072,9 +1080,21 @@ export class TransformationFeature extends EditorFeature {
         return
       }
       const handle = event.composedPath()[0]
-      if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-selector" && this.overlay.contains(handle)) {
+      if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-mover" && this.overlay.contains(handle)) {
         const target = this.target
         if(target && !this.#gesture && !this.editor.isEditingLocked) this.editor.features.selection.selectElement(target)
+        event.stopPropagation()
+      }
+      if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-delete" && this.overlay.contains(handle)) {
+        const target = this.target
+        if(target && !this.#gesture && !this.editor.isEditingLocked) {
+          this.editor.features.selection.selectElement(target)
+          if(this.target === target && $.selectedElement === target) {
+            $.delete()
+            this.clearTransform()
+            this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+          }
+        }
         event.stopPropagation()
       }
     },

@@ -1956,27 +1956,39 @@ body::part(transform-overlay-z-front):active {background: var(--sl-color-primary
 body::part(transform-overlay-z-front)::before {
     background-color: white;
 }
-body::part(transform-overlay-selector) {
+body::part(transform-overlay-mover),
+body::part(transform-overlay-delete) {
   position: absolute;
-  left: calc((var(--selection-flow-top-left, 0px) + var(--selection-flow-top-right, 100%)) / 2 - 10px);
   top: -13px;
   width: 20px;
   height: 20px;
-  cursor: pointer;
   display: grid;
   place-items: center;
   box-sizing: border-box;
   background: white;
   border: 2px solid var(--sl-color-primary-400);
   border-radius: 50%;
-  --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8v-2a2 2 0 0 1 2 -2h2"/><path d="M4 16v2a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M16 20h2a2 2 0 0 0 2 -2v-2"/><path d="M9 12l6 0"/><path d="M12 9l0 6"/></svg>');
 }
-body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-selector) {
+body::part(transform-overlay-mover) {
+  left: calc((var(--selection-flow-top-left, 0px) + var(--selection-flow-top-right, 100%)) / 2 - 10px);
+  cursor: move;
+  --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9l3 3l-3 3M15 12h6M6 9l-3 3l3 3M3 12h6M9 18l3 3l3 -3M12 15v6M15 6l-3 -3l-3 3M12 3v6"/></svg>');
+}
+body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-mover),
+body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-delete) {
   border-style: dotted;
 }
-body::part(transform-overlay-selector)::before {
+body::part(transform-overlay-mover)::before {
+  width: 16px;
+  height: 16px;
+}
+body::part(transform-overlay-delete)::before {
   width: 14px;
   height: 14px;
+}
+body::part(transform-overlay-delete) {
+  right: calc(100% - var(--selection-flow-top-right, 100%) - 10px);
+  --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1 -14M10 10v6M14 10v6"/></svg>');
 }
 body::part(transform-overlay-at-top) {
   --transform-rotate-top: calc(100% + 22px);
@@ -1992,7 +2004,8 @@ body::part(transform-overlay-at-top) {
 }
 body::part(transform-overlay-rotator-hidden),
 body::part(transform-overlay-scale-hidden),
-body::part(transform-overlay-selector-hidden),
+body::part(transform-overlay-mover-hidden),
+body::part(transform-overlay-delete-hidden),
 body::part(transform-overlay-orderer-hidden),
 body::part(transform-overlay-anchor-sticky-hidden),
 body::part(transform-overlay-arranger-menu-hidden),
