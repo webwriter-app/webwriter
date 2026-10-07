@@ -393,8 +393,8 @@ describe("compact universal style controls", () => {
     expect(changes.at(-1)).toEqual({property: "padding", mutation: null})
     editor.propertyNames = ["rotate", "scale"]
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".compact-toggle")).toBeNull()
-    expect(editor.shadowRoot!.querySelector("#compact-rotate")!.nextElementSibling!.textContent).toBe("°")
+    expect(editor.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(2)
+    expect(editor.shadowRoot!.querySelector("#compact-rotate")!.parentElement!.querySelector(".compact-unit")!.textContent).toBe("°")
     change("rotate", "45")
     expect(changes.at(-1)).toEqual({property: "rotate", mutation: {value: "45deg", priority: ""}})
     change("scale", "150")
@@ -447,13 +447,39 @@ describe("compact preset menus", () => {
 })
 
 
+it.each(["0.625", "62.5%"])("displays opacity %s as a percentage and supports editing and clearing", async value => {
+  const editor = await mount([], state({opacity: {value, priority: "important"}}), "compact")
+  editor.propertyNames = ["opacity"]
+  await editor.updateComplete
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-opacity")!
+  expect(input.value).toBe("62.5")
+  expect(input.parentElement!.querySelector(".compact-unit")!.textContent).toBe("%")
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  for(const [percentage, css] of [["0", "0"], ["100", "1"], ["25.5", "0.255"]]) {
+    input.value = percentage
+    input.dispatchEvent(new Event("change"))
+    expect(changes.at(-1)).toEqual({property: "opacity", mutation: {value: css, priority: "important"}})
+  }
+  const count = changes.length
+  for(const invalid of ["-1", "101", "invalid"]) {
+    input.value = invalid
+    input.dispatchEvent(new Event("change"))
+    expect(input.value).toBe("62.5")
+    expect(changes).toHaveLength(count)
+  }
+  input.value = ""
+  input.dispatchEvent(new Event("change"))
+  expect(changes.at(-1)).toEqual({property: "opacity", mutation: null})
+})
+
 it("displays authored scale as a percentage and preserves priority when editing or clearing", async () => {
   const editor = await mount([], state({scale: {value: "1.1", priority: "important"}}), "compact")
   editor.propertyNames = ["scale"]
   await editor.updateComplete
   const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-scale")!
   expect(input.value).toBe("110")
-  expect(input.nextElementSibling!.textContent).toBe("%")
+  expect(input.parentElement!.querySelector(".compact-unit")!.textContent).toBe("%")
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
   input.value = "62.5"
@@ -789,4 +815,22 @@ it("groups shadow and filter preview fields and reflects their current effects",
   expect(editor.shadowRoot!.querySelectorAll(".effect-fields > .effect-control")).toHaveLength(2)
   expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .shadow-preview")!.style.boxShadow).toBe("2px 2px 4px black")
   expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .filter-preview")!.style.filter).toBe("sepia(1)")
+})
+
+it.each([
+  ["rotate", "Straight", "0deg"], ["scale", "Original", "1"], ["opacity", "Half", "0.5"],
+])("offers named numerical %s presets and preserves priority", async (property, label, value) => {
+  const editor = await mount([], state({[property]: {value: "0", priority: "important"}}), "compact")
+  editor.propertyNames = [property]
+  await editor.updateComplete
+  const changes: ElementStyleChangeDetail[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>(`#compact-${property}`)!
+  expect(input.getAttribute("role")).toBe("combobox")
+  input.focus()
+  await editor.updateComplete
+  const option = Array.from(editor.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+    .find(button => button.textContent?.includes(label))!
+  option.click()
+  expect(changes.at(-1)).toEqual({property, mutation: {value, priority: "important"}})
 })

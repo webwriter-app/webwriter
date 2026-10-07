@@ -21,9 +21,7 @@ describe("media ribbon drawer", () => {
 
     image.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {label: "Image", keepDrawerOpen: false},
-    }))
+    expect(listener.mock.calls[0][0].detail).toEqual({label: "element:picture", keepDrawerOpen: false})
   })
 
   it("adds capture option dropdowns to image, audio, and video insertion buttons", async () => {
@@ -81,9 +79,7 @@ describe("media ribbon drawer", () => {
     expect(menu.querySelector("svg")).toBeNull()
     options[1].click()
 
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {label: `media-capture:${mode}`},
-    }))
+    expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({label: `media-capture:${mode}`})
   })
 
   it.each([
@@ -111,7 +107,7 @@ describe("media ribbon drawer", () => {
       .map(option => option.textContent?.trim())
     expect(labels).toEqual(["Image", "Audio", "Video", "Graphic", "Website"])
     menu.shadowRoot!.querySelector<HTMLButtonElement>(`.item[title="${label}"]`)!.click()
-    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {label}}))
+    expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({label: `element:${type === "picture" ? "picture" : type}`})
 
     menu.shadowRoot!.querySelector<HTMLButtonElement>(`[aria-label="Show more ${label} options"]`)!.click()
     await (menu as unknown as {updateComplete: Promise<unknown>}).updateComplete
@@ -121,7 +117,7 @@ describe("media ribbon drawer", () => {
     ])
     for(const [index, action] of [`media-file:${type}`, `media-capture:${screen}`, `media-capture:${record}`].entries()) {
       options[index].click()
-      expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {label: action}}))
+      expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({label: action})
     }
   })
 
@@ -137,7 +133,6 @@ describe("media ribbon drawer", () => {
     toolbox.activeMenu = "Edit"
     document.body.append(toolbox)
     await toolbox.updateComplete
-
     expect(toolbox.shadowRoot!.querySelector('[data-tool="Edit"] .toolbox-tab-label')?.textContent).toBe(label)
     expect(toolbox.shadowRoot!.querySelector(`ribbon-drawer[label="${label}"]`)).not.toBeNull()
     const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-toolbox-controls")!
@@ -160,12 +155,8 @@ describe("media ribbon drawer", () => {
     const alt = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
     expect(alt.value).toBe("A diagram")
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Source URL"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Width"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Height"]')).not.toBeNull()
-    const more = toolbox.shadowRoot!.querySelector<HTMLDetailsElement>(".media-advanced-options")!
-    expect(more.open).toBe(false)
-    more.open = true
-    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Width"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Height"]')).toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Image: Loading"]')?.value).toBe("lazy")
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-type-switch"))
       .some(button => button.textContent?.includes("Use <"))).toBe(false)
@@ -176,7 +167,7 @@ describe("media ribbon drawer", () => {
     }))
   })
 
-  it("keeps media-only options out of generic attributes and hides advanced media options", async () => {
+  it("keeps media-only options in the specialized Options tier", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -185,9 +176,6 @@ describe("media ribbon drawer", () => {
     await toolbox.updateComplete
 
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Video: Controls"]')).toBeNull()
-    const more = toolbox.shadowRoot!.querySelector<HTMLDetailsElement>(".media-advanced-options")!
-    more.open = true
-    await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector('select[aria-label="Video: Preload"] option[selected][value="metadata"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Video: Play inline"]')?.checked).toBe(true)
   })
@@ -348,12 +336,8 @@ describe("media ribbon drawer", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector('select[aria-label="Website: Element"]')).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Source URL"]')).not.toBeNull()
-    const more = toolbox.shadowRoot!.querySelector<HTMLDetailsElement>(".media-advanced-options")!
-    expect(more.open).toBe(false)
-    more.open = true
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
   })
 })

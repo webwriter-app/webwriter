@@ -6,14 +6,17 @@ import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
 import type {SelectionPathItem} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
-import {ribbonIcon} from "../ribbon-icons"
+import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, renderDocumentLayoutPreview, documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
-import {floatSideFromStyles, type FloatSide} from "../element-styles"
+import {floatSideFromStyles, elementStyleCategories, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
+import {mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
+import {graphicShapeOptions} from "../graphic"
+import type {WidgetOptionState} from "../widget-options"
 
 export type ToolboxTool = "Edit" | "Style" | "AI" | "Review"
 
@@ -95,7 +98,8 @@ export class DomEditorToolbox extends EditingControls {
     .layout-action-controls button[aria-pressed="true"] {background: #dbe9fb; border-color: #3977c7; color: #174c91}
     .layout-action-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
     .layout-action-row {display: flex; flex-wrap: wrap; gap: .25rem}
-    .float-action-controls {padding: .4rem 0}
+    .float-action-controls {padding: .4rem 0; gap: .125rem}
+    .float-placement-label {font-size: .65rem; color: var(--sl-color-neutral-600, #666)}
     .float-button-group {display: flex; width: 100%; gap: 0}
     .float-button-group button {display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-radius: 0}
     .float-button-group .float-move {flex: 0 0 auto; padding: .35rem .2rem}
@@ -495,6 +499,25 @@ export class DomEditorToolbox extends EditingControls {
       z-index: 4;
     }
 
+    .specialized-widget-primary {font: .68rem/1.2 system-ui, sans-serif;}
+    .specialized-options .develop-field, .specialized-widget-primary .develop-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center;}
+    .specialized-widget-primary input, .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
+    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 1px 1px 0; background: transparent; min-width: 0; min-height: 1.7rem; border: 0; border-radius: 0; overflow: visible;}
+    .specialized-choice-group button {box-sizing: border-box; margin: 0 -1px -1px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: 1px solid #c5ccd5; background: #f2f2f2; color: inherit; font: .6rem system-ui, sans-serif; cursor: pointer;}
+    .specialized-choice-group button:first-child {border-top-left-radius: 4px;}
+    .specialized-choice-group button:last-child {border-bottom-right-radius: 4px;}
+    .specialized-choice-group button[data-top-right] {border-top-right-radius: 4px;}
+    .specialized-choice-group button[data-bottom-left] {border-bottom-left-radius: 4px;}
+    .specialized-choice-group button[aria-pressed="true"] {background: #e2edf8; color: #375d84;}
+    .specialized-choice-group button {display: flex; align-items: center; justify-content: center; gap: .2rem;}
+    .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    .specialized-choice-group button:hover {background: #edf3f9;}
+    .specialized-choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
+    .specialized-options {display: flex; flex-direction: column; gap: .4rem; min-width: 0;}
+    .specialized-commands {display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font: .68rem/1.2 system-ui, sans-serif;}
+    .specialized-commands .mark-attribute, .specialized-commands .table-caption-toggle {width: 100%;}
+    .specialized-options input, .specialized-options select {min-width: 0; border: 1px solid #c5ccd5; border-radius: 4px; background: #fff; font: inherit;}
+
     .style-reset {
       display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.2rem;
       border: 0; border-radius: 3px; color: #526b86; background: transparent;
@@ -698,7 +721,7 @@ export class DomEditorToolbox extends EditingControls {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
     const properties = documentTarget ? ["background-color"] : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
-      "width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter",
+      "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter",
     ]
     // Resolve authored shorthands and side declarations through CSSOM, so
     // resetting the drawer leaves unrelated styles such as typography intact.
@@ -730,7 +753,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderUniversalStyleDrawer() {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"]
+    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
     const advancedCount = advancedProperties.filter(name => name === "border-width"
       ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
@@ -747,14 +770,148 @@ export class DomEditorToolbox extends EditingControls {
             }))
           }}>${ribbonIcon("Restore")}Reset</button>
         <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
+        ${this.renderElementLayoutControls()}
         <element-style-editor slot="more" mode="compact" orientation="vertical"
           .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>
       </ribbon-drawer>
     `
   }
 
+  protected renderListNumberInput(name: "start" | "value", value: string, placeholder: string) {
+    return html`<document-head-combobox .showValue=${true} .label=${name === "start" ? "Start at" : "Item number"}
+      .value=${value} .placeholder=${placeholder}
+      .options=${[{label: "First", value: "1"}, {label: "Second", value: "2"}, {label: "Third", value: "3"}]}
+      @combobox-change=${(event: CustomEvent<{value: string}>) => {
+        const value = event.detail.value.trim()
+        if(!value || Number.isInteger(Number(value))) this.dispatchListAttribute(name, value || null)
+      }}></document-head-combobox>`
+  }
+
+  protected renderMediaAttribute(type: MediaType, option: MediaAttributeOption) {
+    if(option.kind !== "select" || !option.options?.length || option.options.length > 8
+      || option.options.some(item => item.label.length > 14)) return super.renderMediaAttribute(type, option)
+    const active = this.mediaSelectionMatches(type)
+    const value = active ? this.media?.attributes[option.name] ?? "" : ""
+    const columns = Math.min(4, Math.ceil(option.options.length / (option.options.length > 4 ? 2 : 1)))
+    return html`<div class="media-attribute">
+      <span id=${`media-label-${option.name}`}>${option.label}</span>
+      <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`media-label-${option.name}`}>
+        ${option.options.map((item, index) => html`<button type="button"
+          ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.options!.length - 1) / columns) * columns}
+          aria-pressed=${value === item.value} title=${item.label} aria-label=${item.label} ?disabled=${!active}
+          @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+          @click=${() => this.dispatchEvent(new CustomEvent("media-attribute-change", {
+            detail: {type, attribute: option.name, value: item.value || null}, bubbles: true, composed: true,
+          }))}><span aria-hidden="true">${ribbonOptionIcon(option.name, item.value)}</span></button>`)}
+      </div>
+    </div>`
+  }
+
+  protected renderWidgetOptionField(option: WidgetOptionState) {
+    if(option.type === "number") {
+      const candidates = [option.min ?? 0, option.min === undefined ? 1 : option.min + (option.step ?? 1),
+        option.max ?? (option.min ?? 0) + 10 * (option.step ?? 1)]
+      const presets = [...new Set(candidates)].filter(value => (option.min === undefined || value >= option.min)
+        && (option.max === undefined || value <= option.max))
+      return html`<div class="develop-field"><span>${option.label}</span>
+        <document-head-combobox .showValue=${true} .label=${option.label} .value=${option.value === null ? "" : String(option.value)}
+          placeholder=${option.placeholder ?? "Default"} .options=${presets.map((value, index) => ({value: String(value), label: ["Low", "Medium", "High"][index]}))}
+          @combobox-change=${(event: CustomEvent<{value: string}>) => {
+            const value = event.detail.value.trim()
+            const number = Number(value)
+            if(!value || Number.isFinite(number) && (option.min === undefined || number >= option.min)
+              && (option.max === undefined || number <= option.max)) this.dispatchWidgetOption(option.name, value ? number : null)
+            else {
+              const combo = event.currentTarget as import("./document-head-editor").DocumentHeadCombobox
+              combo.value = option.value === null ? "" : String(option.value)
+              combo.close(true)
+            }
+          }}></document-head-combobox>
+      </div>`
+    }
+    if(option.type !== "select" || option.multiple || !option.choices?.length || option.choices.length > 8
+      || option.choices.some(choice => choice.label.length > 14)) return super.renderWidgetOptionField(option)
+    const columns = Math.min(4, Math.ceil(option.choices.length / (option.choices.length > 4 ? 2 : 1)))
+    return html`<div class="develop-field" title=${option.description ?? ""}>
+      <span class="develop-field-label" id=${`widget-label-${option.name}`}>${option.label}</span>
+      <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${option.name}`}>
+        ${option.choices.map((choice, index) => html`<button type="button"
+          ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.choices!.length - 1) / columns) * columns}
+          title=${choice.description ?? choice.label} aria-label=${choice.label}
+          aria-pressed=${option.value === choice.value}
+          @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+          @click=${() => this.dispatchWidgetOption(option.name, option.value === choice.value ? null : choice.value)}><span aria-hidden="true">${ribbonOptionIcon(option.name, choice.value)}</span>${choice.label}</button>`)}
+      </div>
+    </div>`
+  }
+
+  private renderSpecializedDrawer() {
+    const attributes = this.elementAttributes
+    const localName = this.widgetOptions?.localName ?? (this.graphic?.active ? "svg" : this.math?.active ? "math" : this.table?.active ? (this.elementStyle.target?.localName ?? "table")
+      : this.media?.type ?? attributes?.localName ?? this.elementStyle.target?.localName)
+    if(!localName || localName === "body" || this.elementStyle.target?.documentRoot) return nothing
+    const profile = specializedElementStyle(localName)
+    const widget = Boolean(this.widgetOptions || localName.includes("-"))
+    if(!profile && !widget) return nothing
+    const primary = profile?.primary ?? []
+    const advanced = profile?.advanced ?? []
+    const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
+    const count = advanced.filter(name => Object.hasOwn(this.elementStyle.inline, name)).length
+      + Object.keys({...attributes?.attributes, ...this.media?.attributes}).filter(name => name !== "style").length
+      + (this.widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== ""
+        && (!option.attribute || !Object.hasOwn(attributes?.attributes ?? {}, option.attribute))).length ?? 0)
+    const label = widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
+      : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
+    return html`<ribbon-drawer label=${label} icon=${attributes?.icon ?? label} layout="element-style"
+      show-pane-icon expandable .advancedCount=${count} data-specialized=${localName}>
+      ${this.widgetOptions ? html`<div class="widget-options specialized-widget-primary">${this.widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option))}</div>` : nothing}
+      <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary} .state=${this.elementStyle}></element-style-editor>
+      <div slot="more" class="specialized-options">
+        <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${this.elementStyle}></element-style-editor>
+        ${this.renderSpecializedCommands()}
+        ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
+      </div>
+    </ribbon-drawer>`
+  }
+
+  private renderSpecializedCommands() {
+    if(this.widgetOptions) return this.renderWidgetOptionsControls(this.widgetOptions.options.slice(3))
+    if(this.graphic?.active) {
+      const captured = Boolean(this.graphic.capture)
+      const count = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
+      return html`<div class="specialized-commands">
+        <ribbon-button label="Import graphic" action="import-graphic" icon="Upload"></ribbon-button>
+        <ribbon-button label="Save graphic" action="save-graphic" icon="Download"></ribbon-button>
+        ${this.graphic.shape === "connector" ? this.renderGraphicConnectorControls(!captured) : nothing}
+        <div class="graphic-shape-gallery" role="group" aria-label="Graphic shapes">${graphicShapeOptions.map(option => html`
+          <ribbon-button label=${option.label} icon-only action=${`add-graphic-shape:${option.type}`} icon=${option.icon}
+            icon-path=${option.path ?? nothing} ?disabled=${!captured}></ribbon-button>`)}</div>
+        ${this.renderGraphicArrangeControls(count, count > 0, captured)}
+        ${["grid", "snap", "guides"].map(option => html`<ribbon-button label=${option[0].toUpperCase() + option.slice(1)}
+          action=${`toggle-graphic-option:${option}`} toggle .active=${this.graphic?.options?.[option as "grid" | "snap" | "guides"] ?? true}
+          ?disabled=${!captured}></ribbon-button>`)}
+        <ribbon-button label="Zoom" icon="Zoom" .dropdown=${this.renderGraphicViewportDropdown()} ?disabled=${!captured}></ribbon-button>
+        <ribbon-button label="Fit" action="navigate-graphic:fit-content" icon="Fullscreen" ?disabled=${!captured}></ribbon-button>
+      </div>`
+    }
+    if(this.table?.active) return html`<div class="specialized-commands">${this.renderTableStructureControls()}</div>`
+    if(this.media) {
+      const type = this.media.type
+      return html`<div class="specialized-commands media-toolbox-controls">
+        ${this.figure ? this.renderFigureCaptionControls() : html`<ribbon-button label="Convert to figure" action="media-to-figure" icon="Section"></ribbon-button>`}
+        ${isMediaType(type) ? mediaAttributeOptions[type].filter(option => !["width", "height"].includes(option.name))
+          .map(option => this.renderMediaAttribute(type, option)) : nothing}
+        ${this.renderTimedMediaResources()}
+        ${this.renderImageMapControls()}
+      </div>`
+    }
+    if(this.listType === "ol") return this.renderListControls()
+    if(this.sectionSelected || this.figure) return html`<div class="specialized-commands">${this.renderSectionControls()}</div>`
+    return nothing
+  }
+
   protected renderDrawers(): TemplateResult<1>[] {
-    if(this.activeTool === "Edit" && !this.elementAttributes
+    if(this.activeTool === "Edit" && !this.elementAttributes && !this.math?.active
       && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
       const drawers = [html`
         <ribbon-drawer label="Attributes" icon="Develop" layout="attributes">
@@ -763,7 +920,10 @@ export class DomEditorToolbox extends EditingControls {
       `]
       return drawers
     }
-    const drawers: TemplateResult<1>[] = super.renderDrawers().filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
+    const specialized = this.activeTool === "Edit" && !this.documentSelected ? this.renderSpecializedDrawer() : nothing
+    const drawers: TemplateResult<1>[] = specialized !== nothing
+      ? [specialized]
+      : super.renderDrawers().filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
     if(this.activeTool === "Edit" && this.documentSelected) {
       drawers.push(html`
         <ribbon-drawer label="Layouts" icon="Layout" layout="document-layout">
@@ -818,7 +978,7 @@ export class DomEditorToolbox extends EditingControls {
     return drawers
   }
 
-  private renderElementLayoutDrawer() {
+  private renderElementLayoutControls() {
     const target = this.elementStyle.target
     if(this.activeTool !== "Edit" || this.documentLayout.mode !== "document" || !target
       || this.documentSelected || target.documentRoot || target.localName === "body") return nothing
@@ -826,14 +986,8 @@ export class DomEditorToolbox extends EditingControls {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     return html`
-      <ribbon-drawer label="Layout" icon="Layout" layout="float" show-pane-icon expandable>
-        <button type="button" class="style-reset" slot="heading-action" title="Reset layout" aria-label="Reset layout"
-          ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
-          @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-          @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
-            detail: {type: "setFloat", side: "none"}, bubbles: true, composed: true,
-          }))}>${ribbonIcon("Restore")}Reset</button>
         <div class="layout-action-controls float-action-controls">
+          <span class="float-placement-label">Placement</span>
           <div class="float-button-group" role="group" aria-label="Placement">
             <button type="button" class="float-move" aria-label="Move down" title="Move down"
               ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
@@ -854,7 +1008,6 @@ export class DomEditorToolbox extends EditingControls {
           </div>
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
-      </ribbon-drawer>
     `
   }
 
@@ -1021,7 +1174,6 @@ export class DomEditorToolbox extends EditingControls {
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
             ${this.activeTool === "Review" ? this.renderProofreadingSection() : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
-            ${this.activeTool === "Edit" ? this.renderElementLayoutDrawer() : ""}
             ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
             ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>

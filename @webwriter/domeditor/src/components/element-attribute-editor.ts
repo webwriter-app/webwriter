@@ -2,6 +2,7 @@ import {LitElement, css, html, nothing} from "lit"
 import "./document-head-editor"
 import {isMediaType, mediaAttributeOptions} from "../media"
 import {groupedLanguageOptions} from "../language-suggestions"
+import {ribbonOptionIcon} from "../ribbon-icons"
 import {
   elementAttributeEditability,
   elementAttributeOptions,
@@ -29,11 +30,30 @@ const emptyAttributeState: ElementAttributeState = {
 
 const languageOptions = groupedLanguageOptions()
 
+const numericSuggestions = (name: string) => {
+  if(name === "width" || name === "height") return [
+    {value: "50", label: "Tiny"}, {value: "100", label: "Small"}, {value: "200", label: "Medium"},
+    {value: "400", label: "Large"}, {value: "800", label: "Huge"},
+  ]
+  const labels = name === "start" || name === "value" ? ["First", "Second", "Third"] : ["Single", "Double", "Triple"]
+  return [1, 2, 3].map((number, index) => ({value: String(number), label: labels[index]}))
+}
+
+const numericAttributeValue = (name: string, value: string): string | null | undefined => {
+  if(!value) return null
+  const numeric = Number(value)
+  if(!Number.isFinite(numeric)) return undefined
+  if(["colspan", "rowspan", "start", "value"].includes(name) && !Number.isInteger(numeric)) return undefined
+  return value
+}
+
 /** A schema-free attribute editor for the currently selected authored element. */
 export class ElementAttributeEditor extends LitElement {
   static properties = {
     state: {attribute: false},
     disabled: {type: Boolean, reflect: true},
+    expanded: {type: Boolean, reflect: true},
+    mediaOwned: {type: Boolean, attribute: false},
   }
 
   static styles = css`
@@ -43,6 +63,23 @@ export class ElementAttributeEditor extends LitElement {
       color: #2f3742;
       font: 0.64rem/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+
+    :host([expanded]) {font-size: .68rem;}
+    :host([expanded]) .field {grid-template-columns: 4.4rem minmax(0, 1fr);}
+    :host([expanded]) input, :host([expanded]) select {border-color: #c5ccd5; border-radius: 4px;}
+    :host([expanded]) details {margin-top: .4rem; padding-top: 0; border-top: 0;}
+    :host([expanded]) summary {display: none;}
+
+    .choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 1px 1px 0; background: transparent; min-width: 0; border: 0; border-radius: 0; overflow: visible;}
+    .choice-group button {box-sizing: border-box; margin: 0 -1px -1px 0; display: grid; place-items: center; min-width: 0; min-height: 1.7rem; padding: .15rem; border: 1px solid #c5ccd5; background: #f2f2f2; color: inherit; cursor: pointer;}
+    .choice-group svg {display: block; width: 1rem; height: 1rem;}
+    .choice-group button:first-child {border-top-left-radius: 4px;}
+    .choice-group button:last-child {border-bottom-right-radius: 4px;}
+    .choice-group button[data-top-right] {border-top-right-radius: 4px;}
+    .choice-group button[data-bottom-left] {border-bottom-left-radius: 4px;}
+    .choice-group button[aria-pressed="true"] {background: #e2edf8; color: #375d84;}
+    .choice-group button:hover {background: #edf3f9;}
+    .choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
 
     :host([disabled]) {
       opacity: 0.55;
@@ -162,6 +199,10 @@ export class ElementAttributeEditor extends LitElement {
       font-size: 0.56rem;
     }
 
+    .numeric-control {display: flex; min-width: 0; align-items: center; gap: .2rem;}
+    .numeric-control document-head-combobox {flex: 1 1 auto;}
+    .numeric-control button {flex: 0 0 1.65rem; padding: 0; cursor: pointer;}
+
     .add-attribute {
       display: grid;
       grid-template-columns: minmax(3.8rem, 0.8fr) minmax(4rem, 1.2fr) auto;
@@ -178,6 +219,8 @@ export class ElementAttributeEditor extends LitElement {
 
   state: ElementAttributeState | null = null
   disabled = false
+  expanded = false
+  mediaOwned = true
 
   private dispatchAttribute(name: string, value: string | null, previousName?: string) {
     if(this.disabled) return
@@ -224,6 +267,40 @@ export class ElementAttributeEditor extends LitElement {
         </div>
       `
     }
+    if(this.expanded && option.kind === "number") {
+      return html`
+        <div class="field">
+          <span>${option.label}</span>
+          <div class="numeric-control">
+            <document-head-combobox
+              aria-label=${`${state.name}: ${option.label}`}
+              .label=${`${state.name}: ${option.label}`}
+              .value=${value}
+              .placeholder=${option.placeholder ?? "Enter a number"}
+              .options=${numericSuggestions(option.name)}
+              .showValue=${true}
+              .disabled=${this.disabled || !editability.editable}
+              @combobox-change=${(event: CustomEvent<{value: string}>) => {
+                const next = numericAttributeValue(option.name, event.detail.value.trim())
+                if(next === undefined) {
+                  const combobox = event.currentTarget as HTMLElement & {value: string, close: (reset?: boolean) => void, requestUpdate: () => void}
+                  combobox.value = value
+                  combobox.close(true)
+                  combobox.requestUpdate()
+                  const input = combobox.shadowRoot?.querySelector<HTMLInputElement>("input")
+                  if(input) input.value = value
+                  return
+                }
+                this.dispatchAttribute(option.name, next)
+              }}
+            ></document-head-combobox>
+            <button type="button" aria-label=${`Clear ${option.label}`}
+              ?disabled=${this.disabled || !editability.editable || !value}
+              @click=${() => this.dispatchAttribute(option.name, null)}>×</button>
+          </div>
+        </div>
+      `
+    }
     if(option.kind === "boolean") {
       return html`
         <label class="field">
@@ -238,6 +315,21 @@ export class ElementAttributeEditor extends LitElement {
           />
         </label>
       `
+    }
+    if(this.expanded && option.kind === "select" && option.options?.length && option.options.length <= 8
+      && option.options.every(item => item.label.length <= 14)) {
+      const columns = Math.min(4, Math.ceil(option.options.length / (option.options.length > 4 ? 2 : 1)))
+      return html`<div class="field">
+        <span id=${`attribute-label-${option.name}`}>${option.label}</span>
+        <div class="choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`attribute-label-${option.name}`}>
+          ${option.options.map((item, index) => html`<button type="button"
+            ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.options!.length - 1) / columns) * columns}
+            aria-label=${item.label} title=${item.label} aria-pressed=${value === item.value}
+            ?disabled=${this.disabled || !editability.editable}
+            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+            @click=${() => this.dispatchAttribute(option.name, item.value || null)}>${ribbonOptionIcon(option.name, item.value)}</button>`)}
+        </div>
+      </div>`
     }
     if(option.kind === "select") {
       return html`
@@ -291,11 +383,13 @@ export class ElementAttributeEditor extends LitElement {
   render() {
     const state = this.state ?? (this.disabled ? emptyAttributeState : null)
     if(!state) return nothing
-    const mediaNames = new Set(isMediaType(state.localName)
+    const mediaNames = new Set(this.mediaOwned && isMediaType(state.localName)
       ? [...mediaAttributeOptions[state.localName].map(option => option.name), "controls", "usemap"]
       : [])
     const attributes = Object.entries(state.attributes).filter(([name]) => !mediaNames.has(name))
-    const options = elementAttributeOptions(state.localName).filter(option => !mediaNames.has(option.name))
+    const mediaOptions = !this.mediaOwned && isMediaType(state.localName) ? mediaAttributeOptions[state.localName] : []
+    const options = [...new Map([...elementAttributeOptions(state.localName), ...mediaOptions].map(option => [option.name, option])).values()]
+      .filter(option => !mediaNames.has(option.name))
     const limitation = elementEditingLimitation(state.localName, state.namespaceURI)
     const additionalOptions = options.filter(option => ["id", "class", "title", "dir", "hidden"].includes(option.name))
     return html`
@@ -309,7 +403,7 @@ export class ElementAttributeEditor extends LitElement {
       <div class="fields" role="group" aria-label=${`${state.name} common attributes`}>
         ${options.filter(option => !additionalOptions.includes(option)).map(option => this.renderPrimary(option, state))}
       </div>
-      <details>
+      <details ?open=${this.expanded}>
         <summary>All attributes (${attributes.length})</summary>
         <div class="attribute-list">
           ${additionalOptions.map(option => this.renderPrimary(option, state))}

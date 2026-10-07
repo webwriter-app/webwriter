@@ -1986,6 +1986,12 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
+  private stylePropertyTarget(target: Element, name: string) {
+    return target.localName === "picture" && ["object-fit", "object-position", "image-rendering"].includes(name)
+      ? target.querySelector(":scope > img")
+      : target
+  }
+
   getStyleState(properties: string[] = [], target = this.styleTarget, includeSelection = true): ElementStyleState {
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
@@ -2009,11 +2015,18 @@ export class ManipulationFeature extends EditorFeature {
     // CSSOM may enumerate border sides rather than the aggregate control's
     // property. Read requested shorthand values from the same inline style.
     for(const name of requested) {
-      const value = style.getPropertyValue(name)
-      if(value) inline[name] = {value, priority: style.getPropertyPriority(name) === "important" ? "important" : ""}
+      const propertyTarget = this.stylePropertyTarget(target, name)
+      const propertyStyle = propertyTarget ? this.inlineStyleOf(propertyTarget) : null
+      const value = propertyStyle?.getPropertyValue(name) ?? ""
+      if(propertyTarget !== target) delete inline[name]
+      if(value) inline[name] = {value, priority: propertyStyle?.getPropertyPriority(name) === "important" ? "important" : ""}
     }
     const computedStyle = getComputedStyle(target)
-    const computed = Object.fromEntries(requested.map(name => [name, computedStyle.getPropertyValue(name)]))
+    const computed = Object.fromEntries(requested.map(name => {
+      const propertyTarget = this.stylePropertyTarget(target, name)
+      return [name, propertyTarget === target ? computedStyle.getPropertyValue(name)
+        : propertyTarget ? getComputedStyle(propertyTarget).getPropertyValue(name) : ""]
+    }))
     const paragraphProperties = requested.filter(name => paragraphStylePropertyNameSet.has(name))
     const blocks = includeSelection && paragraphProperties.length ? this.selectedTextBlocks() : []
     paragraphProperties.forEach(name => {
@@ -3270,7 +3283,16 @@ export class ManipulationFeature extends EditorFeature {
     const target = this.styleTarget
     const entries = this.allowedElementStyles(target, this.validatedStyleEntries(styles))
     if(!entries.length) return false
-    return this.withNormalization(() => this.applyStyleEntries(target, entries))
+    return this.withNormalization(() => {
+      const targets = new Map<Element, ValidatedStyleEntry[]>()
+      for(const entry of entries) {
+        const propertyTarget = this.stylePropertyTarget(target, entry.name)
+        if(propertyTarget) targets.set(propertyTarget, [...(targets.get(propertyTarget) ?? []), entry])
+      }
+      let changed = false
+      for(const [element, declarations] of targets) changed = this.applyStyleEntries(element, declarations) || changed
+      return changed
+    })
   }
 
   /** Targeted CSS commands never normalize surrounding authored structure or

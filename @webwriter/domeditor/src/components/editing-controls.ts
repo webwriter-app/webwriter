@@ -717,9 +717,8 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderSectionDrawer() {
+  protected renderSectionControls() {
     return html`
-      <ribbon-drawer label="Section" icon="Section" layout="section">
         ${this.renderSectionTypeSelect()}
         <ribbon-button
           label="Add outer section"
@@ -745,6 +744,13 @@ export abstract class EditingControls extends LitElement {
           </label>
         ` : ""}
         ${this.sectionType === "figure" && this.figure ? this.renderFigureCaptionControls() : ""}
+    `
+  }
+
+  protected renderSectionDrawer() {
+    return html`
+      <ribbon-drawer label="Section" icon="Section" layout="section">
+        ${this.renderSectionControls()}
       </ribbon-drawer>
     `
   }
@@ -781,18 +787,17 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
-  protected renderListDrawer() {
+  protected renderListNumberInput(name: "start" | "value", value: string, placeholder: string) {
+    return html`<input type="number" .value=${value} placeholder=${placeholder}
+      @change=${(event: Event) => this.dispatchListAttribute(name, (event.currentTarget as HTMLInputElement).value)} />`
+  }
+
+  protected renderListControls() {
     if(this.listType !== "ol" || !this.orderedList) return nothing
     return html`
-      <ribbon-drawer label="List" icon="Enumeration" layout="form">
         <label class="mark-attribute">
           <span>Start at</span>
-          <input
-            type="number"
-            .value=${this.orderedList.start}
-            placeholder="Automatic"
-            @change=${(event: Event) => this.dispatchListAttribute("start", (event.currentTarget as HTMLInputElement).value)}
-          />
+          ${this.renderListNumberInput("start", this.orderedList.start, "Automatic")}
         </label>
         <label class="mark-attribute">
           <span>Numbering</span>
@@ -819,14 +824,17 @@ export abstract class EditingControls extends LitElement {
         ${this.orderedList.itemValue !== undefined ? html`
           <label class="mark-attribute">
             <span>Item number</span>
-            <input
-              type="number"
-              .value=${this.orderedList.itemValue}
-              placeholder="Continue sequence"
-              @change=${(event: Event) => this.dispatchListAttribute("value", (event.currentTarget as HTMLInputElement).value)}
-            />
+            ${this.renderListNumberInput("value", this.orderedList.itemValue, "Continue sequence")}
           </label>
         ` : ""}
+    `
+  }
+
+  protected renderListDrawer() {
+    if(this.listType !== "ol" || !this.orderedList) return nothing
+    return html`
+      <ribbon-drawer label="List" icon="Enumeration" layout="form">
+        ${this.renderListControls()}
       </ribbon-drawer>
     `
   }
@@ -2262,10 +2270,9 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderTableDrawers() {
+  protected renderTableStructureControls() {
     const active = Boolean(this.table?.active)
     return html`
-      <ribbon-drawer label="Layout" icon="TableLayout" layout="table-layout">
         <ribbon-button label="Row above" action="table-row-above" icon="TableRowAbove" ?disabled=${!active}></ribbon-button>
         <ribbon-button label="Row below" action="table-row-below" icon="TableRowBelow" ?disabled=${!active}></ribbon-button>
         <ribbon-button label="Column left" action="table-column-left" icon="TableColumnLeft" ?disabled=${!active}></ribbon-button>
@@ -2291,6 +2298,13 @@ export abstract class EditingControls extends LitElement {
           <span><input type="checkbox" aria-label="Table footer" data-ribbon-input-persistent .checked=${this.table?.hasFooter ?? false}
             ?disabled=${!active} @change=${this.toggleTableFooter} /> Footer</span>
         </label>
+    `
+  }
+
+  protected renderTableDrawers() {
+    return html`
+      <ribbon-drawer label="Layout" icon="TableLayout" layout="table-layout">
+        ${this.renderTableStructureControls()}
       </ribbon-drawer>
       <ribbon-drawer label="Borders" icon="TableBorders" layout="table-borders">
         ${this.renderTableBorderControls()}
@@ -2504,19 +2518,27 @@ export abstract class EditingControls extends LitElement {
     if(result !== undefined) this.dispatchEvent(new CustomEvent("widget-grouping-change", {bubbles: true, composed: true, detail: {...reference, grouping: result}}))
   }
 
-  protected renderWidgetOptionsDrawer() {
+  protected renderWidgetOptionsControls(options = this.widgetOptions?.options ?? []) {
     const state = this.widgetOptions
     if(!state || !state.options.length && !state.actions.length) return nothing
     return html`
-      <ribbon-drawer label="Widget" icon="Packages" layout="form">
         <div class="widget-options">
-          ${state.options.map(option => this.renderWidgetOptionField(option))}
+          ${options.map(option => this.renderWidgetOptionField(option))}
           ${state.actions.length ? html`<div class="widget-actions">
             ${state.actions.map(action => html`<button type="button" class="widget-action" title=${action.description ?? ""}
               @click=${() => this.dispatchEvent(new CustomEvent("widget-action", {detail: {name: action.name}, bubbles: true, composed: true}))}
             >${action.label}</button>`)}
           </div>` : nothing}
         </div>
+    `
+  }
+
+  protected renderWidgetOptionsDrawer() {
+    const state = this.widgetOptions
+    if(!state || !state.options.length && !state.actions.length) return nothing
+    return html`
+      <ribbon-drawer label="Widget" icon="Packages" layout="form">
+        ${this.renderWidgetOptionsControls()}
       </ribbon-drawer>
     `
   }

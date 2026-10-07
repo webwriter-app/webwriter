@@ -5819,7 +5819,7 @@ export class DomEditor extends LitElement {
     if(!isRecord(value) || !isRecord(value.inline) || !isRecord(value.computed) || !isRecord(value.context)) {
       return null
     }
-    const target = value.target === null
+    const target: ElementStyleState["target"] | undefined = value.target === null
       ? null
       : isRecord(value.target)
         && typeof value.target.localName === "string"

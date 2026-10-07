@@ -78,15 +78,15 @@ describe("formula toolbox controls", () => {
       .toEqual(contextDrawerPolicy({menu, surface: "ribbon"}))
   })
 
-  it("leaves formula input to the keyboard rather than a toolbox drawer", async () => {
+  it("offers formula style controls while leaving formula typing to the keyboard", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.math = mathState
     document.body.append(toolbox)
     await toolbox.updateComplete
 
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Formula"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
 
     toolbox.math = null
     await toolbox.updateComplete

@@ -340,8 +340,8 @@ describe("toolbox", () => {
     expect(drawer.shadowRoot!.querySelector(".pane-icon .icon-tabler-palette")).not.toBeNull()
     const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
     await advanced.updateComplete
-    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "box-shadow", "filter"])
-    expect(advanced.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(8)
+    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter"])
+    expect(advanced.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(11)
     expect(drawer.expandable).toBe(true)
     expect(drawer.shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
     drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
@@ -676,8 +676,8 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
-      .toEqual(["Style", "Image", "Attributes"])
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"] element-attribute-editor')).not.toBeNull()
+      .toEqual(["Style", "Image"])
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Image"] [slot="more"] element-attribute-editor')).not.toBeNull()
 
     toolbox.media = null
     toolbox.elementAttributes = {
@@ -691,10 +691,10 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Quote")
     expect(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(2)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Quote"] [slot="more"] element-attribute-editor')).not.toBeNull()
   })
 
-  it("omits the specialized paragraph toolbox", async () => {
+  it("offers specialized paragraph and heading controls", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Edit")
     for(const tag of ["p", "pre", "p"]) {
@@ -706,7 +706,7 @@ describe("toolbox", () => {
       expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit")
       expect(toolButton(toolbox, "Edit").closest(".toolbox-tab")!.hasAttribute("data-contextual")).toBe(false)
       expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
-        .toEqual(["Style", "Attributes"])
+        .toEqual(["Style", toolbox.elementAttributes.name])
       expect(toolbox.shadowRoot!.querySelector('.paragraph-format-switch')).toBeNull()
     }
     toolbox.elementAttributes = {...toolbox.elementAttributes!, localName: "h1", name: "Heading"}
@@ -729,7 +729,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer")).map(drawer => drawer.label))
-      .toEqual(["Style", "Attributes"])
+      .toEqual(["Style", "Details"])
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Disclosure"]')).toBeNull()
 
     toolbox.elementAttributes = null
@@ -756,7 +756,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     const citation = toolbox.shadowRoot!.querySelector<HTMLInputElement>(
-      'ribbon-drawer[label="Section"] input[type="url"]',
+      'ribbon-drawer[label="Quote"] input[type="url"]',
     )!
     expect(citation.value).toBe("source.html")
     const changed = vi.fn()
@@ -901,6 +901,7 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {
     ...toolbox.elementStyle.inline,
     width: {value: "100px", priority: ""},
+    opacity: {value: "0.5", priority: ""},
     color: {value: "red", priority: ""},
     "padding-top": {value: "4px", priority: "important"},
     "border-top-left-radius": {value: "4px", priority: ""},
@@ -911,7 +912,7 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
   const changes: unknown[] = []
   toolbox.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
   reset().click()
-  expect(changes).toEqual([{styles: {color: null, width: null, padding: null, "border-radius": null, "border-color": null}}])
+  expect(changes).toEqual([{styles: {color: null, width: null, padding: null, "border-radius": null, "border-color": null, opacity: null}}])
   toolbox.documentSelected = true
   await toolbox.updateComplete
   expect(reset().disabled).toBe(true)
@@ -1033,18 +1034,16 @@ describe("widget options drawer", () => {
     const actions: unknown[] = []
     toolbox.addEventListener("widget-action", event => actions.push((event as CustomEvent).detail))
 
-    const number = drawer.querySelector<HTMLInputElement>('input[type="number"]')!
+    const number = drawer.querySelector('document-head-combobox')!
     expect(number.value).toBe("3")
-    number.value = "7"
-    number.dispatchEvent(new Event("change"))
+    number.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "7"}}))
     const checkbox = drawer.querySelector<HTMLInputElement>('input[type="checkbox"]')!
     expect(checkbox.checked).toBe(true)
     checkbox.checked = false
     checkbox.dispatchEvent(new Event("change"))
-    const select = drawer.querySelector("select")!
-    // happy-dom misplaces Lit's option.selected bindings; browsers show "b".
-    select.value = "a"
-    select.dispatchEvent(new Event("change"))
+    const choices = drawer.querySelectorAll<HTMLButtonElement>(".specialized-choice-group button")
+    expect(choices[1].getAttribute("aria-pressed")).toBe("true")
+    choices[0].click()
     const json = drawer.querySelector<HTMLTextAreaElement>("textarea[data-json]")!
     json.value = "{broken"
     json.dispatchEvent(new Event("change"))
@@ -1094,4 +1093,28 @@ describe("widget sharing toolbox", () => {
     expect(removed.mock.calls[0][0].detail.grouping).toBeNull()
     expect(toolbox.shadowRoot!.querySelector("widget-grouping-dialog")).not.toBeNull()
   })
+})
+
+it("uses the current text target inside a table for specialized style controls", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.activeTool = "Edit"
+  toolbox.table = {
+    active: true, cellSelection: false, rows: 1, columns: 1, selectedCells: 1,
+    canMerge: false, canSplit: false, hasCaption: false, hasHeader: false, hasFooter: false,
+  }
+  toolbox.elementAttributes = {
+    path: [0, 0, 0, 0, 0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml",
+    name: "Paragraph", attributes: {},
+  }
+  toolbox.elementStyle = {
+    target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
+    inline: {}, computed: {}, context: {display: "block", parentDisplay: "table-cell"},
+  }
+  await toolbox.updateComplete
+  const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="p"]')!
+  expect(drawer).not.toBeNull()
+  expect(drawer.querySelector('ribbon-button[label="Row above"]')).not.toBeNull()
+  const editors = Array.from(drawer.querySelectorAll<ElementStyleEditor>("element-style-editor"))
+  expect(editors.flatMap(editor => editor.propertyNames ?? [])).toContain("text-align")
+  expect(editors.flatMap(editor => editor.propertyNames ?? [])).not.toContain("table-layout")
 })

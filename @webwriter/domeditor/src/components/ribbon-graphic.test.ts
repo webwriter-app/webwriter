@@ -20,68 +20,37 @@ describe("graphic ribbon", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
   })
 
-  it("puts Style first and collapses advanced fields and extra shapes in the toolbox", async () => {
+  it("keeps graphic styling and shape insertion in one specialized drawer", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.graphic = {
       active: true, capture: true, selectionCount: 1, shape: "snip-one",
       parameters: {x: "10", y: "20", width: "100", height: "80", rotation: "0", "adjust-snip": "15"},
     }
-    const listener = vi.fn()
-    toolbox.addEventListener("graphic-parameter-change", listener)
     document.body.append(toolbox)
     await toolbox.updateComplete
     const root = toolbox.shadowRoot!
-    expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 3)).toEqual([
-      "Style", "Graphic style", "Insert shapes",
+    expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 2)).toEqual([
+      "Style", "Graphic",
     ])
-    const files = root.querySelector('[aria-label="Graphic files"]')!
-    expect(files.parentElement).toHaveAttribute("label", "Graphic style")
-    expect(files.parentElement!.lastElementChild).toBe(files)
-    expect(files.querySelector('[action="import-graphic"]')).toHaveAttribute("icon", "Upload")
-    expect(files.querySelector('[action="save-graphic"]')).toHaveAttribute("icon", "Download")
-    const geometry = root.querySelector<RibbonDrawer>('ribbon-drawer[label="Graphic style"]')!
-    await geometry.updateComplete
-    const heading = geometry.shadowRoot!.querySelector<HTMLElement>(".pane-label")!
-    expect(getComputedStyle(heading).display).toBe("flex")
-    const palette = heading.querySelector<SVGElement>(".pane-icon svg.icon-tabler-palette")!
-    expect(palette).not.toBeNull()
-    expect(getComputedStyle(palette.parentElement!).display).toBe("block")
-    expect(getComputedStyle(palette.parentElement!).width).toBe("16px")
-    const advanced = geometry.querySelector<HTMLDetailsElement>("details")!
-    expect(advanced.open).toBe(false)
-    expect(advanced.querySelector("summary")?.textContent).toBe("Advanced options")
-    expect(Array.from(advanced.querySelectorAll("input"), input => input.getAttribute("aria-label"))).toEqual([
-      "Graphic: X", "Graphic: Y", "Graphic: Width", "Graphic: Height", "Graphic: Rotation", "Graphic: Snip",
-    ])
-    expect(geometry.querySelector('input[aria-label="Graphic: Fill color"]')?.closest("details")).toBeNull()
-    expect(geometry.querySelector(".graphic-connector-controls")).toBeNull()
-    advanced.open = true
-    const snip = advanced.querySelector<HTMLInputElement>('input[aria-label="Graphic: Snip"]')!
-    snip.value = "25"
-    snip.dispatchEvent(new Event("change", {bubbles: true}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "adjust-snip", value: "25"}}))
-
-    const graphic = root.querySelector('ribbon-drawer[label="Insert shapes"]')!
-    const more = graphic.querySelector<HTMLDetailsElement>("details")!
-    expect(more.open).toBe(false)
-    expect(more.querySelector("summary")?.textContent).toBe("More shapes")
-    expect(Array.from(graphic.querySelectorAll<RibbonButton>('ribbon-button')).filter(button => !button.closest("details")).map(button => button.label)).toEqual(
-      graphicShapeOptions.filter(option => graphicShapeCategories.slice(0, 3).includes(option.category)).map(option => option.label),
+    const graphic = root.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="svg"]')!
+    expect(root.querySelector('ribbon-drawer[label="Graphic style"]')).toBeNull()
+    expect(root.querySelector('ribbon-drawer[label="Insert shapes"]')).toBeNull()
+    expect(graphic.querySelector(".graphic-geometry-controls")).toBeNull()
+    const options = graphic.querySelector<HTMLElement>(".specialized-options")!
+    expect(options.querySelector(".graphic-shape-gallery")).not.toBeNull()
+    expect(options.querySelector('[action="import-graphic"]')).toHaveAttribute("icon", "Upload")
+    expect(options.querySelector('[action="save-graphic"]')).toHaveAttribute("icon", "Download")
+    expect(Array.from(options.querySelectorAll<RibbonButton>('ribbon-button[action^="add-graphic-shape:"]'), button => button.action)).toEqual(
+      graphicShapeOptions.map(option => `add-graphic-shape:${option.type}`),
     )
-    expect(Array.from(more.querySelectorAll<RibbonButton>('ribbon-button'), button => button.label)).toEqual(
-      graphicShapeOptions.filter(option => !graphicShapeCategories.slice(0, 3).includes(option.category)).map(option => option.label),
-    )
-    more.open = true
     toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "connector"}
     await toolbox.updateComplete
-    expect(advanced.open).toBe(true)
-    expect(more.open).toBe(true)
-    expect(geometry.querySelector('.graphic-connector-controls')).not.toBeNull()
+    expect(options.querySelector('.graphic-connector-controls')).not.toBeNull()
     expect(root.querySelector('ribbon-drawer[label="Connector"]')).toBeNull()
     toolbox.graphic = {active: true, capture: true, selectionCount: 2}
     await toolbox.updateComplete
-    expect(geometry.querySelector('.graphic-connector-controls')).toBeNull()
+    expect(options.querySelector('.graphic-connector-controls')).toBeNull()
   })
 
   it("stacks inline controls within the narrow toolbox pane", () => {
@@ -120,7 +89,7 @@ describe("graphic ribbon", () => {
 
     graphic.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "Graphic", keepDrawerOpen: false}}))
+    expect(listener.mock.calls[0][0].detail).toEqual({label: "element:svg", keepDrawerOpen: false})
     expect(graphic.submenu.filter(item => typeof item === "string" || item.action !== "import-graphic").map(item => typeof item === "string" ? item : item.action)).toEqual(
       graphicShapeOptions.map(option => `insert-graphic-shape:${option.type}`),
     )

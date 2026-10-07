@@ -2765,6 +2765,49 @@ describe("setBlockType()", () => {
   })
 })
 describe("setStyle()", () => {
+  it("styles the rendered image inside a picture while preserving responsive sources and undo", () => {
+    document.body.innerHTML = '<picture data-keep="yes"><!--keep--><source srcset="large.png 2x"><img src="small.png" style="object-fit:contain !important"></picture><p>Other</p>'
+    const picture = document.querySelector("picture")!
+    const image = picture.querySelector("img")!
+    const source = picture.querySelector("source")!
+    $.selectElement(picture)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    expect(editor.features.manipulation.getStyleState(["object-fit"]).inline["object-fit"])
+      .toEqual({value: "contain", priority: "important"})
+    editor.features.manipulation.setStyle({"object-fit": {value: "cover", priority: "important"}, "object-position": "top", width: "200px"})
+    expect(picture).toHaveStyle({width: "200px"})
+    expect(picture.style.objectFit).toBe("")
+    expect(image.style.objectFit).toBe("cover")
+    expect(image.style.objectPosition).toBe("top")
+    expect(picture.querySelector("source")).toBe(source)
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it("uses the current picture image and safely ignores a missing image", () => {
+    document.body.innerHTML = '<picture><source srcset="large.png"><img src="old.png"></picture>'
+    const picture = document.querySelector("picture")!
+    $.selectElement(picture)
+    const old = picture.querySelector("img")!
+    const replacement = document.createElement("img")
+    old.replaceWith(replacement)
+    editor.features.manipulation.setStyle({"object-fit": "cover"})
+    expect(replacement.style.objectFit).toBe("cover")
+    expect(old.style.objectFit).toBe("")
+    replacement.remove()
+    $.selectElement(picture)
+    expect(editor.features.manipulation.setStyle({"object-fit": "contain"})).toBe(false)
+    expect(picture.style.objectFit).toBe("")
+    expect(editor.features.manipulation.getStyleState(["object-fit"]).inline["object-fit"]).toBeUndefined()
+  })
+
   it.each([
     ["border-width", "4px", "4px", "solid", "black"],
     ["border-style", "dashed", "1px", "dashed", "black"],

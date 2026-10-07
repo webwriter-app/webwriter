@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {AppRibbon} from "./ribbon"
-import {DocumentHeadEditor, officialLanguageOptions, orderedLanguageOptions} from "./document-head-editor"
+import {DocumentHeadEditor, DocumentHeadCombobox, officialLanguageOptions, orderedLanguageOptions} from "./document-head-editor"
 import {DomEditorToolbox} from "./toolbox"
 import type {RibbonMenu} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -371,4 +371,39 @@ describe("document head form", () => {
     await reopened.updateComplete
     expect(reopened.shadowRoot!.querySelector(".common-attributes")).toBeNull()
   })
+})
+
+it("keeps numerical combobox values editable while showing named suggestions", async () => {
+  const combo = new DocumentHeadCombobox()
+  combo.showValue = true
+  combo.label = "Line height"
+  combo.value = "1.5"
+  combo.options = [{label: "Compact", value: "1.2"}, {label: "Comfortable", value: "1.5"}]
+  document.body.append(combo)
+  await combo.updateComplete
+  const changes = vi.fn()
+  combo.addEventListener("combobox-change", changes)
+  const input = combo.shadowRoot!.querySelector<HTMLInputElement>("input")!
+  expect(input.value).toBe("1.5")
+  input.focus()
+  await combo.updateComplete
+  const option = combo.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"]')!
+  expect(option.textContent).toContain("Compact")
+  expect(option.textContent).toContain("1.2")
+  option.click()
+  await combo.updateComplete
+  expect(input.value).toBe("1.2")
+  expect(changes.mock.calls.at(-1)?.[0].detail.value).toBe("1.2")
+  input.value = "1.7"
+  input.dispatchEvent(new InputEvent("input"))
+  input.dispatchEvent(new Event("change"))
+  await combo.updateComplete
+  expect(changes.mock.calls.at(-1)?.[0].detail.value).toBe("1.7")
+  input.value = ""
+  input.dispatchEvent(new InputEvent("input"))
+  input.dispatchEvent(new Event("change"))
+  expect(changes.mock.calls.at(-1)?.[0].detail.value).toBe("")
+  combo.disabled = true
+  await combo.updateComplete
+  expect(input.disabled).toBe(true)
 })

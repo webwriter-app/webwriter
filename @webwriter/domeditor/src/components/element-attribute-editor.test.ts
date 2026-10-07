@@ -33,6 +33,94 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector("summary")?.textContent).toContain("All attributes (3)")
   })
 
+  it("uses editable number comboboxes with named suggestions and a clear action in expanded fields", async () => {
+    const editor = await mount("ol", {start: "2"})
+    editor.expanded = true
+    await editor.updateComplete
+    const combo = editor.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="ol: Start at"]')!
+    await (combo as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    expect(combo.hasAttribute("show-value")).toBe(true)
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    expect(input.value).toBe("2")
+    expect(input.getAttribute("inputmode")).toBe("decimal")
+
+    const changes = vi.fn()
+    editor.addEventListener("element-attribute-change", changes)
+    combo.shadowRoot!.querySelector<HTMLButtonElement>("button.toggle")!.click()
+    await (combo as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    const suggestions = combo.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]')
+    expect(Array.from(suggestions, option => `${option.querySelector(".option-code")?.textContent} ${option.querySelector(".option-value")?.textContent}`)).toEqual([
+      "First 1", "Second 2", "Third 3",
+    ])
+    suggestions[2].click()
+    expect(changes.mock.calls.at(-1)?.[0].detail).toMatchObject({name: "start", value: "3"})
+
+    input.value = "4"
+    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(changes.mock.calls.at(-1)?.[0].detail).toMatchObject({name: "start", value: "4"})
+
+    input.value = "Infinity"
+    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    await (combo as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    expect(input.value).toBe("2")
+    expect(changes.mock.calls.at(-1)?.[0].detail).toMatchObject({name: "start", value: "4"})
+
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Clear Start at"]')!.click()
+    expect(changes.mock.calls.at(-1)?.[0].detail).toMatchObject({name: "start", value: null})
+  })
+
+  it("uses doubled span suggestions and preserves disabled table span protections", async () => {
+    const editor = await mount("td", {colspan: "2", rowspan: "1"})
+    editor.expanded = true
+    await editor.updateComplete
+    const columnSpan = editor.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="td: Column span"]')!
+    expect(columnSpan.hasAttribute("show-value")).toBe(true)
+    await (columnSpan as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    columnSpan.shadowRoot!.querySelector<HTMLButtonElement>("button.toggle")!.click()
+    await (columnSpan as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    expect(Array.from(columnSpan.shadowRoot!.querySelectorAll('[role="option"]'), option => `${option.querySelector(".option-code")?.textContent} ${option.querySelector(".option-value")?.textContent}`))
+      .toEqual(["Single 1", "Double 2", "Triple 3"])
+
+    const readOnly = await mount("td", {colspan: "2"})
+    readOnly.expanded = true
+    readOnly.disabled = true
+    await readOnly.updateComplete
+    const disabled = readOnly.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="td: Column span"]')!
+    expect(disabled.shadowRoot!.querySelector("input")).toBeDisabled()
+    expect(readOnly.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Clear Column span"]')).toBeDisabled()
+  })
+
+  it("offers named size suggestions for expanded image dimensions", async () => {
+    const editor = await mount("img", {width: "200", height: "100"})
+    editor.expanded = true
+    editor.mediaOwned = false
+    await editor.updateComplete
+    const width = editor.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="img: Width"]')!
+    await (width as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    expect(width.hasAttribute("show-value")).toBe(true)
+    expect(width.shadowRoot!.querySelector<HTMLInputElement>("input")!.value).toBe("200")
+    width.shadowRoot!.querySelector<HTMLButtonElement>("button.toggle")!.click()
+    await (width as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    expect(Array.from(width.shadowRoot!.querySelectorAll('[role="option"]'), option => `${option.querySelector(".option-code")?.textContent} ${option.querySelector(".option-value")?.textContent}`))
+      .toEqual(["Tiny 50", "Small 100", "Medium 200", "Large 400", "Huge 800"])
+  })
+
+  it("renders expanded short enumerations as accessible icon button groups", async () => {
+    const editor = await mount("ol", {type: "a"})
+    editor.expanded = true
+    await editor.updateComplete
+    const group = editor.shadowRoot!.querySelector<HTMLElement>('[role="group"][aria-labelledby="attribute-label-type"]')!
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons).toHaveLength(6)
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
+      "Default", "1, 2, 3", "a, b, c", "A, B, C", "i, ii, iii", "I, II, III",
+    ])
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(buttons.find(button => button.getAttribute("aria-pressed") === "true")?.getAttribute("aria-label")).toBe("a, b, c")
+  })
+
   it("shows disabled global attributes without a selected element", async () => {
     const editor = new ElementAttributeEditor()
     editor.disabled = true

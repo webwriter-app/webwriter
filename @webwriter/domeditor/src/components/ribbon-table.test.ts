@@ -4,6 +4,7 @@ import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import {DomEditorToolbox} from "./toolbox"
+import type {ElementStyleEditor} from "./element-style-editor"
 
 beforeEach(() => document.body.replaceChildren())
 
@@ -13,7 +14,7 @@ const semanticTableState = {
 }
 
 describe("table controls", () => {
-  it("keeps the table controls in dedicated Edit toolbox drawers", async () => {
+  it("keeps the table controls in one specialized Edit toolbox drawer", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -40,7 +41,7 @@ describe("table controls", () => {
     await toolbox.updateComplete
     const toolboxLabels = Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label"))
-    expect(toolboxLabels).toEqual(["Style", "Layout", "Borders", "Background"])
+    expect(toolboxLabels).toEqual(["Style", "Table"])
 
     const actionIcons = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonButton>("ribbon-button"))
       .map(button => button.icon)
@@ -49,10 +50,10 @@ describe("table controls", () => {
       "TableMergeCells", "TableSplitCells", "TableSplit",
     ])
     expect(new Set(actionIcons).size).toBe(actionIcons.length)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"] input[type="checkbox"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"] input[type="checkbox"]')).not.toBeNull()
   })
 
-  it("spaces table layout actions and keeps universal attributes at the bottom", async () => {
+  it("keeps table commands and attributes inside collapsible Options", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -81,14 +82,12 @@ describe("table controls", () => {
     const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
     expect(drawers.map(drawer => drawer.label)).toEqual([
-      "Style", "Layout", "Borders", "Background", "Attributes",
+      "Style", "Table",
     ])
-    const controls = drawers[1].shadowRoot!.querySelector<HTMLElement>(".controls")!
-    expect(getComputedStyle(controls).gridAutoRows).toBe("minmax(3rem, auto)")
-    expect(getComputedStyle(controls).gap).toBe("0.5rem")
-    const attributes = drawers.find(drawer => drawer.label === "Attributes")!
-    expect(getComputedStyle(attributes.querySelector<HTMLElement>("element-attribute-editor")!).gridColumn)
-      .toBe("1 / -1")
+    const options = drawers[1].querySelector<HTMLElement>('[slot="more"]')!
+    expect(options.querySelector('ribbon-button[label="Row above"]')).not.toBeNull()
+    expect(options.lastElementChild!.localName).toBe("element-attribute-editor")
+    expect(drawers[1].shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
   })
 
   it("offers a 10 by 10 insertion grid and dispatches the chosen size", async () => {
@@ -131,10 +130,10 @@ describe("table controls", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const merge = toolbox.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Layout"] ribbon-button[label="Merge cells"]',
+      'ribbon-drawer[label="Table"] ribbon-button[label="Merge cells"]',
     )!
     const split = toolbox.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Layout"] ribbon-button[label="Split cells"]',
+      'ribbon-drawer[label="Table"] ribbon-button[label="Split cells"]',
     )!
     await merge.updateComplete
 
@@ -161,47 +160,34 @@ describe("table controls", () => {
     await toolbox.updateComplete
 
     const caption = toolbox.shadowRoot!.querySelector<HTMLInputElement>(
-      'ribbon-drawer[label="Layout"] input[type="checkbox"]',
+      'ribbon-drawer[label="Table"] input[type="checkbox"]',
     )!
     expect(caption.checked).toBe(true)
     caption.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-caption"}}))
   })
 
-  it("shows cell border and background options top-level and dispatches changes", async () => {
+  it("keeps border and background controls in universal Style", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
-    toolbox.activeMenu = "Edit"
     toolbox.table = {
       ...semanticTableState,
       active: true, cellSelection: true, rows: 1, columns: 1, selectedCells: 1,
       canMerge: false, canSplit: false, hasCaption: false,
     }
-    const listener = vi.fn()
-    toolbox.addEventListener("table-style-change", listener)
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const border = toolbox.shadowRoot!.querySelector<HTMLElement>(
-      'ribbon-drawer[label="Borders"]',
-    )!
-    const background = toolbox.shadowRoot!.querySelector<HTMLElement>(
-      'ribbon-drawer[label="Background"]',
-    )!
-    expect(border.querySelector("ribbon-button")).toBeNull()
-    expect(background.querySelector("ribbon-button")).toBeNull()
-    const style = border.querySelector<HTMLSelectElement>('select')!
-    style.value = "dashed"
-    style.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    const color = background.querySelector<HTMLInputElement>('input[type="color"]')!
-    color.value = "#ff0000"
-    color.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {property: "border-style", value: "dashed"},
-    }))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {property: "background-color", value: "#ff0000"},
-    }))
+    const root = toolbox.shadowRoot!
+    expect(root.querySelector('ribbon-drawer[label="Borders"], ribbon-drawer[label="Background"]')).toBeNull()
+    const style = root.querySelector<ElementStyleEditor>('ribbon-drawer[label="Style"] element-style-editor[slot="more"]')!
+    await style.updateComplete
+    expect(style.shadowRoot!.querySelector('[data-property="border-width"]')).not.toBeNull()
+    expect(style.shadowRoot!.querySelector('[data-property="background-color"]')).not.toBeNull()
+    const table = root.querySelector('ribbon-drawer[label="Table"]')!
+    const fields = Array.from(table.querySelectorAll<ElementStyleEditor>("element-style-editor"))
+      .flatMap(editor => editor.propertyNames ?? [])
+    expect(fields).not.toContain("border-width")
+    expect(fields).not.toContain("background-color")
   })
 
   it("renders and toggles table header and footer checkboxes", async () => {
@@ -224,7 +210,7 @@ describe("table controls", () => {
     toolbox.addEventListener("ribbon-button-click", listener)
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const layout = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"]')!
+    const layout = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"]')!
     const checkboxes = layout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
     expect(checkboxes).toHaveLength(3)
     expect(checkboxes[1].checked).toBe(true)

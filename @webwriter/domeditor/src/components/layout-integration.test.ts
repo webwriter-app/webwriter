@@ -135,7 +135,7 @@ describe("layout host and toolbox integration", () => {
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!.getAttribute("aria-label"))
       .toBe("Edit Table")
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="table"]')).not.toBeNull()
   })
 
   it("opens Edit only for the local inserted selection", async () => {
@@ -180,7 +180,7 @@ describe("layout host and toolbox integration", () => {
     const actions: unknown[] = []
     toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"] [aria-label="Placement"]')).not.toBeNull()
     const allButtons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
     expect(allButtons.map(button => button.getAttribute("aria-label")))
       .toEqual(["Move down", "Float left", "Clear float", "Float right", "Move up"])
@@ -251,37 +251,27 @@ describe("layout host and toolbox integration", () => {
       .toEqual(["false", "true", "false"])
   })
 
-  it("places Layout below Style with its heading icon, reset, and empty Options section", async () => {
+  it("places layout controls inside Style below the presets without a separate drawer", async () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
     toolbox.elementStyle = {...styleState("flex"), target: {...styleState("flex").target!, float: "far-left"}}
     await toolbox.updateComplete
-    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="float"]') as import("./ribbon-drawer").RibbonDrawer
-    await drawer.updateComplete
-    expect(drawer.label).toBe("Layout")
-    expect(drawer.previousElementSibling?.getAttribute("label")).toBe("Style")
-    expect(drawer.shadowRoot!.querySelector(".pane-icon svg")).not.toBeNull()
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"]')!
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"]')).toBeNull()
+    const controls = drawer.querySelector(".float-action-controls")!
+    expect(controls.previousElementSibling?.matches("element-style-editor[show-presets]")).toBe(true)
+    expect(controls.nextElementSibling?.getAttribute("slot")).toBe("more")
+    expect(controls.querySelector(".float-button-group")!.previousElementSibling?.textContent).toBe("Placement")
     const actions: unknown[] = []
     toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
     vi.spyOn(editor, "execute").mockResolvedValue(true)
-    const reset = drawer.querySelector<HTMLButtonElement>('button[aria-label="Reset layout"]')!
-    expect(reset.getAttribute("slot")).toBe("heading-action")
-    expect(reset.disabled).toBe(false)
-    reset.click()
+    controls.querySelector<HTMLButtonElement>('button[aria-label="Clear float"]')!.click()
     expect(actions).toEqual([{type: "setFloat", side: "none"}])
-    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
-    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Options")
-    expect(getComputedStyle(toggle).position).toBe("static")
-    expect(toggle.parentElement?.classList.contains("controls")).toBe(true)
-    expect(toggle.getAttribute("aria-expanded")).toBe("false")
-    toggle.click()
-    await drawer.updateComplete
-    expect(toggle.getAttribute("aria-expanded")).toBe("true")
-    expect(drawer.querySelector('[slot="more"]')).toBeNull()
     toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "none"}}
     await toolbox.updateComplete
-    expect(reset.disabled).toBe(true)
+    expect(controls.querySelector<HTMLButtonElement>('button[aria-label="Move down"]')!.disabled).toBe(true)
+    expect(controls.querySelector<HTMLButtonElement>('button[aria-label="Move up"]')!.disabled).toBe(true)
   })
 
   it.each(["none", "right"])("keeps class-authored left placement selected when the responsive float is %s", async float => {

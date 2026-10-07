@@ -104,11 +104,17 @@ export class DocumentHeadCombobox extends LitElement {
     label: {type: String},
     placeholder: {type: String},
     options: {attribute: false},
+    showValue: {type: Boolean, attribute: "show-value", reflect: true},
     disabled: {type: Boolean, reflect: true},
     open: {type: Boolean, reflect: true, state: true},
   }
 
   static styles = css`
+    :host([show-value]) {--metadata-combobox-height: 1.7rem;}
+    :host([show-value]) .control {border-color: #c5ccd5;}
+    :host([show-value]) .option {font-size: .68rem;}
+    :host([show-value]) .option-code {font-weight: normal;}
+    :host([show-value]) .option-value {margin-left: auto; font-variant-numeric: tabular-nums;}
     :host {
       display: block;
       min-width: 0;
@@ -276,6 +282,7 @@ export class DocumentHeadCombobox extends LitElement {
   label = "Choose"
   placeholder = ""
   options: readonly ComboboxOption[] = []
+  showValue = false
   disabled = false
   private open = false
   private draft = ""
@@ -308,7 +315,7 @@ export class DocumentHeadCombobox extends LitElement {
 
   protected willUpdate(changed: Map<string, unknown>) {
     if(changed.has("disabled") && this.disabled) this.close(true)
-    if(changed.has("value") && !this.editing) this.draft = this.selectedOption()?.label ?? this.value
+    if((changed.has("value") || changed.has("showValue")) && !this.editing) this.draft = this.showValue ? this.value : this.selectedOption()?.label ?? this.value
   }
 
   private selectedOption() {
@@ -330,7 +337,7 @@ export class DocumentHeadCombobox extends LitElement {
     this.activeIndex = -1
     if(reset) {
       this.editing = false
-      this.draft = this.selectedOption()?.label ?? this.value
+      this.draft = this.showValue ? this.value : this.selectedOption()?.label ?? this.value
     }
   }
 
@@ -347,7 +354,7 @@ export class DocumentHeadCombobox extends LitElement {
     if(this.disabled) return
     this.value = value
     this.editing = false
-    this.draft = this.selectedOption()?.label ?? value
+    this.draft = this.showValue ? value : this.selectedOption()?.label ?? value
     this.close()
     this.dispatchEvent(new CustomEvent<{value: string}>("combobox-change", {
       detail: {value},
@@ -373,7 +380,7 @@ export class DocumentHeadCombobox extends LitElement {
   private handleFocus() {
     if(this.disabled) return
     this.editing = true
-    this.draft ||= this.selectedOption()?.label ?? this.value
+    this.draft ||= this.showValue ? this.value : this.selectedOption()?.label ?? this.value
     void this.setOpen(true)
   }
 
@@ -431,6 +438,7 @@ export class DocumentHeadCombobox extends LitElement {
           aria-controls=${this.listboxId}
           aria-activedescendant=${this.open && this.activeIndex >= 0 ? `${this.listboxId}-option-${this.activeIndex}` : nothing}
           autocomplete="off"
+          inputmode=${this.showValue ? "decimal" : nothing}
           data-ribbon-input-persistent
           placeholder=${this.placeholder}
           .value=${this.draft}
@@ -478,7 +486,8 @@ export class DocumentHeadCombobox extends LitElement {
                   @click=${() => this.select(option)}
                 >
                   <strong class="option-code">${option.label}</strong>
-                  ${option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
+                  ${this.showValue ? html`<span class="option-name option-value">${option.value}</span>`
+                    : option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
                 </button>
               `)}
             </div>

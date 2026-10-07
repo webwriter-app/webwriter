@@ -1,6 +1,7 @@
 import {LitElement, css, html, nothing} from "lit"
-import {ribbonIcon} from "../ribbon-icons"
+import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {ref} from "lit/directives/ref.js"
+import "./document-head-editor"
 import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
 import {
   cssWideKeywords,
@@ -171,6 +172,28 @@ export class ElementStyleEditor extends LitElement {
       outline: 2px solid #b9d7f5; outline-offset: 2px;
     }
     .style-gallery button:hover { box-shadow: 0 0 0 2px #b9d7f5; }
+    :host([mode="compact"]) .specialized-input {display: flex; align-items: stretch; min-height: 1.7rem; box-sizing: border-box; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent;}
+    :host([mode="compact"]) .specialized-input > input, :host([mode="compact"]) .specialized-input > select {flex: 1; width: 0; height: 100%; min-width: 0; padding: .2rem .35rem; border: 0; border-radius: 0; background: transparent; outline: none; box-shadow: none;}
+    :host([mode="compact"]) .specialized-input input::placeholder {font-size: .5rem;}
+    :host([mode="compact"]) .specialized-input .length-control {display: flex; flex: 1; min-width: 0;}
+    :host([mode="compact"]) .specialized-input .length-control input {flex: 1; width: 0; border: 0; background: transparent;}
+    :host([mode="compact"]) .specialized-input .length-control select {width: 2.8rem; border: 0; border-left: 1px solid #c5ccd5; border-radius: 0; background: transparent;}
+    .specialized-input > input, .specialized-input > select {width: 100%; min-width: 0; border-radius: 4px;}
+    .specialized-input document-head-combobox {flex: 1; min-width: 0;}
+    .specialized-input:has(document-head-combobox) {border: 0;}
+    .specialized-input:has(.specialized-choice-group) {border: 0; align-items: center;}
+    .specialized-input .property-action {flex: 0 0 1.2rem; border: 0; background: transparent; color: #666;}
+    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 1px 1px 0; background: transparent; flex: 1; min-width: 0; overflow: visible; border: 0; border-radius: 0;}
+    .specialized-choice-group button {box-sizing: border-box; margin: 0 -1px -1px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: 1px solid #c5ccd5; border-radius: 0; background: #f2f2f2; color: inherit; font: inherit; font-size: .6rem; cursor: pointer;}
+    .specialized-choice-group button:first-child {border-top-left-radius: 4px;}
+    .specialized-choice-group button:last-child {border-bottom-right-radius: 4px;}
+    .specialized-choice-group button[data-top-right] {border-top-right-radius: 4px;}
+    .specialized-choice-group button[data-bottom-left] {border-bottom-left-radius: 4px;}
+    .specialized-choice-group button[aria-pressed="true"] {background: #e2edf8; color: #375d84;}
+    .specialized-choice-group button span {display: flex; justify-content: center;}
+    .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    .specialized-choice-group button:hover {background: #edf3f9;}
+    :host([mode="compact"]) .specialized-choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
     .compact-row {
       display: flex;
       align-items: center;
@@ -1093,7 +1116,7 @@ export class ElementStyleEditor extends LitElement {
       type=${definition.control === "number" ? "number" : "text"}
       aria-labelledby=${`style-label-${definition.name}`}
       .value=${current}
-      placeholder=${this.state.computed[definition.name]?.trim() ?? ""}
+      placeholder=${this.mode === "compact" ? "Default" : this.state.computed[definition.name]?.trim() ?? ""}
       min=${definition.min ?? nothing}
       max=${definition.max ?? nothing}
       step=${definition.step ?? (definition.control === "number" ? "any" : nothing)}
@@ -1205,7 +1228,8 @@ export class ElementStyleEditor extends LitElement {
     const current = this.declaration(name)?.value ?? ""
     const value = current === "none" && name === "scale" ? "1"
       : current === "none" && name === "rotate" ? "0deg" : current
-    const displayed = name === "scale" && value.trim() && Number.isFinite(Number(value))
+    const percentage = name === "scale" || name === "opacity"
+    const displayed = percentage && value.trim() && Number.isFinite(Number(value))
       ? String(Number((Number(value) * 100).toPrecision(15)))
       : unit && value.endsWith(unit) ? value.slice(0, -unit.length) : value
     const open = this.compactMenu === name
@@ -1243,8 +1267,9 @@ export class ElementStyleEditor extends LitElement {
           @change=${(event: Event) => {
             const input = event.currentTarget as HTMLInputElement
             const raw = input.value.trim()
-            const next = raw ? name === "scale" ? String(Number(raw) / 100) : `${raw}${unit}` : ""
-            if(raw && (!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !CSS.supports(name, next))) {
+            const next = raw ? percentage ? String(Number(raw) / 100) : `${raw}${unit}` : ""
+            if(raw && (!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !CSS.supports(name, next)
+              || name === "opacity" && (Number(raw) < 0 || Number(raw) > 100))) {
               input.value = displayed
               return
             }
@@ -1258,15 +1283,15 @@ export class ElementStyleEditor extends LitElement {
       ${presets.length ? html`<div class="compact-options" id=${`presets-${name}`} role="listbox" aria-label=${`${label} presets`} ?hidden=${!open}
         @pointerdown=${(event: PointerEvent) => event.preventDefault()}
         @mousedown=${(event: MouseEvent) => event.preventDefault()}>
-        ${presets.map((preset, index) => html`<button type="button" role="option" aria-selected=${value === `${preset}${unit}`}
+        ${presets.map((preset, index) => html`<button type="button" role="option" aria-selected=${value === (percentage ? String(preset / 100) : `${preset}${unit}`)}
           @click=${(event: MouseEvent) => {
             const keyboardFocus = this.shadowRoot?.activeElement === event.currentTarget
-            this.commitCompactValue(name, `${preset}${unit}`)
+            this.commitCompactValue(name, percentage ? String(preset / 100) : `${preset}${unit}`)
             const input = this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!
             input.value = String(preset)
             if(keyboardFocus) input.focus()
             this.compactMenu = null
-          }}><span>${["Tiny", "Small", "Medium", "Large", "Huge"][index]}</span><span class="compact-option-value">${preset}${unit === "deg" ? "°" : unit}</span></button>`)}
+          }}><span>${(name === "opacity" ? ["Invisible", "Faint", "Half", "Mostly opaque", "Opaque"] : name === "scale" ? ["Half", "Small", "Original", "Large", "One and a half"] : name === "rotate" ? ["Quarter left", "Eighth left", "Straight", "Eighth right", "Quarter right"] : ["Tiny", "Small", "Medium", "Large", "Huge"])[index]}</span><span class="compact-option-value">${preset}${unit === "deg" ? "°" : unit}</span></button>`)}
       </div>` : nothing}
     </div>`
   }
@@ -1397,6 +1422,62 @@ export class ElementStyleEditor extends LitElement {
     </div>`
   }
 
+  private renderCompactChoices(definition: ElementStylePropertyDefinition) {
+    const value = this.editableValue(definition.name) || this.state.computed[definition.name]?.trim()
+    const rtl = this.state.computed.direction === "rtl"
+    const current = ["text-align", "text-align-last"].includes(definition.name)
+      ? value === "start" ? rtl ? "right" : "left" : value === "end" ? rtl ? "left" : "right" : value : value
+    const columns = Math.min(4, Math.ceil(definition.values!.length / (definition.values!.length > 4 ? 2 : 1)))
+    return html`<div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${definition.name}`}>
+      ${definition.values!.map((value, index) => html`<button type="button"
+        ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((definition.values!.length - 1) / columns) * columns}
+        aria-pressed=${current === value}
+        title=${value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
+        aria-label=${value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
+        @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+        @click=${() => this.commitValue(definition.name, value)}><span aria-hidden="true">${ribbonOptionIcon(definition.name, value)}</span></button>`)}
+    </div>`
+  }
+
+  private renderSpecializedNumber(definition: ElementStylePropertyDefinition) {
+    const suggestions = definition.name === "line-height"
+      ? [{label: "Normal", value: "normal"}, {label: "Compact", value: "1.2"}, {label: "Comfortable", value: "1.5"}, {label: "Spacious", value: "2"}]
+      : definition.name === "math-depth"
+        ? [{label: "Normal", value: "0"}, {label: "Nested", value: "1"}, {label: "Deep", value: "2"}]
+        : definition.name === "letter-spacing"
+          ? [{label: "Tight", value: "-0.05em"}, {label: "Normal", value: "normal"}, {label: "Loose", value: "0.05em"}, {label: "Wide", value: "0.1em"}]
+          : definition.name === "word-spacing"
+            ? [{label: "Tight", value: "-0.1em"}, {label: "Normal", value: "normal"}, {label: "Loose", value: "0.1em"}, {label: "Wide", value: "0.25em"}]
+            : definition.name === "text-indent"
+              ? [{label: "None", value: "0"}, {label: "Small", value: "1em"}, {label: "Medium", value: "2em"}, {label: "Large", value: "4em"}]
+              : [{label: "None", value: "0"}, {label: "Compact", value: "2px"}, {label: "Comfortable", value: "4px"}, {label: "Spacious", value: "8px"}]
+    return html`<document-head-combobox .showValue=${true} .label=${definition.label}
+      .value=${this.editableValue(definition.name)} placeholder="Default" .options=${suggestions}
+      @combobox-change=${(event: CustomEvent<{value: string}>) => {
+        const value = event.detail.value.trim()
+        if(!value || CSS.supports(definition.name, value)) this.commitValue(definition.name, value)
+        else {
+          const combo = event.currentTarget as import("./document-head-editor").DocumentHeadCombobox
+          combo.value = this.editableValue(definition.name)
+          combo.close(true)
+        }
+      }}></document-head-combobox>`
+  }
+
+  private renderCompactProperty(definition: ElementStylePropertyDefinition) {
+    return html`<div class="compact-row" data-property=${definition.name}>
+      <label class="compact-label" id=${`style-label-${definition.name}`}>${definition.label}</label>
+      <div class="compact-controls specialized-input">
+        ${definition.control === "number" || definition.control === "length" || ["line-height", "border-spacing", "math-depth"].includes(definition.name)
+          ? this.renderSpecializedNumber(definition) : definition.control === "select" && definition.values?.length && definition.values.length <= 8
+          && definition.values.every(value => value.length <= 14)
+          ? this.renderCompactChoices(definition) : this.renderInput(definition, this.declaration(definition.name))}
+        ${this.declaration(definition.name) ? html`<button type="button" class="property-action"
+          aria-label=${`Clear ${definition.label}`} @click=${() => this.dispatchChange(definition.name, null)}>×</button>` : nothing}
+      </div>
+    </div>`
+  }
+
   private renderStyleGallery() {
     const shadow = this.galleryPage % 2 === 1 ? "0 4px 8px #0003" : "none"
     const saturated = this.galleryPage >= 2
@@ -1441,6 +1522,8 @@ export class ElementStyleEditor extends LitElement {
       ${this.showPresets ? this.renderStyleGallery() : nothing}
       ${(this.propertyNames ?? ["width", "height", "margin", "border-width", "padding", "background-color"])
         .filter(name => !this.documentRootTarget || name === "background-color").map(name => {
+        const definition = this.definitions.find(definition => definition.name === name)
+        if(definition) return this.renderCompactProperty(definition)
         if(name === "box-shadow" || name === "filter") {
           const effects = (this.propertyNames ?? []).filter(property => property === "box-shadow" || property === "filter") as ("box-shadow" | "filter")[]
           return name === effects[0] ? html`<div class="effect-fields">${effects.map(property => this.renderCompactEffect(property))}</div>` : nothing
@@ -1471,7 +1554,7 @@ export class ElementStyleEditor extends LitElement {
             </details>
             ${this.renderCompactColorPicker()}
           </div>` : nothing}
-          ${this.renderCompactValue(name, label, name === "rotate" || name === "scale" ? [] : name === "border-width" ? [0.5, 1, 2, 4, 8] : name === "border-radius" ? [1, 2, 4, 8, 16] : name === "width" || name === "height" ? [50, 100, 200, 400, 800] : [2, 4, 8, 16, 32], name === "rotate" ? "deg" : name === "scale" ? "%" : "px")}
+          ${this.renderCompactValue(name, label, name === "rotate" ? [-90, -45, 0, 45, 90] : name === "scale" ? [50, 75, 100, 125, 150] : name === "opacity" ? [0, 25, 50, 75, 100] : name === "border-width" ? [0.5, 1, 2, 4, 8] : name === "border-radius" ? [1, 2, 4, 8, 16] : name === "width" || name === "height" ? [50, 100, 200, 400, 800] : [2, 4, 8, 16, 32], name === "rotate" ? "deg" : name === "scale" || name === "opacity" ? "%" : "px")}
           </div>
         </div>`
       })}

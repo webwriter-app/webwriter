@@ -1,3 +1,27 @@
+import alignCenter from "@tabler/icons/outline/align-center.svg?raw"
+import alignRight from "@tabler/icons/outline/align-right.svg?raw"
+import alignJustified from "@tabler/icons/outline/align-justified.svg?raw"
+import capStraight from "@tabler/icons/outline/cap-straight.svg?raw"
+import capRounded from "@tabler/icons/outline/cap-rounded.svg?raw"
+import capProjecting from "@tabler/icons/outline/cap-projecting.svg?raw"
+import joinStraight from "@tabler/icons/outline/join-straight.svg?raw"
+import joinRound from "@tabler/icons/outline/join-round.svg?raw"
+import joinBevel from "@tabler/icons/outline/join-bevel.svg?raw"
+import textWrap from "@tabler/icons/outline/text-wrap.svg?raw"
+import textWrapDisabled from "@tabler/icons/outline/text-wrap-disabled.svg?raw"
+import textWrapColumn from "@tabler/icons/outline/text-wrap-column.svg?raw"
+import letterCaseUpper from "@tabler/icons/outline/letter-case-upper.svg?raw"
+import letterCaseLower from "@tabler/icons/outline/letter-case-lower.svg?raw"
+import letterCase from "@tabler/icons/outline/letter-case.svg?raw"
+import arrowsMinimize from "@tabler/icons/outline/arrows-minimize.svg?raw"
+import arrowsMaximize from "@tabler/icons/outline/arrows-maximize.svg?raw"
+import baseline from "@tabler/icons/outline/baseline.svg?raw"
+import pageBreak from "@tabler/icons/outline/page-break.svg?raw"
+import crop from "@tabler/icons/outline/crop.svg?raw"
+import blur from "@tabler/icons/outline/blur.svg?raw"
+import scan from "@tabler/icons/outline/scan.svg?raw"
+import clock from "@tabler/icons/outline/clock.svg?raw"
+import hyphen from "@tabler/icons/outline/minus.svg?raw"
 import signRight from "@tabler/icons/outline/sign-right.svg?raw"
 import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
@@ -471,3 +495,39 @@ const fallbackIcon = dots
 export const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 
 export const ribbonIcon = (label: string) => unsafeSVG(icons[label] ?? fallbackIcon)
+
+/** Tabler glyphs for compact option groups; labels remain on each button. */
+const optionIcons: Record<string, Record<string, string>> = {
+  "text-align": {left: alignLeft, center: alignCenter, right: alignRight, justify: alignJustified},
+  "text-align-last": {auto: alignLeft, left: alignLeft, center: alignCenter, right: alignRight, justify: alignJustified},
+  "stroke-linecap": {butt: capStraight, round: capRounded, square: capProjecting},
+  "stroke-linejoin": {miter: joinStraight, round: joinRound, bevel: joinBevel},
+  "text-wrap": {wrap: textWrap, nowrap: textWrapDisabled, balance: alignCenter, pretty: textWrapColumn, stable: alignLeft},
+  "white-space": {normal: textWrap, nowrap: textWrapDisabled, pre: code, "pre-wrap": textWrapColumn, "pre-line": alignLeft, "break-spaces": spacingHorizontal},
+  "text-transform": {none: letterCase, uppercase: letterCaseUpper, lowercase: letterCaseLower, capitalize: letterCase, "full-width": arrowsMaximize, "full-size-kana": textSize},
+  "vertical-align": {baseline, middle: alignBoxCenterMiddle, top: alignBoxTopCenter, bottom: alignBoxBottomCenter,
+    sub: subscript, super: superscript, "text-top": alignBoxTopCenter, "text-bottom": alignBoxBottomCenter},
+  "table-layout": {auto: table, fixed: layoutGrid},
+  "border-collapse": {collapse: arrowsMinimize, separate: arrowsMaximize},
+  "caption-side": {top: alignBoxTopCenter, bottom: alignBoxBottomCenter},
+  "empty-cells": {show: eye, hide: eyeOff},
+  "list-style-position": {inside: alignBoxCenterMiddle, outside: alignBoxLeftMiddle},
+  "hyphens": {none: textWrapDisabled, manual: hyphen, auto: textWrap},
+  "overflow-wrap": {normal: textWrap, "break-word": textWrapColumn, anywhere: textWrapColumn},
+  "word-break": {normal: textWrap, "break-all": textWrapColumn, "keep-all": textWrapDisabled, "auto-phrase": letterCase, "break-word": textWrapColumn},
+  "object-fit": {fill: arrowsMaximize, contain: rectangle, cover: crop, none: photo, "scale-down": arrowsMinimize},
+  "image-rendering": {auto: check, smooth: blur, "high-quality": photo, "crisp-edges": scan, pixelated: layoutGrid},
+  "math-style": {normal: math, compact: arrowsMinimize},
+  "math-shift": {normal: math, compact: arrowsMinimize},
+  "fill-rule": {nonzero: polygon, evenodd: layersUnion},
+  "break-inside": {auto: pageBreak, avoid: link, "avoid-page": file, "avoid-column": columns3},
+  loading: {"": check, eager: bolt, lazy: clock},
+  decoding: {"": check, auto: check, sync: bolt, async: clock},
+  preload: {"": check, none: eyeOff, metadata: fileDescription, auto: download},
+  dir: {"": check, auto: check, ltr: arrowRight, rtl: arrowLeft},
+}
+
+export const ribbonOptionIcon = (property: string, value: string) => unsafeSVG(optionIcons[property]?.[value]
+  ?? ({auto: check, normal: check, none: eyeOff, manual: pencil, left: arrowLeft, right: arrowRight,
+    top: arrowUp, bottom: arrowDown, show: eye, hide: eyeOff, avoid: link, page: pageBreak,
+    column: columns3, always: check, all: check, inherit: layersUnion} as Record<string, string>)[value] ?? check)
