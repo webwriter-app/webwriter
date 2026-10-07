@@ -235,6 +235,8 @@ const icons: Record<string, string> = {
   FileHorizontal: fileHorizontal,
   Canvas: artboard,
   ChevronRight: chevronRight,
+  ArrowLeft: arrowLeft,
+  ArrowRight: arrowRight,
   Section: section,
   Article: article,
   Layout: layout,

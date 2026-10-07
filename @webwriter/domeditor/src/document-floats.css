@@ -1,27 +1,95 @@
-/* Shared by editing and exported themes. The document has one centered column. */
+/* Page geometry is shared by editing and standalone exports. */
 @layer webwriter-theme {
   html {
     container-type: inline-size;
-    --ww-float-width: 16rem;
+    --ww-page-width: min(var(--ww-page-max, 2160px), calc(100cqw - 2 * var(--ww-page-gutter, 1rem)));
+    --ww-float-width: max(0px, calc((var(--ww-page-width) - var(--ww-prose-max, 45rem)) / 2 - var(--ww-float-gap)));
     --ww-float-gap: 1rem;
   }
 
-  body {
-    /* Percentages resolve against the float's containing column. */
-    --ww-float-space: max(0px, calc((100cqw - 100%) / 2 - var(--ww-page-gutter, 1rem)));
-  }
-
-  /* Move paragraphs below floats instead of squeezing their text into a
-   * narrow strip. The percentage cap keeps smaller columns from overflowing. */
-  p:not([is]) {
+  body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+    --ww-lane: 0px;
     display: flow-root;
-    min-inline-size: min(300px, 100%);
+    box-sizing: border-box;
+    inline-size: auto;
+    max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem));
+    margin-inline: auto;
+    padding-inline: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane));
+
+    /* Auto widths let existing widgets with 100% host defaults fit the page.
+     * Inline widgets retain their own display; these sizes do not blockify them. */
+    :is(&, & > main, & > article, & > section) > * {
+      box-sizing: border-box;
+      inline-size: auto;
+      min-inline-size: 0;
+      max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
+      margin-inline: auto;
+    }
+
+    > :is(main, article, section) {
+      padding-inline: 0;
+      max-inline-size: none;
+    }
+
+    p:not([is]) {
+      display: flow-root;
+      min-inline-size: min(300px, 100%);
+    }
+
+    :is([style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+      /* A bounded border box fits its lane. Old floats use the theme width. */
+      box-sizing: border-box !important;
+      inline-size: var(--ww-float-size, var(--ww-float-width)) !important;
+      min-inline-size: 0 !important;
+      max-inline-size: min(100%, var(--ww-float-width));
+    }
   }
 
-  /* CSS cannot query whether a float wrapped. Use a mobile breakpoint for
-   * the shared column geometry, and retain the authored float for wider views.
-   * Both spellings also cover existing documents before CSSOM serialization. */
+  @container (width >= 1200px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      /* The reservation covers the whole body, including wide landmarks. */
+      &:has(:is([style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
+        --ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+      }
+
+      :is([style*="float: left"], [style*="float:left"]) {
+        clear: left;
+        margin-left: calc(0px - var(--ww-lane)) !important;
+        margin-right: calc(var(--ww-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+      }
+
+      :is([style*="float: right"], [style*="float:right"]) {
+        clear: right;
+        margin-right: calc(0px - var(--ww-lane)) !important;
+        margin-left: calc(var(--ww-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+      }
+    }
+  }
+
+  @container (600px <= width < 1200px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      --ww-float-width: min(16rem, max(0px, calc(var(--ww-page-width) - 300px - var(--ww-float-gap))));
+      --ww-responsive-float: right;
+      padding-left: var(--ww-page-gutter, 1rem);
+
+      &:has(:is([style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
+        --ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+      }
+
+      :is([style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        float: right !important;
+        clear: right;
+        margin-right: calc(0px - var(--ww-lane)) !important;
+        margin-left: calc(var(--ww-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+      }
+    }
+  }
+
   @container (width < 600px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      --ww-float-width: 16rem;
+    }
+
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) :is(
       [style*="float: left"], [style*="float:left"],
       [style*="float: right"], [style*="float:right"]

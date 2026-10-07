@@ -118,6 +118,10 @@ describe("package ribbon controls", () => {
       true, false, true, false,
       true, false,
     ])
+    const taggedEvents = events.mock.calls.filter(([event]) => event.detail.tag)
+    expect(taggedEvents.length).toBeGreaterThan(0)
+    expect(taggedEvents.every(([event]) => event.detail.tag === "p")).toBe(true)
+    expect(events.mock.calls.every(([event]) => event.detail.hovered || event.detail.tag === undefined)).toBe(true)
   })
 
   it("keeps wrapped package labels compact without cropping underlines", async () => {

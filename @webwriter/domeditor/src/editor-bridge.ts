@@ -43,6 +43,7 @@ export type RibbonDropPosition = {
   layout: "document" | "canvas" | "slides"
   x?: number
   y?: number
+  float?: "left" | "right"
 }
 
 /** Chromium withholds drag events from a frame of another site than the one
@@ -220,13 +221,15 @@ export type SelectionPathItem = {
   iconUrl?: string
   /** The element's computed non-static positioning mode, omitting relative positioning without an offset. */
   position?: "absolute" | "fixed" | "relative" | "sticky"
+  /** The element's authored left or right float, including floats hidden by responsive styles. */
+  float?: "far-left" | "far-right"
   /** Whether this element anchors positioning in the current selection path. */
   positionAnchor?: boolean
   /** Transparent section wrappers applying to this structural element. */
   sections?: SelectionPathSection[]
 }
 
-export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor"> & {
+export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor" | "float"> & {
   /** The child-node path from BODY to the section wrapper. */
   path: number[]
   /** The wrapper's semantic HTML element type. */
@@ -622,6 +625,7 @@ const isOptional = (value: unknown, predicate: (value: unknown) => boolean) => v
 const isOptionalBoolean = (value: unknown) => value === undefined || isBoolean(value)
 const isSelectionPosition = (value: UnknownRecord) => isOptional(value.position, position => ["absolute", "fixed", "relative", "sticky"].includes(position as string))
   && isOptional(value.positionAnchor, isBoolean)
+  && isOptional(value.float, float => float === "far-left" || float === "far-right")
 
 const isSelectionPathItem = (value: unknown) => {
   if(!isRecord(value)) return false

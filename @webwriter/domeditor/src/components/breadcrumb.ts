@@ -211,6 +211,12 @@ export class DomEditorBreadcrumb extends LitElement {
       height: 10px;
     }
 
+    .position-float,
+    .position-float svg {
+      width: 16px;
+      height: 16px;
+    }
+
     .item-sections {
       display: inline-flex;
       align-items: flex-start;
@@ -537,6 +543,7 @@ export class DomEditorBreadcrumb extends LitElement {
         && entry.item.iconUrl === other.item.iconUrl
         && entry.item.position === other.item.position
         && entry.item.positionAnchor === other.item.positionAnchor
+        && entry.item.float === other.item.float
         && this.sectionsEqual(entry.item.sections, other.item.sections)
         && this.pathsEqual(entry.item.path, other.item.path)
     })
@@ -552,6 +559,7 @@ export class DomEditorBreadcrumb extends LitElement {
         && section.icon === other.icon
         && section.position === other.position
         && section.positionAnchor === other.positionAnchor
+        && section.float === other.float
         && this.pathsEqual(section.path, other.path)
     })
   }
@@ -909,13 +917,14 @@ export class DomEditorBreadcrumb extends LitElement {
     const current = this.path.find(candidate => this.pathsEqual(candidate.path, item.path))
       ?? this.path.flatMap(candidate => candidate.sections ?? []).find(section => this.pathsEqual(section.path, item.path))
       ?? item
-    const {position, positionAnchor} = current
+    const {position, positionAnchor, float} = current
     const balloon = position === "relative" ? "BalloonFilled"
       : position === "absolute" || position === "fixed" ? "Balloon" : null
-    if(!positionAnchor && !balloon) return ""
+    if(!positionAnchor && !balloon && !float) return ""
     return html`<sup class="position-icons">
       ${positionAnchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
       ${balloon ? html`<span class="position-icon position-balloon" role="img" aria-label=${`${position} positioning`} title=${`${position} positioning`}>${ribbonIcon(balloon)}</span>` : ""}
+      ${float ? html`<span class="position-icon position-float" role="img" aria-label=${float === "far-left" ? "Left float" : "Right float"} title=${float === "far-left" ? "Left float" : "Right float"}>${ribbonIcon(float === "far-left" ? "ArrowLeft" : "ArrowRight")}</span>` : ""}
     </sup>`
   }
 

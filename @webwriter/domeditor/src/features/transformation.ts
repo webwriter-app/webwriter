@@ -60,7 +60,7 @@ export class TransformationFeature extends EditorFeature {
   protected handlesCapturedElementInteractions = true
   #target: TransformElement | null = null
   #gesture: Gesture | null = null
-  #floatValues: readonly FloatSide[] = ["none", "left", "right", "far-left", "far-right"]
+  #floatValues: readonly FloatSide[] = ["none", "far-left", "far-right"]
   #observer: MutationObserver | null = null
   #frame: number | null = null
   #panFrame: number | null = null
@@ -279,8 +279,8 @@ export class TransformationFeature extends EditorFeature {
       button.type = "button"
       const label = button.title || ({
         restorer: "Reset transformations", arranger: "Float", orderer: "Stacking order",
-        "float-none": "No float", "float-left": "Float left", "float-right": "Float right",
-        "float-far-left": "Float far left", "float-far-right": "Float far right",
+        "float-none": "No float",
+        "float-far-left": "Float left", "float-far-right": "Float right",
         "z-back": "Send to back", "z-backward": "Send backward", "z-forward": "Bring forward", "z-front": "Bring to front",
       } as Record<string, string>)[button.id.replace("◆transform-overlay-", "")]
       if(label) { button.title = label; button.setAttribute("aria-label", label) }
@@ -696,7 +696,10 @@ export class TransformationFeature extends EditorFeature {
     this.updateInfo()
   }
 
-  handleMoveStart(event: MouseEvent) { this.#begin(event, "move", this.anchor) }
+  handleMoveStart(event: MouseEvent) {
+    this.#begin(event, "move", this.anchor)
+    if(this.#gesture && this.target) this.editor.features.manipulation.prepareFloatDropTargets(this.target)
+  }
   handleScaleStart(event: MouseEvent) {
     const handle = event.composedPath()[0] ?? event.target
     if(handle instanceof HTMLElement && handle.dataset.transformMode === "scale") this.#begin(event, "scale", handle)
@@ -777,7 +780,13 @@ export class TransformationFeature extends EditorFeature {
         if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
-      if(x) this.#write("max-width", `${Math.max(0, gesture.cssWidth + dw)}px`)
+      if(x) {
+        const width = Math.max(0, gesture.cssWidth + dw)
+        if(target.style.getPropertyValue("--ww-float-size") && ["left", "right"].includes(target.style.float)) {
+          this.#write("--ww-float-size", `min(100%, var(--ww-float-width), ${width}px)`)
+        }
+        this.#write("max-width", `${width}px`)
+      }
       if(y) this.#write("max-height", `${Math.max(0, gesture.cssHeight + dh)}px`)
       // Maximums may not change the used size (for example, an image's natural
       // size can be smaller). Keep the anchor tied to the actual rendered box.
@@ -838,7 +847,7 @@ export class TransformationFeature extends EditorFeature {
     if(floatElement) {
       const float = manipulation.floatSide(floatElement, event.clientX)
       this.#drop = {element: floatElement, placement: "before", parent: floatElement.parentElement!, float}
-      manipulation.showFloatDropPreview(floatElement, float, "transformation")
+      manipulation.showFloatDropPreview(floatElement, float, "transformation", target)
       return
     }
     const hit = document.elementsFromPoint?.(event.clientX, event.clientY).find(element =>
@@ -897,7 +906,8 @@ export class TransformationFeature extends EditorFeature {
     else if(gesture.moved && this.#drop) {
       const {element, placement, parent, float} = this.#drop
       if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
-        && (float === undefined || this.editor.features.manipulation.floatContainer(element, target) === element)) {
+        && (float === undefined || this.editor.features.manipulation.floatContainer(element, target) === element
+          && (target.parentElement === parent || this.editor.schema.canInsert(parent, target, Array.from(parent.childNodes).indexOf(element))))) {
         if(gesture.mode === "move" && float === undefined) clearInlinePlacement(target)
         if(float) {
           this.editor.features.manipulation.placeFloat(target, element, float, placement)
@@ -920,6 +930,7 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
     document.body.classList.remove("◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nwse", "◆transform-scaling-nesw")
     this.#clearDrop()
+    this.editor.features.manipulation.clearFloatDropTargets()
     gesture.endUndoGroup()
     if(valid) {
       if(gesture.captured && !cancel && !gesture.moved && (gesture.mode === "move" || gesture.mode === "scale")) {

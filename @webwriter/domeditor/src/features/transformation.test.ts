@@ -1108,6 +1108,37 @@ describe("transform controls and geometry", () => {
     expect(document.querySelector("demo-widget")!.getAttribute("style")).not.toContain("position:")
   })
 
+  it("resizes a float's preferred width and restores it on cancellation and undo", async () => {
+    const target = targetElement("aside")
+    target.style.width = "100px"
+    editor.features.manipulation.setFloat(target, "far-right")
+    mockRect(target)
+    selectNode(target)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const initial = target.getAttribute("style")
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+    const drag = () => {
+      handle.dispatchEvent(pointer("pointerdown", {pointerId:3, clientX:200, clientY:125}))
+      document.dispatchEvent(pointer("pointermove", {pointerId:3, clientX:240, clientY:125}))
+    }
+    drag()
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 140px)")
+    document.dispatchEvent(pointer("pointercancel", {pointerId:3}))
+    expect(target.getAttribute("style")).toBe(initial)
+    drag()
+    document.dispatchEvent(pointer("pointerup", {pointerId:3}))
+    await mutationsDelivered()
+    const resized = target.getAttribute("style")
+    expect(resized).toContain("--ww-float-size: min(100%, var(--ww-float-width), 140px)")
+    editor.doc.undo()
+    await mutationsDelivered()
+    expect(document.querySelector("aside")!.getAttribute("style")).toBe(initial)
+    editor.doc.redo()
+    await mutationsDelivered()
+    expect(document.querySelector("aside")!.getAttribute("style")).toBe(resized)
+  })
+
   it("retains a concurrent maximum while restoring other gesture-owned properties", () => {
     const target = targetElement("demo-widget")
     Object.assign(target.style, {width: "100px", height: "50px", maxWidth: "100px"})
@@ -1191,20 +1222,22 @@ describe("drop, cancellation, and document ownership", () => {
     const text = paragraph.firstChild
     if(tag === "demo-widget") captureNode(target)
     else selectNode(target)
+    expect(Array.from(feature.overlay.querySelectorAll<HTMLButtonElement>('[id^="◆transform-overlay-float-"]'))
+      .map(button => button.id)).toEqual([
+        "◆transform-overlay-float-none",
+        "◆transform-overlay-float-far-left",
+        "◆transform-overlay-float-far-right",
+      ])
     const click = (side: string) => feature.overlay.querySelector<HTMLButtonElement>(`#◆transform-overlay-float-${side}`)!.click()
-    click("left")
-    expect(target.style.float).toBe("left")
     click("far-left")
     expect(target.style.float).toBe("left")
     expect(target.style.getPropertyValue("margin-left")).toBe("var(--ww-float-outset)")
     expect(feature.arranger.getAttribute("data-float")).toBe("far-left")
-    expect(feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-float-far-left")?.getAttribute("aria-label")).toBe("Float far left")
+    expect(feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-float-far-left")?.getAttribute("aria-label")).toBe("Float left")
     click("far-right")
     expect(target.style.float).toBe("right")
     expect(target.style.getPropertyValue("margin-right")).toBe("var(--ww-float-outset)")
     expect(feature.arranger.getAttribute("data-float")).toBe("far-right")
-    click("right")
-    expect(target.style.float).toBe("right")
     click("none")
     expect(target.style.float).toBe("")
     expect(target.style.maxWidth).toBe("30rem")
@@ -1331,6 +1364,7 @@ describe("drop, cancellation, and document ownership", () => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()
     paragraph.textContent = "keep text"
+    target.style.width = "40px"
     mockRect(target)
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
@@ -1340,10 +1374,10 @@ describe("drop, cancellation, and document ownership", () => {
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(preview).not.toBeNull()
     expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
-    expect(parseFloat(preview.style.left)).toBeCloseTo(300 + (side === "left" ? 0 : 50))
-    expect(preview.style.top).toBe("100px")
-    expect(parseFloat(preview.style.width)).toBeCloseTo(50)
-    expect(preview.style.height).toBe("100px")
+    expect(parseFloat(preview.style.left)).toBeCloseTo(300 + (side === "left" ? 0 : 60))
+    expect(preview.style.top).toBe("105px")
+    expect(parseFloat(preview.style.width)).toBeCloseTo(40)
+    expect(preview.style.height).toBe("50px")
     expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
     feature.handleMoveEnd()
     expect(target.parentElement!.parentElement).toBe(paragraph.parentElement!.parentElement)
@@ -1356,6 +1390,7 @@ describe("drop, cancellation, and document ownership", () => {
   it("moves the float preview between target halves and removes it on cancellation", () => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()
+    target.style.width = "40px"
     mockRect(target)
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
@@ -1367,7 +1402,7 @@ describe("drop, cancellation, and document ownership", () => {
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 150, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(editor.appendix.querySelectorAll("#◆float-drop-preview")).toHaveLength(1)
-    expect(parseFloat(preview.style.left)).toBeCloseTo(350)
+    expect(parseFloat(preview.style.left)).toBeCloseTo(360)
     expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
@@ -1380,6 +1415,7 @@ describe("drop, cancellation, and document ownership", () => {
     Object.assign(target.style, {float: "right", margin: "5px", maxWidth: "50%", marginBlockStart: "8px", color: "red"})
     const paragraph = targetElement()
     paragraph.textContent = "keep text"
+    target.style.width = "40px"
     mockRect(target)
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100, 100, 100))
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})

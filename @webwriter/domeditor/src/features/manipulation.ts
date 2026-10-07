@@ -16,7 +16,7 @@ import {
   type HeadingGroupSelectionState,
   type RibbonDropPosition,
 } from "../editor-bridge"
-import {type FloatSide, paragraphStylePropertyNameSet} from "../element-styles"
+import {floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
@@ -29,6 +29,14 @@ import {
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
+
+type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, allowed?: boolean}
+type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number}
+
+type FloatPreviewMeasurements = {
+  geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean}>>>
+  clearance: Map<Element, Map<Element, {left: number, right: number}>>
+}
 
 type ValidatedStyleEntry = {
   name: string
@@ -87,8 +95,17 @@ export class ManipulationFeature extends EditorFeature {
   private nodeDrag: {element: Element, token: string} | null = null
   private originalDropSelection: Range | null = null
   private floatDropPreviewOwner: "transfer" | "transformation" | "insertion" | null = null
+  private floatDropPreview: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
+  private floatDropHit: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
+  private floatDropTargets: FloatDropTargets | null = null
+  private floatDropTargetsObserver: MutationObserver | null = null
+  private floatDropTargetsResizeObserver: ResizeObserver | null = null
+  private floatDropTargetsFrame: number | null = null
+  private readonly floatDropTargetsCleanup: (() => void)[] = []
   private insertionHovered = false
+  private insertionPreviewSource: Element | undefined
   private commandPlacement = false
+  private ribbonDropInsertion = false
   private insertionPreviewObserver: MutationObserver | null = null
   private insertionPreviewResizeObserver: ResizeObserver | null = null
   private insertionPreviewTarget: Element | null = null
@@ -222,6 +239,7 @@ export class ManipulationFeature extends EditorFeature {
   endNodeDrag(refresh=true) {
     this.clearDropSelection(refresh)
     this.nodeDrag = null
+    this.clearFloatDropTargets()
     this.clearNodeDragSurface()
     if(refresh && this.isEnabled && !this.editor.features.selection.isCaptureSelection) this.refreshNodeDragTarget($.selectedElement ?? null)
   }
@@ -254,6 +272,7 @@ export class ManipulationFeature extends EditorFeature {
     // pointer-events becomes none during dragstart. Its own drop listeners
     // already handle hovering back over the source surface.
     this.nodeDrag = {element, token}
+    this.prepareFloatDropTargets(element)
   }
 
   private acceptsDrop(event: DragEvent) {
@@ -323,30 +342,32 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     event.preventDefault()
-    // Ribbon sources are insertion commands, not document nodes. Resolve
-    // their caret exactly like widgets, without a detached preview element.
-    const range = this.dropRange(event, ribbonTag || ribbonInsertion ? null : this.nodeDrag?.element ?? null)
-    if(!range) {
-      event.dataTransfer!.dropEffect = "none"
-      this.clearDropSelection(true)
-      return
+    const source = this.nodeDrag?.element ?? (ribbonTag ? this.ribbonElement(ribbonTag) : ribbonInsertion ? this.insertionPreviewSource ?? document.createElement("div") : null)
+    const floatContainer = source && this.floatDropTarget(event, source)
+    const beginSelection = () => {
+      if(!document.body.classList.contains("◆drop-selection-active")) {
+        const selection = document.getSelection()
+        this.originalDropSelection = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+      }
+      document.body.classList.add("◆drop-selection-active")
     }
-    if(!document.body.classList.contains("◆drop-selection-active")) {
-      const selection = document.getSelection()
-      this.originalDropSelection = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
-    }
-    document.body.classList.add("◆drop-selection-active")
-    this.editor.features.selection.selectDropRange(range)
-    const source = this.nodeDrag?.element
-    const floatContainer = !ribbonTag && !ribbonInsertion && source && !this.editor.features.canvas.active && !this.editor.features.slides.active
-      && source.namespaceURI !== MATH_NAMESPACE && this.floatDropTarget(event, source, range)
     if(floatContainer) {
-      this.editor.features.selection.clearDropCaret()
-      this.showFloatDropPreview(
-        floatContainer, this.floatSide(floatContainer, event.clientX), "transfer",
-      )
+      beginSelection()
+      this.editor.features.selection.clearDropCaret(true)
+      this.showFloatDropPreview(floatContainer, this.floatSide(floatContainer, event.clientX), "transfer",
+        this.nodeDrag?.element ?? (ribbonTag ? source! : this.insertionPreviewSource))
     }
-    else this.clearFloatDropPreview("transfer")
+    else {
+      const range = this.dropRange(event, ribbonTag || ribbonInsertion ? null : this.nodeDrag?.element ?? null)
+      if(!range) {
+        event.dataTransfer!.dropEffect = "none"
+        this.clearDropSelection(true)
+        return
+      }
+      beginSelection()
+      this.editor.features.selection.selectDropRange(range)
+      this.clearFloatDropPreview("transfer")
+    }
     event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
   }
 
@@ -380,33 +401,32 @@ export class ManipulationFeature extends EditorFeature {
       || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)) return false
     const style = this.inlineStyleOf(element)
     if(!style) return false
-    const far = side === "far-left" || side === "far-right"
+    const far = side !== "none"
     const desired = side === "far-left" ? "left" : side === "far-right" ? "right" : side
     const wasFar = ["margin-left", "margin-right"].some(name => style.getPropertyValue(name).includes("var(--ww-float-outset"))
     const defaultWidth = "var(--ww-float-width)"
     const authoredWidth = style.getPropertyValue("width")
-    const floatWidth = authoredWidth && authoredWidth !== "auto" ? authoredWidth : defaultWidth
+    const inlineWidth = style.getPropertyValue("inline-size") || authoredWidth
+    const floatWidth = inlineWidth && inlineWidth !== "auto" ? inlineWidth : defaultWidth
     const width = style.getPropertyValue("max-width")
-    const cappedWidth = /^min\(50%, ([\s\S]+)\)$/.exec(width)
-    const originalWidth = cappedWidth?.[1] ?? width
-    const maxWidth = side === "none" ? cappedWidth ? originalWidth : width === "50%" ? null : undefined
-      : originalWidth && originalWidth !== "50%" && originalWidth !== "none" ? `min(50%, ${originalWidth})` : "50%"
-    const gap = "var(--ww-float-gap)"
-    const sizeLimit = originalWidth && originalWidth !== "none" && originalWidth !== "50%" ? `, ${originalWidth}` : ""
-    // Cap the negative margin at the used width plus gap so text can reclaim
-    // the entire column, without pulling a small float past the column edge.
-    const outset = `calc(0px - min(var(--ww-float-space, 0px), calc(min(50%, ${floatWidth}${sizeLimit}) + ${gap})))`
-    const margin = far ? null : desired === "left" ? "5px 5px 5px 0px" : desired === "right" ? "5px 0px 5px 5px"
-      : wasFar || ["5px", "5px 5px 5px 0px", "5px 0px 5px 5px"].includes(style.getPropertyValue("margin")) ? null : undefined
+    const cappedWidth = /^min\((?:50%|var\(--ww-float-width\)), ([\s\S]+)\)$/.exec(width)
+    const originalWidth = width === defaultWidth ? "" : cappedWidth?.[1] ?? width
+    const maxWidth = side === "none" ? cappedWidth ? originalWidth : ["50%", defaultWidth].includes(width) ? null : undefined
+      : originalWidth && originalWidth !== "50%" && originalWidth !== "none" ? `min(var(--ww-float-width), ${originalWidth})` : defaultWidth
+    const floatSize = wasFar && style.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width), ${floatWidth})`
+    const outset = "calc(0px - var(--ww-lane, 0px))"
+    const margin = far || wasFar || ["5px", "5px 5px 5px 0px", "5px 0px 5px 5px"].includes(style.getPropertyValue("margin")) ? null : undefined
     this.setElementStyles(element, {
       ...(far && floatWidth === defaultWidth ? {width: defaultWidth} : !far && authoredWidth === defaultWidth ? {width: null} : {}),
       ...(margin !== undefined ? {margin} : {}),
       ...(far ? {
+        "--ww-float-size": floatSize,
+        "--ww-float-spacing": "calc(var(--ww-lane, 0px) - var(--ww-float-size))",
         "--ww-float-outset": outset,
         "margin-top": "5px", "margin-bottom": "5px",
-        "margin-left": desired === "left" ? "var(--ww-float-outset)" : gap,
-        "margin-right": desired === "right" ? "var(--ww-float-outset)" : gap,
-      } : wasFar ? {"--ww-float-outset": null} : {}),
+        "margin-left": desired === "left" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)",
+        "margin-right": desired === "right" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)",
+      } : wasFar || style.getPropertyValue("--ww-float-size") ? {"--ww-float-outset": null, "--ww-float-size": null, "--ww-float-spacing": null} : {}),
       ...(maxWidth !== undefined ? {"max-width": maxWidth === null ? null : {
       value: maxWidth, priority: style.getPropertyPriority("max-width") === "important" ? "important" as const : "" as const,
     }} : {}), float: side === "none" ? null : {
@@ -417,9 +437,10 @@ export class ManipulationFeature extends EditorFeature {
     const computed = getComputedStyle(element).float
     if(side === "none" && computed && computed !== "none") this.setElementStyles(element, {float: "none"})
     const applied = getComputedStyle(element).float
-    // Responsive theme CSS can deliberately stack floats as normal blocks.
+    // Responsive theme CSS can stack floats or put both sides in one lane.
     // Keep their authored side so widening the document restores placement.
-    if(applied && applied !== "none" && applied !== desired) this.setElementStyles(element, {float: {value: desired, priority: "important"}})
+    if(applied && applied !== "none" && applied !== desired
+      && getComputedStyle(element).getPropertyValue("--ww-responsive-float").trim() !== applied) this.setElementStyles(element, {float: {value: desired, priority: "important"}})
     return true
   }
 
@@ -441,25 +462,145 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   floatSide(container: Element, x: number): "left" | "right" {
+    if(this.floatDropHit?.container === container) return this.floatDropHit.side
     const rect = container.getBoundingClientRect()
     return x < rect.left + rect.width / 2 ? "left" : "right"
   }
 
   floatDropTarget(event: MouseEvent, source: Element, range?: Range) {
+    this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
     const root = getDocumentRoot()
-    const pointer = event.target instanceof Element && root.contains(event.target) && event.target !== root ? event.target : null
-    const hit = this.editor.hitTestBeneathAppendix(() => document.elementsFromPoint?.(event.clientX, event.clientY).find(element => root.contains(element) && element !== root))
-    const text = range?.startContainer instanceof Text ? range.startContainer : null
-    const node = hit ?? (pointer && !isSectionElement(pointer) ? pointer : text ?? pointer)
-    const container = node && !source.contains(node) ? this.floatContainer(node, source) : null
-    if(!container || !root.contains(container) || !container.parentElement) return null
-    // Section backgrounds contain ordinary insertion gaps between their blocks.
-    if(isSectionElement(container) && (!text || this.floatContainer(text, source) !== container)) return null
-    const rect = container.getBoundingClientRect()
-    if(event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) return null
-    return source.parentElement === container.parentElement
-      || this.editor.schema.canInsert(container.parentElement, source, Array.from(container.parentElement.childNodes).indexOf(container)) ? container : null
+    const key = source.isConnected ? source : source.outerHTML
+    const contains = (rect: DOMRect) => event.clientX >= rect.left && event.clientX < rect.right
+      && event.clientY >= rect.top && event.clientY < rect.bottom
+    const valid = (container: Element) => root.contains(container) && container.parentElement
+      && this.floatContainer(container, source) === container
+      && (source.parentElement === container.parentElement
+        || this.editor.schema.canInsert(container.parentElement, source, Array.from(container.parentElement.childNodes).indexOf(container)))
+    const preview = this.floatDropPreview
+    if(this.floatDropTargets?.key !== key) this.prepareFloatDropTargets(source)
+    const targets = this.floatDropTargets
+    if(!targets) return null
+    const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
+    // Hover only checks stored rectangles. It never measures a template or
+    // changes a measurement element's styles.
+    const hits = targets.zones.filter(zone => event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
+      && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy)
+    const preferred = (zone: FloatDropZone) => preview?.container === zone.container ? preview.side
+      : event.clientX < zone.center + dx ? "left" : "right"
+    hits.sort((a, b) => b.rect.top - a.rect.top || Number(b.side === preferred(b)) - Number(a.side === preferred(a)))
+    for(const zone of hits) {
+      if(zone.container.parentElement !== zone.parent || !root.contains(zone.container)) continue
+      zone.allowed ??= valid(zone.container) ? true : false
+      if(!zone.allowed || event.type === "drop" && !valid(zone.container)) continue
+      const rect = new DOMRect(zone.rect.left + dx, zone.rect.top + dy, zone.rect.width, zone.rect.height)
+      this.floatDropHit = {container: zone.container, side: zone.side, rect}
+      return zone.container
+    }
+    // An explicitly shown insertion preview can also cover a projected area
+    // whose anchor has no current layout box. It is a fallback, never a latch
+    // that masks newer anchors while moving down the page.
+    if(preview && contains(preview.rect) && valid(preview.container)) {
+      this.floatDropHit = preview
+      return preview.container
+    }
+    return null
+  }
+
+  /** Capture projected geometry once at gesture start (or the first editor
+   * entry of a ribbon drag). Rebuilds are scheduled outside pointer handlers. */
+  prepareFloatDropTargets(source: Element) {
+    this.clearFloatDropTargets()
+    if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return
+    const root = getDocumentRoot(), candidates: Element[] = []
+    const pending = Array.from(root.children).reverse()
+    while(pending.length) {
+      const element = pending.pop()!
+      if(source.contains(element)) continue
+      if((!isSectionElement(element) || Array.from(element.childNodes).some(child => child instanceof Text && child.textContent?.trim()))
+        && this.floatContainer(element, source) === element) candidates.push(element)
+      const atomic = Boolean(isAtomicEditingElement(element, this.editor.schema))
+      if(!atomic) for(let index = element.children.length - 1; index >= 0; index--) pending.push(element.children[index])
+    }
+    const measurement = document.createElement("div")
+    measurement.style.cssText = "position:fixed;visibility:hidden;pointer-events:none"
+    this.editor.addAppendix(measurement)
+    const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}
+    const zones: FloatDropZone[] = []
+    const parentPermissions = new Map<Element, boolean>()
+    try {
+      for(const container of candidates) {
+        const bounds = container.getBoundingClientRect()
+        if(!container.parentElement || !bounds.width || !bounds.height) continue
+        const parent = container.parentElement
+        let allowed = source.parentElement === parent ? true : parentPermissions.get(parent)
+        if(allowed === undefined) {
+          allowed = this.editor.schema.canInsert(parent, source, Array.from(parent.childNodes).indexOf(container))
+          // A simple group rule consumes the same nodes at every index; its
+          // insertion permission is shared by all sibling anchors.
+          const rule = this.editor.schema.get(parent).content
+          if(rule && "group" in rule) parentPermissions.set(parent, allowed)
+        }
+        for(const side of ["left", "right"] as const) zones.push({container, parent: container.parentElement, side, center: bounds.left + bounds.width / 2,
+          allowed, rect: this.floatPreviewRect(container, side, measurement, source, measurements)})
+      }
+    }
+    finally { measurement.remove() }
+    const scrollX = window.scrollX, scrollY = window.scrollY
+    this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY}
+    const schedule = () => {
+      if(this.floatDropTargetsFrame !== null) return
+      this.floatDropTargetsFrame = requestAnimationFrame(() => {
+        this.floatDropTargetsFrame = null
+        const current = this.floatDropTargets
+        if(current) {
+          this.floatDropPreview = null
+          this.floatDropHit = null
+          this.prepareFloatDropTargets(current.source)
+        }
+      })
+    }
+    const authoredClasses = (value: string | null) => (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+    this.floatDropTargetsObserver = new MutationObserver(records => {
+      if(records.some(record => {
+        if(record.type !== "attributes") return true
+        const value = (record.target as Element).getAttribute(record.attributeName!)
+        return record.attributeName === "class" ? authoredClasses(record.oldValue) !== authoredClasses(value) : record.oldValue !== value
+      })) schedule()
+    })
+    this.floatDropTargetsObserver.observe(document.documentElement, {subtree:true, childList:true, characterData:true, attributes:true, attributeOldValue:true})
+    let initialResize = true
+    this.floatDropTargetsResizeObserver = new ResizeObserver(() => {
+      if(initialResize) initialResize = false
+      else schedule()
+    })
+    this.floatDropTargetsResizeObserver.observe(root)
+    const add = (target: EventTarget | null | undefined, type: string, listener: EventListener, capture = false) => {
+      if(!target) return
+      target.addEventListener(type, listener, capture)
+      this.floatDropTargetsCleanup.push(() => target.removeEventListener(type, listener, capture))
+    }
+    add(window, "resize", schedule)
+    add(document, "load", schedule, true)
+    add(document, "scroll", event => {
+      const current = this.floatDropTargets
+      if(event.target !== document) schedule()
+      else if(current) { current.currentScrollX = window.scrollX; current.currentScrollY = window.scrollY }
+    }, true)
+    add(document.fonts, "loadingdone", schedule)
+  }
+
+  clearFloatDropTargets() {
+    if(this.floatDropTargetsFrame !== null) cancelAnimationFrame(this.floatDropTargetsFrame)
+    this.floatDropTargetsFrame = null
+    this.floatDropTargetsObserver?.disconnect()
+    this.floatDropTargetsObserver = null
+    this.floatDropTargetsResizeObserver?.disconnect()
+    this.floatDropTargetsResizeObserver = null
+    for(const cleanup of this.floatDropTargetsCleanup.splice(0)) cleanup()
+    this.floatDropTargets = null
+    this.floatDropHit = null
   }
 
   placeFloat(element: Element, container: Element, side: "left" | "right" | "none", placement: "before" | "after" = "before") {
@@ -472,8 +613,12 @@ export class ManipulationFeature extends EditorFeature {
   /** A fixed appendix overlay shared by native transfer and transformation
    * drags. Ownership prevents selection cleanup in one path from flickering a
    * preview currently maintained by the other. */
-  showFloatDropPreview(container: Element, side: "left" | "right", owner: "transfer" | "transformation" | "insertion") {
-    const rect = container.getBoundingClientRect()
+  showFloatDropPreview(container: Element, side: "left" | "right", owner: "transfer" | "transformation" | "insertion", source?: Element) {
+    if(!container.isConnected || !container.parentElement || !getDocumentRoot().contains(container)
+      || this.editor.features.canvas.active || this.editor.features.slides.active) {
+      this.clearFloatDropPreview(owner)
+      return
+    }
     const existing = this.editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")
     const overlay = existing ?? document.createElement("div")
     if(!existing) {
@@ -483,16 +628,136 @@ export class ManipulationFeature extends EditorFeature {
       this.editor.addAppendix(overlay)
     }
     this.floatDropPreviewOwner = owner
-    overlay.setAttribute("part", `float-drop-preview float-drop-preview-${side}`)
+    overlay.setAttribute("part", `float-drop-preview float-drop-preview-${side}${owner === "insertion" ? " insertion-preview" : ""}`)
     overlay.hidden = false
-    overlay.style.left = `${rect.left + (side === "left" ? 0 : rect.width / 2)}px`
-    overlay.style.top = `${rect.top}px`
-    overlay.style.width = `${rect.width / 2}px`
-    overlay.style.height = `${rect.height}px`
+    const rect = this.floatDropHit?.container === container && this.floatDropHit.side === side
+      ? this.floatDropHit.rect : this.floatPreviewRect(container, side, overlay, source)
+    this.floatDropPreview = {container, side, rect}
+    Object.assign(overlay.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+  }
+
+  private floatPreviewRect(container: Element, side: "left" | "right", overlay: HTMLElement, source?: Element,
+    measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}) {
+    const rect = container.getBoundingClientRect(), parent = container.parentElement!
+    const singleLane = document.documentElement.clientWidth >= 600 && document.documentElement.clientWidth < 1200
+    const physicalSide = singleLane ? "right" : side
+    const cached = measurements.geometry.get(parent)?.[side]
+    if(cached) return new DOMRect(cached.rect.left, this.floatPreviewTop(container, physicalSide, source, cached.clears, measurements), cached.rect.width, cached.rect.height)
+    const body = document.body.getBoundingClientRect(), bodyStyle = getComputedStyle(document.body)
+    const parentRect = parent.getBoundingClientRect(), parentStyle = getComputedStyle(parent)
+    const number = (value: string) => parseFloat(value) || 0
+    const probe = overlay.appendChild(document.createElement("div"))
+    probe.style.cssText = "visibility:hidden;position:fixed;height:0;box-sizing:border-box;pointer-events:none"
+    const pixels = (value: string, fallback: number) => {
+      probe.style.width = value
+      return probe.getBoundingClientRect().width || number(getComputedStyle(probe).width) || fallback
+    }
+    try {
+      const themed = Boolean(bodyStyle.getPropertyValue("--ww-float-width"))
+      const wide = themed && document.documentElement.clientWidth >= 1200
+      const lanes = themed && (wide || singleLane)
+      const laneWidth = pixels("var(--ww-float-width)", 256), lane = laneWidth + pixels("var(--ww-float-gap)", 16)
+      const currentLane = pixels("var(--ww-lane, 0px)", 0)
+      const pageLeft = body.left + number(bodyStyle.paddingLeft) - (singleLane ? 0 : currentLane)
+      const pageRight = body.right - number(bodyStyle.paddingRight) + currentLane
+      let left = parentRect.left + number(parentStyle.borderLeftWidth) + number(parentStyle.paddingLeft)
+      let right = parentRect.right - number(parentStyle.borderRightWidth) - number(parentStyle.paddingRight)
+      if(themed && body.width > 0) {
+        const columnLeft = pageLeft + (wide ? lane : 0), columnRight = pageRight - (lanes ? lane : 0)
+        if(parent === document.body || parent.parentElement === document.body && parent.matches("main, article, section")) {
+          left = columnLeft + number(parentStyle.paddingLeft) * Number(parent !== document.body)
+          right = columnRight - number(parentStyle.paddingRight) * Number(parent !== document.body)
+        }
+        else if(right - left > columnRight - columnLeft) {
+          const center = (left + right) / 2
+          left = center - (columnRight - columnLeft) / 2
+          right = center + (columnRight - columnLeft) / 2
+        }
+      }
+      if(right <= left) { left = rect.left; right = rect.right }
+      const available = Math.max(1, right - left)
+      overlay.style.width = `${available}px`
+      probe.style.position = "static"
+      const inline = (source as HTMLElement | undefined)?.style
+      const authoredWidth = inline?.getPropertyValue("inline-size") || inline?.width
+      const preferred = inline?.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width, 256px), ${authoredWidth && authoredWidth !== "auto" ? authoredWidth : "var(--ww-float-width, 256px)"})`
+      let width = pixels(preferred, Math.min(available, number(inline?.width ?? "") || source?.getBoundingClientRect().width || laneWidth))
+      const maximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth || "none"
+      probe.style.maxWidth = maximum
+      width = probe.getBoundingClientRect().width || Math.min(width, number(maximum) || Infinity)
+      let height = 0
+      if(source?.isConnected) {
+        const initial = source.getBoundingClientRect()
+        height = initial.height
+        if(initial.width && !inline?.height && !inline?.getPropertyValue("block-size") && source.matches("picture, img, video, svg")) {
+          const style = getComputedStyle(source), ratio = style.aspectRatio.split("/").map(number)
+          const image = source instanceof HTMLImageElement && source.naturalWidth && source.naturalHeight ? source : null
+          height = width * (ratio[0] && ratio[1] ? ratio[1] / ratio[0] : image ? image.naturalHeight / image.naturalWidth : initial.height / initial.width)
+          height = Math.max(number(style.minHeight), Math.min(height, number(style.maxHeight) || Infinity))
+        }
+      }
+      else if(source && insertionMenuItems.some(item => item.tag === source.localName)) {
+        // Only built-in, resource-free insertion templates are measured here.
+        // The shadow context shares the document's CSS without touching its DOM.
+        const shadow = probe.attachShadow({mode:"open"})
+        shadow.adoptedStyleSheets = document.adoptedStyleSheets
+        const context = document.createElement("body")
+        context.style.cssText = `display:flow-root!important;inline-size:${available}px!important;max-inline-size:none!important;min-block-size:0!important;margin:0!important;padding:0!important;border:0!important`
+        const measured = source.cloneNode(true) as HTMLElement
+        measured.style.cssText += `;float:${side};--ww-float-size:${width}px;inline-size:${width}px!important;margin:0!important`
+        if(measured.matches("picture, img, video, iframe, embed, object")) measured.classList.add("◆media-empty")
+        context.append(measured)
+        shadow.append(context)
+        height = measured.getBoundingClientRect().height
+      }
+      if(!height) height = width * 9 / 16
+      const result = new DOMRect(lanes ? physicalSide === "left" ? left - lane : right + lane - width
+        : themed ? (left + right - width) / 2 : side === "left" ? left : right - width,
+        this.floatPreviewTop(container, physicalSide, source, lanes || !themed, measurements), width, height)
+      // Siblings share the parent's width and the source's initial dimensions.
+      // Resolve CSS lengths once per side/parent, rather than forcing layout for
+      // every possible anchor in a long document.
+      if(parentRect.width) {
+        const geometry = measurements.geometry.get(parent) ?? {}
+        geometry[side] = {rect: result, clears: lanes || !themed}
+        measurements.geometry.set(parent, geometry)
+      }
+      return result
+    }
+    finally { probe.remove() }
+  }
+
+  private floatPreviewTop(container: Element, side: "left" | "right", source: Element | undefined, clears: boolean, measurements: FloatPreviewMeasurements) {
+    const parent = container.parentElement!, rect = container.getBoundingClientRect()
+    const number = (value: string) => parseFloat(value) || 0
+    let top = rect.top + 5
+    if(source?.parentElement === parent && source.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING
+      && source.getBoundingClientRect().bottom <= rect.top
+      && getComputedStyle(source).float === "none" && !isOutOfFlow(source)) {
+      const style = getComputedStyle(source)
+      top -= source.getBoundingClientRect().height + number(style.marginTop) + number(style.marginBottom)
+    }
+    if(clears) {
+      let clearance = measurements.clearance.get(parent)
+      if(!clearance) {
+        clearance = new Map()
+        const bottom = {left: -Infinity, right: -Infinity}
+        for(const sibling of Array.from(parent.children)) {
+          clearance.set(sibling, {...bottom})
+          if(sibling === source) continue
+          const style = getComputedStyle(sibling), float = style.float
+          if(float === "left" || float === "right") bottom[float] = Math.max(bottom[float], sibling.getBoundingClientRect().bottom + number(style.marginBottom) + 5)
+        }
+        measurements.clearance.set(parent, clearance)
+      }
+      top = Math.max(top, clearance.get(container)?.[side] ?? -Infinity)
+    }
+    return top
   }
 
   clearFloatDropPreview(owner: "transfer" | "transformation" | "insertion", keep = false) {
     if(this.floatDropPreviewOwner !== owner) return
+    if(!keep) { this.floatDropPreview = null; this.floatDropHit = null }
     const preview = this.editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")
     if(keep && preview) preview.hidden = true
     else {
@@ -512,6 +777,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false, anyBlock = false) {
+    if(this.ribbonDropInsertion) return false
     const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : null
     const element = node instanceof DocumentFragment && (node.childNodes.length === 1 || anyBlock && node.children.length === 1
       && Array.from(node.childNodes).every(child => isElement(child) || child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim()))
@@ -531,7 +797,8 @@ export class ManipulationFeature extends EditorFeature {
     return true
   }
 
-  private hoverInsertion(hovered: boolean) {
+  private hoverInsertion(hovered: boolean, tag?: string) {
+    this.insertionPreviewSource = hovered && tag && insertionMenuItems.some(item => item.tag === tag) ? this.ribbonElement(tag) : undefined
     this.insertionHovered = hovered && this.isEnabled && !this.editor.isEditingLocked
     if(this.insertionHovered && !this.insertionPreviewObserver) {
       this.insertionPreviewObserver = new MutationObserver(() => this.refreshInsertionPreview())
@@ -550,7 +817,15 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private insertionReplacement() {
-    const target = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    let target = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    if(!target && document.getSelection()?.isCollapsed) {
+      const paragraph = $.anchorContainer
+      const empty = (node: Node): boolean => node instanceof Text ? !node.data.trim()
+        : isElement(node) && !node.hasAttribute("is") && (node.localName === "br"
+          || isMarkElement(node) && Array.from(node.childNodes).every(empty))
+      if(paragraph?.localName === "p" && !paragraph.hasAttribute("is")
+        && Array.from(paragraph.childNodes).every(empty)) target = paragraph
+    }
     return target?.isConnected && getDocumentRoot().contains(target) && target !== getDocumentRoot() && target !== document.body ? target : null
   }
 
@@ -581,22 +856,38 @@ export class ManipulationFeature extends EditorFeature {
     }
     else {
       overlay?.remove()
-      if(container) this.showFloatDropPreview(container, "right", "insertion")
+      if(container) this.showFloatDropPreview(container, "right", "insertion", this.insertionPreviewSource)
       else this.clearFloatDropPreview("insertion")
     }
   }
 
-  /** Command insertion replaces an explicitly selected host as a whole. */
+  /** Element insertion replaces a selected host or an empty paragraph. */
   private replaceInsertionElement(node: Node) {
     const target = this.insertionReplacement()
     const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
+    if(target !== this.editor.features.selection.captureSelectedElement && target !== $.selectedElement
+      && !nodes.some(isElement)) return false
     if(!target || !nodes.length || !target.parentElement
       || nodes.some(child => target.contains(child) || child.contains(target))) return false
     const children = Array.from(target.parentElement.childNodes)
     children.splice(children.indexOf(target), 1, ...nodes as ChildNode[])
     if(!this.editor.schema.isContentValid(target.parentElement, children)) return false
+    const elements = nodes.filter(isElement)
+    const replacement = elements.length === 1 && nodes.every(child => isElement(child)
+      || child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim()) ? elements[0] : null
+    const style = this.inlineStyleOf(target)
+    const float = floatSideFromStyles(getComputedStyle(target).float, style ?? {getPropertyValue: () => ""})
+    const floatSize = style?.getPropertyValue("--ww-float-size")
+    const maximum = style?.getPropertyValue("max-width")
+    const maximumPriority = style?.getPropertyPriority("max-width")
     this.withNormalization(() => {
       target.replaceWith(...nodes)
+      if(replacement && float !== "none" && this.setFloat(replacement, float) && floatSize) {
+        this.setElementStyles(replacement, {
+          "--ww-float-size": floatSize,
+          ...(maximum ? {"max-width": {value: maximum, priority: maximumPriority === "important" ? "important" as const : "" as const}} : {}),
+        })
+      }
       const last = nodes.at(-1)!
       const widget = nodes.length === 1 ? this.insertedWidget(last) : null
       if(widget) this.editor.features.selection.captureElement(widget)
@@ -609,6 +900,13 @@ export class ManipulationFeature extends EditorFeature {
 
   dropRange(event: MouseEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
+    const float = source && this.floatDropTarget(event, source)
+    if(float) {
+      const range = document.createRange()
+      range.selectNodeContents(float)
+      range.collapse(true)
+      return range
+    }
     if(source && event.target instanceof Node && source.contains(event.target)) return null
     // Overlays such as the selected element's drag surface cover authored
     // content, which native hit testing would otherwise resolve to the appendix.
@@ -623,7 +921,7 @@ export class ManipulationFeature extends EditorFeature {
     if(source?.contains(point.node)) return null
     range.setStart(point.node, point.offset)
     range.collapse(true)
-    if(source && !this.floatDropTarget(event, source, range) && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
+    if(source && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
       while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
       if(this.isTextBlock(block) && !this.editor.schema.canInsert(block, source, block.childNodes.length)) {
@@ -639,12 +937,16 @@ export class ManipulationFeature extends EditorFeature {
   private ribbonDropPosition(event: DragEvent): RibbonDropPosition | null {
     const target = this.ribbonDropTarget(event)
     if(this.editor.features.slides.active && !target) return null
-    const range = target ? null : this.dropRange(event, null)
+    const tag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
+    const source = tag ? this.ribbonElement(tag) : this.insertionPreviewSource ?? document.createElement("div")
+    const float = !target && this.floatDropTarget(event, source)
+    const range = target ? null : float ? document.createRange() : this.dropRange(event, null)
+    if(float && range) { range.setStartBefore(float); range.collapse(true) }
     if(!target && !range) return null
     this.editor.doc.syncFromDOM()
     const anchor = this.editor.doc.relativePositionFromDOMPoint(target ?? range!.startContainer, target ? 0 : range!.startOffset)
     if(!anchor) return null
-    if(!target) return {anchor: relativePositionToJSON(anchor), layout: "document"}
+    if(!target) return {anchor: relativePositionToJSON(anchor), layout: "document", ...(float ? {float: this.floatSide(float, event.clientX)} : {})}
     const point = target === document.body ? this.editor.features.canvas.clientPoint(event.clientX, event.clientY)
       : {x: event.clientX - target.getBoundingClientRect().left + target.scrollLeft,
         y: event.clientY - target.getBoundingClientRect().top + target.scrollTop}
@@ -699,12 +1001,22 @@ export class ManipulationFeature extends EditorFeature {
     const end = this.editor.doc.beginUndoGroup()
     return this.editor.features.selection.withoutSelectionScroll(() => {
       try {
-        const before = target ? Array.from(target.childNodes) : []
+        const floatTarget = position.float && point.node.childNodes[point.offset]
+        const floatParent = floatTarget instanceof Element && this.floatContainer(floatTarget) === floatTarget ? floatTarget.parentElement : null
+        const before = target ? Array.from(target.childNodes) : floatParent ? Array.from(floatParent.childNodes) : []
         const range = document.createRange()
         range.setStart(point.node, target ? target.childNodes.length : point.offset)
         range.collapse(true)
         this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
-        insert()
+        const previousPlacement = this.commandPlacement
+        this.commandPlacement = Boolean(position.float)
+        this.ribbonDropInsertion = true
+        try { insert() }
+        finally { this.ribbonDropInsertion = false; this.commandPlacement = previousPlacement }
+        if(floatParent && floatTarget instanceof Element && floatTarget.parentElement === floatParent) {
+          const added = Array.from(floatParent.children).filter(element => !before.includes(element))
+          if(added.length === 1) this.setFloat(added[0], position.float!)
+        }
         this.editor.features.selection.processSelection()
         this.editor.features.math.refresh()
         if(target instanceof HTMLElement) {
@@ -827,7 +1139,7 @@ export class ManipulationFeature extends EditorFeature {
       if(source) {
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
         if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
-        const container = this.floatDropTarget(event, source, range)
+        const container = this.floatDropHit?.container
         if(container) {
           const side = this.floatSide(container, event.clientX)
           this.placeFloat(inserted, container, side)
@@ -1884,7 +2196,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Action handlers, addressable by action type through the editor. */
   actions = {
-    hoverInsertion: ({hovered}: {type: "hoverInsertion", hovered: boolean}) => this.hoverInsertion(hovered),
+    hoverInsertion: ({hovered, tag}: {type: "hoverInsertion", hovered: boolean, tag?: string}) => this.hoverInsertion(hovered, tag),
     insertElement: ({tag}: {type: "insertElement", tag: string}) => {
       if(this.editor.isEditingLocked || !insertionMenuItems.some(item => item.tag === tag)) return
       this.hoverInsertion(false)
@@ -2684,6 +2996,13 @@ export class ManipulationFeature extends EditorFeature {
       if(value === null) style.removeProperty(name)
       else style.setProperty(name, value, priority)
     })
+    // Keep the authored float size in sync with width edits through the CSS controls.
+    if(style.getPropertyValue("--ww-float-size") && ["left", "right"].includes(style.float)
+      && entries.some(({name}) => name === "width" || name === "inline-size")
+      && !entries.some(({name}) => name === "--ww-float-size")) {
+      const width = style.getPropertyValue("inline-size") || style.getPropertyValue("width")
+      style.setProperty("--ww-float-size", `min(100%, var(--ww-float-width), ${width && width !== "auto" ? width : "var(--ww-float-width)"})`)
+    }
     if(entries.some(({name, value}) => value && ["border-width", "border-style", "border-color"].includes(name))) {
       // Resolve missing parts from the live inline declaration, including
       // shorthands and per-side overrides, within the same edit transaction.

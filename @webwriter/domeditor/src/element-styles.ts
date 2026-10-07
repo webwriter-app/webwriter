@@ -5,10 +5,10 @@ export type CSSWideKeyword = typeof cssWideKeywords[number]
 export type FloatSide = "none" | "left" | "right" | "far-left" | "far-right"
 
 /** Recover the authored placement even when a narrow viewport has no outset. */
-export function floatSideFromStyles(float: string, inline: Pick<CSSStyleDeclaration, "getPropertyValue">): FloatSide {
-  const side = float === "none" ? inline.getPropertyValue("float") : float
+export function floatSideFromStyles(float: string, inline: Pick<CSSStyleDeclaration, "getPropertyValue">): "none" | "far-left" | "far-right" {
+  const side = inline.getPropertyValue("float") || float
   if(side !== "left" && side !== "right") return "none"
-  return inline.getPropertyValue(`margin-${side}`).includes("var(--ww-float-outset") ? `far-${side}` : side
+  return `far-${side}`
 }
 
 export type ElementStyleControlKind =

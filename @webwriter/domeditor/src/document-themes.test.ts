@@ -13,31 +13,43 @@ const ruleHeaders = (source: string) => Array.from(
 ).filter(header => !header.startsWith("@") && !/^(?:from|to|\d+%)$/.test(header))
 
 describe("document themes", () => {
-  it("includes responsive float geometry in every saved and editing theme", () => {
+  it("includes symmetric side-lane geometry in every saved and editing theme", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain("container-type: inline-size;")
-      expect(theme.source).toContain("--ww-float-width: 16rem;")
+      expect(theme.source).toContain("--ww-float-width: max(0px,")
       expect(theme.source).toContain("--ww-float-gap: 1rem;")
-      expect(theme.source).toContain("--ww-float-space: max(0px, calc((100cqw - 100%) / 2 - var(--ww-page-gutter, 1rem)));")
-      expect(editingDocumentThemeSource(theme)).toContain("--ww-float-space:")
+      expect(theme.source).toContain("--ww-lane: 0px;")
+      expect(theme.source).toContain("padding-inline: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane));")
+      expect(theme.source).toContain("@container (width >= 1200px)")
+      expect(theme.source).toContain("@container (600px <= width < 1200px)")
+      expect(theme.source).toContain("float: right !important;")
+      expect(theme.source).toContain("--ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
+      expect(theme.source).toContain(":has(:is([style*=")
+      expect(theme.source).toContain("inline-size: var(--ww-float-size, var(--ww-float-width)) !important;")
+      expect(theme.source).toContain("clear: left;")
+      expect(theme.source).toContain("clear: right;")
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
       expect(theme.source).toMatch(/p:not\(\[is\]\)\s*\{\s*display: flow-root;\s*min-inline-size: min\(300px, 100%\);/)
       expect(theme.source).toContain("@container (width < 600px)")
       expect(theme.source).toContain("float: none !important;")
       expect(theme.source).toContain("margin-left: auto !important;")
       expect(theme.source).toContain("margin-right: auto !important;")
+      expect(theme.source).toContain("ww-canvas")
+      expect(theme.source).toContain("ww-slides")
     }
   })
-  it("shares a fluid page and stable reading measure with standalone documents", () => {
+  it("shares a fluid page and widget sizing defaults with standalone documents", () => {
     const source = defaultDocumentTheme.source
     const landmarks = source.slice(source.indexOf(" * Landmarks"), source.indexOf(" * Section\n"))
 
     expect(source).toContain("--ww-page-max: 2160px;")
     expect(source).toContain("--ww-prose-max: 45rem;")
     expect(source).toContain("--ww-page-gutter: clamp(1rem, 2vw, 2rem);")
-    expect(landmarks).toContain("inline-size: auto;")
-    expect(landmarks).toContain("max-inline-size: var(--ww-prose-max);")
-    expect(landmarks).toContain("min-inline-size: 0;")
-    expect(landmarks).toContain("margin: 1.25rem max(var(--ww-page-gutter), calc((100% - var(--ww-prose-max)) / 2));")
+    expect(source).toContain("max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem));")
+    expect(source).toContain("max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));")
+    expect(source).toContain("> :is(main, article, section) {\n      padding-inline: 0;\n      max-inline-size: none;")
+    expect(source).toContain("inline-size: auto;")
+    expect(source).toContain("min-inline-size: 0;")
     expect(landmarks).toContain("min-block-size: calc(100vh - 2.5rem);")
     const body = landmarks.match(/\bbody\s*\{([^}]+)\}/)![1]
     expect(body).toContain("padding: 0;")
@@ -61,11 +73,15 @@ describe("document themes", () => {
     expect(source).toMatch(/\bp\s*\{[^}]*padding:\s*2px;/)
   })
 
-  it("uses one reading column with normal flow for authored floats", () => {
+  it("keeps authored floats in normal flow beside symmetric lanes", () => {
     const source = defaultDocumentTheme.source
     const landmarks = source.slice(source.indexOf(" * Landmarks"), source.indexOf(" * Section\n"))
     expect(landmarks).toContain("display: flow-root;")
     expect(landmarks).not.toMatch(/display:\s*(?:grid|flex)|grid-|column-count/)
+    expect(source).toContain("clear: left;")
+    expect(source).toContain("clear: right;")
+    expect(source).toContain("--ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
+    expect(source).toContain("@container (width >= 1200px)")
     expect(source).not.toContain("ww-column-")
     expect(source).not.toContain("@media (width > 60rem)")
   })
@@ -83,8 +99,8 @@ describe("document themes", () => {
 
     expect(source).toContain("Pico CSS ✨ v2.1.1")
     expect(source).toContain("@layer webwriter-theme")
-    // Only the responsive float rule overrides authored inline placement.
-    expect(source.match(/!important/g)).toHaveLength(3)
+    // The shared float rules enforce bounded sizing and mobile placement.
+    expect(source.match(/!important/g)!.length).toBeGreaterThanOrEqual(10)
     expect(source).toContain("--pico-font-size: 100%")
     expect(source).not.toMatch(/@media \(min-width: \d+px\)\s*\{\s*:root,\s*:host\s*\{\s*--pico-font-size:/)
     expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-column-(?:group|left|middle|right|three)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])

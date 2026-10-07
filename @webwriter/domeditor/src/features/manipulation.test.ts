@@ -196,29 +196,81 @@ describe("insertable element placement and previews", () => {
     hover()
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
-    expect(preview.style.left).toBe("70px")
-    expect(preview.style.width).toBe("50px")
+    expect(preview.getAttribute("part")).toContain("insertion-preview")
+    expect(preview.style.left).toBe("20px")
+    expect(preview.style.width).toBe("100px")
     expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("preview")
     insert(`<${tag}></${tag}>`)
     const inserted = paragraph.previousElementSibling as HTMLElement
     expect(inserted.localName).toBe(tag)
     expect(inserted.style.float).toBe("right")
-    expect(inserted.style.marginRight).toBe("0px")
+    expect(inserted.style.marginRight).toBe("var(--ww-float-outset)")
     expect(cloneWithoutEditorMarkers(paragraph, true).outerHTML).toBe(before)
     expect(cloneWithoutEditorMarkers(neighbor, true).outerHTML).toBe(neighborHTML)
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
-  it("floats an insertable element beside an empty paragraph", () => {
+  it.each(["", " ", "<br>", "<b><em></em></b>"])("replaces an empty paragraph on command insertion: %s", html => {
+    document.body.innerHTML = `<section><p>Before</p><!--keep--><p>${html}</p><p>After</p></section>`
+    const section = document.querySelector("section")!, paragraph = section.children[1]
+    const before = section.firstChild!, comment = before.nextSibling!, after = section.lastChild!
+    $.move(paragraph.firstChild instanceof Text ? paragraph.firstChild : paragraph)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    hover()
+    expect(editor.appendix.querySelector("#◆insertion-preview")).not.toBeNull()
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "table"})
+    const table = section.querySelector("table")!
+    expect(paragraph.isConnected).toBe(false)
+    expect(Array.from(section.childNodes)).toEqual([before, comment, table, after])
+    expect(table.style.float).toBe("")
+    expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
+    editor.doc.syncFromDOM()
+    const replaced = editor.toHTML(true)
+    expect(replaced).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(replaced)
+  })
+
+  it("replaces an empty paragraph with a widget snippet and captures the widget", () => {
+    editor.schema.extendWidgets([{tagName: "replacement-widget", editingConfig: {}}])
+    document.body.innerHTML = '<p><b><br></b></p><p>Keep</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.querySelector("b")!)
+    insert('<replacement-widget></replacement-widget>')
+    const widget = document.querySelector<HTMLElement>("replacement-widget")!
+    expect(paragraph.isConnected).toBe(false)
+    expect(widget.style.float).toBe("")
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    expect(document.body.children).toHaveLength(2)
+  })
+
+  it("replaces an empty paragraph through the node insertion API", () => {
+    document.body.innerHTML = '<p><br></p><p>Keep</p>'
     const paragraph = document.querySelector("p")!
     $.move(paragraph)
+    const video = document.createElement("video")
+    video.controls = true
+    editor.features.manipulation.insert(video)
+    expect(paragraph.isConnected).toBe(false)
+    expect(document.body.firstElementChild).toBe(video)
+    expect(video.style.float).toBe("")
+    expect(document.body.children).toHaveLength(2)
+  })
+
+  it.each(['<img>', '<custom-widget></custom-widget>', '<!--keep-->'])("does not preview replacement of a paragraph containing non-text content: %s", html => {
+    document.body.innerHTML = `<p>${html}</p>`
+    const paragraph = document.querySelector("p")!, child = paragraph.firstChild!
+    $.move(paragraph)
     hover()
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
-    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "table"})
+    expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
     expect(paragraph.isConnected).toBe(true)
-    expect(paragraph.previousElementSibling?.localName).toBe("table")
-    expect((paragraph.previousElementSibling as HTMLElement).style.float).toBe("right")
+    expect(child.parentNode).toBe(paragraph)
   })
 
   it("keeps comments and whitespace around a floated snippet", () => {
@@ -280,6 +332,54 @@ describe("insertable element placement and previews", () => {
     expect(Array.from(section.childNodes)).toEqual([before, comment, inserted, after])
     expect(inserted.style.float).toBe("")
     expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+  })
+
+  it.each(["left", "right"] as const)("keeps a %s float's lane, manual size, and document position when replacing it", side => {
+    document.body.innerHTML = '<section><p>Before</p><!--keep--><picture style="width:180px;max-width:150px!important"><img alt="Old"></picture><p>After</p></section>'
+    const parent = document.querySelector("section")!, target = document.querySelector("picture")!
+    editor.features.manipulation.setFloat(target, side)
+    const size = target.style.getPropertyValue("--ww-float-size"), maximum = target.style.maxWidth
+    const before = Array.from(parent.childNodes), neighbor = target.nextSibling!
+    $.selectElement(target)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    editor.features.manipulation.actions.insertElement({type:"insertElement", tag:"video"})
+    const replacement = parent.querySelector("video")!
+    expect(Array.from(parent.childNodes)).toEqual(before.map(node => node === target ? replacement : node))
+    expect(replacement.nextSibling).toBe(neighbor)
+    expect(replacement.style.float).toBe(side)
+    expect(replacement.style.getPropertyValue("--ww-float-size")).toBe(size)
+    expect(replacement.style.maxWidth).toBe(maximum)
+    expect(replacement.style.getPropertyPriority("max-width")).toBe("important")
+    expect($.selectedElement).toBe(replacement)
+    editor.doc.syncFromDOM()
+    const replaced = editor.toHTML(true)
+    expect(replaced).not.toContain("◆")
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(replaced)
+  })
+
+  it.each([
+    {capture: false, float: "none"}, {capture: true, float: "none"},
+    {capture: false, float: "right"}, {capture: true, float: "right"},
+  ])("keeps an authored float on replacement with responsive float $float (capture: $capture)", ({capture, float}) => {
+    document.body.innerHTML = '<p>Before</p><picture style="float:left"><img alt="Old"></picture><p>After</p>'
+    const target = document.querySelector("picture")!
+    const computed = getComputedStyle.bind(globalThis)
+    vi.spyOn(globalThis, "getComputedStyle").mockImplementation((node, pseudo) => node === target
+      ? new Proxy(computed(node, pseudo), {get: (style, key) => {
+        const value = key === "float" ? float : Reflect.get(style, key)
+        return typeof value === "function" ? value.bind(style) : value
+      }}) : computed(node, pseudo))
+    if(capture) editor.features.selection.captureElement(target)
+    else $.selectElement(target)
+    insert('<!--before--><video controls></video><!--after-->')
+    const replacement = document.querySelector("video")!
+    expect(replacement.style.float).toBe("left")
+    expect(document.body.children[1]).toBe(replacement)
+    expect(replacement.previousSibling?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(replacement.nextSibling?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(document.querySelector("picture")).toBeNull()
   })
 
   it.each([false, true])("previews and replaces a selected host including its floated descendants (capture: %s)", capture => {
@@ -571,6 +671,19 @@ function expectBodyToBe(html: string) {
   return expect(editor.toHTML(true)).toEqual(html)
 }
 
+function expectFarFloat(element: HTMLElement, side: "left" | "right") {
+  expect(element.style.float).toBe(side)
+  expect(element.style.width).toBe("var(--ww-float-width)")
+  expect(element.style.maxWidth).toBe("var(--ww-float-width)")
+  expect(element.style.marginTop).toBe("5px")
+  expect(element.style.marginBottom).toBe("5px")
+  expect(element.style.marginLeft).toBe(side === "left" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)")
+  expect(element.style.marginRight).toBe(side === "right" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)")
+  expect(element.style.getPropertyValue("--ww-float-size")).toContain("min(100%, var(--ww-float-width)")
+  expect(element.style.getPropertyValue("--ww-float-outset")).toBe("calc(0px - var(--ww-lane, 0px))")
+  expect(element.style.getPropertyValue("--ww-float-spacing")).toBe("calc(var(--ww-lane, 0px) - var(--ww-float-size))")
+}
+
 beforeEach(async () => {
   vi.restoreAllMocks()
   document.documentElement.removeAttribute("class")
@@ -631,7 +744,7 @@ describe("column insertion", () => {
     expect(block.textContent).toBe("beforeafter")
     expect(block.querySelector("b")).toBe(bold)
     expect(document.body.children).toHaveLength(2)
-    expect(image.style.maxWidth).toBe("50%")
+    expect(image.style.maxWidth).toBe("var(--ww-float-width)")
     expect(image.style.float).toBe("right")
     expect(image.parentElement).toBe(block.parentElement)
     expect(block.previousElementSibling).toBe(image)
@@ -666,7 +779,7 @@ describe("column insertion", () => {
     expect(image.style.float).toBe("")
   })
 
-  it("sets native float without changing authored dimensions and refuses a disconnected container", () => {
+  it("sets the far float without changing authored limits and refuses a disconnected container", () => {
     const image = document.createElement("img")
     image.style.float = "left"
     image.style.maxWidth = "30rem"
@@ -675,7 +788,10 @@ describe("column insertion", () => {
     document.body.append(image)
     expect(editor.features.manipulation.setFloat(image, "right")).toBe(true)
     expect(image.style.float).toBe("right")
-    expect(image.style.maxWidth).toBe("min(50%, 30rem)")
+    expect(floatSideFromStyles(image.style.float, image.style)).toBe("far-right")
+    expect(image.style.width).toBe("var(--ww-float-width)")
+    expect(image.style.getPropertyValue("--ww-float-size")).toContain("min(100%, var(--ww-float-width), var(--ww-float-width))")
+    expect(image.style.maxWidth).toBe("min(var(--ww-float-width), 30rem)")
     expect(image.style.getPropertyValue("--ww-column")).toBe("1")
     expect(image).toHaveClass("authored", "ww-column-left")
     const paragraph = document.createElement("p")
@@ -726,11 +842,13 @@ describe("column insertion", () => {
     manipulation.setFloat(image, "far-left")
     manipulation.setFloat(image, "far-right")
     expect(floatSideFromStyles(image.style.float, image.style)).toBe("far-right")
-    expect(image.style.marginLeft).toBe("var(--ww-float-gap)")
+    expect(image.style.marginLeft).toBe("var(--ww-float-spacing)")
+    expect(image.style.marginRight).toBe("var(--ww-float-outset)")
+    expect(image.style.width).toBe("var(--ww-float-width)")
     manipulation.setFloat(image, "left")
-    expect(image.style.margin).toBe("5px 5px 5px 0px")
-    expect(image.style.width).toBe("")
-    expect(floatSideFromStyles(image.style.float, image.style)).toBe("left")
+    expect(image.style.marginLeft).toBe("var(--ww-float-outset)")
+    expect(image.style.marginRight).toBe("var(--ww-float-spacing)")
+    expect(floatSideFromStyles(image.style.float, image.style)).toBe("far-left")
     manipulation.setFloat(image, "none")
     expect(image.getAttribute("style")).toBeNull()
   })
@@ -748,13 +866,34 @@ describe("column insertion", () => {
     document.body.innerHTML = '<section><aside style="width: 80px; max-width: 120px; color: red">keep<!--note--></aside></section>'
     const target = document.querySelector("aside")!
     editor.features.manipulation.setFloat(target, "far-right")
-    expect(target.style.getPropertyValue("--ww-float-outset")).toContain("min(50%, 80px, 120px)")
+    expect(target.style.width).toBe("80px")
+    expect(target.style.maxWidth).toBe("min(var(--ww-float-width), 120px)")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 80px)")
+    expect(target.style.getPropertyValue("--ww-float-outset")).toBe("calc(0px - var(--ww-lane, 0px))")
     editor.features.manipulation.setFloat(target, "none")
     expect(target.style.width).toBe("80px")
     expect(target.style.maxWidth).toBe("120px")
     expect(target.style.color).toBe("red")
     expect(target.style.margin).toBe("")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("")
+    expect(target.style.getPropertyValue("--ww-float-outset")).toBe("")
+    expect(target.style.getPropertyValue("--ww-float-spacing")).toBe("")
     expect(target.innerHTML).toBe("keep<!--note-->")
+  })
+
+  it("updates float sizing through physical and logical width controls", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    const manipulation = editor.features.manipulation
+    manipulation.setFloat(target, "far-left")
+    manipulation.setElementStyles(target, {width: "180px", "margin-top": "12px"})
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 180px)")
+    expect(target.style.marginTop).toBe("12px")
+    manipulation.setElementStyles(target, {"inline-size": "120px"})
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 120px)")
+    manipulation.setElementStyles(target, {"inline-size": null, width: null})
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), var(--ww-float-width))")
+    manipulation.setFloat(target, "none")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("")
   })
 
   it("refuses far floating disconnected targets, the document root and widget internals", () => {
@@ -1101,7 +1240,8 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
   it("inserts HTML through its action handler", () => {
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
-    expectBodyToBe('<p style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;"></p><p></p>')
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
+    expectFarFloat(document.body.firstElementChild as HTMLElement, "right")
   })
   it("sanitizes arbitrary HTML while preserving safe inline styles", () => {
     editor.features.manipulation.actions.insert({
@@ -1109,7 +1249,10 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       html: '<style>body { display: none }</style><link rel="stylesheet"><dialog><p style="color: red" onclick="evil()">Safe<script>while(true) {}</script></p></dialog>',
     })
 
-    expectBodyToBe('<p style="color: red; margin: 5px 0px 5px 5px; max-width: 50%; float: right;">Safe</p><p></p>')
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
+    expect(document.body.firstElementChild?.textContent).toBe("Safe")
+    expect((document.body.firstElementChild as HTMLElement).style.color).toBe("red")
+    expectFarFloat(document.body.firstElementChild as HTMLElement, "right")
     expect(document.querySelector("script, style, link[rel~='stylesheet']")).toBeNull()
   })
   it("schema-corrects arbitrary HTML before insertion", () => {
@@ -1137,7 +1280,9 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
-    expect(editor.toHTML(true)).toBe('<section style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;"><webwriter-demo></webwriter-demo></section><p></p>')
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["section", "p"])
+    expect(document.querySelector("section > webwriter-demo")).not.toBeNull()
+    expectFarFloat(document.querySelector("section")!, "right")
   })
   it("preserves authored contenteditable through inserted widget undo and redo", async () => {
     editor.features.manipulation.actions.insert({
@@ -1164,7 +1309,8 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expectBodyToBe('<webwriter-demo style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;"></webwriter-demo><p></p>')
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["webwriter-demo", "p"])
+    expectFarFloat(widget as HTMLElement, "right")
   })
   it.each(["node", "HTML"] as const)("replaces a capture-selected widget through %s insertion", kind => {
     document.body.innerHTML = "<p>before</p><opaque-widget><span>Authored fallback</span></opaque-widget><p>after</p>"
@@ -2948,8 +3094,8 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(over)
     expect(over.defaultPrevented).toBe(true)
     expect(document.body).toHaveClass("◆drop-selection-active")
-    // The drop caret moved the selection, so the surface no longer covers it.
-    expect(surface.isConnected).toBe(false)
+    // Float hover keeps the selection stable and only updates the appendix.
+    expect(surface.isConnected).toBe(true)
     selected.dispatchEvent(transferEvent("drop", data, {clientX: 50, clientY: 25}))
     expect(document.body.querySelector("table")).not.toBeNull()
     expect(selected.isConnected).toBe(true)
@@ -3330,8 +3476,10 @@ describe("unified content transfer", () => {
     expect(source.parentElement).toBe(target)
     expect(source.nextElementSibling).toBe(nested)
     expect(source.style.float).toBe(side)
-    expect(source.style.maxWidth).toBe("50%")
-    expect(source.style.margin).toBe(side === "left" ? "5px 5px 5px 0px" : "5px 0px 5px 5px")
+    expect(source.style.maxWidth).toBe("var(--ww-float-width)")
+    expect(source.style.marginLeft).toBe(side === "left" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)")
+    expect(source.style.marginRight).toBe(side === "right" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)")
+    expect(source.style.getPropertyValue("--ww-float-spacing")).toContain("var(--ww-float-size)")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
@@ -3370,6 +3518,71 @@ describe("unified content transfer", () => {
     }
   })
 
+  it.each([[120, "left"], [180, "right"]] as const)("uses the projected %s float box beyond the target's height", (x, side) => {
+    document.body.innerHTML = '<video style="width:40px;height:60px"></video><p>target</p><p>displaced content</p>'
+    const source = document.querySelector("video")!, target = document.querySelector("p")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 30))
+    const {data} = beginDrag(source)
+    const event = new MouseEvent("mousemove", {clientX:x, clientY:100})
+    expect(editor.features.manipulation.floatDropTarget(event, source)).toBe(target)
+    expect(editor.features.manipulation.floatSide(target, x)).toBe(side)
+    editor.features.manipulation.showFloatDropPreview(target, side, "transfer", source)
+    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+    expect(parseFloat(preview.style.top)).toBe(55)
+    expect(parseFloat(preview.style.height)).toBe(60)
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:150, clientY:100}), source)).toBeNull()
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:116}), source)).toBeNull()
+    document.body.dispatchEvent(transferEvent("drop", data, {clientX:x, clientY:100}))
+    expect(source.nextElementSibling).toBe(target)
+    expect(source.style.float).toBe(side)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("previews every successive paragraph in both drag directions without remeasurement", () => {
+    document.body.innerHTML = '<p>first</p><p>second</p><p>third</p><video controls style="width:40px;height:120px"></video>'
+    const source = document.querySelector("video")!, paragraphs = Array.from(document.querySelectorAll("p"))
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 500))
+    const sourceRect = vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 120))
+    for(const [index, paragraph] of paragraphs.entries()) vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, index * 40, 400, 30))
+    editor.features.manipulation.prepareFloatDropTargets(source)
+    sourceRect.mockClear()
+    for(const index of [0, 1, 2, 1, 0]) {
+      const x = 580, event = new MouseEvent("mousemove", {clientX:x, clientY:index * 40 + 10})
+      const target = editor.features.manipulation.floatDropTarget(event, source)
+      expect(target).toBe(paragraphs[index])
+      editor.features.manipulation.showFloatDropPreview(target!, "right", "transfer", source)
+      expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(index * 40 + 5)
+    }
+    expect(sourceRect).not.toHaveBeenCalled()
+  })
+
+  it("measures a standard insertion once per lane across many sibling targets", () => {
+    document.body.innerHTML = Array.from({length:50}, (_, index) => `<p>${index}</p>`).join("")
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 2000))
+    for(const [index, paragraph] of Array.from(document.querySelectorAll("p")).entries()) {
+      vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, index * 40, 600, 30))
+    }
+    const source = document.createElement("video")
+    const clone = vi.spyOn(source, "cloneNode")
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:300, clientY:1990}), source)).toBeNull()
+    expect(clone).toHaveBeenCalledTimes(2)
+    for(let index = 0; index < 50; index++) editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:300, clientY:index * 40}), source)
+    expect(clone).toHaveBeenCalledTimes(2)
+    expect(editor.appendix.querySelector("video")).toBeNull()
+    expect(document.body.querySelectorAll("p")).toHaveLength(50)
+  })
+
+  it("does not keep a remotely removed preview target eligible for dropping", () => {
+    document.body.innerHTML = '<video style="width:40px;height:60px"></video><p>target</p>'
+    const source = document.querySelector("video")!, target = document.querySelector("p")!
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 30))
+    editor.features.manipulation.showFloatDropPreview(target, "left", "transfer", source)
+    target.remove()
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:120, clientY:70}), source)).toBeNull()
+  })
+
   it.each([false, true])("floats a dragged media element beside the target paragraph in reading order (copy: %s)", copy => {
     for(const [x, side] of [[125, "left"], [175, "right"]] as const) {
       document.body.innerHTML = '<picture style="position: absolute; width: 40px"><img alt="dragged"></picture><p>target</p>'
@@ -3378,16 +3591,16 @@ describe("unified content transfer", () => {
       vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
       const {data} = beginDrag(source)
       vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 3})
-      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50, ctrlKey: copy}))
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 15, ctrlKey: copy}))
       const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
       expect(preview).not.toBeNull()
       expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
-      expect(parseFloat(preview.style.left)).toBeCloseTo(side === "left" ? 100 : 150)
-      expect(parseFloat(preview.style.width)).toBeCloseTo(50)
+      expect(parseFloat(preview.style.left)).toBeCloseTo(side === "left" ? 100 : 160)
+      expect(parseFloat(preview.style.width)).toBeCloseTo(40)
       expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
-      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50, ctrlKey: copy}))
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 15, ctrlKey: copy}))
       expect(editor.appendix.querySelector("#◆float-drop-preview")).toBe(preview)
-      document.body.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 50, ctrlKey: copy}))
+      document.body.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 15, ctrlKey: copy}))
       const placed = paragraph.previousElementSibling as HTMLElement
       expect(placed).not.toBeNull()
       expect(placed.localName).toBe("picture")
@@ -3524,9 +3737,9 @@ describe("unified content transfer", () => {
     const {data} = beginDrag(source)
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: section, offset: 1})
 
-    section.dispatchEvent(transferEvent("dragover", data, {clientX: 150, clientY: 50}))
+    section.dispatchEvent(transferEvent("dragover", data, {clientX: 150, clientY: 75}))
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    section.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 50}))
+    section.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 75}))
 
     expect(source.style.float).toBe("")
     expect(source.style.maxWidth).toBe("")
@@ -4110,9 +4323,11 @@ describe("unified content transfer", () => {
     target.dispatchEvent(transferEvent("drop", data, {clientX: 45, clientY: 15}))
     expect(target.previousElementSibling).toBe(source)
     expect((source as HTMLElement).style.float).toBe("right")
-    expect((source as HTMLElement).style.maxWidth).toBe("50%")
-    expect((source as HTMLElement).style.margin).toBe("5px 0px 5px 5px")
-    expectBodyToBe('<p style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;">source</p><p>target</p>')
+    expect((source as HTMLElement).style.maxWidth).toBe("var(--ww-float-width)")
+    expectFarFloat(source as HTMLElement, "right")
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
+    expect(document.body.firstElementChild?.textContent).toBe("source")
+    expect(document.body.lastElementChild?.textContent).toBe("target")
     expect(document.body).not.toHaveClass("◆drop-selection-active")
   })
 

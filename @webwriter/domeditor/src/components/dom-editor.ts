@@ -5270,11 +5270,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide}>).detail
-    if(!action || action.type !== "setFloat") return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide} | {type: "moveFloat", direction: "up" | "down"}>).detail
+    if(!action || !["setFloat", "moveFloat"].includes(action.type)) return
     this.layoutError = ""
     void this.execute(action).then(changed => {
-      if(changed === false) this.layoutError = "The selection changed or floating is unavailable. Select the element again."
+      if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
   }
 
@@ -6689,8 +6689,9 @@ export class DomEditor extends LitElement {
         void this.execute({type: "hoverSnippet", hovered}).catch(() => {})
       },
       "insertion-hover-change": (event: Event) => {
-        const hovered = Boolean((event as CustomEvent<{hovered: boolean}>).detail?.hovered)
-        void this.execute({type: "hoverInsertion", hovered}).catch(() => {})
+        const detail = (event as CustomEvent<{hovered: boolean, tag?: string}>).detail
+        const hovered = Boolean(detail?.hovered)
+        void this.execute({type: "hoverInsertion", hovered, ...(detail?.tag ? {tag: detail.tag} : {})}).catch(() => {})
       },
       "ribbon-combobox-change": this.handleRibbonComboboxChange.bind(this),
       "section-type-change": this.handleSectionTypeChange.bind(this),

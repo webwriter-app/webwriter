@@ -6,13 +6,15 @@ import simpleSource from "../../core/model/schemas/resource/themes/simple.css?ra
 import waterSource from "../../core/model/schemas/resource/themes/water.css?raw"
 import floatSource from "./document-floats.css?raw"
 
+const layeredSource = (source: string) => `@layer webwriter-theme {\n${source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`
+
 export const documentThemes = [
   {value: "base", label: "Base", source: baseSource + "\n" + floatSource},
-  {value: "water", label: "Water", source: waterSource + "\n" + floatSource},
-  {value: "simple", label: "Simple", source: simpleSource + "\n" + floatSource},
-  {value: "sakura", label: "Sakura", source: sakuraSource + "\n" + floatSource},
-  {value: "pico", label: "Pico", source: picoSource + "\n" + floatSource},
-  {value: "holiday", label: "Holiday", source: holidaySource + "\n" + floatSource},
+  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource},
+  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource},
+  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource},
+  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + floatSource},
+  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource},
 ] as const
 
 export type DocumentThemeName = typeof documentThemes[number]["value"]
@@ -22,10 +24,5 @@ export const defaultDocumentTheme = documentThemes[0]
 
 export const documentTheme = (value: string) => documentThemes.find(theme => theme.value === value)
 
-/** Keeps trusted theme presentation below authored and editor CSS. Older
- * bundled themes predate cascade layers, while the default already owns its
- * layer so it can be embedded directly in authored documents. */
-export const editingDocumentThemeSource = (theme: DocumentTheme) =>
-  theme.value === defaultDocumentTheme.value
-    ? theme.source
-    : `@layer webwriter-theme {\n${theme.source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`
+/** All bundled themes share a low-priority layer in editing and exports. */
+export const editingDocumentThemeSource = (theme: DocumentTheme) => theme.source

@@ -181,11 +181,20 @@ describe("layout host and toolbox integration", () => {
     toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
-    expect(buttons.map(button => button.textContent?.trim())).toEqual(["Far left", "Left", "None", "Right", "Far right"])
-    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "false", "false", "true"])
+    expect(buttons.map(button => button.textContent?.trim())).toEqual(["", "", ""])
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Float left", "Clear float", "Float right"])
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(group.classList.contains("float-button-group")).toBe(true)
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"])
     for(const button of buttons) button.click()
-    expect(actions).toEqual(["far-left", "left", "none", "right", "far-right"].map(side => ({type: "setFloat", side})))
+    expect(actions).toEqual(["far-left", "none", "far-right"].map(side => ({type: "setFloat", side})))
     expect(execute.mock.calls.map(([action]) => action)).toEqual(actions)
+    const up = group.previousElementSibling as HTMLButtonElement, down = group.nextElementSibling as HTMLButtonElement
+    expect(up.textContent).toBe("Move up")
+    expect(down.textContent).toBe("Move down")
+    up.click(); down.click()
+    expect(actions.slice(-2)).toEqual([{type:"moveFloat", direction:"up"}, {type:"moveFloat", direction:"down"}])
+    expect(execute.mock.calls.slice(-2).map(([action]) => action)).toEqual(actions.slice(-2))
   })
 
   it("keeps an inline float selection visible when a narrow style overrides it", async () => {
@@ -204,7 +213,7 @@ describe("layout host and toolbox integration", () => {
     let buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
       .querySelectorAll<HTMLButtonElement>("button"))
     expect(buttons.map(button => button.getAttribute("aria-pressed")))
-      .toEqual(["false", "false", "false", "false", "true"])
+      .toEqual(["false", "false", "true"])
 
     toolbox.elementStyle = {
       ...toolbox.elementStyle!,
@@ -214,7 +223,7 @@ describe("layout host and toolbox integration", () => {
     buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
       .querySelectorAll<HTMLButtonElement>("button"))
     expect(buttons.map(button => button.getAttribute("aria-pressed")))
-      .toEqual(["false", "false", "true", "false", "false"])
+      .toEqual(["false", "true", "false"])
   })
 
   it("exposes narrow preview in the document layout drawer", async () => {

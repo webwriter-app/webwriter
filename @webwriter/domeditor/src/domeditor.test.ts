@@ -714,6 +714,19 @@ describe("breadcrumb positioning", () => {
     })
   })
 
+  it.each(["left", "right"])("includes an authored %s float in the selection path", side => {
+    withSelection(`<p id="target" style="float: ${side}">Text</p>`, (_editor, readPath) => {
+      expect(readPath().at(-1)?.float).toBe(`far-${side}`)
+    })
+  })
+
+  it("preserves an authored float when responsive CSS computes to none", () => {
+    withSelection(`<style>.responsive { float: none !important }</style><p id="target" class="responsive" style="float: left">Text</p>`, (_editor, readPath) => {
+      expect(getComputedStyle(document.getElementById("target")!).float).toBe("none")
+      expect(readPath().at(-1)?.float).toBe("far-left")
+    })
+  })
+
   it.each(["relative", "sticky"])("marks the %s element's own normal-flow anchor", position => {
     withSelection(`<div><p id="target" style="position: ${position}; top: 8px">Text</p></div>`, (_editor, readPath) => {
       const path = readPath()

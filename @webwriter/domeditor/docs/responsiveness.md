@@ -7,7 +7,7 @@ order: 305.2
 
 Widgets are placed in a page that can be narrower or wider than the browser window used during development. A widget must fit the inline size its parent allocates, keep its controls usable, and let its content determine its block size.
 
-![The prose column and default block widget share the 45rem reading width. An authored document rule removes the wide widget's maximum so it can use the page content width.](images/responsiveness-page-width.svg)
+![The prose column and default block widget share the reading width. A widget can opt in to the wider page content width.](images/responsiveness-page-width.svg)
 
 ## Fit the allocated width
 
@@ -16,9 +16,9 @@ The parent chooses a widget's inline size through normal CSS. A block widget sho
 ```css
 :host {
   display: block;
-  max-inline-size: var(--ww-prose-max, 45rem);
+  max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
   margin-inline: auto;
-  inline-size: 100%;
+  inline-size: auto;
   min-inline-size: 0;
   block-size: auto;
   box-sizing: border-box;
@@ -28,7 +28,7 @@ The parent chooses a widget's inline size through normal CSS. A block widget sho
 
 This contract applies to block widgets. Inline widgets, such as an inline equation or icon, can choose their own inline formatting and should not inherit this block styling.
 
-Keep this declaration in each block widget's own styles. The Lit widget starter includes it for new widgets; existing widgets should adopt it themselves so they also have a sensible default when nested. The base theme additionally caps every direct child of `body` at the prose width and gives it `margin-inline: auto` to center blocks within the page. That outer rule does not change an element's display or turn inline widgets into blocks.
+Use this declaration in each block widget's own styles so it also has a sensible default when nested. The base theme also gives ordinary block children a prose-width maximum and centers them in the page. A widget host can use `--ww-widget-max` to choose its own maximum.
 
 Block widgets should support allocated widths from **280 CSS px through 2160 CSS px**. The 280 CSS px value is a test target, not a `min-width`. A widget must narrow gracefully below 280 CSS px as well, including in a 280 CSS px viewport where page gutters reduce the content width. Do not assume that the widget's width equals the browser viewport or a desktop monitor width.
 
@@ -36,7 +36,7 @@ The widget owns its internal layout and its natural height. Do not set a fixed h
 
 ## Set page and reading widths
 
-The base theme provides the page sizing defaults. Its content cap is 2160 CSS px, excluding gutters. Every direct child of `body` defaults to `max-inline-size: var(--ww-prose-max, 45rem)`, including widgets, structural containers such as `main`, and unfamiliar elements. The body owns the page width and responsive gutters; adding the same padding to `main` would apply the gutters twice.
+The base theme provides the page sizing defaults. Its content cap is 2160 CSS px, excluding gutters. The body spans that fluid page width and owns the responsive gutters. Ordinary block children default to the prose measure, while structural `main`, `article`, and `section` elements can use the full page content width. The body itself is not the reading column; its child blocks are centered within the available page.
 
 These rules belong to the `webwriter-theme` cascade layer, so authored CSS can override them:
 
@@ -48,25 +48,25 @@ These rules belong to the `webwriter-theme` cascade layer, so authored CSS can o
 }
 
 body {
-  inline-size: 100%;
+  display: flow-root;
+  inline-size: auto;
   min-inline-size: 0;
   max-inline-size: calc(var(--ww-page-max) + 2 * var(--ww-page-gutter));
   margin: 1.25rem auto;
   padding-inline: var(--ww-page-gutter);
 }
 
-body > * {
-  max-inline-size: var(--ww-prose-max, 45rem);
+body > :not(main, article, section) {
+  max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
+  inline-size: auto;
   margin-inline: auto;
 }
 
-body > header,
-body > main,
-body > footer {
-  inline-size: 100%;
-  min-inline-size: 0;
+body > :is(main, article, section) {
+  padding-inline: 0;
+  max-inline-size: none;
+  inline-size: auto;
   margin-inline: auto;
-  padding-block: var(--pico-block-spacing-vertical);
 }
 
 :where(body, body > main, body > article, body > section)
@@ -76,27 +76,32 @@ body > footer {
 }
 ```
 
-The base theme applies border-box sizing globally. The parent page remains fluid up to the 2160 CSS px content ceiling, while direct children have a 45rem upper bound. Nested reading blocks keep that measure even when their containing section is made wider.
+The base theme applies border-box sizing globally. The parent page remains fluid up to the 2160 CSS px content ceiling. Ordinary direct children and children of the structural landmarks default to a 45rem upper bound; the landmarks themselves remain wide.
 
 Exported documents include their theme CSS. If an existing document contains an older copy of the base theme, update that copy to use these defaults in preview and export as well.
 
-## Float outside the reading column
+## Float beside the reading measure
 
-The Float controls offer **Far left** and **Far right** alongside ordinary floats.
-They use native `float` and negative outer margins, without wrappers or classes.
-On a wide page, the element moves entirely into the side margin. With less room,
-it remains partly inside the column and text wraps around that portion. On a
-document viewport below 600px, floated elements become centered blocks in a
-single column. Widening the viewport restores their authored left/right setting.
-This CSS container breakpoint approximates the stacked layout; CSS cannot query
-whether an individual float has wrapped. It also applies to existing inline
-left/right floats and standalone exports. Canvas and slide layouts are excluded.
+The Float controls offer **Left**, **Right**, and **None**. A superscript arrow in the breadcrumb shows the authored float direction, including when responsive CSS stacks the element. Floats use
+native `float` and negative outer margins, without wrappers or classes. At
+viewport widths of 1200px and wider, a left or right float anywhere inside the
+body reserves an equal lane on each side of the body’s central reading measure.
+This keeps all body children aligned, including blocks before the float. Floated elements fill the lane by default; authored dimensions and manual resizing can make them narrower. The
+reservation is based on the configured lane width plus gap. Floats are bounded
+by the lane width and floats on the same side clear one another when their
+vertical space overlaps. Canvas and slide scopes are excluded.
+
+Float previews cover the projected element box, including reading content that will move after insertion. Moving elements use their live dimensions; built-in insertion templates are measured with the document styles. Unknown widgets and snippets use a lane-width 16:9 footprint until their dimensions are known. These overlays and temporary measurements stay in the editor’s shadow appendix.
+
+Float drop zones use the same projected boxes. Releasing over a preview keeps its side and insertion point, even outside the current content column or over text that will be displaced. Drops outside these boxes use ordinary flow placement. Projected drop rectangles are prepared when a document drag starts, or when a ribbon drag first enters the editor. Hover hit testing and previews reuse those rectangles. Document changes and resize schedule a refresh; window scrolling shifts the stored coordinates without remeasurement.
+
+From 600px to below 1200px, both float directions share a right lane and clear one another. The lane uses up to 16rem, leaving at least 300px for text. Below 600px, floats become centered blocks in a single column. Widening the viewport restores their authored left/right setting.
 
 Paragraphs use `display: flow-root` and `min-inline-size: min(300px, 100%)`.
 They move below a float when the remaining space is less than 300px, and fit
 the full column when the column itself is narrower than 300px.
 
-The shared theme assumes one centered reading column and exposes these settings:
+The default desktop lanes divide the space remaining outside the prose column equally, allowing for the float gap. They shrink as the page narrows while the center keeps its configured prose width. Below 600px, floats stack and use a 16rem default width bounded by the available content width. Set `--ww-float-width` to choose a fixed desktop lane width instead:
 
 ```css
 :root {
@@ -105,14 +110,12 @@ The shared theme assumes one centered reading column and exposes these settings:
 }
 ```
 
-An explicit inline width takes precedence over the preferred theme width. The
-existing 50% float maximum still applies. The theme measures available margin
-space through the root's inline-size container and `--ww-page-gutter`. Each far
-float stores its negative margin calculation in the authored inline
-`--ww-float-outset` property; the physical outer margin references that property.
-This keeps the setting recognizable even when the computed margin becomes zero.
-Switching to an ordinary float or None removes the far-float calculation and any
-preferred width added by the command, while retaining explicit authored widths.
+The command stores the chosen size in an authored inline
+`--ww-float-size` property. It is calculated from the available width, theme lane
+width and authored width, so the float cannot exceed its available side lane.
+Authored maxima can narrow it further. Resize handles update the preferred float width so it can shrink or grow within the lane. The theme uses that size for the float width, then moves it
+out by the matching lane reservation. Switching to None removes float placement
+and command-owned sizing while retaining authored dimensions.
 
 The shared float stylesheet is included in saved theme CSS, so the layout also
 works in standalone exports without editor JavaScript. Keep the reading column
@@ -120,23 +123,19 @@ centered and avoid clipping overflow on its ancestors.
 
 ## Use more space
 
-The default block widget matches the prose width so it aligns with surrounding reading content. For a widget directly inside `body`, remove its maximum with an authored document rule:
+The default block widget matches the prose width so it aligns with surrounding reading content. Set `--ww-widget-max: none` on a widget host to let it use the available page width:
 
 ```css
-body > webwriter-my-widget {
-  max-inline-size: unset;
-}
+body > webwriter-my-widget { --ww-widget-max: none; }
 ```
 
-A wider widget inside a structural container also needs enough space from that container. For example, author `body > main { max-inline-size: unset; }` to let `main` use the page width. The nested widget can then remove its own default maximum in its shadow-DOM stylesheet:
+A widget inside a structural container can use the same opt-in. Structural containers already remain wide, so the widget only needs to remove its own maximum in its shadow-DOM stylesheet when its host styles define one:
 
 ```css
-:host {
-  max-inline-size: unset;
-}
+:host { --ww-widget-max: none; }
 ```
 
-`max-inline-size` is not inherited, so `unset` removes the widget's own maximum. Ordinary document styles on a host outrank its inner `:host` rules, even when the document rule is layered. A direct child of `body` therefore needs the authored document rule above; a widget inside a wider structural container can opt out in its shadow-DOM stylesheet. The opt-out changes an upper bound, so content can still remain smaller and respond to its allocation. Use logical properties consistently; `width` and `max-width` are the horizontal equivalents when physical properties are required.
+The theme expresses the widget maximum through `--ww-widget-max`, which defaults to the prose measure. Setting it to `none` removes that upper bound, so content can still remain smaller and respond to its allocation. A host's own styles should use `max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem))` to participate in the same sizing contract. Use logical properties consistently; `width` and `max-width` are the horizontal equivalents when physical properties are required.
 
 ## Resize during transformations
 
@@ -156,7 +155,7 @@ The useful breakpoint for a widget is the width of its allocated container, not 
 
 ```css
 :host {
-  max-inline-size: unset;
+  --ww-widget-max: none;
 }
 
 .layout {
@@ -231,7 +230,7 @@ Test parent allocations of **280, 320, 640, 960, 1440, 1920, and 2160 CSS px**, 
 - controls, labels, and results remain readable and usable;
 - columns have no horizontal overflow and the work area gets the available space;
 - nested widgets and nested editable content still fit their parent;
-- direct body children, including structural containers and unfamiliar elements, receive the default width, and authored document rules can change it;
+- ordinary direct body children receive the reading width, structural containers can use the full page width, and authored document rules can change either;
 - changing `--ww-prose-max` updates default widgets, including widgets that adopt the theme in shadow DOM;
 - browser zoom changes do not create a fixed-width assumption;
 - native editing, preview, and export preserve the same authored DOM;

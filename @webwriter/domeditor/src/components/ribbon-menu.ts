@@ -696,8 +696,9 @@ export class RibbonMenu extends LitElement {
     state.active = active
     if(active) this.activeInsertionHoverTarget = target
     else if(this.activeInsertionHoverTarget === target) this.activeInsertionHoverTarget = null
-    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("insertion-hover-change", {
-      detail: {hovered: active}, bubbles: true, composed: true,
+    const tag = active ? this.dragTag(button) : null
+    this.dispatchEvent(new CustomEvent<{hovered: boolean, tag?: string}>("insertion-hover-change", {
+      detail: {hovered: active, ...(tag ? {tag} : {})}, bubbles: true, composed: true,
     }))
   }
 

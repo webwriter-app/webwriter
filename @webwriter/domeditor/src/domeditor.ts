@@ -28,6 +28,7 @@ import {mathRoot} from "./math"
 import { HeadFeature } from "./features/head"
 import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
+import {floatSideFromStyles} from "./element-styles"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isEditorOwnedAttribute, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
@@ -998,6 +999,13 @@ export class DOMEditor {
     const positioning = (element: Element) => ({
       ...(positions.has(element) ? {position: positions.get(element)!} : {}),
       ...(anchors.has(element) ? {positionAnchor: true} : {}),
+      ...(() => {
+        const inline = (element as Element & {style?: CSSStyleDeclaration}).style
+        const side = floatSideFromStyles(getComputedStyle(element).float, {
+          getPropertyValue: name => inline?.getPropertyValue(name) ?? "",
+        })
+        return side === "none" ? {} : {float: side}
+      })(),
     })
     const sectionPathItem = (section: Element): SelectionPathSection => ({
       path: this.pathToElement(section),

@@ -1207,8 +1207,9 @@ export class RibbonButton extends LitElement {
     const active = insertable && !this.disabled && (this.insertionHoverPointer || this.insertionHoverFocus)
     if(active === this.insertionHoverActive) return
     this.insertionHoverActive = active
-    this.dispatchEvent(new CustomEvent<{hovered: boolean}>("insertion-hover-change", {
-      detail: {hovered: active}, bubbles: true, composed: true,
+    const tag = active ? ribbonElementTag(this.label, action) : null
+    this.dispatchEvent(new CustomEvent<{hovered: boolean, tag?: string}>("insertion-hover-change", {
+      detail: {hovered: active, ...(tag ? {tag} : {})}, bubbles: true, composed: true,
     }))
   }
 

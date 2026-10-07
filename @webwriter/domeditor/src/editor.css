@@ -354,6 +354,12 @@ body::part(insertion-preview) {
   z-index: 2147483646;
 }
 
+body::part(insertion-preview) {
+  background-color: rgb(238 244 251 / 70%);
+  outline-color: #c8d2df;
+  border-radius: 0;
+}
+
 /* Replaced elements can also receive native selection paint. Avoid applying
  * the translucent selection color twice beneath their appendix overlay. */
 .◆atomic-range-selected::selection,
@@ -1467,6 +1473,11 @@ body.◆insertion-gap-preview::part(empty-document-caret),
 body.◆drop-selection-active::part(empty-document-caret) {
   color: var(--sl-color-primary-400, #0078d7);
   animation: none;
+}
+
+body.◆insertion-gap-preview::part(selection-caret-gap),
+body.◆insertion-gap-preview::part(empty-document-caret) {
+  color: #c8d2df;
 }
 
 body.◆drop-selection-active::part(selection-caret-gap)::after,

@@ -1523,7 +1523,8 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Clears the drop presentation, restoring the underlying selection mode. */
-  clearDropCaret() {
+  clearDropCaret(hideSelection = false) {
+    if(hideSelection) { this.#hideSelectionCaret(); return }
     const caret = this.selectionCaret
     if(!caret) return
     caret.classList.remove("◆drop-caret-before", "◆drop-caret-after")

@@ -4598,9 +4598,10 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     for(const hovered of [true, false]) ribbon.dispatchEvent(new CustomEvent("snippet-hover-change", {detail: {hovered}, bubbles: true, composed: true}))
     expect(execute.mock.calls.map(([action]) => action)).toEqual([{type: "hoverSnippet", hovered: true}, {type: "hoverSnippet", hovered: false}])
-    for(const hovered of [true, false]) ribbon.dispatchEvent(new CustomEvent("insertion-hover-change", {detail: {hovered}, bubbles: true, composed: true}))
+    ribbon.dispatchEvent(new CustomEvent("insertion-hover-change", {detail: {hovered: true, tag: "p"}, bubbles: true, composed: true}))
+    ribbon.dispatchEvent(new CustomEvent("insertion-hover-change", {detail: {hovered: false}, bubbles: true, composed: true}))
     expect(execute.mock.calls.slice(2).map(([action]) => action)).toEqual([
-      {type: "hoverInsertion", hovered: true}, {type: "hoverInsertion", hovered: false},
+      {type: "hoverInsertion", hovered: true, tag: "p"}, {type: "hoverInsertion", hovered: false},
     ])
     ribbon.expanded = expanded
     ribbon.menuOpen = !expanded
@@ -5907,6 +5908,33 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.shadowRoot!.querySelector(".position-balloon")).not.toBeNull()
     await sendPosition()
     expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
+  })
+
+  it("renders and updates superscript float direction icons", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = "<p>Text</p>"
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const sendFloat = async (float?: "far-left" | "far-right") => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {path: [
+          {path: [], name: "Document"},
+          {path: [0], name: "Paragraph", ...(float ? {float} : {})},
+        ]}},
+        source: editorWindow,
+      }))
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+    }
+
+    await sendFloat("far-left")
+    expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Left float")
+    expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-arrow-left")).not.toBeNull()
+    expect(getComputedStyle(breadcrumb.shadowRoot!.querySelector(".position-float svg")!).width).toBe("16px")
+    await sendFloat("far-right")
+    expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Right float")
+    expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-arrow-right")).not.toBeNull()
+    await sendFloat()
+    expect(breadcrumb.shadowRoot!.querySelector(".position-float")).toBeNull()
   })
 
   it.each([
