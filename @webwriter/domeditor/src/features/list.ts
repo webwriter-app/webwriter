@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
 
 const listSelector = "ul, ol, dl, menu"
@@ -720,6 +720,10 @@ export class ListFeature extends EditorFeature {
   }
 
   insertList(type: ListType) {
+    if(this.editor.features.manipulation.convertInsertion(type)) {
+      this.syncVirtualMarker()
+      return this.activeList
+    }
     const list = document.createElement(type)
     this.editor.features.manipulation.insert(list)
     if(list.isConnected) this.moveToVirtual(list, 0)
@@ -792,6 +796,7 @@ export class ListFeature extends EditorFeature {
   }
 
   insertDetails() {
+    if(this.editor.features.manipulation.convertInsertion("details")) return
     const details = document.createElement("details")
     const summary = document.createElement("summary")
     details.append(summary)
@@ -971,6 +976,31 @@ export class ListFeature extends EditorFeature {
     return candidates.filter(candidate => !candidates.some(other => other !== candidate && candidate.contains(other))) as HTMLElement[]
   }
 
+  /** List conversion keeps heading content as paragraphs. Widget internals
+   * remain owned by the widget, including headings in its light DOM. */
+  prepareItemContent(root: Element) {
+    const headings = [root, ...Array.from(root.querySelectorAll("h1, h2, h3, h4, h5, h6"))]
+      .filter(element => element.matches("h1, h2, h3, h4, h5, h6"))
+    let result = root
+    for(const heading of headings) {
+      let atomic = false
+      for(let ancestor: Element | null = heading; ancestor; ancestor = ancestor.parentElement) {
+        if(Boolean(isAtomicEditingElement(ancestor, this.editor.schema))) { atomic = true; break }
+        if(ancestor === root) break
+      }
+      if(atomic) continue
+      const paragraph = heading.ownerDocument.createElement("p")
+      const authored = cloneWithoutEditorMarkers(heading, false) as Element
+      for(const attribute of Array.from(authored.attributes)) {
+        paragraph.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      }
+      paragraph.append(...Array.from(heading.childNodes))
+      heading.replaceWith(paragraph)
+      if(heading === root) result = paragraph
+    }
+    return result
+  }
+
   private wrapTextBlocks(blocks: HTMLElement[], type: ListType) {
     const runs: HTMLElement[][] = []
     blocks.forEach(block => {
@@ -985,7 +1015,7 @@ export class ListFeature extends EditorFeature {
       run.forEach((block, index) => {
         const item = document.createElement(type === "dl" ? index % 2 ? "dd" : "dt" : "li")
         list.append(item)
-        item.append(block)
+        item.append(this.prepareItemContent(block))
       })
       return list
     })

@@ -1056,7 +1056,250 @@ export class ManipulationFeature extends EditorFeature {
     return paragraph.isConnected
   }
 
+  /** Converts the live selection before falling back to ordinary insertion.
+   * Validate the exact split on an inert DOM first, so unsupported shapes
+   * leave authored content untouched. A claimed but invalid conversion is
+   * handled as a no-op rather than replacing the selection. */
+  convertInsertion(tag: string) {
+    const wrapping = tag === "details" || isSectionName(tag)
+    if((!wrapping && !/^(p|h[1-6]|ul|ol|table)$/.test(tag))
+      || this.ribbonDropInsertion || this.editor.features.canvas.active || this.editor.features.slides.active) return false
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || this.editor.isEditingLocked) return false
+    const range = selection.getRangeAt(0).cloneRange()
+    const root = getDocumentRoot()
+    if($.excludedFlowElements.length && !$.selectedElement && !this.editor.features.selection.captureSelectedElement) return true
+    if(!root.contains(range.startContainer) || !root.contains(range.endContainer)
+      || atomicEditingContainer(range.startContainer, this.editor.schema)
+      || atomicEditingContainer(range.endContainer, this.editor.schema)) return true
+
+    if(/^h[1-6]$/.test(tag) && (getContainer(range.startContainer).closest("li, dt, dd")
+      || getContainer(range.endContainer).closest("li, dt, dd"))) return true
+    const captured = this.editor.features.selection.captureSelectedElement
+    if(range.collapsed && !captured && this.insertionReplacement()) return false
+    if(captured) range.selectNode(captured)
+    else if(range.collapsed) {
+      let container = getContainer(range.startContainer)
+      if(!wrapping && (!/^(p|h[1-6])$/.test(tag) || !container.matches("p, h1, h2, h3, h4, h5, h6"))) {
+        container = container.closest("ul, ol, table") ?? container
+      }
+      if(container === root || container === document.body || !container.parentElement) return false
+      range.selectNode(container)
+    }
+    // Never split a widget host through a text range. Whole hosts can be
+    // wrapped in disclosures without touching their internals.
+    for(const element of root.querySelectorAll("*")) {
+      if(!isAtomicEditingElement(element, this.editor.schema) || !range.intersectsNode(element)) continue
+      const nodeRange = document.createRange()
+      nodeRange.selectNode(element)
+      if(range.compareBoundaryPoints(Range.START_TO_START, nodeRange) > 0
+        || range.compareBoundaryPoints(Range.END_TO_END, nodeRange) < 0) return true
+    }
+    const preview = cloneRangeContents(range)
+    if(preview.childNodes.length === 1 && preview.firstElementChild?.localName === tag) return true
+    if(!wrapping && Array.from(preview.childNodes).some(node => isElement(node)
+      && !node.matches("p, h1, h2, h3, h4, h5, h6, ul, ol, table")
+      && !this.isInlineClipboardNode(node))) return false
+
+    const convert = (fragment: DocumentFragment) => {
+      const owner = fragment.ownerDocument
+      const output = owner.createDocumentFragment()
+      const make = (name: string, source?: Element) => {
+        const element = owner.createElement(name)
+        if(source) this.copyAuthoredAttributes(source, element)
+        return element
+      }
+      if(wrapping) {
+        const wrapper = make(tag)
+        if(tag === "details") {
+          wrapper.append(make("summary"))
+          wrapper.setAttribute("open", "")
+        }
+        wrapper.append(fragment)
+        output.append(wrapper)
+        return output
+      }
+      if(tag === "ul" || tag === "ol") {
+        for(const child of Array.from(fragment.children)) this.editor.features.list.prepareItemContent(child)
+      }
+      // List items and table cells become text units. Keep their contents,
+      // including nested lists, comments, and unfamiliar flow elements.
+      const source = fragment.childNodes.length === 1 && isElement(fragment.firstChild) ? fragment.firstChild : undefined
+      const units: Node[] = []
+      for(const node of Array.from(fragment.childNodes)) {
+        if(isElement(node) && node.matches("ul, ol")) {
+          for(const child of Array.from(node.childNodes)) {
+            if(isElement(child) && child.matches("li")) {
+              const unit = make("div", child)
+              unit.append(...Array.from(child.childNodes))
+              units.push(unit)
+            }
+            else units.push(child)
+          }
+        }
+        else if(isElement(node) && node.matches("table")) {
+          const collect = (parent: Element) => {
+            for(const child of Array.from(parent.childNodes)) {
+              if(isElement(child) && child.matches("thead, tbody, tfoot, tr")) collect(child)
+              else if(isElement(child) && child.matches("td, th, caption")) {
+                const unit = make("div", child)
+                unit.append(...Array.from(child.childNodes))
+                units.push(unit)
+              }
+              else units.push(child)
+            }
+          }
+          collect(node)
+        }
+        else units.push(node)
+      }
+      const wrapper = tag === "ul" || tag === "ol" || tag === "table" ? make(tag, source?.matches("ul, ol, table") ? source : undefined) : null
+      const body = tag === "table" ? make("tbody") : wrapper
+      if(wrapper && body !== wrapper) wrapper.append(body!)
+      if(wrapper) output.append(wrapper)
+      let inline: Element | null = null
+      const hasBlocks = units.some(unit => isElement(unit) && !this.isInlineClipboardNode(unit))
+      for(const unit of units) {
+        if(!wrapper && isElement(unit) && unit.localName === "div") {
+          let run: Element | null = null
+          const children = Array.from(unit.childNodes)
+          let first = true
+          for(const child of children) {
+            if(isElement(child) && child.matches("p, h1, h2, h3, h4, h5, h6")) {
+              const text = make(tag, unit)
+              if(!first) text.removeAttribute("id")
+              first = false
+              this.copyAuthoredAttributes(child, text)
+              text.append(...Array.from(child.childNodes))
+              output.append(text)
+              run = null
+            }
+            else if((isElement(child) && !this.isInlineClipboardNode(child)) || child.nodeType === Node.COMMENT_NODE) {
+              output.append(child)
+              run = null
+            }
+            else {
+              if(!run) {
+                run = make(tag, unit)
+                if(!first) run.removeAttribute("id")
+                first = false
+                output.append(run)
+              }
+              run.append(child)
+            }
+          }
+          if(!children.length) output.append(make(tag, unit))
+          continue
+        }
+        if(unit.nodeType === Node.COMMENT_NODE || hasBlocks && unit instanceof Text && !unit.data.trim()) {
+          (body ?? output).append(unit)
+          continue
+        }
+        const block = isElement(unit) && !this.isInlineClipboardNode(unit)
+        let target: Element
+        if(block || !inline) {
+          target = make(wrapper ? tag === "table" ? "td" : "li" : tag, block && (!wrapper || unit.localName === "div") ? unit : undefined)
+          if(tag === "table") {
+            const row = make("tr")
+            row.append(target)
+            body!.append(row)
+          }
+          else (body ?? output).append(target)
+          inline = block ? null : target
+        }
+        else target = inline
+        if(block && unit.matches("p, h1, h2, h3, h4, h5, h6")) {
+          if(wrapper) target.append(unit)
+          else target.append(...Array.from(unit.childNodes))
+        }
+        else if(block && unit.localName === "div") {
+          target.append(...Array.from(unit.childNodes))
+        }
+        else target.append(unit)
+      }
+      if(!wrapper && source?.matches("ul, ol, table") && output.firstElementChild) {
+        const attributes = make(tag, source).attributes
+        const target = output.firstElementChild
+        for(const attribute of Array.from(attributes)) {
+          if(!target.hasAttributeNS(attribute.namespaceURI, attribute.localName)) {
+            target.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          }
+        }
+      }
+      return output
+    }
+    const apply = (point: Range, editingRoot: Element) => {
+      let context = point.commonAncestorContainer instanceof Element
+        ? point.commonAncestorContainer : point.commonAncestorContainer.parentElement
+      const marks: Element[] = []
+      while(context && isMarkElement(context)) { marks.push(context); context = context.parentElement }
+      const contents = point.extractContents()
+      for(const mark of marks) {
+        const wrapper = cloneWithoutEditorMarkers(mark, false) as Element
+        wrapper.removeAttribute("id")
+        wrapper.append(...Array.from(contents.childNodes))
+        contents.append(wrapper)
+      }
+      const fragment = convert(contents)
+      const nodes = Array.from(fragment.childNodes)
+      if(!nodes.length) return null
+      const block = getContainer(point.startContainer)
+      const affected = new Set<Element>()
+      if(block === editingRoot || isDocumentRoot(block)
+        || point.startContainer === block && (!this.isTextBlock(block) || block.matches("li, td, th, dt, dd"))) {
+        point.insertNode(fragment)
+        affected.add(block)
+      }
+      else {
+        const parent = block.parentElement
+        if(!parent) return null
+        const offset = this.splitTextLikePoint(block, point)
+        const right = cloneWithoutEditorMarkers(block, false) as Element
+        right.removeAttribute("id")
+        right.append(...Array.from(block.childNodes).slice(offset))
+        if(block.childNodes.length) block.after(...nodes)
+        else block.replaceWith(...nodes)
+        if(right.childNodes.length) nodes.at(-1)!.after(right)
+        affected.add(parent)
+      }
+      for(const node of nodes) if(isElement(node)) {
+        affected.add(node)
+        if(node.parentElement) affected.add(node.parentElement)
+        node.querySelectorAll("*").forEach(element => {
+          if(!atomicEditingContainer(element, this.editor.schema)) affected.add(element)
+        })
+      }
+      return {nodes, affected}
+    }
+    const simulation = this.cloneRangeIn(root, range)
+    if(!simulation) return false
+    try {
+      const result = apply(simulation.range, simulation.root)
+      if(!result || [...result.affected].some(element => {
+        const unknown = this.editor.schema.get("#unknownelement")
+        if(this.editor.schema.get(element) === unknown || Boolean(isAtomicEditingElement(element, this.editor.schema))) return false
+        const children = Array.from(element.childNodes).filter(child => child.nodeType !== Node.COMMENT_NODE && !(child instanceof Text && !child.data.trim())).map(child => isElement(child)
+          && this.editor.schema.get(child) === unknown ? document.createElement("span") : child)
+        return !this.editor.schema.isContentValid(element, children)
+      })) return true
+    }
+    catch { return true }
+    this.hoverInsertion(false)
+    this.withNormalization(() => {
+      const result = apply(range, root)
+      const first = result?.nodes.find(isElement)
+      if(first) {
+        if(captured) this.editor.features.selection.selectElement(first)
+        if(tag === "details") $.move(first.firstElementChild!)
+        else this.moveToStart(first)
+        if(captured) this.editor.features.selection.processSelection()
+      }
+    })
+    return true
+  }
+
   private createRibbonElement(tag: string) {
+    if(this.convertInsertion(tag)) return
     if(tag === "table") this.editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
     else if(tag === "details" && this.commandPlacement) {
       const details = this.ribbonElement(tag)
@@ -1708,7 +1951,8 @@ export class ManipulationFeature extends EditorFeature {
     const replacements = new Map<Node, Element>()
 
     const count = this.withNormalization(() => blocks.reduce((converted, block) => {
-      if(block.localName === tag || !block.isConnected) return converted
+      if(block.localName === tag || !block.isConnected
+        || /^h[1-6]$/.test(tag) && block.closest("li, dt, dd")) return converted
       const candidate = document.createElement(tag)
       this.copyAuthoredAttributes(block, candidate)
       if(!this.editor.schema.isContentValid(candidate, Array.from(block.childNodes))

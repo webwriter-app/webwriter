@@ -453,6 +453,13 @@ export class InsertionFeature extends EditorFeature {
       return
     }
     range.deleteContents()
+    if(!item.html && !item.htmlUrl && item.tag) {
+      $.move(range.startContainer, range.startOffset)
+      if(this.editor.features.manipulation.convertInsertion(item.tag)) {
+        this.close(false)
+        return
+      }
+    }
     const replacement = this.emptyTextBlock?.isConnected && !isDocumentRoot(this.emptyTextBlock) && !this.emptyTextBlock.textContent && this.emptyTextBlock
     if((item.kind === "widget" || isMediaType(item.tag) && !replacement) && nodes.length === 1 && isElement(nodes[0])) {
       $.move(range.startContainer, range.startOffset)

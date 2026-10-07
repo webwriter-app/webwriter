@@ -905,7 +905,7 @@ describe("table actions", () => {
     expect(document.querySelectorAll("tr:last-child > td")).toHaveLength(2)
   })
 
-  it("lifts an inserted table out of a text-only paragraph", () => {
+  it("converts a text-only paragraph to a table", () => {
     document.body.innerHTML = "<p>Before after</p>"
     $.move(document.querySelector("p")!.firstChild!, 6)
 
@@ -913,7 +913,8 @@ describe("table actions", () => {
 
     const table = document.querySelector("table")!
     expect(table.parentElement).toBe(document.body)
-    expect(buildTableMap(table).width).toBe(2)
+    expect(buildTableMap(table).width).toBe(1)
+    expect(table.querySelector("td > p")?.textContent).toBe("Before after")
   })
 
   it("inserts a row through a rowspan and keeps it in the selected row group", () => {

@@ -1150,3 +1150,25 @@ describe("media constraints", () => {
     expect(fragment.querySelector("video")).toHaveAttribute("controls")
   })
 })
+
+describe("list item heading restrictions", () => {
+  it.each(["li", "dt", "dd"])("disallows all heading levels within %s", tag => {
+    for(const headingTag of ["h1", "h2", "h3", "h4", "h5", "h6"]) {
+      const item = document.createElement(tag)
+      const heading = document.createElement(headingTag)
+      heading.textContent = "Heading"
+      expect(editor.schema.isContentValid(item, [heading])).toBe(false)
+      const section = document.createElement("div")
+      section.append(heading)
+      expect(editor.schema.isContentValid(item, [section])).toBe(false)
+    }
+    expect(editor.schema.isContentValid(tag, [document.createElement("p")])).toBe(true)
+  })
+})
+
+it.each(["li", "dd"])("keeps text, comments, paragraphs and nested lists valid in %s", tag => {
+  expect(editor.schema.isContentValid(tag, [
+    document.createTextNode("Text"), document.createComment("keep"),
+    document.createElement("p"), document.createElement("ul"),
+  ])).toBe(true)
+})

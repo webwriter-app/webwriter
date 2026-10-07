@@ -487,7 +487,11 @@ export const baseSchema = {
     content: {selector: "col", min: 0, max: Infinity}
   },
   "dd": {
-    content: {group: "flow", min: 0, max: Infinity}
+    content: {options: [
+      {group: "flow", selector: hasNot("h1", "h2", "h3", "h4", "h5", "h6")},
+      {selector: {type: "text"}},
+      {selector: {type: "comment"}},
+    ], min: 0, max: Infinity}
   },
   "dt": {
     content: {group: "flow", selector: hasNot("header", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "article", "aside", "nav", "section"), min: 0, max: Infinity},
@@ -496,7 +500,11 @@ export const baseSchema = {
     content: {group: "flow", min: 0, max: Infinity}
   },
   "li": {
-    content: {group: "flow", min: 0, max: Infinity}
+    content: {options: [
+      {group: "flow", selector: hasNot("h1", "h2", "h3", "h4", "h5", "h6")},
+      {selector: {type: "text"}},
+      {selector: {type: "comment"}},
+    ], min: 0, max: Infinity}
   },
   "rp": {
     directlyInsertable: false,

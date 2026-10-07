@@ -637,3 +637,15 @@ describe("insertion menu", () => {
     expect(editorHTML()).toBe("<p>++table</p>")
   })
 })
+
+it("converts the text container from a typed heading command", async () => {
+  document.body.innerHTML = `<p id="intro">Text <b>here</b></p>`
+  const bold = document.querySelector("b")!
+  $.move(document.body.firstElementChild!, -1)
+  typeCommand()
+  await editor.features.insertion.menu.updateComplete
+  editor.features.insertion.menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {tag: "h2"}}))
+  expect(editorHTML()).toBe(`<h2 id="intro">Text <b>here</b></h2>`)
+  expect(document.querySelector("b")).toBe(bold)
+  expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+})

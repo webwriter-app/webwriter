@@ -376,7 +376,7 @@ describe("semantic list editing", () => {
 
     editor.features.list.toggleList("ol")
 
-    expect(cleanHTML()).toBe("<ol><li><p>A</p></li><li><h2>B</h2></li></ol>")
+    expect(cleanHTML()).toBe("<ol><li><p>A</p></li><li><p>B</p></li></ol>")
   })
 
   it("switches the active list type without losing item content", () => {
@@ -1142,4 +1142,17 @@ it("excludes positioned blocks and their text descendants from list wrapping", (
   expect(floating.parentElement).toBe(document.body)
   expect(floating.innerHTML).toBe("<p>floating</p>")
   expect(Array.from(document.querySelectorAll("li"), node => node.textContent)).toEqual(["before", "after"])
+})
+
+it.each(["ul", "ol"] as const)("converts headings to paragraphs when wrapping in %s", type => {
+  document.body.innerHTML = '<h2 id="intro" class="authored ◆old">One <b>two</b><!--keep--></h2><p>Other</p>'
+  const bold = document.querySelector("b")!
+  $.selectRange(document.body, 0, document.body, 2)
+  editor.features.list.toggleList(type)
+  const paragraph = document.querySelector(`${type} > li > p`)!
+  expect(paragraph.id).toBe("intro")
+  expect(paragraph.className).toBe("authored")
+  expect(paragraph.querySelector("b")).toBe(bold)
+  expect(document.querySelector("li h2")).toBeNull()
+  expect(cleanHTML()).toContain("<!--keep-->")
 })

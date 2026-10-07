@@ -425,7 +425,7 @@ describe("insertable element placement and previews", () => {
     expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
   })
 
-  it.each(["p", "h1", "ul", "ol", "details", "table", "picture", "svg", "section"])("replaces a selected paragraph with a fresh %s element", tag => {
+  it.each(["picture", "svg"])("replaces a selected paragraph with a fresh %s element", tag => {
     document.body.innerHTML = '<p>Replace<span style="float: left">Floated child</span></p><p>After</p>'
     const target = document.querySelector("p")!, neighbor = target.nextElementSibling!
     $.selectElement(target)
@@ -435,6 +435,19 @@ describe("insertable element placement and previews", () => {
     expect(document.body.firstElementChild!.localName).toBe(tag)
     expect(document.body.lastElementChild).toBe(neighbor)
     expect(document.body.textContent).toBe("After")
+    expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
+  })
+
+  it.each(["p", "h1", "ul", "ol", "details", "table", "section"])("converts a selected paragraph to %s while retaining its positioned subtree", tag => {
+    document.body.innerHTML = '<p>Replace<span style="float: left">Floated child</span></p><p>After</p>'
+    const target = document.querySelector("p")!, neighbor = target.nextElementSibling!, floating = target.querySelector("span")!
+    $.selectElement(target)
+    hover()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+    expect(document.body.firstElementChild!.localName).toBe(tag)
+    expect(document.body.firstElementChild!.contains(floating)).toBe(true)
+    expect(document.body.lastElementChild).toBe(neighbor)
+    expect(document.body.textContent).toBe("ReplaceFloated childAfter")
     expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
   })
 
@@ -2692,14 +2705,14 @@ describe("setBlockType()", () => {
     expect(document.querySelector("section")).toBe(section)
   })
 
-  it("converts paragraphs nested in list items while preserving list structure", () => {
+  it("disallows converting paragraphs nested in list items to headings", () => {
     document.body.innerHTML = "<ol><li><p>one</p></li><li><p>two</p></li></ol>"
     const paragraphs = document.querySelectorAll("p")
     $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, 3)
 
     editor.features.manipulation.setBlockType("h2")
 
-    expectBodyToBe("<ol><li><h2>one</h2></li><li><h2>two</h2></li></ol>")
+    expectBodyToBe("<ol><li><p>one</p></li><li><p>two</p></li></ol>")
   })
 
   it("skips a replacement that would violate the parent content model", () => {
@@ -4516,4 +4529,156 @@ describe("legacy column groups", () => {
     expect(widget.getAttribute("custom")).toBe("yes")
     expect(heading.parentElement).toBe(group)
   })
+})
+
+describe("element insertion conversions", () => {
+  const convert = (tag: string) => editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+
+  it.each([["h2", "p"], ["p", "h3"]])("converts a %s caret container to %s", (source, target) => {
+    document.body.innerHTML = `<${source} id="intro" class="authored">one <b>two</b><!--keep--></${source}><p>other</p>`
+    const bold = document.querySelector("b")!
+    $.move(bold.firstChild!, 1)
+    convert(target)
+    expect(document.body.firstElementChild?.localName).toBe(target)
+    expect(document.body.firstElementChild?.id).toBe("intro")
+    expect(document.querySelector("b")).toBe(bold)
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+  })
+
+  it.each(["ul", "ol", "table"])("converts multiple text elements to %s", tag => {
+    document.body.innerHTML = `<p id="one">first</p><!--keep--><h2>second</h2><p>other</p>`
+    const first = document.body.firstElementChild!, second = document.querySelector("h2")!
+    $.selectRange(document.body, 0, document.body, 3)
+    convert(tag)
+    const wrapper = document.body.firstElementChild!
+    expect(wrapper.localName).toBe(tag)
+    expect(wrapper.querySelectorAll(tag === "table" ? "td" : "li")).toHaveLength(2)
+    expect(wrapper.querySelector("p")).toBe(first)
+    if(tag === "table") expect(wrapper.querySelector("h2")).toBe(second)
+    else {
+      expect(wrapper.querySelector("h2")).toBeNull()
+      expect(wrapper.querySelectorAll("li > p")[1]?.textContent).toBe("second")
+    }
+    expect(wrapper.querySelectorAll("#one")).toHaveLength(1)
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+    expect(document.body.lastElementChild?.textContent).toBe("other")
+  })
+
+  it.each(["h2", "ul", "table", "details"])("wraps a partial formatted range in %s and splits the paragraph", tag => {
+    document.body.innerHTML = "<p>before <b>selected</b> after</p>"
+    const text = document.querySelector("b")!.firstChild!
+    $.selectRange(text, 0, text, 8)
+    convert(tag)
+    expect(Array.from(document.body.children).map(element => element.localName)).toEqual(["p", tag, "p"])
+    expect(document.body.children[0].textContent).toBe("before ")
+    expect(document.body.children[1].textContent).toBe("selected")
+    expect(document.body.children[2].textContent).toBe(" after")
+    expect(document.body.children[1].querySelector("b")?.textContent).toBe("selected")
+  })
+
+  it.each(["ul", "table"])("converts %s back to paragraphs", source => {
+    document.body.innerHTML = source === "ul"
+      ? "<ul><li><p>first</p></li><li>second</li></ul><p>other</p>"
+      : "<table><tbody><tr><td><p>first</p></td><td>second</td></tr></tbody></table><p>other</p>"
+    $.selectElement(document.body.firstElementChild!)
+    convert("p")
+    expect(Array.from(document.body.children).map(element => element.localName)).toEqual(["p", "p", "p"])
+    expect(document.body.textContent).toBe("firstsecondother")
+  })
+
+  it("wraps a whole unfamiliar element in details without rebuilding it", () => {
+    document.body.innerHTML = `<unknown-widget title="keep"><p>inside</p></unknown-widget><p>other</p>`
+    const widget = document.body.firstElementChild!
+    $.selectElement(widget)
+    convert("details")
+    expect(document.querySelector("details > unknown-widget")).toBe(widget)
+    expect(document.querySelector("details > summary")).not.toBeNull()
+  })
+
+  it("converts a text container to a table with undo and redo", () => {
+    document.body.innerHTML = "<p>one <b>two</b></p><p>other</p>"
+    $.move(document.querySelector("b")!.firstChild!, 1)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    convert("table")
+    editor.doc.syncFromDOM()
+    const converted = editor.toHTML(true)
+    expect(converted).toContain("<td>")
+    expect(converted).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(converted)
+  })
+})
+
+describe("conversion boundaries", () => {
+  it("splits both endpoints across different text blocks", () => {
+    document.body.innerHTML = "<p>before first</p><!--keep--><h2>second after</h2><p>other</p>"
+    const first = document.querySelector("p")!.firstChild!, second = document.querySelector("h2")!.firstChild!
+    $.selectRange(first, 7, second, 6)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
+    expect(editor.toHTML(true)).toBe("<p>before </p><ul><li><p>first</p></li><!--keep--><li><p>second</p></li></ul><h2> after</h2><p>other</p>")
+  })
+
+  it("leaves an invalid heading conversion untouched", () => {
+    document.body.innerHTML = "<address><p>keep</p></address>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "h2"})
+    expect(document.querySelector("p")).toBe(paragraph)
+    expect(editor.toHTML(true)).toBe("<address><p>keep</p></address>")
+  })
+
+  it("converts tables to lists while retaining comments and cell content", () => {
+    document.body.innerHTML = `<table>\n<tbody><tr><td id="cell"><p>one</p></td><!--keep--><td>two</td></tr></tbody></table><p>other</p>`
+    const paragraph = document.querySelector("td > p")!
+    $.selectElement(document.querySelector("table")!)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+    expect(document.querySelectorAll("ol > li")).toHaveLength(2)
+    expect(document.querySelector("ol p")).toBe(paragraph)
+    expect(document.querySelector("ol > li")?.id).toBe("cell")
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+  })
+
+  it("wraps a range in a section when its content model permits it", () => {
+    document.body.innerHTML = "<p>before selected after</p>"
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 7, text, 15)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "section"})
+    expect(editor.toHTML(true)).toBe("<p>before </p><section>selected</section><p> after</p>")
+  })
+})
+
+it("disallows heading insertion inside a list without changing other items", () => {
+  document.body.innerHTML = "<ul><li><p>one</p></li><li><p>two</p></li></ul>"
+  const list = document.querySelector("ul")!, other = document.querySelectorAll("li")[1]
+  $.move(document.querySelector("p")!.firstChild!, 1)
+  editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "h2"})
+  expect(document.querySelector("ul")).toBe(list)
+  expect(document.querySelector("li > h2")).toBeNull()
+  expect(document.querySelector("li > p")?.textContent).toBe("one")
+  expect(document.querySelectorAll("li")[1]).toBe(other)
+})
+
+it("wraps a capture-selected widget in details", () => {
+  editor.schema.extendWidgets([{tagName: "capture-widget", editingConfig: {}}])
+  document.body.innerHTML = "<capture-widget title=\"keep\"></capture-widget><p>other</p>"
+  const widget = document.body.firstElementChild!
+  editor.features.selection.captureElement(widget)
+  editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "details"})
+  expect(document.querySelector("details > capture-widget")).toBe(widget)
+  expect(widget.getAttribute("title")).toBe("keep")
+  expect(editor.features.selection.captureSelectedElement).toBeNull()
+  expect(widget.classList.contains("◆element-selected")).toBe(false)
+})
+
+it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("disallows %s within a section nested in a list item", tag => {
+  document.body.innerHTML = "<ul><li><section><p>keep</p></section></li></ul>"
+  const paragraph = document.querySelector("p")!
+  $.move(paragraph.firstChild!, 2)
+  editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+  expect(document.querySelector("p")).toBe(paragraph)
+  expect(document.querySelector("li h1, li h2, li h3, li h4, li h5, li h6")).toBeNull()
 })

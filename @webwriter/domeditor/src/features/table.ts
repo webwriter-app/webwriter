@@ -462,6 +462,7 @@ export class TableFeature extends EditorFeature {
     if(!Number.isSafeInteger(rows) || !Number.isSafeInteger(columns) || rows < 1 || columns < 1 || rows > 100 || columns > 100) {
       throw new RangeError("A table must contain between 1 and 100 rows and columns")
     }
+    if(this.editor.features.manipulation.convertInsertion("table")) return
     const table = createTable(rows, columns)
     this.editor.features.manipulation.insert(table)
     while(table.isConnected && table.parentElement && !this.editor.schema.isContentValid(table.parentElement)) {
