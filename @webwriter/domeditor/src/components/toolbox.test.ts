@@ -841,7 +841,7 @@ describe("toolbox", () => {
     )
     const toggle = position.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
     expect(toggle.parentElement).toBe(controls)
-    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Advanced options")
+    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Options")
     expect(toggle.nextElementSibling?.getAttribute("name")).toBe("more")
     expect(getComputedStyle(toggle).position).toBe("static")
     expect(getComputedStyle(toggle).width).toBe("100%")
@@ -852,7 +852,7 @@ describe("toolbox", () => {
     const advanced = position.querySelector<ElementStyleEditor>("element-style-editor[mode=advanced]")!
     const advancedContent = advanced.shadowRoot!.querySelector<HTMLElement>(".advanced")!
     expect(position.hasAttribute("drawer-open")).toBe(true)
-    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Advanced options")
+    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Options")
     expect(advanced.orientation).toBe("vertical")
     expect(getComputedStyle(advancedContent).overflow).toBe("visible")
     expect(getComputedStyle(advanced.shadowRoot!.querySelector<HTMLElement>(".advanced-divider")!).display).toBe("none")

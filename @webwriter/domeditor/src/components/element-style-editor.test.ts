@@ -338,7 +338,7 @@ describe("element style controls", () => {
     expect(editor.shadowRoot!.querySelector("details")).toBeNull()
     expect(editor.shadowRoot!.querySelector(".section-heading")).toBeNull()
     expect(editor.shadowRoot!.textContent).not.toContain("Advanced styles for")
-    expect(editor.shadowRoot!.querySelector(".advanced-divider")?.textContent).toBe("Advanced options")
+    expect(editor.shadowRoot!.querySelector(".advanced-divider")?.textContent).toBe("Options")
     const styles = (ElementStyleEditor.styles as unknown as {cssText: string}).cssText
     expect(styles).toMatch(/\.section-controls\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/)
     expect(styles).toMatch(/\.style-section \+ \.style-section\s*\{[\s\S]*?border-top:\s*1px solid #d8dee6;/)

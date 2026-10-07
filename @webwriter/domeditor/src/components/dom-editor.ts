@@ -5825,6 +5825,8 @@ export class DomEditor extends LitElement {
         && typeof value.target.localName === "string"
         && (value.target.namespaceURI === null || typeof value.target.namespaceURI === "string")
         ? {localName: value.target.localName, namespaceURI: value.target.namespaceURI,
+          ...(value.target.float === "none" || value.target.float === "far-left" || value.target.float === "far-right"
+            ? {float: value.target.float} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined

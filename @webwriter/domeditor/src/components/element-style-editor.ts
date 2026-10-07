@@ -1492,7 +1492,7 @@ export class ElementStyleEditor extends LitElement {
       `
     }
     return html`
-      <div class="advanced-divider"><span>Advanced options</span></div>
+      <div class="advanced-divider"><span>Options</span></div>
       <fieldset
         class="editor-fields"
         @mouseenter=${() => this.dispatchTargetHover(true)}

@@ -11,6 +11,8 @@ import balloonFilled from "@tabler/icons/filled/balloon.svg?raw"
 import arrowBackUp from "@tabler/icons/outline/arrow-back-up.svg?raw"
 import arrowBack from "@tabler/icons/outline/arrow-back.svg?raw"
 import arrowForwardUp from "@tabler/icons/outline/arrow-forward-up.svg?raw"
+import arrowUp from "@tabler/icons/outline/arrow-up.svg?raw"
+import arrowDown from "@tabler/icons/outline/arrow-down.svg?raw"
 import arrowLeft from "@tabler/icons/outline/arrow-left.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import arrowsMove from "@tabler/icons/outline/arrows-move.svg?raw"
@@ -235,6 +237,8 @@ const icons: Record<string, string> = {
   FileHorizontal: fileHorizontal,
   Canvas: artboard,
   ChevronRight: chevronRight,
+  ArrowUp: arrowUp,
+  ArrowDown: arrowDown,
   ArrowLeft: arrowLeft,
   ArrowRight: arrowRight,
   Section: section,

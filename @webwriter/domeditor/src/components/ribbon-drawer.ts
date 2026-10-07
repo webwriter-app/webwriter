@@ -947,7 +947,7 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
     }
 
-    :host([pane][layout="element-style"]) .pane-label { padding-right: 0; }
+    :host([pane]) .drawer.options .pane-label { padding-right: 0; }
     slot[name="heading-action"] { display: flex; margin-left: auto; }
 
     :host([pane][hide-pane-label]) .pane-label {
@@ -1031,7 +1031,7 @@ export class RibbonDrawer extends LitElement {
       width: 100%;
     }
 
-    :host([pane][layout="element-style"]) .controls {
+    :host([pane]) .drawer.options .controls {
       display: flex;
       flex-direction: column;
       align-items: stretch;
@@ -1062,8 +1062,8 @@ export class RibbonDrawer extends LitElement {
       transform: none;
     }
 
-    :host([pane][layout="element-style"]) .drawer-toggle,
-    :host([pane][layout="element-style"]) .drawer.expanded .drawer-toggle {
+    :host([pane]) .drawer.options .drawer-toggle,
+    :host([pane]) .drawer.options.expanded .drawer-toggle {
       display: flex;
       flex: 0 0 auto;
       align-items: center;
@@ -1079,12 +1079,12 @@ export class RibbonDrawer extends LitElement {
       transition: var(--ww-ui-transition, border-color 120ms ease, color 120ms ease, background-color 120ms ease);
     }
 
-    :host([pane][layout="element-style"]) .drawer-toggle:hover {
+    :host([pane]) .drawer.options .drawer-toggle:hover {
       border-color: transparent;
       background: #e8eef5;
     }
 
-    :host([pane][layout="element-style"]) .drawer-toggle-label {
+    :host([pane]) .drawer.options .drawer-toggle-label {
       display: block;
       font-size: 0.68rem;
       font-weight: 650;
@@ -1507,10 +1507,10 @@ export class RibbonDrawer extends LitElement {
       || (this.layout === "elements" && !this.collapsed && !this.drawerOpen)
     const toggleLabel = this.collapsed
       ? `${this.drawerOpen ? "Hide" : "Show"} ${this.label} controls`
-      : this.layout === "element-style"
+      : (this.layout === "element-style" || this.layout === "float")
         ? `${this.drawerOpen ? "Hide" : "Show"} advanced ${this.label.toLocaleLowerCase()} controls`
         : `More ${this.label.toLocaleLowerCase()}`
-    const stylePaneToggle = this.pane && this.layout === "element-style"
+    const stylePaneToggle = this.pane && (this.layout === "element-style" || this.layout === "float")
     const toggle = this.layout === "marks" && !this.collapsed ? "" : html`<button
       class="drawer-toggle"
       type="button"
@@ -1522,15 +1522,15 @@ export class RibbonDrawer extends LitElement {
       title=${toggleLabel}
       @click=${this.toggleDrawer}
     >
-      <span class="drawer-toggle-label">Advanced options${this.advancedCount !== null ? html`<span
+      <span class="drawer-toggle-label">Options${this.advancedCount !== null ? html`<span
         class="advanced-count" aria-label=${`${this.advancedCount} advanced options set`}>${this.advancedCount}</span>` : ""}</span>
       <span class="drawer-icon" aria-hidden="true"></span>
     </button>`
     return html`
       <section
-        class=${this.drawerOpen
+        class=${(this.drawerOpen
           ? "drawer expanded"
-          : this.drawerContentOpen ? "drawer expanded closing" : "drawer"}
+          : this.drawerContentOpen ? "drawer expanded closing" : "drawer") + (this.layout === "element-style" || this.layout === "float" ? " options" : "")}
         aria-label=${this.label}
         @transitionend=${this.handleDrawerTransitionEnd}
       >

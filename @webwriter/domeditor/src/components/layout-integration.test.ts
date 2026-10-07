@@ -175,12 +175,37 @@ describe("layout host and toolbox integration", () => {
     }
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Arrangement"]')).toBeNull()
-    const group = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
+    const group = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')!
     expect(group).not.toBeNull()
     const actions: unknown[] = []
     toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
-    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"]')).not.toBeNull()
+    const allButtons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(allButtons.map(button => button.getAttribute("aria-label")))
+      .toEqual(["Move down", "Float left", "Clear float", "Float right", "Move up"])
+    expect(allButtons.every(button => button.querySelector("svg") && !button.textContent?.trim())).toBe(true)
+    expect(getComputedStyle(group).width).toBe("100%")
+    expect(getComputedStyle(group.parentElement!).paddingLeft).toBe("0px")
+    expect(getComputedStyle(group.parentElement!).paddingRight).toBe("0px")
+    expect(getComputedStyle(allButtons[0]).flexGrow).toBe("0")
+    expect(getComputedStyle(allButtons[4]).flexGrow).toBe("0")
+    for(const button of [allButtons[0], allButtons[4]]) {
+      expect(parseFloat(getComputedStyle(button).paddingLeft))
+        .toBeLessThan(parseFloat(getComputedStyle(allButtons[1]).paddingLeft))
+      expect(parseFloat(getComputedStyle(button).paddingRight))
+        .toBeLessThan(parseFloat(getComputedStyle(allButtons[1]).paddingRight))
+      expect(getComputedStyle(button).minHeight).toBe(getComputedStyle(allButtons[1]).minHeight)
+      const iconStyle = getComputedStyle(button.querySelector("svg")!)
+      const placementIconStyle = getComputedStyle(allButtons[1].querySelector("svg")!)
+      expect(parseFloat(iconStyle.width)).toBeLessThan(parseFloat(placementIconStyle.width))
+      expect(parseFloat(iconStyle.height)).toBeLessThan(parseFloat(placementIconStyle.height))
+    }
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"))
+    for(const button of buttons) {
+      expect(getComputedStyle(button).flexGrow).toBe("1")
+      expect(getComputedStyle(button).flexBasis).toBe("0px")
+    }
     expect(buttons.map(button => button.textContent?.trim())).toEqual(["", "", ""])
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Float left", "Clear float", "Float right"])
     expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
@@ -189,9 +214,9 @@ describe("layout host and toolbox integration", () => {
     for(const button of buttons) button.click()
     expect(actions).toEqual(["far-left", "none", "far-right"].map(side => ({type: "setFloat", side})))
     expect(execute.mock.calls.map(([action]) => action)).toEqual(actions)
-    const up = group.previousElementSibling as HTMLButtonElement, down = group.nextElementSibling as HTMLButtonElement
-    expect(up.textContent).toBe("Move up")
-    expect(down.textContent).toBe("Move down")
+    const down = allButtons[0], up = allButtons[4]
+    expect(down.querySelector(".icon-tabler-arrow-down")).not.toBeNull()
+    expect(up.querySelector(".icon-tabler-arrow-up")).not.toBeNull()
     up.click(); down.click()
     expect(actions.slice(-2)).toEqual([{type:"moveFloat", direction:"up"}, {type:"moveFloat", direction:"down"}])
     expect(execute.mock.calls.slice(-2).map(([action]) => action)).toEqual(actions.slice(-2))
@@ -210,8 +235,8 @@ describe("layout host and toolbox integration", () => {
       computed: {display: "flex", float: "none"},
     }
     await toolbox.updateComplete
-    let buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
-      .querySelectorAll<HTMLButtonElement>("button"))
+    let buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')!
+      .querySelectorAll<HTMLButtonElement>("button[aria-pressed]"))
     expect(buttons.map(button => button.getAttribute("aria-pressed")))
       .toEqual(["false", "false", "true"])
 
@@ -220,10 +245,43 @@ describe("layout host and toolbox integration", () => {
       inline: {"margin-right": {value: "var(--ww-float-outset)", priority: ""}},
     }
     await toolbox.updateComplete
-    buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
-      .querySelectorAll<HTMLButtonElement>("button"))
+    buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')!
+      .querySelectorAll<HTMLButtonElement>("button[aria-pressed]"))
     expect(buttons.map(button => button.getAttribute("aria-pressed")))
       .toEqual(["false", "true", "false"])
+  })
+
+  it("places Layout below Style with its heading icon, reset, and empty Options section", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
+    const toolbox = await settle(editor)
+    toolbox.elementStyle = {...styleState("flex"), target: {...styleState("flex").target!, float: "far-left"}}
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="float"]') as import("./ribbon-drawer").RibbonDrawer
+    await drawer.updateComplete
+    expect(drawer.label).toBe("Layout")
+    expect(drawer.previousElementSibling?.getAttribute("label")).toBe("Style")
+    expect(drawer.shadowRoot!.querySelector(".pane-icon svg")).not.toBeNull()
+    const actions: unknown[] = []
+    toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
+    vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const reset = drawer.querySelector<HTMLButtonElement>('button[aria-label="Reset layout"]')!
+    expect(reset.getAttribute("slot")).toBe("heading-action")
+    expect(reset.disabled).toBe(false)
+    reset.click()
+    expect(actions).toEqual([{type: "setFloat", side: "none"}])
+    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Options")
+    expect(getComputedStyle(toggle).position).toBe("static")
+    expect(toggle.parentElement?.classList.contains("controls")).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    toggle.click()
+    await drawer.updateComplete
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(drawer.querySelector('[slot="more"]')).toBeNull()
+    toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "none"}}
+    await toolbox.updateComplete
+    expect(reset.disabled).toBe(true)
   })
 
   it.each(["none", "right"])("keeps class-authored left placement selected when the responsive float is %s", async float => {
@@ -237,8 +295,36 @@ describe("layout host and toolbox integration", () => {
       computed: {display: "flex", float},
     }
     await toolbox.updateComplete
-    const buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
-      .querySelectorAll<HTMLButtonElement>("button"))
+    const buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')!
+      .querySelectorAll<HTMLButtonElement>("button[aria-pressed]"))
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"])
+  })
+
+  it.each(["none", "right"])("preserves the chosen placement through host style refresh when responsive CSS computes %s", async float => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
+    const toolbox = await settle(editor)
+    const state: ElementStyleState = {
+      ...styleState("flex"),
+      target: {...styleState("flex").target!, float: "far-right"},
+      computed: {display: "flex", float},
+    }
+    vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "getStyleState") return state
+      if(action.type === "setFloat") {
+        state.target!.float = action.side as "none" | "far-left" | "far-right"
+        return true
+      }
+      return null
+    })
+    await (editor as any).refreshElementStyleState()
+    await settle(editor)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Float left"]')!.click()
+    await Promise.resolve()
+    await (editor as any).refreshElementStyleState()
+    await settle(editor)
+    const buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')!
+      .querySelectorAll<HTMLButtonElement>("button[aria-pressed]"))
     expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"])
   })
 
@@ -272,7 +358,7 @@ describe("layout host and toolbox integration", () => {
     toolbox.elementStyle = styleState("grid")
     toolbox.documentLayout = {...toolbox.documentLayout, mode}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')).toBeNull()
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Block layout"]')).toBeNull()
   })
 })

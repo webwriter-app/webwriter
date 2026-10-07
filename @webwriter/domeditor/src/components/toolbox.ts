@@ -95,14 +95,16 @@ export class DomEditorToolbox extends EditingControls {
     .layout-action-controls button[aria-pressed="true"] {background: #dbe9fb; border-color: #3977c7; color: #174c91}
     .layout-action-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
     .layout-action-row {display: flex; flex-wrap: wrap; gap: .25rem}
-    .float-action-controls {justify-items: center}
-    .float-button-group {display: inline-flex; gap: 0}
-    .float-button-group button {display: grid; place-items: center; width: 2.25rem; padding: .35rem; border-radius: 0}
+    .float-action-controls {padding: .4rem 0}
+    .float-button-group {display: flex; width: 100%; gap: 0}
+    .float-button-group button {display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-radius: 0}
+    .float-button-group .float-move {flex: 0 0 auto; padding: .35rem .2rem}
     .float-button-group button + button {margin-left: -1px}
     .float-button-group button:first-child {border-radius: .2rem 0 0 .2rem}
     .float-button-group button:last-child {border-radius: 0 .2rem .2rem 0}
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
+    .float-button-group .float-move svg {width: .875rem; height: .875rem}
 
     .history-timeline {
       flex-direction: column;
@@ -759,7 +761,6 @@ export class DomEditorToolbox extends EditingControls {
           <element-attribute-editor disabled></element-attribute-editor>
         </ribbon-drawer>
       `]
-      this.appendLayoutDrawers(drawers)
       return drawers
     }
     const drawers: TemplateResult<1>[] = super.renderDrawers().filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
@@ -814,24 +815,30 @@ export class DomEditorToolbox extends EditingControls {
         </ribbon-drawer>
       `)
     }
-    this.appendLayoutDrawers(drawers)
     return drawers
   }
 
-  private appendLayoutDrawers(drawers: TemplateResult<1>[]) {
+  private renderElementLayoutDrawer() {
     const target = this.elementStyle.target
     if(this.activeTool !== "Edit" || this.documentLayout.mode !== "document" || !target
-      || this.documentSelected || target.documentRoot || target.localName === "body") return
+      || this.documentSelected || target.documentRoot || target.localName === "body") return nothing
     const float = target.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
-    drawers.push(html`
-      <ribbon-drawer label="Float" icon="Layout" layout="float">
+    return html`
+      <ribbon-drawer label="Layout" icon="Layout" layout="float" show-pane-icon expandable>
+        <button type="button" class="style-reset" slot="heading-action" title="Reset layout" aria-label="Reset layout"
+          ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
+          @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+          @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+            detail: {type: "setFloat", side: "none"}, bubbles: true, composed: true,
+          }))}>${ribbonIcon("Restore")}Reset</button>
         <div class="layout-action-controls float-action-controls">
-          <button type="button" ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
-            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-            @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>Move up</button>
-          <div class="float-button-group" role="group" aria-label="Float">
+          <div class="float-button-group" role="group" aria-label="Placement">
+            <button type="button" class="float-move" aria-label="Move down" title="Move down"
+              ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "down"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowDown")}</button>
             ${(["far-left", "none", "far-right"] as const satisfies readonly FloatSide[]).map(side => html`<button type="button"
               aria-label=${side === "none" ? "Clear float" : `Float ${side === "far-left" ? "left" : "right"}`} aria-pressed=${float === side}
               title=${side === "none" ? "Clear float" : `Float ${side === "far-left" ? "left" : "right"}`}
@@ -840,14 +847,15 @@ export class DomEditorToolbox extends EditingControls {
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setFloat", side}, bubbles: true, composed: true,
               }))}>${ribbonIcon(side === "none" ? "Graphic align center" : side === "far-left" ? "Graphic align left" : "Graphic align right")}</button>`)}
+            <button type="button" class="float-move" aria-label="Move up" title="Move up"
+              ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowUp")}</button>
           </div>
-          <button type="button" ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
-            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-            @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "down"}, bubbles: true, composed: true}))}>Move down</button>
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
       </ribbon-drawer>
-    `)
+    `
   }
 
   private selectDocumentLayout(mode: DocumentLayoutMode) {
@@ -1013,6 +1021,7 @@ export class DomEditorToolbox extends EditingControls {
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
             ${this.activeTool === "Review" ? this.renderProofreadingSection() : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
+            ${this.activeTool === "Edit" ? this.renderElementLayoutDrawer() : ""}
             ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
             ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
