@@ -3111,6 +3111,26 @@ describe("document listeners", () => {
     expect($.focus).toBe(document.body)
     expect($.focusOffset).toBe(document.body.childNodes.length)
   })
+  it.each(["ctrlKey", "metaKey"])("includes floats on %s+A even when the caret is inside a float", modifier => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(modifier === "metaKey" ? "MacIntel" : "Win32")
+    document.body.innerHTML = '<p>before</p><aside style="float: left"><p>floating</p><custom-widget style="float: right">nested</custom-widget></aside><hr style="float: right"><p>after</p>'
+    const float = document.querySelector("aside")!, widget = document.querySelector("custom-widget")!
+    const text = float.querySelector("p")!.firstChild!
+    $.move(text, 2)
+    const event = new KeyboardEvent("keydown", {key: "a", [modifier]: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(document.body.childNodes.length)
+    expect($.includesNode(float)).toBe(true)
+    expect($.includesNode(widget)).toBe(true)
+    expect($.excludedFlowElements).toEqual([])
+    expect(document.querySelector(".◆flow-excluded")).toBeNull()
+    expect($.copy().textContent).toBe("beforefloatingnestedafter")
+    vi.restoreAllMocks()
+  })
 })
 
 

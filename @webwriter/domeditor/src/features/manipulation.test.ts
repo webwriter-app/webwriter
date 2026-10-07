@@ -182,6 +182,120 @@ describe("migrated insertion selection", () => {
   })
 })
 
+describe("deleting the selected document", () => {
+  it.each(["Delete", "Backspace", "beforeinput"])("removes floated descendants with %s and supports undo and redo", input => {
+    document.body.innerHTML = '<p>before<span style="float: left">nested</span></p><!--keep--><custom-widget style="float: right">widget</custom-widget><aside style="float: left"><p>floating</p></aside><p>after</p>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    $.selectElement(document.body)
+    const event = input === "beforeinput" ? new InputEvent("beforeinput", {inputType: "deleteContentForward", bubbles: true, cancelable: true})
+      : new KeyboardEvent("keydown", {key: input, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.body.querySelector("span, custom-widget, aside")).toBeNull()
+    expect(document.body.textContent).toBe("")
+    editor.doc.syncFromDOM()
+    const deleted = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(deleted)
+  })
+
+  it("deletes floats after selecting all with Cmd+A", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel")
+    document.body.innerHTML = '<p>before</p><aside style="float: right">floating</aside><p>after</p>'
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "a", metaKey: true, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, cancelable: true}))
+    expect(document.querySelector("aside")).toBeNull()
+    expect(document.body.textContent).toBe("")
+  })
+})
+
+describe("line breaks inside floated text blocks", () => {
+  it.each(["left", "right"])("keeps %s floats intact on Enter and native paragraph input", side => {
+    for(const tag of ["p", "h1", "section", "ul", "details"]) {
+      for(const input of ["key", "beforeinput"]) {
+        document.body.innerHTML = `<${tag} style="float: ${side}">${tag === "section" ? "<p>a<b>bc</b></p>"
+          : tag === "ul" ? "<li>a<b>bc</b></li>" : tag === "details" ? "<summary>a<b>bc</b></summary><p>Body</p>"
+          : "a<b>bc</b>"}</${tag}><p>Neighbor</p>`
+        const root = document.body.firstElementChild!, neighbor = root.nextElementSibling!
+        const style = root.getAttribute("style"), neighborHTML = neighbor.outerHTML
+        const text = root.querySelector("b")!.firstChild!
+        $.move(text, 1)
+        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+          : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+        text.parentElement!.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+        expect(root.querySelector("b")!.innerHTML).toBe("b<br>c")
+        expect(Array.from(document.body.children)).toEqual([root, neighbor])
+        expect(root.getAttribute("style")).toBe(style)
+        expect(neighbor.outerHTML).toBe(neighborHTML)
+        expect(root.contains($.anchor)).toBe(true)
+      }
+    }
+  })
+
+  it("uses live stylesheet floats and resumes paragraph splitting when the float is removed", () => {
+    const style = document.createElement("style")
+    style.textContent = ".floated { float: left }"
+    document.head.append(style)
+    try {
+      document.body.innerHTML = '<p class="floated">abcd</p>'
+      const paragraph = document.querySelector("p")!
+      $.selectRange(paragraph.firstChild!, 1, paragraph.firstChild!, 3)
+      paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+      expect(paragraph.innerHTML).toBe("a<br>d")
+      paragraph.classList.remove("floated")
+      $.move(paragraph.lastChild!, 1)
+      paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+      expect(document.querySelectorAll("p")).toHaveLength(2)
+    }
+    finally { style.remove() }
+  })
+
+  it("inserts a break into an empty float", () => {
+    document.body.innerHTML = '<p style="float: right"></p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+    paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe("<br>")
+    expect(document.body.children).toHaveLength(1)
+  })
+
+  it("synchronizes, serializes, undoes and redoes the break without splitting the float", () => {
+    document.body.innerHTML = '<p style="float: left">ab</p><p>Neighbor</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    editor.doc.syncFromDOM()
+    const inserted = editor.toHTML(true)
+    expect(inserted).toBe('<p style="float: left">a<br>b</p><p>Neighbor</p>')
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("a<br></br>b")
+    editor.doc.undo()
+    expect(document.querySelector("p")!.innerHTML).toBe("ab")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(inserted)
+  })
+
+  it("leaves Enter inside a floated widget's shadow input to the widget", () => {
+    document.body.innerHTML = '<p>Keep</p><custom-widget style="float: left"></custom-widget>'
+    const paragraph = document.querySelector("p")!, widget = document.querySelector("custom-widget")!
+    const input = document.createElement("textarea")
+    widget.attachShadow({mode: "open"}).append(input)
+    $.move(paragraph.firstChild!, 1)
+    const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+    input.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(paragraph.innerHTML).toBe("Keep")
+    expect(widget.childNodes).toHaveLength(0)
+  })
+})
+
 describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots", mode => {
   let headHTML: string
   beforeEach(() => { headHTML = document.head.innerHTML })
@@ -2949,7 +3063,7 @@ describe("unified content transfer", () => {
     expect(source.nextElementSibling).toBe(nested)
     expect(source.style.float).toBe(side)
     expect(source.style.maxWidth).toBe("50%")
-    expect(source.style.margin).toBe("5px")
+    expect(source.style.margin).toBe(side === "left" ? "5px 5px 5px 0px" : "5px 0px 5px 5px")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
@@ -3729,8 +3843,8 @@ describe("unified content transfer", () => {
     expect(target.previousElementSibling).toBe(source)
     expect((source as HTMLElement).style.float).toBe("right")
     expect((source as HTMLElement).style.maxWidth).toBe("50%")
-    expect((source as HTMLElement).style.margin).toBe("5px")
-    expectBodyToBe('<p style="margin: 5px; max-width: 50%; float: right;">source</p><p>target</p>')
+    expect((source as HTMLElement).style.margin).toBe("5px 0px 5px 5px")
+    expectBodyToBe('<p style="margin: 5px 0px 5px 5px; max-width: 50%; float: right;">source</p><p>target</p>')
     expect(document.body).not.toHaveClass("◆drop-selection-active")
   })
 
@@ -3822,12 +3936,11 @@ describe("independent positioned flows", () => {
     document.body.innerHTML = `<p>before</p><flow-probe style="${style}"><p>private</p></flow-probe><p>after</p>`
     const widget = document.querySelector("flow-probe")!
     const html = widget.outerHTML
-    $.selectRange(document.body, 0, document.body, 3)
+    $.selectRange(document.body.firstElementChild!.firstChild!, 0, document.body.lastElementChild!.firstChild!, 5)
     editor.features.manipulation.delete()
-    const needsParagraph = style.startsWith("position:")
-    expect(document.body.children).toHaveLength(needsParagraph ? 2 : 1)
-    expect(document.body.firstElementChild).toBe(widget)
-    expect(editor.toHTML(true)).toBe(html + (needsParagraph ? "<p></p>" : ""))
+    expect(widget.parentElement).toBe(document.body)
+    expect(widget.outerHTML).toBe(html)
+    expect(document.body.textContent).toBe("private")
   })
 
   it.each(["backward", "forward"] as const)("joins the flow across positioned siblings on %s deletion", direction => {
@@ -3854,7 +3967,7 @@ describe("independent positioned flows", () => {
   it("formats only text blocks belonging to the selected flow", () => {
     document.body.innerHTML = '<p>before</p><aside style="position: fixed"><p>floating</p></aside><p>after</p>'
     const floating = document.querySelector("aside")!
-    $.selectRange(document.body, 0, document.body, 3)
+    $.selectRange(document.body.firstElementChild!.firstChild!, 0, document.body.lastElementChild!.firstChild!, 5)
     editor.features.manipulation.setBlockType("h2")
     expect(document.querySelectorAll("h2")).toHaveLength(2)
     expect(floating.firstElementChild!.localName).toBe("p")
@@ -3864,7 +3977,7 @@ describe("independent positioned flows", () => {
   it("wraps a section around flow siblings without moving a positioned sibling", () => {
     document.body.innerHTML = '<p>before</p><aside style="position: fixed">floating</aside><p>after</p>'
     const floating = document.querySelector("aside")!
-    $.selectRange(document.body, 0, document.body, 3)
+    $.selectRange(document.body.firstElementChild!.firstChild!, 0, document.body.lastElementChild!.firstChild!, 5)
     expect(editor.features.manipulation.toggleSection()).toBe(true)
     expect(floating.parentElement).toBe(document.body)
     expect(document.querySelector("section")!.textContent).toBe("beforeafter")

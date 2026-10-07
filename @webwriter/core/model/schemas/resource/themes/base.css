@@ -568,13 +568,12 @@ progress,
  * Landmarks
  */
 body {
-  inline-size: 100%;
+  inline-size: auto;
   min-inline-size: 0;
-  max-inline-size: calc(var(--ww-prose-max) + 2 * var(--ww-page-gutter));
-  margin: 0 auto;
-  min-block-size: 100vh;
-  padding-block: 1.25rem;
-  padding-inline: var(--ww-page-gutter);
+  max-inline-size: var(--ww-prose-max);
+  margin: 1.25rem max(var(--ww-page-gutter), calc((100% - var(--ww-prose-max)) / 2));
+  min-block-size: calc(100vh - 2.5rem);
+  padding: 0;
   background-color: var(--pico-background-color);
   color: var(--pico-color);
 }
@@ -588,9 +587,9 @@ body > footer {
   padding-block: var(--pico-block-spacing-vertical);
 }
 
-/* Normal block flow lets text wrap around authored floats. Each document
- * container contains its floats without isolating individual paragraphs. */
-:where(body, body > main, body > article, body > section) {
+/* Normal body flow allows its margins to collapse with its children. Nested
+ * document containers contain floats without isolating individual paragraphs. */
+:where(body > main, body > article, body > section) {
   display: flow-root;
 }
 

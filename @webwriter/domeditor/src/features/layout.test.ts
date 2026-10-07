@@ -18,16 +18,39 @@ afterEach(() => { editor.destroy(); vi.restoreAllMocks() })
 const setFloat = (side: "left" | "none" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
 describe("document floats", () => {
-  it.each(["left", "right"] as const)("adds a 5px margin for %s floats and clears it with the float", side => {
+  it.each(["left", "right"] as const)("adds spacing with a flush outer edge for %s floats and clears it with the float", side => {
     const paragraph = document.querySelector("p")!
     $.selectElement(paragraph)
     expect(setFloat(side)).toBe(true)
-    expect(paragraph.style.margin).toBe("5px")
+    expect(paragraph.style.marginTop).toBe("5px")
+    expect(paragraph.style.marginBottom).toBe("5px")
+    expect(paragraph.style.marginLeft).toBe(side === "left" ? "0px" : "5px")
+    expect(paragraph.style.marginRight).toBe(side === "right" ? "0px" : "5px")
     expect(setFloat("none")).toBe(true)
     expect(paragraph.style.margin).toBe("")
+    expect(paragraph.style.marginLeft).toBe("")
+    expect(paragraph.style.marginRight).toBe("")
     paragraph.style.margin = "12px"
     setFloat("none")
     expect(paragraph.style.margin).toBe("12px")
+  })
+
+  it("moves the zero margin when changing sides and removes it on a normal-flow drop", () => {
+    const paragraph = document.querySelector("p")!
+    $.selectElement(paragraph)
+    setFloat("left")
+    setFloat("right")
+    expect(paragraph.style.marginLeft).toBe("5px")
+    expect(paragraph.style.marginRight).toBe("0px")
+    setFloat("left")
+    expect(paragraph.style.marginLeft).toBe("0px")
+    expect(paragraph.style.marginRight).toBe("5px")
+    editor.features.manipulation.clearDropFloat(paragraph)
+    expect(paragraph.style.margin).toBe("")
+    expect(paragraph.style.marginLeft).toBe("")
+    expect(paragraph.style.marginRight).toBe("")
+    expect(paragraph.style.float).toBe("")
+    expect(paragraph.style.color).toBe("red")
   })
 
   it.each(["left", "right", "none"] as const)("sets %s on the live block without rebuilding its surroundings", side => {

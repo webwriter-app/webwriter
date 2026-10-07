@@ -379,7 +379,8 @@ export class ManipulationFeature extends EditorFeature {
     const originalWidth = cappedWidth?.[1] ?? width
     const maxWidth = side === "none" ? cappedWidth ? originalWidth : width === "50%" ? null : undefined
       : originalWidth && originalWidth !== "50%" && originalWidth !== "none" ? `min(50%, ${originalWidth})` : "50%"
-    const margin = side !== "none" ? "5px" : style.getPropertyValue("margin") === "5px" ? null : undefined
+    const margin = side === "left" ? "5px 5px 5px 0px" : side === "right" ? "5px 0px 5px 5px"
+      : ["5px", "5px 5px 5px 0px", "5px 0px 5px 5px"].includes(style.getPropertyValue("margin")) ? null : undefined
     this.setElementStyles(element, {...(margin !== undefined ? {margin} : {}), ...(maxWidth !== undefined ? {"max-width": maxWidth === null ? null : {
       value: maxWidth, priority: style.getPropertyPriority("max-width") === "important" ? "important" as const : "" as const,
     }} : {}), float: side === "none" ? null : {
@@ -1715,10 +1716,15 @@ export class ManipulationFeature extends EditorFeature {
       || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)
       || !($.isTextSelection || $.isEmptySelection)) return false
     const range = $.range
+    if(!document.body.contains(range.startContainer) || !document.body.contains(range.endContainer)
+      || atomicEditingContainer(range.startContainer, this.editor.schema)
+      || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
+    for(let element: Element | null = getContainer(range.startContainer); element && element !== document.body; element = element.parentElement) {
+      if(["left", "right"].includes(getComputedStyle(element).float)) return element.contains(range.endContainer)
+    }
     const container = this.editor.features.canvas.active ? document.body
       : this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
-    if(!container || !container.contains(range.startContainer) || !container.contains(range.endContainer)
-      || atomicEditingContainer(range.startContainer, this.editor.schema)) return false
+    if(!container || !container.contains(range.startContainer) || !container.contains(range.endContainer)) return false
     let root: Element | null = getContainer(range.startContainer)
     while(root && root.parentElement !== container) root = root.parentElement
     return Boolean(root && !slideLayoutRole(root) && root.contains(range.endContainer))
@@ -1909,7 +1915,7 @@ export class ManipulationFeature extends EditorFeature {
     return changed
   }
 
-  // Freeform text roots retain their structure on Enter. Deliberate drags
+  // Floated and freeform text roots retain their structure on Enter. Deliberate drags
   // can also target widget/control surfaces and the canvas's shadow slot.
   captureListeners: DocumentListenerMap = {
     "keydown": event => {

@@ -947,20 +947,31 @@ export class EditingSelection {
   }
 
   /** Explicit node selection and carets inside positioned content keep that
-   * region editable; a surrounding range never implicitly enters it. */
+   * region editable; ordinary surrounding text ranges stay in their flow. */
   static get flowRoot() {
     return editingFlowRoot(this.selectedElement ?? this.anchor)
   }
 
   static includesNode(node: Node) {
     if(this.isMultiElementSelection) return this.selectedElements.some(element => element === node || element.contains(node))
+    if(this.isDocumentSelection) return getDocumentRoot().contains(node)
     const root = this.flowRoot
     return node === root || root.contains(node) && editingFlowRoot(node) === root
   }
 
+  /** Explicit document selection and a range covering all its children include
+   * every editing flow, including floated and positioned descendants. */
+  static get isDocumentSelection() {
+    const root = getDocumentRoot()
+    if(this.selectedElement === root || this.selectedElement === document.body) return true
+    const range = this.range
+    return !range.collapsed && range.startContainer === root && range.startOffset === 0
+      && range.endContainer === root && range.endOffset === root.childNodes.length
+  }
+
   /** Foreign positioned subtrees intersected by the native contiguous range. */
   static get excludedFlowElements() {
-    if(this.isMultiElementSelection) return []
+    if(this.isMultiElementSelection || this.isDocumentSelection) return []
     const range = this.range
     const excluded: Element[] = []
     const visit = (element: Element) => {

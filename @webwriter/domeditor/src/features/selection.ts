@@ -2065,7 +2065,7 @@ export class SelectionFeature extends EditorFeature {
       this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
-        const root = $.flowRoot
+        const root = getDocumentRoot()
         $.selectRange(root, 0, root, root.childNodes.length)
         this.processSelection()
       }

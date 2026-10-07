@@ -137,15 +137,27 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/:where\(table:not\(:has\(td, th\)\)\)::after\s*\{[\s\S]*?display:\s*table-cell;[\s\S]*?height:\s*2\.2rem;[\s\S]*?border:\s*1px dashed #aeb8c4;[\s\S]*?content:\s*"";/)
   })
 
+  it("keeps body spacing in theme margins and aligns the empty caret with the content edge", () => {
+    const stylesheet = new CSSStyleSheet()
+    stylesheet.replaceSync(editorStyleString)
+    const rules = Array.from(stylesheet.cssRules) as CSSStyleRule[]
+    for(const rule of rules.filter(rule => /^body(?::has\(> :last-child\))?$/.test(rule.selectorText))) {
+      expect(rule.style.padding).toBe("")
+      expect(rule.style.paddingBlockEnd).toBe("")
+    }
+    const body = rules.find(rule => rule.selectorText === "body")!
+    expect(body.style.minHeight).toBe("calc(100% - 2.5rem)")
+    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)\s*\{[^}]*left:\s*anchor\(left\);/)
+  })
+
   it("starts with an editable default paragraph", () => {
     const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
       .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined
 
     expect(bodyRule?.style.margin).toBe("")
-    expect(bodyRule?.style.getPropertyValue("--body-padding")).toBe("var(--ww-page-gutter, 1.25rem)")
     expect(bodyRule?.style.getPropertyValue("anchor-name")).toBe("--body-anchor")
     expect(bodyRule?.style.padding).toBe("")
-    expect(bodyRule?.style.minHeight).toBe("100%")
+    expect(bodyRule?.style.minHeight).toBe("calc(100% - 2.5rem)")
     expect(bodyRule?.style.maxWidth).toBe("")
     expect(bodyRule?.style.pointerEvents).toBe("auto")
     expect(bodyRule?.style.userSelect).toBe("text")
@@ -157,7 +169,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editor.features.selection.emptyDocumentCaret).toBeNull()
     expect(editor.features.selection.hoverCaret?.getRootNode()).toBe(editor.appendix)
     expect(editorStyleString).toContain("body::part(empty-document-caret)")
-    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)
+    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)[\s\S]*?left:\s*anchor\(left\);/)
     expect(editorStyleString).toContain("body::part(presence-caret)")
     expect(editorStyleString).toContain("body::part(presence-element-selection)")
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
@@ -183,7 +195,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(selection-caret)")
     expect(editorStyleString).not.toMatch(/body\s*>\s*\*\s*\+\s*\*\s*\{[^}]*margin-block-start:/)
     expect(editorStyleString).toMatch(/body\s*>\s*:last-child\s*\{[\s\S]*?margin-block-end:\s*0;/)
-    expect(editorStyleString).toMatch(/body:has\(>\s*:last-child\)\s*\{[\s\S]*?padding-block-end:\s*1\.25rem;/)
+    expect(editorStyleString).not.toMatch(/body:has\(>\s*:last-child\)\s*\{[^}]*padding/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?width:\s*1\.125rem;/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?font:\s*8px\/1\.25/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?color:\s*white;[\s\S]*?background:\s*color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);/)
