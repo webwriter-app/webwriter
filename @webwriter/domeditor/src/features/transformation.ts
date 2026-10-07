@@ -500,7 +500,7 @@ export class TransformationFeature extends EditorFeature {
         })
       }
     }
-    this.arranger.setAttribute("data-float", floatSideFromStyles(style.float || "none", target.style))
+    this.arranger.setAttribute("data-float", floatSideFromStyles(style.float || "none", target.style, target.classList))
     this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
     this.#syncControlParts()
     this.#updateContextMarkers()
@@ -526,6 +526,7 @@ export class TransformationFeature extends EditorFeature {
     const top = span(0), bottom = span(height)
     const bounds = {"top-left": top.left, "top-right": top.right, "bottom-left": bottom.left, "bottom-right": bottom.right,
       left: Math.min(top.left, bottom.left), right: Math.max(top.right, bottom.right),
+      "handle-delete-right": top.right < width ? 0 : -10,
       "handle-top-left": top.left > 0 ? -4 : -7, "handle-top-right": top.right < width ? -4 : -7,
       "handle-bottom-left": bottom.left > 0 ? -4 : -7, "handle-bottom-right": bottom.right < width ? -4 : -7,
       "handle-left": Math.min(top.left, bottom.left) > 0 ? -4 : -7, "handle-right": Math.max(top.right, bottom.right) < width ? -4 : -7}
@@ -790,7 +791,7 @@ export class TransformationFeature extends EditorFeature {
       }
       if(x) {
         const width = Math.max(0, gesture.cssWidth + dw)
-        if(target.style.getPropertyValue("--ww-float-size") && ["left", "right"].includes(target.style.float)) {
+        if(floatSideFromStyles(getComputedStyle(target).float, target.style, target.classList) !== "none") {
           this.#write("--ww-float-size", `min(100%, var(--ww-float-width), ${width}px)`)
         }
         this.#write("max-width", `${width}px`)
@@ -916,21 +917,27 @@ export class TransformationFeature extends EditorFeature {
       if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
         && (float === undefined || this.editor.features.manipulation.floatContainer(element, target) === element
           && (target.parentElement === parent || this.editor.schema.canInsert(parent, target, Array.from(parent.childNodes).indexOf(element))))) {
-        if(gesture.mode === "move" && float === undefined) clearInlinePlacement(target)
+        if(gesture.mode === "move" && float === undefined) {
+          this.editor.features.manipulation.clearDropFloat(target)
+          clearInlinePlacement(target)
+        }
         if(float) {
           this.editor.features.manipulation.placeFloat(target, element, float, placement)
         }
         else {
           element[placement](target)
-          this.editor.features.manipulation.clearDropFloat(target)
+          if(gesture.mode !== "move") this.editor.features.manipulation.clearDropFloat(target)
         }
       }
     }
     else if(gesture.moved && this.#normalDropRange && getDocumentRoot().contains(this.#normalDropRange.startContainer)
       && !target.contains(this.#normalDropRange.startContainer)) {
-      if(gesture.mode === "move") clearInlinePlacement(target)
+      if(gesture.mode === "move") {
+        this.editor.features.manipulation.clearDropFloat(target)
+        clearInlinePlacement(target)
+      }
       this.#normalDropRange.insertNode(target)
-      this.editor.features.manipulation.clearDropFloat(target)
+      if(gesture.mode !== "move") this.editor.features.manipulation.clearDropFloat(target)
     }
     this.#gesture = null
     this.#suppressClick = gesture.moved

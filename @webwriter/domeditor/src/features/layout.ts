@@ -12,7 +12,7 @@ export class LayoutFeature extends EditorFeature {
     if(this.editor.isEditingLocked || !["up", "down"].includes(direction)
       || manipulation.floatContainer(element) !== element) return false
     const style = (element as HTMLElement | SVGElement).style
-    if(!style || floatSideFromStyles(getComputedStyle(element).float, style) === "none") return false
+    if(!style || floatSideFromStyles(getComputedStyle(element).float, style, element.classList) === "none") return false
     const sibling = direction === "up" ? element.previousElementSibling : element.nextElementSibling
     if(!sibling) return false
     const parent = element.parentElement as Element & {moveBefore?: (node: Node, child: Node | null) => void}

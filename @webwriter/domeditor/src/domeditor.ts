@@ -1003,7 +1003,7 @@ export class DOMEditor {
         const inline = (element as Element & {style?: CSSStyleDeclaration}).style
         const side = floatSideFromStyles(getComputedStyle(element).float, {
           getPropertyValue: name => inline?.getPropertyValue(name) ?? "",
-        })
+        }, element.classList)
         return side === "none" ? {} : {float: side}
       })(),
     })

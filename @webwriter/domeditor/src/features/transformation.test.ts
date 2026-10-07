@@ -7,9 +7,13 @@ import {$, cloneWithoutEditorMarkers} from "../utility"
 
 let editor: DOMEditor
 let feature: DOMEditor["features"]["transformation"]
+let floatStylesheet: HTMLStyleElement
 
 beforeEach(() => {
   document.body.replaceChildren()
+  floatStylesheet = document.createElement("style")
+  floatStylesheet.textContent = ".ww-float-left { float: left !important } .ww-float-right { float: right !important } .ww-float-none { float: none !important }"
+  document.head.append(floatStylesheet)
   document.body.className = ""
   document.documentElement.className = ""
   document.getSelection()?.removeAllRanges()
@@ -22,6 +26,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   editor.destroy()
+  floatStylesheet.remove()
 })
 
 function append<T extends Element>(element: T) {
@@ -131,8 +136,8 @@ describe("selection-owned transformation", () => {
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 310, clientY: 125}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
-    expect(target.style.float).toBe("left")
-    expect(target.style.width).toBe("var(--ww-float-width)")
+    expect(target).toHaveClass("ww-float-left")
+    expect(target.style.width).toBe("")
     expect(target.style.maxHeight).toBe("")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
@@ -1295,15 +1300,16 @@ describe("drop, cancellation, and document ownership", () => {
       ])
     const click = (side: string) => feature.overlay.querySelector<HTMLButtonElement>(`#◆transform-overlay-float-${side}`)!.click()
     click("far-left")
-    expect(target.style.float).toBe("left")
-    expect(target.style.getPropertyValue("margin-left")).toBe("var(--ww-float-outset)")
+    expect(target).toHaveClass("ww-float-left")
+    expect(target.style.getPropertyValue("margin-left")).toBe("")
     expect(feature.arranger.getAttribute("data-float")).toBe("far-left")
     expect(feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-float-far-left")?.getAttribute("aria-label")).toBe("Float left")
     click("far-right")
-    expect(target.style.float).toBe("right")
-    expect(target.style.getPropertyValue("margin-right")).toBe("var(--ww-float-outset)")
+    expect(target).toHaveClass("ww-float-right")
+    expect(target.style.getPropertyValue("margin-right")).toBe("")
     expect(feature.arranger.getAttribute("data-float")).toBe("far-right")
     click("none")
+    expect(target).not.toHaveClass("ww-float-left", "ww-float-right")
     expect(target.style.float).toBe("")
     expect(target.style.maxWidth).toBe("30rem")
     expect(target.parentElement).toBe(paragraph)
@@ -1446,7 +1452,7 @@ describe("drop, cancellation, and document ownership", () => {
     expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
     feature.handleMoveEnd()
     expect(target.parentElement!.parentElement).toBe(paragraph.parentElement!.parentElement)
-    expect(target.style.float).toBe(side)
+    expect(target).toHaveClass(side === "left" ? "ww-float-left" : "ww-float-right")
     expect(paragraph.textContent).toBe("keep text")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -1570,7 +1576,7 @@ describe("drop, cancellation, and document ownership", () => {
     expect(dropTarget.previousElementSibling).toBe(target)
     expect(target.style.width).toBe("80px")
     expect(target.style.color).toBe("red")
-    expect(target.style.float).toBe("left")
+    expect(target).toHaveClass("ww-float-left")
     expect(target.firstElementChild).toBe(child)
     const droppedHTML = editor.toHTML(true)
     editor.doc.undo()

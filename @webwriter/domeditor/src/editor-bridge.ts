@@ -283,6 +283,7 @@ export function isBlockFormatTag(value: string): value is BlockFormatTag {
 export type ElementStyleState = {
   target: {
     documentRoot?: true
+    float?: "none" | "far-left" | "far-right"
     localName: string
     namespaceURI: string | null
   } | null

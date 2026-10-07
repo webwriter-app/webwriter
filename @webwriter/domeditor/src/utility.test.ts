@@ -9,7 +9,7 @@ import {
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getStaticCoords,
   isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker,
-  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript
+  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement
 } from "./utility"
 import { Schema } from "./schema"
 
@@ -1691,5 +1691,23 @@ describe("DOM path and text point helpers", () => {
     expect(textOffsetIn(root, document.createTextNode("outside"), 2)).toBeNull()
     expect(textPointAtOffset(root, 4)).toEqual([root.lastElementChild!.firstChild, 1])
     expect(textPointAtOffset(root, 99)).toEqual([root.lastElementChild!.firstChild, 3])
+  })
+})
+
+
+describe("clearInlinePlacement", () => {
+  it.each(["custom-card", "svg"])("clears float placement from a %s without changing authored content or unrelated presentation", tag => {
+    const element = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : document.createElement(tag)
+    element.setAttribute("class", "authored ww-float-right")
+    element.setAttribute("style", "color: red; width: 80px; --ww-float-size: 80px")
+    element.setAttribute("data-authored", "keep")
+    const comment = element.appendChild(document.createComment("keep"))
+    const child = element.appendChild(document.createElement("unfamiliar-node"))
+    document.body.append(element)
+    clearInlinePlacement(element)
+    expect(element.getAttribute("class")).toBe("authored")
+    expect(element.getAttribute("style")).toBe("color: red;")
+    expect(element.getAttribute("data-authored")).toBe("keep")
+    expect(Array.from(element.childNodes)).toEqual([comment, child])
   })
 })

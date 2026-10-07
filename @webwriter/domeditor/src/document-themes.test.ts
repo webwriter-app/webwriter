@@ -24,7 +24,7 @@ describe("document themes", () => {
       expect(theme.source).toContain("@container (600px <= width < 1200px)")
       expect(theme.source).toContain("float: right !important;")
       expect(theme.source).toContain("--ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
-      expect(theme.source).toContain(":has(:is([style*=")
+      expect(theme.source).toContain(":has(:is(.ww-float-left, .ww-float-right,")
       expect(theme.source).toContain("inline-size: var(--ww-float-size, var(--ww-float-width)) !important;")
       expect(theme.source).toContain("clear: left;")
       expect(theme.source).toContain("clear: right;")
@@ -103,7 +103,7 @@ describe("document themes", () => {
     expect(source.match(/!important/g)!.length).toBeGreaterThanOrEqual(10)
     expect(source).toContain("--pico-font-size: 100%")
     expect(source).not.toMatch(/@media \(min-width: \d+px\)\s*\{\s*:root,\s*:host\s*\{\s*--pico-font-size:/)
-    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-column-(?:group|left|middle|right|three)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
+    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-(?:column-(?:group|left|middle|right|three)|float-(?:left|right|none))/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
   })
 
   it("gives native disclosure and dialog elements complete base styles", () => {

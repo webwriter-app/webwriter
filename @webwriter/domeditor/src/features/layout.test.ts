@@ -7,14 +7,18 @@ import * as Y from "yjs"
 import {sharedDOMBody} from "../domdoc"
 
 let editor: DOMEditor
+let floatStylesheet: HTMLStyleElement
 beforeEach(() => {
   document.body.replaceChildren()
   document.body.removeAttribute("class")
   document.body.removeAttribute("style")
+  floatStylesheet = document.createElement("style")
+  floatStylesheet.textContent = ".ww-float-left { float: left !important } .ww-float-right { float: right !important } .ww-float-none { float: none !important }"
+  document.head.append(floatStylesheet)
   editor = new DOMEditor()
   document.body.innerHTML = '<section lang="de"><p style="color:red">Text</p><!--keep--><custom-card data-authored="yes"></custom-card></section>'
 })
-afterEach(() => { editor.destroy(); vi.restoreAllMocks() })
+afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks() })
 
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
@@ -73,46 +77,55 @@ describe("document floats", () => {
     expect(document.querySelector("section")!.lastElementChild?.localName).toBe("p")
   })
 
-  it.each(["far-left", "far-right"] as const)("adds lane-aware spacing with a flush outer edge for %s floats and clears it with the float", side => {
+  it.each(["far-left", "far-right"] as const)("uses a placement class for %s and preserves authored styles", side => {
     const paragraph = document.querySelector("p")!
     $.selectElement(paragraph)
     expect(setFloat(side)).toBe(true)
-    const physicalSide = side === "far-left" ? "left" : "right"
-    expect(paragraph.style.width).toBe("var(--ww-float-width)")
-    expect(paragraph.style.marginTop).toBe("5px")
-    expect(paragraph.style.marginBottom).toBe("5px")
-    expect(paragraph.style.marginLeft).toBe(physicalSide === "left" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)")
-    expect(paragraph.style.marginRight).toBe(physicalSide === "right" ? "var(--ww-float-outset)" : "var(--ww-float-spacing)")
-    expect(paragraph.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), var(--ww-float-width))")
-    expect(paragraph.style.getPropertyValue("--ww-float-outset")).toBe("calc(0px - var(--ww-lane, 0px))")
-    expect(paragraph.style.getPropertyValue("--ww-float-spacing")).toBe("calc(var(--ww-lane, 0px) - var(--ww-float-size))")
-    expect(setFloat("none")).toBe(true)
-    expect(paragraph.style.margin).toBe("")
-    expect(paragraph.style.marginLeft).toBe("")
-    expect(paragraph.style.marginRight).toBe("")
+    expect(paragraph.classList.contains(side === "far-left" ? "ww-float-left" : "ww-float-right")).toBe(true)
+    expect(paragraph.style.float).toBe("")
     expect(paragraph.style.width).toBe("")
+    expect(paragraph.style.maxWidth).toBe("")
+    expect(paragraph.style.margin).toBe("")
     for(const property of ["--ww-float-size", "--ww-float-outset", "--ww-float-spacing"]) expect(paragraph.style.getPropertyValue(property)).toBe("")
+    expect(setFloat("none")).toBe(true)
+    expect(paragraph.classList.contains("ww-float-left")).toBe(false)
+    expect(paragraph.classList.contains("ww-float-right")).toBe(false)
+    expect(paragraph.classList.contains("ww-float-none")).toBe(false)
     paragraph.style.margin = "12px"
     setFloat("none")
     expect(paragraph.style.margin).toBe("12px")
   })
 
-  it("switches far sides and removes lane-aware margins on a normal-flow drop", () => {
+  it("switches placement classes and removes float classes on a normal-flow drop", () => {
     const paragraph = document.querySelector("p")!
     $.selectElement(paragraph)
     setFloat("far-left")
     setFloat("far-right")
-    expect(paragraph.style.marginLeft).toBe("var(--ww-float-spacing)")
-    expect(paragraph.style.marginRight).toBe("var(--ww-float-outset)")
+    expect(paragraph.classList.contains("ww-float-right")).toBe(true)
     setFloat("far-left")
-    expect(paragraph.style.marginLeft).toBe("var(--ww-float-outset)")
-    expect(paragraph.style.marginRight).toBe("var(--ww-float-spacing)")
+    expect(paragraph.classList.contains("ww-float-left")).toBe(true)
     editor.features.manipulation.clearDropFloat(paragraph)
-    expect(paragraph.style.margin).toBe("")
-    expect(paragraph.style.marginLeft).toBe("")
-    expect(paragraph.style.marginRight).toBe("")
+    expect(paragraph.classList.contains("ww-float-left")).toBe(false)
+    expect(paragraph.classList.contains("ww-float-right")).toBe(false)
     expect(paragraph.style.float).toBe("")
     expect(paragraph.style.color).toBe("red")
+  })
+
+  it("clears legacy float formulas while preserving authored width, color, and classes", () => {
+    const paragraph = document.querySelector<HTMLElement>("p")!
+    paragraph.classList.add("authored-class", "ww-float-left")
+    paragraph.style.cssText = "float: left; width: 42%; max-width: 30rem; margin: 5px var(--ww-float-spacing) 5px var(--ww-float-outset); --ww-float-size: 12rem; --ww-float-outset: calc(0px - var(--ww-lane)); --ww-float-spacing: calc(var(--ww-lane) - var(--ww-float-size)); color: red"
+    $.selectElement(paragraph)
+    expect(setFloat("none")).toBe(true)
+    expect(paragraph.classList.contains("ww-float-left")).toBe(false)
+    expect(paragraph.classList.contains("ww-float-none")).toBe(false)
+    expect(paragraph.classList.contains("authored-class")).toBe(true)
+    expect(paragraph.style.float).toBe("")
+    expect(paragraph.style.width).toBe("42%")
+    expect(paragraph.style.maxWidth).toBe("30rem")
+    expect(paragraph.style.margin).toBe("")
+    expect(paragraph.style.color).toBe("red")
+    for(const property of ["--ww-float-size", "--ww-float-outset", "--ww-float-spacing"]) expect(paragraph.style.getPropertyValue(property)).toBe("")
   })
 
   it.each(["left", "right", "none"] as const)("sets %s on the live block without rebuilding its surroundings", side => {
@@ -121,7 +134,10 @@ describe("document floats", () => {
     paragraph.style.float = "left"
     $.move(paragraph.firstChild!, 2)
     expect(setFloat(side)).toBe(true)
-    expect(paragraph.style.float).toBe(side === "none" ? "" : side === "left" ? "left" : "right")
+    expect(side === "none"
+      ? paragraph.classList.contains("ww-float-left") || paragraph.classList.contains("ww-float-right")
+      : paragraph.classList.contains(`ww-float-${side}`)).toBe(side !== "none")
+    expect(paragraph.style.float).toBe("")
     expect(paragraph.style.color).toBe("red")
     expect(Array.from(paragraph.parentNode!.childNodes)).toEqual(nodes)
     expect($.anchor).toBe(paragraph.firstChild)
@@ -133,8 +149,23 @@ describe("document floats", () => {
     const paragraph = document.querySelector("p")!
     $.selectElement(paragraph)
     expect(setFloat(legacy)).toBe(true)
-    expect(floatSideFromStyles(paragraph.style.float, paragraph.style)).toBe(expected)
-    expect(paragraph.style.getPropertyValue("--ww-float-outset")).toBe("calc(0px - var(--ww-lane, 0px))")
+    expect(floatSideFromStyles(getComputedStyle(paragraph).float, paragraph.style, paragraph.classList)).toBe(expected)
+    expect(paragraph.style.getPropertyValue("--ww-float-outset")).toBe("")
+  })
+
+  it("reads class placement and exposes the authored placement in style state", () => {
+    const paragraph = document.querySelector<HTMLElement>("p")!
+    paragraph.classList.add("ww-float-right")
+    expect(floatSideFromStyles("none", paragraph.style, paragraph.classList)).toBe("far-right")
+    $.selectElement(paragraph)
+    expect(editor.features.manipulation.getStyleState(["float"], paragraph).target?.float).toBe("far-right")
+    paragraph.classList.replace("ww-float-right", "ww-float-left")
+    expect(floatSideFromStyles("none", paragraph.style, paragraph.classList)).toBe("far-left")
+    expect(editor.features.manipulation.getStyleState(["float"], paragraph).target?.float).toBe("far-left")
+    paragraph.classList.add("ww-float-right")
+    expect(floatSideFromStyles("none", paragraph.style, paragraph.classList)).toBe("far-right")
+    paragraph.classList.add("ww-float-none")
+    expect(floatSideFromStyles("none", paragraph.style, paragraph.classList)).toBe("none")
   })
 
   it("floats a captured custom element without touching its contents or selection", () => {
@@ -143,7 +174,7 @@ describe("document floats", () => {
     const contents = widget.innerHTML
     editor.features.selection.captureElement(widget)
     expect(setFloat("far-right")).toBe(true)
-    expect((widget as HTMLElement).style.float).toBe("right")
+    expect(widget.classList.contains("ww-float-right")).toBe(true)
     expect(widget.innerHTML).toBe(contents)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
   })
@@ -179,12 +210,12 @@ describe("document floats", () => {
     expect(setFloat("far-right")).toBe(true)
     editor.doc.syncFromDOM()
     const floated = editor.toHTML(true)
-    expect(floated).toContain("float: right")
+    expect(floated).toContain("ww-float-right")
     expect(floated).not.toContain("◆")
     expect(floated).not.toContain("ww-column")
-    expect(cloneWithoutEditorMarkers(paragraph, true).getAttribute("style")).toContain("float: right")
+    expect(cloneWithoutEditorMarkers(paragraph, true).classList.contains("ww-float-right")).toBe(true)
     editor.doc.undo()
-    expect(document.querySelector<HTMLElement>("p")!.style.float).toBe("")
+    expect(document.querySelector<HTMLElement>("p")!.classList.contains("ww-float-right")).toBe(false)
     editor.doc.redo()
     expect(editor.toHTML(true)).toBe(floated)
   })
@@ -196,20 +227,21 @@ describe("document floats", () => {
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
       const section = sharedDOMBody(remote).get(0) as Y.XmlElement
       const paragraph = section.get(0) as Y.XmlElement
-      paragraph.setAttribute("style", "color: red; float: right")
+      paragraph.setAttribute("class", "ww-float-right")
       Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
       const live = document.querySelector<HTMLElement>("p")!
-      expect(live.style.float).toBe("right")
+      expect(live.classList.contains("ww-float-right")).toBe(true)
       $.selectElement(live)
       expect(setFloat("none")).toBe(true)
-      expect(live.style.float).toBe("")
+      expect(live.classList.contains("ww-float-right")).toBe(false)
+      expect(live.classList.contains("ww-float-none")).toBe(false)
       expect(live.style.color).toBe("red")
       expect(document.querySelector("custom-card")!.getAttribute("data-authored")).toBe("yes")
     }
     finally { remote.destroy() }
   })
 
-  it("clears stylesheet floats and preserves an authored important priority when switching sides", () => {
+  it("clears legacy inline floats and preserves authored declarations when switching sides", () => {
     const stylesheet = document.createElement("style")
     stylesheet.textContent = "p {float: right !important}"
     document.head.append(stylesheet)
@@ -220,13 +252,13 @@ describe("document floats", () => {
       expect(getComputedStyle(paragraph).float).toBe("none")
       paragraph.style.setProperty("float", "left", "important")
       expect(setFloat("far-right")).toBe(true)
-      expect(paragraph.style.float).toBe("right")
-      expect(paragraph.style.getPropertyPriority("float")).toBe("important")
+      expect(paragraph.style.float).toBe("")
+      expect(paragraph.classList.contains("ww-float-right")).toBe(true)
     }
     finally { stylesheet.remove() }
   })
 
-  it("caps floated media at half the containing width and restores authored limits when clearing", () => {
+  it("preserves authored media width constraints while floating", () => {
     const image = document.createElement("picture")
     image.append(document.createElement("img"))
     image.style.width = "100%"
@@ -235,14 +267,14 @@ describe("document floats", () => {
     $.selectElement(image)
     expect(setFloat("far-right")).toBe(true)
     expect(image.style.width).toBe("100%")
-    expect(image.style.maxWidth).toBe("min(var(--ww-float-width), 30rem)")
+    expect(image.style.maxWidth).toBe("30rem")
     expect(setFloat("far-left")).toBe(true)
-    expect(image.style.maxWidth).toBe("min(var(--ww-float-width), 30rem)")
+    expect(image.style.maxWidth).toBe("30rem")
     expect(setFloat("none")).toBe(true)
     expect(image.style.maxWidth).toBe("30rem")
     image.style.removeProperty("max-width")
     setFloat("far-right")
-    expect(image.style.maxWidth).toBe("var(--ww-float-width)")
+    expect(image.style.maxWidth).toBe("")
     setFloat("none")
     expect(image.style.maxWidth).toBe("")
   })

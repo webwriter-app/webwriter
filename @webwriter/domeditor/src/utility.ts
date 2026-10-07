@@ -1501,6 +1501,7 @@ export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {
 
 /** Removes inline size and placement overrides, letting authored CSS take over. */
 export function clearInlinePlacement(element: Element) {
+  element.classList.remove("ww-float-left", "ww-float-right", "ww-float-none")
   if(!element.classList.length) element.removeAttribute("class")
   const style = (element as Element & {style?: CSSStyleDeclaration}).style
   if(!style) return
@@ -1510,7 +1511,7 @@ export function clearInlinePlacement(element: Element) {
     "inset-inline", "inset-inline-start", "inset-inline-end",
     "width", "min-width", "max-width", "height", "min-height", "max-height",
     "inline-size", "min-inline-size", "max-inline-size", "block-size", "min-block-size", "max-block-size",
-    "aspect-ratio", "float", "z-index", "transform", "translate", "rotate", "scale",
+    "aspect-ratio", "float", "--ww-float-size", "--ww-float-outset", "--ww-float-spacing", "z-index", "transform", "translate", "rotate", "scale",
   ]) style.removeProperty(property)
   if(!style.length) element.removeAttribute("style")
 }

@@ -814,7 +814,7 @@ export class DomEditorToolbox extends EditingControls {
     const target = this.elementStyle.target
     if(this.activeTool !== "Edit" || this.documentLayout.mode !== "document" || !target
       || this.documentSelected || target.documentRoot || target.localName === "body") return
-    const float = floatSideFromStyles(this.elementStyle.computed.float || "none", {
+    const float = target.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     drawers.push(html`

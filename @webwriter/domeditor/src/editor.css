@@ -1987,7 +1987,7 @@ body::part(transform-overlay-delete)::before {
   height: 14px;
 }
 body::part(transform-overlay-delete) {
-  right: calc(100% - var(--selection-flow-top-right, 100%) - 10px);
+  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-delete-right, -10px));
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1 -14M10 10v6M14 10v6"/></svg>');
 }
 body::part(transform-overlay-at-top) {

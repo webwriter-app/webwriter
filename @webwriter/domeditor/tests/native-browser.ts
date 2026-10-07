@@ -1941,6 +1941,9 @@ await check("far floats adapt to column margins and survive standalone export", 
     for(const side of ["far-left", "far-right"] as const) {
       assert(editor.features.manipulation.setFloat(target, side), "far float command refused connected target")
       const physical = side.endsWith("left") ? "left" : "right"
+      assert(target.classList.contains(physical === "left" ? "ww-float-left" : "ww-float-right"), "far float command did not use its authored side class")
+      assert(!target.style.float && !target.style.width && !target.style.maxWidth && !target.style.margin
+        && !target.style.getPropertyValue("--ww-float-size"), "default far float command injected inline layout styles")
       for(const width of [1400, 1000, 850, 700, 630, 590, 360]) {
         frame.style.width = `${width}px`
         await layoutFrame()
@@ -1956,9 +1959,10 @@ await check("far floats adapt to column margins and survive standalone export", 
         if(!stacked && !singleLane) assert(Math.abs(column.width - 720) < 1, "side lanes squeezed the center column")
         if(singleLane) assert(column.width >= 300 - 1, "single lane squeezed the text below 300px")
         if(!stacked) assert(effectiveSide === "left" ? box.right <= column.left - gap + 1 : box.left >= column.right + gap - 1, "wide far float did not leave the column")
-        assert(floatSideFromStyles(style.float, target.style) === side, "responsive centering lost the authored float setting")
+        assert(floatSideFromStyles(style.float, target.style, target.classList) === side, "responsive centering lost the authored float setting")
         if(stacked) {
           assert(style.float === "none", "mobile element remained floated")
+          assert(Math.abs(box.width - column.width) < 1, "default mobile float did not fill the content column")
           assert(Math.abs((box.left + box.right) / 2 - (column.left + column.right) / 2) < 1, "mobile element was not centered in the column")
         }
         else assert(style.float === effectiveSide, "document did not use its responsive float placement")
@@ -2019,7 +2023,8 @@ await check("far floats adapt to column margins and survive standalone export", 
     }
     finally { saved.remove() }
     editor.features.manipulation.setFloat(target, "none")
-    assert(!target.style.width && !target.style.margin && !target.style.float, "clearing far float retained layout declarations")
+    assert(!target.classList.contains("ww-float-left") && !target.classList.contains("ww-float-right")
+      && !target.style.width && !target.style.margin && !target.style.float && !target.style.getPropertyValue("--ww-float-size"), "clearing far float retained float styling")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
@@ -2100,7 +2105,7 @@ await check("float previews match projected media bounds", async () => {
         editor.features.manipulation.showFloatDropPreview(target, side, "transfer", source)
         doc.body.dispatchEvent(new events.DragEvent("drop", {dataTransfer, clientX:x, clientY:y, bubbles:true, composed:true, cancelable:true}))
         await layoutFrame()
-        assert(source.style.float === side, `native drop did not apply ${side} at ${width}: ${source.outerHTML}; body=${doc.body.innerHTML}`)
+        assert(source.classList.contains(side === "left" ? "ww-float-left" : "ww-float-right") && !source.style.float, `native drop did not apply ${side} as a class at ${width}: ${source.outerHTML}; body=${doc.body.innerHTML}`)
         matches(preview, source.getBoundingClientRect(), `${side} moved video at ${width}px (float=${view.getComputedStyle(source).float}, margins=${view.getComputedStyle(source).marginLeft},${view.getComputedStyle(source).marginRight}, padding=${view.getComputedStyle(doc.body).paddingLeft},${view.getComputedStyle(doc.body).paddingRight})`)
         editor.features.manipulation.setElementStyles(source, {"--ww-float-size":"min(100%, var(--ww-float-width), 180px)", "max-width":"180px"})
         await layoutFrame()
@@ -2127,7 +2132,7 @@ await check("float previews match projected media bounds", async () => {
         doc.body.dispatchEvent(new events.DragEvent("drop", init))
         await layoutFrame()
         const inserted = target.previousElementSibling as HTMLVideoElement
-        assert(inserted?.localName === "video" && inserted.style.float === side, `ribbon drop did not keep the ${side} preview placement at ${width}px: ${inserted?.outerHTML}; ${doc.body.innerHTML}`)
+        assert(inserted?.localName === "video" && inserted.classList.contains(side === "left" ? "ww-float-left" : "ww-float-right") && !inserted.style.float, `ribbon drop did not keep the ${side} preview placement at ${width}px: ${inserted?.outerHTML}; ${doc.body.innerHTML}`)
         matches(preview, inserted.getBoundingClientRect(), `ribbon ${side} drop at ${width}px`)
         inserted.remove()
         await layoutFrame()
@@ -2184,14 +2189,26 @@ await check("lane media fills available width and resizes with native handles", 
     doc.head.append(theme)
     doc.querySelector("native-lane-widget")!.attachShadow({mode:"open"}).innerHTML = '<style>:host {width:100%;max-width:200px}</style>Widget'
     for(const target of doc.querySelectorAll<HTMLElement>("video, picture, native-lane-widget")) {
-      editor.features.manipulation.setFloat(target, "far-right")
+      frame.style.width = "360px"
       await layoutFrame()
-      assert(Math.abs(target.getBoundingClientRect().width - 704) < 1, `${target.localName} did not fill available side space`)
+      const body = doc.body.getBoundingClientRect(), bodyStyle = view.getComputedStyle(doc.body)
+      const contentWidth = body.width - parseFloat(bodyStyle.paddingLeft) - parseFloat(bodyStyle.paddingRight)
+      assert(Math.abs(target.getBoundingClientRect().width - contentWidth) < 1, `${target.localName} did not fill its default stacked column`)
+      editor.features.manipulation.setFloat(target, "far-right")
+      for(const viewport of [360, 700, 1000, 2400]) {
+        frame.style.width = `${viewport}px`
+        await layoutFrame()
+        const body = doc.body.getBoundingClientRect(), bodyStyle = view.getComputedStyle(doc.body)
+        const pageWidth = body.width - 2 * Math.min(32, Math.max(16, viewport * .02))
+        const expectedWidth = viewport < 600 ? body.width - parseFloat(bodyStyle.paddingLeft) - parseFloat(bodyStyle.paddingRight)
+          : viewport < 1200 ? Math.min(256, pageWidth - 300 - 16) : 704
+        assert(Math.abs(target.getBoundingClientRect().width - expectedWidth) < 1, `${target.localName} did not fill its column at ${viewport}px`)
+      }
       editor.features.selection.selectElement(target)
       await layoutFrame()
       const transform = editor.features.transformation
       const resize = async (delta: number, cancel = false) => {
-        const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+        const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
         const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
         handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true})
         handle.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, composed:true, button:0, clientX:x, clientY:y}))
@@ -2399,10 +2416,10 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
         const init = {dataTransfer, ...floatPoint(source, side), bubbles:true, cancelable:true, composed:true};
         peer.dispatchEvent(new DragEvent("dragover", init));
         peer.dispatchEvent(new DragEvent("drop", init));
-        assert(source.parentElement === main && source.style.float === side, "drop did not apply the expected preview float: " + side);
+        assert(source.parentElement === main && source.classList.contains(side === "left" ? "ww-float-left" : "ww-float-right") && !source.style.float, "drop did not apply the expected preview float class: " + side);
         assert(source.style.width === "120px" && source.style.height === "50px" && source.style.color === "teal", "float changed unrelated source styles");
-        assert(source.style.marginTop === "5px" && source.style.getPropertyValue("--ww-float-size"), "float lane spacing did not follow its half: " + side);
-        assert(source.style.maxWidth === "var(--ww-float-width)", "float cap did not follow its half: " + side);
+        assert(source.style.margin === "9px" && !source.style.maxWidth
+          && source.style.getPropertyValue("--ww-float-size").includes("120px"), "float command lost the authored width or injected lane spacing: " + side);
         assert(siblings.length === main.childNodes.length && siblings.every(node => main.contains(node)), "drag removed authored siblings or added a wrapper");
         assert(placement === "before" ? source.compareDocumentPosition(peer) & Node.DOCUMENT_POSITION_FOLLOWING : source.compareDocumentPosition(peer) & Node.DOCUMENT_POSITION_PRECEDING, "drop ignored vertical before/after placement");
         assert(!main.querySelector(".ww-column-group, [class*=ww-column-]"), "drag created column markup");
@@ -2426,7 +2443,9 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
         main.dispatchEvent(new DragEvent("dragover", init));
         assert(!editor.appendix.querySelector("#◆float-drop-preview"), "gap incorrectly showed a float preview");
         main.dispatchEvent(new DragEvent("drop", init));
-        assert(source.parentElement === main && getComputedStyle(source).float === "none" && !source.style.margin && !source.style.maxWidth, "ordinary gap drop retained float spacing or nesting");
+        assert(source.parentElement === main && getComputedStyle(source).float === "none"
+          && !source.classList.contains("ww-float-left") && !source.classList.contains("ww-float-right")
+          && source.style.margin === "9px" && !source.style.maxWidth, "ordinary gap drop retained float styling or lost authored margin");
         assert(source.style.width === "120px" && source.style.height === "50px" && source.style.color === "teal", "ordinary gap drop changed unrelated styles");
         if(placement === "before") assert(source.nextElementSibling === peer, "drop above peer did not insert before it");
         if(placement === "after") assert(source.previousElementSibling === peer, "drop below peer did not insert after it");
@@ -2444,8 +2463,8 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
         (overElement ? peer : main).dispatchEvent(new DragEvent("drop", init));
         const dropped = main.querySelector("picture");
         assert(dropped, "external image drop lost its content");
-        assert(dropped.style.float === (overElement ? "left" : ""), "external image drop ignored element bounds");
-        assert(overElement ? dropped.style.marginTop === "5px" && dropped.style.getPropertyValue("--ww-float-size") : !dropped.style.margin, "external image drop acquired incorrect float spacing: " + dropped.outerHTML);
+        assert(overElement ? dropped.classList.contains("ww-float-left") : !dropped.classList.contains("ww-float-left") && !dropped.classList.contains("ww-float-right"), "external image drop ignored element bounds");
+        assert(!dropped.style.float && !dropped.style.margin && !dropped.style.getPropertyValue("--ww-float-size"), "external image drop injected inline float spacing: " + dropped.outerHTML);
         dropped.remove();
       }
       for(const fraction of [0.35, 0.5, 0.65, null]) {
@@ -2460,8 +2479,9 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
         const preview = editor.appendix.querySelector("#◆float-drop-preview");
         assert(fraction === null ? !preview || preview.hidden : preview && !preview.hidden, "drag handle preview ignored element bounds");
         editor.features.transformation.handleMoveEnd();
-        assert(source.style.float === (fraction === null ? "" : fraction < 0.5 ? "left" : "right"), "drag handle did not use the preview areas");
-        assert(fraction === null ? !source.style.margin : source.style.marginTop === "5px" && source.style.getPropertyValue("--ww-float-size"), "handle drop acquired incorrect float spacing");
+        assert(fraction === null ? !source.classList.contains("ww-float-left") && !source.classList.contains("ww-float-right")
+          : source.classList.contains(fraction < 0.5 ? "ww-float-left" : "ww-float-right"), "drag handle did not use the preview areas");
+        assert(source.style.margin === "9px" && (fraction === null ? !source.style.getPropertyValue("--ww-float-size") : source.style.getPropertyValue("--ww-float-size").includes("120px")), "handle drop lost its authored margin or retained incorrect float sizing");
         if(fraction === null) assert(source.previousElementSibling === peer, "handle gap drop did not place source after the paragraph");
       }
       const picture = document.createElement("picture"), image = document.createElement("img"), text = document.createElement("p");
@@ -2483,7 +2503,8 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
       const firstLine = range.getClientRects()[0];
       assert(firstLine && Math.abs(firstLine.top - pictureRect.top) < 8, "first line is offset below the floated picture: " + JSON.stringify({picture:pictureRect.top, text:firstLine?.top, margin:getComputedStyle(text).marginTop}));
       assert(pictureRect.width > 256 && Math.abs(pictureRect.width - Math.max(256, (document.documentElement.clientWidth - 2 * Math.min(32, Math.max(16, document.documentElement.clientWidth * .02)) - 720) / 2 - 16)) < 1, "default picture did not fill its float lane");
-      assert(picture.style.marginTop === "5px" && picture.style.getPropertyValue("--ww-float-size"), "floated picture did not receive lane spacing");
+      assert(picture.classList.contains("ww-float-right") && !picture.style.float && !picture.style.margin && !picture.style.maxWidth
+        && picture.style.getPropertyValue("--ww-float-size").includes("100%"), "floated picture did not preserve its authored width through theme geometry");
       assert(firstLine && firstLine.bottom > pictureRect.top && firstLine.top < pictureRect.top + 24 && firstLine.right <= pictureRect.left - 5, "paragraph did not wrap beside the floated placeholder: " + JSON.stringify({picture:pictureRect, firstLine, parent:parentRect}));
       // Authored overrides can still put floats inside text; preserve contour coverage.
       const setOverlappingFloat = side => {
@@ -2555,9 +2576,9 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
       assert(Math.abs(range.getClientRects()[0].top - picture.getBoundingClientRect().top) < 8, "text and image did not align after a preceding block");
       preceding.remove();
       const html = new DOMParser().parseFromString(editor.toHTML(true), "text/html").querySelector("main").outerHTML;
-      assert(html.includes("float: right") && !html.includes("◆") && !html.includes("ww-column"), "float serialization retained editing artifacts or lost native CSS");
+      assert(html.includes("ww-float-right") && !html.includes("◆") && !html.includes("ww-column"), "float serialization retained editing artifacts or lost its float class");
       editor.features.manipulation.setFloat(picture, "none");
-      assert(picture.style.margin === "", "clearing float retained its 5px margin");
+      assert(!picture.classList.contains("ww-float-left") && !picture.classList.contains("ww-float-right") && !picture.style.margin, "clearing float retained float styling");
       await new Promise(requestAnimationFrame);
       assert(Math.abs(picture.getBoundingClientRect().width - parentRect.width) < 1, "clearing float did not restore the full-width image placeholder");
       const first = document.createElement("p"), second = document.createElement("p");

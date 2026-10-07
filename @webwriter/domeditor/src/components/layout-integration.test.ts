@@ -226,6 +226,22 @@ describe("layout host and toolbox integration", () => {
       .toEqual(["false", "true", "false"])
   })
 
+  it.each(["none", "right"])("keeps class-authored left placement selected when the responsive float is %s", async float => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
+    const toolbox = await settle(editor)
+    toolbox.elementStyle = {
+      ...styleState("flex"),
+      target: {...styleState("flex").target!, float: "far-left"},
+      inline: {},
+      computed: {display: "flex", float},
+    }
+    await toolbox.updateComplete
+    const buttons = Array.from(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Float"]')!
+      .querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"])
+  })
+
   it("exposes narrow preview in the document layout drawer", async () => {
     const {editor} = await mountEditor()
     const toolbox = await settle(editor)
