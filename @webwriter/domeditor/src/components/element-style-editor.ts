@@ -1,7 +1,8 @@
 import {LitElement, css, html, nothing} from "lit"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {ref} from "lit/directives/ref.js"
-import "./document-head-editor"
+import "./style-combobox"
+import type {StyleCombobox} from "./style-combobox"
 import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
 import {
   cssWideKeywords,
@@ -179,12 +180,16 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .specialized-input .length-control input {flex: 1; width: 0; border: 0; background: transparent;}
     :host([mode="compact"]) .specialized-input .length-control select {width: 2.8rem; border: 0; border-left: 1px solid #c5ccd5; border-radius: 0; background: transparent;}
     .specialized-input > input, .specialized-input > select {width: 100%; min-width: 0; border-radius: 4px;}
-    .specialized-input document-head-combobox {flex: 1; min-width: 0;}
-    .specialized-input:has(document-head-combobox) {border: 0;}
+    .specialized-input style-combobox {flex: 1; min-width: 0;}
+    .specialized-input:has(style-combobox) {border: 0;}
+    style-combobox {flex: 1; min-width: 0;}
     .specialized-input:has(.specialized-choice-group) {border: 0; align-items: center;}
-    .specialized-input .property-action {flex: 0 0 1.2rem; border: 0; background: transparent; color: #666;}
-    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 1px 1px 0; background: transparent; flex: 1; min-width: 0; overflow: visible; border: 0; border-radius: 0;}
-    .specialized-choice-group button {box-sizing: border-box; margin: 0 -1px -1px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: 1px solid #c5ccd5; border-radius: 0; background: #f2f2f2; color: inherit; font: inherit; font-size: .6rem; cursor: pointer;}
+    .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
+    .field-label .property-action {flex: 0 0 .9rem; width: .9rem; height: .9rem; margin-left: auto; padding: 0; border: 0; background: transparent; color: #666; font: inherit; cursor: pointer;}
+    .compact-row > .field-label {flex: 0 0 4.4rem;}
+    .effect-control.compact-row > .field-label {flex: none;}
+    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; flex: 1; min-width: 0; overflow: visible; border: 0; border-radius: 0;}
+    .specialized-choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-radius: 0; background: #f2f2f2; color: inherit; font: inherit; font-size: .6rem; cursor: pointer;}
     .specialized-choice-group button:first-child {border-top-left-radius: 4px;}
     .specialized-choice-group button:last-child {border-bottom-right-radius: 4px;}
     .specialized-choice-group button[data-top-right] {border-top-right-radius: 4px;}
@@ -820,6 +825,9 @@ export class ElementStyleEditor extends LitElement {
       ? this.renderRoot.querySelector(`#compact-${this.compactMenu}`)?.closest(".compact-value")
       : null
     if(!active || !path.includes(active)) this.compactMenu = null
+    this.renderRoot.querySelectorAll<StyleCombobox>("style-combobox").forEach(combobox => {
+      if(!path.includes(combobox)) combobox.close()
+    })
     this.renderRoot.querySelectorAll<HTMLDetailsElement>(".border-picker[open], .border-color-picker[open]").forEach(picker => {
       if(!path.includes(picker)) picker.open = false
     })
@@ -827,6 +835,7 @@ export class ElementStyleEditor extends LitElement {
 
   private syncCompactPopupState = () => {
     this.toggleAttribute("popup-open", Boolean(this.compactMenu
+      || this.renderRoot.querySelector("style-combobox[popup-open]")
       || this.renderRoot.querySelector(".border-picker[open], .border-color-picker[open]")))
   }
 
@@ -921,24 +930,13 @@ export class ElementStyleEditor extends LitElement {
   private renderSelect(definition: ElementStylePropertyDefinition, declaration?: ElementStyleDeclaration) {
     const current = this.editableValue(definition.name)
     const options = definition.values ?? []
-    const hasUnlistedValue = Boolean(current && !options.includes(current))
     const computed = this.state.computed[definition.name]?.trim() ?? ""
-    return html`
-      <select
-        aria-labelledby=${`style-label-${definition.name}`}
-        data-computed=${!current && computed ? "" : nothing}
-        .value=${current}
-        @change=${(event: Event) => this.commitValue(
-          definition.name,
-          (event.currentTarget as HTMLSelectElement).value,
-          declaration,
-        )}
-      >
-        <option value="">${computed || "Not set"}</option>
-        ${hasUnlistedValue ? html`<option value=${current}>${current}</option>` : nothing}
-        ${options.map(option => html`<option value=${option}>${option}</option>`)}
-      </select>
-    `
+    return html`<style-combobox .label=${definition.label} .editable=${false} .value=${current}
+      .options=${[{value: "", label: computed || "Default"},
+        ...(current && !options.includes(current) ? [{value: current, label: current}] : []),
+        ...options.map(value => ({value, label: value}))]}
+      @combobox-change=${(event: CustomEvent<{value: string}>) => this.commitValue(definition.name, event.detail.value, declaration)}
+    ></style-combobox>`
   }
 
   private renderLength(definition: ElementStylePropertyDefinition, declaration?: ElementStyleDeclaration) {
@@ -1232,68 +1230,25 @@ export class ElementStyleEditor extends LitElement {
     const displayed = percentage && value.trim() && Number.isFinite(Number(value))
       ? String(Number((Number(value) * 100).toPrecision(15)))
       : unit && value.endsWith(unit) ? value.slice(0, -unit.length) : value
-    const open = this.compactMenu === name
-    return html`<div class=${`compact-value${open ? " open" : ""}`}
-      @keydown=${(event: KeyboardEvent) => {
-        if(event.key === "Escape") {
-          this.compactMenu = null
-          if(event.target instanceof HTMLInputElement) this.dispatchEvent(new CustomEvent("ribbon-input-cancel", {
-            detail: {input: event.target}, bubbles: true, composed: true,
-          }))
-          event.stopPropagation()
+    const labels = name === "opacity" ? ["Invisible", "Faint", "Half", "Mostly opaque", "Opaque"]
+      : name === "scale" ? ["Half", "Small", "Original", "Large", "One and a half"]
+      : name === "rotate" ? ["Quarter left", "Eighth left", "Straight", "Eighth right", "Quarter right"]
+      : ["Tiny", "Small", "Medium", "Large", "Huge"]
+    return html`<style-combobox id=${`compact-${name}`} .label=${label} .showValue=${true}
+      .value=${displayed} .unit=${unit} .joined=${name === "border-width"} .persistent=${false} placeholder="Default"
+      .options=${presets.map((preset, index) => ({value: String(preset), label: labels[index], description: `${preset}${unit === "deg" ? "°" : unit}`}))}
+      @combobox-change=${(event: CustomEvent<{value: string}>) => {
+        const raw = event.detail.value.trim()
+        const next = raw ? percentage ? String(Number(raw) / 100) : `${raw}${unit}` : ""
+        if(raw && (!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !CSS.supports(name, next)
+          || name === "opacity" && (Number(raw) < 0 || Number(raw) > 100))) {
+          const combo = event.currentTarget as import("./style-combobox").StyleCombobox
+          combo.value = displayed
+          combo.close(true)
+          return
         }
-        if(event.key === "Enter" && event.target instanceof HTMLInputElement && !event.isComposing) {
-          event.preventDefault()
-          event.target.blur()
-          this.compactMenu = null
-        }
-        if(event.key === "ArrowDown" && presets.length) {
-          event.preventDefault()
-          this.compactMenu = name
-          void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLButtonElement>(`#presets-${name} button`)?.focus())
-        }
-      }}>
-      <div class="compact-input">
-        <input id=${`compact-${name}`} aria-label=${label} inputmode="decimal"
-          role=${presets.length ? "combobox" : nothing} aria-autocomplete=${presets.length ? "none" : nothing}
-          aria-expanded=${presets.length ? String(open) : nothing} aria-controls=${presets.length ? `presets-${name}` : nothing}
-          .value=${displayed} placeholder="Default"
-          @focus=${() => { if(presets.length) this.compactMenu = name }}
-          @blur=${(event: FocusEvent) => {
-            const options = this.renderRoot.querySelector(`#presets-${name}`)
-            if(event.relatedTarget instanceof Node && options?.contains(event.relatedTarget)) return
-            if(this.compactMenu === name) this.compactMenu = null
-          }}
-          @change=${(event: Event) => {
-            const input = event.currentTarget as HTMLInputElement
-            const raw = input.value.trim()
-            const next = raw ? percentage ? String(Number(raw) / 100) : `${raw}${unit}` : ""
-            if(raw && (!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !CSS.supports(name, next)
-              || name === "opacity" && (Number(raw) < 0 || Number(raw) > 100))) {
-              input.value = displayed
-              return
-            }
-            this.commitCompactValue(name, next)
-          }}>
-        ${presets.length ? html`<button type="button" class="compact-toggle" aria-label=${`${label} presets`}
-          aria-expanded=${open} aria-controls=${`presets-${name}`}
-          @click=${() => this.compactMenu = open ? null : name}>${ribbonIcon("ChevronRight")}</button>` : nothing}
-        ${unit ? html`<span class="compact-unit" aria-hidden="true">${unit === "deg" ? "°" : unit}</span>` : nothing}
-      </div>
-      ${presets.length ? html`<div class="compact-options" id=${`presets-${name}`} role="listbox" aria-label=${`${label} presets`} ?hidden=${!open}
-        @pointerdown=${(event: PointerEvent) => event.preventDefault()}
-        @mousedown=${(event: MouseEvent) => event.preventDefault()}>
-        ${presets.map((preset, index) => html`<button type="button" role="option" aria-selected=${value === (percentage ? String(preset / 100) : `${preset}${unit}`)}
-          @click=${(event: MouseEvent) => {
-            const keyboardFocus = this.shadowRoot?.activeElement === event.currentTarget
-            this.commitCompactValue(name, percentage ? String(preset / 100) : `${preset}${unit}`)
-            const input = this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!
-            input.value = String(preset)
-            if(keyboardFocus) input.focus()
-            this.compactMenu = null
-          }}><span>${(name === "opacity" ? ["Invisible", "Faint", "Half", "Mostly opaque", "Opaque"] : name === "scale" ? ["Half", "Small", "Original", "Large", "One and a half"] : name === "rotate" ? ["Quarter left", "Eighth left", "Straight", "Eighth right", "Quarter right"] : ["Tiny", "Small", "Medium", "Large", "Huge"])[index]}</span><span class="compact-option-value">${preset}${unit === "deg" ? "°" : unit}</span></button>`)}
-      </div>` : nothing}
-    </div>`
+        this.commitCompactValue(name, next)
+      }}></style-combobox>`
   }
 
   private renderCompactColorPicker(property = "border-color", label = "Border color") {
@@ -1358,7 +1313,7 @@ export class ElementStyleEditor extends LitElement {
     const value = this.declaration(name)?.value ?? ""
     const open = this.compactMenu === name
     return html`<div class="compact-row effect-control" data-property=${name}>
-      <label id=${`label-${name}`} for=${`compact-${name}`}>${label}</label>
+      ${this.renderCompactLabel(name, label, `label-${name}`)}
       <div class="compact-controls"><div class=${`compact-value ${open ? "open" : ""}`}
         @focusout=${(event: FocusEvent) => {
           if(event.relatedTarget instanceof Node && (event.currentTarget as HTMLElement).contains(event.relatedTarget)) return
@@ -1451,29 +1406,35 @@ export class ElementStyleEditor extends LitElement {
             : definition.name === "text-indent"
               ? [{label: "None", value: "0"}, {label: "Small", value: "1em"}, {label: "Medium", value: "2em"}, {label: "Large", value: "4em"}]
               : [{label: "None", value: "0"}, {label: "Compact", value: "2px"}, {label: "Comfortable", value: "4px"}, {label: "Spacious", value: "8px"}]
-    return html`<document-head-combobox .showValue=${true} .label=${definition.label}
+    return html`<style-combobox .showValue=${true} .label=${definition.label}
       .value=${this.editableValue(definition.name)} placeholder="Default" .options=${suggestions}
       @combobox-change=${(event: CustomEvent<{value: string}>) => {
         const value = event.detail.value.trim()
         if(!value || CSS.supports(definition.name, value)) this.commitValue(definition.name, value)
         else {
-          const combo = event.currentTarget as import("./document-head-editor").DocumentHeadCombobox
+          const combo = event.currentTarget as import("./style-combobox").StyleCombobox
           combo.value = this.editableValue(definition.name)
           combo.close(true)
         }
-      }}></document-head-combobox>`
+      }}></style-combobox>`
+  }
+
+  private renderCompactLabel(name: string, label: string, id = `style-label-${name}`) {
+    return html`<span class="field-label"><span id=${id}>${label}</span>
+      <button type="button" class="property-action" style=${this.declaration(name) ? "" : "visibility: hidden"}
+        title=${`Clear ${label}`} aria-label=${`Clear ${label}`}
+        @click=${() => this.dispatchChange(name, null)}>×</button>
+    </span>`
   }
 
   private renderCompactProperty(definition: ElementStylePropertyDefinition) {
     return html`<div class="compact-row" data-property=${definition.name}>
-      <label class="compact-label" id=${`style-label-${definition.name}`}>${definition.label}</label>
+      ${this.renderCompactLabel(definition.name, definition.label)}
       <div class="compact-controls specialized-input">
         ${definition.control === "number" || definition.control === "length" || ["line-height", "border-spacing", "math-depth"].includes(definition.name)
           ? this.renderSpecializedNumber(definition) : definition.control === "select" && definition.values?.length && definition.values.length <= 8
           && definition.values.every(value => value.length <= 14)
           ? this.renderCompactChoices(definition) : this.renderInput(definition, this.declaration(definition.name))}
-        ${this.declaration(definition.name) ? html`<button type="button" class="property-action"
-          aria-label=${`Clear ${definition.label}`} @click=${() => this.dispatchChange(definition.name, null)}>×</button>` : nothing}
       </div>
     </div>`
   }
@@ -1512,7 +1473,7 @@ export class ElementStyleEditor extends LitElement {
 
   private renderCompact() {
     const borderStyle = this.declaration("border-style")?.value || this.state.computed["border-style"] || "solid"
-    return html`<div @mouseenter=${() => this.dispatchTargetHover(true)} @mouseleave=${() => this.dispatchTargetHover(false)}
+    return html`<div @combobox-toggle=${this.syncCompactPopupState} @mouseenter=${() => this.dispatchTargetHover(true)} @mouseleave=${() => this.dispatchTargetHover(false)}
       @change=${(event: Event) => {
         // Native change events do not cross the component's shadow boundary.
         if(event.target instanceof HTMLInputElement) this.dispatchEvent(new CustomEvent("ribbon-input-commit", {
@@ -1529,12 +1490,12 @@ export class ElementStyleEditor extends LitElement {
           return name === effects[0] ? html`<div class="effect-fields">${effects.map(property => this.renderCompactEffect(property))}</div>` : nothing
         }
         if(name === "background-color" || name === "color") return html`<div class="compact-row" data-property=${name}>
-          <span class="compact-label">${name === "color" ? "Text color" : "Background"}</span>
+          ${this.renderCompactLabel(name, name === "color" ? "Text color" : "Background")}
           <div class="compact-controls background-control">${this.renderCompactColorPicker(name, name === "color" ? "Text color" : "Background color")}</div>
         </div>`
         const label = name === "border-width" ? "Border" : name === "border-radius" ? "Rounding" : name[0].toUpperCase() + name.slice(1)
         return html`<div class="compact-row" data-property=${name}>
-          <label for=${`compact-${name}`}>${label}</label>
+          ${this.renderCompactLabel(name, label)}
           <div class="compact-controls">
           ${name === "border-width" ? html`<div class="border-group">
             <details class="border-picker" @toggle=${this.syncCompactPopupState}>

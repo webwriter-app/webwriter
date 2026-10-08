@@ -699,20 +699,25 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
+  protected get useStyleCombobox() { return false }
+
+  protected renderOptionSelect(label: string, value: string, options: readonly {value: string, label: string}[],
+    disabled: boolean, onChange: (value: string) => void) {
+    if(this.useStyleCombobox) return html`<style-combobox .label=${label} .value=${value} .editable=${false}
+      .options=${options} .disabled=${disabled}
+      @combobox-change=${(event: CustomEvent<{value: string}>) => onChange(event.detail.value)}></style-combobox>`
+    return html`<select aria-label=${label} .value=${value} ?disabled=${disabled}
+      @change=${(event: Event) => onChange((event.currentTarget as HTMLSelectElement).value)}>
+      ${options.map(option => html`<option value=${option.value} ?selected=${option.value === value}>${option.label}</option>`)}
+    </select>`
+  }
+
   protected renderSectionTypeSelect(label = "Section type") {
     return html`
       <label class="mark-attribute section-type-select">
         <span>${label}</span>
-        <select
-          aria-label=${label}
-          .value=${this.sectionType}
-          ?disabled=${!this.canSection}
-          @change=${this.dispatchSectionType}
-        >
-          ${sectionOptions.map(option => html`
-            <option value=${option.value}>${option.label}</option>
-          `)}
-        </select>
+        ${this.renderOptionSelect(label, this.sectionType, sectionOptions, !this.canSection, section =>
+          this.dispatchEvent(new CustomEvent("section-type-change", {detail: {section}, bubbles: true, composed: true})))}
       </label>
     `
   }
@@ -801,17 +806,10 @@ export abstract class EditingControls extends LitElement {
         </label>
         <label class="mark-attribute">
           <span>Numbering</span>
-          <select
-            .value=${this.orderedList.numbering}
-            @change=${(event: Event) => this.dispatchListAttribute("type", (event.currentTarget as HTMLSelectElement).value)}
-          >
-            <option value="">Automatic</option>
-            <option value="1">1, 2, 3</option>
-            <option value="a">a, b, c</option>
-            <option value="A">A, B, C</option>
-            <option value="i">i, ii, iii</option>
-            <option value="I">I, II, III</option>
-          </select>
+          ${this.renderOptionSelect("Numbering", this.orderedList.numbering,
+            [{value: "", label: "Automatic"}, {value: "1", label: "1, 2, 3"}, {value: "a", label: "a, b, c"},
+              {value: "A", label: "A, B, C"}, {value: "i", label: "i, ii, iii"}, {value: "I", label: "I, II, III"}],
+            false, value => this.dispatchListAttribute("type", value))}
         </label>
         <label class="mark-attribute">
           <span>Count backwards</span>
@@ -1968,16 +1966,9 @@ export abstract class EditingControls extends LitElement {
       <div class="graphic-inline-controls graphic-connector-controls" role="group" aria-label="Connector settings">
         <label class="mark-attribute graphic-parameter">
           <span>Routing</span>
-          <select
-            data-ribbon-input-persistent
-            aria-label="Graphic: Connector routing"
-            .value=${parameters.routing ?? "orthogonal"}
-            ?disabled=${disabled}
-            @change=${(event: Event) => this.dispatchGraphicParameter("routing", event)}
-          >
-            <option value="straight">Straight</option>
-            <option value="orthogonal">Orthogonal</option>
-          </select>
+          ${this.renderOptionSelect("Graphic: Connector routing", parameters.routing ?? "orthogonal",
+            [{value: "straight", label: "Straight"}, {value: "orthogonal", label: "Orthogonal"}],
+            disabled, value => this.dispatchGraphicParameterValue("routing", value))}
         </label>
         <label class="mark-attribute graphic-parameter graphic-boolean-parameter">
           <span>Start arrow</span>

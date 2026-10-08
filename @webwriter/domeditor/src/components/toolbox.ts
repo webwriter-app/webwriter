@@ -15,6 +15,7 @@ import {documentLayoutPreviewStyles, renderDocumentLayoutCard, renderDocumentLay
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
 import {mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
+import "./style-combobox"
 import {graphicShapeOptions} from "../graphic"
 import type {WidgetOptionState} from "../widget-options"
 
@@ -101,9 +102,9 @@ export class DomEditorToolbox extends EditingControls {
     .float-action-controls {padding: .4rem 0; gap: .125rem}
     .float-placement-label {font-size: .65rem; color: var(--sl-color-neutral-600, #666)}
     .float-button-group {display: flex; width: 100%; gap: 0}
-    .float-button-group button {display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-radius: 0}
+    .float-button-group button {display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
     .float-button-group .float-move {flex: 0 0 auto; padding: .35rem .2rem}
-    .float-button-group button + button {margin-left: -1px}
+    .float-button-group button + button {margin-left: -.5px}
     .float-button-group button:first-child {border-radius: .2rem 0 0 .2rem}
     .float-button-group button:last-child {border-radius: 0 .2rem .2rem 0}
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
@@ -476,6 +477,7 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     :host([active-tool="Edit"]) .toolbox-pane-content {
+      padding-right: 2px;
       scrollbar-gutter: stable both-edges;
       --ribbon-drawer-pane-padding-inline: 0;
     }
@@ -502,8 +504,8 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-widget-primary {font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-options .develop-field, .specialized-widget-primary .develop-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center;}
     .specialized-widget-primary input, .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
-    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 1px 1px 0; background: transparent; min-width: 0; min-height: 1.7rem; border: 0; border-radius: 0; overflow: visible;}
-    .specialized-choice-group button {box-sizing: border-box; margin: 0 -1px -1px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: 1px solid #c5ccd5; background: #f2f2f2; color: inherit; font: .6rem system-ui, sans-serif; cursor: pointer;}
+    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; min-width: 0; min-height: 1.7rem; border: 0; border-radius: 0; overflow: visible;}
+    .specialized-choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; background: #f2f2f2; color: inherit; font: .6rem system-ui, sans-serif; cursor: pointer;}
     .specialized-choice-group button:first-child {border-top-left-radius: 4px;}
     .specialized-choice-group button:last-child {border-bottom-right-radius: 4px;}
     .specialized-choice-group button[data-top-right] {border-top-right-radius: 4px;}
@@ -513,7 +515,11 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
     .specialized-choice-group button:hover {background: #edf3f9;}
     .specialized-choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
+    .media-toolbox-controls .media-attribute style-combobox {width: 100%;}
     .specialized-options {display: flex; flex-direction: column; gap: .4rem; min-width: 0;}
+    .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
+    .field-label .field-clear {flex: 0 0 .9rem; width: .9rem; height: .9rem; margin-left: auto; padding: 0; border: 0; background: transparent; color: #666; font: inherit; cursor: pointer;}
+    .field-clear:focus-visible {outline: 2px solid #b9d7f5;}
     .specialized-commands {display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-commands .mark-attribute, .specialized-commands .table-caption-toggle {width: 100%;}
     .specialized-options input, .specialized-options select {min-width: 0; border: 1px solid #c5ccd5; border-radius: 4px; background: #fff; font: inherit;}
@@ -777,24 +783,66 @@ export class DomEditorToolbox extends EditingControls {
     `
   }
 
+  private renderFieldLabel(label: string, hasValue: boolean, clear: () => void, id?: string, disabled = false) {
+    return html`<span class="field-label"><span id=${id ?? nothing}>${label}</span>
+      <button type="button" class="field-clear" style=${hasValue ? "" : "visibility: hidden"} title=${`Clear ${label}`} aria-label=${`Clear ${label}`}
+        ?disabled=${disabled} @click=${clear}>×</button>
+    </span>`
+  }
+
+  protected get useStyleCombobox() { return true }
+
+  protected renderMediaResourceAttribute(resource: import("../media").TimedMediaResourceType,
+    row: import("../media").TimedMediaResourceState, option: MediaAttributeOption) {
+    if(option.kind !== "select") return super.renderMediaResourceAttribute(resource, row, option)
+    const value = row.attributes[option.name] ?? option.options?.[0]?.value ?? ""
+    const options = option.options ?? []
+    return html`<div class="media-attribute">${this.renderFieldLabel(option.label, Object.hasOwn(row.attributes, option.name),
+      () => this.dispatchMediaResourceAction({action: "set-attribute", resource, index: row.index, expected: row.attributes,
+        attribute: option.name, value: null}))}
+      <style-combobox .label=${`${resource === "source" ? "Source" : "Track"}: ${option.label}`} .value=${value} .editable=${false}
+        .options=${[...(!options.some(item => item.value === value) ? [{value, label: value}] : []), ...options]}
+        @combobox-change=${(event: CustomEvent<{value: string}>) => this.dispatchMediaResourceAction({
+          action: "set-attribute", resource, index: row.index, expected: row.attributes,
+          attribute: option.name, value: event.detail.value || null,
+        })}></style-combobox>
+    </div>`
+  }
+
   protected renderListNumberInput(name: "start" | "value", value: string, placeholder: string) {
-    return html`<document-head-combobox .showValue=${true} .label=${name === "start" ? "Start at" : "Item number"}
+    return html`<style-combobox .showValue=${true} .label=${name === "start" ? "Start at" : "Item number"}
       .value=${value} .placeholder=${placeholder}
       .options=${[{label: "First", value: "1"}, {label: "Second", value: "2"}, {label: "Third", value: "3"}]}
       @combobox-change=${(event: CustomEvent<{value: string}>) => {
         const value = event.detail.value.trim()
         if(!value || Number.isInteger(Number(value))) this.dispatchListAttribute(name, value || null)
-      }}></document-head-combobox>`
+      }}></style-combobox>`
   }
 
   protected renderMediaAttribute(type: MediaType, option: MediaAttributeOption) {
-    if(option.kind !== "select" || !option.options?.length || option.options.length > 8
-      || option.options.some(item => item.label.length > 14)) return super.renderMediaAttribute(type, option)
+    if(option.kind !== "select") return super.renderMediaAttribute(type, option)
+    const fieldLabel = this.renderFieldLabel(option.label, Object.hasOwn(this.media?.attributes ?? {}, option.name),
+      () => this.dispatchEvent(new CustomEvent("media-attribute-change", {
+        detail: {type, attribute: option.name, value: null}, bubbles: true, composed: true,
+      })), `media-label-${option.name}`, !this.mediaSelectionMatches(type))
+    if(!option.options?.length || option.options.length > 8 || option.options.some(item => item.label.length > 14)) {
+      const active = this.mediaSelectionMatches(type)
+      const value = active ? this.media?.attributes[option.name] ?? "" : ""
+      const options = option.options ?? []
+      return html`<div class="media-attribute">${fieldLabel}
+        <style-combobox .label=${`${this.mediaLabel(type)}: ${option.label}`} .editable=${false}
+          .value=${value} .disabled=${!active}
+          .options=${[...(value && !options.some(item => item.value === value) ? [{value, label: value}] : []), ...options]}
+          @combobox-change=${(event: CustomEvent<{value: string}>) => this.dispatchEvent(new CustomEvent("media-attribute-change", {
+            detail: {type, attribute: option.name, value: event.detail.value || null}, bubbles: true, composed: true,
+          }))}></style-combobox>
+      </div>`
+    }
     const active = this.mediaSelectionMatches(type)
     const value = active ? this.media?.attributes[option.name] ?? "" : ""
     const columns = Math.min(4, Math.ceil(option.options.length / (option.options.length > 4 ? 2 : 1)))
     return html`<div class="media-attribute">
-      <span id=${`media-label-${option.name}`}>${option.label}</span>
+      ${fieldLabel}
       <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`media-label-${option.name}`}>
         ${option.options.map((item, index) => html`<button type="button"
           ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.options!.length - 1) / columns) * columns}
@@ -808,13 +856,16 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   protected renderWidgetOptionField(option: WidgetOptionState) {
+    const fieldLabel = this.renderFieldLabel(option.label,
+      option.value !== null && option.value !== "" && (!Array.isArray(option.value) || option.value.length > 0),
+      () => this.dispatchWidgetOption(option.name, null), `widget-label-${option.name}`)
     if(option.type === "number") {
       const candidates = [option.min ?? 0, option.min === undefined ? 1 : option.min + (option.step ?? 1),
         option.max ?? (option.min ?? 0) + 10 * (option.step ?? 1)]
       const presets = [...new Set(candidates)].filter(value => (option.min === undefined || value >= option.min)
         && (option.max === undefined || value <= option.max))
-      return html`<div class="develop-field"><span>${option.label}</span>
-        <document-head-combobox .showValue=${true} .label=${option.label} .value=${option.value === null ? "" : String(option.value)}
+      return html`<div class="develop-field">${fieldLabel}
+        <style-combobox .showValue=${true} .label=${option.label} .value=${option.value === null ? "" : String(option.value)}
           placeholder=${option.placeholder ?? "Default"} .options=${presets.map((value, index) => ({value: String(value), label: ["Low", "Medium", "High"][index]}))}
           @combobox-change=${(event: CustomEvent<{value: string}>) => {
             const value = event.detail.value.trim()
@@ -822,18 +873,29 @@ export class DomEditorToolbox extends EditingControls {
             if(!value || Number.isFinite(number) && (option.min === undefined || number >= option.min)
               && (option.max === undefined || number <= option.max)) this.dispatchWidgetOption(option.name, value ? number : null)
             else {
-              const combo = event.currentTarget as import("./document-head-editor").DocumentHeadCombobox
+              const combo = event.currentTarget as import("./style-combobox").StyleCombobox
               combo.value = option.value === null ? "" : String(option.value)
               combo.close(true)
             }
-          }}></document-head-combobox>
+          }}></style-combobox>
       </div>`
     }
-    if(option.type !== "select" || option.multiple || !option.choices?.length || option.choices.length > 8
-      || option.choices.some(choice => choice.label.length > 14)) return super.renderWidgetOptionField(option)
+    if(option.type !== "select") return super.renderWidgetOptionField(option)
+    if(option.multiple || !option.choices?.length || option.choices.length > 8 || option.choices.some(choice => choice.label.length > 14)) {
+      const value = option.value === null ? "" : String(option.value)
+      const choices = option.choices ?? []
+      return html`<div class="develop-field">${fieldLabel}
+        <style-combobox .label=${option.label} .editable=${false} .multiple=${Boolean(option.multiple)}
+          .values=${Array.isArray(option.value) ? option.value.map(String) : []} .value=${value}
+          .options=${[...(!option.multiple ? [{value: "", label: "Default"}] : []),
+            ...(!option.multiple && value && !choices.some(choice => choice.value === value) ? [{value, label: value}] : []), ...choices]}
+          @combobox-change=${(event: CustomEvent<{value: string, values?: string[]}>) => this.dispatchWidgetOption(option.name, option.multiple ? event.detail.values ?? [] : event.detail.value || null)}
+        ></style-combobox>
+      </div>`
+    }
     const columns = Math.min(4, Math.ceil(option.choices.length / (option.choices.length > 4 ? 2 : 1)))
     return html`<div class="develop-field" title=${option.description ?? ""}>
-      <span class="develop-field-label" id=${`widget-label-${option.name}`}>${option.label}</span>
+      ${fieldLabel}
       <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${option.name}`}>
         ${option.choices.map((choice, index) => html`<button type="button"
           ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.choices!.length - 1) / columns) * columns}
@@ -856,6 +918,9 @@ export class DomEditorToolbox extends EditingControls {
     const primary = profile?.primary ?? []
     const advanced = profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
+    const properties = [...new Set([...primary, ...advanced])]
+    const resetStyles = Object.fromEntries(properties.filter(name => Object.hasOwn(this.elementStyle.inline, name)).map(name => [name, null]))
+    const configuredWidgetOptions = this.widgetOptions?.options.filter(option => option.value !== null && option.value !== "") ?? []
     const count = advanced.filter(name => Object.hasOwn(this.elementStyle.inline, name)).length
       + Object.keys({...attributes?.attributes, ...this.media?.attributes}).filter(name => name !== "style").length
       + (this.widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== ""
@@ -864,6 +929,14 @@ export class DomEditorToolbox extends EditingControls {
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     return html`<ribbon-drawer label=${label} icon=${attributes?.icon ?? label} layout="element-style"
       show-pane-icon expandable .advancedCount=${count} data-specialized=${localName}>
+      <button type="button" class="style-reset" slot="heading-action" title="Reset element styles" aria-label="Reset element styles"
+        ?disabled=${!Object.keys(resetStyles).length && !configuredWidgetOptions.length}
+        @click=${() => {
+          if(Object.keys(resetStyles).length) this.dispatchEvent(new CustomEvent("element-style-change", {
+            detail: {styles: resetStyles}, bubbles: true, composed: true,
+          }))
+          configuredWidgetOptions.forEach(option => this.dispatchWidgetOption(option.name, null))
+        }}>${ribbonIcon("Restore")}Reset</button>
       ${this.widgetOptions ? html`<div class="widget-options specialized-widget-primary">${this.widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option))}</div>` : nothing}
       <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary} .state=${this.elementStyle}></element-style-editor>
       <div slot="more" class="specialized-options">

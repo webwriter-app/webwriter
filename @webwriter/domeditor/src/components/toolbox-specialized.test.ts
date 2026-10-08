@@ -53,7 +53,7 @@ describe("specialized element toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
   })
 
-  it("uses button choices for compact CSS enums and retains selects for complex values", async () => {
+  it("uses button choices for compact CSS enums and shared comboboxes for complex values", async () => {
     const math = await mountElement("math")
     math.elementStyle = {...math.elementStyle, inline: {"math-style": {value: "compact", priority: "important"}}}
     await math.updateComplete
@@ -102,7 +102,9 @@ describe("specialized element toolbox", () => {
       .querySelector<HTMLElement>(".specialized-options")!
     const paintOrder = advanced.querySelectorAll<ElementStyleEditor>("element-style-editor")[0]!
       .shadowRoot!.querySelector<HTMLElement>('[data-property="paint-order"]')!
-    expect(paintOrder.querySelector("select")).not.toBeNull()
+    const paintOrderCombo = paintOrder.querySelector<HTMLElement>("style-combobox")!
+    expect(paintOrderCombo).not.toBeNull()
+    expect((paintOrderCombo as HTMLElement & {editable: boolean}).editable).toBe(false)
   })
 
   it("shows compact fields first and places counted attributes and extra CSS controls under Options", async () => {
@@ -112,7 +114,13 @@ describe("specialized element toolbox", () => {
     expect(primary.shadowRoot!.querySelectorAll(".compact-row").length).toBeLessThanOrEqual(4)
     expect(primary.shadowRoot!.querySelector('[data-property="text-indent"]')).toBeNull()
     const options = drawer.querySelector<HTMLElement>(".specialized-options")!
+    expect(options.hasAttribute("popover")).toBe(false)
+    expect(drawer.expandable).toBe(true)
+    expect(options.slot).toBe("more")
     expect(options.querySelector("element-style-editor")).not.toBeNull()
+    const advancedEditor = options.querySelector<ElementStyleEditor>("element-style-editor")!
+    expect(advancedEditor.shadowRoot!.querySelector('[data-property="text-align"]')).toBeNull()
+    expect(advancedEditor.shadowRoot!.querySelector('[data-property="text-indent"]')).not.toBeNull()
     const attributeEditor = options.querySelector<ElementAttributeEditor>("element-attribute-editor")!
     expect(attributeEditor).not.toBeNull()
     expect(attributeEditor.hasAttribute("expanded")).toBe(true)
@@ -122,6 +130,45 @@ describe("specialized element toolbox", () => {
     expect(drawer.shadowRoot!.querySelector(".advanced-count")?.textContent).toBe("4")
     expect(drawer.shadowRoot!.querySelector(".drawer-toggle-label")?.textContent).toContain("Options")
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
+  })
+
+  it("resets all specialized style options while preserving universal styles and authored attributes", async () => {
+    const toolbox = await mountElement("p", {id: "intro"}, {"text-align": "center", "text-indent": "1em", color: "red", padding: "8px"})
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="p"]')!
+    const reset = drawer.querySelector<HTMLButtonElement>('.style-reset')!
+    const changes = vi.fn()
+    const attributeChanges = vi.fn()
+    toolbox.addEventListener("element-style-change", changes)
+    toolbox.addEventListener("element-attribute-change", attributeChanges)
+    expect(reset.slot).toBe("heading-action")
+    expect(reset.disabled).toBe(false)
+    expect(drawer.advancedCount).toBe(2)
+    reset.click()
+    expect(changes.mock.calls[0][0].detail).toEqual({styles: {"text-align": null, "text-indent": null}})
+    expect(attributeChanges).not.toHaveBeenCalled()
+    toolbox.elementStyle = styleState("p", {color: "red"})
+    await toolbox.updateComplete
+    expect(reset.disabled).toBe(true)
+  })
+
+  it("puts clear actions beside field labels only for authored values", async () => {
+    const toolbox = await mountElement("p", {}, {"text-align": "center", "line-height": "1.5"})
+    const editor = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="p"]')!
+      .querySelector<ElementStyleEditor>("element-style-editor")!
+    for(const name of ["text-align", "line-height"]) {
+      const row = editor.shadowRoot!.querySelector(`[data-property="${name}"]`)!
+      expect(row.querySelector(".field-label .property-action")).not.toBeNull()
+      expect(row.querySelector(".compact-controls .property-action")).toBeNull()
+    }
+    const changes = vi.fn()
+    toolbox.addEventListener("element-style-change", changes)
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[data-property="text-align"] .property-action')!.click()
+    expect(changes.mock.calls[0][0].detail).toMatchObject({property: "text-align", mutation: null})
+    toolbox.elementStyle = {...styleState("p"), computed: {"text-align": "center", "line-height": "1.5"}}
+    await toolbox.updateComplete
+    await editor.updateComplete
+    expect(Array.from(editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".property-action"))
+      .every(button => button.style.visibility === "hidden")).toBe(true)
   })
 
   it("keeps specialized controls inert during a history preview", async () => {
@@ -135,7 +182,7 @@ describe("specialized element toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!.inert).toBe(true)
   })
 
-  it("groups short widget choices and retains selects for long or multiple choices", async () => {
+  it("groups short widget choices and uses shared comboboxes for long or multiple choices", async () => {
     const toolbox = await mountElement("demo-widget")
     toolbox.widgetOptions = {
       path: [0], localName: "demo-widget", actions: [], options: [
@@ -151,7 +198,10 @@ describe("specialized element toolbox", () => {
     await toolbox.updateComplete
     const primary = toolbox.shadowRoot!.querySelector<HTMLElement>(".specialized-widget-primary")!
     expect(primary.querySelector('[aria-labelledby="widget-label-density"]')?.querySelectorAll("button")).toHaveLength(2)
-    expect(primary.querySelectorAll("select")).toHaveLength(2)
+    const combos = Array.from(primary.querySelectorAll<HTMLElement>("style-combobox")) as Array<HTMLElement & {multiple: boolean, values: readonly string[]}>
+    expect(combos).toHaveLength(2)
+    expect(combos.map(combo => combo.multiple)).toEqual([false, true])
+    expect(combos[1].values).toEqual(["a"])
     const changes = vi.fn()
     toolbox.addEventListener("widget-option-change", changes)
     primary.querySelector<HTMLButtonElement>('[aria-labelledby="widget-label-density"] button[aria-pressed="true"]')!.click()

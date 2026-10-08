@@ -32,6 +32,40 @@ async function mount(
   return editor
 }
 
+type StyleComboTestElement = HTMLElement & {value: string, unit: string, open: boolean, updateComplete: Promise<unknown>}
+
+const combo = (editor: ElementStyleEditor, name: string) =>
+  editor.shadowRoot!.querySelector<StyleComboTestElement>(`style-combobox#compact-${name}`)!
+
+const comboInput = (editor: ElementStyleEditor, name: string) =>
+  combo(editor, name).shadowRoot!.querySelector<HTMLInputElement>("input")!
+
+const comboOptions = (editor: ElementStyleEditor, name: string) =>
+  combo(editor, name).shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]')
+
+async function chooseComboOption(editor: ElementStyleEditor, name: string, label: string) {
+  const field = combo(editor, name)
+  if(!field.open) field.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+  await field.updateComplete
+  Array.from(field.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+    .find(option => option.querySelector(".option-code")?.textContent === label)!.click()
+  await field.updateComplete
+}
+
+async function openComboOptions(editor: ElementStyleEditor, name: string) {
+  const field = combo(editor, name)
+  if(!field.open) field.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+  await field.updateComplete
+  return field.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]')
+}
+
+function changeComboInput(editor: ElementStyleEditor, name: string, value: string) {
+  const input = comboInput(editor, name)
+  input.value = value
+  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+}
+
 describe("element style controls", () => {
   it("keeps controls enabled while the body target is loading", async () => {
     const editor = await mount(elementStyleCategories[0].basic, {
@@ -61,21 +95,23 @@ describe("element style controls", () => {
     expect(hovers).toEqual([true, false])
   })
 
-  it("uses select and dimension controls and commits serializable declarations", async () => {
+  it("uses shared enum and dimension controls and commits serializable declarations", async () => {
     const editor = await mount()
     const changes: ElementStyleChangeDetail[] = []
     editor.addEventListener("element-style-change", event => {
       changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail)
     })
-    const display = editor.shadowRoot!.querySelector<HTMLSelectElement>('[data-property="display"] select')!
+    const display = editor.shadowRoot!.querySelector<HTMLElement>('[data-property="display"] style-combobox')!
     const width = editor.shadowRoot!.querySelector<HTMLElement>('[data-property="width"]')!
 
     expect(display).not.toBeNull()
     expect(width.querySelector('input[type="number"]')).not.toBeNull()
     expect(width.querySelector("select")!.value).toBe("px")
 
-    display.value = "grid"
-    display.dispatchEvent(new Event("change", {bubbles: true}))
+    display.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await (display as StyleComboTestElement).updateComplete
+    Array.from(display.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+      .find(option => option.textContent?.includes("grid"))!.click()
     expect(changes.at(-1)).toEqual({
       property: "display",
       mutation: {value: "grid", priority: ""},
@@ -128,10 +164,11 @@ describe("element style controls", () => {
     })
     const property = (name: string) => editor.shadowRoot!.querySelector<HTMLElement>(`[data-property="${name}"]`)!
 
-    const display = property("display").querySelector("select")!
+    const display = property("display").querySelector<StyleComboTestElement>("style-combobox")!
     expect(display.value).toBe("")
-    expect(display.dataset.computed).toBe("")
-    expect(display.selectedOptions[0].textContent).toBe("block")
+    display.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await display.updateComplete
+    expect(display.shadowRoot!.querySelector('[role="option"][aria-selected="true"]')?.textContent).toContain("block")
 
     const width = property("width")
     expect(width.querySelector("input")!.value).toBe("")
@@ -285,8 +322,8 @@ describe("element style controls", () => {
     await editor.updateComplete
     expect(label().dataset.keyword).toBe("inherit")
     expect(label().textContent).not.toContain("inherit")
-    expect(editor.shadowRoot!.querySelector<HTMLSelectElement>(
-      '[data-property="display"] select',
+    expect(editor.shadowRoot!.querySelector<StyleComboTestElement>(
+      '[data-property="display"] style-combobox',
     )!.value).toBe("")
     label().click()
     expect(changes.at(-1)).toEqual({
@@ -370,7 +407,7 @@ describe("compact universal style controls", () => {
     expect(Array.from(root.querySelectorAll("[data-property]"), row => row.getAttribute("data-property")))
       .toEqual(["width", "height", "margin", "border-width", "padding", "background-color"])
     expect(root.querySelector(".compact-advanced")).toBeNull()
-    expect(root.querySelector('[data-property="border-width"]')!.firstElementChild!.tagName).toBe("LABEL")
+    expect(root.querySelector('[data-property="border-width"]')!.firstElementChild!.classList.contains("field-label")).toBe(true)
     expect(root.querySelector('[aria-label="Border color"]')).not.toBeNull()
     expect(root.querySelectorAll(".border-options button")).toHaveLength(8)
   })
@@ -380,12 +417,10 @@ describe("compact universal style controls", () => {
     const changes: ElementStyleChangeDetail[] = []
     editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
     const change = (name: string, value: string) => {
-      const input = editor.shadowRoot!.querySelector<HTMLInputElement>(`#compact-${name}`)!
-      input.value = value
-      input.dispatchEvent(new Event("change"))
+      changeComboInput(editor, name, value)
     }
-    expect(editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-padding")!.value).toBe("8")
-    editor.shadowRoot!.querySelectorAll<HTMLButtonElement>("#presets-padding button")[3].click()
+    expect(combo(editor, "padding").value).toBe("8")
+    await chooseComboOption(editor, "padding", "Large")
     expect(changes.at(-1)).toEqual({property: "padding", mutation: {value: "16px", priority: "important"}})
     change("width", "125")
     expect(changes.at(-1)).toEqual({property: "width", mutation: {value: "125px", priority: ""}})
@@ -393,15 +428,15 @@ describe("compact universal style controls", () => {
     expect(changes.at(-1)).toEqual({property: "padding", mutation: null})
     editor.propertyNames = ["rotate", "scale"]
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(2)
-    expect(editor.shadowRoot!.querySelector("#compact-rotate")!.parentElement!.querySelector(".compact-unit")!.textContent).toBe("°")
+    expect(editor.shadowRoot!.querySelectorAll('style-combobox[id^="compact-"]')).toHaveLength(2)
+    expect(combo(editor, "rotate").unit).toBe("deg")
     change("rotate", "45")
     expect(changes.at(-1)).toEqual({property: "rotate", mutation: {value: "45deg", priority: ""}})
     change("scale", "150")
     expect(changes.at(-1)).toEqual({property: "scale", mutation: {value: "1.5", priority: ""}})
     editor.propertyNames = null
     await editor.updateComplete
-    editor.shadowRoot!.querySelector<HTMLButtonElement>("#presets-border-width button")!.click()
+    await chooseComboOption(editor, "border-width", "Tiny")
     expect(changes.at(-1)?.property).toBe("border-width")
     editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="dashed"]')!.click()
     expect(changes.at(-1)).toEqual({property: "border-style", mutation: {value: "dashed", priority: ""}})
@@ -412,31 +447,32 @@ describe("compact universal style controls", () => {
 describe("compact preset menus", () => {
   it("keeps all options while typing and closes on outside interaction or Escape", async () => {
     const editor = await mount([], state(), "compact")
-    const root = editor.shadowRoot!
-    const toggle = root.querySelector<HTMLButtonElement>('[aria-label="Width presets"]')!
-    const input = root.querySelector<HTMLInputElement>("#compact-width")!
+    const field = combo(editor, "width")
+    const toggle = field.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!
+    const input = comboInput(editor, "width")
     toggle.click()
-    await editor.updateComplete
+    await field.updateComplete
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
     expect(toggle.querySelector("svg")).not.toBeNull()
-    expect(root.querySelector(".compact-value.open")).not.toBeNull()
+    expect(field.open).toBe(true)
     input.value = "123"
-    input.dispatchEvent(new Event("input"))
-    await editor.updateComplete
-    expect(root.querySelectorAll("#presets-width button")).toHaveLength(5)
+    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    await field.updateComplete
+    expect(field.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(5)
     expect(input.getAttribute("list")).toBeNull()
-    expect(input.nextElementSibling).toBe(toggle)
-    expect(toggle.nextElementSibling!.textContent).toBe("px")
+    expect(field.shadowRoot!.querySelector(".unit")?.textContent).toBe("px")
     input.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true}))
-    await editor.updateComplete
+    await field.updateComplete
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
     document.body.dispatchEvent(new Event("pointerdown", {bubbles: true}))
-    await editor.updateComplete
+    await field.updateComplete
     expect(toggle.getAttribute("aria-expanded")).toBe("false")
     toggle.click()
-    await editor.updateComplete
+    await field.updateComplete
     editor.dismissMenus()
-    await editor.updateComplete
+    await field.updateComplete
+    document.body.dispatchEvent(new Event("pointerdown", {bubbles: true}))
+    await field.updateComplete
     expect(toggle.getAttribute("aria-expanded")).toBe("false")
     toggle.click()
     await editor.updateComplete
@@ -451,25 +487,29 @@ it.each(["0.625", "62.5%"])("displays opacity %s as a percentage and supports ed
   const editor = await mount([], state({opacity: {value, priority: "important"}}), "compact")
   editor.propertyNames = ["opacity"]
   await editor.updateComplete
-  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-opacity")!
+  const input = comboInput(editor, "opacity")
   expect(input.value).toBe("62.5")
-  expect(input.parentElement!.querySelector(".compact-unit")!.textContent).toBe("%")
+  expect(combo(editor, "opacity").unit).toBe("%")
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
   for(const [percentage, css] of [["0", "0"], ["100", "1"], ["25.5", "0.255"]]) {
     input.value = percentage
-    input.dispatchEvent(new Event("change"))
+    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(changes.at(-1)).toEqual({property: "opacity", mutation: {value: css, priority: "important"}})
   }
   const count = changes.length
   for(const invalid of ["-1", "101", "invalid"]) {
     input.value = invalid
-    input.dispatchEvent(new Event("change"))
+    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    await combo(editor, "opacity").updateComplete
     expect(input.value).toBe("62.5")
     expect(changes).toHaveLength(count)
   }
   input.value = ""
-  input.dispatchEvent(new Event("change"))
+  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
   expect(changes.at(-1)).toEqual({property: "opacity", mutation: null})
 })
 
@@ -477,16 +517,18 @@ it("displays authored scale as a percentage and preserves priority when editing 
   const editor = await mount([], state({scale: {value: "1.1", priority: "important"}}), "compact")
   editor.propertyNames = ["scale"]
   await editor.updateComplete
-  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-scale")!
+  const input = comboInput(editor, "scale")
   expect(input.value).toBe("110")
-  expect(input.parentElement!.querySelector(".compact-unit")!.textContent).toBe("%")
+  expect(combo(editor, "scale").unit).toBe("%")
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
   input.value = "62.5"
-  input.dispatchEvent(new Event("change"))
+  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
   expect(changes.at(-1)).toEqual({property: "scale", mutation: {value: "0.625", priority: "important"}})
   input.value = ""
-  input.dispatchEvent(new Event("change"))
+  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
   expect(changes.at(-1)).toEqual({property: "scale", mutation: null})
 })
 
@@ -497,25 +539,25 @@ it("shows only inline values, follows selection state, and keeps preset amounts"
   const editor = await mount([], current, "compact")
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
-  const input = (name: string) => editor.shadowRoot!.querySelector<HTMLInputElement>(`#compact-${name}`)!
-  expect(input("width").value).toBe("")
-  expect(input("margin").value).toBe("")
+  const input = (name: string) => comboInput(editor, name)
+  expect(combo(editor, "width").value).toBe("")
+  expect(combo(editor, "margin").value).toBe("")
   expect(input("width").placeholder).toBe("Default")
-  expect(Array.from(editor.shadowRoot!.querySelectorAll("#presets-width .compact-option-value"), option => option.textContent)).toEqual(["50px", "100px", "200px", "400px", "800px"])
-  expect(editor.shadowRoot!.querySelector('#presets-margin [aria-selected="true"]')).toBeNull()
+    expect(Array.from(await openComboOptions(editor, "width"), option => option.querySelector(".option-value")?.textContent)).toEqual(["50px", "100px", "200px", "400px", "800px"])
+    expect(Array.from(await openComboOptions(editor, "margin")).some(option => option.getAttribute("aria-selected") === "true")).toBe(false)
   editor.state = {...current, inline: {width: {value: "240px", priority: ""}}}
   await editor.updateComplete
-  expect(input("width").value).toBe("240")
+  expect(combo(editor, "width").value).toBe("240")
   input("width").value = ""
   input("width").dispatchEvent(new Event("change"))
   expect(changes.pop()).toEqual({property: "width", mutation: null})
   editor.state = current
   await editor.updateComplete
-  expect(input("width").value).toBe("")
+  expect(combo(editor, "width").value).toBe("")
   editor.propertyNames = ["rotate", "scale"]
   await editor.updateComplete
-  expect(input("rotate").value).toBe("")
-  expect(input("scale").value).toBe("")
+  expect(combo(editor, "rotate").value).toBe("")
+  expect(combo(editor, "scale").value).toBe("")
   expect(changes).toEqual([])
 })
 
@@ -525,9 +567,11 @@ it("applies Tiny and Huge presets to box properties", async () => {
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
   for(const [property, tiny, huge] of [["width", "50px", "800px"], ["margin", "2px", "32px"], ["border-width", "0.5px", "8px"]]) {
-    const options = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(`#presets-${property} button`)
-    expect(options[0].textContent).toBe(`Tiny${tiny}`)
-    expect(options[4].textContent).toBe(`Huge${huge}`)
+    const options = await openComboOptions(editor, property)
+    expect(options[0].querySelector(".option-code")?.textContent).toBe("Tiny")
+    expect(options[0].querySelector(".option-value")?.textContent?.trim()).toBe(tiny)
+    expect(options[4].querySelector(".option-code")?.textContent).toBe("Huge")
+    expect(options[4].querySelector(".option-value")?.textContent?.trim()).toBe(huge)
     options[0].click()
     expect(changes.at(-1)).toEqual({property, mutation: {value: tiny, priority: ""}})
     options[4].click()
@@ -580,8 +624,8 @@ it("exposes open menus for drawer stacking even without focus", async () => {
   picker.open = false
   picker.dispatchEvent(new Event("toggle"))
   expect(editor.hasAttribute("popup-open")).toBe(false)
-  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Width presets"]')!.click()
-  await editor.updateComplete
+  combo(editor, "width").open = true
+  await combo(editor, "width").updateComplete
   expect(editor.hasAttribute("popup-open")).toBe(true)
   document.body.dispatchEvent(new Event("pointerdown", {bubbles: true}))
   await editor.updateComplete
@@ -612,7 +656,8 @@ it("does not steal focus when choosing presets or colors with the pointer", asyn
   const outside = document.createElement("button")
   document.body.append(outside)
   outside.focus()
-  editor.shadowRoot!.querySelector<HTMLButtonElement>("#presets-width button")!.click()
+  const width = combo(editor, "width")
+  await chooseComboOption(editor, "width", "Tiny")
   expect(document.activeElement).toBe(outside)
   editor.shadowRoot!.querySelector<HTMLButtonElement>('.border-color-palette [aria-label="Color #5b9bd5"]')!.click()
   expect(document.activeElement).toBe(outside)
@@ -624,10 +669,13 @@ it("forwards native changes and Escape through the ribbon input lifecycle", asyn
   const listener = (event: Event) => events.push(event.type)
   document.body.addEventListener("ribbon-input-commit", listener)
   document.body.addEventListener("ribbon-input-cancel", listener)
-  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!
+  const field = combo(editor, "width")
+  const input = comboInput(editor, "width")
   input.value = "150"
-  input.dispatchEvent(new Event("change", {bubbles: true, composed: false}))
+  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
   input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
+  await field.updateComplete
   expect(events).toEqual(["ribbon-input-commit", "ribbon-input-cancel"])
   document.body.removeEventListener("ribbon-input-commit", listener)
   document.body.removeEventListener("ribbon-input-cancel", listener)
@@ -636,49 +684,50 @@ it("forwards native changes and Escape through the ribbon input lifecycle", asyn
 
 it("blurs compact inputs on outside clicks even when the toolbox prevents pointer focus", async () => {
   const editor = await mount([], state(), "compact")
-  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!
+  const field = combo(editor, "width")
+  const input = comboInput(editor, "width")
   const button = document.createElement("button")
   button.addEventListener("pointerdown", event => event.preventDefault())
   document.body.append(button)
   input.focus()
   input.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
-  expect(editor.shadowRoot!.activeElement).toBe(input)
+  expect(editor.shadowRoot!.activeElement).toBe(field)
   button.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
-  expect(editor.shadowRoot!.activeElement).toBeNull()
+  expect(editor.shadowRoot!.activeElement).not.toBe(field)
   input.focus()
-  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Width presets"]')!
+  field.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!
     .dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
-  expect(editor.shadowRoot!.activeElement).toBeNull()
+  expect(editor.shadowRoot!.activeElement).toBe(field)
 })
 
 
 it("opens presets on input focus, closes on blur, and blurs on Enter", async () => {
   const editor = await mount([], state(), "compact")
-  const input = editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!
-  const menu = editor.shadowRoot!.querySelector<HTMLElement>("#presets-width")!
+  const field = combo(editor, "width")
+  const input = comboInput(editor, "width")
   input.focus()
-  await editor.updateComplete
-  expect(menu.hidden).toBe(false)
+  await field.updateComplete
+  expect(field.open).toBe(true)
   input.blur()
-  await editor.updateComplete
-  expect(menu.hidden).toBe(true)
+  await field.updateComplete
+  expect(field.open).toBe(false)
   input.focus()
-  await editor.updateComplete
+  await field.updateComplete
   input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
-  await editor.updateComplete
-  expect(editor.shadowRoot!.activeElement).toBeNull()
-  expect(menu.hidden).toBe(true)
+  await field.updateComplete
+  expect(editor.shadowRoot!.activeElement).not.toBe(field)
+  expect(field.open).toBe(false)
   input.focus()
-  await editor.updateComplete
-  const option = menu.querySelector<HTMLButtonElement>("button")!
+  await field.updateComplete
+  const option = field.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"]')!
   option.dispatchEvent(new Event("pointerdown", {bubbles: true, composed: true, cancelable: true}))
-  await editor.updateComplete
-  expect(menu.hidden).toBe(false)
-  expect(editor.shadowRoot!.activeElement).toBe(input)
+  await field.updateComplete
+  expect(field.open).toBe(true)
+  expect(field.shadowRoot!.activeElement).toBe(input)
   option.click()
-  await editor.updateComplete
+  await field.updateComplete
   expect(input.value).toBe("50")
-  expect(menu.hidden).toBe(true)
+  expect(field.open).toBe(false)
 })
 
 it("offers eight palette-based box presets and applies each as one style change", async () => {
@@ -715,16 +764,19 @@ it("edits and clears corner rounding using pixels and presets", async () => {
   const editor = await mount([], state(), "compact")
   editor.propertyNames = ["border-radius"]
   await editor.updateComplete
-  const input = editor.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Rounding"]')!
+  const field = combo(editor, "border-radius")
+  const input = field.shadowRoot!.querySelector<HTMLInputElement>("input")!
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
   input.value = "6"
-  input.dispatchEvent(new Event("change"))
+  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
   expect(changes.at(-1)).toEqual({property: "border-radius", mutation: {value: "6px", priority: ""}})
-  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>("#presets-border-radius button")[2].click()
+  await chooseComboOption(editor, "border-radius", "Medium")
   expect(changes.at(-1)).toEqual({property: "border-radius", mutation: {value: "4px", priority: ""}})
   input.value = ""
-  input.dispatchEvent(new Event("change"))
+  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
   expect(changes.at(-1)).toEqual({property: "border-radius", mutation: null})
 })
 
@@ -825,11 +877,11 @@ it.each([
   await editor.updateComplete
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
-  const input = editor.shadowRoot!.querySelector<HTMLInputElement>(`#compact-${property}`)!
+  const field = combo(editor, property)
+  const input = comboInput(editor, property)
   expect(input.getAttribute("role")).toBe("combobox")
-  input.focus()
-  await editor.updateComplete
-  const option = Array.from(editor.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+  await openComboOptions(editor, property)
+  const option = Array.from(field.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
     .find(button => button.textContent?.includes(label))!
   option.click()
   expect(changes.at(-1)).toEqual({property, mutation: {value, priority: "important"}})

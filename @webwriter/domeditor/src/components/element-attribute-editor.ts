@@ -1,5 +1,5 @@
 import {LitElement, css, html, nothing} from "lit"
-import "./document-head-editor"
+import "./style-combobox"
 import {isMediaType, mediaAttributeOptions} from "../media"
 import {groupedLanguageOptions} from "../language-suggestions"
 import {ribbonOptionIcon} from "../ribbon-icons"
@@ -70,8 +70,8 @@ export class ElementAttributeEditor extends LitElement {
     :host([expanded]) details {margin-top: .4rem; padding-top: 0; border-top: 0;}
     :host([expanded]) summary {display: none;}
 
-    .choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 1px 1px 0; background: transparent; min-width: 0; border: 0; border-radius: 0; overflow: visible;}
-    .choice-group button {box-sizing: border-box; margin: 0 -1px -1px 0; display: grid; place-items: center; min-width: 0; min-height: 1.7rem; padding: .15rem; border: 1px solid #c5ccd5; background: #f2f2f2; color: inherit; cursor: pointer;}
+    .choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; min-width: 0; border: 0; border-radius: 0; overflow: visible;}
+    .choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; display: grid; place-items: center; min-width: 0; min-height: 1.7rem; padding: .15rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; background: #f2f2f2; color: inherit; cursor: pointer;}
     .choice-group svg {display: block; width: 1rem; height: 1rem;}
     .choice-group button:first-child {border-top-left-radius: 4px;}
     .choice-group button:last-child {border-bottom-right-radius: 4px;}
@@ -200,8 +200,10 @@ export class ElementAttributeEditor extends LitElement {
     }
 
     .numeric-control {display: flex; min-width: 0; align-items: center; gap: .2rem;}
-    .numeric-control document-head-combobox {flex: 1 1 auto;}
-    .numeric-control button {flex: 0 0 1.65rem; padding: 0; cursor: pointer;}
+    .numeric-control style-combobox {flex: 1 1 auto;}
+    .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
+    .field-label .field-clear {flex: 0 0 .9rem; width: .9rem; height: .9rem; margin-left: auto; padding: 0; border: 0; background: transparent; color: #666; font: inherit; cursor: pointer;}
+    .field-clear:focus-visible {outline: 2px solid #b9d7f5;}
 
     .add-attribute {
       display: grid;
@@ -248,14 +250,23 @@ export class ElementAttributeEditor extends LitElement {
     this.dispatchAttribute(option.name, value)
   }
 
+  private renderFieldLabel(option: ElementAttributeOption, state: ElementAttributeState) {
+    const editable = elementAttributeEditability(option.name, state.localName, state.namespaceURI).editable
+    return html`<span class="field-label"><span id=${`attribute-label-${option.name}`}>${option.label}</span>
+      <button type="button" class="field-clear" style=${Object.hasOwn(state.attributes, option.name) && editable ? "" : "visibility: hidden"}
+        title=${`Clear ${option.label}`} aria-label=${`Clear ${option.label}`} ?disabled=${this.disabled || !editable}
+        @click=${(event: Event) => { event.preventDefault(); this.dispatchAttribute(option.name, null) }}>×</button>
+    </span>`
+  }
+
   private renderPrimary(option: ElementAttributeOption, state: ElementAttributeState) {
     const value = state.attributes[option.name] ?? ""
     const editability = elementAttributeEditability(option.name, state.localName, state.namespaceURI)
     if(option.name === "lang") {
       return html`
         <div class="field">
-          <span>${option.label}</span>
-          <document-head-combobox
+          ${this.renderFieldLabel(option, state)}
+          <style-combobox
             aria-label=${`${state.name}: ${option.label}`}
             .label=${`${state.name}: ${option.label}`}
             .value=${value}
@@ -263,16 +274,16 @@ export class ElementAttributeEditor extends LitElement {
             .options=${languageOptions}
             .disabled=${this.disabled || !editability.editable}
             @combobox-change=${(event: CustomEvent<{value: string}>) => this.dispatchAttribute("lang", event.detail.value || null)}
-          ></document-head-combobox>
+          ></style-combobox>
         </div>
       `
     }
     if(this.expanded && option.kind === "number") {
       return html`
         <div class="field">
-          <span>${option.label}</span>
+          ${this.renderFieldLabel(option, state)}
           <div class="numeric-control">
-            <document-head-combobox
+            <style-combobox
               aria-label=${`${state.name}: ${option.label}`}
               .label=${`${state.name}: ${option.label}`}
               .value=${value}
@@ -293,10 +304,7 @@ export class ElementAttributeEditor extends LitElement {
                 }
                 this.dispatchAttribute(option.name, next)
               }}
-            ></document-head-combobox>
-            <button type="button" aria-label=${`Clear ${option.label}`}
-              ?disabled=${this.disabled || !editability.editable || !value}
-              @click=${() => this.dispatchAttribute(option.name, null)}>×</button>
+            ></style-combobox>
           </div>
         </div>
       `
@@ -304,7 +312,7 @@ export class ElementAttributeEditor extends LitElement {
     if(option.kind === "boolean") {
       return html`
         <label class="field">
-          <span>${option.label}</span>
+          ${this.renderFieldLabel(option, state)}
           <input
             data-ribbon-input-persistent
             type="checkbox"
@@ -320,7 +328,7 @@ export class ElementAttributeEditor extends LitElement {
       && option.options.every(item => item.label.length <= 14)) {
       const columns = Math.min(4, Math.ceil(option.options.length / (option.options.length > 4 ? 2 : 1)))
       return html`<div class="field">
-        <span id=${`attribute-label-${option.name}`}>${option.label}</span>
+        ${this.renderFieldLabel(option, state)}
         <div class="choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`attribute-label-${option.name}`}>
           ${option.options.map((item, index) => html`<button type="button"
             ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.options!.length - 1) / columns) * columns}
@@ -332,25 +340,18 @@ export class ElementAttributeEditor extends LitElement {
       </div>`
     }
     if(option.kind === "select") {
-      return html`
-        <label class="field">
-          <span>${option.label}</span>
-          <select
-            data-ribbon-input-persistent
-            aria-label=${`${state.name}: ${option.label}`}
-            ?disabled=${this.disabled || !editability.editable}
-            @change=${(event: Event) => this.dispatchPrimary(option, event)}
-          >
-            ${option.options?.map(item => html`
-              <option value=${item.value} ?selected=${item.value === value}>${item.label}</option>
-            `)}
-          </select>
-        </label>
-      `
+      const options = option.options ?? []
+      return html`<div class="field">${this.renderFieldLabel(option, state)}
+        <style-combobox .label=${`${state.name}: ${option.label}`} .editable=${false}
+          .value=${value} .disabled=${this.disabled || !editability.editable}
+          .options=${[...(value && !options.some(item => item.value === value) ? [{value, label: value}] : []), ...options]}
+          @combobox-change=${(event: CustomEvent<{value: string}>) => this.dispatchAttribute(option.name, event.detail.value || null)}
+        ></style-combobox>
+      </div>`
     }
     return html`
       <label class="field">
-        <span>${option.label}</span>
+        ${this.renderFieldLabel(option, state)}
         <input
           data-ribbon-input-persistent
           type=${option.kind === "url" ? "url" : option.kind === "number" ? "number" : "text"}

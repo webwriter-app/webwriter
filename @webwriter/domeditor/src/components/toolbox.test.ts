@@ -341,7 +341,9 @@ describe("toolbox", () => {
     const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
     await advanced.updateComplete
     expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter"])
-    expect(advanced.shadowRoot!.querySelectorAll(".compact-toggle")).toHaveLength(11)
+    const compactCombos = advanced.shadowRoot!.querySelectorAll<HTMLElement>('style-combobox[id^="compact-"]')
+    expect(compactCombos.length).toBeGreaterThan(0)
+    expect(Array.from(compactCombos).every(combo => combo.shadowRoot?.querySelector("input"))).toBe(true)
     expect(drawer.expandable).toBe(true)
     expect(drawer.shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
     drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
@@ -354,11 +356,12 @@ describe("toolbox", () => {
     expect(Array.from(basic.shadowRoot!.querySelectorAll("[data-property]"), row => row.getAttribute("data-property")))
       .toEqual([])
     const editor = advanced
-    expect(editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!.value).toBe("123")
+    const widthCombo = editor.shadowRoot!.querySelector<HTMLElement>("style-combobox#compact-width")!
+    expect(widthCombo.shadowRoot!.querySelector<HTMLInputElement>("input")!.value).toBe("123")
     toolbox.elementStyle = {...toolbox.elementStyle, inline: {width: {value: "250px", priority: ""}}}
     await toolbox.updateComplete
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector<HTMLInputElement>("#compact-width")!.value).toBe("250")
+    expect(widthCombo.shadowRoot!.querySelector<HTMLInputElement>("input")!.value).toBe("250")
   })
 
   it("hides Style by default and closes its panel when disabled", async () => {
@@ -1034,7 +1037,7 @@ describe("widget options drawer", () => {
     const actions: unknown[] = []
     toolbox.addEventListener("widget-action", event => actions.push((event as CustomEvent).detail))
 
-    const number = drawer.querySelector('document-head-combobox')!
+    const number = drawer.querySelector('style-combobox')!
     expect(number.value).toBe("3")
     number.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "7"}}))
     const checkbox = drawer.querySelector<HTMLInputElement>('input[type="checkbox"]')!

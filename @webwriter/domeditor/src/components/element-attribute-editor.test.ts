@@ -21,6 +21,21 @@ async function mount(localName = "details", attributes: Record<string, string> =
 }
 
 describe("element attribute editor", () => {
+  it("keeps the numeric clear action in the label and hides it after removal", async () => {
+    const editor = await mount("ol", {start: "0"})
+    editor.expanded = true
+    await editor.updateComplete
+    const clear = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Start at"]')!
+    expect(clear.closest(".field-label")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector(".numeric-control button")).toBeNull()
+    const changes = vi.fn()
+    editor.addEventListener("element-attribute-change", changes)
+    clear.click()
+    expect(changes.mock.calls[0][0].detail).toMatchObject({name: "start", value: null})
+    editor.state = {...editor.state!, attributes: {}}
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Start at"]')!.style.visibility).toBe("hidden")
+  })
   it("presents friendly element-specific and common fields", async () => {
     const editor = await mount("details", {name: "faq", open: "", id: "shipping"})
 
@@ -37,7 +52,7 @@ describe("element attribute editor", () => {
     const editor = await mount("ol", {start: "2"})
     editor.expanded = true
     await editor.updateComplete
-    const combo = editor.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="ol: Start at"]')!
+    const combo = editor.shadowRoot!.querySelector<HTMLElement>('style-combobox[aria-label="ol: Start at"]')!
     await (combo as unknown as {updateComplete: Promise<unknown>}).updateComplete
     expect(combo.hasAttribute("show-value")).toBe(true)
     const input = combo.shadowRoot!.querySelector<HTMLInputElement>("input")!
@@ -75,7 +90,7 @@ describe("element attribute editor", () => {
     const editor = await mount("td", {colspan: "2", rowspan: "1"})
     editor.expanded = true
     await editor.updateComplete
-    const columnSpan = editor.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="td: Column span"]')!
+    const columnSpan = editor.shadowRoot!.querySelector<HTMLElement>('style-combobox[aria-label="td: Column span"]')!
     expect(columnSpan.hasAttribute("show-value")).toBe(true)
     await (columnSpan as unknown as {updateComplete: Promise<unknown>}).updateComplete
     columnSpan.shadowRoot!.querySelector<HTMLButtonElement>("button.toggle")!.click()
@@ -87,7 +102,7 @@ describe("element attribute editor", () => {
     readOnly.expanded = true
     readOnly.disabled = true
     await readOnly.updateComplete
-    const disabled = readOnly.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="td: Column span"]')!
+    const disabled = readOnly.shadowRoot!.querySelector<HTMLElement>('style-combobox[aria-label="td: Column span"]')!
     expect(disabled.shadowRoot!.querySelector("input")).toBeDisabled()
     expect(readOnly.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Clear Column span"]')).toBeDisabled()
   })
@@ -97,7 +112,7 @@ describe("element attribute editor", () => {
     editor.expanded = true
     editor.mediaOwned = false
     await editor.updateComplete
-    const width = editor.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[aria-label="img: Width"]')!
+    const width = editor.shadowRoot!.querySelector<HTMLElement>('style-combobox[aria-label="img: Width"]')!
     await (width as unknown as {updateComplete: Promise<unknown>}).updateComplete
     expect(width.hasAttribute("show-value")).toBe(true)
     expect(width.shadowRoot!.querySelector<HTMLInputElement>("input")!.value).toBe("200")
@@ -221,7 +236,7 @@ describe("element attribute editor", () => {
 
   it.each(["div", "course-quiz"])("offers grouped language choices and arbitrary strings for %s", async localName => {
     const editor = await mount(localName, {lang: "de"})
-    const picker = editor.shadowRoot!.querySelector("document-head-combobox")!
+    const picker = editor.shadowRoot!.querySelector("style-combobox")!
     await picker.updateComplete
     const input = picker.shadowRoot!.querySelector<HTMLInputElement>('[role="combobox"]')!
     expect(input.value).toBe("German")
@@ -260,7 +275,7 @@ describe("element attribute editor", () => {
 
   it.each(["div", "course-quiz", "html"])("displays English for the default language in %s", async localName => {
     const editor = await mount(localName)
-    const picker = editor.shadowRoot!.querySelector("document-head-combobox")!
+    const picker = editor.shadowRoot!.querySelector("style-combobox")!
     await picker.updateComplete
     const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
     expect(input.placeholder).toBe("English")
@@ -277,7 +292,7 @@ describe("element attribute editor", () => {
     const editor = await mount("div")
     editor.disabled = true
     await editor.updateComplete
-    const picker = editor.shadowRoot!.querySelector("document-head-combobox")!
+    const picker = editor.shadowRoot!.querySelector("style-combobox")!
     await picker.updateComplete
     expect(picker.shadowRoot!.querySelector("input")).toBeDisabled()
     expect(picker.shadowRoot!.querySelector("button")).toBeDisabled()
@@ -295,7 +310,9 @@ describe("element attribute editor", () => {
       const details = root.querySelector("details")!
       expect(details.open).toBe(false)
       for(const label of ["ID", "Classes", "Title", "Direction", "Hidden"]) {
-        const field = root.querySelector(`[aria-label="${localName}: ${label}"]`)!
+        const field = root.querySelector(`[aria-label="${localName}: ${label}"]`)
+          ?? Array.from(root.querySelectorAll<HTMLElement>("style-combobox"))
+            .find(combo => (combo as HTMLElement & {label: string}).label === `${localName}: ${label}`)!
         expect(field.closest("details")).toBe(details)
         expect(field).not.toBeDisabled()
       }
@@ -304,9 +321,12 @@ describe("element attribute editor", () => {
       details.open = true
       const listener = vi.fn()
       editor.addEventListener("element-attribute-change", listener)
-      const direction = details.querySelector<HTMLSelectElement>(`[aria-label="${localName}: Direction"]`)!
-      direction.value = "ltr"
-      direction.dispatchEvent(new Event("change", {bubbles: true}))
+      const direction = Array.from(details.querySelectorAll<HTMLElement>("style-combobox"))
+        .find(combo => (combo as HTMLElement & {label: string}).label === `${localName}: Direction`)!
+      direction.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+      await (direction as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
+      Array.from(direction.shadowRoot!.querySelectorAll<HTMLElement>('[role="option"]'))
+        .find(option => option.textContent?.includes("Left to right"))!.click()
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({
         detail: expect.objectContaining({name: "dir", value: "ltr"}),
       }))

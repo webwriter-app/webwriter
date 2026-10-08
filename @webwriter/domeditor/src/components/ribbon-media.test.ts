@@ -137,7 +137,7 @@ describe("media ribbon drawer", () => {
     expect(toolbox.shadowRoot!.querySelector(`ribbon-drawer[label="${label}"]`)).not.toBeNull()
     const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-toolbox-controls")!
     expect(getComputedStyle(controls).flexDirection).toBe("column")
-    expect(Array.from(controls.querySelectorAll("input, select"))
+    expect(Array.from(controls.querySelectorAll("input, select, style-combobox"))
       .every(control => control.getAttribute("type") === "checkbox" || getComputedStyle(control).width === "100%"))
       .toBe(true)
     expect(toolbox.shadowRoot!.querySelector("ribbon-menu[custom-content]")).toBeNull()
@@ -157,7 +157,9 @@ describe("media ribbon drawer", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Source URL"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Width"]')).toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Height"]')).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Image: Loading"]')?.value).toBe("lazy")
+    const loading = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
+      .find(combo => (combo as HTMLElement & {label: string}).label === "Image: Loading") as (HTMLElement & {value: string}) | undefined
+    expect(loading?.value).toBe("lazy")
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-type-switch"))
       .some(button => button.textContent?.includes("Use <"))).toBe(false)
     alt.value = "A photo"
@@ -176,7 +178,9 @@ describe("media ribbon drawer", () => {
     await toolbox.updateComplete
 
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Video: Controls"]')).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('select[aria-label="Video: Preload"] option[selected][value="metadata"]')).not.toBeNull()
+    const preload = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
+      .find(combo => (combo as HTMLElement & {label: string}).label === "Video: Preload") as (HTMLElement & {value: string}) | undefined
+    expect(preload?.value).toBe("metadata")
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Video: Play inline"]')?.checked).toBe(true)
   })
 
@@ -335,7 +339,8 @@ describe("media ribbon drawer", () => {
     toolbox.media = {type: "embed", attributes: {src: "https://example.test", type: "text/html"}}
     document.body.append(toolbox)
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('select[aria-label="Website: Element"]')).toBeNull()
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
+      .some(combo => (combo as HTMLElement & {label: string}).label === "Website: Element")).toBe(false)
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Source URL"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
