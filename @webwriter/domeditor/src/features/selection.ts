@@ -49,9 +49,12 @@ function isCaretAtStartOf(element: Element) {
  * state onto the body, and implements
  * pointer-based selection (drag selection, modifier-click element selection). */
 export class SelectionFeature extends EditorFeature {
+  // Window capture precedes document feature handlers, even after re-enabling.
+  protected captureListenerTarget = window
 
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
+  #modifierClick = false
   #selectedSection: Element | null = null
   #atomicExtension: {range: Range, backwards: boolean} | null = null
   #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
@@ -592,6 +595,7 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
     this.#endDrag()
+    this.#modifierClick = false
     this.#atomicExtension = null
     $.clearLayoutRanges()
     this.#releaseCaptureSelection()
@@ -870,6 +874,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #handlePointerDown(ev: PointerEvent, fromCanvasSlot = false) {
+    if(this.#handleModifierClick(ev)) return
     if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
       || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) return
     const origin = ev.composedPath()[0] ?? ev.target
@@ -906,33 +911,22 @@ export class SelectionFeature extends EditorFeature {
       this.processSelection()
       return
     }
-    if(modifierKeyDown(ev)) {
-      ev.preventDefault()
-      const target = this.#modifierSelectionTarget(ev.target)
-      if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
-        const elements = $.selectedElements
-        $.selectElements(elements.includes(target) ? elements.filter(element => element !== target) : [...elements, target])
-      }
-      else if(target) $.selectElement(target)
-      this.processSelection(this.isInDragSelection)
-    }
-    else {
-      const clickedItem = this.#layoutSelectionItem(canvasItem ?? (ev.target instanceof Node ? ev.target : null),
-        canvasItem ?? (ev.target instanceof Node ? ev.target : null))
-      const extend = ev.shiftKey && (!clickedItem || clickedItem === this.#layoutSelectionItem($.anchor, $.anchor))
-      const point = $.selectCoords(ev.clientX, ev.clientY, extend, ev.target, this.editor.schema)
-      const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
-      const nativeClick = !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
-        && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
-      if(!nativeClick) ev.preventDefault()
-      this.#beginDrag(ev, nativeClick)
-      this.processSelection(true)
-    }
+    const clickedItem = this.#layoutSelectionItem(canvasItem ?? (ev.target instanceof Node ? ev.target : null),
+      canvasItem ?? (ev.target instanceof Node ? ev.target : null))
+    const extend = ev.shiftKey && (!clickedItem || clickedItem === this.#layoutSelectionItem($.anchor, $.anchor))
+    const point = $.selectCoords(ev.clientX, ev.clientY, extend, ev.target, this.editor.schema)
+    const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
+    const nativeClick = !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
+      && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
+    if(!nativeClick) ev.preventDefault()
+    this.#beginDrag(ev, nativeClick)
+    this.processSelection(true)
   }
 
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
       this.#handleKeyState(event)
+      if(this.#handleModifierClick(event)) return
       const edge = event.composedPath().find(node => node instanceof Element && node.classList.contains("◆capture-edge"))
       const captured = this.captureSelectedElement
       if(edge instanceof Element && edge.parentElement === this.selectionCaret && captured
@@ -970,12 +964,13 @@ export class SelectionFeature extends EditorFeature {
       this.#nativeHoverTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null
       this.#refreshHoverGeometry()
     },
-    pointerup: this.#finishDrag,
-    pointercancel: this.#finishDrag,
+    pointerup: event => { if(!this.#handleModifierClick(event)) this.#finishDrag(event) },
+    pointercancel: event => { this.#modifierClick = false; this.#finishDrag(event) },
     lostpointercapture: this.#finishDrag,
     // Native clicks establish editing focus and paint the blinking text caret.
     // Only structural gaps and an actual drag override the browser selection.
     mousedown: event => {
+      if(this.#handleModifierClick(event)) return
       const drag = this.#drag
       if(this.#boxDrag) { event.preventDefault(); return }
       if(!drag) return
@@ -1001,6 +996,8 @@ export class SelectionFeature extends EditorFeature {
     },
     selectstart: event => { if(this.#boxDrag || this.#drag && (!this.#drag.nativeClick || this.#drag.moved)) event.preventDefault() },
     click: event => this.#handleModifierClick(event),
+    mouseup: event => { this.#handleModifierClick(event) },
+    dblclick: event => { this.#handleModifierClick(event) },
     focusin: event => {
       this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
@@ -1039,14 +1036,32 @@ export class SelectionFeature extends EditorFeature {
     })
   }
 
-  /** Cancels native modifier-click actions (navigation, activation, focus)
-   * during capture, except inside the widget that currently owns capture. */
+  /** Modifier-click owns the entire activation sequence at the document
+   * boundary, except inside the element that currently owns capture. */
   readonly #handleModifierClick = (event: MouseEvent) => {
+    if(event.type === "pointerdown") this.#modifierClick = false
+    if(event.button !== 0 || (!this.#modifierClick && !modifierKeyDown(event)) || isAppendixInteraction(event)) return false
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
-    if(event.button === 0 && modifierKeyDown(event)
-      && (!widget || widget !== this.captureSelectedWidget)) {
-      event.preventDefault()
+    const captured = this.captureSelectedElement
+    if(!this.#modifierClick && captured && (widget === captured || (event.target instanceof Node && captured.contains(event.target)))) return false
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if(event.type === "pointerdown") {
+      this.#modifierClick = true
+      this.#endDrag()
+      this.clearSelectedSection()
+      this.#releaseCaptureSelection()
+      const target = this.#modifierSelectionTarget(widget ?? event.target)
+      if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
+        const elements = $.selectedElements
+        $.selectElements(elements.includes(target) ? elements.filter(element => element !== target) : [...elements, target])
+      }
+      else if(target) $.selectElement(target)
+      this.processSelection(undefined, {scrollIntoView: !isContentfulWidget(widget, this.editor.schema)})
+      this.editor.postSelectionPath()
     }
+    if(event.type === "click") this.#modifierClick = false
+    return true
   }
 
   /** Routes wheel input over an inactive widget to the editor document instead
@@ -1085,11 +1100,6 @@ export class SelectionFeature extends EditorFeature {
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
     if(!widget) return
-    if(isDocumentRoot(widget) && event instanceof MouseEvent && event.type === "pointerdown"
-      && event.button === 0 && modifierKeyDown(event)) {
-      event.preventDefault()
-      return
-    }
     if(isContentfulWidget(widget, this.editor.schema)) {
       const hadCapture = this.isCaptureSelection
       this.#releaseCaptureSelection()
@@ -1098,39 +1108,12 @@ export class SelectionFeature extends EditorFeature {
         this.clearSelectedSection()
         if(hadCapture) focusedWidgetHost()?.blur()
       }
-      if(event instanceof MouseEvent && event.type === "pointerdown"
-        && event.button === 0 && modifierKeyDown(event)) {
-        event.preventDefault()
-        $.selectElement(widget)
-        this.#lastScrollSelection = {element: widget}
-        this.processSelection(undefined, {scrollIntoView: false})
-        this.editor.postSelectionPath()
-      }
-      else if(hadCapture) this.processSelection(undefined, {scrollIntoView: false})
+      if(hadCapture) this.processSelection(undefined, {scrollIntoView: false})
       return
     }
     if(widget === this.captureSelectedWidget) return
     this.clearSelectedSection()
     this.#endDrag()
-    if(event instanceof MouseEvent && event.type === "pointerdown"
-      && event.button === 0 && modifierKeyDown(event)) {
-      event.preventDefault()
-      const selectCapture = this.captureSelectedWidget !== widget
-        && widget.classList.contains("◆element-selected")
-        && $.isElementSelection
-        && $.selectedElement === widget
-      if(selectCapture) {
-        this.#capturedElement = widget
-        this.#collapseBeforeCapturedWidget(widget)
-      }
-      else {
-        this.#releaseCaptureSelection()
-        $.selectElement(widget)
-      }
-      this.processSelection()
-      this.editor.postSelectionPath()
-      return
-    }
     this.#capturedElement = widget
     // Pointerdown happens before the widget establishes its own focus/caret.
     // Keep capture on the host without selecting its light or shadow text;
@@ -1145,7 +1128,7 @@ export class SelectionFeature extends EditorFeature {
    * selection stays on a structural element. */
   #modifierSelectionTarget(target: EventTarget | null) {
     if(!(target instanceof Node)) return null
-    let targetElement = getContainer(target)
+    let targetElement = atomicEditingContainer(target, this.editor.schema) ?? getContainer(target)
     const summary = targetElement.closest("details > summary")
     if(summary) return summary.parentElement
     const table = targetElement.closest("table")

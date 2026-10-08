@@ -2406,50 +2406,76 @@ describe("document listeners", () => {
     expect($.selectedElement).toBe(p)
     expect(p).toHaveClass("◆element-selected")
   })
-  it("promotes a modifier-clicked widget from node to capture selection", () => {
-    const widget = document.createElement("webwriter-demo")
+  it.each(["open", "closed", "light-button", "light-control"] as const)("keeps modifier interactions with a %s widget selected as a node", kind => {
+    const widget = document.createElement("interactive-widget")
+    const target = kind === "light-control" ? document.createElement("input") : document.createElement("button")
+    if(kind === "open" || kind === "closed") widget.attachShadow({mode: kind}).append(target)
+    else widget.append(target)
     appendToBody(widget)
-    const clickWidget = () => {
-      const pointerdown = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
-      widget.dispatchEvent(pointerdown)
-      return pointerdown
+    const received = vi.fn((event: Event) => {
+      event.stopPropagation()
+      event.preventDefault()
+    })
+    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) target.addEventListener(type, received)
+
+    for(let click = 0; click < 3; click++) {
+      for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) {
+        const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, metaKey: true, ctrlKey: true})
+        target.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+      expect($.selectedElement).toBe(widget)
+      expect(widget).toHaveClass("◆element-selected")
+      expect(widget).not.toHaveClass("◆element-capture-selected")
     }
-
-    expect(clickWidget().defaultPrevented).toBe(true)
-    expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
-
-    expect(clickWidget().defaultPrevented).toBe(true)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-
-    expect(clickWidget().defaultPrevented).toBe(false)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(received).not.toHaveBeenCalled()
   })
-  it("leaves modifier-clicks to a capture-selected widget", () => {
+  it("allows modifier interactions in a widget explicitly selected for capture", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
     appendToBody(widget)
-    const pointerdown = () => {
-      const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
+    feature.captureElement(widget)
+    const received = vi.fn()
+    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) button.addEventListener(type, received)
+
+    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) {
+      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
       button.dispatchEvent(event)
-      return event
+      expect(event.defaultPrevented).toBe(false)
     }
 
-    expect(pointerdown().defaultPrevented).toBe(true)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
-
-    expect(pointerdown().defaultPrevented).toBe(true)
+    expect(received).toHaveBeenCalledTimes(6)
+    expect(feature.captureSelectedWidget).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-
-    expect(pointerdown().defaultPrevented).toBe(false)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-
-    const click = new MouseEvent("click", {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
-    button.dispatchEvent(click)
-    expect(click.defaultPrevented).toBe(false)
+  })
+  it("suppresses activation even when the modifier is released before the click", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    appendToBody(widget)
+    const activated = vi.fn()
+    button.addEventListener("click", activated)
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true}))
+    for(const type of ["mousedown", "pointerup", "mouseup", "click"]) {
+      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true})
+      button.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    expect(activated).not.toHaveBeenCalled()
+    expect($.selectedElement).toBe(widget)
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+    expect(activated).toHaveBeenCalledOnce()
+  })
+  it.each([false, true])("takes precedence over canvas background box selection after re-enabling: %s", reenable => {
+    editor.setDocumentLayout("canvas", "document")
+    if(reenable) { feature.disable(); feature.enable() }
+    const boxSelection = vi.spyOn(feature, "beginBoxSelection")
+    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
+    document.body.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(boxSelection).not.toHaveBeenCalled()
   })
   it.each(["host", "light", "slotted", "open", "closed"] as const)("capture-selects an element-selected widget on an ordinary click in its %s content", kind => {
     const widget = document.createElement("interactive-widget")

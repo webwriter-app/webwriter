@@ -17,6 +17,7 @@ export function collectFeatureActions(features: Iterable<{actions?: Record<strin
 }
 
 type ListenerRegistration = {
+  target: EventTarget
   owner: DocumentListenerMap
   type: string
   wrapped: EventListener
@@ -38,6 +39,7 @@ export class EditorFeature {
   protected isEnabled = false
   /** Boundary listeners inspect composed origins themselves before feature routing. */
   captureListeners: DocumentListenerMap = {}
+  protected captureListenerTarget: EventTarget = document
   passiveListeners: DocumentListenerMap = {}
   activeListeners: DocumentListenerMap = {}
   actions?: Record<string, FeatureActionHandler>
@@ -53,6 +55,7 @@ export class EditorFeature {
 
   private addListeners(listeners: DocumentListenerMap, options?: AddEventListenerOptions) {
     if(this.listenerRegistrations.some(registration => registration.owner === listeners)) return
+    const target = listeners === this.captureListeners ? this.captureListenerTarget : document
     Object.entries(listeners).forEach(([type, listener]) => {
       const wrapped: EventListener = event => {
         if(listeners === this.captureListeners) {
@@ -68,15 +71,15 @@ export class EditorFeature {
           listener(event as never)
         }
       }
-      this.listenerRegistrations.push({owner: listeners, type, wrapped, capture: Boolean(options?.capture)})
-      document.addEventListener(type, wrapped, options)
+      this.listenerRegistrations.push({target, owner: listeners, type, wrapped, capture: Boolean(options?.capture)})
+      target.addEventListener(type, wrapped, options)
     })
   }
 
   private removeListeners(listeners: DocumentListenerMap) {
     this.listenerRegistrations
       .filter(registration => registration.owner === listeners)
-      .forEach(({type, wrapped, capture}) => document.removeEventListener(type, wrapped, {capture}))
+      .forEach(({target, type, wrapped, capture}) => target.removeEventListener(type, wrapped, {capture}))
     this.listenerRegistrations = this.listenerRegistrations
       .filter(registration => registration.owner !== listeners)
   }

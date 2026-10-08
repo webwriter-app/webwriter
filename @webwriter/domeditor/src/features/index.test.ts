@@ -28,6 +28,24 @@ class CaptureOwnerProbeFeature extends ListenerProbeFeature {
 }
 
 describe("EditorFeature listener lifecycle", () => {
+  it("removes window capture listeners on disable and registers them once on re-enable", () => {
+    class WindowProbe extends EditorFeature {
+      protected captureListenerTarget = window
+      calls = 0
+      captureListeners = {click: () => { this.calls++ }}
+    }
+    const feature = new WindowProbe({} as DOMEditor)
+    feature.enable()
+    document.body.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+    expect(feature.calls).toBe(1)
+    feature.disable()
+    document.body.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+    expect(feature.calls).toBe(1)
+    feature.enable()
+    document.body.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+    expect(feature.calls).toBe(2)
+    feature.disable()
+  })
   it("tracks a shared callback independently for every event type", () => {
     const feature = new ListenerProbeFeature({} as DOMEditor)
     feature.enable()

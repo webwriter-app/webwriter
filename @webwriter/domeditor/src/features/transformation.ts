@@ -422,13 +422,27 @@ export class TransformationFeature extends EditorFeature {
 
   #size(element: TransformElement) {
     const style = getComputedStyle(element)
-    const width = parseFloat(style.width) || element.getBoundingClientRect().width
-    const height = parseFloat(style.height) || element.getBoundingClientRect().height
     const extra = (properties: string[]) => properties.reduce((sum, property) => sum + (parseFloat(style.getPropertyValue(property)) || 0), 0)
+    const paddingWidth = style.boxSizing === "border-box" ? 0 : extra(["padding-left", "padding-right", "border-left-width", "border-right-width"])
+    const paddingHeight = style.boxSizing === "border-box" ? 0 : extra(["padding-top", "padding-bottom", "border-top-width", "border-bottom-width"])
+    const pixelSize = (value: string) => value.endsWith("px") && Number.isFinite(parseFloat(value)) ? parseFloat(value) : undefined
+    let cssWidth = pixelSize(style.width), cssHeight = pixelSize(style.height)
+    if(cssWidth === undefined || cssHeight === undefined) {
+      // Inline widget hosts can retain percentages or auto in computed style.
+      // The live rect is already a border box; transformed hosts need their
+      // local layout dimensions so the overlay does not apply scale twice.
+      const rect = element.getBoundingClientRect()
+      const matrix = this.#matrix(element)
+      const transformed = matrix.a !== 1 || matrix.b !== 0 || matrix.c !== 0 || matrix.d !== 1
+      const width = transformed && element instanceof HTMLElement ? element.offsetWidth || rect.width : rect.width
+      const height = transformed && element instanceof HTMLElement ? element.offsetHeight || rect.height : rect.height
+      cssWidth ??= Math.max(0, width - paddingWidth)
+      cssHeight ??= Math.max(0, height - paddingHeight)
+    }
     return {
-      cssWidth: width, cssHeight: height,
-      width: width + (style.boxSizing === "border-box" ? 0 : extra(["padding-left", "padding-right", "border-left-width", "border-right-width"])),
-      height: height + (style.boxSizing === "border-box" ? 0 : extra(["padding-top", "padding-bottom", "border-top-width", "border-bottom-width"])),
+      cssWidth, cssHeight,
+      width: cssWidth + paddingWidth,
+      height: cssHeight + paddingHeight,
     }
   }
 

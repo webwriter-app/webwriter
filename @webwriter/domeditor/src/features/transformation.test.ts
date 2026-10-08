@@ -568,6 +568,96 @@ describe("selection-owned transformation", () => {
 })
 
 describe("transform controls and geometry", () => {
+  describe("unresolved CSS dimensions", () => {
+    function unresolvedSize(target: HTMLElement, rect: {left: number, top: number, width: number, height: number}) {
+      const computedStyle = getComputedStyle
+      vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element, pseudo) => {
+        const style = computedStyle(element, pseudo)
+        if(element !== target) return style
+        return new Proxy(style, {
+          get(style, property) {
+            if(property === "width") return "100%"
+            if(property === "height") return "auto"
+            const value = Reflect.get(style, property, style)
+            return typeof value === "function" ? value.bind(style) : value
+          },
+        })
+      })
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue({
+        x: rect.left, y: rect.top, left: rect.left, top: rect.top,
+        right: rect.left + rect.width, bottom: rect.top + rect.height,
+        width: rect.width, height: rect.height, toJSON: () => ({}),
+      } as DOMRect)
+    }
+
+    it("uses the rendered rect for unresolved percentage and auto sizes in controls", () => {
+      const target = targetElement("demo-widget")
+      target.style.width = "100%"
+      target.style.height = "auto"
+      target.textContent = "authored"
+      unresolvedSize(target, {left: 20, top: 30, width: 2000, height: 96})
+
+      captureNode(target)
+
+      expect(feature.overlay.style.width).toBe("2000px")
+      expect(feature.overlay.style.height).toBe("96px")
+      expect(target.getAttribute("style")).toBe("width: 100%; height: auto;")
+      expect(target.textContent).toBe("authored")
+      expect(target.parentElement).toBe(document.body)
+    })
+
+    it("falls back to offset dimensions for a rect scaled by an ancestor", () => {
+      const ancestor = document.createElement("section")
+      ancestor.style.transform = "scale(2)"
+      const target = document.createElement("demo-widget")
+      target.style.width = "100%"
+      target.style.height = "auto"
+      target.textContent = "authored"
+      ancestor.append(target)
+      document.body.append(ancestor)
+      Object.defineProperties(target, {
+        offsetWidth: {configurable: true, value: 2000},
+        offsetHeight: {configurable: true, value: 96},
+      })
+      unresolvedSize(target, {left: 20, top: 30, width: 4000, height: 192})
+
+      captureNode(target)
+
+      expect(feature.overlay.style.width).toBe("2000px")
+      expect(feature.overlay.style.height).toBe("96px")
+      expect(target.getAttribute("style")).toBe("width: 100%; height: auto;")
+      expect(target.textContent).toBe("authored")
+      expect(target.parentElement).toBe(ancestor)
+    })
+
+    it("subtracts padding and borders from content-box CSS fallback without double counting", () => {
+      const target = targetElement("demo-widget")
+      target.style.cssText = "width: 100%; height: auto; box-sizing: content-box; padding: 5px; border: 2px solid"
+      unresolvedSize(target, {left: 20, top: 30, width: 2000, height: 96})
+
+      const geometry = feature.boxGeometry(target)
+
+      expect(geometry.width).toBe(2000)
+      expect(geometry.height).toBe(96)
+      expect(target.getAttribute("style")).toContain("width: 100%")
+    })
+
+    it("preserves explicit zero pixel dimensions", () => {
+      const target = targetElement("demo-widget")
+      target.style.cssText = "width: 0px; height: 0px; box-sizing: content-box; padding: 5px; border: 2px solid"
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue({
+        x: 20, y: 30, left: 20, top: 30, right: 34, bottom: 44,
+        width: 14, height: 14, toJSON: () => ({}),
+      } as DOMRect)
+
+      const geometry = feature.boxGeometry(target)
+
+      expect(geometry.width).toBe(14)
+      expect(geometry.height).toBe(14)
+      expect(target.getAttribute("style")).toContain("width: 0px")
+    })
+  })
+
   describe("selection controls around native floats", () => {
     const flowSpan = (name: string) => {
       const value = feature.overlay.style.getPropertyValue(`--selection-flow-${name}`)
