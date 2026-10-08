@@ -661,6 +661,7 @@ export class DOMEditor {
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
+          documentPermalinks: true,
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
@@ -668,6 +669,7 @@ export class DOMEditor {
       }
       else {
         this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
+          documentPermalinks: true,
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
@@ -1255,6 +1257,9 @@ export class DOMEditor {
   }
 
   private cleanDocumentClone(data: "defaults" | "current" = "defaults") {
+    // A save immediately after a direct/native edit must include its derived
+    // fragment IDs, even before the MutationObserver delivers that batch.
+    this.doc.syncFromDOM()
     if(data === "current") this.doc.widgetData.sync()
     const root = document.cloneNode(true) as Document
     restoreWidgetGroupingClones(document, root)

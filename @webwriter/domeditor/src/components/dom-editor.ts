@@ -6840,6 +6840,7 @@ export class DomEditor extends LitElement {
         ${this.previewActive && !this.previewFramePending ? html`
           <iframe
             class="preview-frame"
+            allow="fullscreen; clipboard-write"
             title=${this.liveSessionActive ? "Live document preview" : "Document preview"}
             sandbox="allow-scripts allow-same-origin"
             referrerpolicy="no-referrer"

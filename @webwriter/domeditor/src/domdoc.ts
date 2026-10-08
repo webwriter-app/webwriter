@@ -3,6 +3,7 @@ import {Awareness} from "y-protocols/awareness"
 import {messageSync, WebsocketProvider} from "y-websocket"
 import {$, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
 import {documentLayoutMode} from "./document-layout"
+import {updateDocumentPermalinks} from "./document-permalinks"
 import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
 import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, type WidgetDataOptions} from "./widget-data"
@@ -81,6 +82,7 @@ export type DOMChangePreview = {
 }
 
 export type SharedDOMDocOptions = {
+  documentPermalinks?: boolean
   widgetData?: WidgetDataOptions
   supportsWidgetData?: (widget: Element) => boolean
   root?: HTMLElement
@@ -179,6 +181,7 @@ export class SharedDOMDoc {
   #awaitingInitialSync = false
   #undoGroupDepth = 0
   #undoGroupTimeout = 0
+  readonly #documentPermalinks: boolean
 
   constructor(
     readonly serverUrl?: string,
@@ -190,6 +193,7 @@ export class SharedDOMDoc {
     previewSource?: SharedDOMDoc,
   ) {
     this.root = options.root ?? document.body
+    this.#documentPermalinks = options.documentPermalinks ?? false
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
     this.#metadata = this.doc.getMap("domeditor")
@@ -302,6 +306,7 @@ export class SharedDOMDoc {
         this.#selectMirror(mirror)
       }
       if(!hasSharedDOM) {
+        if(this.#documentPermalinks) updateDocumentPermalinks(this.root)
         this.#metadata.set(INITIALIZED_KEY, true)
         this.#reconcileYElement(this.root, this.#body)
       }
@@ -651,10 +656,15 @@ export class SharedDOMDoc {
   }
 
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
-  syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[]) {
+  syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
     this.widgetData.sync()
-    const records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
+    let records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
+    if(this.#documentPermalinks && derivePermalinks) {
+      updateDocumentPermalinks(this.root)
+      // Generated attributes and ownership metadata join the content batch.
+      if(records) records = [...records, ...this.#observer.takeRecords()]
+    }
     this.doc.transact(() => {
       if(records) this.#reconcileMutations(records)
       else this.#reconcileDocument()
@@ -864,6 +874,7 @@ export class SharedDOMDoc {
     try {
       const user = this.awareness.getLocalState()?.user
       previewDoc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
+        documentPermalinks: this.#documentPermalinks,
         root: this.root,
         ydoc: previewYDoc,
         ...(user && typeof user === "object" ? {user: user as CollaborationUser} : {}),
@@ -1038,15 +1049,18 @@ export class SharedDOMDoc {
       this.#hasQueuedYChanges = true
       return
     }
-    this.#writeYToDOM(events)
+    this.#writeYToDOM(events, this.#documentPermalinks && !(transaction.origin instanceof Y.UndoManager))
   }
 
-  #writeYToDOM(events?: Y.YEvent<YXmlNode>[]) {
+  #writeYToDOM(events?: Y.YEvent<YXmlNode>[], derivePermalinks = false) {
     if(this.#isWritingToDOM) return
     this.#isWritingToDOM = true
     let reactions: MutationRecord[] | undefined
     try {
-      if(events) {
+      // A generated fragment and its ownership metadata span body and head.
+      // Their deep observers run separately, but the shared transaction already
+      // contains both; render both before checking concurrent slug collisions.
+      if(events && !derivePermalinks) {
         for(const event of events) this.#renderYChange(event)
       }
       else {
@@ -1073,7 +1087,7 @@ export class SharedDOMDoc {
     finally {
       this.#isWritingToDOM = false
     }
-    this.syncFromDOM(this.#remoteReactionOrigin, reactions)
+    this.syncFromDOM(this.#remoteReactionOrigin, reactions, derivePermalinks)
     this.widgetData.sync()
   }
 

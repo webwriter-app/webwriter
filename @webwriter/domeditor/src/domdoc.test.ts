@@ -28,7 +28,7 @@ function cloneShared(source: SharedDOMDoc, staleHTML = "") {
   return createShared(staleHTML, ydoc)
 }
 
-function createDocumentShared(headHTML = "", bodyHTML = "", language = "", ydoc?: Y.Doc) {
+function createDocumentShared(headHTML = "", bodyHTML = "", language = "", ydoc?: Y.Doc, documentPermalinks = false) {
   const owner = document.implementation.createHTMLDocument("")
   owner.head.innerHTML = headHTML
   owner.body.innerHTML = bodyHTML
@@ -36,6 +36,7 @@ function createDocumentShared(headHTML = "", bodyHTML = "", language = "", ydoc?
   const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"], {
     root: owner.body,
     ydoc,
+    documentPermalinks,
   })
   sharedDocs.push(shared)
   return {owner, shared}
@@ -57,6 +58,128 @@ afterEach(() => {
   document.body.replaceChildren()
   document.body.removeAttribute("class")
   vi.restoreAllMocks()
+})
+
+describe("content-derived document permalinks", () => {
+  it("assigns readable IDs without touching authored IDs, widgets or irregular nesting", () => {
+    const {owner} = createDocumentShared("", '<!--keep--><h1>Technical <em>summary</em></h1><section><h2>Technical summary</h2></section><h3 id="authored">Keep</h3><figure><img><figcaption>Café &amp; tea</figcaption></figure><table><caption>Results</caption><tbody><tr><td>Cell</td></tr></tbody></table><test-widget><h2>Private</h2></test-widget><h4 is="special-heading">Private</h4>', "", undefined, true)
+    expect(Array.from(owner.body.querySelectorAll("h1, h2, h3, figure, table")).map(element => element.id))
+      .toEqual(["technical-summary", "technical-summary-2", "authored", "cafe-tea", "results", ""])
+    expect(owner.body.querySelector("h4")!.id).toBe("")
+    expect(owner.body.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(owner.head.querySelectorAll('meta[name="webwriter-generated-id"]')).toHaveLength(4)
+    expect(owner.body.innerHTML).not.toContain("◆")
+  })
+
+  it("includes text, slug and ownership in one update and undo/redo item", async () => {
+    const {owner, shared} = createDocumentShared("", "<h1>Technical summary</h1>", "", undefined, true)
+    const heading = owner.body.firstElementChild!
+    const updates = vi.fn()
+    shared.doc.on("update", updates)
+    heading.firstChild!.textContent = "Implementation notes"
+    await mutationsDelivered()
+    expect(heading.id).toBe("implementation-notes")
+    expect(updates).toHaveBeenCalledTimes(1)
+    expect(owner.head.querySelector("meta")!.content).toBe("implementation-notes")
+    shared.undo()
+    expect(heading.textContent).toBe("Technical summary")
+    expect(heading.id).toBe("technical-summary")
+    expect(owner.head.querySelector("meta")!.content).toBe("technical-summary")
+    shared.redo()
+    expect(heading.textContent).toBe("Implementation notes")
+    expect(heading.id).toBe("implementation-notes")
+  })
+
+  it("retains generated ownership after HTML reload and relinquishes it for a manually changed ID", () => {
+    const left = createDocumentShared("", "<h1>First</h1>", "", undefined, true)
+    const reopened = createDocumentShared(left.owner.head.innerHTML, left.owner.body.innerHTML, "", undefined, true)
+    const heading = reopened.owner.body.firstElementChild!
+    heading.textContent = "Second"
+    reopened.shared.syncFromDOM()
+    expect(heading.id).toBe("second")
+    heading.id = "my-bookmark"
+    reopened.shared.syncFromDOM()
+    heading.textContent = "Third"
+    reopened.shared.syncFromDOM()
+    expect(heading.id).toBe("my-bookmark")
+    expect(reopened.owner.head.querySelector('meta[name="webwriter-generated-id"]')).toBeNull()
+  })
+
+  it("preserves unrelated suffixes and reserves IDs outside the edited content", () => {
+    const {owner, shared} = createDocumentShared('<meta id="taken">', '<h1>Same</h1><h2>Same</h2><h3>Other</h3>', "", undefined, true)
+    owner.body.querySelector("h1")!.textContent = "Taken"
+    shared.syncFromDOM()
+    expect(owner.body.querySelector("h1")!.id).toBe("taken-2")
+    expect(owner.body.querySelector("h2")!.id).toBe("same-2")
+    expect(owner.body.querySelector("h3")!.id).toBe("other")
+  })
+
+  it("applies paired remote edits without another update and restores them on remote undo", () => {
+    const left = createDocumentShared("", "<h1>First</h1>", "", undefined, true)
+    const ydoc = new Y.Doc()
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(left.shared.doc))
+    const right = createDocumentShared("", "", "", ydoc, true)
+    const updates = vi.fn()
+    right.shared.doc.on("update", updates)
+    left.owner.body.firstElementChild!.textContent = "Second"
+    left.shared.syncFromDOM()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "remote")
+    expect(right.owner.body.firstElementChild!.id).toBe("second")
+    expect(updates).toHaveBeenCalledTimes(1)
+    left.shared.undo()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "remote")
+    expect(right.owner.body.firstElementChild!.id).toBe("first")
+    expect(right.owner.body.firstElementChild!.textContent).toBe("First")
+  })
+
+  it("leaves canvas, slides and custom document templates alone", () => {
+    for(const html of ['<custom-doc role="document"><h1>Private</h1></custom-doc>', '<h1>Canvas</h1>']) {
+      const {owner, shared} = createDocumentShared("", html)
+      owner.body.className = "ww-canvas"
+      shared.syncFromDOM()
+      const ydoc = new Y.Doc()
+      Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(shared.doc))
+      const next = createDocumentShared("", "", "", ydoc, true)
+      next.shared.syncFromDOM()
+      expect(next.owner.body.querySelector("h1")!.id).toBe("")
+    }
+  })
+
+  it("resolves concurrent duplicate slugs deterministically without losing text", () => {
+    const left = createDocumentShared("", "<h1>Left</h1><h2>Right</h2>", "", undefined, true)
+    const ydoc = new Y.Doc()
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(left.shared.doc))
+    const right = createDocumentShared("", "", "", ydoc, true)
+    left.owner.body.querySelector("h1")!.textContent = "Same"
+    right.owner.body.querySelector("h2")!.textContent = "Same"
+    left.shared.syncFromDOM(); right.shared.syncFromDOM()
+    const leftUpdate = Y.encodeStateAsUpdate(left.shared.doc)
+    const rightUpdate = Y.encodeStateAsUpdate(right.shared.doc)
+    Y.applyUpdate(left.shared.doc, rightUpdate, "remote")
+    Y.applyUpdate(right.shared.doc, leftUpdate, "remote")
+    for(let round = 0; round < 3; round++) {
+      Y.applyUpdate(left.shared.doc, Y.encodeStateAsUpdate(right.shared.doc), "remote")
+      Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "remote")
+    }
+    expect(Array.from(left.owner.body.children).map(element => element.id).sort()).toEqual(["same", "same-2"])
+    expect(right.owner.body.innerHTML).toBe(left.owner.body.innerHTML)
+    expect(Array.from(right.owner.body.children).map(element => element.textContent)).toEqual(["Same", "Same"])
+  })
+
+  it("updates caption slugs and removes ownership on deletion in the same undoable change", () => {
+    const {owner, shared} = createDocumentShared("", '<figure><img><figcaption>Before</figcaption></figure>', "", undefined, true)
+    const figure = owner.body.firstElementChild!
+    owner.body.querySelector("figcaption")!.firstChild!.textContent = "After"
+    shared.syncFromDOM()
+    expect(figure.id).toBe("after")
+    shared.stopCapturing()
+    figure.remove()
+    shared.syncFromDOM()
+    expect(owner.head.querySelector('meta[name="webwriter-generated-id"]')).toBeNull()
+    shared.undo()
+    expect(owner.body.firstElementChild!.id).toBe("after")
+    expect(owner.head.querySelector("meta")!.content).toBe("after")
+  })
 })
 
 describe("SharedDOMDoc initialization", () => {

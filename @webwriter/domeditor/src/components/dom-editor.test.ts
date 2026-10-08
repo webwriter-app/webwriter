@@ -5595,6 +5595,22 @@ describe("DomEditor.execute()", () => {
     expect(preview().querySelector("script")).toBeNull()
   })
 
+  it("adds the optional document reader to preview with a trusted nonce and fullscreen permission", async () => {
+    const {editor, iframe} = await mountEditor()
+    const source = iframe.contentDocument!
+    source.body.innerHTML = '<h1 id="intro">Intro</h1><figure id="diagram"><img><figcaption>Diagram</figcaption></figure><script id="webwriter-document-viewer">untrusted()</script>'
+    const preview = new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
+    const script = preview.getElementById("webwriter-document-viewer")!
+    expect(script.textContent).toContain("mountDocumentReader()")
+    expect(script.textContent).not.toContain("untrusted()")
+    const policy = preview.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
+    expect(script.getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])
+    expect(source.getElementById("webwriter-document-viewer")!.textContent).toBe("untrusted()")
+    ;(editor as any).previewActive = true
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("allow")).toBe("fullscreen; clipboard-write")
+  })
+
   it("exits preview from the file tab", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!

@@ -1,5 +1,7 @@
 import canvasViewerSource from "./canvas-viewer.js?raw"
+import documentViewerSource from "./document-viewer.js?raw"
 import {documentLayoutMode} from "./document-layout"
+import {getDocumentRoot} from "./document-template"
 import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, type WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
@@ -68,6 +70,15 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.
   root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
+  root.querySelectorAll('script[id="webwriter-document-viewer"]').forEach(script => script.remove())
+  if(getDocumentRoot(root.body) === root.body && documentLayoutMode(root.body) === "document"
+    && root.body.querySelector("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], figure, table")) {
+    const script = root.createElement("script")
+    script.id = "webwriter-document-viewer"
+    script.type = "module"
+    script.textContent = `${documentViewerSource}\nmountDocumentReader()\n`
+    head.append(script)
+  }
   if(documentLayoutMode(root.body) === "canvas") {
     const script = root.createElement("script")
     script.id = "webwriter-canvas-viewer"
