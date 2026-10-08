@@ -1797,6 +1797,10 @@ export class DomEditor extends LitElement {
 
   private handlePreviewMessage(event: MessageEvent) {
     if(!this.isPreviewMessage(event)) return false
+    if(event.data?.type === "preview-frame-save") {
+      void this.downloadDocument()
+      return true
+    }
     if(event.data?.type === "preview-frame-ready") {
       this.previewOpaque = true
       this.configurePreviewFrame()
@@ -6842,7 +6846,7 @@ export class DomEditor extends LitElement {
             class="preview-frame"
             allow="fullscreen; clipboard-write"
             title=${this.liveSessionActive ? "Live document preview" : "Document preview"}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
             referrerpolicy="no-referrer"
             src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("preview", this.previewFrameRevision)}
             srcdoc=${import.meta.env.MODE === "test" ? this.previewDocumentHTML ?? "" : nothing}

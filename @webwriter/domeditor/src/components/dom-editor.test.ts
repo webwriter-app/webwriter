@@ -5543,9 +5543,9 @@ describe("DomEditor.execute()", () => {
     const nonce = /'nonce-([^']+)'/.exec(policy)![1]
     expect(scripts.every(script => script.getAttribute("nonce") === nonce)).toBe(true)
     expect(scripts[0].src).toContain("@webcomponents/scoped-custom-element-registry@0.0.10/")
-    expect(scripts.slice(1).map(script => script.src)).toEqual(demoPackage.scripts)
+    expect(scripts.slice(1).filter(script => script.hasAttribute("src")).map(script => script.src)).toEqual(demoPackage.scripts)
     expect(parsed.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
-    expect(previewHTML).not.toContain("◆")
+    expect(parsed.body.innerHTML).not.toContain("◆")
   })
 
   it("selects only present widgets' assets and refreshes after DOM changes", async () => {
@@ -5572,7 +5572,8 @@ describe("DomEditor.execute()", () => {
     expect(Array.from(parsed.querySelectorAll('link[rel="stylesheet"]')).map(link => link.getAttribute("href"))).toEqual([usedStyle])
     source.body.replaceChildren()
     const empty = preview()
-    expect(empty.querySelector("script, link[rel='stylesheet']")).toBeNull()
+    expect(empty.querySelector("script[src], link[rel='stylesheet']")).toBeNull()
+    expect(empty.getElementById("webwriter-document-viewer")).not.toBeNull()
     expect(empty.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")).not.toContain("unsafe-eval")
   })
 
@@ -5601,7 +5602,7 @@ describe("DomEditor.execute()", () => {
     source.body.innerHTML = '<h1 id="intro">Intro</h1><figure id="diagram"><img><figcaption>Diagram</figcaption></figure><script id="webwriter-document-viewer">untrusted()</script>'
     const preview = new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
     const script = preview.getElementById("webwriter-document-viewer")!
-    expect(script.textContent).toContain("mountDocumentReader()")
+    expect(script.textContent).toContain("mountDocumentReader(")
     expect(script.textContent).not.toContain("untrusted()")
     const policy = preview.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(script.getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])
@@ -5609,6 +5610,26 @@ describe("DomEditor.execute()", () => {
     ;(editor as any).previewActive = true
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("allow")).toBe("fullscreen; clipboard-write")
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("sandbox")).toContain("allow-modals")
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("sandbox")).toContain("allow-popups allow-popups-to-escape-sandbox")
+  })
+
+  it("saves from the document pane only through an authenticated preview message", async () => {
+    const {editor} = await mountEditor()
+    ;(editor as any).previewActive = true
+    await editor.updateComplete
+    const frame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
+    const download = vi.spyOn(editor as any, "downloadDocument").mockResolvedValue(undefined)
+    const message = (source: Window | null, nonce: string, origin = window.location.origin) => new MessageEvent("message", {
+      source, origin, data: {type: "preview-frame-save", bridgeNonce: nonce},
+    })
+    const nonce = (editor as any).bridgeNonce
+    expect((editor as any).handlePreviewMessage(message(window, nonce))).toBe(false)
+    expect((editor as any).handlePreviewMessage(message(frame.contentWindow, "wrong"))).toBe(false)
+    expect((editor as any).handlePreviewMessage(message(frame.contentWindow, nonce, "https://untrusted.test"))).toBe(false)
+    expect(download).not.toHaveBeenCalled()
+    expect((editor as any).handlePreviewMessage(message(frame.contentWindow, nonce))).toBe(true)
+    expect(download).toHaveBeenCalledOnce()
   })
 
   it("exits preview from the file tab", async () => {

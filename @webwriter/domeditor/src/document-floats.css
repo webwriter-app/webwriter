@@ -15,6 +15,9 @@
     max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem));
     margin-inline: auto;
     padding-inline: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane));
+    /* Leave room below authored content for the reader's 28px action row,
+     * its 20px bottom inset, and a 20px gap above it. */
+    padding-block-end: max(68px, var(--ww-page-gutter, 1rem));
 
     /* Default elements fill their column; authored sizes still take precedence.
      * Inline widgets retain their own display; these sizes do not blockify them. */
@@ -50,6 +53,12 @@
 
     :is(.ww-float-left, .ww-float-right) {
       margin-block: 5px;
+    }
+  }
+
+  @media print {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      padding-block-end: 0;
     }
   }
 

@@ -19,6 +19,14 @@ afterEach(() => {
 })
 
 describe("document reader export", () => {
+  it("includes document actions even when there are no permalink targets", () => {
+    document.body.innerHTML = '<p>Plain document</p>'
+    editor = new DOMEditor()
+    const parsed = new DOMParser().parseFromString(editor.toHTML(), "text/html")
+    expect(parsed.getElementById("webwriter-document-viewer")!.textContent).toContain("creativecommons.org/licenses/by/4.0/")
+    expect(parsed.getElementById("webwriter-document-viewer")!.textContent).toContain("data:image/svg+xml,")
+    expect(parsed.body.innerHTML).toBe('<p>Plain document</p>')
+  })
   it("embeds an import-free optional reader with authored fragment IDs in normal and offline saves", async () => {
     editor = new DOMEditor()
     for(const html of [editor.toHTML(), await editor.serializeHTML(), await editor.serializeHTML(true)]) {
@@ -47,7 +55,7 @@ describe("document reader export", () => {
     parsed.getElementById("webwriter-document-viewer")!.textContent = "untrusted()"
     editor.features.dependency.appendSerializedAssets(parsed)
     expect(parsed.querySelectorAll("#webwriter-document-viewer")).toHaveLength(1)
-    expect(parsed.getElementById("webwriter-document-viewer")!.textContent).toContain("mountDocumentReader()")
+    expect(parsed.getElementById("webwriter-document-viewer")!.textContent).toContain("mountDocumentReader(")
     expect(parsed.getElementById("webwriter-document-viewer")!.textContent).not.toContain("untrusted()")
     parsed.body.className = "ww-canvas"
     editor.features.dependency.appendSerializedAssets(parsed)

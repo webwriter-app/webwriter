@@ -13,6 +13,14 @@ const ruleHeaders = (source: string) => Array.from(
 ).filter(header => !header.startsWith("@") && !/^(?:from|to|\d+%)$/.test(header))
 
 describe("document themes", () => {
+  it("reserves a bottom gutter for document actions in editing and saved themes", () => {
+    for(const theme of documentThemes) {
+      const source = editingDocumentThemeSource(theme)
+      expect(source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[^}]*padding-block-end: max\(68px, var\(--ww-page-gutter, 1rem\)\);/)
+      expect(source).toMatch(/@media print\s*\{\s*body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{\s*padding-block-end: 0;/)
+      expect(source).toBe(theme.source)
+    }
+  })
   it("includes symmetric side-lane geometry in every saved and editing theme", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain("container-type: inline-size;")

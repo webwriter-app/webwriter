@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {mountDocumentReader} from "./document-viewer.js"
+import {creativeCommonsLicenses} from "./document-head"
 
 let reader: ReturnType<typeof mountDocumentReader>
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
 const controls = () => Array.from(document.body.shadowRoot!.querySelectorAll<HTMLElement>(".◆document-reader-control"))
 const fullscreenDescriptor = Object.getOwnPropertyDescriptor(document, "fullscreenEnabled")
+const originalHead = document.head.innerHTML
+const printDescriptor = Object.getOwnPropertyDescriptor(window, "print")
 
 beforeEach(() => {
   document.designMode = "off"
@@ -20,13 +23,225 @@ beforeEach(() => {
 afterEach(() => {
   reader?.destroy(); reader = null
   vi.restoreAllMocks()
+  if(printDescriptor) Object.defineProperty(window, "print", printDescriptor)
+  else Reflect.deleteProperty(window, "print")
   vi.useRealTimers()
   if(fullscreenDescriptor) Object.defineProperty(document, "fullscreenEnabled", fullscreenDescriptor)
   else Reflect.deleteProperty(document, "fullscreenEnabled")
   document.body.replaceChildren()
   document.body.removeAttribute("class")
+  document.body.removeAttribute("style")
   document.body.shadowRoot?.replaceChildren(document.createElement("slot"))
   document.designMode = "off"
+  vi.unstubAllGlobals()
+  document.head.innerHTML = originalHead
+})
+
+describe("document pane", () => {
+  const pane = () => document.body.shadowRoot!.querySelector<HTMLElement>(".◆document-pane")!
+
+  it("keeps the icon group at the page's right edge when metadata is absent", () => {
+    document.body.replaceChildren()
+    reader = mountDocumentReader()
+    expect(pane().querySelector<HTMLButtonElement>(".◆document-copyright")!.hidden).toBe(true)
+    expect(pane().style.right).toBe("20px")
+    expect(getComputedStyle(pane()).justifyContent).toBe("flex-end")
+    expect(Array.from(pane().children).filter(node => !(node as HTMLElement).hidden).map(node => node.className)).toEqual(["◆document-brand", "◆document-pane-actions"])
+  })
+
+  it("aligns its right edge to the document and follows layout changes", async () => {
+    document.body.style.paddingRight = "24px"
+    const rect = vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue({left: 100, top: 0, right: 900, bottom: 400, width: 800, height: 400} as DOMRect)
+    reader = mountDocumentReader()
+    expect(pane().style.right).toBe(`${window.innerWidth - 876}px`)
+    expect(pane().style.width).toBe("360px")
+    rect.mockReturnValue({left: 100, top: 0, right: 800, bottom: 400, width: 700, height: 400} as DOMRect)
+    window.dispatchEvent(new Event("resize")); await settle()
+    expect(pane().style.right).toBe(`${window.innerWidth - 776}px`)
+    expect(pane().style.bottom).toBe("")
+    expect(document.body.shadowRoot!.querySelector("style")!.textContent).toContain("bottom: 20px")
+  })
+
+  it("uses the bottom area when the side gutter is narrow and updates after scrolling", async () => {
+    const wide = document.createElement("p")
+    wide.textContent = "Wide document content"; document.body.append(wide)
+    const rect = vi.spyOn(wide, "getBoundingClientRect").mockReturnValue({left: 20, top: 0, right: window.innerWidth - 20, bottom: window.innerHeight - 80, width: window.innerWidth - 40, height: window.innerHeight - 80} as DOMRect)
+    reader = mountDocumentReader()
+    expect(pane().hidden).toBe(false)
+    expect(pane().style.width).toBe("360px")
+    rect.mockReturnValue({left: 20, top: 0, right: window.innerWidth - 20, bottom: window.innerHeight, width: window.innerWidth - 40, height: window.innerHeight} as DOMRect)
+    window.dispatchEvent(new Event("scroll")); await settle()
+    expect(pane().hidden).toBe(true)
+    rect.mockReturnValue({left: 20, top: window.innerHeight, right: window.innerWidth - 20, bottom: window.innerHeight + 100, width: window.innerWidth - 40, height: 100} as DOMRect)
+    window.dispatchEvent(new Event("scroll")); await settle()
+    expect(pane().hidden).toBe(false)
+  })
+
+  it.each([
+    ["https://creativecommons.org/licenses/by-nd/4.0/", "cannot distribute modified versions"],
+    ["https://creativecommons.org/publicdomain/zero/1.0/", "without requesting permission"],
+    ["https://example.test/license", "Review the linked license"],
+    ["", "No reuse license is specified"],
+  ])("explains reuse according to the declared license %s", (url, explanation) => {
+    document.head.insertAdjacentHTML("beforeend", '<meta name="author" content="John Doe">')
+    if(url) {
+      const license = document.createElement("link"); license.rel = "license"; license.href = url
+      document.head.append(license)
+    }
+    reader = mountDocumentReader(creativeCommonsLicenses)
+    pane().querySelector<HTMLButtonElement>(".◆document-copyright")!.click()
+    const bubble = pane().querySelector<HTMLElement>(".◆document-reuse")!
+    expect(bubble.hidden).toBe(false)
+    expect(bubble.textContent).toContain(explanation)
+    expect(bubble.querySelector("a")?.getAttribute("href") ?? "").toBe(url)
+  })
+
+  it("opens a closable reuse bubble and closes it on focus loss, Escape and window blur", () => {
+    document.head.insertAdjacentHTML("beforeend", '<meta name="author" content="John Doe"><link rel="license" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">')
+    reader = mountDocumentReader(creativeCommonsLicenses)
+    const trigger = pane().querySelector<HTMLButtonElement>(".◆document-copyright")!
+    const bubble = pane().querySelector<HTMLElement>(".◆document-reuse")!
+    expect(trigger.textContent).toBe(`© John Doe ${new Date().getFullYear()}, CC-BY-NC-SA`)
+    expect(bubble.hidden).toBe(true)
+    trigger.click()
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(bubble.hidden).toBe(false)
+    expect(bubble.textContent).toContain("noncommercial")
+    expect(bubble.textContent).toContain("same or a compatible license")
+    expect(bubble.textContent).toContain("Credit John Doe")
+    bubble.querySelector<HTMLButtonElement>("button")!.click()
+    expect(bubble.hidden).toBe(true)
+    expect(document.body.shadowRoot!.activeElement).toBe(trigger)
+    trigger.click()
+    bubble.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    expect(bubble.hidden).toBe(true)
+    trigger.click()
+    pane().querySelector<HTMLButtonElement>('[name="print"]')!.focus()
+    expect(bubble.hidden).toBe(true)
+    trigger.click()
+    window.dispatchEvent(new Event("blur"))
+    expect(bubble.hidden).toBe(true)
+  })
+
+  it("reuses a picked file handle and writes the current document on every save", async () => {
+    const write = vi.fn(), close = vi.fn()
+    const createWritable = vi.fn().mockResolvedValue({write, close})
+    const picker = vi.fn().mockResolvedValue({createWritable})
+    vi.stubGlobal("showSaveFilePicker", picker)
+    const fallback = vi.spyOn(URL, "createObjectURL")
+    reader = mountDocumentReader()
+    const save = pane().querySelector<HTMLButtonElement>('[name="save"]')!
+    save.click(); save.click()
+    await settle()
+    expect(picker).toHaveBeenCalledOnce()
+    expect(write).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledOnce()
+    document.body.querySelector("h1")!.textContent = "Revised"
+    save.click(); await settle()
+    expect(picker).toHaveBeenCalledOnce()
+    expect(write).toHaveBeenCalledTimes(2)
+    expect(await (write.mock.calls[1][0] as Blob).text()).toContain("Revised")
+    expect(fallback).not.toHaveBeenCalled()
+    expect(save.disabled).toBe(false)
+  })
+
+  it("does not download on picker cancellation, but falls back when file access fails", async () => {
+    const picker = vi.fn().mockRejectedValue(new DOMException("Cancelled", "AbortError"))
+    vi.stubGlobal("showSaveFilePicker", picker)
+    const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:document")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    reader = mountDocumentReader()
+    const save = pane().querySelector<HTMLButtonElement>('[name="save"]')!
+    save.click(); await settle()
+    expect(create).not.toHaveBeenCalled()
+    picker.mockRejectedValue(new DOMException("Unavailable", "SecurityError"))
+    save.click(); await settle()
+    expect(create).toHaveBeenCalledOnce()
+    picker.mockResolvedValue({createWritable: vi.fn().mockRejectedValue(new Error("Write denied"))})
+    save.click(); await settle()
+    expect(create).toHaveBeenCalledTimes(2)
+  })
+
+  it("renders compact copyright information beside minimal icon actions without changing authored content", async () => {
+    document.head.insertAdjacentHTML("beforeend", '<meta name="author" content="Ada Lovelace"><link rel="license" href="https://creativecommons.org/licenses/by/4.0/">')
+    const authored = document.body.innerHTML
+    reader = mountDocumentReader(creativeCommonsLicenses)
+    expect(pane().hidden).toBe(false)
+    expect(pane().style.width).toBe("360px")
+    expect(pane().querySelector(".◆document-copyright")!.textContent).toBe(`© Ada Lovelace ${new Date().getFullYear()}, CC-BY`)
+    expect(pane().firstElementChild!.getAttribute("href")).toBe("https://edumix.eu")
+    expect(pane().firstElementChild!.getAttribute("target")).toBe("_blank")
+    expect(pane().firstElementChild!.getAttribute("rel")).toBe("noopener noreferrer")
+    expect(pane().querySelector(".◆document-brand img")).not.toBeNull()
+    expect(pane().querySelector<HTMLAnchorElement>(".◆document-reuse a")!.href).toBe("https://creativecommons.org/licenses/by/4.0/")
+    expect(Array.from(pane().querySelectorAll(".◆document-pane-actions button")).map(button => button.getAttribute("aria-label"))).toEqual(["Save document", "Print document"])
+    expect(pane().querySelectorAll("button svg")).toHaveLength(2)
+    expect(document.body.innerHTML).toBe(authored)
+    document.head.querySelector('meta[name="author"]')!.setAttribute("content", "Grace Hopper")
+    document.head.querySelector('link[rel="license"]')!.setAttribute("href", "javascript:alert(1)")
+    await settle()
+    expect(pane().textContent).toContain("Grace Hopper")
+    expect(pane().querySelector(".◆document-reuse a")).toBeNull()
+    reader!.destroy()
+    expect(document.body.shadowRoot!.querySelector(".◆document-pane")).toBeNull()
+  })
+
+  it("avoids content alongside the bottom row, including widgets in transparent wrappers", async () => {
+    const wrapper = document.createElement("div")
+    wrapper.style.display = "contents"
+    const widget = document.createElement("wide-widget")
+    wrapper.append(widget); document.body.append(wrapper)
+    const rect = vi.spyOn(widget, "getBoundingClientRect").mockReturnValue({left: 0, top: window.innerHeight - 100, right: window.innerWidth - 100, bottom: window.innerHeight, width: window.innerWidth - 100, height: 100} as DOMRect)
+    reader = mountDocumentReader()
+    expect(pane().hidden).toBe(true)
+    rect.mockReturnValue({left: 100, top: 0, right: window.innerWidth - 180, bottom: 100, width: window.innerWidth - 280, height: 100} as DOMRect)
+    window.dispatchEvent(new Event("resize")); await settle()
+    expect(pane().hidden).toBe(false)
+    expect(pane().style.width).toBe("360px")
+    expect(pane().style.right).toBe("20px")
+    Object.defineProperty(document, "fullscreenElement", {configurable: true, value: widget})
+    document.dispatchEvent(new Event("fullscreenchange")); await settle()
+    expect(pane().hidden).toBe(true)
+    Reflect.deleteProperty(document, "fullscreenElement")
+  })
+
+  it("prints using the platform and permits preview downloads to use the editor save path", () => {
+    const print = vi.fn()
+    Object.defineProperty(window, "print", {configurable: true, value: print})
+    const nativeDownload = vi.spyOn(URL, "createObjectURL")
+    const bridge = vi.fn((event: Event) => event.preventDefault())
+    window.addEventListener("webwriter-document-save", bridge)
+    try {
+      reader = mountDocumentReader()
+      pane().querySelector<HTMLButtonElement>('[name="print"]')!.click()
+      pane().querySelector<HTMLButtonElement>('[name="save"]')!.click()
+      expect(print).toHaveBeenCalledOnce()
+      expect(bridge).toHaveBeenCalledOnce()
+      expect(nativeDownload).not.toHaveBeenCalled()
+    } finally { window.removeEventListener("webwriter-document-save", bridge) }
+  })
+
+  it("downloads current HTML and revokes its URL without serializing the pane", async () => {
+    vi.useFakeTimers()
+    document.title = "Research: notes"
+    const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:document")
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    let filename = ""
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function(this: HTMLAnchorElement) { filename = this.download })
+    reader = mountDocumentReader()
+    pane().querySelector<HTMLButtonElement>('[name="save"]')!.click()
+    expect(filename).toBe("Research- notes.html")
+    const blob = create.mock.calls[0][0] as Blob
+    expect(blob.type).toBe("text/html;charset=utf-8")
+    const source = await blob.text()
+    expect(source).toContain('<h1 id="intro">Intro</h1>')
+    expect(source).toContain("Research: notes")
+    expect(source).not.toContain("◆document-pane")
+    reader!.destroy()
+    expect(revoke).toHaveBeenCalledWith("blob:document")
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })
 
 describe("document reader controls", () => {

@@ -8,6 +8,10 @@ const hostOrigin = bridge?.getAttribute("data-host-origin")
 if(nonce && hostOrigin && window.parent !== window) {
   const preview = new LivePreview()
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, hostOrigin)
+  window.addEventListener("webwriter-document-save", event => {
+    event.preventDefault()
+    post({type: "preview-frame-save"})
+  })
   const frame = {contentWindow: window}
   const positions = () => {
     const width = window.innerWidth || document.documentElement.clientWidth || 1

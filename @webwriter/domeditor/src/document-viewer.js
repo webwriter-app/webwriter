@@ -34,7 +34,7 @@ function targets(body) {
 }
 
 /** Mount controls in the body's shadow appendix without changing authored nodes. */
-export function mountDocumentReader() {
+export function mountDocumentReader(licenses = [], appIcon = "") {
   const body = document.body
   if(blocked(body)) return null
   if(activeReaders.has(body)) return activeReaders.get(body)
@@ -59,7 +59,27 @@ export function mountDocumentReader() {
     .◆document-reader-feedback::after { content: ""; position: absolute; left: calc(var(--arrow-position) - 3px); bottom: -4px; width: 6px; height: 6px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: white; transform: rotate(45deg); }
     .◆document-reader-feedback[data-below]::after { top: -4px; bottom: auto; transform: rotate(225deg); }
     .◆document-reader-feedback[hidden] { display: none; }
-    @media print { .◆document-reader-control, .◆document-reader-feedback { display: none !important; } }
+    .◆document-pane { position: fixed; right: 20px; bottom: 20px; z-index: 1000; display: flex; align-items: center; justify-content: flex-end; gap: 8px; overflow: visible; color: #94a3b8; font: 12px/1.5 system-ui; text-align: right; }
+    .◆document-pane[hidden] { display: none; }
+    .◆document-pane a { color: inherit; }
+    .◆document-pane .◆document-brand { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 28px; }
+    .◆document-brand img { width: 18px; height: 22px; object-fit: contain; filter: grayscale(1); opacity: .5; }
+    .◆document-brand:hover img { filter: none; opacity: 1; }
+    .◆document-pane-actions { display: flex; flex: none; gap: 4px; }
+    .◆document-pane button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+    .◆document-pane button:hover { color: #334155; }
+    .◆document-pane button:disabled { opacity: .5; cursor: wait; }
+    .◆document-pane button.◆document-copyright { display: block; flex: 0 1 auto; min-width: 0; width: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .◆document-pane [hidden] { display: none !important; }
+    .◆document-pane :is(a, button):focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+    .◆document-reuse { position: absolute; bottom: calc(100% + 8px); left: 0; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 4px; background: white; color: #334155; text-align: left; overflow: visible; }
+    .◆document-reuse::after { content: ""; position: absolute; bottom: -4px; left: calc(var(--reuse-arrow, 50%) - 3px); width: 6px; height: 6px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: white; transform: rotate(45deg); }
+    .◆document-reuse > div { max-height: calc(100dvh - 130px); overflow: auto; }
+    .◆document-reuse p { margin: 6px 0; }
+    .◆document-reuse a { text-decoration: underline; }
+    .◆document-reuse header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .◆document-reuse button { width: 20px; height: 20px; }
+    @media print { .◆document-reader-control, .◆document-reader-feedback, .◆document-pane { display: none !important; } }
   `
   appendix.append(style)
   // Appendix styles cannot reach authored fullscreen content. A disposable
@@ -93,6 +113,192 @@ export function mountDocumentReader() {
   centerFullscreen()
   if(fullscreenStyles) document.adoptedStyleSheets = [...document.adoptedStyleSheets, fullscreenStyles]
   const controls = new Map()
+  const pane = document.createElement("aside")
+  pane.className = "◆document-pane"
+  pane.setAttribute("aria-label", "Document information and actions")
+  pane.hidden = true
+  const brand = document.createElement("a")
+  brand.className = "◆document-brand"
+  brand.href = "https://edumix.eu"; brand.target = "_blank"; brand.rel = "noopener noreferrer"
+  brand.title = "WebWriter on edumix.eu"; brand.setAttribute("aria-label", brand.title)
+  const brandImage = document.createElement("img")
+  brandImage.alt = "WebWriter"; brandImage.src = appIcon
+  brand.append(brandImage)
+  const metadata = document.createElement("button")
+  metadata.type = "button"; metadata.className = "◆document-copyright"
+  metadata.setAttribute("aria-label", "How to reuse this document")
+  metadata.setAttribute("aria-expanded", "false")
+  const reuse = document.createElement("div")
+  reuse.className = "◆document-reuse"; reuse.hidden = true; reuse.tabIndex = -1
+  reuse.setAttribute("role", "dialog"); reuse.setAttribute("aria-label", "Reuse this document")
+  const reuseHeader = document.createElement("header")
+  const reuseTitle = document.createElement("strong"); reuseTitle.textContent = "Reuse this document"
+  const closeReuseButton = document.createElement("button")
+  closeReuseButton.type = "button"; closeReuseButton.textContent = "×"; closeReuseButton.setAttribute("aria-label", "Close reuse information")
+  const reuseContent = document.createElement("div")
+  reuseHeader.append(reuseTitle, closeReuseButton); reuse.append(reuseHeader, reuseContent)
+  const closeReuse = (restoreFocus = false) => {
+    reuse.hidden = true; metadata.setAttribute("aria-expanded", "false")
+    if(restoreFocus) metadata.focus()
+  }
+  closeReuseButton.addEventListener("click", () => closeReuse(true))
+  metadata.addEventListener("click", () => {
+    if(!reuse.hidden) { closeReuse(); return }
+    reuse.hidden = false; metadata.setAttribute("aria-expanded", "true")
+    const rect = metadata.getBoundingClientRect()
+    reuse.style.setProperty("--reuse-arrow", `${rect.left + rect.width / 2 - pane.getBoundingClientRect().left}px`)
+    reuse.focus()
+  })
+  pane.addEventListener("focusout", event => {
+    if(!reuse.contains(event.relatedTarget) && event.relatedTarget !== metadata) closeReuse()
+  })
+  pane.addEventListener("keydown", event => { if(event.key === "Escape" && !reuse.hidden) { event.preventDefault(); closeReuse(true) } })
+  const actions = document.createElement("div")
+  actions.className = "◆document-pane-actions"
+  actions.setAttribute("role", "group")
+  actions.setAttribute("aria-label", "Document actions")
+  pane.append(brand, metadata, actions, reuse)
+  appendix.append(pane)
+  const downloadURLs = new Map()
+  let fileHandle = null, saving = false
+  const save = async () => {
+    if(destroyed || document.body !== body || saving) return
+    // Preview delegates to the editor's canonical serializer and retained handle.
+    if(!window.dispatchEvent(new Event("webwriter-document-save", {cancelable: true}))) return
+    saving = true; saveButton.disabled = true
+    const name = document.title.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-") || "document"
+    const filename = /\.html?$/i.test(name) ? name : `${name}.html`
+    try {
+      if(!fileHandle && typeof window.showSaveFilePicker === "function") {
+        try {
+          fileHandle = await window.showSaveFilePicker({suggestedName: filename,
+            types: [{description: "HTML document", accept: {"text/html": [".html", ".htm"]}}]})
+        } catch(error) {
+          if(error?.name === "AbortError") return
+          // Unsupported contexts and denied access can still download a copy.
+        }
+      }
+      if(destroyed || document.body !== body) return
+      const serializer = new XMLSerializer()
+      const source = Array.from(document.childNodes).map(node => node.nodeType === 1 ? node.outerHTML : serializer.serializeToString(node)).join("")
+      const blob = new Blob([source], {type: "text/html;charset=utf-8"})
+      if(fileHandle) {
+        let writable
+        try {
+          writable = await fileHandle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+          return
+        } catch {
+          try { await writable?.abort() } catch {}
+          fileHandle = null
+        }
+      }
+      if(destroyed || document.body !== body) return
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url; link.download = filename; link.click()
+      downloadURLs.set(url, setTimeout(() => { URL.revokeObjectURL(url); downloadURLs.delete(url) }, 0))
+    } catch { if(!destroyed) showFeedback(saveButton, "Couldn’t save document") }
+    finally { saving = false; saveButton.disabled = false }
+  }
+  const iconButton = (name, label, path, handler) => {
+    const button = document.createElement("button")
+    button.type = "button"; button.name = name; button.title = label
+    button.setAttribute("aria-label", label)
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    icon.setAttribute("viewBox", "0 0 24 24"); icon.setAttribute("width", "18"); icon.setAttribute("height", "18")
+    icon.setAttribute("fill", "none"); icon.setAttribute("stroke", "currentColor"); icon.setAttribute("stroke-width", "1.5")
+    icon.setAttribute("stroke-linecap", "round"); icon.setAttribute("stroke-linejoin", "round"); icon.setAttribute("aria-hidden", "true")
+    const shape = document.createElementNS(icon.namespaceURI, "path")
+    shape.setAttribute("d", path); icon.append(shape); button.append(icon)
+    button.addEventListener("click", () => { if(!destroyed && document.body === body) handler() })
+    actions.append(button)
+    return button
+  }
+  const saveButton = iconButton("save", "Save document", "M5 3h12l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8", save)
+  iconButton("print", "Print document", "M6 9V3h12v6M6 18H4V9h16v9h-2M6 15h12v6H6zM17 12h.01", () => window.print())
+  let metadataKey = ""
+  const updatePane = () => {
+    const author = document.head.querySelector('meta[name="author" i]')?.getAttribute("content")?.trim() ?? ""
+    const license = document.head.querySelector('link[rel~="license" i]')
+    const href = license?.getAttribute("href")?.trim() ?? ""
+    const title = license?.getAttribute("title")?.trim() ?? ""
+    const year = new Date().getFullYear()
+    const key = JSON.stringify([author, href, title, year])
+    if(metadataKey !== key) {
+      metadataKey = key
+      closeReuse()
+      const known = licenses.find(item => item.url.replace(/\/$/, "") === href.replace(/\/$/, ""))
+      const label = known?.code.replace(/-\d+(?:\.\d+)?$/, "") || title || (href ? "License" : "")
+      metadata.textContent = [author && `© ${author} ${year}`, label].filter(Boolean).join(", ")
+      metadata.title = metadata.textContent
+      metadata.hidden = !author && !href
+      reuseContent.replaceChildren()
+      const paragraph = text => { const p = document.createElement("p"); p.textContent = text; reuseContent.append(p) }
+      if(known) {
+        const code = known.code
+        if(code.startsWith("CC0-")) paragraph("You may copy, edit and share this document, including commercially, without requesting permission. Credit is appreciated.")
+        else {
+          paragraph(`You may copy and share this document${code.includes("-NC") ? " for noncommercial purposes" : ", including commercially"}. ${code.includes("-ND") ? "You may edit it privately, but cannot distribute modified versions." : "You may also edit and adapt it."}`)
+          paragraph(`Credit ${author || "the creator"}, retain supplied notices, link to the document and license, and indicate changes. Do not imply endorsement.`)
+          if(code.includes("-SA")) paragraph("Share adaptations under the same or a compatible license.")
+          paragraph("Do not add legal or technical restrictions that prevent others from exercising the license permissions.")
+        }
+        paragraph("This is a summary. Check the full terms and any separately credited material before reuse.")
+      } else paragraph(href ? "Review the linked license for permission and conditions before copying, editing or sharing this document." : `No reuse license is specified. Ask ${author || "the copyright holder"} for permission unless your use is otherwise permitted.`)
+      if(href) try {
+        const url = new URL(href, document.baseURI)
+        if(["http:", "https:"].includes(url.protocol)) {
+          const link = document.createElement("a")
+          link.textContent = known?.name || title || "Read license terms"; link.href = url.href
+          link.target = "_blank"; link.rel = "noopener noreferrer"; reuseContent.append(link)
+        }
+      } catch {}
+    }
+    // Only content alongside the bottom row constrains its width. Wide content
+    // elsewhere leaves the bottom area available, even with a narrow side gutter.
+    let right = 0
+    const alongsidePane = rect => rect.bottom > window.innerHeight - 68 && rect.top < window.innerHeight - 20
+    const measure = element => {
+      if(element.matches("script, style, link, meta, template")) return
+      const rect = element.getBoundingClientRect()
+      const css = getComputedStyle(element)
+      if(css.display === "none" || css.visibility === "hidden") return
+      const content = custom(element) || element.matches("p, h1, h2, h3, h4, h5, h6, figure, table, pre, blockquote, ul, ol, dl, form, fieldset, hr, svg, canvas, img, picture, audio, video, iframe, object, embed, input, textarea, select, button")
+        || Array.from(element.childNodes).some(node => node.nodeType === 3 && node.textContent.trim())
+        || css.backgroundColor && !["transparent", "rgba(0, 0, 0, 0)"].includes(css.backgroundColor)
+        || parseFloat(css.borderLeftWidth) > 0 || parseFloat(css.borderRightWidth) > 0
+      if(content && rect.width > 0 && rect.height > 0) {
+        if(alongsidePane(rect)) right = Math.max(right, rect.right)
+      }
+      for(const child of element.children) if(!custom(element)) measure(child)
+    }
+    for(const element of body.children) measure(element)
+    for(const node of body.childNodes) {
+      if(node.nodeType !== 3 || !node.textContent.trim()) continue
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      if(typeof range.getClientRects === "function") {
+        for(const rect of range.getClientRects()) {
+          if(alongsidePane(rect)) right = Math.max(right, rect.right)
+        }
+      }
+    }
+    const page = body.getBoundingClientRect()
+    const pageStyle = getComputedStyle(body)
+    const pageRight = page.width > 0 ? page.right - (parseFloat(pageStyle.paddingRight) || 0) - (parseFloat(pageStyle.borderRightWidth) || 0) : window.innerWidth - 20
+    const edge = Math.min(window.innerWidth - 20, pageRight)
+    const width = Math.min(360, edge - right - 20)
+    pane.style.right = `${window.innerWidth - edge}px`
+    pane.style.width = `${Math.max(0, width)}px`
+    pane.hidden = width < 116 || Boolean(document.fullscreenElement)
+    if(pane.hidden) closeReuse()
+    if(!reuse.hidden) {
+      const rect = metadata.getBoundingClientRect()
+      reuse.style.setProperty("--reuse-arrow", `${rect.left + rect.width / 2 - pane.getBoundingClientRect().left}px`)
+    }
+  }
   const feedback = document.createElement("div")
   feedback.className = "◆document-reader-feedback"
   feedback.setAttribute("role", "status")
@@ -244,6 +450,7 @@ export function mountDocumentReader() {
       if(!control.permalink && control.fullscreen?.hidden) control.group.hidden = true
     }
     positionFeedback()
+    updatePane()
   }
   const schedule = () => { if(!frame && !destroyed) frame = requestAnimationFrame(update) }
   const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule)
@@ -257,11 +464,12 @@ export function mountDocumentReader() {
   const refreshObserved = () => {
     if(!resizeObserver) return
     resizeObserver.disconnect()
-    for(const {element, media, caption} of targets(body)) {
+    const observe = element => {
+      if(element.matches("script, style, link, meta, template")) return
       resizeObserver.observe(element)
-      if(caption) resizeObserver.observe(caption)
-      media?.forEach(element => resizeObserver.observe(element))
+      if(!custom(element)) for(const child of element.children) observe(child)
     }
+    observe(body)
   }
   const observer = new MutationObserver(() => {
     if(document.body !== body || blocked(body)) { destroy(); return }
@@ -275,6 +483,7 @@ export function mountDocumentReader() {
     schedule()
   }
   const leave = () => { pointer = null; schedule() }
+  const onBlur = () => { leave(); closeReuse() }
   const onPointerOut = event => { if(!event.relatedTarget) leave() }
   const modeTimer = setInterval(() => { if(document.body !== body || blocked(body)) destroy() }, 250)
   const destroy = () => {
@@ -284,25 +493,31 @@ export function mountDocumentReader() {
     resizeObserver?.disconnect()
     window.removeEventListener("resize", onLayout)
     window.removeEventListener("scroll", onLayout, true)
+    document.removeEventListener("fullscreenchange", onLayout)
     document.removeEventListener("pointermove", onPointer, true)
     document.removeEventListener("pointerover", onPointer, true)
     document.removeEventListener("pointerout", onPointerOut, true)
-    window.removeEventListener("blur", leave)
+    window.removeEventListener("blur", onBlur)
     clearInterval(modeTimer)
     hideFeedback(); feedback.remove()
+    pane.remove()
+    for(const [url, timer] of downloadURLs) { clearTimeout(timer); URL.revokeObjectURL(url) }
+    downloadURLs.clear()
+    fileHandle = null
     if(fullscreenStyles) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== fullscreenStyles)
     if(activeReaders.get(body) === result) activeReaders.delete(body)
     if(frame) cancelAnimationFrame(frame)
     for(const control of controls.values()) control.group.remove()
     controls.clear(); style.remove()
   }
-  observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id", "class", "style", "role", "is"]})
+  observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id", "class", "style", "role", "is", "name", "content", "rel", "href", "title"]})
   window.addEventListener("resize", onLayout)
   window.addEventListener("scroll", onLayout, true)
+  document.addEventListener("fullscreenchange", onLayout)
   document.addEventListener("pointermove", onPointer, true)
   document.addEventListener("pointerover", onPointer, true)
   document.addEventListener("pointerout", onPointerOut, true)
-  window.addEventListener("blur", leave)
+  window.addEventListener("blur", onBlur)
   refreshObserved()
   update()
   const result = {destroy}
