@@ -290,6 +290,28 @@ body table:is(:hover, .◆pointer-hovered) {
   anchor-name: --hover-anchor;
 }
 
+/* Empty caption carets follow the generated prefix, at the text origin. */
+:is(figcaption, caption).◆caption-editing {
+  caret-color: transparent;
+}
+
+:is(figcaption, caption).◆caption-placeholder::before {
+  color: #888;
+  visibility: visible;
+  display: inline-block;
+  white-space: pre;
+}
+
+:is(figcaption, caption).◆caption-editing::before {
+  border-inline-end: 1px solid currentColor;
+  margin-inline-end: -1px;
+  animation: var(--ww-ui-animation, caption-caret-blink 1s step-end infinite);
+}
+
+@keyframes caption-caret-blink {
+  50% { border-inline-end-color: transparent; }
+}
+
 /* One translucent blue for native ranges and selected atomic boxes. */
 body {
   --editor-selection-background: rgb(0 120 215 / 30%);
@@ -537,7 +559,7 @@ body:has(.◆element-capture-selected:is(:hover, .◆pointer-hovered, .◆elemen
   display: none;
 }
 
-body:has(summary:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
+body:has(:is(summary, figcaption):is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
   display: none;
 }
 
@@ -1156,14 +1178,12 @@ body.◆transform-rotating, body.◆transform-rotating * {
   aside,
   blockquote,
   body,
-  caption,
   dd,
   details,
   dialog,
   div,
   dt,
   fieldset,
-  figcaption,
   figure,
   footer,
   form,
@@ -1186,6 +1206,12 @@ body.◆transform-rotating, body.◆transform-rotating * {
   td,
   th
 ):empty::before {
+  content: "\200B";
+  visibility: hidden;
+}
+
+/* A low-priority caret fallback lets authored numbering supply the content. */
+:where(caption:empty, figcaption:empty)::before {
   content: "\200B";
   visibility: hidden;
 }

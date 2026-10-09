@@ -1,3 +1,4 @@
+import type {ElementSelectionType} from "../editor-bridge"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
 import {EditorFeature} from "."
@@ -60,6 +61,29 @@ export class WidgetFeature extends EditorFeature {
   }
 
   actions = {
+    runSelectedWidgetAction: ({selectionType, name}: {
+      type: "runSelectedWidgetAction", selectionType: ElementSelectionType, name: string,
+    }) => {
+      const widgets = this.editor.features.manipulation.selectedElementsOfType(selectionType).filter(element => this.isWidget(element))
+      if(widgets.length !== 1) return false
+      return this.runAction(widgets[0], name)
+    },
+    setSelectedWidgetOption: ({selectionType, name, value}: {
+      type: "setSelectedWidgetOption", selectionType: ElementSelectionType, name: string, value: WidgetOptionValue,
+    }) => {
+      if(this.editor.isEditingLocked) return false
+      const elements = this.editor.features.manipulation.selectedElementsOfType(selectionType).filter(element => this.isWidget(element))
+      if(!elements.length) return false
+      if(!elements.every(element => this.#declarations(element, "options")[name] !== undefined)) return false
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        for(const element of elements) {
+          if(this.editor.features.manipulation.selectedElementsOfType(selectionType).includes(element)) this.setOption(element, name, value, false)
+        }
+      }
+      finally { end() }
+      return true
+    },
     setWidgetOption: ({path, localName, name, value}: {
       type: "setWidgetOption"
       path: number[]
@@ -209,7 +233,7 @@ export class WidgetFeature extends EditorFeature {
 
   /** Writes an option to the widget's reflected attribute, so the change is
    * authored DOM. Property-only options are set on the instance. */
-  setOption(widget: Element, name: string, value: WidgetOptionValue) {
+  setOption(widget: Element, name: string, value: WidgetOptionValue, notify = true) {
     if(this.editor.isEditingLocked) return false
     const declaration = this.#declarations(widget, "options")[name]
     if(declaration === undefined) throw new TypeError(`The widget has no option '${name}'`)
@@ -230,7 +254,7 @@ export class WidgetFeature extends EditorFeature {
       if(attributeValue === null) widget.removeAttribute(attribute)
       else widget.setAttribute(attribute, attributeValue)
     }
-    this.editor.postSelectionPath()
+    if(notify) this.editor.postSelectionPath()
     return true
   }
 

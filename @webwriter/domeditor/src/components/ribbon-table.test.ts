@@ -53,7 +53,7 @@ describe("table controls", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"] input[type="checkbox"]')).not.toBeNull()
   })
 
-  it("keeps table commands and attributes inside collapsible Options", async () => {
+  it("keeps table commands inside Options and Languages visible", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -86,7 +86,7 @@ describe("table controls", () => {
     ])
     const options = drawers[1].querySelector<HTMLElement>('[slot="more"]')!
     expect(options.querySelector('ribbon-button[label="Row above"]')).not.toBeNull()
-    expect(options.lastElementChild!.localName).toBe("element-attribute-editor")
+    expect(drawers[1].querySelector("element-attribute-editor")!.closest('[slot="more"]')).toBeNull()
     expect(drawers[1].shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
   })
 
@@ -145,26 +145,21 @@ describe("table controls", () => {
     }))
   })
 
-  it("renders Caption as a checkbox reflecting and toggling table state", async () => {
+  it("renders the shared Caption group reflecting native table caption position", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
-    toolbox.table = {
-      ...semanticTableState,
-      active: true, cellSelection: true, rows: 1, columns: 1, selectedCells: 1,
-      canMerge: false, canSplit: false, hasCaption: true,
-    }
+    toolbox.table = {...semanticTableState, active: true, cellSelection: true, rows: 1, columns: 1, selectedCells: 1, canMerge: false, canSplit: false, hasCaption: true}
+    toolbox.elementStyle = {target: {localName: "table", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "table", parentDisplay: "block"}}
+    toolbox.captionPosition = "below"
     const listener = vi.fn()
-    toolbox.addEventListener("ribbon-button-click", listener)
+    toolbox.addEventListener("layout-action", listener)
     document.body.append(toolbox)
     await toolbox.updateComplete
-
-    const caption = toolbox.shadowRoot!.querySelector<HTMLInputElement>(
-      'ribbon-drawer[label="Table"] input[type="checkbox"]',
-    )!
-    expect(caption.checked).toBe(true)
-    caption.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-caption"}}))
+    const below = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Caption below, align left"]')!
+    expect(below.getAttribute("aria-pressed")).toBe("true")
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="No caption"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "setCaption", position: "none"}}))
   })
 
   it("keeps border and background controls in universal Style", async () => {
@@ -212,10 +207,10 @@ describe("table controls", () => {
     await toolbox.updateComplete
     const layout = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"]')!
     const checkboxes = layout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    expect(checkboxes).toHaveLength(3)
-    expect(checkboxes[1].checked).toBe(true)
+    expect(checkboxes).toHaveLength(2)
+    expect(checkboxes[0].checked).toBe(true)
+    checkboxes[0].click()
     checkboxes[1].click()
-    checkboxes[2].click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-header"}}))
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-footer"}}))
   })

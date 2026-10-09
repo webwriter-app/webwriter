@@ -680,7 +680,7 @@ describe("toolbox", () => {
 
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
       .toEqual(["Style", "Image"])
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Image"] [slot="more"] element-attribute-editor')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Image"] element-attribute-editor')).not.toBeNull()
 
     toolbox.media = null
     toolbox.elementAttributes = {
@@ -694,7 +694,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Quote")
     expect(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(2)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Quote"] [slot="more"] element-attribute-editor')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Quote"] element-attribute-editor')).not.toBeNull()
   })
 
   it("offers specialized paragraph and heading controls", async () => {
@@ -771,7 +771,7 @@ describe("toolbox", () => {
     }))
   })
 
-  it("offers caption controls for an active or breadcrumb-selected figure", async () => {
+  it("omits a Figure drawer and contextual label for an active or explicitly selected figure", async () => {
     const toolbox = await mountToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -779,17 +779,14 @@ describe("toolbox", () => {
     toolbox.figure = {hasCaption: false}
     await toolbox.updateComplete
 
-    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Figure")
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"] ribbon-button[label="Add caption above"]'))
-      .not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"] ribbon-button[label="Add caption below"]'))
-      .not.toBeNull()
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"], ribbon-drawer[label="Figure"]')).toBeNull()
 
     toolbox.sectionSelected = true
     toolbox.figure = {hasCaption: true}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"] ribbon-button[label="Edit caption"]'))
-      .not.toBeNull()
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"], ribbon-drawer[label="Figure"]')).toBeNull()
   })
 
   it("separates Edit, Review, Style, and Develop into their pane-specific controls", async () => {

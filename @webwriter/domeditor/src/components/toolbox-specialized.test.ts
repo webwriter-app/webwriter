@@ -2,11 +2,12 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DomEditorToolbox} from "./toolbox"
 import type {ElementAttributeState} from "../element-attributes"
-import type {ElementStyleState} from "../editor-bridge"
+import type {ElementStyleState, SelectedElementTypeState} from "../editor-bridge"
 import type {ElementStyleEditor} from "./element-style-editor"
 import type {ElementAttributeEditor} from "./element-attribute-editor"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {WidgetOptionsState} from "../widget-options"
+import {markNames} from "../marks"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -38,6 +39,182 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it("shows one scoped drawer for each selected type and updates them when the selection changes", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    const group = (localName: string, count: number, inline: Record<string, string> = {}): SelectedElementTypeState => ({
+      element: {...selectedElement(localName, {lang: "en"}), path: null},
+      style: styleState(localName, inline), count, styleProperties: Object.keys(inline), configuredWidgetOptions: [],
+    })
+    toolbox.selectedElementTypes = [group("p", 2, {"text-align": "center"}), group("img", 1), group("unfamiliar-element", 1)]
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    await toolbox.updateComplete
+    const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer[data-specialized]"))
+    expect(drawers.map(drawer => drawer.label)).toEqual(["p", "img", "unfamiliar-element"])
+    await Promise.all(drawers.map(drawer => drawer.updateComplete))
+    expect(drawers[0].shadowRoot!.querySelector(".pane-label .element-count")?.textContent).toBe("2")
+    expect(drawers[1].shadowRoot!.querySelector(".element-count")).toBeNull()
+    expect(drawers[2].expandable).toBe(false)
+    expect(drawers[2].querySelector('[slot="more"]')).toBeNull()
+    expect(drawers[2].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden).toBe(true)
+    const styleChanges = vi.fn(), attributeChanges = vi.fn()
+    toolbox.addEventListener("element-style-change", styleChanges)
+    toolbox.addEventListener("element-attribute-change", attributeChanges)
+    const paragraphStyles = drawers[0].querySelector("element-style-editor")!
+    paragraphStyles.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {property: "text-align", mutation: "right"}, bubbles: true, composed: true,
+    }))
+    expect(styleChanges.mock.calls[0][0].detail).toMatchObject({
+      selectionType: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, mutation: "right",
+    })
+    drawers[0].querySelector<HTMLButtonElement>(".style-reset")!.click()
+    expect(styleChanges.mock.calls[1][0].detail).toMatchObject({
+      selectionType: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, styles: {"text-align": null},
+    })
+    const imageAttributes = drawers[1].querySelector("element-attribute-editor")!
+    await imageAttributes.updateComplete
+    expect(imageAttributes.mediaOwned).toBe(false)
+    expect(imageAttributes.closest('[slot="more"]')).toBeNull()
+    const languages = imageAttributes.shadowRoot!.querySelector("style-combobox")!
+    languages.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "de"}}))
+    expect(attributeChanges.mock.calls[0][0].detail).toMatchObject({
+      selectionType: {localName: "img", namespaceURI: "http://www.w3.org/1999/xhtml"}, name: "lang", value: "de",
+    })
+    toolbox.selectedElementTypes = [group("img", 3)]
+    await toolbox.updateComplete
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer[data-specialized]"), drawer => drawer.label)).toEqual(["img"])
+  })
+
+  it("renders individual widget drawers with package icons and instance-scoped options and actions", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.selectedElementTypes = ["first", "second"].map((id, index) => ({
+      element: {...selectedElement("course-quiz", {id}), path: [index], name: "Quiz", icon: "Packages", iconUrl: "https://example.com/quiz.svg"},
+      style: styleState("course-quiz"), count: 1, styleProperties: [], configuredWidgetOptions: [],
+      widget: {path: [index], localName: "course-quiz", actions: [{name: "reset", label: "Reset"}], options: [
+        {name: "enabled", label: "Enabled", type: "boolean", attribute: "enabled", value: index === 0},
+      ]},
+    }))
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>('[data-specialized="course-quiz"]'))
+    expect(drawers).toHaveLength(2)
+    await Promise.all(drawers.map(drawer => drawer.updateComplete))
+    for(const drawer of drawers) {
+      expect(drawer.shadowRoot!.querySelector<HTMLImageElement>(".pane-icon img")!.getAttribute("src")).toBe("https://example.com/quiz.svg")
+      expect(drawer.shadowRoot!.querySelector<HTMLImageElement>(".summary-icon img")!.getAttribute("src")).toBe("https://example.com/quiz.svg")
+      expect(drawer.shadowRoot!.querySelector(".element-count")).toBeNull()
+      expect(drawer.querySelector(".widget-action")).not.toBeNull()
+    }
+    const options = vi.fn(), actions = vi.fn(), attributes = vi.fn()
+    toolbox.addEventListener("widget-option-change", options)
+    toolbox.addEventListener("widget-action", actions)
+    toolbox.addEventListener("element-attribute-change", attributes)
+    const checkbox = drawers[1].querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    checkbox.checked = true
+    checkbox.dispatchEvent(new Event("change", {bubbles: true}))
+    drawers[1].querySelector<HTMLButtonElement>(".widget-action")!.click()
+    drawers[1].querySelector("element-attribute-editor")!.dispatchEvent(new CustomEvent("element-attribute-change", {detail: {name: "lang", value: "de"}, bubbles: true, composed: true}))
+    const selectionType = {localName: "course-quiz", namespaceURI: "http://www.w3.org/1999/xhtml", id: "second"}
+    expect(options.mock.calls[0][0].detail.selectionType).toEqual(selectionType)
+    expect(actions.mock.calls[0][0].detail).toEqual({name: "reset", selectionType})
+    expect(attributes.mock.calls[0][0].detail.selectionType).toEqual(selectionType)
+  })
+
+  it("omits list items, table internals, summary, and foreign subelements while retaining their main containers", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    const selectedType = (localName: string, namespaceURI = "http://www.w3.org/1999/xhtml"): SelectedElementTypeState => ({
+      element: {...selectedElement(localName), namespaceURI},
+      style: {...styleState(localName), target: {localName, namespaceURI}},
+      count: 1, styleProperties: [], configuredWidgetOptions: [],
+    })
+    toolbox.selectedElementTypes = [
+      ...["ul", "ol", "li", "dt", "dd", "table", "td", "th", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "details", "summary", "figure", "figcaption"].map(name => selectedType(name)),
+      ...["math", "mrow", "mi", "mo", "mfrac"].map(name => selectedType(name, "http://www.w3.org/1998/Math/MathML")),
+      ...["svg", "g", "path", "circle", "text"].map(name => selectedType(name, "http://www.w3.org/2000/svg")),
+    ]
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("[data-specialized]"), drawer => drawer.dataset.specialized))
+      .toEqual(["ul", "ol", "table", "td", "th", "details", "math", "svg"])
+    toolbox.selectedElementTypes = []
+    toolbox.elementAttributes = selectedElement("figcaption")
+    toolbox.elementStyle = styleState("figcaption")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[data-specialized="figcaption"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
+  })
+
+  it("omits drawers for every mark and its aliases while retaining containing elements", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.selectedElementTypes = [...markNames, "strong", "em", "p"].map(localName => ({
+      element: selectedElement(localName), style: styleState(localName), count: 1,
+      styleProperties: [], configuredWidgetOptions: [],
+    }))
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("[data-specialized]"), drawer => drawer.dataset.specialized)).toEqual(["p"])
+    expect(toolbox.shadowRoot!.querySelector('[data-tool="Edit"]')?.getAttribute("aria-label")).not.toBe("Edit Selection")
+
+    toolbox.selectedElementTypes = []
+    for(const localName of ["span", "a", "strong", "em", "ruby"]) {
+      toolbox.elementAttributes = selectedElement(localName)
+      toolbox.elementStyle = styleState(localName)
+      await toolbox.updateComplete
+      expect(toolbox.shadowRoot!.querySelector("[data-specialized]")).toBeNull()
+      expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
+      expect(toolbox.shadowRoot!.querySelector('[data-tool="Edit"]')?.getAttribute("aria-label")).toBe("Edit")
+    }
+  })
+
+  it("only offers collapsible Options when extra styles, widget options, or commands are available", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.selectedElementTypes = ["p", "audio", "iframe", "plain-element"].map(localName => ({
+      element: selectedElement(localName), style: styleState(localName), count: 1,
+      styleProperties: [], configuredWidgetOptions: [],
+    }))
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("[data-specialized]"))
+    await Promise.all(drawers.map(drawer => drawer.updateComplete))
+    expect(drawers.map(drawer => drawer.expandable)).toEqual([true, false, false, false])
+    expect(drawers.map(drawer => Boolean(drawer.querySelector('[slot="more"]')))).toEqual([true, false, false, false])
+    expect(drawers.map(drawer => drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden)).toEqual([false, true, true, true])
+  })
+
+  it("scopes widget option changes and resets to the selected widget type", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.selectedElementTypes = [{
+      element: {...selectedElement("course-quiz"), path: null}, style: styleState("course-quiz"), count: 2,
+      styleProperties: [], configuredWidgetOptions: ["enabled"],
+      widget: {path: [0], localName: "course-quiz", actions: [], options: [
+        {name: "enabled", label: "Enabled", type: "boolean", attribute: "enabled", value: null},
+      ]},
+    }]
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const changes = vi.fn()
+    toolbox.addEventListener("widget-option-change", changes)
+    const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    input.checked = true
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(changes.mock.calls[0][0].detail).toEqual({name: "enabled", value: true,
+      selectionType: {localName: "course-quiz", namespaceURI: "http://www.w3.org/1999/xhtml"}})
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-specialized] .style-reset')!.click()
+    expect(changes.mock.calls[1][0].detail.value).toBeNull()
+  })
+
   it.each([
     "p", "h2", "ul", "img", "video", "audio", "iframe", "details", "table", "math", "svg",
   ])("renders a compact %s profile without a preset gallery", async localName => {
@@ -107,7 +284,7 @@ describe("specialized element toolbox", () => {
     expect((paintOrderCombo as HTMLElement & {editable: boolean}).editable).toBe(false)
   })
 
-  it("shows compact fields first and places counted attributes and extra CSS controls under Options", async () => {
+  it("shows compact fields first and keeps Languages visible and places extra CSS controls under Options", async () => {
     const toolbox = await mountElement("p", {id: "intro", class: "lead", title: "Intro", style: "color:red"}, {"text-indent": "1em"})
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="p"]')!
     const primary = drawer.querySelector<ElementStyleEditor>('element-style-editor:not([slot="more"])')!
@@ -121,13 +298,15 @@ describe("specialized element toolbox", () => {
     const advancedEditor = options.querySelector<ElementStyleEditor>("element-style-editor")!
     expect(advancedEditor.shadowRoot!.querySelector('[data-property="text-align"]')).toBeNull()
     expect(advancedEditor.shadowRoot!.querySelector('[data-property="text-indent"]')).not.toBeNull()
-    const attributeEditor = options.querySelector<ElementAttributeEditor>("element-attribute-editor")!
+    const attributeEditor = drawer.querySelector<ElementAttributeEditor>("element-attribute-editor")!
     expect(attributeEditor).not.toBeNull()
     expect(attributeEditor.hasAttribute("expanded")).toBe(true)
-    expect(attributeEditor.shadowRoot!.querySelector("details")?.open).toBe(true)
-    expect(attributeEditor.shadowRoot!.querySelector("summary")?.textContent).toContain("All attributes")
-    expect(drawer.advancedCount).toBe(4)
-    expect(drawer.shadowRoot!.querySelector(".advanced-count")?.textContent).toBe("4")
+    expect(attributeEditor.closest("[slot=more]")).toBeNull()
+    expect(attributeEditor.shadowRoot!.querySelector("dialog")?.open).toBe(false)
+    expect(attributeEditor.shadowRoot!.querySelector(".language-row style-combobox")).not.toBeNull()
+    expect(attributeEditor.shadowRoot!.querySelector("h3")?.textContent).toContain("All attributes")
+    expect(drawer.advancedCount).toBe(1)
+    expect(drawer.shadowRoot!.querySelector(".advanced-count")?.textContent).toBe("1")
     expect(drawer.shadowRoot!.querySelector(".drawer-toggle-label")?.textContent).toContain("Options")
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
   })
@@ -142,7 +321,7 @@ describe("specialized element toolbox", () => {
     toolbox.addEventListener("element-attribute-change", attributeChanges)
     expect(reset.slot).toBe("heading-action")
     expect(reset.disabled).toBe(false)
-    expect(drawer.advancedCount).toBe(2)
+    expect(drawer.advancedCount).toBe(1)
     reset.click()
     expect(changes.mock.calls[0][0].detail).toEqual({styles: {"text-align": null, "text-indent": null}})
     expect(attributeChanges).not.toHaveBeenCalled()

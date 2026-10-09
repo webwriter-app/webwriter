@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
-import {editorFrameControlMessage, executeCompleteEvent, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
+import {editorFrameControlMessage, executeCompleteEvent, isSelectionChangeMessage, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
 import {$, cloneInert, getInertDocument} from "./utility"
 import * as Y from "yjs"
@@ -225,7 +225,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
     expect(editorStyleString).toMatch(/summary\s*\{\s*cursor:\s*text;/)
-    expect(editorStyleString).toMatch(/body:has\(summary:is\(:hover, \.◆pointer-hovered, \.◆element-hovered, \.◆style-target-hovered\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
+    expect(editorStyleString).toMatch(/body:has\(:is\(summary, figcaption\):is\(:hover, \.◆pointer-hovered, \.◆element-hovered, \.◆style-target-hovered\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
     expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:is\(:empty, :has\(> br:only-child\)\)::after\s*\{\s*content:\s*"Details";/)
@@ -654,6 +654,69 @@ describe("widget shadow interactions", () => {
 })
 
 describe("breadcrumb positioning", () => {
+  it("posts DOM-derived type projections for an explicit spatial selection", () => {
+    document.body.innerHTML = '<p title="shared" style="color: red; width: 10px">one</p><p title="shared" style="color: red; width: 20px">two</p><img alt="diagram"><p title="outside">outside</p>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+      const paragraphs = document.querySelectorAll("p")
+      $.selectElements([paragraphs[0], paragraphs[1], document.querySelector("img")!])
+      const expected = editor.features.manipulation.getSelectedElementTypes()
+
+      postMessage.mockClear()
+      editor.postSelectionPath()
+
+      const message = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0]
+      expect(isSelectionChangeMessage(message)).toBe(true)
+      const detail = message.detail as SelectionChangeDetail
+      expect(detail.selectedElementTypes).toEqual(expected)
+      expect(detail.selectedElementTypes?.[0]).toMatchObject({element: {localName: "p"}, count: 2})
+      expect(detail.selectedElementTypes?.[1].count).toBe(1)
+      expect(detail.selectedElementTypes?.[0].element.attributes).toMatchObject({title: "shared"})
+      expect(detail.selectedElementTypes?.[0].style.inline.color).toEqual({value: "red", priority: ""})
+      expect(detail.selectedElementTypes?.[0].style.inline).not.toHaveProperty("width")
+    }
+    finally {
+      editor.destroy()
+      postMessage.mockRestore()
+      document.body.replaceChildren()
+      document.body.className = ""
+    }
+  })
+
+  it("omits figure wrappers from the breadcrumb while retaining captions, media, and outer sections", () => {
+    document.body.className = ""
+    document.body.innerHTML = '<section><figure><img src="image.png"><figcaption>Caption</figcaption></figure><figure></figure></section>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const readPath = () => {
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      return (postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail).path
+    }
+    try {
+      $.move(document.querySelector("figcaption")!.firstChild!, 2)
+      const caption = readPath()
+      expect(caption.map(item => item.name)).toEqual(["Document", "Image"])
+      expect(caption.flatMap(item => item.sections ?? []).map(section => section.type)).toEqual(["section"])
+      expect(caption.at(-1)?.path).toEqual([0, 0])
+      $.selectElement(document.querySelector("img")!)
+      const image = readPath()
+      expect(image.map(item => item.name)).toContain("Image")
+      expect(image.flatMap(item => [item.name, ...(item.sections ?? []).map(section => section.name)])).not.toContain("Figure")
+      $.selectElement(document.querySelectorAll("figure")[1])
+      const empty = readPath()
+      expect(empty.flatMap(item => [item.name, ...(item.sections ?? []).map(section => section.name)])).not.toContain("Figure")
+      expect(document.querySelectorAll("figure")).toHaveLength(2)
+    }
+    finally {
+      editor.destroy()
+      postMessage.mockRestore()
+      document.body.replaceChildren()
+    }
+  })
+
   it("omits summary from the breadcrumb while its text is edited", () => {
     document.body.innerHTML = '<details><summary style="position: relative; left: 2px">Title</summary><p>Body</p></details>'
     const editor = new DOMEditor()

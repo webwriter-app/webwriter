@@ -1,3 +1,4 @@
+import {defaultCaptionEnumeration} from "../src/caption-enumeration"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
@@ -139,6 +140,54 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 })
 
 const editor = new DOMEditor()
+
+await check("empty caption numbering is visible as a grey editing placeholder", async () => {
+  const previousLanguage = document.documentElement.getAttribute("lang")
+  const previousStyle = document.head.querySelector("style[data-ww-caption-enumeration]")?.textContent
+  const figure = document.createElement("figure")
+  figure.innerHTML = '<p>Image</p><figcaption style="color:#102030"></figcaption>'
+  fixture.append(figure)
+  const caption = figure.querySelector("figcaption")!
+  try {
+    document.documentElement.removeAttribute("lang")
+    editor.features.head.actions.setCaptionEnumeration({type: "setCaptionEnumeration", value: defaultCaptionEnumeration()})
+    $.move(caption, 0)
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    await layoutFrame()
+    let style = getComputedStyle(caption, "::before")
+    assert(style.content.includes("Fig."), `caption number replaced by caret fallback: ${style.content}`)
+    assert(style.visibility === "visible", "empty caption numbering is hidden")
+    assert(style.color === "rgb(136, 136, 136)", "empty caption numbering is not grey")
+    assert(getComputedStyle(caption).caretColor === "rgba(0, 0, 0, 0)", "native caret remains before the caption prefix")
+    assert(style.display === "inline-block" && style.whiteSpace === "pre", "caption prefix does not reserve the text origin")
+    assert(style.borderInlineEndWidth === "1px", "caption caret is not at the end of the prefix")
+    assert(style.borderInlineStartWidth === "0px", "caption caret is still before the prefix")
+    caption.classList.add("◆", "◆pointer-hovered")
+    await layoutFrame()
+    assert(getComputedStyle(editor.features.selection.hoverCaret!).display === "none", "figure caption shows a dotted hover outline")
+    caption.classList.remove("◆pointer-hovered")
+    caption.textContent = "Caption text"
+    $.move(caption.firstChild!, 1)
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    await layoutFrame()
+    style = getComputedStyle(caption, "::before")
+    assert(style.content.includes("Fig."), "filled caption lost its number")
+    assert(style.visibility === "visible", "filled caption number is hidden")
+    assert(style.color === "rgb(16, 32, 48)", "filled caption still uses placeholder grey")
+    assert(getComputedStyle(caption).caretColor !== "rgba(0, 0, 0, 0)", "native caption caret was not restored after typing")
+    assert(style.borderInlineEndWidth === "0px", "placeholder caret remains after typing")
+    assert(!editor.toHTML(true).includes("◆caption-placeholder"), "caption preview marker was serialized")
+  }
+  finally {
+    figure.remove()
+    const style = document.head.querySelector("style[data-ww-caption-enumeration]")
+    if(previousStyle === undefined) style?.remove()
+    else if(style) style.textContent = previousStyle
+    if(previousLanguage === null) document.documentElement.removeAttribute("lang")
+    else document.documentElement.setAttribute("lang", previousLanguage)
+    await layoutFrame()
+  }
+})
 
 await check("new paragraphs and line breaks reveal the caret at the document end", async () => {
   const section = document.createElement("section")

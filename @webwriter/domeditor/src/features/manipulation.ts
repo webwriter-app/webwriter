@@ -4,7 +4,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
 import {isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, figureSelectionTarget, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -12,16 +12,19 @@ import {
   type ElementStyleDeclaration,
   type ElementStyleMutation,
   type ElementStyleState,
+  type SelectedElementTypeState,
+  type ElementSelectionType,
   type FigureSelectionState,
   type HeadingGroupSelectionState,
   type RibbonDropPosition,
 } from "../editor-bridge"
-import {floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet} from "../element-styles"
+import {floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
 import {createTable} from "../table"
 import {
+  elementAttributeState,
   elementAttributeEditability,
   isUnsafeElementAttributeValue,
   sanitizeAuthoredClass,
@@ -43,6 +46,12 @@ type ValidatedStyleEntry = {
   value: string | null
   priority: "" | "important"
 }
+
+/** Only display a value shared by every selected element. */
+const commonValues = <T>(records: Record<string, T>[]) => Object.fromEntries(
+  Object.entries(records[0]).filter(([name, value]) => records.every(record =>
+    Object.hasOwn(record, name) && JSON.stringify(record[name]) === JSON.stringify(value))),
+) as Record<string, T>
 
 function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
   const selection = document.getSelection()
@@ -811,6 +820,7 @@ export class ManipulationFeature extends EditorFeature {
 
   private insertionReplacement() {
     let target = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    if(target) target = figureSelectionTarget(target)
     if(!target && document.getSelection()?.isCollapsed) {
       const paragraph = $.anchorContainer
       const empty = (node: Node): boolean => node instanceof Text ? !node.data.trim()
@@ -856,10 +866,14 @@ export class ManipulationFeature extends EditorFeature {
   private replaceInsertionElement(node: Node) {
     const target = this.insertionReplacement()
     const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
-    if(target !== this.editor.features.selection.captureSelectedElement && target !== $.selectedElement
-      && !nodes.some(isElement)) return false
+    const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    if(target !== (selected ? figureSelectionTarget(selected) : null) && !nodes.some(isElement)) return false
     if(!target || !nodes.length || !target.parentElement
       || nodes.some(child => target.contains(child) || child.contains(target))) return false
+    if(target.matches("figure:has(> figcaption), table:has(> caption)")) {
+      this.replaceCaptionedInsertion(target, nodes)
+      return true
+    }
     const children = Array.from(target.parentElement.childNodes)
     children.splice(children.indexOf(target), 1, ...nodes as ChildNode[])
     if(!this.editor.schema.isContentValid(target.parentElement, children)) return false
@@ -884,6 +898,54 @@ export class ManipulationFeature extends EditorFeature {
       if(widget) this.editor.features.selection.captureElement(widget)
       else if(nodes.length === 1 && isElement(last)) $.selectElement(last)
       else this.moveAfterInsertedNode(last)
+    })
+    this.editor.postSelectionPath(true)
+    return true
+  }
+
+  /** Replace the content of a captioned host, retaining its authored caption. */
+  private replaceCaptionedInsertion(target: Element, nodes: Node[]) {
+    const caption = target.localName === "figure" ? this.directFigureCaption(target as HTMLElement)
+      : target.localName === "table" ? (target as HTMLTableElement).caption : null
+    if(!caption) return false
+    const elements = nodes.filter(isElement)
+    const single = elements.length === 1 && nodes.every(node => isElement(node)
+      || node.nodeType === Node.COMMENT_NODE || node instanceof Text && !node.data.trim()) ? elements[0] : null
+    const above = target.localName === "table" ? getComputedStyle(caption).captionSide !== "bottom"
+      : caption === target.firstElementChild
+    const table = single?.localName === "table" ? single as HTMLTableElement : null
+    const figure = target.localName === "figure" && !table ? target
+      : table ?? document.createElement("figure")
+    const parent = target.parentElement!
+    const proposed = Array.from(parent.childNodes)
+    proposed.splice(proposed.indexOf(target), 1, figure as ChildNode)
+    if(figure !== target && !this.editor.schema.isContentValid(parent, proposed)) return false
+    this.withNormalization(() => {
+      let retained = caption
+      const tag = table ? "caption" : "figcaption"
+      if(caption.localName !== tag) {
+        retained = document.createElement(tag)
+        this.copyAuthoredAttributes(caption, retained)
+        retained.append(...Array.from(caption.childNodes))
+      }
+      if(table) {
+        // Keep any caption supplied by the replacement too, as caption content.
+        if(table.caption && table.caption !== retained) retained.append(...Array.from(table.caption.childNodes))
+        table.caption?.remove()
+        table.prepend(retained)
+        retained.style.setProperty("caption-side", above ? "top" : "bottom")
+      }
+      else {
+        if(target.localName === "table") retained.style.removeProperty("caption-side")
+        figure.replaceChildren(...(above ? [retained, ...nodes] : [...nodes, retained]))
+      }
+      if(figure !== target) {
+        this.transferFigurePlacement(target, figure)
+        if(table) target.replaceWith(...nodes)
+        else target.replaceWith(figure)
+      }
+      this.editor.features.selection.clearSelectedSection()
+      $.selectElement(figure)
     })
     this.editor.postSelectionPath(true)
     return true
@@ -1426,13 +1488,8 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private activeFigure() {
-    const selectedSection = this.editor.features.selection.selectedSectionElement
-    if(selectedSection?.localName === "figure") return selectedSection as HTMLElement
-    const selected = $.selectedElement
-    const anchor = $.anchor
-    const element = selected ?? (anchor ? getContainer(anchor) : null)
-    if(!isElement(element) || isDocumentRoot(element)) return null
-    return (element.matches("figure") ? element : element.closest("figure")) as HTMLElement | null
+    const target = this.captionTarget()
+    return target?.localName === "figure" ? target as HTMLElement : null
   }
 
   private directFigureCaption(figure: HTMLElement) {
@@ -1444,11 +1501,124 @@ export class ManipulationFeature extends EditorFeature {
     return figure ? {hasCaption: Boolean(this.directFigureCaption(figure))} : null
   }
 
+  private captionTarget() {
+    let target = this.styleTarget
+    const root = this.editor.features.slides.active
+      ? this.editor.features.slides.containingSlide(target) : getDocumentRoot()
+    if(!root || target === root || !root.contains(target)) return null
+    while(target.parentElement && target.parentElement !== root) target = target.parentElement
+    return target.parentElement === root && !slideLayoutRole(target) ? target : null
+  }
+
+  getCaptionPosition(): "none" | "above" | "below" | null {
+    const target = this.captionTarget()
+    if(!target) return null
+    if(target.localName === "table") {
+      const caption = (target as HTMLTableElement).caption
+      return !caption ? "none" : getComputedStyle(caption).captionSide === "bottom" ? "below" : "above"
+    }
+    if(target.localName !== "figure") return "none"
+    const caption = this.directFigureCaption(target as HTMLElement)
+    return !caption ? "none" : caption === target.firstElementChild ? "above" : "below"
+  }
+
+  getCaptionAlignment(): "left" | "center" | "right" | null {
+    const target = this.captionTarget()
+    const caption = target?.localName === "table" ? (target as HTMLTableElement).caption
+      : target?.localName === "figure" ? this.directFigureCaption(target as HTMLElement) : null
+    if(!caption) return null
+    const style = getComputedStyle(caption)
+    if(style.textAlign === "center" || style.textAlign === "right" || style.textAlign === "left") return style.textAlign
+    return (style.textAlign === "end") !== (style.direction === "rtl") ? "right" : "left"
+  }
+
+  setCaption(position: "none" | "above" | "below", alignment?: "left" | "center" | "right") {
+    if(this.editor.isEditingLocked) return false
+    let target = this.captionTarget()
+    if(!target || !target.parentNode) return false
+    const end = this.editor.doc.beginUndoGroup()
+    let focusCaption: HTMLElement | null = null
+    try {
+      if(target.localName === "table") {
+        const table = target as HTMLTableElement
+        if(position === "none") table.caption?.remove()
+        else {
+          const caption = table.caption ?? table.createCaption()
+          caption.style.setProperty("caption-side", position === "above" ? "top" : "bottom")
+          focusCaption = caption
+        }
+        this.editor.features.table.clearCellSelection(false)
+      }
+      else if(position === "none") {
+        if(target.localName !== "figure") return false
+        const figure = target
+        const content = Array.from(figure.children).find(child => child.localName !== "figcaption")
+        for(const caption of Array.from(figure.children).filter(child => child.localName === "figcaption")) {
+          if(!caption.hasChildNodes()) caption.remove()
+          else {
+            const paragraph = document.createElement("p")
+            for(const [name, value] of Object.entries(elementAttributeState(caption, null).attributes)) paragraph.setAttribute(name, value)
+            paragraph.append(...Array.from(caption.childNodes))
+            caption.replaceWith(paragraph)
+          }
+        }
+        if(content) this.transferFigurePlacement(figure, content)
+        const nodes = Array.from(figure.childNodes)
+        figure.replaceWith(...nodes)
+        target = content ?? (nodes.find(node => node instanceof Element) as Element | undefined) ?? null
+      }
+      else {
+        if(target.localName !== "figure") {
+          const content = target
+          const figure = document.createElement("figure")
+          content.before(figure)
+          figure.append(content)
+          this.transferFigurePlacement(content, figure)
+          target = figure
+        }
+        const caption = this.directFigureCaption(target as HTMLElement) ?? document.createElement("figcaption")
+        position === "above" ? target.prepend(caption) : target.append(caption)
+        focusCaption = caption
+      }
+      if(focusCaption) {
+        if(alignment) focusCaption.style.setProperty("text-align", alignment)
+        this.editor.features.head.ensureCaptionEnumeration()
+      }
+      this.editor.features.selection.clearSelectedSection()
+      if(focusCaption?.isConnected) this.editor.features.selection.selectElement(focusCaption)
+      else if(target?.isConnected) this.editor.features.selection.selectElement(target)
+      else this.editor.features.selection.processSelection()
+      this.editor.postSelectionPath()
+      return true
+    }
+    finally { end() }
+  }
+
+  private transferFigurePlacement(from: Element, to: Element) {
+    const source = this.inlineStyleOf(from), destination = this.inlineStyleOf(to)
+    if(source && destination) {
+      for(const property of ["float", "clear", "position", "top", "right", "bottom", "left", "inset", "z-index", "--ww-float-size"]) {
+        const value = source.getPropertyValue(property)
+        if(!value) continue
+        destination.setProperty(property, value, source.getPropertyPriority(property))
+        source.removeProperty(property)
+      }
+      if(!source.length) from.removeAttribute("style")
+    }
+    for(const name of ["ww-float-left", "ww-float-right", "ww-float-none"]) {
+      if(!from.classList.contains(name)) continue
+      from.classList.remove(name)
+      to.classList.add(name)
+    }
+    if(!from.classList.length) from.removeAttribute("class")
+  }
+
   addFigureCaption(position: "before" | "after") {
     const figure = this.activeFigure()
     if(!figure || this.directFigureCaption(figure)) return false
     const caption = document.createElement("figcaption")
     position === "before" ? figure.prepend(caption) : figure.append(caption)
+    this.editor.features.head.ensureCaptionEnumeration()
     this.editor.features.selection.clearSelectedSection(figure)
     $.move(caption)
     this.editor.features.selection.processSelection()
@@ -1833,7 +2003,7 @@ export class ManipulationFeature extends EditorFeature {
     if(inAuthoredBody(selectedTable)) return selectedTable
 
     const captured = this.editor.features.selection.captureSelectedElement
-    if(inAuthoredBody(captured)) return captured
+    if(inAuthoredBody(captured)) return figureSelectionTarget(captured)
 
     const selectedSection = this.editor.features.selection.selectedSectionElement
     if(inAuthoredBody(selectedSection)) return selectedSection
@@ -1844,7 +2014,7 @@ export class ManipulationFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return root
     const selectedElement = $.selectedElement
-    if(inAuthoredBody(selectedElement)) return selectedElement
+    if(inAuthoredBody(selectedElement)) return figureSelectionTarget(selectedElement)
     const inBody = (node: Node) => node === body || body.contains(node)
     const range = selection.getRangeAt(0)
     if(!inBody(selection.anchorNode) || !inBody(selection.focusNode)) {
@@ -1856,7 +2026,7 @@ export class ManipulationFeature extends EditorFeature {
     const common = range.commonAncestorContainer
     if(common === document || common === document.documentElement || common === body) return root
     const container = getContainer(common)
-    return inAuthoredBody(container)? container: body
+    return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
   private inlineStyleOf(element: Element | null): CSSStyleDeclaration | null {
@@ -1993,6 +2163,10 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   getStyleState(properties: string[] = [], target = this.styleTarget, includeSelection = true): ElementStyleState {
+    if(includeSelection && $.isMultiElementSelection) {
+      const styles = $.selectedElements.map(element => this.getStyleState(properties, element, false))
+      return {...styles[0], inline: commonValues(styles.map(state => state.inline)), computed: commonValues(styles.map(state => state.computed))}
+    }
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
       return {
@@ -2057,6 +2231,123 @@ export class ManipulationFeature extends EditorFeature {
       computed,
       context: {display: computedStyle.display, parentDisplay},
     }
+  }
+
+  /** Live authored elements and containers addressed by the current selection. */
+  selectedEditingElements(): Element[] {
+    const root = getDocumentRoot()
+    const elements = new Set<Element>()
+    const addContainer = (element: Element | null, explicit = false) => {
+      const atomic = atomicEditingContainer(element, this.editor.schema)
+      // Explicit SVG shape selections use the graphic editor's public contract.
+      if(!(explicit && atomic?.namespaceURI === SVG_NAMESPACE && element?.namespaceURI === SVG_NAMESPACE)) element = atomic ?? element
+      while(element && element !== root && element !== document.body && root.contains(element)) {
+        if(element.isConnected && !slideLayoutRole(element)) {
+          elements.add(element)
+          if(explicit && element.localName === "figure") {
+            for(const child of Array.from(element.children)) if(child.localName !== "figcaption") elements.add(child)
+          }
+        }
+        element = element.parentElement
+      }
+    }
+    const captured = this.editor.features.selection.captureSelectedElement
+      ?? this.editor.features.selection.selectedSectionElement
+    if(captured) addContainer(captured, true)
+    else if($.isMultiElementSelection) $.selectedElements.forEach(element => addContainer(element, true))
+    else if($.isElementSelection && $.selectedElement) addContainer($.selectedElement, true)
+    else if($.ranges.length) {
+      for(const range of $.range.collapsed ? $.ranges : $.flowRanges) {
+        if(!root.contains(range.startContainer) || !root.contains(range.endContainer)) continue
+        if(range.collapsed) {
+          addContainer(range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)
+          continue
+        }
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+          acceptNode: node => {
+            const element = node as Element
+            if(!range.intersectsNode(element)) return NodeFilter.FILTER_REJECT
+            const atomic = atomicEditingContainer(element, this.editor.schema)
+            if(atomic && atomic !== element) return NodeFilter.FILTER_REJECT
+            return NodeFilter.FILTER_ACCEPT
+          },
+        })
+        while(walker.nextNode()) addContainer(walker.currentNode as Element)
+        addContainer(range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)
+        addContainer(range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement)
+      }
+    }
+    return [...elements].sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1)
+  }
+
+  /** Re-read containers and widget identities at command time. */
+  selectedElementsOfType(type: ElementSelectionType) {
+    const elements = this.selectedEditingElements().filter(element => element.localName === type.localName && element.namespaceURI === type.namespaceURI
+      && (type.id === undefined || element.id === type.id)
+      && (type.path === undefined || JSON.stringify(pathFromNode(document.body, element)) === JSON.stringify(type.path)))
+    // Ambiguous authored IDs must not turn an individual widget edit into a batch edit.
+    return type.id !== undefined && elements.length !== 1 ? [] : elements
+  }
+
+  getSelectedElementTypes(properties: string[] = []): SelectedElementTypeState[] {
+    const groups = new Map<string, Element[]>()
+    for(const element of this.selectedEditingElements()) {
+      const key = JSON.stringify([element.namespaceURI, element.localName,
+        ...(element.localName.includes("-") ? [pathFromNode(document.body, element)] : [])])
+      groups.set(key, [...(groups.get(key) ?? []), element])
+    }
+    return [...groups.values()].map(elements => {
+      const states = elements.map(element => elementAttributeState(element, pathFromNode(document.body, element) ?? []))
+      const profile = specializedElementStyle(elements[0].localName)
+      const requested = properties.length ? properties : [...(profile?.primary ?? []), ...(profile?.advanced ?? [])]
+      const styles = elements.map(element => this.getStyleState(requested, element, false))
+      const widgets = elements.map(element => this.editor.features.widget.getOptionsState([element]))
+      const widget = widgets[0]
+      return {
+        element: {...states[0], attributes: commonValues(states.map(state => state.attributes))},
+        style: {...styles[0], inline: commonValues(styles.map(state => state.inline)), computed: commonValues(styles.map(state => state.computed))},
+        count: elements.length,
+        styleProperties: [...new Set(styles.flatMap(state => Object.keys(state.inline)))],
+        configuredWidgetOptions: [...new Set(widgets.flatMap(state => state?.options.filter(option => option.value !== null && option.value !== "").map(option => option.name) ?? []))],
+        ...(widget && widgets.every(state => state?.localName === widget.localName) ? {widget: {
+          ...widget,
+          options: widget.options.filter(option => widgets.every(state => state?.options.some(other =>
+            JSON.stringify({...other, value: null}) === JSON.stringify({...option, value: null}))))
+            .map(option => ({...option, value: widgets.every(state => JSON.stringify(state?.options.find(other => other.name === option.name)?.value)
+              === JSON.stringify(option.value)) ? option.value : null})),
+        }} : {}),
+      }
+    })
+  }
+
+  private setSelectedElementAttribute(type: ElementSelectionType, name: string, value: string | null, previousName?: string) {
+    if(this.editor.isEditingLocked) return false
+    const elements = this.selectedElementsOfType(type)
+    if(!elements.length) return false
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      for(const element of elements) {
+        if(this.selectedElementsOfType(type).includes(element)) this.setAuthoredElementAttribute(element, name, value, previousName)
+      }
+    }
+    finally { end() }
+    return true
+  }
+
+  private setSelectedElementStyles(type: ElementSelectionType, styles: Record<string, ElementStyleMutation>) {
+    if(this.editor.isEditingLocked) return false
+    const entries = this.validateElementStyles(styles)
+    const elements = this.selectedElementsOfType(type)
+    if(!elements.length) return false
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      for(const element of elements) {
+        if(!this.selectedElementsOfType(type).includes(element)) continue
+        this.applyElementStyleEntries(element, entries)
+      }
+    }
+    finally { end() }
+    return true
   }
 
   /** Materializes the virtual insertion point used for an empty document or
@@ -2503,6 +2794,12 @@ export class ManipulationFeature extends EditorFeature {
     setAttributes: ({attrs}: {type: "setAttributes", attrs: Record<string, string | null>}) => {
       this.setAttributes(attrs)
     },
+    setSelectedElementAttribute: ({selectionType, name, value, previousName}: {
+      type: "setSelectedElementAttribute", selectionType: ElementSelectionType, name: string, value: string | null, previousName?: string,
+    }) => this.setSelectedElementAttribute(selectionType, name, value, previousName),
+    setSelectedElementStyles: ({selectionType, styles}: {
+      type: "setSelectedElementStyles", selectionType: ElementSelectionType, styles: Record<string, ElementStyleMutation>,
+    }) => this.setSelectedElementStyles(selectionType, styles),
     setElementAttribute: ({
       path,
       localName,
@@ -2540,6 +2837,11 @@ export class ManipulationFeature extends EditorFeature {
     addHeadingGroupText: ({position}: {type: "addHeadingGroupText", position: "before" | "after"}) => {
       if(position !== "before" && position !== "after") throw new TypeError("Unsupported heading-group text position")
       this.addHeadingGroupText(position)
+    },
+    setCaption: ({position, alignment}: {type: "setCaption", position: "none" | "above" | "below", alignment?: "left" | "center" | "right"}) => {
+      if(!["none", "above", "below"].includes(position)) throw new TypeError("Unsupported caption position")
+      if(alignment !== undefined && !["left", "center", "right"].includes(alignment)) throw new TypeError("Unsupported caption alignment")
+      return this.setCaption(position, alignment)
     },
     addFigureCaption: ({position}: {type: "addFigureCaption", position: "before" | "after"}) => {
       if(position !== "before" && position !== "after") throw new TypeError("Unsupported figure-caption position")
@@ -3277,22 +3579,38 @@ export class ManipulationFeature extends EditorFeature {
     return true
   }
 
-  /** Assigns inline style properties on the single live style target, merging
-   * with existing declarations. Null or an empty string clears a property. */
+  /** Assigns inline styles to the live target or every explicitly selected
+   * element. Null or an empty string clears a property. */
   setStyle(styles: Record<string, ElementStyleMutation>) {
-    const target = this.styleTarget
-    const entries = this.allowedElementStyles(target, this.validatedStyleEntries(styles))
-    if(!entries.length) return false
-    return this.withNormalization(() => {
-      const targets = new Map<Element, ValidatedStyleEntry[]>()
-      for(const entry of entries) {
-        const propertyTarget = this.stylePropertyTarget(target, entry.name)
-        if(propertyTarget) targets.set(propertyTarget, [...(targets.get(propertyTarget) ?? []), entry])
+    const entries = this.validatedStyleEntries(styles)
+    if($.isMultiElementSelection) {
+      const elements = $.selectedElements
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        return elements.reduce((changed, element) => (
+          this.applyElementStyleEntries(element, entries) || changed
+        ), false)
       }
-      let changed = false
-      for(const [element, declarations] of targets) changed = this.applyStyleEntries(element, declarations) || changed
-      return changed
-    })
+      finally { end() }
+    }
+    const target = this.styleTarget
+    if(!this.allowedElementStyles(target, entries).length) return false
+    return this.withNormalization(() => this.applyElementStyleEntries(target, entries))
+  }
+
+  private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[]) {
+    if(!element.isConnected || !getDocumentRoot().contains(element) || this.editor.isEditingLocked) return false
+    const targets = new Map<Element, ValidatedStyleEntry[]>()
+    for(const entry of this.allowedElementStyles(element, entries)) {
+      const target = this.stylePropertyTarget(element, entry.name)
+      if(target) targets.set(target, [...(targets.get(target) ?? []), entry])
+    }
+    let changed = false
+    for(const [target, declarations] of targets) {
+      changed = this.applyStyleEntries(target, declarations) || changed
+      if(!this.inlineStyleOf(target)?.length) target.removeAttribute("style")
+    }
+    return changed
   }
 
   /** Targeted CSS commands never normalize surrounding authored structure or
@@ -3308,7 +3626,7 @@ export class ManipulationFeature extends EditorFeature {
     return entries
   }
 
-  private allowedElementStyles(target: Element, entries: ReturnType<ManipulationFeature["validatedStyleEntries"]>) {
+  private allowedElementStyles(target: Element, entries: ValidatedStyleEntry[]) {
     return isDocumentRoot(target) || target === document.body
       ? entries.filter(({name}) => name === "background" || name.startsWith("background-"))
       : entries

@@ -301,6 +301,23 @@ describe("editor bridge message guards", () => {
     ])
   })
 
+  it("validates type-specific multi-selection projections before forwarding them to controls", () => {
+    const group = {
+      element: {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", attributes: {lang: "en"}},
+      style: {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
+        inline: {color: {value: "red", priority: ""}}, computed: {display: "block"}, context: {display: "block", parentDisplay: "block"}},
+      count: 2, styleProperties: ["color"], configuredWidgetOptions: [],
+    }
+    const message = {type: selectionChangeEvent, detail: {path: [], selectedElementTypes: [group]}}
+    expect(isSelectionChangeMessage(message)).toBe(true)
+    for(const invalid of [
+      null, {...group, count: 0}, {...group, count: "2"}, {...group, styleProperties: [3]},
+      {...group, configuredWidgetOptions: null}, {...group, element: {...group.element, attributes: {lang: 3}}},
+      {...group, style: {...group.style, inline: {color: {value: "red", priority: "urgent"}}}},
+      {...group, style: {...group.style, computed: {display: false}}},
+    ]) expect(isSelectionChangeMessage({...message, detail: {...message.detail, selectedElementTypes: [invalid]}})).toBe(false)
+  })
+
   it("validates every optional selection-state payload", () => {
     const message = {
       type: selectionChangeEvent,
@@ -557,4 +574,11 @@ it("validates caption numbering in document-head actions and bridge state", () =
   const invalid = {...config, figure: {...config.figure, start: -2}}
   expect(isDocumentHeadStateChangeMessage({...message, detail: {...message.detail, captionEnumeration: invalid}})).toBe(false)
   expect(isDocumentHeadAction({type: "setCaptionEnumeration", value: invalid})).toBe(false)
+})
+
+
+it("validates caption alignment in selection updates", () => {
+  const message = {type: selectionChangeEvent, detail: {path: [], captionAlignment: "center"}}
+  expect(isSelectionChangeMessage(message)).toBe(true)
+  expect(isSelectionChangeMessage({...message, detail: {...message.detail, captionAlignment: "justify"}})).toBe(false)
 })

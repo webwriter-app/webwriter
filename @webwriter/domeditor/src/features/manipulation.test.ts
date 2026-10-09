@@ -1,3 +1,4 @@
+import {readCaptionEnumeration} from "../caption-enumeration"
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import "happy-dom"
@@ -90,6 +91,297 @@ describe("saved snippet capture", () => {
       expect(editor.features.manipulation.actions.getSnippet({type: "getSnippet"})).toBeNull()
     }
     finally { document.head.innerHTML = headHTML }
+  })
+})
+
+describe("captions", () => {
+  const setCaption = (position: "none" | "above" | "below") =>
+    editor.features.manipulation.actions.setCaption({type: "setCaption", position})
+
+  it("uses the figure as the selected style target and transfers placement on conversion", () => {
+    document.body.innerHTML = '<p class="ww-float-left authored" style="float: left; color: red">Content</p>'
+    const paragraph = document.querySelector("p")!
+    $.selectElement(paragraph)
+    setCaption("below")
+    const figure = document.querySelector("figure")!
+    expect($.isElementSelection).toBe(false)
+    expect($.anchor).toBe(figure.querySelector("figcaption"))
+    expect(editor.features.manipulation.styleTarget).toBe(figure)
+    expect(figure.classList.contains("ww-float-left")).toBe(true)
+    expect(figure.style.float).toBe("left")
+    expect(paragraph.style.color).toBe("red")
+    expect(editor.features.manipulation.getCaptionPosition()).toBe("below")
+    setCaption("none")
+    expect($.selectedElement).toBe(paragraph)
+    expect(paragraph.classList.contains("authored")).toBe(true)
+    expect(paragraph.style.float).toBe("left")
+  })
+
+  it.each(["p", "caption-widget"] as const)("wraps a selected %s in a figure and adds a caption", tag => {
+    document.body.innerHTML = tag === "p"
+      ? '<p title="keep"><b>Content</b><!--keep--></p><p>Other</p>'
+      : '<caption-widget title="keep"><b>Content</b><!--keep--></caption-widget><p>Other</p>'
+    const target = document.body.firstElementChild!
+    $.selectElement(target)
+
+    setCaption("above")
+
+    const figure = document.querySelector("figure")!
+    expect(figure.firstElementChild?.localName).toBe("figcaption")
+    expect(figure.lastElementChild).toBe(target)
+    expect(target.getAttribute("title")).toBe("keep")
+    expect(target.querySelector("b")?.textContent).toBe("Content")
+    expect(target.innerHTML).toContain("<!--keep-->")
+    expect($.anchor).toBe(figure.querySelector("figcaption"))
+    expect($.isElementSelection).toBe(false)
+  })
+
+  it.each([
+    {position: "above", order: ["figcaption", "p"]},
+    {position: "below", order: ["p", "figcaption"]},
+  ] as const)("moves an existing caption $position while preserving its content", ({position, order}) => {
+    document.body.innerHTML = '<figure><p>Body</p><figcaption id="caption"><b>Label</b><!--keep--></figcaption></figure>'
+    const figure = document.querySelector("figure")!, caption = figure.querySelector("figcaption")!
+    $.selectElement(figure)
+
+    setCaption(position)
+
+    expect(Array.from(figure.children).map(child => child.localName)).toEqual(order)
+    expect(figure.querySelector("figcaption")).toBe(caption)
+    expect(caption.innerHTML).toBe('<b>Label</b><!--keep-->')
+  })
+
+  it("unwraps a figure and converts a nonempty caption to a paragraph without losing content", () => {
+    document.body.innerHTML = '<figure><figcaption><b>Label</b><!--keep--></figcaption><custom-widget data-x="1">Body</custom-widget></figure><p>Other</p>'
+    const figure = document.querySelector("figure")!, widget = figure.querySelector("custom-widget")!
+    const captionContent = figure.querySelector("figcaption")!.innerHTML
+    $.selectElement(figure)
+
+    setCaption("none")
+
+    expect(document.querySelector("figure")).toBeNull()
+    expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "custom-widget", "p"])
+    expect(document.body.firstElementChild?.innerHTML).toBe(captionContent)
+    expect(document.body.children[1]).toBe(widget)
+    expect(widget.getAttribute("data-x")).toBe("1")
+  })
+
+  it.each([
+    {position: "above", side: "top"},
+    {position: "below", side: "bottom"},
+  ] as const)("uses a native table caption at $position", ({position, side}) => {
+    document.body.innerHTML = '<table><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    $.selectElement(table)
+
+    setCaption(position)
+
+    expect(table.querySelector(":scope > caption")).not.toBeNull()
+    expect(table.querySelector(":scope > caption")?.textContent).toBe("")
+    expect(table.querySelector<HTMLTableCaptionElement>(":scope > caption")?.style.captionSide).toBe(side)
+    expect($.anchor).toBe(table.caption)
+    expect($.isElementSelection).toBe(false)
+  })
+
+  it("removes a table caption when set to none", () => {
+    document.body.innerHTML = '<table style="border: 1px solid red"><caption style="caption-side: bottom">Label</caption><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    $.selectElement(table)
+
+    setCaption("none")
+
+    expect(table.querySelector(":scope > caption")).toBeNull()
+    expect(table.style.border).toBe("1px solid red")
+    expect(table.querySelector("td")?.textContent).toBe("Cell")
+  })
+
+  it("records wrapping as one undoable change", () => {
+    document.body.innerHTML = '<p title="keep"><b>Content</b></p>'
+    const paragraph = document.querySelector("p")!
+    $.selectElement(paragraph)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    document.head.querySelector("style[data-ww-caption-enumeration]")?.remove()
+    editor.doc.syncFromDOM()
+    const original = editor.toHTML(true)
+
+    setCaption("below")
+    editor.doc.syncFromDOM()
+    const wrapped = editor.toHTML(true)
+    expect(wrapped).toContain("<figure")
+    expect(wrapped).toContain("<figcaption>")
+    expect(readCaptionEnumeration(document.head)?.figure.enabled).toBe(true)
+
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    expect(readCaptionEnumeration(document.head)).toBeUndefined()
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(wrapped)
+    expect(readCaptionEnumeration(document.head)?.figure.enabled).toBe(true)
+  })
+})
+
+describe("top-level captions", () => {
+  it.each(["p", "td", "nested-widget"])("captions the top-level container of a nested %s", tag => {
+    document.body.innerHTML = '<section title="Keep"><p>Text</p><table><tbody><tr><td>Cell</td></tr></tbody></table><nested-widget></nested-widget></section><p>Other</p>'
+    const section = document.querySelector("section")!, selected = section.querySelector(tag)!
+    if(tag === "nested-widget") editor.features.selection.captureElement(selected)
+    else $.move(selected.firstChild!, 1)
+    expect(editor.features.manipulation.getCaptionPosition()).toBe("none")
+    editor.features.manipulation.setCaption("below")
+    const figure = document.body.firstElementChild!
+    expect(figure.localName).toBe("figure")
+    expect(figure.firstElementChild).toBe(section)
+    expect(figure.lastElementChild!.localName).toBe("figcaption")
+    expect(section.querySelector("figcaption, caption")).toBeNull()
+    expect(document.body.lastElementChild!.textContent).toBe("Other")
+    expect($.anchor).toBe(figure.lastElementChild)
+  })
+
+  it("uses the top-level table when editing a nested table cell", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p>Text</p></td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    $.move(table.querySelector("p")!.firstChild!, 1)
+    editor.features.manipulation.setCaption("above")
+    expect(document.body.firstElementChild).toBe(table)
+    expect(table.caption).not.toBeNull()
+    expect(table.querySelector("figure")).toBeNull()
+  })
+
+  it("uses the document template as the top-level boundary", () => {
+    document.body.innerHTML = '<document-template role="document"><section><p>Text</p></section></document-template>'
+    const root = document.body.firstElementChild!, section = root.firstElementChild!
+    $.move(section.querySelector("p")!.firstChild!, 1)
+    editor.features.manipulation.setCaption("above")
+    expect(document.body.firstElementChild).toBe(root)
+    expect(root.firstElementChild!.localName).toBe("figure")
+    expect(root.querySelector("figure")!.lastElementChild).toBe(section)
+  })
+
+  it.each(["canvas", "slides"] as const)("captions the top-level layout item in %s", mode => {
+    const previousHead = document.head.innerHTML
+    try {
+      document.body.innerHTML = '<p>Text</p>'
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const paragraph = document.querySelector("p")!
+      paragraph.innerHTML = '<b>Text</b>'
+      const root = paragraph.parentElement!
+      const container = document.createElement("section")
+      paragraph.before(container)
+      container.append(paragraph)
+      $.move(paragraph.firstElementChild!.firstChild!, 1)
+      editor.features.manipulation.setCaption("below")
+      const figure = root.querySelector(":scope > figure")!
+      expect(figure).not.toBeNull()
+      expect(figure.firstElementChild).toBe(container)
+      expect(figure.lastElementChild!.localName).toBe("figcaption")
+      expect(root.localName).toBe(mode === "canvas" ? "body" : "section")
+    }
+    finally { document.head.innerHTML = previousHead }
+  })
+
+  it("does not caption the document root or disconnected selection content", () => {
+    document.body.innerHTML = '<section><p>Text</p></section>'
+    $.move(document.body, 0)
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    paragraph.parentElement!.remove()
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    expect(document.querySelector("figure, caption, figcaption")).toBeNull()
+  })
+
+  it("repositions the top-level caption without changing nested authored captions", () => {
+    document.body.innerHTML = '<figure><section><figure><img><figcaption>Inner</figcaption></figure></section><figcaption>Outer</figcaption></figure>'
+    const outer = document.body.firstElementChild!, inner = outer.querySelector("section > figure")!, caption = outer.lastElementChild!
+    $.selectElement(inner)
+    editor.features.manipulation.setCaption("above")
+    expect(outer.firstElementChild).toBe(caption)
+    expect(inner.querySelector("figcaption")!.textContent).toBe("Inner")
+    expect(document.querySelectorAll("figure")).toHaveLength(2)
+  })
+})
+
+describe("captioned element replacement", () => {
+  it.each(["above", "below"] as const)("retains a figure caption %s when replacing its content", position => {
+    const captionHTML = '<figcaption lang="de" title="Keep"><em>Caption</em><!--keep--></figcaption>'
+    document.body.innerHTML = `<p>Before</p><figure style="float:left">${position === "above" ? captionHTML : ""}<img src="old.png">${position === "below" ? captionHTML : ""}</figure><p>After</p>`
+    const figure = document.querySelector("figure")!, caption = figure.querySelector("figcaption")!, text = caption.firstChild!
+    $.selectElement(figure)
+    editor.features.manipulation.insert(document.createElement("video"))
+    expect(document.querySelector("figure")).toBe(figure)
+    expect(figure.querySelector("img")).toBeNull()
+    expect(figure.querySelector("video")).not.toBeNull()
+    expect(figure.querySelector("figcaption")).toBe(caption)
+    expect(caption.firstChild).toBe(text)
+    expect(caption.outerHTML).toBe(captionHTML)
+    expect(figure.firstElementChild === caption).toBe(position === "above")
+    expect((figure as HTMLElement).style.float).toBe("left")
+    expect($.selectedElement).toBe(figure)
+    expect(document.body.firstElementChild!.textContent).toBe("Before")
+    expect(document.body.lastElementChild!.textContent).toBe("After")
+  })
+
+  it.each(["figure", "table"] as const)("retains the caption when replacing a %s with a table", kind => {
+    document.body.innerHTML = kind === "figure"
+      ? '<figure><img><figcaption lang="fr"><b>Caption</b></figcaption></figure>'
+      : '<table><caption lang="fr" style="caption-side:bottom"><b>Caption</b></caption><tbody><tr><td>Old</td></tr></tbody></table>'
+    const target = document.body.firstElementChild!, text = target.querySelector("figcaption, caption")!.firstChild!
+    $.selectElement(target)
+    const table = document.createElement("table")
+    table.innerHTML = '<tbody><tr><td>New</td></tr></tbody>'
+    editor.features.manipulation.insert(table)
+    expect(document.body.firstElementChild).toBe(table)
+    expect(table.caption).toHaveAttribute("lang", "fr")
+    expect(table.caption!.firstChild).toBe(text)
+    expect(table.caption!.textContent).toBe("Caption")
+    expect(table.caption!.style.captionSide).toBe("bottom")
+    expect(table.querySelector("td")!.textContent).toBe("New")
+    expect(document.querySelector("figure")).toBeNull()
+  })
+
+  it.each(["top", "bottom"])("retains a table caption on replacement with a widget (%s)", side => {
+    document.body.innerHTML = `<table style="float:right"><caption lang="de" style="caption-side:${side}"><em>Caption</em></caption><tbody><tr><td>Old</td></tr></tbody></table>`
+    $.selectElement(document.querySelector("table")!)
+    editor.features.manipulation.insertHTML('<replacement-widget></replacement-widget>')
+    const figure = document.querySelector("figure")!, caption = figure.querySelector("figcaption")!
+    expect(figure.querySelector("replacement-widget")).not.toBeNull()
+    expect(caption).toHaveAttribute("lang", "de")
+    expect(caption.innerHTML).toBe("<em>Caption</em>")
+    expect(figure.firstElementChild === caption).toBe(side === "top")
+    expect((figure as HTMLElement).style.float).toBe("right")
+    expect(document.querySelector("table")).toBeNull()
+  })
+
+  it("retains the caption when replacing a captured widget inside a figure", () => {
+    editor.schema.extendWidgets([{tagName: "old-widget", editingConfig: {}}])
+    document.body.innerHTML = '<figure><old-widget></old-widget><figcaption>Keep</figcaption></figure>'
+    const figure = document.querySelector("figure")!, caption = figure.querySelector("figcaption")!
+    editor.features.selection.captureElement(figure.querySelector("old-widget")!)
+    editor.features.manipulation.insert(document.createElement("video"))
+    expect(document.querySelector("figure")).toBe(figure)
+    expect(figure.querySelector("figcaption")).toBe(caption)
+    expect(figure.querySelector("video")).not.toBeNull()
+    expect(figure.querySelector("old-widget")).toBeNull()
+  })
+
+  it("preserves the caption and multiple replacement roots through undo and redo", () => {
+    document.body.innerHTML = '<figure><img><figcaption>Keep</figcaption></figure>'
+    $.selectElement(document.querySelector("figure")!)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    editor.features.manipulation.insertHTML('<!--before--><p>First</p><p>Second</p><!--after-->')
+    const figure = document.querySelector("figure")!
+    expect(figure.querySelectorAll("p")).toHaveLength(2)
+    expect(figure.querySelector("figcaption")!.textContent).toBe("Keep")
+    expect(figure.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    editor.doc.syncFromDOM()
+    const replaced = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(replaced)
   })
 })
 
@@ -1697,7 +1989,7 @@ describe("figures", () => {
     expect(editor.features.manipulation.getFigureState()).toEqual({hasCaption: false})
     expect(editor.features.manipulation.addFigureCaption("before")).toBe(true)
 
-    expectBodyToBe('<figure data-origin="remote"><figcaption></figcaption><x-media></x-media><img src="photo.png"><p>Notes</p></figure>')
+    expectBodyToBe('<figure data-origin="remote" id="figure"><figcaption></figcaption><x-media></x-media><img src="photo.png"><p>Notes</p></figure>')
     expect($.anchor).toBe(figure.firstElementChild)
     expect(editor.features.manipulation.getFigureState()).toEqual({hasCaption: true})
     expect(editor.features.manipulation.addFigureCaption("after")).toBe(false)
@@ -1710,7 +2002,7 @@ describe("figures", () => {
     editor.features.selection.actions.selectSection({type: "selectSection", path: [0]})
 
     expect(editor.features.manipulation.addFigureCaption("after")).toBe(true)
-    expectBodyToBe('<figure><img src="photo.png"><figcaption></figcaption></figure>')
+    expectBodyToBe('<figure id="figure"><img src="photo.png"><figcaption></figcaption></figure>')
     expect(editor.features.selection.selectedSectionElement).toBeNull()
 
     $.selectElement(document.querySelector("img")!)
@@ -2592,6 +2884,205 @@ describe("setAttributes()", () => {
 
     expect(p.childNodes).toHaveLength(1)
     expect(p.textContent).toBe("ab")
+  })
+})
+
+describe("explicit multi-element selection editing", () => {
+  const htmlNamespace = "http://www.w3.org/1999/xhtml"
+  const selectionType = {localName: "p", namespaceURI: htmlNamespace}
+  const selectOnCanvas = (elements: Element[]) => {
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    $.selectElements(elements)
+  }
+
+  it("projects common and mixed state by selected element type", () => {
+    document.body.innerHTML = '<p id="one" title="shared" style="color: red; width: 10px">one</p><!--keep--><p id="two" title="shared" style="color: red; width: 20px">two</p><img alt="diagram"><p id="outside" title="outside">outside</p>'
+    const paragraphs = document.querySelectorAll("p")
+    const image = document.querySelector("img")!
+    const outside = document.body.lastElementChild!
+    selectOnCanvas([paragraphs[0], paragraphs[1], image])
+
+    const states = editor.features.manipulation.getSelectedElementTypes(["color", "width", "display"])
+
+    expect(states.map(({element, count}) => [element.localName, element.namespaceURI, count])).toEqual([
+      ["p", htmlNamespace, 2], ["img", htmlNamespace, 1],
+    ])
+    const paragraphGroup = states.find(state => state.element.localName === "p")!
+    expect(paragraphGroup.element.attributes).toMatchObject({title: "shared"})
+    expect(paragraphGroup.element.attributes).not.toHaveProperty("id")
+    expect(paragraphGroup.style.inline.color).toEqual({value: "red", priority: ""})
+    expect(paragraphGroup.style.inline).not.toHaveProperty("width")
+    expect(paragraphGroup.style.computed).toHaveProperty("display")
+    expect(outside).toHaveAttribute("id", "outside")
+    expect(document.body.childNodes[1]).toBeInstanceOf(Comment)
+  })
+
+  it("shares style reads and applies style changes across every explicitly selected element", () => {
+    document.body.innerHTML = '<p id="one" style="color: red">one</p><p id="two" style="color: blue">two</p><img alt="diagram"><p id="outside">outside</p>'
+    const [first, second, image] = Array.from(document.body.children)
+    const outside = document.body.lastElementChild!
+    selectOnCanvas([first, second, image])
+
+    const mixed = editor.features.manipulation.getStyleState(["color"])
+    expect(mixed.inline).not.toHaveProperty("color")
+    editor.features.manipulation.setStyle({color: {value: "rebeccapurple", priority: "important"}})
+
+    for(const element of [first, second, image]) {
+      expect((element as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
+      expect((element as HTMLElement).style.getPropertyPriority("color")).toBe("important")
+    }
+    expect((outside as HTMLElement).style.color).toBe("")
+    expect(editor.features.manipulation.getStyleState(["color"]).inline.color)
+      .toEqual({value: "rebeccapurple", priority: "important"})
+  })
+
+  it("mutates only matching HTML elements in the current explicit selection and preserves surrounding DOM", () => {
+    document.body.innerHTML = '<p id="first" title="old" data-keep="yes" style="color: red">one</p><!--keep--><p id="second" title="old" data-keep="yes">two</p><img alt="diagram"><svg xmlns="http://www.w3.org/2000/svg"></svg><p id="outside">outside</p>'
+    const [first, second, image, svg] = Array.from(document.body.children)
+    const svgParagraph = document.createElementNS("http://www.w3.org/2000/svg", "p")
+    svgParagraph.id = "svg-p"
+    svgParagraph.textContent = "vector"
+    svg.append(svgParagraph)
+    const outside = document.body.lastElementChild!
+    selectOnCanvas([first, second, image, svgParagraph])
+
+    editor.features.manipulation.actions.setSelectedElementAttribute({
+      type: "setSelectedElementAttribute", selectionType,
+      name: "data-source", previousName: "title", value: "curriculum",
+    })
+    editor.features.manipulation.actions.setSelectedElementStyles({
+      type: "setSelectedElementStyles", selectionType,
+      styles: {"background-color": "gold", width: "120px"},
+    })
+
+    for(const paragraph of [first, second]) {
+      expect(paragraph).toHaveAttribute("data-source", "curriculum")
+      expect(paragraph).not.toHaveAttribute("title")
+      expect(paragraph).toHaveAttribute("data-keep", "yes")
+      expect(paragraph).toHaveStyle({backgroundColor: "gold", width: "120px"})
+    }
+    expect(image).toHaveAttribute("alt", "diagram")
+    expect(image).not.toHaveAttribute("data-source")
+    expect(svgParagraph).toHaveAttribute("id", "svg-p")
+    expect(svgParagraph).not.toHaveAttribute("data-source")
+    expect(outside).toHaveAttribute("id", "outside")
+    expect(document.body.childNodes[1]).toBeInstanceOf(Comment)
+    expect(document.body.children).toHaveLength(5)
+  })
+
+  it("uses the current selection and safely ignores disconnected members", () => {
+    document.body.innerHTML = '<p id="first">one</p><p id="second">two</p><p id="third">three</p>'
+    const [first, second, third] = Array.from(document.body.children)
+    selectOnCanvas([first, second])
+    $.selectElements([second, third])
+
+    editor.features.manipulation.actions.setSelectedElementAttribute({
+      type: "setSelectedElementAttribute", selectionType, name: "title", value: "current",
+    })
+    expect(second).toHaveAttribute("title", "current")
+    expect(third).toHaveAttribute("title", "current")
+    expect(first).not.toHaveAttribute("title")
+
+    third.remove()
+    expect(() => editor.features.manipulation.actions.setSelectedElementStyles({
+      type: "setSelectedElementStyles", selectionType, styles: {color: "red"},
+    })).not.toThrow()
+    expect((first as HTMLElement).style.color).toBe("")
+  })
+
+  it("does not apply a type-specific mutation to another selected element type", () => {
+    document.body.innerHTML = '<p id="outside">one</p><img id="only" alt="diagram">'
+    const image = document.querySelector("img")!
+    $.selectElement(image)
+
+    editor.features.manipulation.actions.setSelectedElementAttribute({
+      type: "setSelectedElementAttribute", selectionType, name: "title", value: "ignored",
+    })
+    editor.features.manipulation.actions.setSelectedElementStyles({
+      type: "setSelectedElementStyles", selectionType, styles: {color: "red"},
+    })
+
+    expect(image).not.toHaveAttribute("title")
+    expect((image as HTMLElement).style.color).toBe("")
+  })
+
+  it("projects and edits the paragraph and its ancestors at a collapsed text caret", () => {
+    document.body.innerHTML = '<section id="section"><div id="container"><p id="target">hello</p></div></section>'
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 2)
+
+    const states = editor.features.manipulation.getSelectedElementTypes()
+    expect(states.map(state => [state.element.localName, state.count])).toEqual(expect.arrayContaining([
+      ["p", 1], ["div", 1], ["section", 1],
+    ]))
+    editor.features.manipulation.actions.setSelectedElementAttribute({
+      type: "setSelectedElementAttribute", selectionType, name: "title", value: "selected",
+    })
+
+    expect(document.querySelector("#target")).toHaveAttribute("title", "selected")
+    expect(document.querySelector("#container")).not.toHaveAttribute("title")
+  })
+
+  it("projects an atomic widget host instead of its internal descendants", () => {
+    document.body.innerHTML = '<section><demo-widget id="widget"><span id="inside">inside</span></demo-widget></section>'
+    const text = document.querySelector("#inside")!.firstChild!
+    $.selectRange(text, 0, text, 2)
+
+    const states = editor.features.manipulation.getSelectedElementTypes()
+    expect(states.map(state => state.element.localName)).toContain("demo-widget")
+    expect(states.map(state => state.element.localName)).not.toContain("span")
+    editor.features.manipulation.actions.setSelectedElementAttribute({
+      type: "setSelectedElementAttribute",
+      selectionType: {localName: "demo-widget", namespaceURI: htmlNamespace},
+      name: "title", value: "host",
+    })
+
+    expect(document.querySelector("demo-widget")).toHaveAttribute("title", "host")
+    expect(document.querySelector("#inside")).not.toHaveAttribute("title")
+  })
+
+  it("groups and edits all authored containers intersected across nested sections", () => {
+    document.body.innerHTML = '<section id="first-section"><p id="first"><span>one</span><!--keep--></p></section><section id="second-section"><p id="second"><em>two</em></p></section>'
+    const [firstText, secondText] = [document.querySelector("span")!.firstChild!, document.querySelector("em")!.firstChild!]
+    $.selectRange(firstText, 0, secondText, 3)
+
+    const states = editor.features.manipulation.getSelectedElementTypes()
+    expect(states.map(state => [state.element.localName, state.count])).toEqual(expect.arrayContaining([
+      ["p", 2], ["section", 2], ["span", 1], ["em", 1],
+    ]))
+    editor.features.manipulation.actions.setSelectedElementAttribute({
+      type: "setSelectedElementAttribute", selectionType, name: "data-selected", value: "yes",
+    })
+    editor.features.manipulation.actions.setSelectedElementStyles({
+      type: "setSelectedElementStyles", selectionType: {localName: "section", namespaceURI: htmlNamespace},
+      styles: {"background-color": "gold"},
+    })
+
+    expect(document.querySelector("#first")).toHaveAttribute("data-selected", "yes")
+    expect(document.querySelector("#second")).toHaveAttribute("data-selected", "yes")
+    expect(document.querySelector("#first-section")).toHaveStyle({backgroundColor: "gold"})
+    expect(document.querySelector("#second-section")).toHaveStyle({backgroundColor: "gold"})
+    expect(document.querySelector("#first-section")!.firstChild!.firstChild!.nextSibling).toBeInstanceOf(Comment)
+  })
+
+  it("records matching element mutations as one undoable change", async () => {
+    document.body.innerHTML = '<p id="one">one</p><p id="two">two</p><img alt="diagram">'
+    const [first, second, image] = Array.from(document.body.children)
+    selectOnCanvas([first, second, image])
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    editor.features.manipulation.actions.setSelectedElementAttribute({
+      type: "setSelectedElementAttribute", selectionType, name: "title", value: "selected",
+    })
+    expect(first).toHaveAttribute("title", "selected")
+    expect(second).toHaveAttribute("title", "selected")
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain('title="selected"')
+    editor.doc.undo()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain('title="selected"')
+    editor.doc.redo()
+    expect(sharedDOMBody(editor.doc.doc).toString()).toMatch(/<p id="one"[^>]*title="selected"/)
+    expect(sharedDOMBody(editor.doc.doc).toString()).toMatch(/<p id="two"[^>]*title="selected"/)
   })
 })
 
@@ -4764,4 +5255,37 @@ it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("disallows %s within a section nes
   editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
   expect(document.querySelector("p")).toBe(paragraph)
   expect(document.querySelector("li h1, li h2, li h3, li h4, li h5, li h6")).toBeNull()
+})
+
+
+describe("caption alignment", () => {
+  const states = (["figure", "table"] as const).flatMap(kind => (["above", "below"] as const)
+    .flatMap(position => (["left", "center", "right"] as const).map(alignment => ({kind, position, alignment}))))
+  it.each(states)("applies $position/$alignment to a $kind caption", ({kind, position, alignment}) => {
+    document.body.innerHTML = kind === "figure" ? '<figure><p>Content</p><figcaption>Keep</figcaption></figure>'
+      : '<table><caption>Keep</caption><tbody><tr><td>Content</td></tr></tbody></table>'
+    const target = document.body.firstElementChild!, caption = target.querySelector("figcaption, caption") as HTMLElement
+    $.selectElement(target)
+    editor.features.manipulation.actions.setCaption({type: "setCaption", position, alignment})
+    expect(caption.style.textAlign).toBe(alignment)
+    expect(caption.textContent).toBe("Keep")
+    expect(editor.features.manipulation.getCaptionPosition()).toBe(position)
+    expect(editor.features.manipulation.getCaptionAlignment()).toBe(alignment)
+    expect($.anchor).toBe(caption)
+    expect(editor.toHTML(true)).toContain(`text-align: ${alignment}`)
+  })
+
+  it("undoes and redoes caption position and alignment together", () => {
+    document.body.innerHTML = '<figure><p>Content</p><figcaption style="text-align: left">Keep</figcaption></figure>'
+    $.selectElement(document.body.firstElementChild!)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    editor.features.manipulation.actions.setCaption({type: "setCaption", position: "above", alignment: "right"})
+    const changed = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
 })

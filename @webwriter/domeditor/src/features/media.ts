@@ -1434,6 +1434,10 @@ export class MediaFeature extends EditorFeature {
   private selectedMedia() {
     const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
     if(selected?.matches(mediaSelector)) return mediaContainerForNode(selected)
+    if(selected?.localName === "figure") {
+      const media = Array.from(selected.children).filter(child => child.matches(mediaSelector))
+      if(media.length === 1) return mediaContainerForNode(media[0])
+    }
     const container = $.anchorContainer
     return isElement(container) ? mediaContainerForNode(container) : null
   }

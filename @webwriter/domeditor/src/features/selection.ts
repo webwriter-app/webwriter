@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -202,7 +202,7 @@ export class SelectionFeature extends EditorFeature {
    * Contentful widgets use ordinary element selection so their content stays editable. */
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
     if(!element.isConnected || element === document.body || !document.body.contains(element)) return
-    if(element.matches("details > summary")) {
+    if(element.matches("caption, figcaption, details > summary")) {
       this.selectElement(element)
       return
     }
@@ -342,20 +342,34 @@ export class SelectionFeature extends EditorFeature {
   /** Selects an adjacent atomic node, extends across it with a fixed anchor,
    * or collapses a node selection into the requested boundary. */
   #navigateAtomicSelection(direction: "backward" | "forward", vertical = false, extend = false) {
+    const navigable = (element: Node | null): element is Element => element instanceof Element
+      && (Boolean(isAtomicEditingElement(element, this.editor.schema)) || element.matches("figure, table:has(> caption)"))
+    const container = $.anchor ? getContainer($.anchor) : null
+    const owner = container?.closest("figure, table:has(> caption)")
+    const caption = container?.closest("figcaption, caption")
+    const captionEdge = caption && owner && (caption.localName === "caption"
+      ? (getComputedStyle(caption).captionSide === "bottom") === (direction === "forward")
+      : caption === (direction === "backward" ? owner.firstElementChild : owner.lastElementChild))
+    if(!extend && $.isEmpty && owner && !isOutOfFlow(owner)
+      && this.#atDisclosureEdge(captionEdge ? caption! : owner, direction, vertical)) {
+      $.selectGap(owner, direction === "backward" ? "before" : "after")
+      this.processSelection()
+      return true
+    }
     const selectedElement = $.selectedElement
-    if(!extend && selectedElement && isAtomicEditingElement(selectedElement, this.editor.schema)) {
+    if(!extend && selectedElement && navigable(selectedElement)) {
       $.selectGap(selectedElement, direction === "backward" ? "before" : "after")
     }
     else {
       const atomicEdge = (element: Element | null) => element && extend
         ? this.#disclosureEdge(element, direction === "forward" ? "backward" : "forward") : element
       let adjacent = atomicEdge(this.#adjacentNavigationElement(direction, false, extend))
-      if(adjacent && !isAtomicEditingElement(adjacent, this.editor.schema)) adjacent = null
+      if(adjacent && !navigable(adjacent)) adjacent = null
       const block = this.#selectionBlock(extend ? $.focus : $.anchor)
       if(!adjacent && block && (vertical || this.#isCaretAtBlockBoundary(block, direction, extend))) {
         adjacent = atomicEdge(this.#adjacentNavigationElement(direction, true, extend))
       }
-      if(!adjacent || !isAtomicEditingElement(adjacent, this.editor.schema)) return false
+      if(!adjacent || !navigable(adjacent)) return false
       if(extend) {
         const parent = adjacent.parentNode!
         const index = Array.from(parent.childNodes).indexOf(adjacent)
@@ -894,7 +908,12 @@ export class SelectionFeature extends EditorFeature {
     if(media || divider) {
       ev.preventDefault()
       this.#releaseCaptureSelection()
-      $.selectElement((media ?? divider)!)
+      const target = figureSelectionTarget((media ?? divider)!)
+      const rect = target.getBoundingClientRect()
+      if(target.localName === "figure" && !isOutOfFlow(target) && rect.height > 0 && (ev.clientY < rect.top || ev.clientY > rect.bottom)) {
+        $.selectGap(target, ev.clientY < rect.top ? "before" : "after")
+      }
+      else $.selectElement(target)
       this.processSelection()
       return
     }
@@ -1132,7 +1151,7 @@ export class SelectionFeature extends EditorFeature {
     const summary = targetElement.closest("details > summary")
     if(summary) return summary.parentElement
     const table = targetElement.closest("table")
-    if(table) return table
+    if(table) return figureSelectionTarget(table)
     while(targetElement && !isContentfulWidget(targetElement, this.editor.schema)
       && (targetElement.matches("br, wbr") || this.editor.schema.isPhrasing(targetElement))) {
       const parent = targetElement.parentElement
@@ -1140,7 +1159,7 @@ export class SelectionFeature extends EditorFeature {
       targetElement = parent
     }
     return isDocumentRoot(targetElement) || targetElement === document.body || targetElement === document.documentElement
-      ? null : targetElement
+      ? null : figureSelectionTarget(targetElement)
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
@@ -1167,7 +1186,7 @@ export class SelectionFeature extends EditorFeature {
 
       const pathElement = this.#elementAtPath(path)
       if(inlineMathRoot(pathElement)) return
-      const element = pathElement.closest("table") ?? pathElement
+      const element = figureSelectionTarget(pathElement.closest("table") ?? pathElement)
       element.classList.add("◆", "◆element-hovered")
       this.#refreshHoverGeometry()
     },
@@ -1278,8 +1297,9 @@ export class SelectionFeature extends EditorFeature {
     const explicit = document.querySelector(".◆element-hovered, .◆style-target-hovered")
     const freeform = this.editor.features.canvas.active || this.editor.features.slides.active
     const native = this.#nativeHoverTarget
-    const target = explicit ?? (freeform ? this.#layoutSelectionItem(native, native)
+    const candidate = explicit ?? (freeform ? this.#layoutSelectionItem(native, native)
       : atomicEditingContainer(native, this.editor.schema) ?? (native ? mediaContainerForNode(native) ?? graphicContainerForNode(native) : null) ?? this.#modifierSelectionTarget(native))
+    const target = candidate ? figureSelectionTarget(candidate) : null
     if(!this.isEnabled
       || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target)) {
       this.#clearHoverGeometry()
@@ -1583,7 +1603,7 @@ export class SelectionFeature extends EditorFeature {
   #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture") {
     this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
-      "◆element-capture-selected", "◆text-selected", "◆empty-selected",
+      "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
       "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
       "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
     const elements = new Set([...this.#selectionMarkers,
@@ -1882,6 +1902,26 @@ export class SelectionFeature extends EditorFeature {
     if(scrollIntoView && !isContentfulWidget(focusedWidget, this.editor.schema)) {
       this.#scrollSelectionIntoView(kind, sel, capturedElement)
     }
+    let captionPlaceholder = false
+    if(!this.editor.isEditingLocked) {
+      const origin = selectedElement ?? sel?.anchorNode
+      const figure = (isElement(origin) ? origin : origin?.parentElement)?.closest("figure")
+      const anchorContainer = sel?.anchorNode ? getContainer(sel.anchorNode) : null
+      const editingCaption = !selectedElement && sel?.anchorNode && sel.focusNode
+        && isElement(anchorContainer) ? anchorContainer.closest("figcaption, caption") : null
+      const caption = editingCaption?.contains(sel?.focusNode ?? null) ? editingCaption
+        : figure && (selectedElement || sel?.focusNode && figure.contains(sel.focusNode))
+          ? figure.querySelector(":scope > figcaption") : null
+      if(caption && !caption.textContent?.trim()
+        && !Array.from(caption.querySelectorAll("*")).some(element =>
+          Boolean(isAtomicEditingElement(element, this.editor.schema)) || element.matches("math, table, canvas"))) {
+        this.#markSelection(caption, "◆caption-placeholder")
+        if(caption === editingCaption) {
+          this.#markSelection(caption, "◆caption-editing")
+          captionPlaceholder = true
+        }
+      }
+    }
     if(kind === "cell") return
     if(kind === "virtual") {
       this.editor.features.list.refreshSelectionPresentation()
@@ -1904,7 +1944,7 @@ export class SelectionFeature extends EditorFeature {
     }
     if(!sel?.anchorNode || !sel.focusNode) return
     if((kind === "text" || kind === "element") && !this.editor.features.mark.isSVGTextSelection) this.#showAtomicOverlays(sel)
-    if(kind === "gap") {
+    if(kind === "gap" && !captionPlaceholder) {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
         const i = sel.anchorOffset
@@ -1914,7 +1954,7 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap
+        const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap ?? $.captionedGap
         const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {

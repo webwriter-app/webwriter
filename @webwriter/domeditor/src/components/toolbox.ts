@@ -1,10 +1,10 @@
-import {css, html, nothing, type TemplateResult} from "lit"
+import {css, html, svg, nothing, type TemplateResult} from "lit"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
 import {proofreadingCardStyles, renderProofreadingCard} from "./proofreading-card"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
-import type {SelectionPathItem} from "../editor-bridge"
+import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
@@ -15,9 +15,11 @@ import {documentLayoutPreviewStyles, renderDocumentLayoutCard, renderDocumentLay
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
 import {mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
+import {MATH_NAMESPACE} from "../math"
+import {canonicalMarkName} from "../marks"
 import "./style-combobox"
-import {graphicShapeOptions} from "../graphic"
-import type {WidgetOptionState} from "../widget-options"
+import {graphicShapeOptions, SVG_NAMESPACE} from "../graphic"
+import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
 
 export type ToolboxTool = "Edit" | "Style" | "AI" | "Review"
 
@@ -39,6 +41,10 @@ export class DomEditorToolbox extends EditingControls {
 
   protected renderGraphicDrawer() {
     return super.renderGraphicDrawer(true)
+  }
+
+  protected renderTableStructureControls() {
+    return super.renderTableStructureControls(false)
   }
 
   static properties = {
@@ -96,7 +102,7 @@ export class DomEditorToolbox extends EditingControls {
     .layout-action-controls {grid-column: 1 / -1; display: grid; gap: .45rem; padding: .4rem .5rem; font: 12px/1.35 system-ui, sans-serif}
     .layout-action-controls button {min-height: 1.8rem; padding: .25rem .45rem; border: 1px solid #a8a8a8; border-radius: .2rem; background: #f7f7f7; color: #2f3742; font: inherit; cursor: pointer}
     .layout-action-controls button:hover:not(:disabled) {background: #e9eef5}
-    .layout-action-controls button[aria-pressed="true"] {background: #dbe9fb; border-color: #3977c7; color: #174c91}
+    .layout-action-controls button[aria-pressed="true"] {background: #e2edf8; border-color: #c5ccd5; color: #375d84}
     .layout-action-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
     .layout-action-row {display: flex; flex-wrap: wrap; gap: .25rem}
     .float-action-controls {padding: .4rem 0; gap: .125rem}
@@ -110,6 +116,14 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
+    .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, auto)}
+    .caption-button-group button {min-height: 1.55rem; padding: .1rem .25rem; margin: 0; border-radius: 0}
+    .caption-button-group button + button {margin-left: -.5px}
+    .caption-button-group .caption-none {grid-row: 1 / 3; padding: .15rem .1rem; border-radius: .2rem 0 0 .2rem}
+    .caption-button-group button.caption-above-right {border-radius: 0 .2rem 0 0}
+    .caption-button-group button.caption-below-right {border-radius: 0 0 .2rem 0}
+    .caption-button-group [class^="caption-below"] {margin-top: -.5px}
+
 
     .history-timeline {
       flex-direction: column;
@@ -678,8 +692,10 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private get editTypeLabel() {
+    const visibleElements = this.selectedElementTypes.filter(group => this.isElementDrawerVisible(group.element.localName, group.element.namespaceURI))
+    if(visibleElements.length > 1 || visibleElements.some(group => group.count > 1)) return "Selection"
     if(this.documentSelected) return "Document"
-    if(this.sectionSelected) return "Section"
+    if(this.sectionSelected && this.sectionType !== "figure") return "Section"
     if(this.headingGroup) return "Heading group"
     if(this.listType === "ol") return "List"
     if(this.graphic?.active) return "Graphic"
@@ -692,10 +708,9 @@ export class DomEditorToolbox extends EditingControls {
           ? "Video"
           : "Website"
     if(this.dialog) return "Dialog"
-    if(this.figure) return "Figure"
     if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
     if(this.paragraphSelected) return null
-    if(this.elementAttributes) return this.elementAttributes.name
+    if(this.elementAttributes && this.isElementDrawerVisible(this.elementAttributes.localName, this.elementAttributes.namespaceURI)) return this.elementAttributes.name
     return null
   }
 
@@ -706,7 +721,7 @@ export class DomEditorToolbox extends EditingControls {
       surface: "toolbox",
       activeTool: this.activeTool ?? undefined,
       documentSelected: this.documentSelected,
-      sectionSelected: this.sectionSelected,
+      sectionSelected: this.sectionSelected && this.sectionType !== "figure",
       layout: this.layout?.kind,
       layoutItem: this.layout?.item,
       math: this.math?.active,
@@ -717,9 +732,9 @@ export class DomEditorToolbox extends EditingControls {
       table: Boolean(this.table?.active),
       graphic: Boolean(this.graphic?.active),
       disclosure: this.elementAttributes?.localName === "details",
-      figure: Boolean(this.figure),
+      figure: false,
       widget: Boolean(this.widgetOptions),
-      attributes: Boolean(this.elementAttributes),
+      attributes: Boolean(this.elementAttributes && this.elementAttributes.localName !== "figure"),
     })
   }
 
@@ -855,10 +870,10 @@ export class DomEditorToolbox extends EditingControls {
     </div>`
   }
 
-  protected renderWidgetOptionField(option: WidgetOptionState) {
+  protected renderWidgetOptionField(option: WidgetOptionState, dispatch = this.dispatchWidgetOption.bind(this), fieldScope = "") {
     const fieldLabel = this.renderFieldLabel(option.label,
       option.value !== null && option.value !== "" && (!Array.isArray(option.value) || option.value.length > 0),
-      () => this.dispatchWidgetOption(option.name, null), `widget-label-${option.name}`)
+      () => dispatch(option.name, null), `widget-label-${fieldScope}${option.name}`)
     if(option.type === "number") {
       const candidates = [option.min ?? 0, option.min === undefined ? 1 : option.min + (option.step ?? 1),
         option.max ?? (option.min ?? 0) + 10 * (option.step ?? 1)]
@@ -871,7 +886,7 @@ export class DomEditorToolbox extends EditingControls {
             const value = event.detail.value.trim()
             const number = Number(value)
             if(!value || Number.isFinite(number) && (option.min === undefined || number >= option.min)
-              && (option.max === undefined || number <= option.max)) this.dispatchWidgetOption(option.name, value ? number : null)
+              && (option.max === undefined || number <= option.max)) dispatch(option.name, value ? number : null)
             else {
               const combo = event.currentTarget as import("./style-combobox").StyleCombobox
               combo.value = option.value === null ? "" : String(option.value)
@@ -880,7 +895,7 @@ export class DomEditorToolbox extends EditingControls {
           }}></style-combobox>
       </div>`
     }
-    if(option.type !== "select") return super.renderWidgetOptionField(option)
+    if(option.type !== "select") return super.renderWidgetOptionField(option, dispatch, fieldScope)
     if(option.multiple || !option.choices?.length || option.choices.length > 8 || option.choices.some(choice => choice.label.length > 14)) {
       const value = option.value === null ? "" : String(option.value)
       const choices = option.choices ?? []
@@ -889,66 +904,106 @@ export class DomEditorToolbox extends EditingControls {
           .values=${Array.isArray(option.value) ? option.value.map(String) : []} .value=${value}
           .options=${[...(!option.multiple ? [{value: "", label: "Default"}] : []),
             ...(!option.multiple && value && !choices.some(choice => choice.value === value) ? [{value, label: value}] : []), ...choices]}
-          @combobox-change=${(event: CustomEvent<{value: string, values?: string[]}>) => this.dispatchWidgetOption(option.name, option.multiple ? event.detail.values ?? [] : event.detail.value || null)}
+          @combobox-change=${(event: CustomEvent<{value: string, values?: string[]}>) => dispatch(option.name, option.multiple ? event.detail.values ?? [] : event.detail.value || null)}
         ></style-combobox>
       </div>`
     }
     const columns = Math.min(4, Math.ceil(option.choices.length / (option.choices.length > 4 ? 2 : 1)))
     return html`<div class="develop-field" title=${option.description ?? ""}>
       ${fieldLabel}
-      <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${option.name}`}>
+      <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${fieldScope}${option.name}`}>
         ${option.choices.map((choice, index) => html`<button type="button"
           ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.choices!.length - 1) / columns) * columns}
           title=${choice.description ?? choice.label} aria-label=${choice.label}
           aria-pressed=${option.value === choice.value}
           @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-          @click=${() => this.dispatchWidgetOption(option.name, option.value === choice.value ? null : choice.value)}><span aria-hidden="true">${ribbonOptionIcon(option.name, choice.value)}</span>${choice.label}</button>`)}
+          @click=${() => dispatch(option.name, option.value === choice.value ? null : choice.value)}><span aria-hidden="true">${ribbonOptionIcon(option.name, choice.value)}</span>${choice.label}</button>`)}
       </div>
     </div>`
   }
 
-  private renderSpecializedDrawer() {
-    const attributes = this.elementAttributes
-    const localName = this.widgetOptions?.localName ?? (this.graphic?.active ? "svg" : this.math?.active ? "math" : this.table?.active ? (this.elementStyle.target?.localName ?? "table")
-      : this.media?.type ?? attributes?.localName ?? this.elementStyle.target?.localName)
-    if(!localName || localName === "body" || this.elementStyle.target?.documentRoot) return nothing
+  private isElementDrawerVisible(localName: string, namespaceURI: string | null | undefined) {
+    return !(namespaceURI === "http://www.w3.org/1999/xhtml"
+      && (canonicalMarkName(localName) !== null
+        || ["li", "dt", "dd", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "summary", "figure", "figcaption"].includes(localName))
+      || namespaceURI === MATH_NAMESPACE && localName !== "math"
+      || namespaceURI === SVG_NAMESPACE && localName !== "svg")
+  }
+
+  protected renderElementAttributesDrawer() {
+    if(this.elementAttributes && !this.isElementDrawerVisible(this.elementAttributes.localName, this.elementAttributes.namespaceURI)) return nothing
+    return super.renderElementAttributesDrawer()
+  }
+
+  private renderSpecializedDrawer(group?: SelectedElementTypeState) {
+    const attributes = group?.element ?? this.elementAttributes
+    const style = group?.style ?? this.elementStyle
+    const widgetOptions = group ? group.widget : this.widgetOptions
+    const singleTarget = Boolean(group?.count === 1 && this.elementAttributes && attributes
+      && (attributes.localName === this.elementAttributes.localName && attributes.namespaceURI === this.elementAttributes.namespaceURI
+        && JSON.stringify(attributes.path) === JSON.stringify(this.elementAttributes.path)
+        || this.elementAttributes.localName === "figure" && attributes.localName === this.media?.type
+          && attributes.path?.length === (this.elementAttributes.path?.length ?? 0) + 1
+          && JSON.stringify(attributes.path.slice(0, -1)) === JSON.stringify(this.elementAttributes.path)))
+    const selectionType: ElementSelectionType | undefined = group ? {
+      localName: group.element.localName, namespaceURI: group.element.namespaceURI,
+      ...(group.count === 1 && group.element.localName.includes("-") ? (group.element.attributes.id
+        ? {id: group.element.attributes.id} : group.element.path ? {path: group.element.path} : {}) : {}),
+    } : undefined
+    const scopeChange = (event: CustomEvent) => {
+      if(selectionType) event.detail.selectionType = selectionType
+    }
+    const dispatchOption = (name: string, value: WidgetOptionValue) => {
+      this.dispatchEvent(new CustomEvent("widget-option-change", {
+        detail: {name, value, ...(selectionType ? {selectionType} : {})}, bubbles: true, composed: true,
+      }))
+    }
+    const localName = group?.element.localName ?? widgetOptions?.localName ?? (this.graphic?.active ? "svg" : this.math?.active ? "math" : this.table?.active ? (style.target?.localName ?? "table")
+      : this.media?.type ?? attributes?.localName ?? style.target?.localName)
+    if(!localName || localName === "body" || style.target?.documentRoot) return nothing
+    const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
+    if(!this.isElementDrawerVisible(localName, namespaceURI)) return nothing
     const profile = specializedElementStyle(localName)
-    const widget = Boolean(this.widgetOptions || localName.includes("-"))
-    if(!profile && !widget) return nothing
+    const widget = Boolean(widgetOptions || localName.includes("-"))
+    if(!profile && !widget && !group) return nothing
     const primary = profile?.primary ?? []
     const advanced = profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
     const properties = [...new Set([...primary, ...advanced])]
-    const resetStyles = Object.fromEntries(properties.filter(name => Object.hasOwn(this.elementStyle.inline, name)).map(name => [name, null]))
-    const configuredWidgetOptions = this.widgetOptions?.options.filter(option => option.value !== null && option.value !== "") ?? []
-    const count = advanced.filter(name => Object.hasOwn(this.elementStyle.inline, name)).length
-      + Object.keys({...attributes?.attributes, ...this.media?.attributes}).filter(name => name !== "style").length
-      + (this.widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== ""
-        && (!option.attribute || !Object.hasOwn(attributes?.attributes ?? {}, option.attribute))).length ?? 0)
-    const label = widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
+    const resetStyles = Object.fromEntries(properties.filter(name => group ? group.styleProperties.includes(name) : Object.hasOwn(style.inline, name)).map(name => [name, null]))
+    const configuredWidgetOptions = widgetOptions?.options.filter(option => group ? group.configuredWidgetOptions.includes(option.name) : option.value !== null && option.value !== "") ?? []
+    const count = advanced.filter(name => group ? group.styleProperties.includes(name) : Object.hasOwn(style.inline, name)).length
+      + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
+      + (widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
+    const label = group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
-    return html`<ribbon-drawer label=${label} icon=${attributes?.icon ?? label} layout="element-style"
-      show-pane-icon expandable .advancedCount=${count} data-specialized=${localName}>
+    const commands = group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
+      : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
+      : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
+    const hasOptions = advanced.length > 0 || commands !== nothing
+    return html`<ribbon-drawer label=${label} icon=${attributes?.icon ?? label} .iconUrl=${attributes?.iconUrl ?? ""} layout="element-style"
+      .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
+      @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
       <button type="button" class="style-reset" slot="heading-action" title="Reset element styles" aria-label="Reset element styles"
         ?disabled=${!Object.keys(resetStyles).length && !configuredWidgetOptions.length}
-        @click=${() => {
-          if(Object.keys(resetStyles).length) this.dispatchEvent(new CustomEvent("element-style-change", {
+        @click=${(event: Event) => {
+          if(Object.keys(resetStyles).length) event.currentTarget!.dispatchEvent(new CustomEvent("element-style-change", {
             detail: {styles: resetStyles}, bubbles: true, composed: true,
           }))
-          configuredWidgetOptions.forEach(option => this.dispatchWidgetOption(option.name, null))
+          configuredWidgetOptions.forEach(option => dispatchOption(option.name, null))
         }}>${ribbonIcon("Restore")}Reset</button>
-      ${this.widgetOptions ? html`<div class="widget-options specialized-widget-primary">${this.widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option))}</div>` : nothing}
-      <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary} .state=${this.elementStyle}></element-style-editor>
-      <div slot="more" class="specialized-options">
-        <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${this.elementStyle}></element-style-editor>
-        ${this.renderSpecializedCommands()}
-        ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
-      </div>
+      ${widgetOptions ? html`<div class="widget-options specialized-widget-primary">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>` : nothing}
+      <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary} .state=${style}></element-style-editor>
+      ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
+      ${hasOptions ? html`<div slot="more" class="specialized-options">
+        ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
+        ${commands}
+      </div>` : nothing}
     </ribbon-drawer>`
   }
 
-  private renderSpecializedCommands() {
-    if(this.widgetOptions) return this.renderWidgetOptionsControls(this.widgetOptions.options.slice(3))
+  private renderSpecializedCommands(dispatchOption?: (name: string, value: WidgetOptionValue) => void) {
+    if(this.widgetOptions) return this.renderWidgetOptionsControls(this.widgetOptions.options.slice(3), dispatchOption)
     if(this.graphic?.active) {
       const captured = Boolean(this.graphic.capture)
       const count = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
@@ -971,7 +1026,6 @@ export class DomEditorToolbox extends EditingControls {
     if(this.media) {
       const type = this.media.type
       return html`<div class="specialized-commands media-toolbox-controls">
-        ${this.figure ? this.renderFigureCaptionControls() : html`<ribbon-button label="Convert to figure" action="media-to-figure" icon="Section"></ribbon-button>`}
         ${isMediaType(type) ? mediaAttributeOptions[type].filter(option => !["width", "height"].includes(option.name))
           .map(option => this.renderMediaAttribute(type, option)) : nothing}
         ${this.renderTimedMediaResources()}
@@ -979,11 +1033,15 @@ export class DomEditorToolbox extends EditingControls {
       </div>`
     }
     if(this.listType === "ol") return this.renderListControls()
-    if(this.sectionSelected || this.figure) return html`<div class="specialized-commands">${this.renderSectionControls()}</div>`
+    if(this.sectionSelected && this.sectionType !== "figure") return html`<div class="specialized-commands">${this.renderSectionControls()}</div>`
     return nothing
   }
 
   protected renderDrawers(): TemplateResult<1>[] {
+    if(this.activeTool === "Edit" && this.selectedElementTypes.length) {
+      return this.selectedElementTypes.map(group => this.renderSpecializedDrawer(group))
+        .filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
+    }
     if(this.activeTool === "Edit" && !this.elementAttributes && !this.math?.active
       && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
       const drawers = [html`
@@ -1053,13 +1111,15 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderElementLayoutControls() {
     const target = this.elementStyle.target
-    if(this.activeTool !== "Edit" || this.documentLayout.mode !== "document" || !target
+    if(this.activeTool !== "Edit" || !target
       || this.documentSelected || target.documentRoot || target.localName === "body") return nothing
     const float = target.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
+    const captionPosition = this.captionPosition ?? (this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
     return html`
         <div class="layout-action-controls float-action-controls">
+          ${this.documentLayout.mode === "document" ? html`
           <span class="float-placement-label">Placement</span>
           <div class="float-button-group" role="group" aria-label="Placement">
             <button type="button" class="float-move" aria-label="Move down" title="Move down"
@@ -1073,15 +1133,42 @@ export class DomEditorToolbox extends EditingControls {
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setFloat", side}, bubbles: true, composed: true,
-              }))}>${ribbonIcon(side === "none" ? "Graphic align center" : side === "far-left" ? "Graphic align left" : "Graphic align right")}</button>`)}
+              }))}>${ribbonIcon(side === "none" ? "Float none" : side === "far-left" ? "Float left" : "Float right")}</button>`)}
             <button type="button" class="float-move" aria-label="Move up" title="Move up"
               ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowUp")}</button>
           </div>
+          ` : nothing}
+          <span class="float-placement-label">Caption</span>
+          <div class="float-button-group caption-button-group" role="group" aria-label="Caption">
+            <button type="button" class="caption-none" aria-label="No caption" title="No caption" aria-pressed=${captionPosition === "none"}
+              ?disabled=${this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
+              }))}>${this.captionIcon("none")}</button>
+            ${(["above", "below"] as const).map(position => (["left", "center", "right"] as const).map(alignment => html`<button type="button"
+              class=${`caption-${position}-${alignment}`}
+              aria-label=${`Caption ${position}, align ${alignment}`} title=${`Caption ${position}, align ${alignment}`}
+              aria-pressed=${captionPosition === position && (this.captionAlignment ?? "left") === alignment}
+              ?disabled=${this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setCaption", position, alignment}, bubbles: true, composed: true,
+              }))}>${this.captionIcon(position, alignment)}</button>`))}
+          </div>
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
     `
+  }
+
+  private captionIcon(position: "none" | "above" | "below", alignment: "left" | "center" | "right" = "left") {
+    const x = alignment === "left" ? 6 : alignment === "center" ? 9 : 12
+    return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+      <rect x="6" y="6" width="12" height="12" rx="1"></rect>
+      ${position === "none" ? nothing : svg`<line x1=${x} x2=${x + 6} y1=${position === "above" ? 3 : 21} y2=${position === "above" ? 3 : 21}></line>`}
+    </svg>`
   }
 
   private selectDocumentLayout(mode: DocumentLayoutMode) {

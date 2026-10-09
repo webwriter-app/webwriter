@@ -30,7 +30,9 @@ export class RibbonDrawer extends LitElement {
     expandable: {type: Boolean, reflect: true},
     advancedCount: {type: Number, attribute: false},
     icon: {type: String},
+    iconUrl: {type: String, attribute: "icon-url"},
     label: {type: String},
+    elementCount: {type: Number, attribute: "element-count"},
     showPaneIcon: {type: Boolean, attribute: "show-pane-icon"},
     hidePaneLabel: {type: Boolean, reflect: true, attribute: "hide-pane-label"},
     layout: {type: String, reflect: true},
@@ -721,7 +723,8 @@ export class RibbonDrawer extends LitElement {
       transform: rotate(225deg);
     }
 
-    .advanced-count {
+    .advanced-count,
+    .element-count {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 1.1rem; height: 1rem; padding: 0 0.25rem; margin-left: 0.35rem;
       box-sizing: border-box; border-radius: 999px; background: #dce7f2; color: #526b86;
@@ -786,10 +789,11 @@ export class RibbonDrawer extends LitElement {
       color: var(--ribbon-control-color, #526b86);
     }
 
-    .summary-icon svg {
+    .summary-icon svg, .summary-icon img {
       display: block;
       width: 100%;
       height: 100%;
+      object-fit: contain;
     }
 
     .summary-label {
@@ -1106,7 +1110,9 @@ export class RibbonDrawer extends LitElement {
   expandable = false
   advancedCount: number | null = null
   icon = ""
+  iconUrl = ""
   label = "Drawer"
+  elementCount = 1
   showPaneIcon = false
   hidePaneLabel = false
   layout = "default"
@@ -1503,6 +1509,8 @@ export class RibbonDrawer extends LitElement {
   }
 
   render() {
+    const icon = this.iconUrl ? html`<img src=${this.iconUrl} alt="">` : ribbonIcon(this.icon || this.label)
+    const elementCount = this.elementCount > 1 ? html`<span class="element-count" aria-label=${`${this.elementCount} elements`}>${this.elementCount}</span>` : ""
     const toggleUnavailable = (!this.collapsed && !this.expandable)
       || (this.layout === "elements" && !this.collapsed && !this.drawerOpen)
     const toggleLabel = this.collapsed
@@ -1535,12 +1543,12 @@ export class RibbonDrawer extends LitElement {
         @transitionend=${this.handleDrawerTransitionEnd}
       >
         <div class="summary">
-          <span class="summary-icon" aria-hidden="true">${ribbonIcon(this.icon || this.label)}</span>
-          <span class="summary-label">${this.label}</span>
+          <span class="summary-icon" aria-hidden="true">${icon}</span>
+          <span class="summary-label">${this.label}${elementCount}</span>
         </div>
        <span class="pane-label">
-         ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${ribbonIcon(this.icon || this.label)}</span>` : ""}
-         ${this.label}
+         ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+         ${this.label}${elementCount}
          <slot name="heading-action"></slot>
        </span>
        <div id="drawer-controls" class="controls">

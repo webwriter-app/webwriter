@@ -3,6 +3,7 @@ import {documentLayoutMode, isSlide, slideLayoutRole} from "./document-layout"
 export type ElementPresentation = {
   name: string
   icon: string
+  iconUrl?: string
 }
 
 export const isLineBreakElement = (elementOrTagName: Element | string): boolean => {
@@ -128,8 +129,10 @@ export function getElementPresentation(elementOrTagName: Element | string): Elem
     ? elementOrTagName
     : elementOrTagName.tagName
   const normalizedTagName = tagName.toLowerCase()
+  const packageItem = globalThis.DOMEDITOR_PACKAGE_ITEMS?.find(item => item.kind === "widget" && item.tag?.toLowerCase() === normalizedTagName)
+  if(packageItem) return {name: packageItem.name, icon: "Packages", ...(packageItem.iconUrl ? {iconUrl: packageItem.iconUrl} : {})}
   const known = presentations[normalizedTagName]
   if(known) return known
 
-  return fallbackPresentation
+  return normalizedTagName.includes("-") ? {name: normalizedTagName, icon: "Packages"} : fallbackPresentation
 }

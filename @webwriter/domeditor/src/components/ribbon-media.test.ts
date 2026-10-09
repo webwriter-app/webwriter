@@ -184,32 +184,42 @@ describe("media ribbon drawer", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Video: Play inline"]')?.checked).toBe(true)
   })
 
-  it("offers figure conversion and caption actions from the media toolbox", async () => {
+  it("offers a Caption button group below Placement in the media toolbox", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
     toolbox.media = {type: "img", attributes: {src: "diagram.png"}}
+    toolbox.elementStyle = {target: {localName: "img", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
     document.body.append(toolbox)
     await toolbox.updateComplete
     const actions = vi.fn()
-    toolbox.addEventListener("ribbon-button-click", actions)
+    toolbox.addEventListener("layout-action", actions)
+    const placement = toolbox.shadowRoot!.querySelector('[aria-label="Placement"]')!
+    const caption = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Caption"]')!
+    expect(caption.classList.contains("float-button-group")).toBe(true)
+    expect(placement.nextElementSibling?.textContent).toBe("Caption")
+    expect(placement.nextElementSibling?.nextElementSibling).toBe(caption)
+    const buttons = Array.from(caption.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No caption", "Caption above, align left", "Caption above, align center", "Caption above, align right", "Caption below, align left", "Caption below, align center", "Caption below, align right"])
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("true")
+    expect(buttons[0].querySelector("rect")).not.toBeNull()
+    expect(buttons[0].querySelector("line")).toBeNull()
+    expect(buttons[0].classList.contains("caption-none")).toBe(true)
+    for(const [index, button] of buttons.slice(1).entries()) {
+      const line = button.querySelector("line")!
+      expect(line.namespaceURI).toBe("http://www.w3.org/2000/svg")
+      expect(line.getAttribute("x1")).toBe(String(6 + index % 3 * 3))
+      expect(line.getAttribute("y1")).toBe(index < 3 ? "3" : "21")
+      expect(button.querySelector("rect")!.getAttribute("width")).toBe("12")
+    }
 
-    const convert = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Convert to figure"]')!
-    expect(convert).not.toBeNull()
-    await convert.updateComplete
-    convert.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
-    expect(actions).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({label: "media-to-figure"})}))
-
-    toolbox.figure = {hasCaption: false}
+    buttons[6].click()
+    expect(actions).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "setCaption", position: "below", alignment: "right"}}))
+    toolbox.captionPosition = "above"
+    toolbox.captionAlignment = "center"
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to figure"]')).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Add caption above"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Add caption below"]')).not.toBeNull()
-
-    toolbox.figure = {hasCaption: true}
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Edit caption"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label^="Add caption"]')).toBeNull()
+    expect(buttons[2].getAttribute("aria-pressed")).toBe("true")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to figure"], ribbon-button[label^="Add caption"]')).toBeNull()
   })
 
   it("renders timed-media resources and dispatches guarded row and fallback edits", async () => {

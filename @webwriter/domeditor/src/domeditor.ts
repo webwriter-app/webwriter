@@ -1019,7 +1019,16 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
-      if(mathRoot(currentElement) || currentElement.matches("details > summary")) return
+      if(mathRoot(currentElement) || currentElement.matches("caption, figcaption, details > summary")) return
+      if(currentElement.localName === "figure") {
+        if(currentElement !== element) return
+        const content = Array.from(currentElement.children).find(child => child.localName !== "figcaption")
+        if(!content) return
+        path.push({path: this.pathToElement(currentElement), ...getElementPresentation(content),
+          ...(pendingSections.length ? {sections: pendingSections} : {}), ...positioning(currentElement)})
+        pendingSections = []
+        return
+      }
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
       if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
@@ -1027,18 +1036,9 @@ export class DOMEditor {
       }
       if(currentElement !== root && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)
         && !positions.has(currentElement) && !anchors.has(currentElement)) return
-      const packageItem = globalThis.DOMEDITOR_PACKAGE_ITEMS?.find(item => (
-        item.kind === "widget" && item.tag?.toLowerCase() === currentElement.localName
-      ))
       path.push({
         path: this.pathToElement(currentElement),
-        ...(packageItem
-          ? {
-              name: packageItem.name,
-              icon: "Packages",
-              ...(packageItem.iconUrl ? {iconUrl: packageItem.iconUrl} : {}),
-            }
-          : getElementPresentation(currentElement)),
+        ...getElementPresentation(currentElement),
         ...(pendingSections.length ? {sections: pendingSections} : {}),
         ...positioning(currentElement),
       })
@@ -1055,6 +1055,8 @@ export class DOMEditor {
     const list = this.features.list.getState()
     const headingGroup = this.features.manipulation.getHeadingGroupState()
     const figure = this.features.manipulation.getFigureState()
+    const captionPosition = this.features.manipulation.getCaptionPosition()
+    const captionAlignment = this.features.manipulation.getCaptionAlignment()
     const media = this.features.media.getState()
     const dialog = this.features.dialog.getState()
     const table = this.features.table.getState()
@@ -1071,8 +1073,11 @@ export class DOMEditor {
       : null
     const widgetOptions = this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
     const canSection = this.features.manipulation.canSectionSelection()
+    const selectedElementTypes = this.features.manipulation.getSelectedElementTypes()
     const detail: SelectionChangeDetail = {
       path,
+      ...(selectedElementTypes.length ? {selectedElementTypes} : {}),
+      ...($.isMultiElementSelection ? {nodeSelected: true} : {}),
       documentLayout: this.getDocumentLayoutState(),
       ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
@@ -1086,6 +1091,8 @@ export class DOMEditor {
       ...(list.type ? {list} : {}),
       ...(headingGroup ? {headingGroup} : {}),
       ...(figure ? {figure} : {}),
+      ...(captionPosition ? {captionPosition} : {}),
+      ...(captionAlignment ? {captionAlignment} : {}),
       ...(media ? {media} : {}),
       ...(dialog ? {dialog} : {}),
       ...(table ? {table} : {}),

@@ -1,3 +1,6 @@
+import floatLeft from "@tabler/icons/outline/float-left.svg?raw"
+import floatNone from "@tabler/icons/outline/float-none.svg?raw"
+import floatRight from "@tabler/icons/outline/float-right.svg?raw"
 import alignCenter from "@tabler/icons/outline/align-center.svg?raw"
 import alignRight from "@tabler/icons/outline/align-right.svg?raw"
 import alignJustified from "@tabler/icons/outline/align-justified.svg?raw"
@@ -311,6 +314,9 @@ const icons: Record<string, string> = {
   Italic: italic,
   Underline: underline,
   Align: alignLeft,
+  "Float left": floatLeft,
+  "Float none": floatNone,
+  "Float right": floatRight,
   "Graphic align left": alignBoxLeftMiddle,
   "Graphic align center": alignBoxCenterMiddle,
   "Graphic align right": alignBoxRightMiddle,

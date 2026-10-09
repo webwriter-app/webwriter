@@ -889,9 +889,10 @@ describe("media editing", () => {
 
     expect(editor.features.media.actions.wrapMediaInFigure({type: "wrapMediaInFigure"})).toBe(true)
 
-    expect(editor.toHTML(true)).toBe('<article data-origin="remote"><figure><picture><img src="diagram.png" alt="Diagram"></picture></figure><p>Explanation</p></article>')
-    expect($.selectedElement).toBe(image)
-    expect(editor.features.manipulation.getFigureState()).toEqual({hasCaption: false})
+    expect(editor.toHTML(true)).toBe('<article data-origin="remote"><figure id="figure"><picture><img src="diagram.png" alt="Diagram"></picture></figure><p>Explanation</p></article>')
+    expect($.selectedElement).toBe(image.closest("figure"))
+    // Caption controls target the top-level article, rather than its nested figure.
+    expect(editor.features.manipulation.getFigureState()).toBeNull()
     expect(editor.features.media.actions.wrapMediaInFigure({type: "wrapMediaInFigure"})).toBe(false)
     expect(document.querySelectorAll("figure")).toHaveLength(1)
   })

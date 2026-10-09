@@ -39,6 +39,52 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("figure node selection", () => {
+  it("selects and hovers the wrapper through a content path while keeping captions editable", () => {
+    document.body.innerHTML = '<figure><picture><img src="image.png"></picture><figcaption>Label</figcaption></figure>'
+    const figure = document.querySelector("figure")!
+    feature.actions.selectNode({type: "selectNode", path: [0, 0]})
+    expect($.selectedElement).toBe(figure)
+    expect(figure.classList.contains("◆element-selected")).toBe(true)
+    expect(document.querySelector("picture")!.classList.contains("◆element-selected")).toBe(false)
+    feature.actions.hoverNode({type: "hoverNode", path: [0, 0]})
+    expect(figure.classList.contains("◆element-hovered")).toBe(true)
+    feature.actions.selectNode({type: "selectNode", path: [0, 1]})
+    expect($.selectedElement).toBeUndefined()
+    expect($.anchor).toBe(document.querySelector("figcaption"))
+    expect(figure.classList.contains("◆element-selected")).toBe(false)
+  })
+})
+
+describe("captioned element gap selection", () => {
+  it.each(["figure", "table"])("leaves the outer caption edges of a %s through gaps", tag => {
+    for(const above of [true, false]) {
+      document.body.innerHTML = tag === "figure"
+        ? above ? '<figure><figcaption>Label</figcaption><p>Body</p></figure>' : '<figure><p>Body</p><figcaption>Label</figcaption></figure>'
+        : `<table><caption style="caption-side: ${above ? "top" : "bottom"}">Label</caption><tbody><tr><td>Cell</td></tr></tbody></table>`
+      const owner = document.querySelector(tag)!, caption = owner.querySelector("figcaption, caption")!
+      $.move(caption.firstChild!, above ? 0 : -1)
+      const event = new KeyboardEvent("keydown", {key: above ? "ArrowUp" : "ArrowDown", bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect($.captionedGap).toEqual({element: owner, placement: above ? "before" : "after"})
+    }
+  })
+
+  it.each(["figure", "table"])("paints gaps and navigates out of a selected %s", tag => {
+    document.body.innerHTML = tag === "figure" ? '<section>before<figure><p>Body</p><figcaption>Label</figcaption></figure>after</section>' : '<section>before<table><caption>Label</caption><tbody><tr><td>Cell</td></tr></tbody></table>after</section>'
+    const target = document.querySelector(tag)!
+    for(const [key, placement] of [["ArrowUp", "before"], ["ArrowDown", "after"]] as const) {
+      feature.selectElement(target)
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect($.isGapSelection).toBe(true)
+      expect(target.classList.contains(`◆gap-${placement}-selected`)).toBe(true)
+    }
+  })
+})
+
 describe.each(["canvas", "slides"] as const)("transformed hover outlines in %s", mode => {
   afterEach(() => { document.body.className = ""; vi.restoreAllMocks() })
   it.each(["pointer", "breadcrumb", "style"] as const)("tracks rotated widgets through %s hover and clears geometry", async source => {
@@ -2011,6 +2057,8 @@ describe("document listeners", () => {
         type: selectionChangeEvent,
         bridgeNonce: editor.trustedScriptNonce,
         detail: {
+          captionPosition: "none",
+          selectedElementTypes: expect.any(Array),
           documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
           path: [
             {path: [], name: "Document", icon: "Document"},
@@ -2033,6 +2081,8 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+          captionPosition: "none",
+          selectedElementTypes: expect.any(Array),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -2065,14 +2115,14 @@ describe("document listeners", () => {
           canvas: "A custom document template owns this document's layout.",
           slides: "A custom document template owns this document's layout.",
         }},
-        path: [{path: [0], name: "Content", icon: "Section"}],
+        path: [{path: [0], name: "demo-widget", icon: "Packages"}],
         nodeSelected: true,
         element: {
           path: [0],
           localName: "demo-widget",
           namespaceURI: "http://www.w3.org/1999/xhtml",
-          name: "Content",
-          icon: "Section",
+          name: "demo-widget",
+          icon: "Packages",
           attributes: {role: "document"},
         },
       },
@@ -2182,6 +2232,8 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+          captionPosition: "none",
+          selectedElementTypes: expect.any(Array),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -3953,4 +4005,90 @@ describe("disclosure gap navigation", () => {
     expect(details.innerHTML).toBe(original)
     expect(details.open).toBe(false)
   })
+})
+
+
+describe("caption numbering editing preview", () => {
+  const preview = (caption: Element) => caption.classList.contains("◆caption-placeholder")
+
+  it.each(["caret", "range", "content element", "figure element"])("previews an empty caption for a %s selection in the figure", selection => {
+    document.body.innerHTML = '<figure><p>Content</p><figcaption></figcaption></figure><p>Other</p>'
+    const figure = document.querySelector("figure")!
+    const content = figure.querySelector("p")!
+    const caption = figure.querySelector("figcaption")!
+    if(selection === "caret") $.move(content.firstChild!, 2)
+    else if(selection === "range") {
+      document.getSelection()!.setBaseAndExtent(content.firstChild!, 1, content.firstChild!, 4)
+    }
+    else $.selectElement(selection === "figure element" ? figure : content)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    expect(preview(caption)).toBe(true)
+    expect(caption).not.toHaveClass("◆caption-editing")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    $.move(caption, 0)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    expect(caption).toHaveClass("◆caption-editing")
+    $.move(document.body.lastElementChild!.firstChild!, 1)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    expect(preview(caption)).toBe(false)
+    expect(caption).not.toHaveClass("◆caption-editing")
+  })
+
+  it.each(["figcaption", "caption"])("does not grey a populated %s while editing nested text", tag => {
+    document.body.innerHTML = tag === "figcaption"
+      ? '<figure><img><figcaption><p><b>Caption</b></p></figcaption></figure><p>Other</p>'
+      : '<table><caption><p><b>Caption</b></p></caption><tbody><tr><td>Cell</td></tr></tbody></table><p>Other</p>'
+    const caption = document.querySelector(tag)!
+    $.move(caption.querySelector("b")!.firstChild!, 2)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    expect(preview(caption)).toBe(false)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    $.move(document.body.lastElementChild!.firstChild!, 1)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    expect(preview(caption)).toBe(false)
+  })
+
+  it.each(["figcaption", "caption"])("previews an empty %s and cleans up on disable", tag => {
+    document.body.innerHTML = tag === "figcaption"
+      ? '<figure><img><figcaption></figcaption></figure>'
+      : '<table><caption></caption><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const caption = document.querySelector(tag)!
+    $.move(caption, 0)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    expect(preview(caption)).toBe(true)
+    feature.disable()
+    expect(preview(caption)).toBe(false)
+  })
+})
+
+
+it.each(["", "<br>", "<p><b><br></b></p>", " "])("limits the caption placeholder to empty content during editing: %s", content => {
+  document.body.innerHTML = `<figure><img><figcaption>${content}</figcaption></figure><p>Other</p>`
+  const caption = document.querySelector("figcaption")!
+  $.move(caption.querySelector("b") ?? caption, 0)
+  feature.processSelection(undefined, {scrollIntoView: false})
+  expect(caption).toHaveClass("◆caption-placeholder")
+  expect(editor.toHTML(true)).not.toContain("◆")
+  caption.textContent = "Typed caption"
+  $.move(caption.firstChild!, 2)
+  feature.processSelection(undefined, {scrollIntoView: false})
+  expect(caption).not.toHaveClass("◆caption-placeholder")
+  caption.replaceChildren(document.createElement("br"))
+  $.move(caption, 0)
+  feature.processSelection(undefined, {scrollIntoView: false})
+  expect(caption).toHaveClass("◆caption-placeholder")
+  expect(feature.selectionCaret?.classList.contains("◆selection-caret-gap") ?? false).toBe(false)
+  $.move(document.body.lastElementChild!.firstChild!, 1)
+  feature.processSelection(undefined, {scrollIntoView: false})
+  expect(caption).not.toHaveClass("◆caption-placeholder")
+})
+
+it("does not consider a caption containing a widget or image empty", () => {
+  for(const content of ['<img>', '<caption-widget></caption-widget>']) {
+    document.body.innerHTML = `<figure><p>Content</p><figcaption>${content}</figcaption></figure>`
+    const caption = document.querySelector("figcaption")!
+    $.move(caption, 0)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    expect(caption).not.toHaveClass("◆caption-placeholder")
+  }
 })

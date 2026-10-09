@@ -126,6 +126,20 @@ describe("selectRange()", () => {
 })
 
 describe("selectElement()", () => {
+  it("selects the figure when selecting its content but leaves captions editable", () => {
+    document.body.innerHTML = '<figure><p>Content</p><figcaption>Label</figcaption></figure>'
+    const figure = document.querySelector("figure")!
+    $.selectElement(document.querySelector("p")!)
+    expect($.isElementSelection).toBe(true)
+    expect($.selectedElement).toBe(figure)
+    $.selectElement(document.querySelector("figcaption")!)
+    expect($.selectedElement).toBeUndefined()
+    expect($.isElementSelection).toBe(false)
+    expect($.anchor).toBe(document.querySelector("figcaption"))
+    $.move(document.querySelector("figcaption")!.firstChild!, 1)
+    expect($.isElementSelection).toBe(false)
+  })
+
   it("selects the element", () => {
     setBody("<p>hello</p>")
     $.selectElement(document.body.firstElementChild!)
@@ -560,6 +574,20 @@ describe("selectCoords()", () => {
   })
 })
 
+describe("captioned element hit testing", () => {
+  it.each(["figure", "table"])("resolves outside %s caption hits to gaps while retaining caption text hits", tag => {
+    setBody(tag === "figure" ? '<figure><p>Body</p><figcaption>Label</figcaption></figure>' : '<table><caption>Label</caption><tbody><tr><td>Cell</td></tr></tbody></table>')
+    const target = document.querySelector(tag)!, caption = target.querySelector("figcaption, caption")!
+    target.getBoundingClientRect = () => new DOMRect(20, 100, 200, 100)
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: caption.firstChild!, offset: 1})})
+    expect($.pointFromCoords(50, 90, caption)).toMatchObject({node: document.body, offset: 0, overrideNative: true})
+    expect($.pointFromCoords(50, 210, caption)).toMatchObject({node: document.body, offset: 1, overrideNative: true})
+    expect($.pointFromCoords(50, 150, caption)).toMatchObject({node: caption.firstChild!, offset: 1})
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => null})
+    expect($.pointFromCoords(50, 210)).toMatchObject({node: document.body, offset: 1})
+  })
+})
+
 describe("range", () => {
   it("reflects the current selection", () => {
     setBody("<p>hello</p>")
@@ -584,6 +612,16 @@ describe("isEmpty", () => {
 })
 
 describe("isGapSelection", () => {
+  it.each(["figure", "table"])("exposes before and after gaps beside a captioned %s in a text-bearing section", tag => {
+    setBody(tag === "figure" ? '<section>before<figure><p>Body</p><figcaption>Label</figcaption></figure>after</section>' : '<section>before<table><caption>Label</caption><tbody><tr><td>Cell</td></tr></tbody></table>after</section>')
+    const target = document.querySelector(tag)!
+    for(const placement of ["before", "after"] as const) {
+      $.selectGap(target, placement)
+      expect($.isGapSelection).toBe(true)
+      expect($.captionedGap).toEqual({element: target, placement})
+    }
+  })
+
   it("is true for a caret between elements", () => {
     setBody("<p>a</p><p>b</p>")
     $.selectGap(document.body.firstElementChild!)

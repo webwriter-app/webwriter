@@ -14,6 +14,8 @@ import {
   emptyVersionHistoryState,
   type CommentState,
   type ElementStyleState,
+  type SelectedElementTypeState,
+  type ElementSelectionType,
   type FigureSelectionState,
   type HeadingGroupSelectionState,
   type ListSelectionState,
@@ -153,6 +155,8 @@ export abstract class EditingControls extends LitElement {
     orderedList: {attribute: false},
     headingGroup: {attribute: false},
     figure: {attribute: false},
+    captionPosition: {attribute: false},
+    captionAlignment: {attribute: false},
     media: {attribute: false},
     dialog: {attribute: false},
     table: {attribute: false},
@@ -162,6 +166,7 @@ export abstract class EditingControls extends LitElement {
     layoutError: {type: String},
     elementStyle: {attribute: false},
     elementAttributes: {attribute: false},
+    selectedElementTypes: {attribute: false},
     widgetOptions: {attribute: false},
     historyState: {attribute: false},
     historyLoading: {type: Boolean, attribute: "history-loading"},
@@ -233,6 +238,8 @@ export abstract class EditingControls extends LitElement {
   headingGroup: HeadingGroupSelectionState | null = null
 
   figure: FigureSelectionState | null = null
+  captionPosition: "none" | "above" | "below" | null = null
+  captionAlignment: "left" | "center" | "right" | null = null
 
   media: MediaSelectionState | null = null
 
@@ -246,6 +253,8 @@ export abstract class EditingControls extends LitElement {
 
   layout: LayoutSelectionState | null = null
   layoutError = ""
+
+  selectedElementTypes: SelectedElementTypeState[] = []
 
   elementAttributes: ElementAttributeState | null = null
 
@@ -2261,7 +2270,7 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderTableStructureControls() {
+  protected renderTableStructureControls(showCaption = true) {
     const active = Boolean(this.table?.active)
     return html`
         <ribbon-button label="Row above" action="table-row-above" icon="TableRowAbove" ?disabled=${!active}></ribbon-button>
@@ -2271,6 +2280,7 @@ export abstract class EditingControls extends LitElement {
         <ribbon-button label="Merge cells" action="table-merge-cells" icon="TableMergeCells" ?disabled=${!this.table?.canMerge}></ribbon-button>
         <ribbon-button label="Split cells" action="table-split-cells" icon="TableSplitCells" ?disabled=${!this.table?.canSplit}></ribbon-button>
         <ribbon-button label="Split table" action="table-split" icon="TableSplit" ?disabled=${!active}></ribbon-button>
+        ${showCaption ? html`
         <label class="table-caption-toggle">
           <span class="table-caption-icon" aria-hidden="true">${ribbonIcon("TableCaption")}</span>
           <span><input
@@ -2281,6 +2291,7 @@ export abstract class EditingControls extends LitElement {
             @change=${this.toggleTableCaption}
           /> Caption</span>
         </label>
+        ` : nothing}
         <label class="table-caption-toggle">
           <span><input type="checkbox" aria-label="Table header" data-ribbon-input-persistent .checked=${this.table?.hasHeader ?? false}
             ?disabled=${!active} @change=${this.toggleTableHeader} /> Header</span>
@@ -2413,12 +2424,12 @@ export abstract class EditingControls extends LitElement {
     return target.value
   }
 
-  protected renderWidgetOptionField(option: WidgetOptionState) {
+  protected renderWidgetOptionField(option: WidgetOptionState, dispatch = this.dispatchWidgetOption.bind(this), fieldScope = "") {
     const change = (event: Event) => {
       const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
       if("setCustomValidity" in target) target.setCustomValidity("")
       const value = this.widgetOptionInputValue(option, target)
-      if(value !== undefined) this.dispatchWidgetOption(option.name, value)
+      if(value !== undefined) dispatch(option.name, value)
     }
     const help = option.description ? html`<span class="develop-field-help">${option.description}</span>` : nothing
     if(option.type === "boolean") return html`
@@ -2444,7 +2455,7 @@ export abstract class EditingControls extends LitElement {
         minlength=${option.minlength ?? nothing} maxlength=${option.maxlength ?? nothing} @change=${change}></textarea>`
     }
     else {
-      const listId = option.swatches?.length ? `widget-option-${option.name}-swatches` : undefined
+      const listId = option.swatches?.length ? `widget-option-${fieldScope}${option.name}-swatches` : undefined
       field = html`
         <input
           type=${option.type === "string" ? "text" : option.type}
@@ -2509,15 +2520,14 @@ export abstract class EditingControls extends LitElement {
     if(result !== undefined) this.dispatchEvent(new CustomEvent("widget-grouping-change", {bubbles: true, composed: true, detail: {...reference, grouping: result}}))
   }
 
-  protected renderWidgetOptionsControls(options = this.widgetOptions?.options ?? []) {
-    const state = this.widgetOptions
-    if(!state || !state.options.length && !state.actions.length) return nothing
+  protected renderWidgetOptionsControls(options = this.widgetOptions?.options ?? [], dispatch = this.dispatchWidgetOption.bind(this), state = this.widgetOptions, selectionType?: ElementSelectionType) {
+    if(!state || !options.length && !state.actions.length) return nothing
     return html`
         <div class="widget-options">
-          ${options.map(option => this.renderWidgetOptionField(option))}
+          ${options.map(option => this.renderWidgetOptionField(option, dispatch, selectionType ? `${state.path.join("-")}-` : ""))}
           ${state.actions.length ? html`<div class="widget-actions">
             ${state.actions.map(action => html`<button type="button" class="widget-action" title=${action.description ?? ""}
-              @click=${() => this.dispatchEvent(new CustomEvent("widget-action", {detail: {name: action.name}, bubbles: true, composed: true}))}
+              @click=${() => this.dispatchEvent(new CustomEvent("widget-action", {detail: {name: action.name, ...(selectionType ? {selectionType} : {})}, bubbles: true, composed: true}))}
             >${action.label}</button>`)}
           </div>` : nothing}
         </div>

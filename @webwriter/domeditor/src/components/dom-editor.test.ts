@@ -5006,6 +5006,76 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type})
   })
 
+  it("binds multi-selection drawers and routes their changes by type through the bridge", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    const selectionType = {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}
+    const group = {
+      element: {...selectionType, name: "Paragraph", path: null, attributes: {lang: "en"}}, count: 2,
+      style: {target: selectionType, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}},
+      styleProperties: [], configuredWidgetOptions: [],
+    }
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}], nodeSelected: true, selectedElementTypes: [group]}},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.selectedElementTypes).toEqual([group])
+    expect(toolbox.documentSelected).toBe(false)
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="p"]')!
+    expect(drawer.label).toBe("Paragraph")
+    expect(drawer.elementCount).toBe(2)
+    drawer.querySelector("element-style-editor")!.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {property: "text-align", mutation: "right"}, bubbles: true, composed: true,
+    }))
+    drawer.querySelector("element-attribute-editor")!.dispatchEvent(new CustomEvent("element-attribute-change", {
+      detail: {...group.element, name: "lang", value: "de"}, bubbles: true, composed: true,
+    }))
+    toolbox.dispatchEvent(new CustomEvent("widget-option-change", {
+      detail: {selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI}, name: "count", value: 3},
+    }))
+    toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "setCaption", position: "above"}}))
+    expect(execute).toHaveBeenCalledWith({type: "setCaption", position: "above"})
+    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType, styles: {"text-align": "right"}})
+    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementAttribute", selectionType, name: "lang", value: "de"})
+    expect(execute).toHaveBeenCalledWith({type: "setSelectedWidgetOption", selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI}, name: "count", value: 3})
+    toolbox.dispatchEvent(new CustomEvent("widget-action", {
+      detail: {selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI, id: "second"}, name: "reset"},
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "runSelectedWidgetAction", selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI, id: "second"}, name: "reset"})
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.selectedElementTypes).toEqual([])
+  })
+
+  it("keeps container drawers available for a text caret after mark-state updates", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    const group = {
+      element: {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", attributes: {}},
+      count: 1, styleProperties: [], configuredWidgetOptions: [],
+      style: {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}},
+    }
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}], selectedElementTypes: [group]}},
+    }))
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: markStateChangeEvent, detail: {canMark: true, marks: [], styles: {}, attributes: {}}},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.canMark).toBe(true)
+    expect(toolbox.selectedElementTypes).toEqual([group])
+    expect(toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="p"]')?.label).toBe("Paragraph")
+  })
+
   it("routes exact element attribute mutations through the iframe bridge", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -5979,11 +6049,11 @@ describe("DomEditor.execute()", () => {
 
     await sendFloat("far-left")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Left float")
-    expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-arrow-left")).not.toBeNull()
+    expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-float-left")).not.toBeNull()
     expect(getComputedStyle(breadcrumb.shadowRoot!.querySelector(".position-float svg")!).width).toBe("16px")
     await sendFloat("far-right")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Right float")
-    expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-arrow-right")).not.toBeNull()
+    expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-float-right")).not.toBeNull()
     await sendFloat()
     expect(breadcrumb.shadowRoot!.querySelector(".position-float")).toBeNull()
   })
@@ -6536,6 +6606,24 @@ describe("DomEditor.execute()", () => {
     paragraph.click()
 
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
+  })
+
+  it("omits figure wrappers from the outline while retaining descendants and authored paths", async () => {
+    const {editor, iframe} = await mountEditor()
+    const source = iframe.contentDocument!
+    source.body.innerHTML = '<section><figure><img><figcaption>Caption</figcaption></figure><figure></figure></section>'
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item"), item => item.textContent?.trim())).toEqual(["Image"])
+    expect([...new Set(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".section-item"), item => item.textContent))]).toEqual(["Section"])
+    const image = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0"]')!
+    image.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
+    expect(source.querySelectorAll("figure")).toHaveLength(2)
   })
 
   it("shows Canvas with an artboard icon in the breadcrumb and document tree", async () => {

@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "empty caption numbering is visible as a grey editing placeholder",
   "audio insertion retains element selection at the document start",
   "float previews match projected media bounds",
   "lane media fills available width and resizes with native handles",

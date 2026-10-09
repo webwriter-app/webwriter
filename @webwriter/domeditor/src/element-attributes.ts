@@ -7,6 +7,7 @@ export type ElementAttributeState = {
   namespaceURI: string | null
   name: string
   icon?: string
+  iconUrl?: string
   attributes: Record<string, string>
 }
 
@@ -223,6 +224,7 @@ export function elementAttributeState(element: Element, path: number[] | null): 
     namespaceURI: element.namespaceURI,
     name: presentation.name,
     ...(presentation.icon ? {icon: presentation.icon} : {}),
+    ...(presentation.iconUrl ? {iconUrl: presentation.iconUrl} : {}),
     attributes,
   }
 }

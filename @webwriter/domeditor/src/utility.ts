@@ -87,6 +87,11 @@ export function atomicEditingContainer(node: Node | null, schema?: Schema) {
   return node ? atomic : null
 }
 
+/** Node selection treats figure content as part of the figure; captions remain editable. */
+export function figureSelectionTarget(element: Element): Element {
+  return element.closest("figcaption") ? element : element.closest("figure") ?? element
+}
+
 /** Positioned and floated content own an editing flow independent of their DOM siblings.
  * Read computed style each time: authored styles and remote edits are live. */
 export function isOutOfFlow(node: Node | null): boolean {
@@ -350,8 +355,9 @@ export class EditingSelection {
 
   /** Selects the element itself (the selection is anchored in its parent, spanning exactly the element). */
   static selectElement(element: Element, focus=true) {
+    element = figureSelectionTarget(element)
     if(!element.parentNode) return
-    if(element.matches("details > summary")) {
+    if(element.matches("caption, figcaption, details > summary")) {
       this.move(element, 0)
       return
     }
@@ -368,7 +374,9 @@ export class EditingSelection {
 
   /** Select independent layout items using live ranges, in document order. */
   static selectElements(elements: Iterable<Element>) {
-    const items = Array.from(new Set(elements)).filter(element => getDocumentRoot().contains(element) && element.parentNode)
+    const candidates = Array.from(elements)
+    if(candidates.length === 1 && candidates[0].matches("caption, figcaption")) { this.move(candidates[0], 0); return }
+    const items = Array.from(new Set(candidates.filter(element => !element.matches("caption, figcaption")).map(figureSelectionTarget))).filter(element => getDocumentRoot().contains(element) && element.parentNode)
       .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1)
     this.selectRanges(items.map(element => {
       const range = document.createRange()
@@ -463,6 +471,13 @@ export class EditingSelection {
     const pointerElement = hit ?? (selectionRoot ? selectionRoot : pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
     const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
+    const captioned = pointerElement?.closest("figure, table:has(> caption)") ?? caretElement?.closest("figure, table:has(> caption)")
+    if(captioned && root.contains(captioned) && !isOutOfFlow(captioned)) {
+      const rect = captioned.getBoundingClientRect()
+      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+        return {...gap(captioned, y < rect.top ? "before" : "after"), overrideNative: true}
+      }
+    }
     let formula = mathRoot(pointerElement) ?? mathRoot(caretElement ?? null)
     // Blank space below a trailing formula can hit its parent boundary (or
     // an empty split text node), rather than a MathML token. Native mouse
@@ -606,7 +621,7 @@ export class EditingSelection {
         return gap(firstRootElement, "before")
       }
       const lastRootElement = Array.from(root.children).reverse().find(element => !isOutOfFlow(element))
-      if(lastRootElement && (lastRootElement.matches("details") || lastRootElement instanceof HTMLParagraphElement && lastRootElement.style.length > 0)
+      if(lastRootElement && (lastRootElement.matches("details, figure, table:has(> caption)") || lastRootElement instanceof HTMLParagraphElement && lastRootElement.style.length > 0)
         && y > lastRootElement.getBoundingClientRect().bottom) {
         return gap(lastRootElement, "after")
       }
@@ -749,7 +764,7 @@ export class EditingSelection {
     if(this.isEmpty && this.anchor && this.summaryAtLeadingBoundary(this.anchor, this.anchorOffset)) return false
     if(mathRoot(this.anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
-    if(this.detailsGap || this.dividerGap || this.styledParagraphGap) return true
+    if(this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
     const inSlide = isElement(this.anchor) && slideLayoutRole(this.anchor) === "slide"
     const root = inSlide ? this.anchor as Element : getDocumentRoot()
     const firstRootElement = Array.from(root.children).find(element => !isOutOfFlow(element)) ?? null
@@ -772,6 +787,11 @@ export class EditingSelection {
    * containing bare text. Formatting whitespace does not change its anchor. */
   static get detailsGap() {
     return this.#gapBeside("details")
+  }
+
+  /** Figure and captioned-table boundaries remain gaps in any text-bearing container. */
+  static get captionedGap() {
+    return this.#gapBeside("figure, table:has(> caption)")
   }
 
   /** Dividers expose gaps even within sections, table cells, or bare text. */
@@ -807,9 +827,9 @@ export class EditingSelection {
     if(this.ranges.length !== 1 || this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
-    if(inlineMathRoot(selected) || isElement(selected) && selected.matches("details > summary")) return false
+    if(inlineMathRoot(selected) || isElement(selected) && selected.matches("caption, figcaption, details > summary")) return false
     return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide"
-      || !isMarkElement(selected) && !isSectionElement(selected))
+      || selected.localName === "figure" || !isMarkElement(selected) && !isSectionElement(selected))
   }
 
   /** Whether the selection consists only of text and mark wrappers within one

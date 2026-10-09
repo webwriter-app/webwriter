@@ -296,6 +296,31 @@ export type ElementStyleState = {
   }
 }
 
+/** A type-specific projection of selected authored elements and their containers. */
+export type SelectedElementTypeState = {
+  element: ElementAttributeState
+  style: ElementStyleState
+  count: number
+  /** Authored properties/options also include differing values, for resetting the group. */
+  styleProperties: string[]
+  configuredWidgetOptions: string[]
+  widget?: WidgetOptionsState
+}
+
+export type ElementSelectionType = Pick<ElementAttributeState, "localName" | "namespaceURI"> & {
+  /** Widget instance scope; IDs survive reordering, paths cover uninstalled custom elements. */
+  id?: string
+  path?: number[]
+}
+
+export function isElementSelectionType(value: unknown): value is ElementSelectionType {
+  return !!value && typeof value === "object"
+    && typeof (value as ElementSelectionType).localName === "string"
+    && ((value as ElementSelectionType).namespaceURI === null || typeof (value as ElementSelectionType).namespaceURI === "string")
+    && ((value as ElementSelectionType).id === undefined || typeof (value as ElementSelectionType).id === "string")
+    && ((value as ElementSelectionType).path === undefined || isPath((value as ElementSelectionType).path))
+}
+
 export type ListType = "ul" | "ol" | "dl" | "menu"
 
 export type ListSelectionState = {
@@ -338,6 +363,8 @@ export type SelectionChangeDetail = {
   gap?: SelectionGap
   list?: ListSelectionState
   headingGroup?: HeadingGroupSelectionState
+  captionPosition?: "none" | "above" | "below"
+  captionAlignment?: "left" | "center" | "right"
   figure?: FigureSelectionState
   media?: MediaSelectionState
   dialog?: DialogSelectionState
@@ -348,6 +375,8 @@ export type SelectionChangeDetail = {
   documentLayout?: DocumentLayoutState
   /** Authored attributes for the exact element-like selection, when any. */
   element?: ElementAttributeState
+  /** One drawer projection per selected element or container type. */
+  selectedElementTypes?: SelectedElementTypeState[]
   /** Options and actions of the innermost selected widget, when any. */
   widget?: WidgetOptionsState
   /** Present only when a section was explicitly selected from the breadcrumb. */
@@ -669,6 +698,7 @@ const isHeadingGroup = (value: UnknownRecord) => (value.heading === null || ["h1
 const isFigure = (value: UnknownRecord) => isBoolean(value.hasCaption)
 
 const isElementSelection = (value: UnknownRecord) => (value.path === null || isPath(value.path))
+  && isOptional(value.iconUrl, isString)
   && isString(value.localName)
   && (value.namespaceURI === null || isString(value.namespaceURI))
   && isString(value.name)
@@ -759,8 +789,21 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.gap, isSelectionGap)
     && isOptionalFeature(detail.list, isListSelection)
     && isOptionalFeature(detail.headingGroup, isHeadingGroup)
+    && isOptional(detail.captionPosition, position => position === "none" || position === "above" || position === "below")
+    && isOptional(detail.captionAlignment, alignment => alignment === "left" || alignment === "center" || alignment === "right")
     && isOptionalFeature(detail.figure, isFigure)
     && isOptionalFeature(detail.element, isElementSelection)
+    && (detail.selectedElementTypes === undefined || Array.isArray(detail.selectedElementTypes)
+      && detail.selectedElementTypes.every(group => isRecord(group) && isRecord(group.element) && isElementSelection(group.element)
+        && typeof group.count === "number" && Number.isInteger(group.count) && group.count > 0
+        && Array.isArray(group.styleProperties) && group.styleProperties.every(isString)
+        && Array.isArray(group.configuredWidgetOptions) && group.configuredWidgetOptions.every(isString)
+        && isRecord(group.style) && (group.style.target === null || isElementSelectionType(group.style.target))
+        && isRecord(group.style.inline) && Object.values(group.style.inline).every(value => isRecord(value)
+          && isString(value.value) && (value.priority === "" || value.priority === "important"))
+        && isStringRecord(group.style.computed) && isRecord(group.style.context)
+        && isString(group.style.context.display) && isString(group.style.context.parentDisplay)
+        && (group.widget === undefined || isWidgetOptionsState(group.widget))))
     && (detail.widget === undefined || isWidgetOptionsState(detail.widget))
     && isOptionalFeature(detail.media, isMediaSelection)
     && isOptionalFeature(detail.dialog, isDialogSelection)

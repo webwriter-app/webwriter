@@ -56,6 +56,79 @@ beforeEach(() => {
 afterAll(() => editor.destroy())
 
 describe("WidgetFeature", () => {
+  it("sets options on all currently selected widgets of one type as one undo step", () => {
+    document.body.innerHTML = '<demo-options count="1"></demo-options><demo-options count="2"></demo-options><demo-options count="3"></demo-options><p>Other</p>'
+    editor.features.widget.refresh()
+    editor.setDocumentLayout("canvas", editor.getDocumentLayoutState().mode)
+    expect(editor.getDocumentLayoutState().mode).toBe("canvas")
+    const widgets = Array.from(document.querySelectorAll("demo-options"))
+    $.selectElements([widgets[0], widgets[1], document.querySelector("p")!])
+    const selectionType = {localName: "demo-options", namespaceURI: "http://www.w3.org/1999/xhtml"}
+    const groups = editor.features.manipulation.getSelectedElementTypes()
+    expect(groups.filter(group => group.element.localName === "demo-options").map(group => [group.count, group.widget!.options.find(option => option.name === "count")!.value])).toEqual([[1, 1], [1, 2]])
+    editor.features.widget.actions.setSelectedWidgetOption({type: "setSelectedWidgetOption", selectionType, name: "count", value: 7})
+    expect(widgets.map(widget => widget.getAttribute("count"))).toEqual(["7", "7", "3"])
+    editor.doc.undo()
+    expect(Array.from(document.querySelectorAll("demo-options"), widget => widget.getAttribute("count"))).toEqual(["1", "2", "3"])
+    editor.doc.redo()
+    expect(Array.from(document.querySelectorAll("demo-options"), widget => widget.getAttribute("count"))).toEqual(["7", "7", "3"])
+    $.selectElement(document.querySelector("p")!, false)
+    expect(editor.features.widget.actions.setSelectedWidgetOption({type: "setSelectedWidgetOption", selectionType, name: "count", value: 8})).toBe(false)
+    expect(Array.from(document.querySelectorAll("demo-options"), widget => widget.getAttribute("count"))).toEqual(["7", "7", "3"])
+  })
+
+  it("projects separate widget drawers with package icons and scopes all edits to one live instance", async () => {
+    document.body.innerHTML = '<demo-options id="first" count="1"></demo-options><demo-options id="second" count="2"></demo-options>'
+    editor.features.widget.refresh()
+    editor.setDocumentLayout("canvas", editor.getDocumentLayoutState().mode)
+    const [first, second] = Array.from(document.querySelectorAll("demo-options"))
+    $.selectElements([first, second])
+    const packages = globalThis.DOMEDITOR_PACKAGE_ITEMS
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{section: "Packages", name: "Quiz", packageName: "@example/quiz", kind: "widget", tag: "demo-options", iconUrl: "https://example.com/quiz.svg"}]
+    try {
+      const groups = editor.features.manipulation.getSelectedElementTypes()
+      expect(groups).toHaveLength(2)
+      expect(groups.map(group => group.element)).toMatchObject([
+        {name: "Quiz", icon: "Packages", iconUrl: "https://example.com/quiz.svg", attributes: {id: "first"}},
+        {name: "Quiz", icon: "Packages", iconUrl: "https://example.com/quiz.svg", attributes: {id: "second"}},
+      ])
+      expect(groups.map(group => group.count)).toEqual([1, 1])
+      const selectionType = {localName: "demo-options", namespaceURI: first.namespaceURI, id: "second"}
+      // Identity continues to address the same selected widget after a DOM reorder.
+      document.body.insertBefore(second, first)
+      editor.features.widget.actions.setSelectedWidgetOption({type: "setSelectedWidgetOption", selectionType, name: "count", value: 7})
+      editor.features.manipulation.actions.setSelectedElementAttribute({type: "setSelectedElementAttribute", selectionType, name: "lang", value: "de"})
+      editor.features.manipulation.actions.setSelectedElementStyles({type: "setSelectedElementStyles", selectionType, styles: {color: "red"}})
+      expect(first.getAttribute("count")).toBe("1")
+      expect(first.hasAttribute("lang")).toBe(false)
+      expect((first as HTMLElement).style.color).toBe("")
+      expect(second.getAttribute("count")).toBe("7")
+      expect(second.getAttribute("lang")).toBe("de")
+      expect((second as HTMLElement).style.color).toBe("red")
+      await editor.features.widget.actions.runSelectedWidgetAction({type: "runSelectedWidgetAction", selectionType, name: "reset"})
+      expect(second.getAttribute("count")).toBe("0")
+      expect(first.getAttribute("count")).toBe("1")
+      second.remove()
+      expect(editor.features.widget.actions.setSelectedWidgetOption({type: "setSelectedWidgetOption", selectionType, name: "count", value: 8})).toBe(false)
+      expect(editor.features.manipulation.actions.setSelectedElementAttribute({type: "setSelectedElementAttribute", selectionType, name: "lang", value: "en"})).toBe(false)
+    }
+    finally { globalThis.DOMEDITOR_PACKAGE_ITEMS = packages }
+  })
+
+  it("does not partially edit a widget type when a current instance no longer declares the option", () => {
+    document.body.innerHTML = '<demo-options count="1"></demo-options><demo-options count="2"></demo-options>'
+    editor.features.widget.refresh()
+    editor.setDocumentLayout("canvas", editor.getDocumentLayoutState().mode)
+    expect(editor.getDocumentLayoutState().mode).toBe("canvas")
+    const widgets = Array.from(document.querySelectorAll("demo-options"))
+    $.selectElements(widgets)
+    Object.defineProperty(widgets[1], "options", {value: {mode: {type: "select"}}})
+    expect(editor.features.widget.actions.setSelectedWidgetOption({type: "setSelectedWidgetOption",
+      selectionType: {localName: "demo-options", namespaceURI: "http://www.w3.org/1999/xhtml"}, name: "count", value: 7,
+    })).toBe(false)
+    expect(widgets.map(widget => widget.getAttribute("count"))).toEqual(["1", "2"])
+  })
+
   it("assigns distinct UUIDv4 IDs to connected widgets, including nested and inline widgets", async () => {
     editor.schema.extendWidgets([{tagName: "demo-inline", editingConfig: {inline: true}}])
     document.body.innerHTML = '<section><!--keep--><demo-note><p><demo-inline id=""></demo-inline></p></demo-note><unknown-element></unknown-element></section>'

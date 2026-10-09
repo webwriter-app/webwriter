@@ -98,6 +98,8 @@ import {
   selectionChangeEvent,
   type ElementStyleMutation,
   type ElementStyleState,
+  type SelectedElementTypeState,
+  isElementSelectionType,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
   type FigureSelectionState,
@@ -435,6 +437,8 @@ export class DomEditor extends LitElement {
     orderedList: {attribute: false, state: true},
     headingGroup: {attribute: false, state: true},
     figure: {attribute: false, state: true},
+    captionPosition: {attribute: false, state: true},
+    captionAlignment: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
     dialogSelection: {attribute: false, state: true},
     tableSelection: {attribute: false, state: true},
@@ -442,6 +446,7 @@ export class DomEditor extends LitElement {
     mathSelection: {attribute: false, state: true},
     mathKeyboardHidden: {attribute: false, state: true},
     elementAttributes: {attribute: false, state: true},
+    selectedElementTypes: {attribute: false, state: true},
     widgetOptions: {attribute: false, state: true},
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
@@ -552,12 +557,15 @@ export class DomEditor extends LitElement {
   private orderedList: ListSelectionState["ordered"] = undefined
   private headingGroup: HeadingGroupSelectionState | null = null
   private figure: FigureSelectionState | null = null
+  private captionPosition: "none" | "above" | "below" | null = null
+  private captionAlignment: "left" | "center" | "right" | null = null
   private mediaSelection: MediaSelectionState | null = null
   private dialogSelection: DialogSelectionState | null = null
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
   private mathSelection: MathSelectionState | null = null
   private mathKeyboardHidden = false
+  private selectedElementTypes: SelectedElementTypeState[] = []
   private elementAttributes: ElementAttributeState | null = null
   private widgetOptions: WidgetOptionsState | null = null
   private elementStyle: ElementStyleState = {
@@ -5158,6 +5166,7 @@ export class DomEditor extends LitElement {
 
   private handleElementAttributeChange = (event: Event) => {
     const detail = (event as CustomEvent<{
+      selectionType?: unknown
       path?: unknown
       localName?: unknown
       namespaceURI?: unknown
@@ -5176,6 +5185,12 @@ export class DomEditor extends LitElement {
       this.focusEditor()
       return
     }
+    if(detail.selectionType !== undefined) {
+      if(!isElementSelectionType(detail.selectionType)) return
+      void this.execute({type: "setSelectedElementAttribute", selectionType: detail.selectionType,
+        name: detail.name, value: detail.value, ...(detail.previousName ? {previousName: detail.previousName} : {})})
+      return
+    }
     void this.execute({
       type: "setElementAttribute",
       path: detail.path as number[] | null,
@@ -5188,7 +5203,12 @@ export class DomEditor extends LitElement {
   }
 
   private handleWidgetOptionChange = (event: Event) => {
-    const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
+    const detail = (event as CustomEvent<{name?: unknown, value?: unknown, selectionType?: unknown}>).detail
+    if(isElementSelectionType(detail?.selectionType) && typeof detail.name === "string") {
+      void this.execute({type: "setSelectedWidgetOption", selectionType: detail.selectionType,
+        name: detail.name, value: widgetOptionValue(detail.value)})
+      return
+    }
     const widget = this.widgetOptions
     if(!widget || typeof detail?.name !== "string") {
       this.focusEditor()
@@ -5223,7 +5243,12 @@ export class DomEditor extends LitElement {
   }
 
   private handleWidgetAction = (event: Event) => {
-    const name = (event as CustomEvent<{name?: unknown}>).detail?.name
+    const detail = (event as CustomEvent<{name?: unknown, selectionType?: unknown}>).detail
+    const name = detail?.name
+    if(typeof name === "string" && isElementSelectionType(detail?.selectionType)) {
+      void this.execute({type: "runSelectedWidgetAction", selectionType: detail.selectionType, name})
+      return
+    }
     const widget = this.widgetOptions
     if(!widget || typeof name !== "string") {
       this.focusEditor()
@@ -5274,8 +5299,8 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide} | {type: "moveFloat", direction: "up" | "down"}>).detail
-    if(!action || !["setFloat", "moveFloat"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
+    if(!action || !["setFloat", "moveFloat", "setCaption"].includes(action.type)) return
     this.layoutError = ""
     void this.execute(action).then(changed => {
       if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
@@ -5754,10 +5779,21 @@ export class DomEditor extends LitElement {
           const childElement = child as Element
           const slideRole = slideLayoutRole(childElement)
           if(slideRole === "navigation") return
-          if(childElement.matches("source, math, details > summary")
+          if(childElement.matches("source, math, caption, figcaption, details > summary")
             || childElement.matches("img") && childElement.closest("picture")
             || isLineBreakElement(childElement)) return
           const childPath = [...containerPath, index]
+          if(childElement.localName === "figure") {
+            const start = item.children.length
+            appendChildren(childElement, childPath, inherited)
+            const contents = Array.from(childElement.children).filter(child => child.localName !== "figcaption")
+            if(contents.length === 1) {
+              const contentPath = [...childPath, Array.from(childElement.childNodes).indexOf(contents[0])]
+              const content = item.children.slice(start).find(item => item.path.join(".") === contentPath.join("."))
+              if(content) content.path = childPath
+            }
+            return
+          }
           if(slideRole === "viewport" || isMarkElement(childElement)) {
             appendChildren(childElement, childPath, inherited)
             return
@@ -5885,6 +5921,7 @@ export class DomEditor extends LitElement {
 
   private handleElementStyleChange = (event: Event) => {
     const detail = (event as CustomEvent<{
+      selectionType?: unknown
       property?: unknown
       mutation?: unknown
       styles?: unknown
@@ -5899,6 +5936,11 @@ export class DomEditor extends LitElement {
         || mutation !== null && typeof mutation !== "string" && !validDeclaration
     })) return
     const styles = Object.fromEntries(entries) as Record<string, ElementStyleMutation>
+    if(detail.selectionType !== undefined) {
+      if(!isElementSelectionType(detail.selectionType)) return
+      void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles})
+      return
+    }
     const previousState = this.elementStyle
     const inline = {...this.elementStyle.inline}
     for(const [property, mutation] of Object.entries(styles)) {
@@ -6250,6 +6292,8 @@ export class DomEditor extends LitElement {
       this.orderedList = event.data.detail.list?.ordered ? {...event.data.detail.list.ordered} : undefined
       this.headingGroup = event.data.detail.headingGroup ? {...event.data.detail.headingGroup} : null
       this.figure = event.data.detail.figure ? {...event.data.detail.figure} : null
+      this.captionPosition = event.data.detail.captionPosition ?? null
+      this.captionAlignment = event.data.detail.captionAlignment ?? null
       this.mediaSelection = event.data.detail.media
         ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
         : null
@@ -6273,6 +6317,7 @@ export class DomEditor extends LitElement {
         path: event.data.detail.element.path ? [...event.data.detail.element.path] : null,
         attributes: {...event.data.detail.element.attributes},
       } : null
+      this.selectedElementTypes = structuredClone(event.data.detail.selectedElementTypes ?? [])
       const previousWidget = this.widgetOptions
       this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
       if(previousWidget?.localName !== this.widgetOptions?.localName
@@ -6304,6 +6349,8 @@ export class DomEditor extends LitElement {
           },
           ...(this.headingGroup ? {headingGroup: {...this.headingGroup}} : {}),
           ...(this.figure ? {figure: {...this.figure}} : {}),
+          ...(this.captionPosition ? {captionPosition: this.captionPosition} : {}),
+          ...(this.captionAlignment ? {captionAlignment: this.captionAlignment} : {}),
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
           ...(this.dialogSelection ? {dialog: this.dialogSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
@@ -6312,6 +6359,7 @@ export class DomEditor extends LitElement {
           ...(this.layoutSelection ? {layout: this.layoutSelection} : {}),
           documentLayout: {...this.documentLayout},
           ...(this.elementAttributes ? {element: this.elementAttributes} : {}),
+          ...(this.selectedElementTypes.length ? {selectedElementTypes: structuredClone(this.selectedElementTypes)} : {}),
           ...(selectedSection ? {section: {
             path: [...selectedSection.path],
             type: selectedSection.type,
@@ -6580,6 +6628,7 @@ export class DomEditor extends LitElement {
     this.selectionPath = []
     this.nodeSelection = false
     this.captureSelection = false
+    this.selectedElementTypes = []
     this.elementAttributes = null
     this.widgetOptions = null
     this.selectionGap = null
@@ -6600,6 +6649,8 @@ export class DomEditor extends LitElement {
     this.orderedList = undefined
     this.headingGroup = null
     this.figure = null
+    this.captionPosition = null
+    this.captionAlignment = null
     this.commentState = {
       canComment: false,
       active: false,
@@ -6672,11 +6723,14 @@ export class DomEditor extends LitElement {
       orderedList: this.orderedList,
       headingGroup: this.headingGroup,
       figure: this.figure,
+      captionPosition: this.captionPosition,
+      captionAlignment: this.captionAlignment,
       media: this.mediaSelection,
       dialog: this.dialogSelection,
       graphic: this.graphicSelection,
       math: this.mathSelection,
       elementAttributes: this.elementAttributes,
+      selectedElementTypes: this.selectedElementTypes,
       widgetOptions: this.widgetOptions,
       elementStyle: this.elementStyle,
       historyState: this.historyState,
@@ -6898,7 +6952,7 @@ export class DomEditor extends LitElement {
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
-        .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
+        .documentSelected=${this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1}
         .documentLayout=${this.documentLayout}
         .documentLayoutError=${this.documentLayoutError}
         .documentHead=${this.documentHead}
