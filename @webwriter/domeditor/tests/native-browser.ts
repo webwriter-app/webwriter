@@ -1,4 +1,4 @@
-import {defaultCaptionEnumeration} from "../src/caption-enumeration"
+import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
@@ -140,6 +140,36 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 })
 
 const editor = new DOMEditor()
+
+await check("figure permalinks align with padded caption numbering", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:600px;height:500px;max-width:none"
+  frame.srcdoc = `<!doctype html><head><style>${captionEnumerationCSS(defaultCaptionEnumeration())}
+    figure {width:360px;margin:40px} img {display:block;width:360px;height:100px}
+    figcaption {font:32px/40px system-ui;padding:20px 0;border-top:2px solid}
+    </style></head><body><figure id="photo"><img><figcaption>Hello world with enough caption text to wrap onto a second line.</figcaption></figure>
+    <script type="module">import {mountDocumentReader} from "/src/document-viewer.js"; window.reader = mountDocumentReader();</script></body>`
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {reader?: {destroy(): void}}
+    for(let attempt = 0; !view.reader && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.reader, "caption permalink fixture did not initialize")
+    const doc = frame.contentDocument!, figure = doc.querySelector("figure")!, caption = doc.querySelector("figcaption")!
+    for(const above of [false, true]) {
+      if(above) figure.prepend(caption)
+      await layoutFrame()
+      const range = doc.createRange()
+      range.setStart(caption.firstChild!, 0)
+      range.setEnd(caption.firstChild!, 1)
+      const text = range.getBoundingClientRect()
+      const link = doc.body.shadowRoot!.querySelector<HTMLAnchorElement>('.◆document-reader-control a')!.getBoundingClientRect()
+      assert(Math.abs(link.top + link.height / 2 - (text.top + text.height / 2)) <= 3,
+        `permalink is misaligned with the caption first line: link=${link.top}, text=${text.top}`)
+    }
+    view.reader!.destroy()
+  }
+  finally { frame.remove() }
+})
 
 await check("whitespace beside a lone floated figure selects document start", async () => {
   const frame = document.createElement("iframe")

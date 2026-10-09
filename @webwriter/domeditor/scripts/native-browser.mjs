@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "figure permalinks align with padded caption numbering",
   "empty caption numbering is visible as a grey editing placeholder",
   "empty media controls wrap to fit their element",
   "whitespace beside a lone floated figure selects document start",

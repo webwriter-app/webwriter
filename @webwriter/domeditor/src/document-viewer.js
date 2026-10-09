@@ -431,8 +431,11 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
         control.permalink.href = local.href
         control.permalink.hidden = style.display === "none" || style.visibility === "hidden" || rect.bottom <= 0 || rect.top >= window.innerHeight
         const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2 || 28
+        const captionInset = target.caption ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0) : 0
+        const captionBottomInset = target.caption ? (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) : 0
+        const firstLineHeight = Math.min(Math.max(0, rect.height - captionInset - captionBottomInset), lineHeight)
         control.permalink.style.left = `${left}px`
-        control.permalink.style.top = `${target.kind === "figure" && !target.caption ? targetRect.top : rect.top + Math.min(rect.height, lineHeight) / 2 - 14}px`
+        control.permalink.style.top = `${target.kind === "figure" && !target.caption ? targetRect.top : rect.top + captionInset + firstLineHeight / 2 - 14}px`
       }
       if(control.fullscreen) {
         const media = target.media?.find(element => inside(element.getBoundingClientRect()))

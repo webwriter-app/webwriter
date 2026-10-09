@@ -468,6 +468,20 @@ describe("document reader controls", () => {
     expect(document.body.shadowRoot!.querySelector("style")!.textContent).toContain("rgb(15 23 42 / .55)")
   })
 
+  it.each(["above", "below"])("aligns the permalink with the first line of a padded, multiline caption %s the figure", position => {
+    const figure = document.querySelector("figure#photo")!
+    const caption = figure.querySelector<HTMLElement>("figcaption")!
+    if(position === "above") figure.prepend(caption)
+    caption.style.cssText = "line-height:28px;padding:14px 0 20px;border-top:2px solid;border-bottom:3px solid"
+    const top = position === "above" ? 180 : 390
+    vi.spyOn(figure, "getBoundingClientRect").mockReturnValue({left: 140, top: 180, right: 540, bottom: 490, width: 400, height: 310} as DOMRect)
+    vi.spyOn(caption, "getBoundingClientRect").mockReturnValue({left: 140, top, right: 540, bottom: top + 100, width: 400, height: 100} as DOMRect)
+    reader = mountDocumentReader()!
+    const link = controls()[1].querySelector("a")!
+    expect(link.style.left).toBe("70px")
+    expect(link.style.top).toBe(`${top + 16}px`)
+  })
+
   it("follows captions above figures and falls back to the figure when the caption is removed", async () => {
     const figure = document.querySelector("figure#photo")!
     const caption = figure.querySelector("figcaption")!
