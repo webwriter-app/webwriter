@@ -8,6 +8,18 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe("breadcrumb float indicators", () => {
+  it.each(["left", "right"] as const)("uses the float-%s icon", async direction => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [{path: [0], name: "Image", float: direction === "left" ? "far-left" : "far-right"}]
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    const indicator = breadcrumb.shadowRoot!.querySelector(".position-float")!
+    expect(indicator.getAttribute("aria-label")).toBe(direction === "left" ? "Left float" : "Right float")
+    expect(indicator.querySelector(`.icon-tabler-float-${direction}`)).not.toBeNull()
+  })
+})
+
 describe("breadcrumb resize lifecycle", () => {
   it("measures the tree panel without scheduling another Lit update", async () => {
     const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight")
