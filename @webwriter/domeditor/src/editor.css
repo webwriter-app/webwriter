@@ -2245,3 +2245,8 @@ svg text::selection, svg text *::selection {
 svg image.◆media-empty {
   pointer-events: all;
 }
+
+/* Board drags retain their authored position until the drop is committed. */
+body.ww-board .◆board-dragging {
+  opacity: .45;
+}

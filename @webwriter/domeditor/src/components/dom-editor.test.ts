@@ -6124,7 +6124,7 @@ describe("DomEditor.execute()", () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
-    for(const mode of ["document", "canvas", "slides"] as const) {
+    for(const mode of ["document", "canvas", "slides", "board"] as const) {
       window.dispatchEvent(new MessageEvent("message", {
         data: {type: selectionChangeEvent, detail: {
           path: [{path: [], name: mode}], nodeSelected: true,
@@ -6135,7 +6135,7 @@ describe("DomEditor.execute()", () => {
       const bar = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-bar")!
       expect(bar.querySelector("h2")!.textContent).toBe("Layouts")
       const cards = Array.from(bar.querySelectorAll<HTMLButtonElement>("button[data-mode]"))
-      expect(cards.map(card => card.dataset.mode)).toEqual(["document", "canvas", "slides"])
+      expect(cards.map(card => card.dataset.mode)).toEqual(["document", "canvas", "slides", "board"])
       expect(cards.filter(card => card.getAttribute("aria-pressed") === "true").map(card => card.dataset.mode)).toEqual([mode])
       expect(cards.find(card => card.dataset.mode === mode)!.disabled).toBe(true)
       const next = mode === "document" ? "canvas" : "document"
@@ -6256,11 +6256,11 @@ describe("DomEditor.execute()", () => {
     vi.spyOn(editor, "execute").mockImplementation(async action => {
       if(action.type !== "setDocumentLayout") return undefined
       doc.body.className = action.mode === "document" ? "" : `ww-${action.mode}`
-      doc.body.innerHTML = action.mode === "slides" ? '<div class="ww-slides-viewport"><section class="ww-slide" tabindex="-1"><h1 style="position: absolute; left: var(--ww-page-gutter, 1.25rem); width: calc(100% - 2 * var(--ww-page-gutter, 1.25rem)); top: 1.25rem; height: 20%;"></h1><p style="position: absolute; left: var(--ww-page-gutter, 1.25rem); width: calc(100% - 2 * var(--ww-page-gutter, 1.25rem)); top: calc(20% + 2.5rem); height: calc(80% - 3.75rem);"></p></section></div>' : "<p></p>"
+      doc.body.innerHTML = action.mode === "slides" ? '<div class="ww-slides-viewport"><section class="ww-slide" tabindex="-1"><h1 style="position: absolute; left: var(--ww-page-gutter, 1.25rem); width: calc(100% - 2 * var(--ww-page-gutter, 1.25rem)); top: 1.25rem; height: 20%;"></h1><p style="position: absolute; left: var(--ww-page-gutter, 1.25rem); width: calc(100% - 2 * var(--ww-page-gutter, 1.25rem)); top: calc(20% + 2.5rem); height: calc(80% - 3.75rem);"></p></section></div>' : action.mode === "board" ? '<section class="ww-board-column"><h2></h2><article class="ww-board-card"><p></p></article></section>' : "<p></p>"
       host.documentLayout = {...host.documentLayout, mode: action.mode}
       return true
     })
-    for(const mode of ["canvas", "slides", "document", "canvas"]) {
+    for(const mode of ["canvas", "slides", "board", "document", "board", "canvas"]) {
       editor.shadowRoot!.querySelector<HTMLButtonElement>(`.document-layouts-bar [data-mode="${mode}"]`)!.click()
       await vi.waitFor(() => expect(host.documentLayoutConversionCount).toBe(0))
       snapshot()

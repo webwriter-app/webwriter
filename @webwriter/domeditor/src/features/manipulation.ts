@@ -2,9 +2,9 @@ import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
-import {isSlide, slideLayoutRole} from "../document-layout"
+import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, figureSelectionTarget, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -52,42 +52,6 @@ const commonValues = <T>(records: Record<string, T>[]) => Object.fromEntries(
   Object.entries(records[0]).filter(([name, value]) => records.every(record =>
     Object.hasOwn(record, name) && JSON.stringify(record[name]) === JSON.stringify(value))),
 ) as Record<string, T>
-
-function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
-  const selection = document.getSelection()
-  if(!selection?.isCollapsed || !selection.anchorNode) {
-    return false
-  }
-  let node: Node | null = selection.anchorNode
-  let offset = selection.anchorOffset
-  while(node && node !== element) {
-    if(!element.contains(node)) {
-      return false
-    }
-    const parent: Node | null = node.parentNode
-    if(!parent) {
-      return false
-    }
-    const siblings = Array.from(parent.childNodes) as ChildNode[]
-    const index = siblings.indexOf(node as ChildNode)
-    if(boundary === "start") {
-      if(offset !== 0 || siblings.slice(0, index).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
-        return false
-      }
-    }
-    else {
-      const length = node instanceof Text? node.length: node.childNodes.length
-      if(offset !== length || siblings.slice(index + 1).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
-        return false
-      }
-    }
-    node = parent
-    offset = boundary === "start"? index: index + 1
-  }
-  return node === element && Array.from(element.childNodes)
-    .slice(boundary === "start" ? 0 : offset, boundary === "start" ? offset : undefined)
-    .every(sibling => isOutOfFlow(sibling) || sibling.nodeType !== Node.ELEMENT_NODE && !sibling.textContent)
-}
 
 /** Editing feature implementing content manipulation: inserting, deleting,
  * wrapping and lifting nodes, clipboard interaction (copy/cut/paste), and
@@ -1853,6 +1817,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private replaceSectionType(section: Element, type: SectionName) {
+    if(boardLayoutRole(section)) return null
     if(section.localName === type) return section
     const parent = section.parentElement
     if(!parent) return null
@@ -1882,7 +1847,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private unwrapSection(section: Element) {
-    if(!isSectionElement(section) || !this.canUnwrapSection(section)) return false
+    if(!isSectionElement(section) || boardLayoutRole(section) || !this.canUnwrapSection(section)) return false
     const wasSelected = this.editor.features.selection.selectedSectionElement === section
     this.editor.features.selection.clearSelectedSection(section)
     section.replaceWith(...Array.from(section.childNodes))
@@ -2261,7 +2226,7 @@ export class ManipulationFeature extends EditorFeature {
       // Explicit SVG shape selections use the graphic editor's public contract.
       if(!(explicit && atomic?.namespaceURI === SVG_NAMESPACE && element?.namespaceURI === SVG_NAMESPACE)) element = atomic ?? element
       while(element && element !== root && element !== document.body && root.contains(element)) {
-        if(element.isConnected && !slideLayoutRole(element)) {
+        if(element.isConnected && !slideLayoutRole(element) && !boardLayoutRole(element)) {
           elements.add(element)
           if(explicit && element.localName === "figure") {
             for(const child of Array.from(element.children)) if(child.localName !== "figcaption") elements.add(child)
@@ -2426,7 +2391,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Replaces the current selection with nodes and leaves the caret at the
    * end of the inserted content without splitting its containing block. */
   private insertAtSelection(...nodes: Node[]) {
-    if(!this.editor.features.slides.allowsSelection()) return
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(!nodes.length) return
     return this.withNormalization(() => {
       $.replace(...nodes)
@@ -2477,11 +2442,11 @@ export class ManipulationFeature extends EditorFeature {
    * that shape, their text is inserted instead of creating invalid DOM. */
   private insertBlocks(nodes: ChildNode[]) {
     const insertionBlock = getContainer($.range.startContainer)
-    if(!this.editor.features.slides.allowsSelection()) return
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     return this.withNormalization(() => {
       $.delete()
       const block = getContainer($.range.startContainer)
-      if(isDocumentRoot(block) || this.editor.features.slides.active && isSlide(block)) {
+      if(isDocumentRoot(block) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)) {
         $.replace(...nodes)
         this.moveAfterInsertedNode(nodes.at(-1)!)
         return
@@ -2520,7 +2485,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment, allowFloat = true, commandInsertion = false) {
-    if(!this.editor.features.slides.allowsSelection()) return
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(commandInsertion) {
       this.hoverInsertion(false)
       if(this.replaceInsertionElement(fragment)) return
@@ -2642,7 +2607,7 @@ export class ManipulationFeature extends EditorFeature {
     if(splittingSummary) splitDepth = 0
 
     for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+      if(isDocumentRoot(container) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -2754,7 +2719,7 @@ export class ManipulationFeature extends EditorFeature {
     const root = getDocumentRoot()
     const selected = this.editor.features.selection.captureSelectedElement
       ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
-    const topLevel = (element: Element) => element === root || element === document.body || isSlide(element)
+    const topLevel = (element: Element) => element === root || element === document.body || isSlide(element) || Boolean(boardLayoutRole(element))
     const block = getSelectionAnchorBlock(this.editor.schema)
     const anchor = $.anchor instanceof Element ? $.anchor : $.anchor?.parentElement
     let container = selected ?? ($.isEmpty && $.anchor instanceof Element ? anchor
@@ -3145,7 +3110,8 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement) {
-    if(!this.editor.features.slides.allowsSelection()) return
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
+    if(!node && this.editor.features.board.active && this.editor.features.board.editingScope($.anchor)?.matches("h2")) return this.editor.features.board.addCard()
     if(node) {
       this.hoverInsertion(false)
       if(this.replaceInsertionElement(node)) return
@@ -3203,7 +3169,7 @@ export class ManipulationFeature extends EditorFeature {
       for(let i = 0; i <= splitDepth; i++) {
         $.start instanceof Text && $.start.splitText($.startOffset)
         let container = getContainer(locus)
-        if(isDocumentRoot(container) || this.editor.features.slides.active && isSlide(container) || isOutOfFlow(container) || container.nodeName === "HTML") {continue}
+        if(isDocumentRoot(container) || boardLayoutRole(container) || this.editor.features.slides.active && isSlide(container) || isOutOfFlow(container) || container.nodeName === "HTML") {continue}
         const [,right] = getSidesOfPoint($.range)
         const schema = this.editor.schema.get(container)
         const next = (strict && schema.inseperable
@@ -3237,7 +3203,7 @@ export class ManipulationFeature extends EditorFeature {
    * reverse. At the document boundaries, Backspace/Delete move the caret to
    * the end/start of the adjacent block. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character") {
-    if(!this.editor.features.slides.allowsSelection()) return
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
     const selected = $.selectedElement
     if(selected && !slideLayoutRole(selected) && (this.editor.features.canvas.active && selected.parentElement === document.body
@@ -3250,7 +3216,8 @@ export class ManipulationFeature extends EditorFeature {
       })
     }
     const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide($.range.startContainer) : null
-    if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")) return
+    if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")
+      || direction && this.editor.features.board.atBoundary(direction)) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     const range = $.range
@@ -3298,7 +3265,7 @@ export class ManipulationFeature extends EditorFeature {
       const commonContainer = getContainer($.commonAncestor)
       if(!commonContainer.textContent && commonContainer !== document.body
         && !commonContainer.matches("details, details > summary")
-        && !isDocumentRoot(commonContainer) && !isOutOfFlow(commonContainer) && commonContainer.nodeName !== "HTML") {
+        && !isDocumentRoot(commonContainer) && !boardLayoutRole(commonContainer) && !isOutOfFlow(commonContainer) && commonContainer.nodeName !== "HTML") {
         const emptyContainer = commonContainer
         const previous = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "previous")
         const next = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "next")
@@ -3321,7 +3288,7 @@ export class ManipulationFeature extends EditorFeature {
       else if($.isEmpty && !$.isGapSelection) {
         const before = $.range.cloneRange()
         granularity === "block"? $.extend($.anchorContainer!, 0): $.extendBy(granularity, direction)
-        if(!this.editor.features.slides.allowsSelection()) {
+        if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) {
           document.getSelection()?.setBaseAndExtent(before.startContainer, before.startOffset, before.endContainer, before.endOffset)
           return
         }
@@ -3430,7 +3397,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Writes a stable clone first and removes its captured live Range only
    * after the clipboard accepts it. A failed write never destroys content. */
   async cut() {
-    if(!this.editor.features.slides.allowsSelection()) return false
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.cut()
     if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     const selection = document.getSelection()
@@ -3458,7 +3425,7 @@ export class ManipulationFeature extends EditorFeature {
     })) return false
     const currentData = this.#clipboardData($.copy())
     if(currentData.html !== copied.html || currentData.text !== copied.text) return false
-    if(!this.editor.features.slides.allowsSelection()) return false
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     return this.withNormalization(() => {
       $.delete()
       return true
@@ -3801,7 +3768,7 @@ export class ManipulationFeature extends EditorFeature {
   private insertBlockWidget(widget: Element) {
     $.delete()
     const block = getContainer($.range.startContainer)
-    if(isDocumentRoot(block) || this.editor.features.slides.active && isSlide(block) || this.editor.schema.isPhrasing(widget)
+    if(isDocumentRoot(block) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block) || this.editor.schema.isPhrasing(widget)
       || this.canInsertAtSelection(widget)) {
       $.replace(widget)
     }

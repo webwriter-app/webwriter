@@ -1,6 +1,6 @@
 import {getDocumentRoot} from "./document-template"
 
-export type DocumentLayoutMode = "document" | "canvas" | "slides"
+export type DocumentLayoutMode = "document" | "canvas" | "slides" | "board"
 export type DocumentLayoutState = {
   mode: DocumentLayoutMode, canConvert: boolean, zoom: number
   conversions?: Partial<Record<DocumentLayoutMode, string | null>>
@@ -33,8 +33,53 @@ export function resetEmptyLayoutContent(body: HTMLElement = document.body) {
 export function documentLayoutMode(body: HTMLElement = document.body): DocumentLayoutMode {
   if(getDocumentRoot(body) !== body) return "document"
   // An ambiguous externally authored mode stays readable; never normalize it.
-  if(body.classList.contains(canvasClass) && body.classList.contains(slidesClass)) return "document"
-  return body.classList.contains(slidesClass) ? "slides" : body.classList.contains(canvasClass) ? "canvas" : "document"
+  if([canvasClass, slidesClass, boardClass].filter(name => body.classList.contains(name)).length > 1) return "document"
+  return body.classList.contains(boardClass) ? "board" : body.classList.contains(slidesClass) ? "slides" : body.classList.contains(canvasClass) ? "canvas" : "document"
+}
+
+/** Board structure and styles are authored content, usable without an editor. */
+export const boardClass = "ww-board"
+export const boardStyles = `
+html:has(> body.ww-board) { min-height: 100%; overflow: auto; background: #eaf0f6; }
+body.ww-board {
+  box-sizing: border-box; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 1rem;
+  width: max-content; min-width: 100%; max-width: none; min-height: 100vh; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
+}
+body.ww-board > section.ww-board-column:not([is]) {
+  box-sizing: border-box; flex: 0 0 min(20rem, calc(100vw - 2.5rem)); width: min(20rem, calc(100vw - 2.5rem)); min-width: 0;
+  display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
+  margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
+}
+body.ww-board > section.ww-board-column:not([is]) > h2:not([is]) {
+  margin: 0; padding: 0 3.5rem 0 0; min-height: 1.5rem; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
+  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: 1rem;
+  border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child { margin-bottom: 0; }
+@media print {
+  body.ww-board { width: 100%; min-height: 0; padding: 0; flex-wrap: wrap; background: white; }
+  body.ww-board > section.ww-board-column:not([is]) { flex-basis: 20rem; padding-bottom: 1rem; break-inside: avoid; }
+}
+`
+
+export function isBoardColumn(node: Node | null): node is HTMLElement {
+  const element = node as Element | null
+  return element?.nodeType === 1 && element.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && element.matches("section.ww-board-column:not([is])") && element.parentElement?.matches("body.ww-board") === true
+    && documentLayoutMode(element.parentElement as HTMLElement) === "board"
+}
+
+export function isBoardCard(node: Node | null): node is HTMLElement {
+  const element = node as Element | null
+  return element?.nodeType === 1 && element.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && element.matches("article.ww-board-card:not([is])") && isBoardColumn(element.parentElement)
+}
+
+export function boardLayoutRole(node: Node | null): "column" | "card" | null {
+  return isBoardColumn(node) ? "column" : isBoardCard(node) ? "card" : null
 }
 
 /** Authored layout, retained in shared and exported HTML. Navigation is local. */

@@ -42,7 +42,7 @@ export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 /** Relative DOM positions survive package installation replacing the iframe. */
 export type RibbonDropPosition = {
   anchor: unknown
-  layout: "document" | "canvas" | "slides"
+  layout: "document" | "canvas" | "slides" | "board"
   x?: number
   y?: number
   float?: "left" | "right"
@@ -814,9 +814,9 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && isOptionalFeature(detail.graphic, isGraphicSelection)
     && isOptionalFeature(detail.math, math => math.active === true && (math.display === "inline" || math.display === "block"))
     && isOptionalFeature(detail.layout, isLayoutSelection)
-    && isOptionalFeature(detail.documentLayout, state => (state.mode === "document" || state.mode === "canvas" || state.mode === "slides")
+    && isOptionalFeature(detail.documentLayout, state => (state.mode === "document" || state.mode === "canvas" || state.mode === "slides" || state.mode === "board")
       && isBoolean(state.canConvert) && typeof state.zoom === "number" && Number.isFinite(state.zoom) && state.zoom > 0
-      && (state.conversions === undefined || isRecord(state.conversions) && Object.entries(state.conversions).every(([mode, reason]) => ["document", "canvas", "slides"].includes(mode) && (reason === null || typeof reason === "string"))))
+      && (state.conversions === undefined || isRecord(state.conversions) && Object.entries(state.conversions).every(([mode, reason]) => ["document", "canvas", "slides", "board"].includes(mode) && (reason === null || typeof reason === "string"))))
 }
 
 export function isMarkStateChangeMessage(value: unknown): value is MarkStateChangeMessage {

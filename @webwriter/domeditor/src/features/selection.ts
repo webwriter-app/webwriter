@@ -3,7 +3,7 @@ import {$, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
-import {isSlide, slideLayoutRole} from "../document-layout"
+import {boardLayoutRole, isSlide, slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 
@@ -165,7 +165,7 @@ export class SelectionFeature extends EditorFeature {
    * state is deliberately separate from the native Selection so ordinary
    * editing never acquires a section wrapper as its target. */
   get selectedSectionElement() {
-    return this.#selectedSection?.isConnected && isSectionElement(this.#selectedSection) && !slideLayoutRole(this.#selectedSection)
+    return this.#selectedSection?.isConnected && isSectionElement(this.#selectedSection) && !slideLayoutRole(this.#selectedSection) && !boardLayoutRole(this.#selectedSection)
       ? this.#selectedSection
       : null
   }
@@ -185,7 +185,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   selectSectionElement(section: Element) {
-    if(!section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section) || slideLayoutRole(section)) return false
+    if(!section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section) || slideLayoutRole(section) || boardLayoutRole(section)) return false
     this.#releaseCaptureSelection()
     this.#selectedSection = section
     this.processSelection()
@@ -1882,6 +1882,7 @@ export class SelectionFeature extends EditorFeature {
       }
       if(!inDragSelection) this.#normalizeNativeSelection()
       this.editor.features.slides.constrainSelection()
+      this.editor.features.board.constrainSelection()
       sel = document.getSelection()
       this.editor.features.list.clearSelectionPresentation()
     }

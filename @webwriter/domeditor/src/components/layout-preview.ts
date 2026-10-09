@@ -1,7 +1,7 @@
 import {css, html} from "lit"
 import {documentLayoutConversionReason, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
-export const documentLayoutModes = ["document", "canvas", "slides"] as const
+export const documentLayoutModes = ["document", "canvas", "slides", "board"] as const
 export const documentLayoutLabel = (mode: DocumentLayoutMode) => mode[0].toUpperCase() + mode.slice(1)
 
 /** Shared with the layout gallery so both pickers use the same visual language. */
@@ -113,6 +113,17 @@ export const documentLayoutPreviewStyles = css`
     .document-layout-preview.slides .mock-heading { top: 12%; width: 62%; }
     .document-layout-preview.slides .layout-preset-line.short { top: 52%; width: 32%; }
     .document-layout-preview.slides .mock-image { right: 8%; top: 38%; width: 30%; height: 48%; }
+    .document-layout-preview.board { grid-template-columns: repeat(3, minmax(0, 1fr)); place-items: stretch; gap: 0.25rem; }
+    .document-layout-preview.board .board-column { box-sizing: border-box; display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; height: 100%; padding: 0.22rem; overflow: hidden; border: 1px solid #b8c8d9; border-radius: 0.15rem; background: #e5eef7; }
+    .document-layout-preview.board .board-column > .mock-heading { flex: 0 0 0.25rem; width: 66%; margin: 0.02rem 0 0.06rem; }
+    .document-layout-preview.board .board-card { flex: 0 0 auto; padding: 0.22rem; border-color: #c2d0df; background: white; }
+    .document-layout-preview.board .board-card.short-card { height: 0.95rem; }
+    .document-layout-preview.board .board-card.medium-card { height: 1.3rem; }
+    .document-layout-preview.board .board-card.tall-card { height: 1.9rem; }
+    .document-layout-preview.board .board-card .layout-preset-line { flex: 0 0 0.14rem; width: 84%; margin-top: 0.14rem; }
+    .document-layout-preview.board .board-card .layout-preset-line.mock-heading { width: 65%; height: 0.2rem; margin: 0 0 0.03rem; }
+    .document-layout-preview.board .board-card .layout-preset-line.short { width: 48%; }
+    .document-layout-preview.board .mock-image { flex: 0 0 0.65rem; height: 0.65rem; margin-top: 0.18rem; }
 `
 
 export function renderDocumentLayoutPreview(mode: DocumentLayoutMode) {
@@ -120,6 +131,15 @@ export function renderDocumentLayoutPreview(mode: DocumentLayoutMode) {
   return html`
     <span class="layout-preset-preview document-layout-preview ${mode}" aria-hidden="true">
       ${mode === "canvas" ? [0, 1, 2].map(() => html`<span class="layout-preset-item">${lines}</span>`)
+        : mode === "board" ? [0, 1, 2].map((_, index) => html`<span class="board-column">
+            <span class="layout-preset-line mock-heading"></span>
+            <span class="layout-preset-item board-card ${index === 0 ? "tall-card" : index === 1 ? "short-card" : "medium-card"}">
+              ${lines}${index === 0 ? html`<span class="mock-image"></span>` : ""}
+            </span>
+            <span class="layout-preset-item board-card ${index === 1 ? "tall-card" : "short-card"}">
+              ${lines}${index === 1 ? html`<span class="layout-preset-line"></span><span class="layout-preset-line short"></span>` : ""}
+            </span>
+          </span>`)
         : html`<span class="layout-preset-item ${mode === "document" ? "mock-page" : "mock-slide"}">${lines}<span class="mock-image"></span></span>`}
     </span>
     <span class="layout-preset-name">${documentLayoutLabel(mode)}</span>

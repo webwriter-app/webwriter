@@ -2147,6 +2147,96 @@ for(const mode of ["canvas", "slides"] as const) await check(`paragraphs grow wi
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("Board columns and cards retain native editing and standalone layout", async () => {
+  const {render, html} = await import("lit")
+  const {documentLayoutPreviewStyles, renderDocumentLayoutPreview} = await import("../src/components/layout-preview")
+  const hero = document.createElement("div")
+  hero.style.width = "160px"
+  const shadow = hero.attachShadow({mode: "open"})
+  render(html`<style>${documentLayoutPreviewStyles.cssText}</style>${renderDocumentLayoutPreview("board")}`, shadow)
+  fixture.append(hero)
+  await layoutFrame()
+  const heroColumns = Array.from(shadow.querySelectorAll<HTMLElement>(".board-column"))
+  assert(heroColumns.length === 3 && heroColumns.every(column => column.getBoundingClientRect().width > 35), "Board hero columns shrank to thin strips")
+  const heroHeights = new Set(Array.from(shadow.querySelectorAll<HTMLElement>(".board-card"), card => card.getBoundingClientRect().height))
+  assert(heroHeights.size === 3 && shadow.querySelectorAll(".layout-preset-line").length > 15 && shadow.querySelector(".mock-image"), "Board hero lacks varied cards and skeleton content")
+  hero.remove()
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  frame.srcdoc = '<!doctype html><body><p>First card</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "board fixture did not initialize")
+    const editor = view.editor!, board = editor.features.board, doc = frame.contentDocument!
+    const theme = doc.createElement("style"); theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    assert(editor.setDocumentLayout("board", "document"), "board did not convert")
+    board.addColumn(); board.addColumn(); board.addColumn()
+    const columns = board.columns()
+    columns.forEach((column, i) => {
+      column.querySelector("h2")!.textContent = `Column ${i + 1}`
+      board.addCard(column); board.addCard(column)
+    })
+    await layoutFrame()
+    const rects = columns.map(column => column.getBoundingClientRect())
+    assert(rects.every(rect => Math.abs(rect.width - rects[0].width) < 1 && rect.width > 200), "column widths differ or collapse")
+    assert(rects.every((rect, i) => !i || rect.left > rects[i - 1].right), "columns did not grow horizontally")
+    assert(doc.documentElement.scrollWidth > frame.clientWidth, "board did not overflow horizontally")
+    for(const column of columns) {
+      const cards = board.cards(column).map(card => card.getBoundingClientRect())
+      assert(cards.every((rect, i) => !i || rect.top > cards[i - 1].bottom), "cards did not stack vertically")
+      assert(cards.every(rect => rect.left >= column.getBoundingClientRect().left && rect.right <= column.getBoundingClientRect().right), "card escaped column")
+    }
+    view.scrollTo(0, 0); await layoutFrame()
+    const first = columns[0], card = board.cards(first)[0], paragraph = card.querySelector("p")!
+    const selection = doc.getSelection()!
+    selection.collapse(paragraph.firstChild!, 5)
+    editor.features.selection.processSelection(false, {scrollIntoView: false})
+    assert(doc.execCommand("insertText", false, " new"), "native card typing failed")
+    assert(paragraph.textContent === "First new card", "native card typing changed structure")
+    paragraph.dispatchEvent(new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    assert(card.querySelectorAll("p").length === 2, "Enter did not stay inside the card")
+    const add = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add card to column 1"]')!
+    add.click(); await layoutFrame()
+    assert(board.cards(first).length === 4, "column add-card control failed")
+    assert(doc.querySelector("[part=board-actions], button") === null, "board UI leaked into authored content")
+    const drag = async (label: string, x: number, y: number) => {
+      const grip = editor.appendix.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+      assert(grip?.draggable && doc.querySelector("[draggable]") === null, "Board drag handle missing or leaked into authored DOM")
+      const win = view as Window & typeof globalThis, data = new win.DataTransfer()
+      const start = new win.DragEvent("dragstart", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
+      grip.dispatchEvent(start)
+      assert(!start.defaultPrevented && !!data.getData("application/x-webwriter-board") && !!doc.querySelector(".◆board-dragging"), `native Board drag failed to start: prevented=${start.defaultPrevented}, effect=${data.effectAllowed}, token=${data.getData("application/x-webwriter-board")}, marked=${!!doc.querySelector(".◆board-dragging")}, connected=${grip.isConnected}`)
+      const over = new win.DragEvent("dragover", {bubbles: true, composed: true, cancelable: true, dataTransfer: data, clientX: x, clientY: y})
+      doc.body.dispatchEvent(over)
+      assert(over.defaultPrevented && !editor.appendix.querySelector<HTMLElement>("[part=board-drop-indicator]")!.hidden, "Board did not show an insertion target")
+      doc.body.dispatchEvent(new win.DragEvent("drop", {bubbles: true, composed: true, cancelable: true, dataTransfer: data, clientX: x, clientY: y}))
+      await layoutFrame()
+      assert(doc.querySelector(".◆board-dragging") === null, "Board drag marker leaked after drop")
+    }
+    await drag("Drag card 1 in column 1", first.getBoundingClientRect().left + 60, first.getBoundingClientRect().bottom - 10)
+    assert(board.cards(first).at(-1) === card, "native card drag did not reorder vertically")
+    const second = columns[1], secondRect = second.getBoundingClientRect()
+    await drag("Drag card 4 in column 1", secondRect.left + 60, secondRect.top + 70)
+    assert(board.cards(second)[0] === card && board.cards(first).length === 3, "native card drag did not move between columns")
+    await drag("Drag column 1", second.getBoundingClientRect().right - 1, secondRect.top + 20)
+    assert(board.columns()[0] === second && board.columns()[1] === first, "native column drag did not reorder horizontally")
+    const saved = await editor.serializeHTML(true)
+    const preview = doc.createElement("iframe")
+    preview.setAttribute("sandbox", "allow-same-origin")
+    preview.style.cssText = "width:900px;height:700px"
+    const loaded = new Promise<void>(resolve => preview.addEventListener("load", () => resolve(), {once: true}))
+    preview.srcdoc = saved; doc.body.append(preview); await loaded
+    const exported = preview.contentDocument!, exportedColumns = Array.from(exported.querySelectorAll(".ww-board-column"))
+    assert(exportedColumns.length === 4 && exported.querySelector("[part=board-actions]") === null, "export lost structure or included controls")
+    const exportedRects = exportedColumns.map(column => column.getBoundingClientRect())
+    assert(exportedRects.every((rect, i) => Math.abs(rect.width - exportedRects[0].width) < 1 && (!i || rect.left > exportedRects[i - 1].right)), "standalone Board layout needs editor code")
+    preview.remove()
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {
   const frame = document.createElement("iframe")
@@ -3302,7 +3392,7 @@ await check("bottom layout cards retain native editing focus after rendering", a
     assert(root.querySelector(".document-layouts-panel:not([inert])"), "automatic startup changes dismissed Layouts")
     resource.remove()
     editingFrame!.focus()
-    for(const mode of ["canvas", "slides", "document", "slides", "canvas", "document"]) {
+    for(const mode of ["canvas", "slides", "board", "document", "board", "canvas", "document"]) {
       await app!.updateComplete
       const card = root.querySelector<HTMLButtonElement>(`.document-layouts-bar [data-mode="${mode}"]`)!
       assert(card && !card.disabled, `${mode} card is unavailable`)
@@ -3324,7 +3414,7 @@ await check("bottom layout cards retain native editing focus after rendering", a
       assert(root.activeElement === editingFrame && doc.hasFocus(), `${mode} lost editing focus after rendering`)
       const previousBlock = previousAnchor?.nodeType === Node.ELEMENT_NODE ? previousAnchor as Element : previousAnchor?.parentElement
       const retained = previousBlock?.isConnected && doc.body.contains(previousBlock) && previousBlock.matches("p, h1")
-      const first = retained ? previousBlock! : doc.querySelector(mode === "slides" ? ".ww-slide > h1" : "body > p")!
+      const first = retained ? previousBlock! : doc.querySelector(mode === "slides" ? ".ww-slide > h1" : mode === "board" ? ".ww-board-card > p" : "body > p")!
       const selection = doc.getSelection()!
       assert(first && selection.isCollapsed && first.contains(selection.anchorNode), `${mode} lost its initial native caret: ${selection.anchorNode?.nodeName}:${selection.anchorOffset}; ${doc.body.innerHTML}`)
       if(!retained) assert(!first.childNodes.length, `${mode} inserted content to imitate a caret`)
@@ -3336,8 +3426,8 @@ await check("bottom layout cards retain native editing focus after rendering", a
     assert(panel.inert && panel.getBoundingClientRect().height < 1, "first edit did not slide Layouts out of view")
     assert(doc.hasFocus(), "dismissing Layouts interrupted typing focus")
     doc.body.innerHTML = '<p>First</p><p id="retained-selection">Second</p>'
-    let previousMode: "document" | "canvas" | "slides" = "document"
-    for(const mode of ["canvas", "slides", "document", "slides", "canvas", "document"] as const) {
+    let previousMode: "document" | "canvas" | "slides" | "board" = "document"
+    for(const mode of ["canvas", "slides", "board", "document", "board", "canvas", "document"] as const) {
       const text = doc.querySelector("#retained-selection")!.firstChild!
       doc.getSelection()!.setBaseAndExtent(text, 5, text, 2)
       await layoutFrame()
@@ -3436,7 +3526,7 @@ await check("bottom layout cards retain native editing focus after rendering", a
       assert(snippets.shadowRoot.textContent.includes("Select something and click to store it here as a snippet to use later"), "removing the last snippet did not restore the empty hint")
       snippets.closeSubmenu()
     }
-    for(const mode of ["canvas", "slides"] as const) {
+    for(const mode of ["canvas", "slides", "board"] as const) {
       root.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
         detail: {...(app as any).settings, defaultLayout: mode}, bubbles: true, composed: true,
       }))

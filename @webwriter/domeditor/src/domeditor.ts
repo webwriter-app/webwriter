@@ -15,6 +15,7 @@ import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
 import {CanvasFeature} from "./features/canvas"
 import {SlidesFeature} from "./features/slides"
+import {BoardFeature} from "./features/board"
 import {documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
@@ -405,6 +406,7 @@ export class DOMEditor {
     "layout": new LayoutFeature(this),
     "canvas": new CanvasFeature(this),
     "slides": new SlidesFeature(this),
+    "board": new BoardFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "graphic": new GraphicFeature(this),
@@ -747,6 +749,7 @@ export class DOMEditor {
    * becomes a normal collapsed selection in the new paragraph. */
   #ensureDocumentContent() {
     if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
+    if(documentLayoutMode() === "board") return this.features.board.ensureContent()
     if(documentLayoutMode() === "canvas") return null
     const selection = document.getSelection()
     const moveSelection = !selection?.anchorNode || !selection.focusNode
@@ -1205,15 +1208,16 @@ export class DOMEditor {
     const rootReason = getDocumentRoot() !== document.body ? "A custom document template owns this document's layout." : null
     const conversions = {
       document: rootReason,
-      canvas: rootReason ?? ((mode === "slides" ? this.features.canvas.canConvertContent(this.features.slides.documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
+      canvas: rootReason ?? ((mode === "slides" || mode === "board" ? this.features.canvas.canConvertContent(this.features[mode].documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
       slides: rootReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
+      board: rootReason ?? this.features.board.conversionReason(),
     }
     return {mode, zoom: canvas.zoom, conversions,
       canConvert: Object.entries(conversions).some(([target, reason]) => target !== mode && reason === null)}
   }
 
   setDocumentLayout(mode: DocumentLayoutMode, expectedMode: DocumentLayoutMode) {
-    if(!["document", "canvas", "slides"].includes(mode)) throw new TypeError("Unknown document layout")
+    if(!["document", "canvas", "slides", "board"].includes(mode)) throw new TypeError("Unknown document layout")
     const state = this.getDocumentLayoutState()
     if(this.isEditingLocked || state.mode !== expectedMode || mode === state.mode || state.conversions?.[mode]) return false
     // DOM moves retarget live Ranges to the old parent. Keep the actual
@@ -1238,12 +1242,14 @@ export class DOMEditor {
     const end = this.doc.beginUndoGroup()
     try {
       if(mode !== "document" && state.mode !== "document") {
-        const source = state.mode === "canvas" ? this.features.canvas : this.features.slides
+        const source = this.features[state.mode]
         if(!source.convert("document", false)) return false
       }
-      const changed = mode === "slides" || state.mode === "slides" && mode === "document"
-        ? this.features.slides.convert(mode as "slides" | "document", false)
-        : this.features.canvas.convert(mode as "canvas" | "document", false)
+      const changed = mode === "document"
+        ? this.features[state.mode as "canvas" | "slides" | "board"].convert("document", false)
+        : mode === "board" ? this.features.board.convert("board", false)
+          : mode === "slides" ? this.features.slides.convert("slides", false)
+            : this.features.canvas.convert("canvas", false)
       if(!changed) return false
       const restoredAnchor = anchor(), restoredFocus = focus()
       // An empty Canvas becomes a new paragraph with a text caret. Keep that

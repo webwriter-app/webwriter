@@ -237,10 +237,10 @@ export function loadAppSettings(): AppSettings {
         Boolean(snippet && typeof snippet.id === "string" && snippet.id && typeof snippet.label === "string"
           && snippet.label && typeof snippet.html === "string" && snippet.html)) : [],
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
-      defaultLayout: value.defaultLayout === "canvas" || value.defaultLayout === "slides"
+      defaultLayout: value.defaultLayout === "canvas" || value.defaultLayout === "slides" || value.defaultLayout === "board"
         ? value.defaultLayout
         : value.defaultLayout === "document" ? "document"
-          : value.defaultTemplate === "canvas" || value.defaultTemplate === "slides" || value.defaultTemplate === "document"
+          : value.defaultTemplate === "canvas" || value.defaultTemplate === "slides" || value.defaultTemplate === "board" || value.defaultTemplate === "document"
             ? value.defaultTemplate : defaults.defaultLayout,
       updateDocumentLanguage: typeof value.updateDocumentLanguage === "boolean"
         ? value.updateDocumentLanguage

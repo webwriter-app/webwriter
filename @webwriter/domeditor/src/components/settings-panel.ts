@@ -607,7 +607,7 @@ export class SettingsPanel extends LitElement {
 
   private changeDefaultLayout(event: Event) {
     const mode = (event.currentTarget as HTMLSelectElement).value
-    if(mode !== "document" && mode !== "canvas" && mode !== "slides") return
+    if(mode !== "document" && mode !== "canvas" && mode !== "slides" && mode !== "board") return
     this.emitSettings({...this.settings, defaultLayout: mode})
   }
 

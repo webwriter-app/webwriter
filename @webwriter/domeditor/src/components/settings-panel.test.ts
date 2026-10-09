@@ -221,9 +221,9 @@ describe("settings panel", () => {
 
   it("defaults new documents to Document and validates saved layout choices", () => {
     expect(defaultAppSettings().defaultLayout).toBe("document")
-    for(const value of ["document", "canvas", "slides", "invalid", null]) {
+    for(const value of ["document", "canvas", "slides", "board", "invalid", null]) {
       localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultLayout: value}))
-      expect(loadAppSettings().defaultLayout).toBe(value === "canvas" || value === "slides" ? value : "document")
+      expect(loadAppSettings().defaultLayout).toBe(value === "canvas" || value === "slides" || value === "board" ? value : "document")
     }
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultTemplate: "slides"}))
     expect(loadAppSettings().defaultLayout).toBe("slides")
@@ -237,11 +237,11 @@ describe("settings panel", () => {
     const changes: AppSettings[] = []
     panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
     const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#default-layout")!
-    expect([...select.options].map(option => option.textContent)).toEqual(["Document", "Canvas", "Slides"])
+    expect([...select.options].map(option => option.textContent)).toEqual(["Document", "Canvas", "Slides", "Board"])
     expect(select.value).toBe("document")
-    select.value = "slides"
+    select.value = "board"
     select.dispatchEvent(new Event("change", {bubbles: true}))
-    expect(changes.at(-1)).toMatchObject({defaultLayout: "slides", language: "de"})
+    expect(changes.at(-1)).toMatchObject({defaultLayout: "board", language: "de"})
     expect(parseFloat(getComputedStyle(select.closest(".setting-card")!).marginTop))
       .toBe(parseFloat(getComputedStyle(document.documentElement).fontSize))
     panel.resetSettings()

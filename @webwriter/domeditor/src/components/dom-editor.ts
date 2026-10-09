@@ -194,7 +194,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {canvasStyles, slidesStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasStyles, slidesStyles, boardStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -1024,7 +1024,7 @@ export class DomEditor extends LitElement {
     .document-layouts-close:hover { background: #e2e5e9; }
     .document-layouts-close:focus-visible { outline: 2px solid #5e91bf; outline-offset: 2px; }
     .document-layouts-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
-    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 10rem)); gap: 0.45rem; }
+    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 10rem)); gap: 0.45rem; }
     .document-layouts-bar .layout-preset { min-height: 0; }
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
@@ -2156,10 +2156,10 @@ export class DomEditor extends LitElement {
     if(snapshot === null) return null
     const doc = new DOMParser().parseFromString(snapshot, "text/html")
     for(const style of doc.head.querySelectorAll("style")) {
-      if(style.attributes.length === 0 && (style.textContent === canvasStyles || style.textContent === slidesStyles)) style.remove()
+      if(style.attributes.length === 0 && (style.textContent === canvasStyles || style.textContent === slidesStyles || style.textContent === boardStyles)) style.remove()
     }
     const body = doc.body
-    body.classList.remove("ww-canvas", "ww-slides")
+    body.classList.remove("ww-canvas", "ww-slides", "ww-board")
     if(!body.classList.length) body.removeAttribute("class")
     for(const viewport of body.querySelectorAll(":scope > div.ww-slides-viewport")) {
       if(viewport.attributes.length !== 1 || viewport.className !== "ww-slides-viewport") return null
@@ -2173,6 +2173,17 @@ export class DomEditor extends LitElement {
       viewport.replaceWith(...viewport.childNodes)
     }
     body.querySelectorAll(":scope > nav.ww-slides-navigation").forEach(nav => nav.remove())
+    for(const column of body.querySelectorAll(":scope > section.ww-board-column")) {
+      if(column.attributes.length !== 1 || column.className !== "ww-board-column") return null
+      for(const card of column.querySelectorAll(":scope > article.ww-board-card")) {
+        if(card.attributes.length !== 1 || card.className !== "ww-board-card") return null
+        card.replaceWith(...card.childNodes)
+      }
+      for(const heading of column.querySelectorAll(":scope > h2")) {
+        if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
+      }
+      column.replaceWith(...column.childNodes)
+    }
     const placement: Record<string, string[]> = {
       position: ["absolute", "static"], left: ["0px", "var(--ww-page-gutter, 1.25rem)"],
       top: ["0px", "1.25rem", "calc(20% + 2.5rem)"],
@@ -5477,8 +5488,8 @@ export class DomEditor extends LitElement {
 
   private handleDocumentLayoutChange = (event: Event) => {
     const mode = (event as CustomEvent<{mode?: unknown}>).detail?.mode
-    if((mode !== "canvas" && mode !== "document" && mode !== "slides") || mode === this.documentLayout.mode) return
-    const currentMode = this.documentLayout.mode as "document" | "canvas" | "slides"
+    if((mode !== "canvas" && mode !== "document" && mode !== "slides" && mode !== "board") || mode === this.documentLayout.mode) return
+    const currentMode = this.documentLayout.mode as DocumentLayoutMode
     const fresh = this.isFreshDocumentUnchanged()
     const initialSnapshot = fresh ? this.authoredDocumentSnapshot() : null
     const revision = this.frameRevision

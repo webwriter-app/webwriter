@@ -4,7 +4,7 @@ import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
 import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
-import {documentLayoutMode, slideLayoutRole} from "./document-layout"
+import {boardLayoutRole, documentLayoutMode, slideLayoutRole} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
 import {inlineMathRoot, mathBoundaryPoint, mathRoot} from "./math"
 
@@ -1252,7 +1252,7 @@ export const $ = EditingSelection
  * and semantic section wrappers are transparent to ordinary selection. */
 export function getContainer(node: Node) {
   let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
-  while(element && !isOutOfFlow(element) && slideLayoutRole(element) !== "slide" && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
+  while(element && !isOutOfFlow(element) && !boardLayoutRole(element) && slideLayoutRole(element) !== "slide" && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
   return element!
 }
 
@@ -1920,4 +1920,41 @@ export function getStaticCoords(el: HTMLElement): [number, number] {
       if(!el.classList.length) el.removeAttribute("class")
     }
   }
+}
+
+/** Whether a collapsed native caret is at the edge of a flow container. */
+export function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
+  const selection = document.getSelection()
+  if(!selection?.isCollapsed || !selection.anchorNode) {
+    return false
+  }
+  let node: Node | null = selection.anchorNode
+  let offset = selection.anchorOffset
+  while(node && node !== element) {
+    if(!element.contains(node)) {
+      return false
+    }
+    const parent: Node | null = node.parentNode
+    if(!parent) {
+      return false
+    }
+    const siblings = Array.from(parent.childNodes) as ChildNode[]
+    const index = siblings.indexOf(node as ChildNode)
+    if(boundary === "start") {
+      if(offset !== 0 || siblings.slice(0, index).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
+        return false
+      }
+    }
+    else {
+      const length = node instanceof Text? node.length: node.childNodes.length
+      if(offset !== length || siblings.slice(index + 1).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
+        return false
+      }
+    }
+    node = parent
+    offset = boundary === "start"? index: index + 1
+  }
+  return node === element && Array.from(element.childNodes)
+    .slice(boundary === "start" ? 0 : offset, boundary === "start" ? offset : undefined)
+    .every(sibling => isOutOfFlow(sibling) || sibling.nodeType !== Node.ELEMENT_NODE && !sibling.textContent)
 }

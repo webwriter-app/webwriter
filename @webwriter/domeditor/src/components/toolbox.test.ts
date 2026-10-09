@@ -627,7 +627,7 @@ describe("toolbox", () => {
     expect(summary.querySelector(".document-layout-preview.document")).not.toBeNull()
     expect(drawer.textContent).toContain("Zoom: 100%")
     const choices = Array.from(drawer.querySelectorAll<HTMLButtonElement>(".document-layout-change"))
-    expect(choices.map(button => button.dataset.mode)).toEqual(["canvas", "slides"])
+    expect(choices.map(button => button.dataset.mode)).toEqual(["canvas", "slides", "board"])
     expect(choices.every(button => button.querySelector('.document-layout-preview[aria-hidden="true"]'))).toBe(true)
     summary.click()
     expect(picker.open).toBe(true)

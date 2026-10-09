@@ -36,6 +36,14 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("accepts Board layout state and conversion reasons while rejecting unknown layouts", () => {
+    const documentLayout = {mode: "board", canConvert: true, zoom: 100, conversions: {board: null, document: null, canvas: "Unsupported content"}}
+    const message = {type: selectionChangeEvent, detail: {path: [], documentLayout}}
+    expect(isSelectionChangeMessage(message)).toBe(true)
+    expect(isSelectionChangeMessage({...message, detail: {path: [], documentLayout: {...documentLayout, mode: "unknown"}}})).toBe(false)
+    expect(isSelectionChangeMessage({...message, detail: {path: [], documentLayout: {...documentLayout, conversions: {unknown: null}}}})).toBe(false)
+  })
+
   it("validates the optional global spell-checking preference in initialization messages", () => {
     const message = {type: initializeEditorMessage, syncUrl: "ws://localhost/session"}
     expect(isInitializeEditorMessage(message)).toBe(true)
