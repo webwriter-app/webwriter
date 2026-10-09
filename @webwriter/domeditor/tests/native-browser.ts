@@ -141,6 +141,35 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 
 const editor = new DOMEditor()
 
+await check("empty media controls wrap to fit their element", async () => {
+  const media = document.createElement("picture")
+  media.innerHTML = "<img>"
+  media.style.cssText = "height:180px;max-width:none"
+  fixture.append(media)
+  const placeholder = editor.features.media.placeholder
+  try {
+    for(const width of [800, 320, 120, 800]) {
+      media.style.width = `${width}px`
+      $.selectElement(media)
+      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+      placeholder.showFor(media)
+      await layoutFrame(); await layoutFrame()
+      const buttons = placeholder.root.querySelector(".file-options")!.getBoundingClientRect()
+      const url = placeholder.root.querySelector(".url-row")!.getBoundingClientRect()
+      const host = placeholder.element.getBoundingClientRect()
+      assert(width < 800 ? url.top >= buttons.bottom : Math.abs(url.top - buttons.top) < 2,
+        `URL input did not ${width < 800 ? "wrap" : "return to the first row"} at ${width}px`)
+      assert(url.left >= host.left && url.right <= host.right && buttons.left >= host.left && buttons.right <= host.right,
+        `media controls overflow at ${width}px`)
+      assert(url.width > buttons.width || width === 120, "wrapped URL input does not use the available width")
+    }
+  }
+  finally {
+    placeholder.hide()
+    media.remove()
+  }
+})
+
 await check("empty caption numbering is visible as a grey editing placeholder", async () => {
   const previousLanguage = document.documentElement.getAttribute("lang")
   const previousStyle = document.head.querySelector("style[data-ww-caption-enumeration]")?.textContent

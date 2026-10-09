@@ -114,6 +114,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   :host([data-open]) { display: grid; }
   .content {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
     width: min(52rem, 100%);
@@ -206,7 +207,6 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     .content { gap: .35rem; }
   }
   @container (max-width: 10rem) {
-    .content { flex-wrap: wrap; }
     .url-row { flex-basis: 100%; }
   }
 `)
