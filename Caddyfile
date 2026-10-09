@@ -1,5 +1,11 @@
 # Serves both the app origin and the editor frame origin; they share the same static files.
 :80 {
+	# Liveness probe for Docker / Coolify
+	handle /health {
+		header Cache-Control "no-store"
+		respond "ok" 200
+	}
+
 	root * /srv
 	encode zstd gzip
 	file_server
