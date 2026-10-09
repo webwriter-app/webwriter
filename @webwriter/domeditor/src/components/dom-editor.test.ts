@@ -7339,6 +7339,48 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
   })
 
+  it("shows shape input for captured graphics and routes styled keys", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const select = async (graphic: {active: true, capture: boolean} | null) => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {
+          path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}], ...(graphic ? {graphic} : {}),
+        }}, source: editorWindow,
+      }))
+      await editor.updateComplete
+    }
+    await select({active: true, capture: false})
+    expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBeNull()
+    await select({active: true, capture: true})
+    const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-shape-keyboard")!
+    expect(keyboard.closest(".document-stage")).not.toBeNull()
+    const paint = {fill: "#60a5fa", stroke: "#334155", "stroke-width": "8", opacity: "0.5"}
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.dispatchEvent(new CustomEvent("shape-paint-change", {detail: {paint}, bubbles: true, composed: true}))
+    await editor.updateComplete
+    await keyboard.updateComplete
+    expect((keyboard as unknown as {paint: object}).paint).toEqual(paint)
+    expect(execute).not.toHaveBeenCalled()
+    keyboard.dispatchEvent(new CustomEvent("shape-keyboard-command", {
+      detail: {shape: "heart", paint}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "addGraphicShape", shape: "heart", paint})
+    keyboard.dispatchEvent(new CustomEvent("shape-keyboard-close", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(true)
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show shape keyboard"]')!.click()
+    await editor.updateComplete
+    expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(false)
+    expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBe(keyboard)
+    await select(null)
+    expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBeNull()
+    execute.mockClear()
+    keyboard.dispatchEvent(new CustomEvent("shape-keyboard-command", {detail: {shape: "heart", paint}, bubbles: true, composed: true}))
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

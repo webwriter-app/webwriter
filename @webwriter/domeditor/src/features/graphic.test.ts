@@ -51,6 +51,44 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it("inserts painted shapes in one undo step while preserving unfamiliar content", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.insertAdjacentHTML("beforeend", '<!--keep--><g><path d="M0 0L5 5"/></g>')
+    const sibling = graphic.lastElementChild!
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const paint = {fill: "#60a5fa", stroke: "#1d4ed8", "stroke-width": "8", opacity: "0.5"}
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "heart", paint})
+    const shape = graphic.lastElementChild!
+    for(const [name, value] of Object.entries(paint)) expect(shape).toHaveAttribute(name, value)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(graphic.children[0]).toBe(sibling)
+    await mutationsDelivered()
+    expect(editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.children).toHaveLength(1)
+    expect(graphic.children[0]).toBe(sibling)
+    editor.features.history.actions.redo({type: "redo"})
+    for(const [name, value] of Object.entries(paint)) expect(graphic.lastElementChild).toHaveAttribute(name, value)
+  })
+
+  it.each(["line", "connector", "curved-connector-arrow"] as const)("keeps %s unfilled with insertion modifiers", shape => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: shape, paint: {fill: "red", stroke: "blue"}})
+    expect(document.querySelector("svg")!.lastElementChild).toHaveAttribute("fill", "none")
+    expect(document.querySelector("svg")!.lastElementChild).toHaveAttribute("stroke", "blue")
+  })
+
+  it("does nothing when the captured canvas was removed before a key is pressed", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.remove()
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "heart", paint: {fill: "red"}})
+    expect(graphic.children).toHaveLength(0)
+    expect(document.querySelector("svg")).toBeNull()
+  })
+
   it("reuses image source controls for a native SVG image and preserves canvas capture", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})

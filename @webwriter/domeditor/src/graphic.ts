@@ -1,4 +1,5 @@
 import {graphicPresetOptions, isGraphicPresetType, readGraphicPreset} from "./graphic-shapes"
+import {graphicShapePresets, type GraphicShapePreset} from "./graphic-shape-presets"
 
 export const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 
@@ -35,6 +36,18 @@ export const graphicShapeOptions = [
   .sort((a, b) => graphicShapeCategories.indexOf(a.category) - graphicShapeCategories.indexOf(b.category))
 
 export type GraphicShapeType = typeof basicGraphicShapeOptions[number]["type"] | typeof graphicPresetOptions[number]["type"] | typeof lineArrowOptions[number]["type"]
+
+export type GraphicShapePaint = Partial<Record<"fill" | "stroke" | "stroke-width" | "opacity", string>>
+
+export const defaultGraphicShapePaint: Required<GraphicShapePaint> = {
+  fill: "#ffffff", stroke: "#334155", "stroke-width": "4", opacity: "1",
+}
+
+/** Open geometry must remain unfilled, including when insertion paint is set. */
+export function graphicShapeIsOpen(type: GraphicShapeType) {
+  return type === "line" || type === "connector" || type.startsWith("line-") && type.endsWith("arrow")
+    || isGraphicPresetType(type) && Boolean((graphicShapePresets[type] as GraphicShapePreset).open)
+}
 
 export const graphicArrangeOperations = [
   "align-left", "align-center", "align-right",

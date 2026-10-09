@@ -18,7 +18,7 @@ import {mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeO
 import {MATH_NAMESPACE} from "../math"
 import {canonicalMarkName} from "../marks"
 import "./style-combobox"
-import {graphicShapeOptions, SVG_NAMESPACE} from "../graphic"
+import {defaultGraphicShapePaint, graphicShapeOptions, SVG_NAMESPACE, type GraphicShapePaint} from "../graphic"
 import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
 
 export type ToolboxTool = "Edit" | "Style" | "AI" | "Review"
@@ -49,6 +49,7 @@ export class DomEditorToolbox extends EditingControls {
 
   static properties = {
     ...EditingControls.properties,
+    shapePaint: {attribute: false},
     disableAI: {type: Boolean, attribute: "disable-ai", reflect: true},
     aiSidebar: {type: Boolean, attribute: "ai-sidebar", reflect: true},
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
@@ -65,6 +66,10 @@ export class DomEditorToolbox extends EditingControls {
     proofreadingState: {attribute: false},
     disableSpellChecking: {type: Boolean},
   }
+
+  shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
+  private shapeFillColor = "#ffffff"
+  private selectedShapeFillColor = "#ffffff"
 
   disableAI = false
   aiSidebar = false
@@ -83,6 +88,19 @@ export class DomEditorToolbox extends EditingControls {
   .developer-console-controls button:disabled {opacity: .6; cursor: default}
   .developer-console-controls svg {display: block; width: 15px; height: 15px}
 
+
+    .shape-paint-controls { grid-column: 1 / -1; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; color: #2f3742; font: .68rem/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .shape-paint-controls label, .shape-fill-field { display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); align-items: center; gap: .35rem; min-width: 0; }
+    .shape-paint-controls style-combobox { width: 100%; min-width: 0; }
+    .shape-color-control { display: flex; box-sizing: border-box; height: 1.7rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-radius: 4px; background: transparent; }
+    .shape-color-control:focus-within { box-shadow: 0 0 0 2px #b9d7f5; }
+    .shape-color-control input { flex: 1; box-sizing: border-box; width: 0; min-width: 0; height: 100%; padding: 3px; border: 0; border-radius: 4px; background: transparent; outline: none; }
+    .shape-color-control input::-webkit-color-swatch-wrapper { padding: 0; }
+    .shape-color-control input::-webkit-color-swatch { border: 0; }
+    .shape-color-control button { padding: 0 .4rem; border: 0; border-left: var(--editor-control-border-width, .5px) solid #c5ccd5; border-radius: 0 4px 4px 0; background: transparent; color: inherit; cursor: pointer; }
+    .shape-color-control button[aria-pressed="true"] { background: #e2edf8; color: #375d84; }
+    .shape-color-control button:hover:not(:disabled) { background: #edf3f9; }
+    .shape-color-control:has(input:disabled) { opacity: .55; }
 
     .widget-sharing {padding: .75rem 0; display: grid; gap: .5rem; border-bottom: 1px solid var(--sl-color-neutral-200, #ddd)}
     .share-toggle {display: flex; justify-content: space-between; align-items: center; font-size: .875rem}
@@ -1013,9 +1031,7 @@ export class DomEditorToolbox extends EditingControls {
         <ribbon-button label="Import graphic" action="import-graphic" icon="Upload"></ribbon-button>
         <ribbon-button label="Save graphic" action="save-graphic" icon="Download"></ribbon-button>
         ${this.graphic.shape === "connector" ? this.renderGraphicConnectorControls(!captured) : nothing}
-        <div class="graphic-shape-gallery" role="group" aria-label="Graphic shapes">${graphicShapeOptions.map(option => html`
-          <ribbon-button label=${option.label} icon-only action=${`add-graphic-shape:${option.type}`} icon=${option.icon}
-            icon-path=${option.path ?? nothing} ?disabled=${!captured}></ribbon-button>`)}</div>
+        <ribbon-button label="Shapes" action="show-shape-keyboard" icon="Graphic" ?disabled=${!captured}></ribbon-button>
         ${this.renderGraphicArrangeControls(count, count > 0, captured)}
         ${["grid", "snap", "guides"].map(option => html`<ribbon-button label=${option[0].toUpperCase() + option.slice(1)}
           action=${`toggle-graphic-option:${option}`} toggle .active=${this.graphic?.options?.[option as "grid" | "snap" | "guides"] ?? true}
@@ -1037,6 +1053,66 @@ export class DomEditorToolbox extends EditingControls {
     if(this.listType === "ol") return this.renderListControls()
     if(this.sectionSelected && this.sectionType !== "figure") return html`<div class="specialized-commands">${this.renderSectionControls()}</div>`
     return nothing
+  }
+
+  private setShapePaint(name: keyof GraphicShapePaint, value: string) {
+    if(!this.graphic?.active) return
+    const count = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
+    if(count > 0) {
+      if(name === "fill") {
+        const fill = this.graphic.parameters?.fill
+        if(value !== "none") this.selectedShapeFillColor = value
+        else if(fill && fill !== "none") this.selectedShapeFillColor = fill
+      }
+      this.dispatchGraphicParameterValue(name, value)
+      return
+    }
+    if(!this.graphic.capture) return
+    if(name === "fill" && value !== "none") this.shapeFillColor = value
+    this.shapePaint = {...this.shapePaint, [name]: value}
+    this.dispatchEvent(new CustomEvent("shape-paint-change", {
+      detail: {paint: {...this.shapePaint}}, bubbles: true, composed: true,
+    }))
+  }
+
+  private renderShapeDrawer() {
+    if(!this.graphic?.active) return nothing
+    const count = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
+    const selected = count > 0
+    const disabled = !selected && !this.graphic.capture
+    const option = selected && this.graphic.shape ? graphicShapeOptions.find(option => option.type === this.graphic!.shape) : undefined
+    const shapeName = this.graphic.shape
+      ? this.graphic.shape[0].toUpperCase() + this.graphic.shape.slice(1).replaceAll("-", " ") : "Shape"
+    const label = !selected ? "Preset" : count > 1 ? "Shapes" : option?.label ?? shapeName
+    const paint = selected ? {
+      fill: this.graphic.parameters?.fill ?? defaultGraphicShapePaint.fill,
+      stroke: this.graphic.parameters?.stroke ?? defaultGraphicShapePaint.stroke,
+      "stroke-width": this.graphic.parameters?.["stroke-width"] ?? defaultGraphicShapePaint["stroke-width"],
+      opacity: this.graphic.parameters?.opacity ?? defaultGraphicShapePaint.opacity,
+    } : this.shapePaint
+    const fillColor = paint.fill === "none" ? (selected ? this.selectedShapeFillColor : this.shapeFillColor) : paint.fill
+    return html`<ribbon-drawer label=${label} icon=${option?.icon ?? "Graphic"} icon-path=${option?.path ?? nothing}
+      layout="shape-paint" show-pane-icon .elementCount=${count > 1 ? count : 1}>
+      <div class="shape-paint-controls" role="group" aria-label=${selected ? "Selected shape style" : "New shape style"}>
+        <div class="shape-fill-field"><span>Fill</span><span class="shape-color-control" role="group" aria-label="Fill color">
+          <input type="color" aria-label="Shape key fill color" data-ribbon-input-persistent
+            .value=${/^#[0-9a-f]{6}$/i.test(fillColor) ? fillColor : "#ffffff"} ?disabled=${disabled}
+            @input=${(event: Event) => this.setShapePaint("fill", (event.target as HTMLInputElement).value)}>
+          <button type="button" aria-label="No fill" title="No fill" aria-pressed=${String(paint.fill === "none")} ?disabled=${disabled}
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @click=${() => this.setShapePaint("fill", paint.fill === "none" ? fillColor : "none")}>∅</button>
+        </span></div>
+        <label><span>Stroke</span><span class="shape-color-control"><input type="color" aria-label="Shape key stroke color" data-ribbon-input-persistent
+          .value=${/^#[0-9a-f]{6}$/i.test(paint.stroke) ? paint.stroke : "#334155"} ?disabled=${disabled}
+          @input=${(event: Event) => this.setShapePaint("stroke", (event.target as HTMLInputElement).value)}></span></label>
+        <label><span>Width</span>${this.renderOptionSelect("Shape key stroke width", paint["stroke-width"],
+          [...new Set(["0", "1", "2", "4", "6", "8", "12", paint["stroke-width"]])].map(width => ({value: width, label: width === "0" ? "None" : width})),
+          disabled, value => this.setShapePaint("stroke-width", value))}</label>
+        <label><span>Opacity</span>${this.renderOptionSelect("Shape key opacity", paint.opacity,
+          [...new Set(["1", "0.75", "0.5", "0.25", paint.opacity])].map(opacity => ({value: opacity, label: `${Number(opacity) * 100}%`})),
+          disabled, value => this.setShapePaint("opacity", value))}</label>
+      </div>
+    </ribbon-drawer>`
   }
 
   protected renderDrawers(): TemplateResult<1>[] {
@@ -1339,6 +1415,7 @@ export class DomEditorToolbox extends EditingControls {
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
             ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}
+            ${this.activeTool === "Edit" ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
           ${(this.activeTool === "Edit" || this.consoleOpen) ? this.renderEditModeFooter() : ""}

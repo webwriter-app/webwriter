@@ -31,6 +31,7 @@ export class RibbonDrawer extends LitElement {
     advancedCount: {type: Number, attribute: false},
     icon: {type: String},
     iconUrl: {type: String, attribute: "icon-url"},
+    iconPath: {type: String, attribute: "icon-path"},
     label: {type: String},
     elementCount: {type: Number, attribute: "element-count"},
     showPaneIcon: {type: Boolean, attribute: "show-pane-icon"},
@@ -1111,6 +1112,7 @@ export class RibbonDrawer extends LitElement {
   advancedCount: number | null = null
   icon = ""
   iconUrl = ""
+  iconPath = ""
   label = "Drawer"
   elementCount = 1
   showPaneIcon = false
@@ -1509,7 +1511,9 @@ export class RibbonDrawer extends LitElement {
   }
 
   render() {
-    const icon = this.iconUrl ? html`<img src=${this.iconUrl} alt="">` : ribbonIcon(this.icon || this.label)
+    const icon = this.iconUrl ? html`<img src=${this.iconUrl} alt="">`
+      : this.iconPath ? html`<svg viewBox="-10 -10 120 120" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"><path d=${this.iconPath}></path></svg>`
+        : ribbonIcon(this.icon || this.label)
     const elementCount = this.elementCount > 1 ? html`<span class="element-count" aria-label=${`${this.elementCount} elements`}>${this.elementCount}</span>` : ""
     const toggleUnavailable = (!this.collapsed && !this.expandable)
       || (this.layout === "elements" && !this.collapsed && !this.drawerOpen)

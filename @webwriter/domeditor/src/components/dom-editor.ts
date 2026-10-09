@@ -6,6 +6,7 @@ import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentRefe
 import "./developer-console"
 import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
+import "./shape-keyboard"
 import "./link-keyboard"
 import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
@@ -146,11 +147,14 @@ import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 import {aiPage, type AIChangeOperation} from "../ai-tools"
 import type {TableSelectionState} from "../table"
 import {
+  defaultGraphicShapePaint,
   isGraphicArrangeOperation,
   isGraphicLayerOperation,
   isGraphicShapeType,
   isGraphicViewportOperation,
   type GraphicSelectionState,
+  type GraphicShapeType,
+  type GraphicShapePaint,
 } from "../graphic"
 import {
   BackendClient,
@@ -447,6 +451,8 @@ export class DomEditor extends LitElement {
     graphicSelection: {attribute: false, state: true},
     mathSelection: {attribute: false, state: true},
     mathKeyboardHidden: {attribute: false, state: true},
+    shapeKeyboardHidden: {attribute: false, state: true},
+    shapePaint: {attribute: false, state: true},
     linkSelection: {attribute: false, state: true},
     linkKeyboardHidden: {attribute: false, state: true},
     linkKeyboardError: {attribute: false, state: true},
@@ -570,6 +576,8 @@ export class DomEditor extends LitElement {
   private graphicSelection: GraphicSelectionState | null = null
   private mathSelection: MathSelectionState | null = null
   private mathKeyboardHidden = false
+  private shapeKeyboardHidden = false
+  private shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
   private linkSelection: LinkSelectionState | null = null
   private linkKeyboardHidden = false
   private linkKeyboardError = ""
@@ -826,7 +834,7 @@ export class DomEditor extends LitElement {
     @keyframes document-loading-spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .document-loading-spinner { animation: none; } }
 
-    .math-keyboard-area, .link-keyboard-area {
+    .math-keyboard-area, .shape-keyboard-area, .link-keyboard-area {
       position: absolute;
       z-index: 5;
       bottom: 0;
@@ -839,6 +847,9 @@ export class DomEditor extends LitElement {
 
     .math-keyboard-area dom-editor-math-keyboard { height: 100%; max-height: none; pointer-events: auto; }
 
+    .shape-keyboard-area { height: auto; max-height: 100%; }
+    .shape-keyboard-area[hidden] { display: none; }
+    .shape-keyboard-area dom-editor-shape-keyboard { pointer-events: auto; }
     .link-keyboard-area { height: min(280px, 100%); }
     .link-keyboard-area[hidden] { display: none; }
     .link-keyboard-area dom-editor-link-keyboard { height: 100%; pointer-events: auto; }
@@ -3894,6 +3905,11 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
+    if(label === "show-shape-keyboard") {
+      this.shapeKeyboardHidden = false
+      this.focusEditor()
+      return
+    }
     if(label?.startsWith("add-graphic-shape:")) {
       const shape = label.slice("add-graphic-shape:".length)
       if(isGraphicShapeType(shape)) void this.execute({type: "addGraphicShape", shape}).finally(() => this.focusEditor())
@@ -5591,6 +5607,8 @@ export class DomEditor extends LitElement {
     if(changed.has("mathSelection") && this.mathSelection?.active) {
       if(!changed.get("mathSelection")) this.mathKeyboardHidden = false
     }
+    if(changed.has("graphicSelection") && this.graphicSelection?.capture
+      && !(changed.get("graphicSelection") as GraphicSelectionState | null)?.capture) this.shapeKeyboardHidden = false
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
     if(ribbon && toolbox) void toolbox.updateComplete.then(() => {
@@ -5600,6 +5618,13 @@ export class DomEditor extends LitElement {
       const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
       if(input) this.syncHTMLSourceScroll(input)
     }
+  }
+
+  private handleShapeKeyboardCommand = (event: CustomEvent<{shape: GraphicShapeType, paint: GraphicShapePaint}>) => {
+    if(!this.graphicSelection?.capture || this.previewActive || this.liveSessionActive || !isGraphicShapeType(event.detail?.shape)) return
+    void this.execute({type: "addGraphicShape", shape: event.detail.shape, paint: event.detail.paint})
+      .catch(() => { /* Concurrent edits may remove the active canvas. */ })
+      .finally(() => this.focusEditor())
   }
 
   private handleMathKeyboardCommand = (event: CustomEvent<{command: string}>) => {
@@ -6965,6 +6990,18 @@ export class DomEditor extends LitElement {
             @live-widget-state-change=${this.handleLiveWidgetStateChange}
           ></live-session-overlay>
         ` : ""}
+        ${this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive ? html`
+          ${this.shapeKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
+            title="Show shape keyboard" aria-label="Show shape keyboard"
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @click=${() => { this.shapeKeyboardHidden = false; this.focusEditor() }}>${ribbonIcon("Graphic")}</button>` : nothing}
+          <section class="shape-keyboard-area" aria-label="Shape input" ?hidden=${this.shapeKeyboardHidden}>
+            <dom-editor-shape-keyboard .paint=${this.shapePaint}
+              @shape-keyboard-command=${this.handleShapeKeyboardCommand}
+              @shape-keyboard-close=${() => { this.shapeKeyboardHidden = true; this.focusEditor() }}
+            ></dom-editor-shape-keyboard>
+          </section>
+        ` : nothing}
         ${this.linkSelection?.active && !this.mathSelection?.active && !this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive ? html`
           ${this.linkKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
             title="Show link keyboard" aria-label="Show link keyboard"
@@ -6994,6 +7031,10 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
+        .shapePaint=${this.shapePaint}
+        @shape-paint-change=${(event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
+          if(this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive) this.shapePaint = {...event.detail.paint}
+        }}
         .proofreadingState=${this.proofreadingState}
         .disableSpellChecking=${this.settings.disableSpellChecking}
         .disableAI=${this.settings.disableAI}

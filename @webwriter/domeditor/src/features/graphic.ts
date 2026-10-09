@@ -12,6 +12,7 @@ import {
   graphicShapeOptions,
   graphicShapeRoots,
   graphicShapeType,
+  graphicShapeIsOpen,
   standaloneGraphicShape,
   isGraphicArrangeOperation,
   isGraphicLayerOperation,
@@ -21,6 +22,7 @@ import {
   type GraphicLayerOperation,
   type GraphicSelectionState,
   type GraphicShapeType,
+  type GraphicShapePaint,
   type GraphicViewportOperation,
 } from "../graphic"
 
@@ -682,11 +684,17 @@ export class GraphicFeature extends EditorFeature {
         this.editor.postSelectionPath(true)
       }
     },
-    addGraphicShape: ({shape}: {type: "addGraphicShape", shape: GraphicShapeType}) => {
+    addGraphicShape: ({shape, paint}: {type: "addGraphicShape", shape: GraphicShapeType, paint?: GraphicShapePaint}) => {
       if(!isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#capturedGraphic()
       if(!graphic) return
       let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
+      for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
+        const value = paint?.[name]
+        if(typeof value === "string" && !(name === "fill" && graphicShapeIsOpen(shape))) {
+          this.#setParameter(element, name, value)
+        }
+      }
       graphic.append(element)
       if(shape === "text-box") element = this.#setLabel(element, "Text")
       this.#selectShape(element)

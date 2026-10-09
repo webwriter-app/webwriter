@@ -6,6 +6,7 @@ import {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenu} from "./ribbon-menu"
 import {AppRibbon} from "./ribbon"
 import {DomEditorToolbox} from "./toolbox"
+import type {StyleCombobox} from "./style-combobox"
 import type {RibbonButton} from "./ribbon-button"
 
 beforeEach(() => document.body.replaceChildren())
@@ -30,27 +31,149 @@ describe("graphic ribbon", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const root = toolbox.shadowRoot!
-    expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 2)).toEqual([
-      "Style", "Graphic",
+    expect(Array.from(root.querySelectorAll('.toolbox-pane-content > ribbon-drawer'), drawer => drawer.getAttribute("label")).slice(0, 3)).toEqual([
+      "Style", "Graphic", "Snip one corner",
     ])
     const graphic = root.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="svg"]')!
     expect(root.querySelector('ribbon-drawer[label="Graphic style"]')).toBeNull()
     expect(root.querySelector('ribbon-drawer[label="Insert shapes"]')).toBeNull()
     expect(graphic.querySelector(".graphic-geometry-controls")).toBeNull()
     const options = graphic.querySelector<HTMLElement>(".specialized-options")!
-    expect(options.querySelector(".graphic-shape-gallery")).not.toBeNull()
+    expect(options.querySelector(".graphic-shape-gallery")).toBeNull()
+    expect(options.querySelector('[action="show-shape-keyboard"]')).not.toBeNull()
     expect(options.querySelector('[action="import-graphic"]')).toHaveAttribute("icon", "Upload")
     expect(options.querySelector('[action="save-graphic"]')).toHaveAttribute("icon", "Download")
-    expect(Array.from(options.querySelectorAll<RibbonButton>('ribbon-button[action^="add-graphic-shape:"]'), button => button.action)).toEqual(
-      graphicShapeOptions.map(option => `add-graphic-shape:${option.type}`),
-    )
+    expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).not.toBeNull()
     toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "connector"}
     await toolbox.updateComplete
     expect(options.querySelector('.graphic-connector-controls')).not.toBeNull()
-    expect(root.querySelector('ribbon-drawer[label="Connector"]')).toBeNull()
+    expect(root.querySelector('ribbon-drawer[label="Connector"]')).not.toBeNull()
     toolbox.graphic = {active: true, capture: true, selectionCount: 2}
     await toolbox.updateComplete
     expect(options.querySelector('.graphic-connector-controls')).toBeNull()
+    expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).toHaveAttribute("label", "Shapes")
+  })
+
+  it("uses the Preset drawer for new insertions without changing graphic parameters", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {
+      active: true, capture: true, selectionCount: 0,
+      parameters: {fill: "#ff0000", stroke: "#00ff00", "stroke-width": "12", opacity: "0.25"},
+    }
+    const listener = vi.fn()
+    toolbox.addEventListener("shape-paint-change", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const drawer = toolbox.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[layout="shape-paint"]')!
+    expect(drawer).toHaveAttribute("label", "Preset")
+    expect(drawer).toHaveAttribute("icon", "Graphic")
+    await (drawer as RibbonDrawer).updateComplete
+    const fill = drawer.querySelector<HTMLInputElement>('[aria-label="Shape key fill color"]')!
+    const stroke = drawer.querySelector<HTMLInputElement>('[aria-label="Shape key stroke color"]')!
+    const width = drawer.querySelectorAll<StyleCombobox>("style-combobox")[0]
+    const opacity = drawer.querySelectorAll<StyleCombobox>("style-combobox")[1]
+
+    expect(fill.value).toBe("#ffffff")
+    expect(stroke.value).toBe("#334155")
+    expect(toolbox.shapePaint).toEqual({fill: "#ffffff", stroke: "#334155", "stroke-width": "4", opacity: "1"})
+
+    fill.value = "#12ab34"
+    fill.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    stroke.value = "#ab1234"
+    stroke.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    width.value = "6"
+    width.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "6"}, bubbles: true, composed: true}))
+    opacity.value = "0.5"
+    opacity.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "0.5"}, bubbles: true, composed: true}))
+
+    expect(listener).toHaveBeenNthCalledWith(1, expect.objectContaining({detail: {paint: {fill: "#12ab34", stroke: "#334155", "stroke-width": "4", opacity: "1"}}}))
+    expect(listener).toHaveBeenNthCalledWith(2, expect.objectContaining({detail: {paint: {fill: "#12ab34", stroke: "#ab1234", "stroke-width": "4", opacity: "1"}}}))
+    expect(listener).toHaveBeenNthCalledWith(3, expect.objectContaining({detail: {paint: {fill: "#12ab34", stroke: "#ab1234", "stroke-width": "6", opacity: "1"}}}))
+    expect(listener).toHaveBeenNthCalledWith(4, expect.objectContaining({detail: {paint: {fill: "#12ab34", stroke: "#ab1234", "stroke-width": "6", opacity: "0.5"}}}))
+    expect(listener.mock.calls.every(([event]) => event.bubbles && event.composed)).toBe(true)
+    expect(toolbox.graphic.parameters).toEqual({fill: "#ff0000", stroke: "#00ff00", "stroke-width": "12", opacity: "0.25"})
+
+    const noFill = drawer.querySelector<HTMLButtonElement>('[aria-label="No fill"]')!
+    noFill.click()
+    await toolbox.updateComplete
+    expect(toolbox.shapePaint.fill).toBe("none")
+    expect(fill.value).toBe("#12ab34")
+    noFill.click()
+    await toolbox.updateComplete
+    expect(toolbox.shapePaint.fill).toBe("#12ab34")
+    expect(noFill.getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("shows the selected shape icon and name and routes edits to that shape", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {
+      active: true, capture: false, selectionCount: 1, shape: "heart",
+      parameters: {fill: "#ff0000", stroke: "#00ff00", "stroke-width": "3", opacity: "0.3"},
+    }
+    const presetListener = vi.fn()
+    const editListener = vi.fn()
+    toolbox.addEventListener("shape-paint-change", presetListener)
+    toolbox.addEventListener("graphic-parameter-change", editListener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[layout="shape-paint"]')!
+    await drawer.updateComplete
+    expect(drawer.label).toBe("Heart")
+    expect(drawer.iconPath).toBe(graphicShapeOptions.find(option => option.type === "heart")!.path)
+    expect(drawer.shadowRoot!.querySelector(".pane-icon path")).toHaveAttribute("d", drawer.iconPath)
+    const fill = drawer.querySelector<HTMLInputElement>('[aria-label="Shape key fill color"]')!
+    const stroke = drawer.querySelector<HTMLInputElement>('[aria-label="Shape key stroke color"]')!
+    const width = drawer.querySelectorAll<StyleCombobox>("style-combobox")[0]
+    const opacity = drawer.querySelectorAll<StyleCombobox>("style-combobox")[1]
+    expect(fill).toHaveValue("#ff0000")
+    expect(stroke).toHaveValue("#00ff00")
+    expect(width.value).toBe("3")
+    expect(width.label).toBe("Shape key stroke width")
+    expect(opacity.value).toBe("0.3")
+    expect(opacity.label).toBe("Shape key opacity")
+    expect(fill.disabled).toBe(false)
+    for(const [control, value, name, event] of [
+      [fill, "#12ab34", "fill", "input"], [stroke, "#ab1234", "stroke", "input"],
+      [width, "6", "stroke-width", "combobox-change"], [opacity, "0.5", "opacity", "combobox-change"],
+    ] as const) {
+      control.value = value
+      control.dispatchEvent(event === "combobox-change"
+        ? new CustomEvent(event, {detail: {value}, bubbles: true, composed: true})
+        : new Event(event, {bubbles: true, composed: true}))
+      expect(editListener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {name, value}}))
+    }
+    expect(presetListener).not.toHaveBeenCalled()
+    expect(toolbox.shapePaint.fill).toBe("#ffffff")
+    const noFill = drawer.querySelector<HTMLButtonElement>('[aria-label="No fill"]')!
+    noFill.click()
+    expect(editListener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {name: "fill", value: "none"}}))
+    toolbox.graphic = {...toolbox.graphic, parameters: {...toolbox.graphic.parameters, fill: "none"}}
+    await toolbox.updateComplete
+    noFill.click()
+    expect(editListener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {name: "fill", value: "#ff0000"}}))
+    toolbox.graphic = {active: true, capture: true, selectionCount: 0}
+    await toolbox.updateComplete
+    expect(drawer.label).toBe("Preset")
+    expect(fill.value).toBe("#ffffff")
+  })
+
+  it("disables shape paint controls without capture and hides them outside graphic context", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {active: true, capture: false}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const drawer = toolbox.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[layout="shape-paint"]')!
+    expect([...drawer.querySelectorAll<HTMLInputElement | StyleCombobox | HTMLButtonElement>("input, style-combobox, button")]
+      .every(control => control.disabled)).toBe(true)
+
+    toolbox.graphic = undefined
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="shape-paint"]')).toBeNull()
   })
 
   it("stacks inline controls within the narrow toolbox pane", () => {
@@ -112,32 +235,18 @@ describe("graphic ribbon", () => {
 
   })
 
-  it("expands shape insertion as top-level buttons enabled only for a capture-selected drawing area", async () => {
+  it("opens the shape keyboard only for a captured drawing area", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Edit"
     ribbon.graphic = {active: true, capture: false}
     document.body.append(ribbon)
     await ribbon.updateComplete
-    let shapes = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>(
-      'ribbon-drawer[label="Insert shapes"] ribbon-button[action^="add-graphic-shape:"]',
-    ))
-    expect(shapes.map(shape => shape.label)).toEqual(graphicShapeOptions.map(option => option.label))
-    const gallery = ribbon.shadowRoot!.querySelector('.graphic-shape-gallery')!
-    expect(gallery.querySelectorAll('[role="separator"]')).toHaveLength(graphicShapeCategories.length - 1)
-    expect(gallery.querySelectorAll('ribbon-button[icon-only]')).toHaveLength(graphicShapeOptions.length)
-
-    expect(shapes.every(shape => shape.disabled)).toBe(true)
-    expect(shapes.every(shape => shape.submenu.length === 0)).toBe(true)
-
-    ribbon.graphic = {active: true, capture: true, options: {grid: true, snap: true, guides: true}}
+    const key = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Insert shapes"] ribbon-button[action="show-shape-keyboard"]')!
+    expect(key.disabled).toBe(true)
+    expect(ribbon.shadowRoot!.querySelector('[action^="add-graphic-shape:"]')).toBeNull()
+    ribbon.graphic = {active: true, capture: true}
     await ribbon.updateComplete
-    shapes = Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>(
-      'ribbon-drawer[label="Insert shapes"] ribbon-button[action^="add-graphic-shape:"]',
-    ))
-    expect(shapes.every(shape => !shape.disabled)).toBe(true)
-    expect(Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer"), drawer => drawer.getAttribute("label"))).toEqual([
-      "Style", "Insert shapes", "Arrange", "Canvas",
-    ])
+    expect(key.disabled).toBe(false)
   })
 
   it("maps multi-selection commands into a compact Arrange drawer", async () => {

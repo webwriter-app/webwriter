@@ -30,7 +30,6 @@ import {insertMathStructureButtons} from "./ribbon-menu-config"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {
   graphicShapeOptions,
-  graphicShapeCategories,
   type GraphicLayerOperation,
   type GraphicSelectionState,
   type GraphicViewportOperation,
@@ -2110,23 +2109,6 @@ export abstract class EditingControls extends LitElement {
     const labelableShapeSelected = shapeSelected && this.graphic.shape !== "line" && this.graphic.shape !== "connector"
     const shapesSelected = selectionCount > 0
     const options = this.graphic.options
-    const renderShapes = (options: typeof graphicShapeOptions) => html`
-      <div class="graphic-shape-gallery" role="group" aria-label="Graphic shapes">
-        ${options.map((option, index) => html`
-          ${index > 0 && option.category !== options[index - 1]?.category
-            ? html`<div class="graphic-shape-divider" role="separator"></div>` : nothing}
-          <ribbon-button
-            label=${option.label}
-            icon-only
-            action=${`add-graphic-shape:${option.type}`}
-            icon=${option.icon}
-            icon-path=${option.path ?? nothing}
-            ?disabled=${!captured}
-          ></ribbon-button>
-        `)}
-      </div>
-    `
-    const primaryCategories = graphicShapeCategories.slice(0, 3)
     const fileControls = html`
       <div class="graphic-file-controls" role="group" aria-label="Graphic files">
         <ribbon-button label="Import graphic" action="import-graphic" icon="Upload"></ribbon-button>
@@ -2141,13 +2123,7 @@ export abstract class EditingControls extends LitElement {
       </ribbon-drawer>
       ${toolbox ? nothing : fileControls}
       <ribbon-drawer label="Insert shapes" icon="Graphic" layout="graphic">
-        ${toolbox ? html`
-          ${renderShapes(graphicShapeOptions.filter(option => primaryCategories.includes(option.category)))}
-          <details class="graphic-disclosure">
-            <summary>More shapes</summary>
-            ${renderShapes(graphicShapeOptions.filter(option => !primaryCategories.includes(option.category)))}
-          </details>
-        ` : renderShapes(graphicShapeOptions)}
+        <ribbon-button label="Shapes" action="show-shape-keyboard" icon="Graphic" ?disabled=${!captured}></ribbon-button>
       </ribbon-drawer>
       <ribbon-drawer label="Arrange" icon="Align" layout="graphic-arrange">
         ${this.renderGraphicArrangeControls(selectionCount, shapesSelected, captured)}
