@@ -141,6 +141,46 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 
 const editor = new DOMEditor()
 
+await check("whitespace beside a lone floated figure selects document start", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1400px;height:400px;max-width:none"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><figure style="float:right;width:200px;height:200px"><img><figcaption>Keep</figcaption></figure></body>'
+  document.body.append(frame)
+  let frameEditor: DOMEditor | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `float-only editor did not initialize: ${view.editorError}`)
+    frameEditor = view.editor!
+    const doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    for(const side of ["left", "right"]) {
+      doc.body.innerHTML = `<figure style="float:${side};width:200px;height:200px"><img><figcaption>Keep</figcaption></figure>`
+      const figure = doc.querySelector("figure")!
+      doc.getSelection()!.setBaseAndExtent(doc.body, 0, doc.body, 1)
+      frameEditor.features.selection.processSelection(undefined, {scrollIntoView: false})
+      assert(frameEditor.features.manipulation.setFloat(figure, side === "left" ? "far-left" : "far-right"), "could not float the figure")
+      await layoutFrame()
+      const x = side === "left" ? 1300 : 30, y = 150
+      const event = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 21, clientX: x, clientY: y})
+      doc.body.dispatchEvent(event)
+      assert(event.defaultPrevented, `native caret hit testing still owns the outside click: float=${view.getComputedStyle(figure).float}, selection=${doc.getSelection()!.anchorNode?.nodeName}@${doc.getSelection()!.anchorOffset}, hits=${doc.elementsFromPoint(x, y).map(el => el.localName).join(",")}`)
+      doc.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 21, clientX: x, clientY: y}))
+      await layoutFrame()
+      assert(doc.getSelection()!.isCollapsed && doc.getSelection()!.anchorNode === doc.body && doc.getSelection()!.anchorOffset === 0,
+        "whitespace click did not select document start")
+      const caret = frameEditor.features.selection.emptyDocumentCaret!
+      assert(caret && view.getComputedStyle(caret).display !== "none", "document-start caret is hidden")
+      doc.body.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Start"}))
+      assert(figure.previousElementSibling?.textContent === "Start", "typing at document start did not create a preceding paragraph")
+      assert(figure.querySelector("figcaption")!.textContent === "Keep", "typing replaced the figure caption")
+    }
+  }
+  finally { frameEditor?.destroy(); frame.remove() }
+})
+
 await check("empty media controls wrap to fit their element", async () => {
   const media = document.createElement("picture")
   media.innerHTML = "<img>"

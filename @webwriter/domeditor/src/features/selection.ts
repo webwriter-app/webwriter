@@ -922,6 +922,7 @@ export class SelectionFeature extends EditorFeature {
       ? this.editor.features.canvas.itemAtPoint(ev.clientX, ev.clientY) : null
     if($.isEmptyDocumentSelection && editingFlowRoot(ev.target instanceof Node ? ev.target : null) === getDocumentRoot()
       && !canvasItem) {
+      if(Array.from(getDocumentRoot().children).some(isOutOfFlow)) ev.preventDefault()
       // Browsers focus an empty design-mode body on pointerdown but do not
       // consistently create a DOM selection for it. Restore the editing
       // position explicitly; pointerup restores it after the browser's
@@ -1147,6 +1148,9 @@ export class SelectionFeature extends EditorFeature {
    * selection stays on a structural element. */
   #modifierSelectionTarget(target: EventTarget | null) {
     if(!(target instanceof Node)) return null
+    const origin = atomicEditingContainer(target, this.editor.schema) ?? (isElement(target) ? target : target.parentElement)
+    const figure = origin?.closest("figure")
+    if(figure && !isDocumentRoot(figure)) return figure
     let targetElement = atomicEditingContainer(target, this.editor.schema) ?? getContainer(target)
     const summary = targetElement.closest("details > summary")
     if(summary) return summary.parentElement

@@ -40,6 +40,33 @@ function el(tag = "p", text = "") {
 }
 
 describe("figure node selection", () => {
+  it.each(["left", "right"])("clicks outside a lone %s-floated figure to select document start", side => {
+    document.body.innerHTML = `<figure style="float:${side}"><img><figcaption>Keep</figcaption></figure>`
+    const figure = document.querySelector("figure")!
+    $.selectElement(figure)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    const caretHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => null})
+    try {
+      for(let click = 0; click < 2; click++) {
+        const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, clientX: 20, clientY: 100})
+        document.body.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+        document.body.dispatchEvent(new MouseEvent("pointerup", {bubbles: true, clientX: 20, clientY: 100}))
+        expect($.anchor).toBe(document.body)
+        expect($.anchorOffset).toBe(0)
+        expect($.isEmptyDocumentSelection).toBe(true)
+        expect(figure).not.toHaveClass("◆element-selected")
+        expect(feature.emptyDocumentCaret).not.toBeNull()
+        expect(editor.toHTML(true)).not.toContain("◆")
+      }
+    }
+    finally {
+      if(caretHitTest) Object.defineProperty(document, "caretPositionFromPoint", caretHitTest)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+    }
+  })
+
   it("selects and hovers the wrapper through a content path while keeping captions editable", () => {
     document.body.innerHTML = '<figure><picture><img src="image.png"></picture><figcaption>Label</figcaption></figure>'
     const figure = document.querySelector("figure")!
@@ -2382,6 +2409,19 @@ describe("document listeners", () => {
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(p)
     expect(p.classList.contains("◆element-selected")).toBe(true)
+  })
+  it.each(["figure", "img", "figcaption", "figcaption span"])("modifier-click on %s selects the containing figure", selector => {
+    document.body.innerHTML = '<figure><img><figcaption><span>Caption</span></figcaption></figure><p>Other</p>'
+    const figure = document.querySelector("figure")!
+    const target = document.querySelector(selector)!
+    for(const type of ["pointerdown", "pointerup", "click"]) {
+      const event = new MouseEvent(type, {bubbles: true, cancelable: true, metaKey: true, ctrlKey: true})
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    expect($.selectedElement).toBe(figure)
+    expect(figure).toHaveClass("◆element-selected")
+    expect(document.querySelector("figcaption")).not.toHaveClass("◆element-selected")
   })
   it.each(["body", "html", "span", "section"])("does not select the document on modifier-click of %s", tag => {
     document.body.innerHTML = '<p>hello</p><span>inline</span><section>section text</section>'

@@ -575,6 +575,14 @@ describe("selectCoords()", () => {
 })
 
 describe("captioned element hit testing", () => {
+  it.each(["none", "caption", "root"])("resolves whitespace beside a lone float to document start when native hit testing returns %s", caret => {
+    setBody('<!--keep-->\n<figure style="float:right"><img><figcaption>Label</figcaption></figure>\n')
+    const caption = document.querySelector("figcaption")!
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () =>
+      caret === "none" ? null : {offsetNode: caret === "caption" ? caption.firstChild! : document.body, offset: 1}})
+    expect($.pointFromCoords(20, 100, document.body)).toEqual({node: document.body, offset: 0, overrideNative: true})
+  })
+
   it.each(["figure", "table"])("resolves outside %s caption hits to gaps while retaining caption text hits", tag => {
     setBody(tag === "figure" ? '<figure><p>Body</p><figcaption>Label</figcaption></figure>' : '<table><caption>Label</caption><tbody><tr><td>Cell</td></tr></tbody></table>')
     const target = document.querySelector(tag)!, caption = target.querySelector("figcaption, caption")!

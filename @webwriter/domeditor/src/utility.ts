@@ -471,6 +471,14 @@ export class EditingSelection {
     const pointerElement = hit ?? (selectionRoot ? selectionRoot : pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
     const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
+    // A root containing only floats/positioned elements still has an editable
+    // start. Native hit testing may return no caret, or a nearby floated caption.
+    if(!selectionRoot && flow === root && (!hit || hit === root)
+      && Array.from(root.children).some(isOutOfFlow)
+      && Array.from(root.childNodes).every(node => isElement(node) ? isOutOfFlow(node)
+        : !(node instanceof Text) || !node.textContent?.trim())) {
+      return {node: root, offset: 0, overrideNative: true}
+    }
     const captioned = pointerElement?.closest("figure, table:has(> caption)") ?? caretElement?.closest("figure, table:has(> caption)")
     if(captioned && root.contains(captioned) && !isOutOfFlow(captioned)) {
       const rect = captioned.getBoundingClientRect()
