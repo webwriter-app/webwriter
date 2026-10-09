@@ -7,6 +7,7 @@ import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
+import photo from "@tabler/icons/outline/photo.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
 import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
@@ -102,16 +103,28 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     display: none;
     box-sizing: border-box;
     place-items: center;
-    overflow: auto;
+    overflow: clip;
     padding: .25rem;
     color: #f3f4f6;
     background: rgba(31, 41, 55, 0.5);
     font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     pointer-events: none;
     user-select: none;
-    container-type: inline-size;
+    container-type: size;
   }
   :host([data-open]) { display: grid; }
+  .expand {
+    display: none;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 2px;
+    border: 0;
+    border-radius: .35rem;
+    color: #343740;
+    background: rgba(255, 255, 255, .75);
+    cursor: pointer;
+  }
   .content {
     display: flex;
     flex-wrap: wrap;
@@ -139,6 +152,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     flex: 0 0 auto;
     gap: .4rem;
     height: calc(var(--control-height) - 2px);
+    min-width: calc(1.125rem + .375rem + 1px);
     padding: 0 .65rem;
     border: 0;
     color: #343740;
@@ -147,8 +161,8 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     cursor: pointer;
   }
   .file-options button + button { border-inline-start: 1px solid #c7c9ce; }
-  .file-options button:hover, .apply:hover { background: #eef4fb; }
-  .file-options button:active, .apply:active { color: #1e4f87; background: #c4dcf4; }
+  .file-options button:hover { background: #eef4fb; }
+  .file-options button:active { color: #1e4f87; background: #c4dcf4; }
   .label { white-space: nowrap; }
   .icon { display: flex; flex: 0 0 auto; }
   .icon svg { display: block; width: 1.125rem; height: 1.125rem; }
@@ -161,7 +175,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     min-width: 0;
     width: 100%;
     height: var(--control-height);
-    padding: .35rem calc(var(--control-height) + .25rem) .35rem .65rem;
+    padding: .35rem .65rem;
     border: 1px solid #c7c9ce;
     border-radius: .35rem;
     color: #343740;
@@ -182,20 +196,22 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   }
   .apply {
     position: absolute;
-    inset-inline-end: .25rem;
+    inset-inline-end: 2px;
     top: 50%;
     transform: translateY(-50%);
     display: grid;
     place-items: center;
-    width: calc(var(--control-height) - .5rem);
-    height: calc(var(--control-height) - .5rem);
-    padding: 0;
+    width: calc(1.125rem + 4px);
+    height: calc(1.125rem + 4px);
+    padding: 2px;
     border: 0;
-    border-radius: .25rem;
+    border-radius: 50%;
     color: #343740;
-    background: transparent;
+    background: rgba(255, 255, 255, 0.5);
     cursor: pointer;
   }
+  .apply:hover { background: rgba(238, 244, 251, 0.5); }
+  .apply:active { color: #1e4f87; background: rgba(196, 220, 244, 0.5); }
   input:focus { outline: none; }
   button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -2px; }
   @container (max-width: 30rem) {
@@ -209,6 +225,64 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   @container (max-width: 10rem) {
     .url-row { flex-basis: 100%; }
   }
+  /* A shallow media box has room for one row only. Keep the input's preferred
+   * width until the button labels have yielded, then let the input shrink. */
+  @container (max-height: 5.25rem) {
+    .content {
+      --control-height: min(2rem, 100cqh);
+      flex-wrap: nowrap;
+      gap: .35rem;
+    }
+    .file-options { flex-shrink: 0; }
+    .url-row { flex-basis: 20rem; min-width: min(3.5rem, 25cqw); }
+    .url { padding-block: 0; }
+    .or { display: none; }
+  }
+  @container (max-height: 5.25rem) and (max-width: 52rem) {
+    .file-options .label { display: none; }
+    .file-options button { width: clamp(calc(1.125rem + .375rem + 1px), 18cqw, var(--control-height)); padding: 0; }
+  }
+  :host([data-compact]) .expand { display: grid; }
+  :host([data-compact]) .content { display: none; }
+  :host([data-compact][data-popup-open]) .content {
+    --control-height: 2rem;
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    padding: .65rem;
+    border: 1px solid #c7c9ce;
+    border-radius: .65rem;
+    background: white;
+    color: #343740;
+    box-shadow: 0 3px 12px #0003;
+    overflow: visible;
+    pointer-events: auto;
+  }
+  :host([data-compact][data-popup-open]) .content::before {
+    content: "";
+    position: absolute;
+    left: var(--bubble-arrow);
+    top: -5px;
+    width: 8px;
+    height: 8px;
+    border-top: 1px solid #c7c9ce;
+    border-left: 1px solid #c7c9ce;
+    background: white;
+    transform: rotate(45deg);
+  }
+  :host([data-popup-above]) .content::before {
+    top: auto;
+    bottom: -5px;
+    transform: rotate(225deg);
+  }
+  :host([data-compact]) .file-options .label { display: none; }
+  :host([data-compact]) .file-options button { width: 2rem; padding: 0; }
+  :host([data-compact]) .url-row { flex-basis: 100%; min-width: 0; }
+  :host([data-compact]) .or { display: none; }
 `)
 
 class MediaPlaceholder {
@@ -238,7 +312,10 @@ class MediaPlaceholder {
     this.root = root
     adoptStylesheet(root, mediaPlaceholderStylesheet)
     root.innerHTML = `
-      <div class="content">
+      <button class="expand" type="button" aria-label="Add media" title="Add media" aria-expanded="false" aria-controls="media-inputs">
+        <span class="icon" aria-hidden="true">${photo}</span>
+      </button>
+      <div class="content" id="media-inputs">
         <div class="file-options" role="group" aria-label="Media source">
           <button class="file" type="button" aria-label="Select file" title="Select file">
             <span class="icon" aria-hidden="true">${folderOpen}</span><span class="label">Select file</span>
@@ -264,6 +341,28 @@ class MediaPlaceholder {
     const picker = root.querySelector<HTMLInputElement>(".picker")!
     const url = root.querySelector<HTMLInputElement>(".url")!
     const file = root.querySelector<HTMLButtonElement>(".file")!
+    root.querySelector<HTMLButtonElement>(".expand")!.addEventListener("click", () => {
+      if(!this.target?.isConnected || !this.element.hasAttribute("data-compact")) return
+      if(this.element.hasAttribute("data-popup-open")) this.closePopup()
+      else {
+        this.element.setAttribute("data-popup-open", "")
+        root.querySelector(".expand")!.setAttribute("aria-expanded", "true")
+        root.querySelector<HTMLElement>(".content")!.showPopover?.()
+        this.positionPopup()
+        this.updateUrlHint()
+        url.focus({preventScroll: true})
+      }
+    })
+    root.querySelector<HTMLElement>(".content")!.addEventListener("toggle", event => {
+      if((event as ToggleEvent).newState === "closed") this.closePopup()
+    })
+    root.addEventListener("keydown", event => {
+      if((event as KeyboardEvent).key === "Escape" && this.element.hasAttribute("data-popup-open")) {
+        event.preventDefault()
+        this.closePopup()
+        root.querySelector<HTMLButtonElement>(".expand")!.focus({preventScroll: true})
+      }
+    })
     root.addEventListener("pointerdown", event => {
       if((event as PointerEvent).button !== 0 || !(event.target instanceof Element) || !event.target.closest("button, input")) return
       this.beginInteraction()
@@ -333,6 +432,33 @@ class MediaPlaceholder {
     this.onInteractionChange?.()
   }
 
+  private closePopup() {
+    this.element.removeAttribute("data-popup-open")
+    this.root.querySelector(".expand")!.setAttribute("aria-expanded", "false")
+    const content = this.root.querySelector<HTMLElement>(".content")!
+    if(content.hasAttribute("popover")) content.hidePopover?.()
+  }
+
+  private updateUrlHint() {
+    const url = this.root.querySelector<HTMLInputElement>(".url")!
+    const label = url.getAttribute("aria-label")!
+    url.placeholder = url.getBoundingClientRect().width < 240 ? "URL" : `Enter ${label[0].toLowerCase()}${label.slice(1)}`
+  }
+
+  private positionPopup() {
+    const rect = this.element.getBoundingClientRect()
+    const content = this.root.querySelector<HTMLElement>(".content")!
+    const width = Math.min(360, window.innerWidth - 16)
+    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8))
+    content.style.width = `${width}px`
+    const height = content.getBoundingClientRect().height
+    const above = rect.bottom + height + 16 > window.innerHeight && rect.top > height + 16
+    const top = above ? rect.top - height - 8 : Math.min(rect.bottom + 8, window.innerHeight - height - 8)
+    this.element.toggleAttribute("data-popup-above", above)
+    Object.assign(content.style, {left: `${left}px`, top: `${Math.max(8, top)}px`})
+    content.style.setProperty("--bubble-arrow", `${Math.max(12, Math.min(width - 20, rect.left + rect.width / 2 - left - 4))}px`)
+  }
+
   private cancelFileRead() {
     this.fileReadGeneration++
     const reader = this.fileReader
@@ -341,6 +467,7 @@ class MediaPlaceholder {
   }
 
   dispose() {
+    this.closePopup()
     this.cancelFileRead()
     this.target = null
     this.onSource = null
@@ -388,6 +515,7 @@ class MediaPlaceholder {
 
   showFor(target: Element) {
     if(this.target !== target) {
+      this.closePopup()
       this.cancelFileRead()
       this.root.querySelector<HTMLInputElement>(".url")!.value = ""
       this.clearUrlError()
@@ -409,6 +537,18 @@ class MediaPlaceholder {
     url.placeholder = `Enter ${noun} URL`
     url.setAttribute("aria-label", `${noun[0].toUpperCase()}${noun.slice(1)} URL`)
     const rect = target.getBoundingClientRect()
+    const compact = rect.width > 0 && rect.height > 0 && (rect.width < 120 || rect.height < 28)
+    if(!compact) this.closePopup()
+    this.element.toggleAttribute("data-compact", compact)
+    const content = this.root.querySelector<HTMLElement>(".content")!
+    if(compact) {
+      if(content.getAttribute("popover") !== "auto") content.setAttribute("popover", "auto")
+    }
+    else {
+      content.removeAttribute("popover")
+      content.removeAttribute("style")
+    }
+    this.root.querySelector(".expand")!.setAttribute("aria-label", `Add ${noun}`)
     Object.assign(this.element.style, {
       left: `${rect.left}px`,
       top: `${rect.top}px`,
@@ -417,9 +557,12 @@ class MediaPlaceholder {
     })
     this.element.setAttribute("data-open", "")
     this.element.removeAttribute("aria-hidden")
+    if(this.element.hasAttribute("data-popup-open")) this.positionPopup()
+    this.updateUrlHint()
   }
 
   hide() {
+    this.closePopup()
     this.cancelFileRead()
     this.target = null
     this.element.removeAttribute("data-open")
@@ -1059,6 +1202,12 @@ export class MediaFeature extends EditorFeature {
         this.editor.addAppendix(placeholder)
       }
       const rect = image.getBoundingClientRect()
+      if(rect.width > 0 && rect.height > 0 && (rect.width < 64 || rect.height < 28)) {
+        placeholder.innerHTML = photo
+        const icon = placeholder.querySelector<SVGSVGElement>("svg")!
+        icon.style.cssText = "width:18px;height:18px;max-width:100%;max-height:100%;min-width:0;min-height:0"
+      }
+      else placeholder.textContent = "Add an image"
       const style = getComputedStyle(image)
       placeholder.hidden = rect.width <= 0 || rect.height <= 0
         || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"

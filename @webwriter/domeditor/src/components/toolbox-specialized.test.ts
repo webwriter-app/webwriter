@@ -47,6 +47,7 @@ describe("specialized element toolbox", () => {
       element: {...selectedElement(localName, {lang: "en"}), path: null},
       style: styleState(localName, inline), count, styleProperties: Object.keys(inline), configuredWidgetOptions: [],
     })
+    toolbox.elementStyle = styleState("section", {"text-align": "center"})
     toolbox.selectedElementTypes = [group("p", 2, {"text-align": "center"}), group("img", 1), group("unfamiliar-element", 1)]
     document.body.append(toolbox)
     await toolbox.updateComplete
@@ -63,6 +64,7 @@ describe("specialized element toolbox", () => {
     toolbox.addEventListener("element-style-change", styleChanges)
     toolbox.addEventListener("element-attribute-change", attributeChanges)
     const paragraphStyles = drawers[0].querySelector("element-style-editor")!
+    expect(paragraphStyles.state.target?.localName).toBe("section")
     paragraphStyles.dispatchEvent(new CustomEvent("element-style-change", {
       detail: {property: "text-align", mutation: "right"}, bubbles: true, composed: true,
     }))

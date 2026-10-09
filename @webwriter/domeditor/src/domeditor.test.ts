@@ -150,6 +150,34 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)\s*\{[^}]*left:\s*anchor\(left\);/)
   })
 
+  it.each([
+    ["audio", 175, 35], ["video", 175, 70], ["img", 32, 32], ["picture", 32, 32],
+    ["svg", 32, 32], ["iframe", 320, 70], ["embed", 320, 70], ["object", 320, 70],
+  ] as const)("sets minimum editing dimensions for %s", (tag, width, height) => {
+    const element = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : document.createElement(tag)
+    element.classList.add("◆media-empty")
+    if(tag === "svg") element.setAttribute("viewBox", "0 0 1600 900")
+    document.body.append(element)
+    try {
+      // Happy DOM does not resolve complex :not() selectors on SVG elements.
+      const style = tag === "svg"
+        ? (Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
+          .find(rule => (rule as CSSStyleRule).selectorText?.includes("svg:not(svg *)")) as CSSStyleRule).style
+        : getComputedStyle(element)
+      expect(style.minWidth).toBe(`${width}px`)
+      expect(style.minHeight).toBe(`${height}px`)
+    }
+    finally { element.remove() }
+  })
+
+  it("allows the document background to paint the whole canvas", () => {
+    const htmlRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
+      .find(rule => (rule as CSSStyleRule).selectorText === "html") as CSSStyleRule
+    // A transparent HTML background lets the browser propagate BODY's
+    // authored background across its margins and the remaining viewport.
+    expect(htmlRule.style.background).toBe("transparent")
+  })
+
   it("starts with an editable default paragraph", () => {
     const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
       .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined

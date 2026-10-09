@@ -1717,9 +1717,9 @@ details {
   padding: calc(var(--pico-spacing) * 0.75);
   padding-inline-start: calc(var(--pico-spacing) * 1.5);
 }
-/* Indent all disclosure content, including bare text, without a wrapper. */
+/* Keep the summary inside the border when authored styles change the padding. */
 details > summary {
-  margin-inline-start: calc(var(--pico-spacing) * -0.75);
+  margin-inline-start: 0;
 }
 details summary {
   line-height: 1rem;

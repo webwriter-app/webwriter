@@ -1738,11 +1738,11 @@ describe("scrolling selections into view", () => {
       rect.mockReturnValue(new DOMRect(10, window.innerHeight - 20, 0, 20))
       $.move(paragraph.firstChild!, 1)
       feature.processSelection()
-      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 1.25 * fontSize, behavior: "instant"})
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 1.25 * fontSize, behavior: "smooth"})
       rect.mockReturnValue(new DOMRect(10, 0, 0, 20))
       $.move(paragraph.firstChild!, 2)
       feature.processSelection()
-      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: -1.25 * fontSize, behavior: "instant"})
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: -1.25 * fontSize, behavior: "smooth"})
     }
     finally {
       if(previousStyle === null) document.documentElement.removeAttribute("style")
@@ -1767,7 +1767,7 @@ describe("scrolling selections into view", () => {
       paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey, bubbles: true, cancelable: true}))
       expect(shiftKey ? paragraph.querySelector("br") : paragraph.nextElementSibling).toBeTruthy()
       frames.splice(0).forEach(callback => callback(0))
-      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 80, behavior: "instant"})
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 80, behavior: "smooth"})
     }
     finally { vi.restoreAllMocks() }
   })
@@ -1791,7 +1791,7 @@ describe("scrolling selections into view", () => {
       paragraph.dispatchEvent(new InputEvent("input", {inputType: "insertText", bubbles: true}))
       expect(frames).toHaveLength(1)
       frames.splice(0).forEach(callback => callback(0))
-      expect(scrollBy).toHaveBeenCalledExactlyOnceWith({left: 0, top: 80, behavior: "instant"})
+      expect(scrollBy).toHaveBeenCalledExactlyOnceWith({left: 0, top: 80, behavior: "smooth"})
     }
     finally { vi.restoreAllMocks() }
   })
@@ -1954,6 +1954,24 @@ describe("scrolling selections into view", () => {
     }
   })
 
+  it("respects disabled UI motion when revealing a text caret", () => {
+    const paragraph = el("p", "text")
+    const rect = vi.spyOn(Range.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(10, window.innerHeight + 40, 0, 20))
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    paragraph.style.setProperty("--ww-ui-transition", "none")
+    try {
+      $.move(paragraph.firstChild!, 1)
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 80, behavior: "instant"})
+      paragraph.style.removeProperty("--ww-ui-transition")
+      $.move(paragraph.firstChild!, 2)
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenLastCalledWith({left: 0, top: 80, behavior: "smooth"})
+    }
+    finally { rect.mockRestore(); scrollBy.mockRestore() }
+  })
+
   it("reveals the focus caret for text, empty, gap, and virtual-list selections", () => {
     const nativeRect = Range.prototype.getBoundingClientRect
     const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
@@ -1961,7 +1979,7 @@ describe("scrolling selections into view", () => {
       configurable: true,
       value: () => new DOMRect(10, window.innerHeight + 40, 0, 20),
     })
-    const expectMinimalScroll = (select: () => void, behavior = "instant") => {
+    const expectMinimalScroll = (select: () => void, behavior = "smooth") => {
       scrollBy.mockClear()
       select()
       feature.processSelection()
@@ -1978,7 +1996,7 @@ describe("scrolling selections into view", () => {
       expectMinimalScroll(() => $.move(document.querySelector("p")!, 0))
 
       document.body.innerHTML = "<p>a</p><p>b</p>"
-      expectMinimalScroll(() => $.selectGap(document.querySelector("p")!, "after"), "instant")
+      expectMinimalScroll(() => $.selectGap(document.querySelector("p")!, "after"))
 
       document.body.innerHTML = "<ul></ul>"
       expectMinimalScroll(() => $.move(document.querySelector("ul")!, 0))

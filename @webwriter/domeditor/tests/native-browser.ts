@@ -22,6 +22,56 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("details remain intact after applying style presets", async () => {
+  const {ElementStyleEditor} = await import("../src/components/element-style-editor")
+  const controls = new ElementStyleEditor()
+  controls.mode = "compact"
+  controls.showPresets = true
+  controls.propertyNames = []
+  controls.state = {target: {localName: "details", namespaceURI: "http://www.w3.org/1999/xhtml"},
+    inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:600px;height:400px;max-width:none"
+  const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><details><summary>Summary</summary>Bare text<p>Body</p><!--keep--></details></body>`
+  fixture.append(controls, frame)
+  try {
+    await loaded
+    await controls.updateComplete
+    const doc = frame.contentDocument!, details = doc.querySelector("details")!, summary = details.querySelector("summary")!
+    const children = Array.from(details.childNodes)
+    controls.addEventListener("element-style-change", event => {
+      const styles = (event as CustomEvent<{styles: Record<string, {value: string, priority: string}>}>).detail.styles
+      for(const [name, declaration] of Object.entries(styles)) details.style.setProperty(name, declaration.value, declaration.priority)
+    })
+    for(let page = 0; page < 4; page++) {
+      for(const button of controls.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")) {
+        button.click()
+        for(const direction of ["ltr", "rtl"]) {
+          doc.documentElement.dir = direction
+          for(const open of [false, true]) {
+            details.open = open
+            const box = details.getBoundingClientRect(), heading = summary.getBoundingClientRect()
+            const range = doc.createRange()
+            range.selectNodeContents(summary)
+            const text = range.getBoundingClientRect()
+            assert(heading.left >= box.left && heading.right <= box.right, `summary escaped preset border (${direction}, open=${open})`)
+            assert(text.left >= box.left && text.right <= box.right, `summary text escaped preset border (${direction}, open=${open})`)
+            summary.click()
+            assert(details.open !== open, "preset broke native disclosure toggling")
+            assert(children.every((child, index) => details.childNodes[index] === child), "preset changed authored disclosure content")
+          }
+        }
+      }
+      if(page < 3) {
+        controls.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Next style presets"]')!.click()
+        await controls.updateComplete
+      }
+    }
+  }
+  finally { frame.remove(); controls.remove() }
+})
+
 await check("collaborated scripts remain inert with namespace prefixes, clones and later edits", async () => {
   const root = document.createElement("main"), result = document.createElement("output")
   result.id = "native-script-execution"
@@ -211,6 +261,60 @@ await check("whitespace beside a lone floated figure selects document start", as
   finally { frameEditor?.destroy(); frame.remove() }
 })
 
+await check("document resizing and graphic fitting preserve normal flow", async () => {
+  const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  graphic.setAttribute("viewBox", "0 0 240 120")
+  graphic.innerHTML = '<rect x="20" y="20" width="80" height="40"/>'
+  graphic.style.cssText = "display:block;width:240px;height:120px;margin-inline:auto"
+  fixture.append(graphic)
+  try {
+    document.getSelection()!.setBaseAndExtent(fixture, fixture.childNodes.length - 1, fixture, fixture.childNodes.length)
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    editor.features.transformation.startTransform(graphic)
+    const handle = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    const rect = graphic.getBoundingClientRect()
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 51, clientX: rect.right, clientY: rect.bottom}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 51, clientX: rect.right - 40, clientY: rect.bottom - 20}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 51}))
+    await layoutFrame()
+    assert(!graphic.style.position && !graphic.style.left && !graphic.style.top, "resizing positioned a document graphic")
+    editor.features.transformation.fitGraphicBounds(graphic, {x: 20, y: 20, width: 80, height: 40}, graphic.getScreenCTM()!)
+    assert(!graphic.style.position && !graphic.style.left && !graphic.style.top, "fitting positioned a document graphic")
+    assert(getComputedStyle(graphic).position === "static", "document graphic left normal flow")
+  }
+  finally { graphic.remove(); editor.features.transformation.clearTransform() }
+})
+
+await check("media and graphics enforce minimum editing dimensions", async () => {
+  for(const [tag, width, height] of [
+    ["audio", 175, 35], ["video", 175, 70], ["img", 32, 32], ["picture", 32, 32],
+    ["svg", 32, 32], ["iframe", 320, 70], ["embed", 320, 70], ["object", 320, 70],
+  ] as const) {
+    const element = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : document.createElement(tag)
+    element.style.cssText = "display:block;width:1px;height:1px;max-width:1px;max-height:1px"
+    if(tag === "svg") element.setAttribute("viewBox", "0 0 1600 900")
+    if(tag === "picture") element.innerHTML = "<img>"
+    if(tag === "embed") {
+      element.setAttribute("type", "image/svg+xml")
+      element.setAttribute("src", "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E")
+    }
+    if(tag === "audio" || tag === "video") element.setAttribute("controls", "")
+    fixture.append(element)
+    await layoutFrame()
+    // Website normalization can replace EMBED/OBJECT with an IFRAME.
+    const target = element.isConnected ? element : fixture.lastElementChild as HTMLElement
+    try {
+      for(const empty of [false, true]) {
+        target.classList.toggle("◆media-empty", empty)
+        const style = getComputedStyle(target), rect = target.getBoundingClientRect()
+        assert(style.minWidth === `${width}px` && style.minHeight === `${height}px`, `${tag} minimum differs (${empty})`)
+        assert(rect.width >= width && rect.height >= height, `${tag} rendered below its minimum (${rect.width}x${rect.height})`)
+      }
+    }
+    finally { target.remove(); element.remove() }
+  }
+})
+
 await check("empty media controls wrap to fit their element", async () => {
   const media = document.createElement("picture")
   media.innerHTML = "<img>"
@@ -233,11 +337,101 @@ await check("empty media controls wrap to fit their element", async () => {
         `media controls overflow at ${width}px`)
       assert(url.width > buttons.width || width === 120, "wrapped URL input does not use the available width")
     }
+    for(const type of ["picture", "audio", "video"]) {
+      const shallow = document.createElement(type)
+      if(type === "picture") shallow.innerHTML = "<img>"
+      fixture.append(shallow)
+      try {
+        for(const height of [32, 54, 80]) {
+          for(const width of [1000, 800, 600, 320, 200, 120]) {
+            shallow.style.cssText = `width:${width}px;height:${height}px;max-width:none`
+            $.selectElement(shallow)
+            editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+            placeholder.showFor(shallow)
+            await layoutFrame()
+            const host = placeholder.element.getBoundingClientRect()
+            const buttons = placeholder.root.querySelector(".file-options")!.getBoundingClientRect()
+            const url = placeholder.root.querySelector(".url-row")!.getBoundingClientRect()
+            assert(Math.abs(url.top - buttons.top) < 2, `${type} controls wrapped at ${width}x${height}`)
+            for(const rect of [buttons, url]) {
+              assert(rect.left >= host.left - 1 && rect.right <= host.right + 1 && rect.top >= host.top - 1 && rect.bottom <= host.bottom + 1,
+                `${type} controls overflow at ${width}x${height}`)
+            }
+            assert(getComputedStyle(placeholder.element).overflow === "clip", "empty media controls allow scrolling")
+            if(width >= 600) assert(url.width >= 320, "URL input shortened before button labels yielded")
+            const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+            assert(input.placeholder === (url.width < 240 ? "URL" : `Enter ${type === "picture" ? "image" : type} URL`), "URL hint does not match input space")
+            for(const button of placeholder.root.querySelectorAll<HTMLElement>(".file-options button:not([hidden])")) {
+              const buttonRect = button.getBoundingClientRect(), icon = button.querySelector("svg")!.getBoundingClientRect()
+              assert(icon.left >= buttonRect.left && icon.right <= buttonRect.right && buttonRect.left >= buttons.left && buttonRect.right <= buttons.right,
+                `${type} icon button is clipped at ${width}x${height}`)
+            }
+            const labels = placeholder.root.querySelectorAll<HTMLElement>(".file-options button:not([hidden]) .label")
+            assert(Array.from(labels).every(label => getComputedStyle(label).display === (width <= 800 ? "none" : "block")),
+              `button labels did not yield before the URL at ${width}x${height}`)
+          }
+        }
+      }
+      finally { shallow.remove() }
+    }
   }
   finally {
     placeholder.hide()
     media.remove()
   }
+})
+
+await check("tiny images open media inputs in a speech bubble", async () => {
+  // The independent lifecycle fixture initializes an editor and takes focus.
+  const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")
+  if(frame && frame.contentDocument?.readyState !== "complete") await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("lifecycle fixture did not load")), 2000)
+    frame.addEventListener("load", () => { clearTimeout(timer); resolve() }, {once: true})
+  })
+  const picture = document.createElement("picture")
+  picture.innerHTML = "<img>"
+  picture.style.cssText = "width:32px;height:32px;max-width:none"
+  fixture.append(picture)
+  const placeholder = editor.features.media.placeholder
+  try {
+    $.selectElement(picture)
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    await layoutFrame()
+    placeholder.showFor(picture)
+    const expand = placeholder.root.querySelector<HTMLButtonElement>(".expand")!
+    const content = placeholder.root.querySelector<HTMLElement>(".content")!
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    const host = placeholder.element.getBoundingClientRect(), button = expand.getBoundingClientRect()
+    assert(getComputedStyle(expand).display === "grid" && getComputedStyle(content).display === "none", "tiny image did not reduce to one button")
+    assert(button.left >= host.left && button.right <= host.right && button.top >= host.top && button.bottom <= host.bottom, "tiny image button escapes its image")
+    const icon = expand.querySelector("svg")!.getBoundingClientRect()
+    assert(icon.left >= button.left && icon.right <= button.right && icon.top >= button.top && icon.bottom <= button.bottom, "tiny image button clips its icon")
+    const passive = getComputedStyle(picture, "::after")
+    assert(parseFloat(passive.width) > 0 && parseFloat(passive.width) <= 32 && parseFloat(passive.height) > 0 && parseFloat(passive.height) <= 32 && passive.backgroundSize === "contain", `passive image icon does not fit 32px: ${passive.width}x${passive.height}`)
+    expand.click()
+    assert(placeholder.root.activeElement === input, `media bubble lost focus immediately: ${document.activeElement?.localName}, ${editor.appendix.activeElement?.localName}`)
+    await layoutFrame()
+    assert(content.matches(":popover-open"), "media inputs did not open in the top layer")
+    const popup = content.getBoundingClientRect()
+    assert(popup.width > host.width && popup.left >= 0 && popup.right <= window.innerWidth && popup.top >= 0 && popup.bottom <= window.innerHeight, "media bubble is clipped or outside the viewport")
+    for(const control of content.querySelectorAll<HTMLElement>(".file-options, .url-row")) {
+      const rect = control.getBoundingClientRect()
+      assert(rect.left >= popup.left && rect.right <= popup.right && rect.top >= popup.top && rect.bottom <= popup.bottom, "media bubble clips its inputs")
+    }
+    assert(getComputedStyle(content, "::before").content === '\"\"', "media bubble has no pointer")
+    assert(placeholder.root.activeElement === input && input.placeholder === "Enter image URL", "media bubble did not focus the full URL input")
+    content.hidePopover()
+    await layoutFrame()
+    assert(expand.getAttribute("aria-expanded") === "false" && !placeholder.element.hasAttribute("data-popup-open"), "native dismissal did not reset the media button")
+    expand.click()
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    assert(!content.matches(":popover-open") && placeholder.root.activeElement === expand, "Escape did not close the bubble and restore button focus")
+    expand.click()
+    placeholder.hide()
+    assert(!content.matches(":popover-open"), "hiding media controls leaked an open bubble")
+    assert(!editor.toHTML(true).includes("media-inputs"), "media bubble leaked into serialized content")
+  }
+  finally { placeholder.hide(); picture.remove() }
 })
 
 await check("empty caption numbering is visible as a grey editing placeholder", async () => {

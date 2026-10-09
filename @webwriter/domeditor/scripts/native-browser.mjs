@@ -7,6 +7,10 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "tiny images open media inputs in a speech bubble",
+  "document resizing and graphic fitting preserve normal flow",
+  "media and graphics enforce minimum editing dimensions",
+  "details remain intact after applying style presets",
   "figure permalinks align with padded caption numbering",
   "empty caption numbering is visible as a grey editing placeholder",
   "empty media controls wrap to fit their element",

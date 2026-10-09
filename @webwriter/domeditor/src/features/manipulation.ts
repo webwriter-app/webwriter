@@ -2029,6 +2029,25 @@ export class ManipulationFeature extends EditorFeature {
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
+  /** Edit toolbox styles belong to the direct container below Document. */
+  get topLevelStyleTarget(): Element | null {
+    const root = getDocumentRoot()
+    if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
+    let target = this.styleTarget
+    if(target === document.body || target === root) {
+      const selection = document.getSelection()
+      if(!selection?.rangeCount) return root
+      const common = selection.getRangeAt(0).commonAncestorContainer
+      target = common instanceof Element ? common : common.parentElement ?? root
+    }
+    if(!target.isConnected || !root.contains(target)) return root
+    while(target !== root && target.parentElement !== root) {
+      if(!target.parentElement) return root
+      target = target.parentElement
+    }
+    return target
+  }
+
   private inlineStyleOf(element: Element | null): CSSStyleDeclaration | null {
     const style = (element as (Element & {style?: CSSStyleDeclaration}) | null)?.style
     return style && typeof style.setProperty === "function"? style: null
@@ -2162,7 +2181,7 @@ export class ManipulationFeature extends EditorFeature {
       : target
   }
 
-  getStyleState(properties: string[] = [], target = this.styleTarget, includeSelection = true): ElementStyleState {
+  getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true): ElementStyleState {
     if(includeSelection && $.isMultiElementSelection) {
       const styles = $.selectedElements.map(element => this.getStyleState(properties, element, false))
       return {...styles[0], inline: commonValues(styles.map(state => state.inline)), computed: commonValues(styles.map(state => state.computed))}
@@ -2229,7 +2248,7 @@ export class ManipulationFeature extends EditorFeature {
         ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},
       inline,
       computed,
-      context: {display: computedStyle.display, parentDisplay},
+      context: {display: computedStyle.display, parentDisplay, positioning: this.editor.features.canvas.active || this.editor.features.slides.active},
     }
   }
 
@@ -2816,14 +2835,18 @@ export class ManipulationFeature extends EditorFeature {
       previousName?: string
       value: string | null
     }) => this.setElementAttribute(path, localName, namespaceURI, name, value, previousName),
-    getStyleState: ({properties}: {type: "getStyleState", properties?: string[]}) => {
+    getStyleState: ({properties, topLevel}: {type: "getStyleState", properties?: string[], topLevel?: boolean}) => {
       if(properties !== undefined && (!Array.isArray(properties) || properties.some(name => typeof name !== "string"))) {
         throw new TypeError("Style-state property names must be strings")
       }
-      return this.getStyleState(properties)
+      return topLevel ? this.getStyleState(properties, this.topLevelStyleTarget, false) : this.getStyleState(properties)
     },
-    setStyle: ({styles}: {type: "setStyle", styles: Record<string, ElementStyleMutation>}) => {
-      this.setStyle(styles)
+    setStyle: ({styles, topLevel}: {type: "setStyle", styles: Record<string, ElementStyleMutation>, topLevel?: boolean}) => {
+      if(topLevel) {
+        const target = this.topLevelStyleTarget
+        if(target) this.setElementStyles(target, styles)
+      }
+      else this.setStyle(styles)
     },
     setBlockStyle: ({styles}: {type: "setBlockStyle", styles: Record<string, ElementStyleMutation>}) => {
       this.setBlockStyle(styles)
@@ -3627,6 +3650,10 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private allowedElementStyles(target: Element, entries: ValidatedStyleEntry[]) {
+    if(!this.editor.features.canvas.active && !this.editor.features.slides.active) {
+      entries = entries.filter(({name, value}) => name !== "position" || !value
+        || !["relative", "absolute", "sticky"].includes(value.trim().toLowerCase()))
+    }
     return isDocumentRoot(target) || target === document.body
       ? entries.filter(({name}) => name === "background" || name.startsWith("background-"))
       : entries

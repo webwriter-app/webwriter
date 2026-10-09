@@ -4367,6 +4367,24 @@ describe("DomEditor.execute()", () => {
     expect(execute.mock.calls.filter(([action]) => action.type === "setStyle")).toEqual([[{type: "setStyle", styles}]])
   })
 
+  it("routes every Edit toolbox style command to the top-level container", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    for(const detail of [
+      {styles: {padding: "4px"}},
+      {styles: {"text-align": "center"}},
+      {styles: {color: "red"}, selectionType: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}},
+    ]) {
+      toolbox.dispatchEvent(new CustomEvent("element-style-change", {detail, bubbles: true, composed: true}))
+      expect(execute).toHaveBeenCalledWith({type: "setStyle", topLevel: true, styles: detail.styles})
+    }
+    await (editor as any).refreshElementStyleState()
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "getStyleState", topLevel: true}))
+  })
+
   it("loads Style-pane state lazily and routes inline style changes", async () => {
     const {editor} = await mountEditor()
     let display = "block"

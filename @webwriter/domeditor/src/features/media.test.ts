@@ -169,6 +169,9 @@ describe("media editing", () => {
     const style = Array.from(placeholderController.root.adoptedStyleSheets[0].cssRules, rule => rule.cssText).join("\n")
     expect(style).toMatch(/\.content\s*\{[\s\S]*?display:\s*flex;/)
     expect(getComputedStyle(placeholderController.root.querySelector(".content")!).flexWrap).toBe("wrap")
+    expect(getComputedStyle(placeholder).overflow).toBe("clip")
+    expect(style).toMatch(/container-type:\s*size;/)
+    expect(style).toMatch(/@container \(max-height:\s*5\.25rem\)[\s\S]*?flex-wrap:\s*nowrap;/)
     expect(style).toMatch(/@container \(max-width:\s*30rem\)[\s\S]*?\.file-options \.label\s*\{[\s\S]*?display:\s*none;/)
     const buttons = Array.from(placeholderController.root.querySelectorAll<HTMLButtonElement>(".file-options button"))
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Select file", "Capture screen", "Record"])
@@ -177,18 +180,101 @@ describe("media editing", () => {
       expect.stringContaining("icon-tabler-screen-share"),
       expect.stringContaining("icon-tabler-player-record"),
     ])
-    expect(placeholderController.root.querySelectorAll('.icon[aria-hidden="true"] svg')).toHaveLength(4)
+    expect(placeholderController.root.querySelectorAll('.icon[aria-hidden="true"] svg')).toHaveLength(5)
     const apply = placeholderController.root.querySelector<HTMLButtonElement>(".apply")!
     expect(apply).toHaveAccessibleName("Apply URL")
     expect(apply.querySelector(".icon-tabler-arrow-right")).not.toBeNull()
     expect(apply.parentElement).toBe(placeholderController.root.querySelector(".url-row"))
     expect(getComputedStyle(apply).position).toBe("absolute")
+    expect(getComputedStyle(apply).padding).toBe("2px")
+    expect(getComputedStyle(apply).borderRadius).toBe("50%")
+    expect(getComputedStyle(apply).backgroundColor).toBe("rgba(255, 255, 255, 0.5)")
     expect(getComputedStyle(apply.parentElement!).position).toBe("relative")
     expect(document.body.querySelector("svg, .file-options, .url-row")).toBeNull()
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toMatch(/svg|icon-tabler|Media source/)
     expect(document.body.children).toHaveLength(1)
     expect(editor.toHTML(true)).toBe("<audio controls=\"\"></audio>")
+  })
+
+  it("shortens the URL hint as the input shrinks and restores it when it grows", () => {
+    document.body.innerHTML = "<audio controls></audio>"
+    const audio = document.querySelector("audio")!
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    const rect = vi.spyOn(input, "getBoundingClientRect")
+    rect.mockReturnValue(new DOMRect(0, 0, 300, 35))
+    placeholder.showFor(audio)
+    expect(input.placeholder).toBe("Enter audio URL")
+    rect.mockReturnValue(new DOMRect(0, 0, 100, 35))
+    placeholder.showFor(audio)
+    expect(input.placeholder).toBe("URL")
+    expect(input.getAttribute("aria-label")).toBe("Audio URL")
+    rect.mockReturnValue(new DOMRect(0, 0, 300, 35))
+    placeholder.showFor(audio)
+    expect(input.placeholder).toBe("Enter audio URL")
+  })
+
+  it("opens tiny image inputs in an appendix popover and cleans up on resize, replacement and hiding", () => {
+    document.body.innerHTML = "<picture><img></picture><picture><img></picture>"
+    const [image, other] = Array.from(document.querySelectorAll("picture"))
+    const rect = vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 32, 32))
+    vi.spyOn(other, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 10, 32, 32))
+    const placeholder = editor.features.media.placeholder
+    const content = placeholder.root.querySelector<HTMLElement>(".content")!
+    const expand = placeholder.root.querySelector<HTMLButtonElement>(".expand")!
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    content.showPopover = vi.fn()
+    content.hidePopover = vi.fn()
+    placeholder.showFor(image)
+    expect(placeholder.element).toHaveAttribute("data-compact")
+    expect(content).toHaveAttribute("popover", "auto")
+    expect(expand).toHaveAccessibleName("Add image")
+    expect(expand).toHaveAttribute("aria-expanded", "false")
+    expand.click()
+    expect(content.showPopover).toHaveBeenCalledOnce()
+    expect(placeholder.element).toHaveAttribute("data-popup-open")
+    expect(expand).toHaveAttribute("aria-expanded", "true")
+    expect(placeholder.root.activeElement).toBe(input)
+    input.value = "https://example.com/image.png"
+    placeholder.onSource = vi.fn()
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(placeholder.onSource).toHaveBeenCalledWith(image, "https://example.com/image.png")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    expect(placeholder.element).not.toHaveAttribute("data-popup-open")
+    expect(placeholder.root.activeElement).toBe(expand)
+    expand.click()
+    placeholder.showFor(other)
+    expect(placeholder.element).not.toHaveAttribute("data-popup-open")
+    expect(input.value).toBe("")
+    placeholder.showFor(image)
+    expand.click()
+    rect.mockReturnValue(new DOMRect(10, 10, 400, 200))
+    placeholder.showFor(image)
+    expect(placeholder.element).not.toHaveAttribute("data-compact")
+    expect(content).not.toHaveAttribute("popover")
+    expect(content).not.toHaveAttribute("style")
+    rect.mockReturnValue(new DOMRect(10, 10, 32, 32))
+    placeholder.showFor(image)
+    expand.click()
+    placeholder.hide()
+    expect(placeholder.element).not.toHaveAttribute("data-popup-open")
+    expect(expand).toHaveAttribute("aria-expanded", "false")
+    expect(placeholder.element.getRootNode()).toBe(editor.appendix)
+    expect(editor.toHTML(true)).not.toMatch(/popover|media-inputs|Add image/)
+  })
+
+  it("fits a passive SVG image placeholder icon into a 32px image", async () => {
+    document.body.innerHTML = '<svg><image width="32" height="32"></image></svg>'
+    const image = document.querySelector("svg image")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 32, 32))
+    await vi.waitFor(() => expect(editor.appendix.querySelector('[part="graphic-image-placeholder"] svg')).not.toBeNull())
+    const icon = editor.appendix.querySelector<SVGSVGElement>('[part="graphic-image-placeholder"] svg')!
+    expect(icon.style.width).toBe("18px")
+    expect(icon.style.height).toBe("18px")
+    expect(icon.style.maxWidth).toBe("100%")
+    expect(icon.style.maxHeight).toBe("100%")
+    expect(editor.toHTML(true)).not.toContain("icon-tabler")
   })
 
   it("distinguishes selected and passive empty-media placeholders", async () => {

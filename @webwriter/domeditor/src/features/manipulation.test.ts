@@ -3350,6 +3350,101 @@ describe("setStyle()", () => {
     expect(root.firstElementChild).toHaveStyle({width: "20px"})
   })
 
+  it.each(["section", "div", "demo-widget"])("styles the top-level %s from nested content in the Edit toolbox", tag => {
+    document.body.innerHTML = `<${tag}><div><p style="color: blue">hello</p></div></${tag}><p>other</p>`
+    const outer = document.body.firstElementChild!
+    const paragraph = outer.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {color: "red", padding: "4px"}})
+
+    expect(outer).toHaveStyle({color: "red", padding: "4px"})
+    expect(paragraph).toHaveStyle({color: "blue"})
+    expect(outer.firstElementChild).not.toHaveAttribute("style")
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe(tag)
+  })
+
+  it.each(["img", "demo-widget"])("keeps styling available for a capture-selected %s with a native top-level gap", tag => {
+    document.body.innerHTML = `<${tag} style="opacity: 0.8"></${tag}><p>other</p>`
+    const captured = document.body.firstElementChild!
+    $.selectGap(captured, "before")
+    editor.features.selection.captureElement(captured, {preserveNativeSelection: true})
+    expect($.isGapSelection).toBe(true)
+    const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true})
+    expect(state.target?.localName).toBe(tag)
+    expect(state.inline.opacity?.value).toBe("0.8")
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {opacity: "0.5"}})
+    expect(captured).toHaveStyle({opacity: "0.5"})
+    expect(document.body).not.toHaveAttribute("style")
+
+    captured.remove()
+    $.selectGap(document.body.firstElementChild!, "before")
+    expect(editor.features.manipulation.topLevelStyleTarget).toBeNull()
+  })
+
+  it("keeps captured widget styling on its top-level container", () => {
+    document.body.innerHTML = '<section><demo-widget></demo-widget></section><p>other</p>'
+    const container = document.body.firstElementChild!, widget = container.firstElementChild!
+    $.selectGap(container, "before")
+    editor.features.selection.captureElement(widget, {preserveNativeSelection: true})
+    expect(editor.features.manipulation.topLevelStyleTarget).toBe(container)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: "4px"}})
+    expect(container).toHaveStyle({padding: "4px"})
+    expect(widget).not.toHaveAttribute("style")
+  })
+
+  it("uses the top-level container below a document template", () => {
+    document.body.innerHTML = '<demo-document role="document"><section><div><p>text</p></div></section></demo-document>'
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: "8px"}})
+    expect(document.querySelector("section")).toHaveStyle({padding: "8px"})
+    expect(document.body.firstElementChild).not.toHaveAttribute("style")
+    expect(document.querySelector("div")).not.toHaveAttribute("style")
+    $.selectGap(document.querySelector("section")!, "before")
+    expect(editor.features.manipulation.topLevelStyleTarget).toBeNull()
+  })
+
+  it("disables top-level gap styling while preserving document styling", () => {
+    document.body.innerHTML = '<section><p>one</p></section><p>two</p>'
+    $.selectGap(document.body.lastElementChild!, "before")
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target).toBeNull()
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "red"}})
+    expect(document.body).not.toHaveAttribute("style")
+    expect(document.body.firstElementChild).not.toHaveAttribute("style")
+
+    $.selectElement(document.body)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "red"}})
+    expect(document.body).toHaveStyle({backgroundColor: "red"})
+  })
+
+  it("resolves a replaced top-level container from the current selection", () => {
+    document.body.innerHTML = '<section><p>old</p></section>'
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    const previous = editor.features.manipulation.topLevelStyleTarget!
+    previous.replaceWith(document.createElement("article"))
+    document.querySelector("article")!.innerHTML = '<div><p>new</p></div>'
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {opacity: "0.5"}})
+    expect(document.querySelector("article")).toHaveStyle({opacity: "0.5"})
+    expect(previous).not.toHaveAttribute("style")
+  })
+
+  it.each(["relative", "absolute", "sticky"])("rejects %s positioning commands in document layout", position => {
+    document.body.innerHTML = '<p style="position: relative; left: 12px">text</p>'
+    const target = document.body.firstElementChild as HTMLElement
+    $.selectElement(target)
+    editor.features.manipulation.setStyle({position, color: "red"})
+    expect(target.style.position).toBe("relative")
+    expect(target.style.left).toBe("12px")
+    expect(target.style.color).toBe("red")
+    expect(editor.features.manipulation.setElementStyles(target, {position})).toBe(false)
+    expect(editor.features.manipulation.getStyleState().context.positioning).toBe(false)
+    document.body.classList.add("ww-canvas")
+    expect(editor.features.manipulation.setElementStyles(target, {position})).toBe(true)
+    expect(target.style.position).toBe(position)
+    expect(editor.features.manipulation.getStyleState().context.positioning).toBe(true)
+  })
+
   it("can set a style property", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectElement(document.body.firstElementChild!)

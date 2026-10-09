@@ -293,6 +293,7 @@ export type ElementStyleState = {
   context: {
     display: string
     parentDisplay: string
+    positioning?: boolean
   }
 }
 

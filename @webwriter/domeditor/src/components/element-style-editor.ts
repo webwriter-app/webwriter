@@ -929,11 +929,13 @@ export class ElementStyleEditor extends LitElement {
 
   private renderSelect(definition: ElementStylePropertyDefinition, declaration?: ElementStyleDeclaration) {
     const current = this.editableValue(definition.name)
-    const options = definition.values ?? []
+    const unsupported = definition.name === "position" && !this.state.context.positioning
+      ? ["relative", "absolute", "sticky"] : []
+    const options = (definition.values ?? []).filter(value => !unsupported.includes(value))
     const computed = this.state.computed[definition.name]?.trim() ?? ""
     return html`<style-combobox .label=${definition.label} .editable=${false} .value=${current}
       .options=${[{value: "", label: computed || "Default"},
-        ...(current && !options.includes(current) ? [{value: current, label: current}] : []),
+        ...(current && !options.includes(current) && !unsupported.includes(current) ? [{value: current, label: current}] : []),
         ...options.map(value => ({value, label: value}))]}
       @combobox-change=${(event: CustomEvent<{value: string}>) => this.commitValue(definition.name, event.detail.value, declaration)}
     ></style-combobox>`

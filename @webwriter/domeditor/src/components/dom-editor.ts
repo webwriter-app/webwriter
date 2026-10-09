@@ -5302,7 +5302,9 @@ export class DomEditor extends LitElement {
     const action = (event as CustomEvent<{type: "setFloat", side: FloatSide} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
     if(!action || !["setFloat", "moveFloat", "setCaption"].includes(action.type)) return
     this.layoutError = ""
-    void this.execute(action).then(changed => {
+    const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption"
+    void this.execute(topLevel ? {...action, topLevel: true} : action).then(changed => {
       if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
   }
@@ -5890,6 +5892,7 @@ export class DomEditor extends LitElement {
       context: {
         display: value.context.display,
         parentDisplay: value.context.parentDisplay,
+        ...(typeof value.context.positioning === "boolean" ? {positioning: value.context.positioning} : {}),
       },
     }
   }
@@ -5900,6 +5903,7 @@ export class DomEditor extends LitElement {
       const result = await this.execute({
         type: "getStyleState",
         properties: elementStylePropertyNames,
+        ...(this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit" ? {topLevel: true} : {}),
       })
       const state = this.normalizedElementStyleState(result)
       if(sequence === this.elementStyleRefreshSequence && state) this.elementStyle = state
@@ -5936,7 +5940,9 @@ export class DomEditor extends LitElement {
         || mutation !== null && typeof mutation !== "string" && !validDeclaration
     })) return
     const styles = Object.fromEntries(entries) as Record<string, ElementStyleMutation>
-    if(detail.selectionType !== undefined) {
+    const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
+      && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
+    if(detail.selectionType !== undefined && !topLevel) {
       if(!isElementSelectionType(detail.selectionType)) return
       void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles})
       return
@@ -5950,12 +5956,12 @@ export class DomEditor extends LitElement {
     }
     this.elementStyle = {...this.elementStyle, inline}
 
-    const paragraphSelection = Object.keys(styles).every(property => paragraphStylePropertyNameSet.has(property))
+    const paragraphSelection = !topLevel && Object.keys(styles).every(property => paragraphStylePropertyNameSet.has(property))
       && !this.nodeSelection && !this.selectionGap && !this.tableSelection?.cellSelection
     void this.execute(paragraphSelection ? {
       type: "setBlockStyle", styles,
     } : {
-      type: "setStyle", styles,
+      type: "setStyle", styles, ...(topLevel ? {topLevel: true} : {}),
     }).then(() => this.refreshElementStyleState()).catch(() => {
       this.elementStyle = previousState
       return this.refreshElementStyleState()
@@ -5965,7 +5971,9 @@ export class DomEditor extends LitElement {
   private handleElementStyleTargetHover = (event: Event) => {
     const hovered = (event as CustomEvent<{hovered?: unknown}>).detail?.hovered
     if(typeof hovered !== "boolean") return
-    void this.execute({type: "hoverStyleTarget", hovered}).catch(() => {
+    const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
+      && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
+    void this.execute({type: "hoverStyleTarget", hovered, ...(topLevel ? {topLevel: true} : {})}).catch(() => {
       // Hover is best-effort; the editor may be unloading as the pointer leaves.
     })
   }

@@ -368,8 +368,8 @@ export class TransformationFeature extends EditorFeature {
       setPart(control, `transform-overlay-${name}-hidden`, hide)
       control.hidden = hide
     }
-    hidden("rotator", position !== "absolute")
-    hidden("orderer", freeform || position !== "absolute")
+    hidden("rotator", !freeform || position !== "absolute")
+    hidden("orderer", true)
     hidden("mover", freeform)
     overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
       !this.editor.features.canvas.active && !this.editor.features.slides.active
@@ -561,7 +561,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #updateContextMarkers() {
-    const target = this.target
+    const target = this.target && this.#isFreeformItem(this.target) ? this.target : null
     const position = target ? getComputedStyle(target).position || "static" : "static"
     const block = target && this.#gesture && ["absolute", "relative", "sticky"].includes(position)
       ? findContainingBlock(target as HTMLElement, position as "absolute" | "relative" | "sticky") : null
@@ -581,7 +581,7 @@ export class TransformationFeature extends EditorFeature {
   #begin(event: MouseEvent, mode: Mode, handle: HTMLElement) {
     const target = this.target
     if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
-    if(mode === "rotate" && getComputedStyle(target).position !== "absolute") return false
+    if(mode === "rotate" && (!this.#isFreeformItem(target) || getComputedStyle(target).position !== "absolute")) return false
     const matrix = this.#matrix(target)
     if(!matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) return false
     if(this.#isFreeformItem(target)) {
@@ -668,6 +668,7 @@ export class TransformationFeature extends EditorFeature {
   /** Adjust offsets by the measured viewport displacement. Measuring after a
    * mode/size change accounts for margins, borders, scrollers and CSS origins. */
   #offsetBy(dx: number, dy: number) {
+    if(!this.editor.features.canvas.active && !this.editor.features.slides.active) return
     const target = this.target!
     if(Math.abs(dx) < .01 && Math.abs(dy) < .01) return
     const delta = this.#vector(this.#matrix(renderedParentElement(target)).inverse(), dx, dy)
@@ -683,6 +684,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #setPosition(position: string) {
+    if(!this.editor.features.canvas.active && !this.editor.features.slides.active) return
     if(!this.target || this.editor.isEditingLocked) return
     const rect = this.targetRect
     const size = this.#size(this.target)
@@ -830,9 +832,9 @@ export class TransformationFeature extends EditorFeature {
       ].join(" "))
       this.#write("overflow", "hidden")
     }
-    // Resizing and cropping preserve normal flow. Only adjust offsets for
-    // elements that were already positioned.
-    if((getComputedStyle(target).position || "static") !== "static") {
+    // Only spatial items compensate offsets. Document resizing keeps authored
+    // positioning and insets intact, including when fitting an SVG viewport.
+    if(this.#isFreeformItem(target) && (getComputedStyle(target).position || "static") !== "static") {
       const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, symmetric ? 0 : y * actualDH / 2)
       const rect = this.targetRect
       this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),

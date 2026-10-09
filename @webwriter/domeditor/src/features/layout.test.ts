@@ -23,6 +23,25 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
 describe("document floats", () => {
+  it("floats and moves the top-level container from an inner text selection", () => {
+    document.body.innerHTML = '<div><p>inner</p></div><p>next</p>'
+    const container = document.body.firstElementChild!
+    const text = container.querySelector("p")!.firstChild!
+    $.move(text, 2)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "far-right", topLevel: true})).toBe(true)
+    expect(container.classList.contains("ww-float-right")).toBe(true)
+    expect(container.firstElementChild!.classList.contains("ww-float-right")).toBe(false)
+    expect(editor.features.layout.actions.moveFloat({type: "moveFloat", direction: "down", topLevel: true})).toBe(true)
+    expect(document.body.lastElementChild).toBe(container)
+    expect($.anchor).toBe(text)
+  })
+
+  it("rejects placement commands at a top-level gap", () => {
+    $.selectGap(document.body.firstElementChild!, "before")
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "far-right", topLevel: true})).toBe(false)
+    expect(editor.features.layout.actions.moveFloat({type: "moveFloat", direction: "down", topLevel: true})).toBe(false)
+  })
+
   it.each(["p", "custom-card"])("moves a floated %s across adjacent elements while preserving its content and selection", tag => {
     document.body.innerHTML = `<section><p>first</p><!--keep--><${tag} style="float:right;width:140px;color:red">floating text</${tag}><p>last</p></section>`
     const parent = document.querySelector("section")!, element = parent.children[1] as HTMLElement

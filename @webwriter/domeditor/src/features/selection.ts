@@ -1204,8 +1204,8 @@ export class SelectionFeature extends EditorFeature {
       section.classList.add("◆", "◆element-hovered")
       this.#refreshHoverGeometry()
     },
-    hoverStyleTarget: ({hovered}: {type: "hoverStyleTarget", hovered: boolean}) => {
-      this.showStyleTargetHover(hovered ? this.editor.features.manipulation.styleTarget : null)
+    hoverStyleTarget: ({hovered, topLevel}: {type: "hoverStyleTarget", hovered: boolean, topLevel?: boolean}) => {
+      this.showStyleTargetHover(hovered ? topLevel ? this.editor.features.manipulation.topLevelStyleTarget : this.editor.features.manipulation.styleTarget : null)
     },
   } as const
 
@@ -1744,8 +1744,9 @@ export class SelectionFeature extends EditorFeature {
 
     const rect = caretRect(selection.focusNode, selection.focusOffset)
     const margin = 1.25 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16)
-    // Native focus scrolling can cancel smooth scrolling during typing.
-    const behavior = "instant" as const
+    const focusElement = selection.focusNode instanceof Element
+      ? selection.focusNode : selection.focusNode.parentElement ?? document.body
+    const behavior = uiMotionDisabled(focusElement) ? "instant" : "smooth"
     let predicted = {
       left: rect.left,
       right: rect.right > rect.left ? rect.right : rect.left + 1,

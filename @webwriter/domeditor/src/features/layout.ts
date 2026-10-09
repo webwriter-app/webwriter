@@ -7,9 +7,9 @@ export class LayoutFeature extends EditorFeature {
   refresh() {}
   getState() { return null }
 
-  moveFloat(direction: "up" | "down") {
-    const manipulation = this.editor.features.manipulation, element = manipulation.styleTarget
-    if(this.editor.isEditingLocked || !["up", "down"].includes(direction)
+  moveFloat(direction: "up" | "down", topLevel = false) {
+    const manipulation = this.editor.features.manipulation, element = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+    if(!element || this.editor.isEditingLocked || !["up", "down"].includes(direction)
       || manipulation.floatContainer(element) !== element) return false
     const style = (element as HTMLElement | SVGElement).style
     if(!style || floatSideFromStyles(getComputedStyle(element).float, style, element.classList) === "none") return false
@@ -40,10 +40,11 @@ export class LayoutFeature extends EditorFeature {
   }
 
   actions = {
-    setFloat: ({side}: {type: "setFloat", side: FloatSide}) => {
+    setFloat: ({side, topLevel}: {type: "setFloat", side: FloatSide, topLevel?: boolean}) => {
       const manipulation = this.editor.features.manipulation
-      return manipulation.setFloat(manipulation.styleTarget, side)
+      const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+      return target ? manipulation.setFloat(target, side) : false
     },
-    moveFloat: ({direction}: {type: "moveFloat", direction: "up" | "down"}) => this.moveFloat(direction),
+    moveFloat: ({direction, topLevel}: {type: "moveFloat", direction: "up" | "down", topLevel?: boolean}) => this.moveFloat(direction, topLevel),
   }
 }

@@ -495,7 +495,7 @@ describe("selection-owned transformation", () => {
     expect(feature.target).toBe(target)
   })
 
-  it("keeps all controls in the shadow appendix and gates rotate/z-order on absolute positioning", () => {
+  it("keeps all controls in the shadow appendix and hides positioning controls in document layout", () => {
     const target = targetElement()
     target.style.position = "relative"
     selectNode(target)
@@ -522,8 +522,8 @@ describe("selection-owned transformation", () => {
 
     target.style.position = "absolute"
     feature.updateInfo()
-    expect(editor.appendix.querySelector<HTMLElement>("#◆transform-overlay-rotator")).toHaveProperty("hidden", false)
-    expect(editor.appendix.querySelector<HTMLElement>("#◆transform-overlay-orderer")).toHaveProperty("hidden", false)
+    expect(editor.appendix.querySelector<HTMLElement>("#◆transform-overlay-rotator")).toHaveProperty("hidden", true)
+    expect(editor.appendix.querySelector<HTMLElement>("#◆transform-overlay-orderer")).toHaveProperty("hidden", true)
   })
 
   it("marks the overlay for top placement when the target reaches the viewport top", () => {
@@ -976,6 +976,7 @@ describe("transform controls and geometry", () => {
   })
 
   it.each(["resize", "rotate"] as const)("groups a paused %s gesture into one exact undo item", async mode => {
+    if(mode === "rotate") document.body.classList.add("ww-canvas")
     const target = targetElement("demo-widget")
     const sibling = targetElement("aside")
     sibling.setAttribute("data-neighbor", "keep")
@@ -1114,7 +1115,7 @@ describe("transform controls and geometry", () => {
       {edge: "left", x: 100, y: 115, dx: 20, dy: 13, width: "80px", height: "", left: "20px", top: "0px"},
       {edge: "up", x: 130, y: 100, dx: 13, dy: 20, width: "", height: "30px", left: "0px", top: "20px"},
       {edge: "down", x: 130, y: 150, dx: 13, dy: -20, width: "", height: "30px", left: "0px", top: "0px"},
-    ])("resizes only the $edge axis and preserves the opposite edge", ({edge, x, y, dx, dy, width, height, left, top}) => {
+    ])("resizes only the $edge axis without changing document insets", ({edge, x, y, dx, dy, width, height, left, top}) => {
       const target = targetElement(captured ? "demo-widget" : "p")
       const child = target.appendChild(document.createElement(captured ? "unfamiliar-content" : "mark"))
       target.appendChild(document.createComment("keep"))
@@ -1134,8 +1135,8 @@ describe("transform controls and geometry", () => {
       expect(target.style.maxHeight).toBe(height)
       expect(target.style.width).toBe("100px")
       expect(target.style.height).toBe("50px")
-      expect(target.style.left).toBe(left)
-      expect(target.style.top).toBe(top)
+      expect(target.style.left).toBe("0px")
+      expect(target.style.top).toBe("0px")
       expect(target.style.position).toBe("relative")
       expect(target.firstElementChild).toBe(child)
       expect(target.lastChild?.nodeType).toBe(Node.COMMENT_NODE)
@@ -1152,7 +1153,7 @@ describe("transform controls and geometry", () => {
   it.each([
     {modifiers: {altKey: true}, width: "113px", left: "0px", scale: ""},
     {modifiers: {ctrlKey: true}, width: "130px", left: "0px", scale: ""},
-    {modifiers: {shiftKey: true}, width: "", left: "5px", scale: "1.1 1"},
+    {modifiers: {shiftKey: true}, width: "", left: "0px", scale: "1.1 1"},
   ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
@@ -1166,7 +1167,7 @@ describe("transform controls and geometry", () => {
     expect(target.style.maxWidth).toBe(width)
     expect(target.style.width).toBe("100px")
     expect(target.style.height).toBe("50px")
-    // The mock rect does not apply CSS scale; the measured offset compensates for it.
+    // Document resizing never compensates by changing authored insets.
     expect(target.style.left).toBe(left)
     expect(target.style.getPropertyValue("scale")).toBe(scale)
   })
@@ -1335,7 +1336,8 @@ describe("transform controls and geometry", () => {
     expect($.selectedElement).toBe(target)
   })
 
-  it("rotates only an absolute target", () => {
+  it("rotates only an absolute target in canvas layout", () => {
+    document.body.classList.add("ww-canvas")
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
@@ -1416,7 +1418,20 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target.style.getPropertyValue("--unfamiliar")).toBe("keep")
   })
 
-  it("cycles anchor positioning with Ctrl/Cmd and switches to fixed with Shift", () => {
+  it("ignores positioning controls in document layout", () => {
+    const target = targetElement()
+    target.style.cssText = "width:80px;height:40px"
+    selectNode(target)
+    const initial = target.style.cssText
+    feature.toggleAbsoluteRelative()
+    feature.toggleSticky()
+    feature.anchor.dispatchEvent(new MouseEvent("click", {bubbles: true, ctrlKey: true}))
+    feature.anchor.dispatchEvent(new MouseEvent("click", {bubbles: true, shiftKey: true}))
+    expect(target.style.cssText).toBe(initial)
+  })
+
+  it("cycles canvas anchor positioning with Ctrl/Cmd and switches to fixed with Shift", () => {
+    document.body.classList.add("ww-canvas")
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "80px", height: "40px", left: "0px", top: "0px"})
     selectNode(target)
@@ -1758,7 +1773,7 @@ describe("SVG canvas cropping", () => {
 
   it.each([
     {direction: "down-right", box: "10 20 160 80", left: "", top: ""},
-    {direction: "up-left", box: "-30 0 240 120", left: "-20px", top: "-10px"},
+    {direction: "up-left", box: "-30 0 240 120", left: "", top: ""},
     {direction: "right", box: "10 20 160 100", left: "", top: ""},
   ])("crops from $direction without changing child geometry", ({direction, box, left, top}) => {
     const target = canvas()

@@ -1118,3 +1118,24 @@ it("uses the current text target inside a table for specialized style controls",
   expect(editors.flatMap(editor => editor.propertyNames ?? [])).toContain("text-align")
   expect(editors.flatMap(editor => editor.propertyNames ?? [])).not.toContain("table-layout")
 })
+
+
+it("keeps every style option visible and disables the whole drawer at a top-level gap", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: null, inline: {}, computed: {}, context: {display: "", parentDisplay: ""}}
+  await toolbox.updateComplete
+  const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+  expect(drawer.hasAttribute("inert")).toBe(true)
+  expect(drawer.getAttribute("aria-disabled")).toBe("true")
+  expect(drawer.style.opacity).toBe("0.5")
+  const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
+  expect(drawer.querySelector('[aria-label="Placement"]')).not.toBeNull()
+  expect(advanced.propertyNames).toContain("padding")
+  expect(advanced.propertyNames).toContain("background-color")
+  expect(drawer.querySelector<HTMLButtonElement>(".style-reset")!.disabled).toBe(true)
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {localName: "section", namespaceURI: "http://www.w3.org/1999/xhtml"}}
+  await toolbox.updateComplete
+  expect(drawer.hasAttribute("inert")).toBe(false)
+  expect(drawer.style.opacity).toBe("")
+})

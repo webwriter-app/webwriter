@@ -886,3 +886,19 @@ it.each([
   option.click()
   expect(changes.at(-1)).toEqual({property, mutation: {value, priority: "important"}})
 })
+
+
+it("limits document positioning choices while retaining canvas and slide choices", async () => {
+  const definitions = elementStyleCategories[0].basic.filter(definition => definition.name === "position")
+  const editor = await mount(definitions, state({position: {value: "absolute", priority: ""}}))
+  const choices = () => Array.from(editor.shadowRoot!.querySelectorAll<import("./style-combobox").StyleCombobox>("style-combobox"))
+    .flatMap(combo => combo.options.map(option => option.value))
+  expect(choices()).not.toContain("relative")
+  expect(choices()).not.toContain("absolute")
+  expect(choices()).not.toContain("sticky")
+  expect(choices()).toContain("static")
+  expect(choices()).toContain("fixed")
+  editor.state = {...editor.state, context: {...editor.state.context, positioning: true}}
+  await editor.updateComplete
+  expect(choices()).toEqual(expect.arrayContaining(["relative", "absolute", "sticky"]))
+})

@@ -773,6 +773,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private renderUniversalStyleDrawer() {
+    const disabled = !this.elementStyle.target
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
     const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
@@ -781,9 +782,10 @@ export class DomEditorToolbox extends EditingControls {
       : Object.hasOwn(setProperties, name)).length
     return html`
       <ribbon-drawer label="Style" icon="Theme" layout="element-style" show-pane-icon expandable .advancedCount=${advancedCount}
-        >
+        ?inert=${disabled} aria-disabled=${disabled ? "true" : "false"}
+        style=${disabled ? "opacity: 0.5" : ""}>
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
-          ?disabled=${!Object.keys(this.resettableStyles).length}
+          ?disabled=${disabled || !Object.keys(this.resettableStyles).length}
           @click=${() => {
             const styles = this.resettableStyles
             if(Object.keys(styles).length) this.dispatchEvent(new CustomEvent("element-style-change", {
@@ -937,7 +939,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderSpecializedDrawer(group?: SelectedElementTypeState) {
     const attributes = group?.element ?? this.elementAttributes
-    const style = group?.style ?? this.elementStyle
+    const style = this.elementStyle
     const widgetOptions = group ? group.widget : this.widgetOptions
     const singleTarget = Boolean(group?.count === 1 && this.elementAttributes && attributes
       && (attributes.localName === this.elementAttributes.localName && attributes.namespaceURI === this.elementAttributes.namespaceURI
@@ -970,9 +972,9 @@ export class DomEditorToolbox extends EditingControls {
     const advanced = profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
     const properties = [...new Set([...primary, ...advanced])]
-    const resetStyles = Object.fromEntries(properties.filter(name => group ? group.styleProperties.includes(name) : Object.hasOwn(style.inline, name)).map(name => [name, null]))
+    const resetStyles = Object.fromEntries(properties.filter(name => Object.hasOwn(style.inline, name)).map(name => [name, null]))
     const configuredWidgetOptions = widgetOptions?.options.filter(option => group ? group.configuredWidgetOptions.includes(option.name) : option.value !== null && option.value !== "") ?? []
-    const count = advanced.filter(name => group ? group.styleProperties.includes(name) : Object.hasOwn(style.inline, name)).length
+    const count = advanced.filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
     const label = group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
@@ -1111,9 +1113,9 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderElementLayoutControls() {
     const target = this.elementStyle.target
-    if(this.activeTool !== "Edit" || !target
-      || this.documentSelected || target.documentRoot || target.localName === "body") return nothing
-    const float = target.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
+    if(this.activeTool !== "Edit"
+      || this.documentSelected || target?.documentRoot || target?.localName === "body") return nothing
+    const float = target?.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     const captionPosition = this.captionPosition ?? (this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
@@ -1248,7 +1250,8 @@ export class DomEditorToolbox extends EditingControls {
         if(drawer.expandable && this.advancedOpen.get(`${drawer.layout}:${drawer.label}`)) drawer.openDrawer()
         else drawer.closeDrawer()
       })
-      drawer.inert = this.historyState.preview !== null && drawer.layout !== "history-versions"
+      drawer.inert = drawer.getAttribute("aria-disabled") === "true"
+        || this.historyState.preview !== null && drawer.layout !== "history-versions"
     })
   }
 
