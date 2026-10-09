@@ -1,3 +1,4 @@
+import {isCaptionEnumeration} from "./caption-enumeration"
 import {
   canonicalMarkName,
   isMarkAttributeName,
@@ -863,6 +864,7 @@ export function isDocumentHeadStateChangeMessage(value: unknown): value is Docum
   const detail = message.detail as Partial<DocumentHeadState>
   if(![detail.title, detail.description, detail.keywords, detail.author, detail.license,
     detail.language, detail.theme, detail.generator].every(field => typeof field === "string")) return false
+  if(detail.captionEnumeration !== undefined && !isCaptionEnumeration(detail.captionEnumeration)) return false
   if(!Array.isArray(detail.elements)) return false
   return detail.elements.every(value => {
     if(!value || typeof value !== "object") return false

@@ -1,3 +1,6 @@
+import * as Y from "yjs"
+import {SharedDOMDoc} from "../domdoc"
+import {captionEnumerationCSS, defaultCaptionEnumeration, readCaptionEnumeration, writeCaptionEnumeration} from "../caption-enumeration"
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import "@testing-library/jest-dom/vitest"
@@ -221,4 +224,96 @@ describe("document head editing", () => {
     editor.doc.redo()
     expect(document.title).toBe("Undoable")
   })
+})
+
+
+describe("caption numbering settings", () => {
+  it("shares and exports settings, with undo and redo", () => {
+    const config = defaultCaptionEnumeration()
+    config.figure.start = 3
+    config.figure.labels.de = "Abbildung"
+    document.body.innerHTML = '<figure><img><figcaption lang="de">A caption</figcaption></figure>'
+    editor.doc.syncFromDOM()
+    editor.features.head.actions.setCaptionEnumeration({type: "setCaptionEnumeration", value: config})
+    expect(editor.features.head.state().captionEnumeration).toEqual(config)
+    expect(editor.toHTML(false, false)).toContain("data-ww-caption-enumeration")
+    expect(document.querySelector("figcaption")!.textContent).toBe("A caption")
+    editor.doc.undo()
+    expect(readCaptionEnumeration(document.head)).toBeUndefined()
+    editor.doc.redo()
+    expect(readCaptionEnumeration(document.head)).toEqual(config)
+  })
+
+  it("applies only validated generated CSS and cleans up its editing stylesheet", async () => {
+    const before = [...document.adoptedStyleSheets]
+    const config = defaultCaptionEnumeration()
+    writeCaptionEnumeration(document.head, config)
+    document.head.querySelector("style")!.append("body { display: none }")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const sheets = document.adoptedStyleSheets.filter(sheet => !before.includes(sheet))
+    expect(sheets).toHaveLength(1)
+    const source = Array.from(sheets[0].cssRules).map(rule => rule.cssText).join("\n")
+    expect(source).toContain("ww-figures")
+    expect(source).not.toContain("display: none")
+    editor.features.head.disable()
+    expect(document.adoptedStyleSheets).not.toContain(sheets[0])
+    expect(readCaptionEnumeration(document.head)).toEqual(config)
+  })
+
+  it("updates numbering when direct head changes arrive", async () => {
+    const config = defaultCaptionEnumeration()
+    writeCaptionEnumeration(document.head, config)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const previous = [...document.adoptedStyleSheets]
+    config.figure.start = 7
+    writeCaptionEnumeration(document.head, config)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(editor.features.head.state().captionEnumeration!.figure.start).toBe(7)
+    expect(document.adoptedStyleSheets.some(sheet => !previous.includes(sheet))).toBe(true)
+    document.head.querySelector("style")!.remove()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(editor.features.head.state().captionEnumeration).toBeUndefined()
+  })
+
+  it("preserves explicitly disabled numbering when adding another caption", () => {
+    const config = defaultCaptionEnumeration()
+    config.figure.enabled = false
+    config.table.enabled = false
+    writeCaptionEnumeration(document.head, config)
+    editor.features.head.ensureCaptionEnumeration()
+    expect(readCaptionEnumeration(document.head)).toEqual(config)
+    expect(captionEnumerationCSS(config)).not.toContain("::before")
+  })
+
+  it("rejects invalid and locked settings without changing the authored head", () => {
+    const config = defaultCaptionEnumeration()
+    config.figure.start = -1
+    expect(editor.features.head.actions.setCaptionEnumeration({type: "setCaptionEnumeration", value: config})).toBe(false)
+    expect(document.head.querySelector("style")).toBeNull()
+    editor.lockEditing("test")
+    try {
+      expect(editor.features.head.actions.setCaptionEnumeration({type: "setCaptionEnumeration", value: defaultCaptionEnumeration()})).toBe(false)
+      expect(document.head.querySelector("style")).toBeNull()
+    } finally { editor.unlockEditing("test") }
+  })
+})
+
+
+it("receives caption numbering through collaboration without adding caption text", async () => {
+  const ydoc = new Y.Doc()
+  Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(editor.doc.doc))
+  const owner = document.implementation.createHTMLDocument()
+  const peer = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"], {root: owner.body, ydoc, connect: false})
+  try {
+    const config = defaultCaptionEnumeration()
+    config.table.start = 8
+    config.table.labels.fr = "Tableau"
+    writeCaptionEnumeration(owner.head, config)
+    peer.syncFromDOM()
+    Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(ydoc), "remote-test")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(editor.features.head.state().captionEnumeration).toEqual(config)
+    expect(document.adoptedStyleSheets.some(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes("ww-tables 7")))).toBe(true)
+  }
+  finally { peer.destroy() }
 })

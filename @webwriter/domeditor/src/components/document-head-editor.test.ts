@@ -1,3 +1,4 @@
+import {defaultCaptionEnumeration} from "../caption-enumeration"
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
@@ -406,4 +407,35 @@ it("keeps numerical combobox values editable while showing named suggestions", a
   combo.disabled = true
   await combo.updateComplete
   expect(input.disabled).toBe(true)
+})
+
+
+describe("caption numbering form", () => {
+  it("configures each series through the existing document-head action", async () => {
+    const editor = await mount("advanced", state({captionEnumeration: defaultCaptionEnumeration()}))
+    const actions: DocumentHeadAction[] = []
+    editor.addEventListener("document-head-action", event => actions.push((event as CustomEvent<DocumentHeadAction>).detail))
+    const start = editor.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Figures start at"]')!
+    start.value = "4"
+    start.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(actions[0]).toMatchObject({type: "setCaptionEnumeration", value: {figure: {start: 4}, table: {start: 1}}})
+    const labels = editor.shadowRoot!.querySelector<HTMLTextAreaElement>('[aria-label="Tables labels by language"]')!
+    labels.value = "default=Table\nde=Tabelle\nde-AT=Tafel"
+    labels.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(actions[1]).toMatchObject({type: "setCaptionEnumeration", value: {table: {labels: {default: "Table", de: "Tabelle", "de-AT": "Tafel"}}}})
+  })
+
+  it("shows numbering disabled until the document contains a numbering stylesheet", async () => {
+    const editor = await mount("advanced")
+    expect(editor.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Number figures"]')!.checked).toBe(false)
+    expect(editor.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Number tables"]')!.checked).toBe(false)
+  })
+})
+
+
+it("displays the saved caption number format", async () => {
+  const config = defaultCaptionEnumeration()
+  config.figure.style = "upper-roman"
+  const editor = await mount("advanced", state({captionEnumeration: config}))
+  expect(editor.shadowRoot!.querySelector<HTMLSelectElement>('[aria-label="Figures number format"]')!.value).toBe("upper-roman")
 })

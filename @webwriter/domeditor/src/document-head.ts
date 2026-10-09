@@ -1,3 +1,4 @@
+import {isCaptionEnumeration, type CaptionEnumeration} from "./caption-enumeration"
 import packageManifest from "../package.json"
 
 export const WEBWRITER_GENERATOR = `webwriter@${packageManifest.version}`
@@ -92,6 +93,7 @@ export type DocumentHeadState = {
   language: string
   theme: string
   generator: string
+  captionEnumeration?: CaptionEnumeration
   elements: DocumentHeadElementState[]
 }
 
@@ -108,6 +110,7 @@ export const emptyDocumentHeadState = (): DocumentHeadState => ({
 })
 
 export type DocumentHeadAction =
+  | {type: "setCaptionEnumeration", value: CaptionEnumeration}
   | {type: "setDocumentHeadField", field: DocumentHeadField, value: string}
   | {type: "addDocumentHeadElement", kind: DocumentHeadElementKind}
   | {type: "removeDocumentHeadElement", id: string}
@@ -138,6 +141,7 @@ export function isDocumentHeadAction(value: unknown): value is DocumentHeadActio
   if(!value || typeof value !== "object") return false
   const action = value as Record<string, unknown>
   if(typeof action.type !== "string") return false
+  if(action.type === "setCaptionEnumeration") return isCaptionEnumeration(action.value)
   if(action.type === "setDocumentHeadField") {
     return documentHeadFields.has(action.field as DocumentHeadField) && typeof action.value === "string"
   }

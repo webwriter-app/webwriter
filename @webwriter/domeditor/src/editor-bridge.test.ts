@@ -1,3 +1,4 @@
+import {defaultCaptionEnumeration} from "./caption-enumeration"
 import {describe, expect, it} from "vitest"
 import {
   aiEditReviewEvent,
@@ -24,7 +25,7 @@ import {
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
 } from "./editor-bridge"
-import {emptyDocumentHeadState} from "./document-head"
+import {emptyDocumentHeadState, isDocumentHeadAction} from "./document-head"
 
 type MessageGuard = (value: unknown) => boolean
 
@@ -545,4 +546,15 @@ describe("editor bridge message guards", () => {
       {...message, detail: {users: [{clientId: 7, name: "Ada", initials: "AL"}]}},
     ])
   })
+})
+
+
+it("validates caption numbering in document-head actions and bridge state", () => {
+  const config = defaultCaptionEnumeration()
+  const message = {type: documentHeadStateChangeEvent, detail: {...emptyDocumentHeadState(), captionEnumeration: config}}
+  expect(isDocumentHeadStateChangeMessage(message)).toBe(true)
+  expect(isDocumentHeadAction({type: "setCaptionEnumeration", value: config})).toBe(true)
+  const invalid = {...config, figure: {...config.figure, start: -2}}
+  expect(isDocumentHeadStateChangeMessage({...message, detail: {...message.detail, captionEnumeration: invalid}})).toBe(false)
+  expect(isDocumentHeadAction({type: "setCaptionEnumeration", value: invalid})).toBe(false)
 })

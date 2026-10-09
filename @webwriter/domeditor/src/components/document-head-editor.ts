@@ -1,3 +1,4 @@
+import {captionNumberStyles, defaultCaptionEnumeration, isCaptionEnumeration, type CaptionSeries} from "../caption-enumeration"
 import {LitElement, css, html, nothing} from "lit"
 import {
   WEBWRITER_GENERATOR,
@@ -23,6 +24,7 @@ const commonElementPresets = new Set([
   "author",
   "license",
   "generator",
+  "caption-enumeration",
 ])
 
 const primaryAttributesByPreset: Record<string, ReadonlySet<string>> = {
@@ -359,6 +361,12 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   static styles = css`
+    .caption-enumeration { margin-top: 1rem; }
+    .caption-enumeration summary { cursor: pointer; }
+    .caption-enumeration fieldset { border: 0; padding: .75rem 0; margin: 0; display: grid; gap: .5rem; }
+    .caption-enumeration legend { font-weight: 600; }
+    .caption-enumeration small { color: var(--sl-color-neutral-600); }
+
     :host {
       box-sizing: border-box;
       display: block;
@@ -855,6 +863,84 @@ export class DocumentHeadEditor extends LitElement {
     `
   }
 
+  protected updated() {
+    // Set select values after their option children have been rendered.
+    const config = this.captionConfig()
+    for(const select of this.renderRoot.querySelectorAll<HTMLSelectElement>("select[data-caption-kind]")) {
+      const kind = select.getAttribute("data-caption-kind") as "figure" | "table"
+      select.value = config[kind].style
+    }
+  }
+
+  private captionConfig() {
+    const config = this.state.captionEnumeration ?? defaultCaptionEnumeration()
+    return this.state.captionEnumeration ? config : {
+      figure: {...config.figure, enabled: false}, table: {...config.table, enabled: false},
+    }
+  }
+
+  private setCaptionSetting(kind: "figure" | "table", setting: Partial<CaptionSeries>, input?: HTMLInputElement | HTMLTextAreaElement) {
+    const config = this.captionConfig()
+    const value = {...config, [kind]: {...config[kind], ...setting}}
+    const valid = isCaptionEnumeration(value)
+    input?.setCustomValidity(valid ? "" : "Use a positive starting number and valid language tags (for example en or de-DE).")
+    if(!valid) { input?.reportValidity(); return }
+    this.dispatchAction({type: "setCaptionEnumeration", value})
+  }
+
+  private renderCaptionEnumeration() {
+    const config = this.captionConfig()
+    return html`<details class="caption-enumeration">
+      <summary>Caption numbering</summary>
+      ${(["figure", "table"] as const).map(kind => {
+        const series = config[kind]
+        const label = kind === "figure" ? "Figures" : "Tables"
+        return html`<fieldset>
+          <legend>${label}</legend>
+          <label><input type="checkbox" aria-label=${`Number ${label.toLowerCase()}`}
+            .checked=${series.enabled}
+            @change=${(event: Event) => this.setCaptionSetting(kind, {enabled: (event.target as HTMLInputElement).checked})}
+          /> Automatic numbering</label>
+          <label class="common-field"><span class="field-label">Number format</span>
+            <select class="common-control" data-ribbon-input-persistent data-caption-kind=${kind} aria-label=${`${label} number format`}
+              @change=${(event: Event) => this.setCaptionSetting(kind, {style: (event.target as HTMLSelectElement).value as CaptionSeries["style"]})}>
+              ${captionNumberStyles.map(style => html`<option value=${style}>${({decimal: "1, 2, 3", "lower-alpha": "a, b, c", "upper-alpha": "A, B, C", "lower-roman": "i, ii, iii", "upper-roman": "I, II, III"})[style]}</option>`)}
+            </select>
+          </label>
+          <label class="common-field"><span class="field-label">Start at</span>
+            <input class="common-control" data-ribbon-input-persistent type="number" min="1" max="1000000" step="1" aria-label=${`${label} start at`}
+              .value=${String(series.start)} @change=${(event: Event) => {
+                const input = event.target as HTMLInputElement
+                this.setCaptionSetting(kind, {start: input.valueAsNumber}, input)
+              }} />
+          </label>
+          <label class="common-field"><span class="field-label">Separator</span>
+            <input class="common-control" data-ribbon-input-persistent aria-label=${`${label} separator`} .value=${series.separator}
+              @change=${(event: Event) => this.setCaptionSetting(kind, {separator: (event.target as HTMLInputElement).value}, event.target as HTMLInputElement)} />
+          </label>
+          <label class="common-field"><span class="field-label">Labels by language</span>
+            <textarea class="common-control" data-ribbon-input-persistent rows="6" aria-label=${`${label} labels by language`}
+              .value=${Object.entries(series.labels).map(([language, text]) => `${language}=${text}`).join("\n")}
+              @change=${(event: Event) => {
+                const input = event.target as HTMLTextAreaElement
+                const lines = input.value.split("\n").filter(line => line.trim())
+                if(lines.some(line => !line.includes("="))) {
+                  input.setCustomValidity("Enter one language=label per line, including default=label.")
+                  input.reportValidity()
+                  return
+                }
+                this.setCaptionSetting(kind, {labels: Object.fromEntries(lines.map(line => {
+                  const index = line.indexOf("=")
+                  return [line.slice(0, index).trim(), line.slice(index + 1)]
+                }))}, input)
+              }}></textarea>
+          </label>
+          <small>One language=label per line. The default label is used for other languages.</small>
+        </fieldset>`
+      })}
+    </details>`
+  }
+
   private commonTextField(label: string, field: DocumentHeadField, value: string, preset: string) {
     return html`
       <label class="common-field">
@@ -1049,6 +1135,7 @@ export class DocumentHeadEditor extends LitElement {
             </span>
           </span>
         </div>
+        ${this.renderCaptionEnumeration()}
         <div class="add-toolbar" aria-label="Add head element">
           <button type="button" @click=${() => this.add("meta")}>＋ Meta</button>
           <span class="more-select">

@@ -1,3 +1,4 @@
+import {captionEnumerationCSS, defaultCaptionEnumeration, isCaptionEnumeration, readCaptionEnumeration, writeCaptionEnumeration, type CaptionEnumeration} from "../caption-enumeration"
 import {EditorFeature} from "."
 import {
   WEBWRITER_GENERATOR,
@@ -38,6 +39,7 @@ const presetFor = (element: Element) => {
   if(element.localName === "title") return "title"
   if(element.localName === "base") return "base"
   if(element.localName === "style") {
+    if(element.hasAttribute("data-ww-caption-enumeration")) return "caption-enumeration"
     const themeName = element.getAttribute("data-ww-theme") ?? ""
     return documentTheme(themeName) ? "theme" : "style"
   }
@@ -62,6 +64,7 @@ const labelFor = (element: Element) => {
     base: "Base URL",
     style: "Style",
     theme: "Theme",
+    "caption-enumeration": "Caption numbering",
     script: "Script",
     noscript: "NoScript",
     template: "Template",
@@ -104,6 +107,8 @@ export class HeadFeature extends EditorFeature {
   private readonly elementsById = new Map<string, Element>()
   private idSequence = 0
   private observer: MutationObserver | null = null
+  private enumerationStylesheet: CSSStyleSheet | null = null
+  private enumerationCSS = ""
   private activeThemeStylesheet: CSSStyleSheet | null = null
   private readonly handleMutations = (mutations: MutationRecord[]) => {
     const head = document.head
@@ -116,11 +121,20 @@ export class HeadFeature extends EditorFeature {
     ))
     if(relevant) {
       this.syncEditingTheme()
+      this.syncCaptionEnumeration()
       this.postState()
     }
   }
 
   actions = {
+    setCaptionEnumeration: ({value}: {type: "setCaptionEnumeration", value: CaptionEnumeration}) => {
+      if(this.editor.isEditingLocked || !isCaptionEnumeration(value)) return false
+      return this.commit(() => {
+        writeCaptionEnumeration(document.head, value)
+        this.syncCaptionEnumeration()
+        return true
+      })
+    },
     setDocumentHeadField: ({field, value}: {
       type: "setDocumentHeadField"
       field: DocumentHeadField
@@ -160,6 +174,7 @@ export class HeadFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     this.syncEditingTheme()
+    this.syncCaptionEnumeration()
     const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
     const observer = new FrameMutationObserver(this.handleMutations)
     try {
@@ -186,6 +201,11 @@ export class HeadFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.elementsById.clear()
+    if(this.enumerationStylesheet) {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.enumerationStylesheet)
+      this.enumerationStylesheet = null
+      this.enumerationCSS = ""
+    }
     if(this.activeThemeStylesheet) {
       document.adoptedStyleSheets = document.adoptedStyleSheets
         .filter(stylesheet => stylesheet !== this.activeThemeStylesheet)
@@ -209,6 +229,31 @@ export class HeadFeature extends EditorFeature {
     adoptStylesheet(document, stylesheet)
   }
 
+  /** Install defaults without a separate transaction, so caption commands can
+   * group the stylesheet with their content edits. */
+  ensureCaptionEnumeration() {
+    if(!document.head.querySelector("style[data-ww-caption-enumeration]")) {
+      writeCaptionEnumeration(document.head, defaultCaptionEnumeration())
+    }
+    this.syncCaptionEnumeration()
+  }
+
+  private syncCaptionEnumeration() {
+    if(!this.isEnabled) return
+    const config = readCaptionEnumeration(document.head)
+    const source = config ? captionEnumerationCSS(config) : ""
+    if(source === this.enumerationCSS) return
+    if(this.enumerationStylesheet) {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.enumerationStylesheet)
+      this.enumerationStylesheet = null
+    }
+    this.enumerationCSS = source
+    if(source) {
+      this.enumerationStylesheet = createStylesheet(source)
+      adoptStylesheet(document, this.enumerationStylesheet)
+    }
+  }
+
   state(): DocumentHeadState {
     const elements = this.authoredElements()
     this.elementsById.clear()
@@ -222,6 +267,7 @@ export class HeadFeature extends EditorFeature {
       language: document.documentElement.getAttribute("lang") ?? "",
       theme: this.firstTheme()?.getAttribute("data-ww-theme") ?? "",
       generator: this.firstMeta("generator")?.getAttribute("content") ?? "",
+      captionEnumeration: readCaptionEnumeration(document.head),
       elements: elementStates,
     }
   }
@@ -256,7 +302,7 @@ export class HeadFeature extends EditorFeature {
     const id = this.elementId(element)
     this.elementsById.set(id, element)
     const preset = presetFor(element)
-    const hasContent = textContentElements.has(element.localName) && preset !== "theme"
+    const hasContent = textContentElements.has(element.localName) && preset !== "theme" && preset !== "caption-enumeration"
     const content = element instanceof HTMLTemplateElement ? element.innerHTML : element.textContent ?? ""
     return {
       id,
