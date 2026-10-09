@@ -21,6 +21,53 @@ async function mount(localName = "details", attributes: Record<string, string> =
 }
 
 describe("element attribute editor", () => {
+  it("keeps only Language visible and opens other attributes with the vertical ellipsis", async () => {
+    const editor = await mount("details", {id: "faq", open: ""})
+    const root = editor.shadowRoot!
+    const row = root.querySelector(".language-row")!
+    const language = row.querySelector('[aria-label="Details: Language"]')!
+    const trigger = row.querySelector<HTMLButtonElement>(".more-attributes")!
+    const dialog = root.querySelector("dialog")!
+    expect(language.closest("dialog")).toBeNull()
+    expect(language.parentElement!.nextElementSibling).toBe(trigger)
+    expect(trigger.getAttribute("aria-haspopup")).toBe("dialog")
+    expect(trigger.querySelectorAll("circle")).toHaveLength(3)
+    expect(dialog.open).toBe(false)
+    expect(root.querySelector('[aria-label="Details: Initially open"]')!.closest("dialog")).toBe(dialog)
+
+    trigger.click()
+    expect(dialog.open).toBe(true)
+    expect(dialog.getAttribute("aria-labelledby")).toBe("attributes-heading")
+    const listener = vi.fn()
+    editor.addEventListener("element-attribute-change", listener)
+    const id = dialog.querySelector<HTMLInputElement>('[aria-label="Details: ID"]')!
+    id.value = "questions"
+    id.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({name: "id", value: "questions"}),
+    }))
+    root.querySelector<HTMLButtonElement>('[aria-label="Close attributes"]')!.click()
+    expect(dialog.open).toBe(false)
+    expect(row.querySelector('[aria-label="Details: Language"]')).toBe(language)
+  })
+
+  it("closes the attribute dialog when disabled or disconnected", async () => {
+    const editor = await mount("div")
+    const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".more-attributes")!
+    const dialog = editor.shadowRoot!.querySelector("dialog")!
+    trigger.click()
+    editor.disabled = true
+    await editor.updateComplete
+    expect(dialog.open).toBe(false)
+    expect(trigger).toBeDisabled()
+    editor.disabled = false
+    await editor.updateComplete
+    trigger.click()
+    expect(dialog.open).toBe(true)
+    editor.remove()
+    expect(dialog.open).toBe(false)
+  })
+
   it("keeps the numeric clear action in the label and hides it after removal", async () => {
     const editor = await mount("ol", {start: "0"})
     editor.expanded = true
@@ -42,10 +89,10 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector('[aria-label="Details: Accordion group"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: Initially open"]')!.checked)
       .toBe(true)
-    expect(editor.shadowRoot!.querySelector('[aria-label="Details: ID"]')!.closest("details")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Details: ID"]')!.closest("dialog")).not.toBeNull()
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: ID"]')!.value)
       .toBe("shipping")
-    expect(editor.shadowRoot!.querySelector("summary")?.textContent).toContain("All attributes (3)")
+    expect(editor.shadowRoot!.querySelector("h3")?.textContent).toContain("All attributes (3)")
   })
 
   it("uses editable number comboboxes with named suggestions and a clear action in expanded fields", async () => {
@@ -303,25 +350,25 @@ describe("element attribute editor", () => {
     ([{}, {id: "quiz", class: "practice", title: "Practice quiz", dir: "rtl", hidden: ""}] as Record<string, string>[])
       .map(attributes => ({localName, attributes})),
   ))(
-    "keeps identity, direction, and hidden fields inside All attributes: %j",
+    "keeps identity, direction, and hidden fields inside the attributes dialog: %j",
     async ({localName, attributes}) => {
       const editor = await mount(localName, attributes)
       const root = editor.shadowRoot!
-      const details = root.querySelector("details")!
-      expect(details.open).toBe(false)
+      const dialog = root.querySelector("dialog")!
+      expect(dialog.open).toBe(false)
       for(const label of ["ID", "Classes", "Title", "Direction", "Hidden"]) {
         const field = root.querySelector(`[aria-label="${localName}: ${label}"]`)
           ?? Array.from(root.querySelectorAll<HTMLElement>("style-combobox"))
             .find(combo => (combo as HTMLElement & {label: string}).label === `${localName}: ${label}`)!
-        expect(field.closest("details")).toBe(details)
+        expect(field.closest("dialog")).toBe(dialog)
         expect(field).not.toBeDisabled()
       }
-      expect(root.querySelector(`[aria-label="${localName}: Language"]`)!.closest("details")).toBeNull()
+      expect(root.querySelector(`[aria-label="${localName}: Language"]`)!.closest("dialog")).toBeNull()
 
-      details.open = true
+      root.querySelector<HTMLButtonElement>(".more-attributes")!.click()
       const listener = vi.fn()
       editor.addEventListener("element-attribute-change", listener)
-      const direction = Array.from(details.querySelectorAll<HTMLElement>("style-combobox"))
+      const direction = Array.from(dialog.querySelectorAll<HTMLElement>("style-combobox"))
         .find(combo => (combo as HTMLElement & {label: string}).label === `${localName}: Direction`)!
       direction.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
       await (direction as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
@@ -330,7 +377,7 @@ describe("element attribute editor", () => {
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({
         detail: expect.objectContaining({name: "dir", value: "ltr"}),
       }))
-      const hidden = details.querySelector<HTMLInputElement>(`[aria-label="${localName}: Hidden"]`)!
+      const hidden = dialog.querySelector<HTMLInputElement>(`[aria-label="${localName}: Hidden"]`)!
       expect(hidden.checked).toBe(Object.hasOwn(attributes, "hidden"))
       for(const checked of [true, false]) {
         hidden.checked = checked

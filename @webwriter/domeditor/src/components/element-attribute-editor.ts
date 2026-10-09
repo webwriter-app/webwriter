@@ -67,8 +67,6 @@ export class ElementAttributeEditor extends LitElement {
     :host([expanded]) {font-size: .68rem;}
     :host([expanded]) .field {grid-template-columns: 4.4rem minmax(0, 1fr);}
     :host([expanded]) input, :host([expanded]) select {border-color: #c5ccd5; border-radius: 4px;}
-    :host([expanded]) details {margin-top: .4rem; padding-top: 0; border-top: 0;}
-    :host([expanded]) summary {display: none;}
 
     .choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; min-width: 0; border: 0; border-radius: 0; overflow: visible;}
     .choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; display: grid; place-items: center; min-width: 0; min-height: 1.7rem; padding: .15rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; background: #f2f2f2; color: inherit; cursor: pointer;}
@@ -155,17 +153,32 @@ export class ElementAttributeEditor extends LitElement {
       min-height: 1rem;
     }
 
-    details {
-      margin-top: 0.55rem;
-      padding-top: 0.45rem;
-      border-top: 1px solid #d7dee7;
-    }
+    .language-row {display: flex; align-items: center; gap: .35rem;}
+    .language-row > .field {flex: 1; min-width: 0;}
+    .more-attributes {flex: 0 0 .85rem; padding: 0; border: 0; background: transparent; cursor: pointer;}
+    .more-attributes:hover:not(:disabled) {background: #edf3f9;}
+    .more-attributes:active:not(:disabled) {background: #e2edf8; color: #375d84;}
+    .more-attributes svg {display: block; width: 100%; height: 1rem; margin: auto;}
+    button:focus-visible {outline: 2px solid #8eb6df; outline-offset: 2px;}
 
-    summary {
-      color: #526b86;
-      cursor: pointer;
-      font-weight: 600;
+    dialog {
+      box-sizing: border-box;
+      width: min(32rem, calc(100vw - 2rem));
+      max-height: calc(100dvh - 2rem);
+      overflow: auto;
+      padding: 1rem;
+      border: 1px solid #bcc7d4;
+      border-radius: .5rem;
+      background: #fff;
+      color: inherit;
+      font: .8rem/1.4 system-ui, sans-serif;
+      box-shadow: 0 1rem 3rem rgb(15 23 42 / 25%);
     }
+    dialog::backdrop {background: rgb(15 23 42 / 42%);}
+    .dialog-heading {display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem;}
+    h2, h3 {margin: 0; font-size: 1em;}
+    h3 {margin-top: .75rem;}
+    .dialog-heading button {padding: .2rem .5rem; cursor: pointer;}
 
     .attribute-list {
       margin-top: 0.45rem;
@@ -223,6 +236,20 @@ export class ElementAttributeEditor extends LitElement {
   disabled = false
   expanded = false
   mediaOwned = true
+
+  protected updated() {
+    if(this.disabled || !this.state) this.closeDialog()
+  }
+
+  disconnectedCallback() {
+    this.closeDialog()
+    super.disconnectedCallback()
+  }
+
+  private closeDialog() {
+    const dialog = this.shadowRoot?.querySelector("dialog")
+    if(dialog?.open) dialog.close()
+  }
 
   private dispatchAttribute(name: string, value: string | null, previousName?: string) {
     if(this.disabled) return
@@ -394,18 +421,31 @@ export class ElementAttributeEditor extends LitElement {
     const limitation = elementEditingLimitation(state.localName, state.namespaceURI)
     const additionalOptions = options.filter(option => ["id", "class", "title", "dir", "hidden"].includes(option.name))
     return html`
-      ${limitation ? html`
-        <aside class="limitation" aria-label=${`${state.name} editing limitation`}>
-          <strong>${limitation.title}</strong>
-          <span>${limitation.description}</span>
-          <span class="limitation-guidance">${limitation.guidance}</span>
-        </aside>
-      ` : nothing}
-      <div class="fields" role="group" aria-label=${`${state.name} common attributes`}>
-        ${options.filter(option => !additionalOptions.includes(option)).map(option => this.renderPrimary(option, state))}
+      <div class="language-row">
+        ${options.filter(option => option.name === "lang").map(option => this.renderPrimary(option, state))}
+        <button type="button" class="more-attributes" aria-label="Other attributes" title="Other attributes"
+          aria-haspopup="dialog" aria-controls="attributes-dialog" ?disabled=${this.disabled}
+          @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.showModal()}>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
       </div>
-      <details ?open=${this.expanded}>
-        <summary>All attributes (${attributes.length})</summary>
+      <dialog id="attributes-dialog" aria-labelledby="attributes-heading">
+        <div class="dialog-heading">
+          <h2 id="attributes-heading">${state.name} attributes</h2>
+          <button type="button" aria-label="Close attributes" ?disabled=${this.disabled}
+            @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.close()}>Close</button>
+        </div>
+        ${limitation ? html`
+          <aside class="limitation" aria-label=${`${state.name} editing limitation`}>
+            <strong>${limitation.title}</strong>
+            <span>${limitation.description}</span>
+            <span class="limitation-guidance">${limitation.guidance}</span>
+          </aside>
+        ` : nothing}
+        <div class="fields" role="group" aria-label=${`${state.name} common attributes`}>
+          ${options.filter(option => option.name !== "lang" && !additionalOptions.includes(option)).map(option => this.renderPrimary(option, state))}
+        </div>
+        <h3>All attributes (${attributes.length})</h3>
         <div class="attribute-list">
           ${additionalOptions.map(option => this.renderPrimary(option, state))}
           ${attributes.map(([name, value]) => {
@@ -444,7 +484,7 @@ export class ElementAttributeEditor extends LitElement {
             <button type="submit" ?disabled=${this.disabled}>Add</button>
           </form>
         `}
-      </details>
+      </dialog>
     `
   }
 }
