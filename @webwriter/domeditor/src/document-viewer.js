@@ -411,7 +411,7 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
         control = makeControl(target.element)
         controls.set(target.element, control)
       }
-      const anchor = target.kind === "table" ? target.caption ?? target.element : target.element
+      const anchor = target.caption ?? target.element
       const targetRect = target.element.getBoundingClientRect()
       const anchorRect = anchor.getBoundingClientRect()
       const rect = anchorRect.width > 0 && anchorRect.height > 0 ? anchorRect : targetRect
@@ -432,7 +432,7 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
         control.permalink.hidden = style.display === "none" || style.visibility === "hidden" || rect.bottom <= 0 || rect.top >= window.innerHeight
         const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2 || 28
         control.permalink.style.left = `${left}px`
-        control.permalink.style.top = `${target.kind === "figure" ? targetRect.top : rect.top + Math.min(rect.height, lineHeight) / 2 - 14}px`
+        control.permalink.style.top = `${target.kind === "figure" && !target.caption ? targetRect.top : rect.top + Math.min(rect.height, lineHeight) / 2 - 14}px`
       }
       if(control.fullscreen) {
         const media = target.media?.find(element => inside(element.getBoundingClientRect()))

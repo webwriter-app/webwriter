@@ -436,6 +436,7 @@ describe("document reader controls", () => {
     const figure = document.querySelector("figure#photo")!
     const media = figure.querySelector("img")!
     const caption = figure.querySelector("figcaption")!
+    caption.style.lineHeight = "20px"
     Object.assign(figure, {requestFullscreen: vi.fn(() => Promise.resolve())})
     vi.spyOn(figure, "getBoundingClientRect").mockReturnValue({left: 140, top: 180, right: 540, bottom: 410, width: 400, height: 230} as DOMRect)
     vi.spyOn(media, "getBoundingClientRect").mockReturnValue({left: 140, top: 180, right: 540, bottom: 380, width: 400, height: 200} as DOMRect)
@@ -447,7 +448,7 @@ describe("document reader controls", () => {
     expect(group.hasAttribute("data-fullscreen-visible")).toBe(false)
     // Aligned with the heading's column, not the inset figure's left edge.
     expect(group.querySelector("a")!.style.left).toBe("70px")
-    expect(group.querySelector("a")!.style.top).toBe("180px")
+    expect(group.querySelector("a")!.style.top).toBe("386px")
     expect(button.style.left).toBe("500px")
     expect(button.style.top).toBe("188px")
     caption.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 200, clientY: 400}))
@@ -465,6 +466,30 @@ describe("document reader controls", () => {
     await settle(); await settle()
     expect(group.hasAttribute("data-fullscreen-visible")).toBe(false)
     expect(document.body.shadowRoot!.querySelector("style")!.textContent).toContain("rgb(15 23 42 / .55)")
+  })
+
+  it("follows captions above figures and falls back to the figure when the caption is removed", async () => {
+    const figure = document.querySelector("figure#photo")!
+    const caption = figure.querySelector("figcaption")!
+    caption.style.lineHeight = "20px"
+    figure.prepend(caption)
+    vi.spyOn(figure, "getBoundingClientRect").mockReturnValue({left: 140, top: 180, right: 540, bottom: 410, width: 400, height: 230} as DOMRect)
+    const captionRect = vi.spyOn(caption, "getBoundingClientRect").mockReturnValue({left: 140, top: 180, right: 540, bottom: 200, width: 400, height: 20} as DOMRect)
+    reader = mountDocumentReader()!
+    const group = controls()[1]
+    const link = group.querySelector("a")!
+    expect(link.style.left).toBe("70px")
+    expect(link.style.top).toBe("176px")
+    expect(link.hash).toBe("#photo")
+    captionRect.mockReturnValue({left: 140, top: 220, right: 540, bottom: 240, width: 400, height: 20} as DOMRect)
+    window.dispatchEvent(new Event("resize")); await settle(); await settle()
+    expect(link.style.top).toBe("216px")
+    document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 95, clientY: 230}))
+    await settle(); await settle()
+    expect(group.hasAttribute("data-permalink-visible")).toBe(true)
+    caption.remove()
+    await settle(); await settle()
+    expect(link.style.top).toBe("180px")
   })
 
   it("places fullscreen on the hovered media when a figure contains multiple media elements", async () => {
