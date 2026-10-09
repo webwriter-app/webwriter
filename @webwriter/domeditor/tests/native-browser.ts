@@ -1002,6 +1002,110 @@ await check("audio insertion retains element selection at the document start", a
   finally { frame.remove() }
 })
 
+await check("link keyboard preserves iframe selections and applies document, web, and reference links", async () => {
+  const {LinkKeyboard, linkHistoryKey} = await import("../src/components/link-keyboard")
+  const priorHistory = localStorage.getItem(linkHistoryKey)
+  localStorage.removeItem(linkHistoryKey)
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:200px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p><a>Link text</a></p><h2 id="intro">Introduction</h2></body>'
+  const keyboard = new LinkKeyboard()
+  fixture.append(frame, keyboard)
+  const errors: string[] = []
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `link editor did not initialize: ${view.editorError}`)
+    const local = view.editor!, doc = frame.contentDocument!, anchor = doc.querySelector("a")!
+    const text = anchor.firstChild!, selection = doc.getSelection()!
+    doc.body.focus(); selection.setBaseAndExtent(text, 2, text, 2)
+    keyboard.state = local.features.mark.getLinkState()
+    await keyboard.updateComplete
+    keyboard.addEventListener("link-keyboard-command", event => {
+      try { local.features.mark.editLink((event as CustomEvent).detail); keyboard.state = local.features.mark.getLinkState() }
+      catch(error) { errors.push(String(error)) }
+    })
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>("#tab-document")!.click()
+    await keyboard.updateComplete
+    const search = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Search document links"]')!
+    search.focus(); search.value = "Intro"; search.dispatchEvent(new Event("input"))
+    await keyboard.updateComplete
+    assert(selection.anchorNode === text && selection.anchorOffset === 2, "host keyboard input lost the iframe caret")
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>(".target")!.click()
+    assert(anchor.getAttribute("href") === "#intro", "document target was not applied")
+    keyboard.state = local.features.mark.getLinkState()
+    await keyboard.updateComplete
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>("#tab-web")!.click()
+    await keyboard.updateComplete
+    const url = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Web address"]')!
+    url.focus(); url.value = "https://example.test/source"; url.dispatchEvent(new Event("input"))
+    const applyWeb = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Apply web link"]')!
+    for(const width of [760, 360]) {
+      keyboard.style.width = `${width}px`
+      await layoutFrame()
+      const labelRow = keyboard.shadowRoot!.querySelector<HTMLElement>(".web-label-row")!
+      const options = keyboard.shadowRoot!.querySelector<HTMLElement>(".web-options")!
+      assert(labelRow.scrollWidth <= labelRow.clientWidth + 1, `Web options overflowed at width ${width}`)
+      assert(Math.abs(options.getBoundingClientRect().right - labelRow.getBoundingClientRect().right) <= 1, "Web options are not right aligned")
+      assert(Math.abs(applyWeb.getBoundingClientRect().right - url.getBoundingClientRect().right) <= 1, "Web arrow is not at the end of the input")
+    }
+    applyWeb.click()
+    assert(anchor.getAttribute("href") === "https://example.test/source", "web address was not applied")
+    keyboard.state = local.features.mark.getLinkState()
+    await keyboard.updateComplete
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[role="tab"]:last-child')!.click()
+    await keyboard.updateComplete
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Add reference"]')!.click()
+    await keyboard.updateComplete
+    const dialog = keyboard.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!
+    assert(dialog.open, "reference + did not open a native dialog")
+    assert(selection.anchorNode === text && selection.anchorOffset === 2, "reference dialog lost the iframe caret")
+    const title = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Title"]')!
+    title.value = "Reference source"; title.dispatchEvent(new Event("input"))
+    const link = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Link (optional)"]')!
+    link.value = ""; link.dispatchEvent(new Event("input"))
+    dialog.querySelector<HTMLButtonElement>(".actions button:last-child")!.click()
+    await keyboard.updateComplete
+    assert(!dialog.open, "successful reference addition did not close the dialog")
+    assert(anchor.getAttribute("href")?.startsWith("#ref-"), "reference without a web representation did not get a fragment")
+    assert(JSON.parse(anchor.dataset.reference!).title === "Reference source", "reference metadata was not applied")
+    assert(anchor.textContent === "Link text" && !doc.body.innerHTML.includes("link-keyboard"), "keyboard changed authored text or leaked UI")
+    assert(!errors.length, errors.join("; "))
+    for(const width of [760, 360]) {
+      keyboard.style.width = `${width}px`
+      await layoutFrame()
+      const section = keyboard.shadowRoot!.querySelector<HTMLElement>("section")!
+      assert(section.scrollWidth <= section.clientWidth + 1, `keyboard overflowed at width ${width}`)
+      assert(keyboard.getBoundingClientRect().height > 250, "keyboard lost its math-style bottom panel size")
+      const panel = keyboard.shadowRoot!.querySelector<HTMLElement>(".panel")!
+      const bar = panel.querySelector<HTMLElement>(".search-bar")!
+      const values = panel.querySelector<HTMLElement>(".targets")!
+      assert(values.clientHeight > 100 && getComputedStyle(values).overflowY === "auto", "suggestions do not fill a scrollable panel")
+      assert(bar.getBoundingClientRect().bottom <= values.getBoundingClientRect().top + 1, "suggestions overlap the search bar")
+      const inputPositions: number[] = []
+      for(const tab of ["web", "document", "reference"]) {
+        keyboard.shadowRoot!.querySelector<HTMLButtonElement>(`#tab-${tab}`)!.click()
+        await keyboard.updateComplete
+        await layoutFrame()
+        inputPositions.push(keyboard.shadowRoot!.querySelector<HTMLElement>(".search-bar")!.getBoundingClientRect().top)
+      }
+      assert(Math.max(...inputPositions) - Math.min(...inputPositions) <= 1, `input shifted between tabs at width ${width}`)
+    }
+    const remembered = new LinkKeyboard()
+    remembered.state = {active: true, identity: "remembered", href: "", attributes: {}, text: "", targets: []}
+    fixture.append(remembered); await remembered.updateComplete
+    assert(remembered.history.urls.includes("https://example.test/source"), "Web URL was not remembered across keyboard instances")
+    remembered.shadowRoot!.querySelector<HTMLButtonElement>("#tab-reference")!.click(); await remembered.updateComplete
+    assert(remembered.shadowRoot!.querySelector(".target")?.textContent?.includes("Reference source"), "reference was not remembered across keyboard instances")
+    remembered.remove()
+  }
+  finally {
+    frame.contentWindow?.editor?.destroy(); frame.remove(); keyboard.remove()
+    if(priorHistory === null) localStorage.removeItem(linkHistoryKey)
+    else localStorage.setItem(linkHistoryKey, priorHistory)
+  }
+})
+
 await check("editor command preserves a live selection", () => {
   const text = document.querySelector("#before")!.firstChild!
   const selection = getSelection()!

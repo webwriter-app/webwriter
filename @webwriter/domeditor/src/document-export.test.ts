@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import {parse} from "es-module-lexer"
 import {DOMEditor} from "./domeditor"
+import {$} from "./utility"
 
 let editor: DOMEditor | undefined
 const originalHead = document.head.innerHTML
@@ -76,4 +77,58 @@ describe("document reader export", () => {
     expect(heading.textContent).toBe("Technical summary")
     expect(heading.id).toBe("technical-summary")
   })
+})
+
+
+it("exports references with an offline formatter and preserves metadata through undo and redo", async () => {
+  document.body.innerHTML = '<p><a href="#source">citation</a> <a href="#source">again</a></p>'
+  const initial = JSON.stringify({type: "book", title: "Before"})
+  document.querySelectorAll("a").forEach(anchor => anchor.setAttribute("data-reference", initial))
+  editor = new DOMEditor()
+  const anchor = document.querySelector("a")!
+  $.move(anchor.firstChild!, 2)
+  editor.features.mark.setMarkAttribute("a", "data-reference", JSON.stringify({type: "book", title: "After"}))
+  for(const html of [editor.toHTML(), await editor.serializeHTML(true)]) {
+    const parsed = new DOMParser().parseFromString(html, "text/html")
+    const script = parsed.getElementById("webwriter-document-viewer")!.textContent!
+    expect((await parse(script))[0]).toHaveLength(0)
+    expect(script).toContain("referenceFormatter.formatReferences")
+    expect(parsed.body.querySelectorAll("a[data-reference]")).toHaveLength(2)
+    expect(parsed.body.innerHTML).not.toContain("◆document-references")
+    expect(parsed.body.innerHTML).toContain("After")
+    // Execute the embedded module body without imports to verify offline formatting.
+    const bundle = script.slice(0, script.indexOf('/** Import-free'))
+    const format = new Function(bundle + '; return referenceFormatter.formatReferences')()
+    expect(format([{href: "#source", data: {type: "book", title: "Offline"}, conflict: false}], "bibliography", "apa")).toContain("Offline")
+  }
+  editor.doc.undo()
+  expect(Array.from(document.querySelectorAll("a")).map(anchor => JSON.parse(anchor.dataset.reference!).title)).toEqual(["Before", "Before"])
+  editor.doc.redo()
+  expect(Array.from(document.querySelectorAll("a")).map(anchor => JSON.parse(anchor.dataset.reference!).title)).toEqual(["After", "After"])
+})
+
+
+it("undoes and redoes an entire link keyboard edit as one authored change", () => {
+  document.body.innerHTML = '<p><a href="#old" rel="author">citation</a> <a href="#old">again</a></p>'
+  const initial = JSON.stringify({type: "book", title: "Before"})
+  document.querySelectorAll("a").forEach(anchor => anchor.dataset.reference = initial)
+  editor = new DOMEditor()
+  const anchor = document.querySelector("a")!
+  $.move(anchor.firstChild!, 2)
+  const state = editor.features.mark.getLinkState()!
+  editor.features.mark.editLink({identity: state.identity, href: "https://new.test", attributes: {
+    target: "_blank", rel: "author noopener", "data-reference": JSON.stringify({type: "book", title: "After"}),
+    "data-reference-locator": "8",
+  }})
+  expect(Array.from(document.querySelectorAll("a")).map(anchor => anchor.getAttribute("href"))).toEqual(["https://new.test", "#old"])
+  expect(document.querySelector("a")!.dataset.referenceLocator).toBe("8")
+  editor.doc.undo()
+  expect(Array.from(document.querySelectorAll("a")).map(anchor => anchor.getAttribute("href"))).toEqual(["#old", "#old"])
+  expect(document.querySelector("a")!.getAttribute("target")).toBeNull()
+  expect(document.querySelector("a")!.getAttribute("rel")).toBe("author")
+  expect(document.querySelector("a")!.dataset.referenceLocator).toBeUndefined()
+  expect(Array.from(document.querySelectorAll("a")).map(anchor => JSON.parse(anchor.dataset.reference!).title)).toEqual(["Before", "Before"])
+  editor.doc.redo()
+  expect(Array.from(document.querySelectorAll("a")).map(anchor => anchor.getAttribute("href"))).toEqual(["https://new.test", "#old"])
+  expect(Array.from(document.querySelectorAll("a")).map(anchor => JSON.parse(anchor.dataset.reference!).title)).toEqual(["After", "Before"])
 })

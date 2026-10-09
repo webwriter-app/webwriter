@@ -29,3 +29,14 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+declare module 'virtual:reference-formatter-source' {
+  const source: string
+  export default source
+}
+
+declare module '@citation-js/core' {
+  export class Cite {
+    constructor(data: unknown)
+    format(format: string, options?: Record<string, unknown>): string
+  }
+}

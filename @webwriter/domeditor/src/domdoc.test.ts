@@ -7,6 +7,7 @@ import * as encoding from "lib0/encoding"
 import * as decoding from "lib0/decoding"
 import * as syncProtocol from "y-protocols/sync"
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
+import {collectReferences} from "./document-viewer.js"
 import {$} from "./utility"
 
 const sharedDocs: SharedDOMDoc[] = []
@@ -914,6 +915,26 @@ describe("Yjs to DOM synchronization", () => {
     expect(paragraph.textContent).toBe("Hello remote")
     expect(paragraph.getAttribute("title")).toBe("new")
     expect(paragraph.getAttribute("hidden")).toBe("")
+  })
+
+  it("preserves remote reference metadata and derives references from the current authored DOM", () => {
+    const {root, shared} = createShared('<p><a href="#source" data-reference=\'{"type":"book","title":"Before"}\'>citation</a></p>')
+    const anchor = root.querySelector<HTMLAnchorElement>("a")!
+    const yParagraph = shared.body.firstChild as Y.XmlElement
+    const yAnchor = yParagraph.firstChild as Y.XmlElement
+    const remoteMetadata = JSON.stringify({type: "book", title: "After", author: [{family: "Ng"}]})
+
+    shared.doc.transact(() => yAnchor.setAttribute("data-reference", remoteMetadata), "remote-client")
+
+    expect(root.querySelector("a")).toBe(anchor)
+    expect(anchor.getAttribute("data-reference")).toBe(remoteMetadata)
+    expect(yAnchor.getAttribute("data-reference")).toBe(remoteMetadata)
+    const references = collectReferences(root)
+    expect(references).toHaveLength(1)
+    expect(references[0]).toMatchObject({href: "#source", data: JSON.parse(remoteMetadata)})
+    expect(references[0].anchors).toEqual([anchor])
+    expect(root.shadowRoot).toBeNull()
+    expect(root.innerHTML).not.toContain("◆document-references")
   })
 
   it("applies remote insertion, deletion, and nested content", () => {

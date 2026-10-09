@@ -41,6 +41,7 @@ const expectedChecks = [
   "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",
   "canvas and slide gestures relay pointer dismissal before feature capture",
+  "link keyboard preserves iframe selections and applies document, web, and reference links",
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",
   "selection feature treats custom element as atomic",

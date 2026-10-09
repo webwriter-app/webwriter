@@ -593,8 +593,9 @@ describe("mark ribbon controls", () => {
     expect(buttons.slice(2, 6).every(button => button.compact && button.toggle)).toBe(true)
     expect(buttons[6].compact).toBe(true)
     expect(buttons[6].toggle).toBe(false)
-    expect(buttons.slice(7).every(button => !button.compact)).toBe(true)
+    expect(buttons[7].compact).toBe(false)
     expect(buttons[7].toggle).toBe(false)
+    expect(buttons[8].compact).toBe(false)
     expect(buttons[8].toggle).toBe(true)
     expect(buttons.filter(button => button.label !== "Formula").every(button => button.disabled)).toBe(true)
     expect(comboboxes.every(combobox => combobox.disabled)).toBe(true)
@@ -654,7 +655,7 @@ describe("mark ribbon controls", () => {
     const heading = Array.from(textDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
       .find(button => button.label === "Heading")!
     const standardButtons = [
-      drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!,
+      drawer.querySelector<RibbonButton>(".mark-span")!,
     ]
     await Promise.all([heading.updateComplete, ...standardButtons.map(button => button.updateComplete)])
 
@@ -709,7 +710,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const span = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    const span = drawer.querySelector<RibbonButton>(".mark-span")!
     expect(span.active).toBe(true)
     expect(span.label).toBe("Link")
     expect(span.selectionCount).toBe(2)
@@ -723,7 +724,6 @@ describe("mark ribbon controls", () => {
     expect(dropdown.querySelector('[role="listbox"]')?.getAttribute("aria-multiselectable")).toBe("true")
     expect(Array.from(dropdown.querySelectorAll<HTMLElement>(".mark-dropdown-option-name")).map(option => option.textContent))
       .toEqual([
-        "Link",
         "Superscript",
         "Subscript",
         "Code",
@@ -731,7 +731,7 @@ describe("mark ribbon controls", () => {
         "Quotation",
       ])
     expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-icon svg')).not.toBeNull()
-    expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-name')?.textContent).toBe("Link")
+    expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-name')?.textContent).toBe("Superscript")
     expect(dropdown.querySelector('input[aria-label="Quotation: Source"]')).not.toBeNull()
 
     dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Code"]')!.click()
@@ -760,12 +760,12 @@ describe("mark ribbon controls", () => {
       shortcuts: {...ribbon.settings.shortcuts, "text.code": "Alt+Shift+9", "text.q": ""},
     }
     await ribbon.updateComplete
-    const more = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    const more = drawer.querySelector<RibbonButton>(".mark-span")!
     await more.updateComplete
     const options = [...more.shadowRoot!.querySelectorAll<HTMLElement>(".mark-dropdown-option")]
-    expect(options).toHaveLength(6)
+    expect(options).toHaveLength(5)
     for(const [index, name] of ["sup", "sub", "code", "kbd", "q"].entries()) {
-      const shortcut = options[index + 1].querySelector<HTMLElement>(".mark-dropdown-shortcut")
+      const shortcut = options[index].querySelector<HTMLElement>(".mark-dropdown-shortcut")
       const configured = ribbon.settings.shortcuts[`text.${name}`]
       expect(shortcut?.textContent ?? "").toBe(formatShortcut(configured))
       if(shortcut) {
@@ -775,7 +775,7 @@ describe("mark ribbon controls", () => {
     }
   })
 
-  it("keeps an empty span multiselect open and presents it as More", async () => {
+  it("keeps an empty span multiselect open with Link as the primary action", async () => {
     const {ribbon, drawer} = await mountRibbon()
     const changed = vi.fn()
     ribbon.addEventListener("ribbon-combobox-change", changed)
@@ -784,7 +784,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const span = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    const span = drawer.querySelector<RibbonButton>(".mark-span")!
     span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await span.updateComplete
     span.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Select Superscript"]')!.click()
@@ -818,7 +818,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const button = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    const button = drawer.querySelector<RibbonButton>(".mark-span")!
     await button.updateComplete
     expect(button.label).toBe("Link")
     expect(button.active).toBe(false)
@@ -826,7 +826,7 @@ describe("mark ribbon controls", () => {
     button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await button.updateComplete
     const dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(6)
+    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(5)
     expect(dropdown.querySelector(".ruby-dropdown")).toBeNull()
     expect(dropdown.textContent).not.toContain("Annotation")
 
@@ -844,7 +844,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const span = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    const span = drawer.querySelector<RibbonButton>(".mark-span")!
     span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await span.updateComplete
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
@@ -865,81 +865,36 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(activeQuotation.parentElement!).visibility).not.toBe("hidden")
   })
 
-  it("puts the Link toggle and options first in the combined dropdown", async () => {
+  it("keeps Link as the primary toggle for More without link inputs", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
     ribbon.marks = ["a"]
-    ribbon.markAttributes = {a: {href: "/page", target: "_blank"}}
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const link = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
-    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    const link = drawer.querySelector<RibbonButton>(".mark-span")!
     await link.updateComplete
-    const dropdown = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    const options = dropdown.querySelectorAll('[role="option"]')
-    expect(options[0].querySelector(".mark-dropdown-option-name")!.textContent).toBe("Link")
-    const toggle = options[0].querySelector<HTMLInputElement>('input[aria-label="Select Link"]')!
-    expect(toggle.checked).toBe(true)
+    expect(link.toggle).toBe(true)
+    expect(link.active).toBe(true)
+    expect(drawer.querySelector(".mark-link")).toBeNull()
+    expect(link.label).toBe("Link")
+    expect(link.action).toBe("mark:a")
+    expect(link.shadowRoot!.querySelector(".submenu-trigger")).not.toBeNull()
+    expect(link.shadowRoot!.querySelector('[aria-label="Web address"], [aria-label="Link: URL"], [aria-label="Title"]')).toBeNull()
+
     const toggled = vi.fn()
     ribbon.addEventListener("ribbon-button-click", toggled)
-    toggle.click()
-    expect(toggled).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "mark:a", keepDrawerOpen: true}}))
-    expect(dropdown.hidden).toBe(false)
-    const href = dropdown.querySelector<HTMLInputElement>('input[aria-label="Link: Link"]')!
-    expect(href.value).toBe("/page")
-    expect(href.closest('[role="option"]')).toBe(options[0])
-    expect(href.previousElementSibling).toBeNull()
-    expect(href.hasAttribute("data-ribbon-input-persistent")).toBe(true)
-    expect(dropdown.querySelector(".button-dropdown-more")).toBeNull()
-    const advanced = dropdown.querySelector<HTMLElement>(".link-options")!
-    expect(getComputedStyle(advanced).display).toBe("grid")
-    expect(getComputedStyle(advanced).borderTopWidth).not.toBe("1px")
-    const advancedInputs = Array.from(advanced.querySelectorAll<HTMLInputElement>("input"))
-    expect(advancedInputs.map(input => input.getAttribute("aria-label"))).toEqual([
-      "Link: Open in new tab",
-      "Link: Download",
-    ])
-    expect(advancedInputs.every(input => input.type === "checkbox")).toBe(true)
-    expect(advancedInputs[0].checked).toBe(true)
-    expect(advancedInputs[1].checked).toBe(false)
-    const newTabLabel = advancedInputs[0].parentElement!
-    const downloadLabel = advancedInputs[1].parentElement!
-    expect(newTabLabel.lastElementChild).toBe(advancedInputs[0])
-    expect(downloadLabel.lastElementChild).toBe(advancedInputs[1])
-    expect(getComputedStyle(newTabLabel).justifyContent).toBe("flex-end")
-    expect(getComputedStyle(newTabLabel).textAlign).toBe("right")
-    expect(getComputedStyle(downloadLabel).justifyContent).toBe("flex-end")
-    expect(getComputedStyle(downloadLabel).textAlign).toBe("right")
-    const changed = vi.fn()
-    ribbon.addEventListener("mark-attribute-change", changed)
-    advancedInputs[0].click()
-    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "target", value: ""})
-    advancedInputs[0].click()
-    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "target", value: "_blank"})
-    advancedInputs[1].click()
-    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "download", value: ""})
-    ribbon.markAttributes = {a: {href: "/page", download: ""}}
-    await ribbon.updateComplete
-    await link.updateComplete
-    const filename = link.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Link: Filename"]')!
-    expect(filename.value).toBe("")
-    filename.value = "page.html"
-    filename.dispatchEvent(new Event("change"))
-    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "download", value: "page.html"})
-    ribbon.markAttributes = {a: {href: "/page", download: "page.html"}}
-    await ribbon.updateComplete
-    await link.updateComplete
-    expect(link.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Link: Filename"]')!.value).toBe("page.html")
-    link.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Link: Download"]')!.click()
-    expect(changed.mock.calls.at(-1)![0].detail).toEqual({mark: "a", attribute: "download", value: null})
-    ribbon.markAttributes = {a: {href: "/page"}}
-    await ribbon.updateComplete
-    await link.updateComplete
-    expect(link.shadowRoot!.querySelector('input[aria-label="Link: Filename"]')).toBeNull()
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(toggled).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({label: "mark:a"})}))
 
-    expect(link.shadowRoot!.querySelector<HTMLElement>("ribbon-menu")!.hidden).toBe(false)
-    expect(link.shadowRoot!.querySelector(".link-options")).not.toBeNull()
+    const more = drawer.querySelector<RibbonButton>(".mark-span")!
+    expect(more.label).toBe("Link")
+    more.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await more.updateComplete
+    const dropdown = more.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
+    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(5)
+    expect(dropdown.querySelector("input[aria-label=\"Select Link\"]")).toBeNull()
+    expect(dropdown.querySelector("input, select")).not.toBeNull()
   })
 
   it("uses platform-native shortcut notation in button tooltips", async () => {
@@ -1088,140 +1043,6 @@ describe("mark ribbon bridge", () => {
     expect(execute).toHaveBeenNthCalledWith(8, {type: "removeRuby"})
   })
 
-  it("keeps the link popup and focus while clicking and changing its controls", async () => {
-    const {editor, iframe, editorWindow} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    dispatchEditorMessage(editor, editorWindow, {
-      type: markStateChangeEvent,
-      detail: {canMark: true, marks: ["a"], attributes: {a: {href: "/page", download: "file.txt"}}},
-    })
-    await editor.updateComplete
-    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    await ribbon.updateComplete
-    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
-    await drawer.updateComplete
-    const link = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
-    await link.updateComplete
-    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await link.updateComplete
-    const menu = link.shadowRoot!.querySelector<HTMLElement>("ribbon-menu")!
-    const popup = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    const focus = vi.spyOn(iframe, "focus")
-    const commit = vi.fn()
-    ribbon.addEventListener("ribbon-input-commit", commit)
-
-    for(const label of ["Open in new tab", "Download", "Filename", "Link"]) {
-      const input = popup.querySelector<HTMLInputElement>(`input[aria-label="Link: ${label}"]`)!
-      input.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
-      input.focus()
-      input.click()
-      if(input.type !== "checkbox") {
-        input.value = "changed"
-        input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-      }
-      await Promise.resolve()
-      await Promise.resolve()
-      expect(menu.hidden).toBe(false)
-      expect(link.shadowRoot!.activeElement).toBe(input)
-    }
-    popup.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
-    popup.click()
-    expect(menu.hidden).toBe(false)
-    expect(focus).not.toHaveBeenCalled()
-    expect(commit).not.toHaveBeenCalled()
-    expect(execute).toHaveBeenCalledTimes(9)
-
-    const linkToggle = popup.querySelector<HTMLInputElement>('input[aria-label="Select Link"]')!
-    linkToggle.focus()
-    linkToggle.click()
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(execute).toHaveBeenLastCalledWith({type: "toggleMark", mark: "a"})
-    expect(menu.hidden).toBe(false)
-    expect(link.shadowRoot!.activeElement).toBe(linkToggle)
-    expect(focus).not.toHaveBeenCalled()
-
-    document.body.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
-    await link.updateComplete
-    expect(menu.hidden).toBe(true)
-    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await link.updateComplete
-    popup.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
-    await link.updateComplete
-    expect(menu.hidden).toBe(true)
-  })
-
-  it.each([
-    ["Link", undefined, undefined],
-    ["Open in new tab", "target", "_blank"],
-    ["Download", "download", ""],
-  ])("applies Link when interacting with %s before a link is selected", async (label, attribute, value) => {
-    const {editor, iframe, editorWindow} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    dispatchEditorMessage(editor, editorWindow, {
-      type: markStateChangeEvent,
-      detail: {canMark: true, marks: [], attributes: {}},
-    })
-    await editor.updateComplete
-    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    await ribbon.updateComplete
-    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
-    await drawer.updateComplete
-    const link = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
-    await link.updateComplete
-    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await link.updateComplete
-    const popup = link.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    const input = popup.querySelector<HTMLInputElement>(`input[aria-label="Link: ${label}"]`)!
-    const focus = vi.spyOn(iframe, "focus")
-    expect(input.disabled).toBe(false)
-    expect(popup.querySelector<HTMLFieldSetElement>("fieldset")!.disabled).toBe(false)
-    input.focus()
-    if(attribute) input.click()
-    expect(execute).toHaveBeenNthCalledWith(1, {type: "addMark", mark: "a"})
-    if(attribute) expect(execute).toHaveBeenNthCalledWith(2, {type: "setMarkAttribute", mark: "a", attribute, value})
-    else expect(execute).toHaveBeenCalledTimes(1)
-    await Promise.resolve()
-    expect(link.shadowRoot!.activeElement).toBe(input)
-    expect(link.shadowRoot!.querySelector<HTMLElement>("ribbon-menu")!.hidden).toBe(false)
-    expect(focus).not.toHaveBeenCalled()
-
-    dispatchEditorMessage(editor, editorWindow, {
-      type: markStateChangeEvent,
-      detail: {canMark: true, marks: ["a"], attributes: {a: {href: "/page", target: "_blank", download: "file.txt"}}},
-    })
-    await editor.updateComplete
-    await ribbon.updateComplete
-    await link.updateComplete
-    execute.mockClear()
-    if(attribute) input.click()
-    else {
-      input.blur()
-      input.focus()
-    }
-    expect(execute).toHaveBeenNthCalledWith(1, {type: "addMark", mark: "a"})
-    if(attribute) expect(execute).toHaveBeenNthCalledWith(2, {
-      type: "setMarkAttribute", mark: "a", attribute, value: attribute === "download" ? null : "",
-    })
-    else {
-      expect(execute).toHaveBeenCalledTimes(1)
-      expect(input.value).toBe("/page")
-    }
-    expect(execute.mock.calls.some(([action]) => action.type === "toggleMark")).toBe(false)
-  })
-
-  it("routes enabling and disabling downloads through the editor", async () => {
-    const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    for(const value of ["", "file.txt", null]) {
-      ribbon.dispatchEvent(new CustomEvent("mark-attribute-change", {
-        bubbles: true, composed: true, detail: {mark: "a", attribute: "download", value},
-      }))
-      expect(execute).toHaveBeenLastCalledWith({type: "setMarkAttribute", mark: "a", attribute: "download", value})
-    }
-  })
-
   it("routes span dropdown selections and detail-attribute changes", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -1239,10 +1060,12 @@ describe("mark ribbon bridge", () => {
     await ribbon.updateComplete
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
     await drawer.updateComplete
-    const span = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    const span = drawer.querySelector<RibbonButton>(".mark-span")!
+    const link = drawer.querySelector<RibbonButton>(".mark-span")!
     await span.updateComplete
+    await link.updateComplete
 
-    span.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    link.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
     span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await span.updateComplete
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!

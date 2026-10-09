@@ -1,6 +1,8 @@
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
+import referenceFormatterSource from "virtual:reference-formatter-source"
+import {collectReferences} from "./document-viewer.js"
 import {documentLayoutMode} from "./document-layout"
 import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
@@ -77,7 +79,9 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const script = root.createElement("script")
     script.id = "webwriter-document-viewer"
     script.type = "module"
-    script.textContent = `${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)})\n`
+    const hasReferences = collectReferences(root.body).length > 0
+    script.textContent = `${hasReferences ? referenceFormatterSource : ""}\n${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)}${hasReferences ? ", referenceFormatter.formatReferences" : ""})\n`
+      .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   if(documentLayoutMode(root.body) === "canvas") {

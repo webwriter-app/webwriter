@@ -1122,6 +1122,7 @@ export class DOMEditor {
       ...this.features.mark.getState(),
       styles: this.features.mark.getStyleState(),
       attributes: this.features.mark.getAttributeState(),
+      link: this.features.mark.getLinkState() ?? undefined,
       ruby: this.features.mark.getRubyState(),
     })
   }

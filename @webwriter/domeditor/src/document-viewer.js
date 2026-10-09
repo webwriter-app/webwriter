@@ -5,6 +5,41 @@ const blocked = body => !body || body.classList.contains("ww-canvas") || body.cl
     && body.firstElementChild.getAttribute("role")?.toLowerCase().split(/\s+/).includes("document")
 
 const custom = element => element.localName.includes("-") || element.hasAttribute("is")
+/** Reference metadata is authored CSL data; href alone supplies its identity. */
+export function parseReference(value) {
+  try {
+    const data = JSON.parse(value)
+    if(!data || typeof data !== "object" || Array.isArray(data) || typeof data.type !== "string"
+      || typeof data.title !== "string" || !data.title.trim()) return null
+    const {id, URL, ...reference} = data
+    return reference
+  } catch { return null }
+}
+
+export function collectReferences(body) {
+  const references = new Map()
+  const key = value => JSON.stringify(value, (_, item) => item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(name => [name, item[name]])) : item)
+  const visit = element => {
+    if(custom(element) || element.namespaceURI !== "http://www.w3.org/1999/xhtml") return
+    if(element.localName === "a" && element.hasAttribute("data-reference")) {
+      const href = element.getAttribute("href")
+      const data = parseReference(element.getAttribute("data-reference"))
+      if(href && data) {
+        let reference = references.get(href)
+        if(!reference) {
+          reference = {href, data, anchors: [], conflict: false}
+          references.set(href, reference)
+        }
+        else if(key(reference.data) !== key(data)) reference.conflict = true
+        reference.anchors.push(element)
+      }
+    }
+    for(const child of element.children) visit(child)
+  }
+  for(const child of body.children) visit(child)
+  return Array.from(references.values())
+}
 const activeReaders = new WeakMap()
 const figureMedia = element => {
   const media = []
@@ -34,7 +69,7 @@ function targets(body) {
 }
 
 /** Mount controls in the body's shadow appendix without changing authored nodes. */
-export function mountDocumentReader(licenses = [], appIcon = "") {
+export function mountDocumentReader(licenses = [], appIcon = "", formatReferences = null) {
   const body = document.body
   if(blocked(body)) return null
   if(activeReaders.has(body)) return activeReaders.get(body)
@@ -79,7 +114,15 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
     .◆document-reuse a { text-decoration: underline; }
     .◆document-reuse header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .◆document-reuse button { width: 20px; height: 20px; }
-    @media print { .◆document-reader-control, .◆document-reader-feedback, .◆document-pane { display: none !important; } }
+    .◆document-references { position: fixed; z-index: 1001; inset: auto 20px 60px auto; width: min(440px, calc(100vw - 40px)); max-height: calc(100dvh - 100px); overflow: auto; box-sizing: border-box; padding: 16px; border: 1px solid #e2e8f0; border-radius: 4px; background: white; color: #334155; font: 12px/1.5 system-ui; text-align: left; }
+    .◆document-references[hidden] { display: none !important; }
+    .◆document-references header, .◆document-references footer { display: flex; align-items: center; gap: 8px; }
+    .◆document-references header strong { flex: 1; }
+    .◆document-references button, .◆document-references select { width: auto; padding: 4px; font: inherit; }
+    .◆document-references li { margin-block: 12px; overflow-wrap: anywhere; }
+    .◆document-references p { margin-block: 4px; }
+    .◆document-references pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+    @media print { .◆document-reader-control, .◆document-reader-feedback, .◆document-pane, .◆document-references { display: none !important; } }
   `
   appendix.append(style)
   // Appendix styles cannot reach authored fullscreen content. A disposable
@@ -218,6 +261,98 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
   }
   const saveButton = iconButton("save", "Save document", "M5 3h12l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8", save)
   iconButton("print", "Print document", "M6 9V3h12v6M6 18H4V9h16v9h-2M6 15h12v6H6zM17 12h.01", () => window.print())
+  const referencesPanel = document.createElement("div")
+  referencesPanel.className = "◆document-references"; referencesPanel.hidden = true; referencesPanel.tabIndex = -1
+  referencesPanel.setAttribute("role", "dialog"); referencesPanel.setAttribute("aria-label", "References")
+  const referencesHeader = document.createElement("header")
+  const referencesTitle = document.createElement("strong"); referencesTitle.textContent = "References"
+  const referencesClose = document.createElement("button")
+  referencesClose.type = "button"; referencesClose.textContent = "×"; referencesClose.setAttribute("aria-label", "Close references")
+  referencesHeader.append(referencesTitle, referencesClose)
+  const referencesList = document.createElement("ol")
+  const referencesPreview = document.createElement("pre")
+  referencesPreview.setAttribute("aria-label", "Formatted bibliography")
+  const referencesFooter = document.createElement("footer")
+  const referencesStyle = document.createElement("select")
+  referencesStyle.setAttribute("aria-label", "Citation style")
+  for(const name of ["apa", "vancouver", "harvard1"]) {
+    const option = document.createElement("option"); option.value = name
+    option.textContent = {apa: "APA", vancouver: "Vancouver", harvard1: "Harvard"}[name]
+    referencesStyle.append(option)
+  }
+  const referenceStatus = document.createElement("p"); referenceStatus.setAttribute("role", "status")
+  let references = [], referenceKey = ""
+  const closeReferences = (restoreFocus = false) => {
+    referencesPanel.hidden = true; referencesButton.setAttribute("aria-expanded", "false")
+    if(restoreFocus) referencesButton.focus()
+  }
+  const updateReferences = () => {
+    references = collectReferences(body)
+    referencesButton.hidden = !references.length
+    if(!references.length) closeReferences()
+    const nextKey = JSON.stringify(references.map(({href, data, conflict}) => [href, data, conflict])) + referencesStyle.value
+    if(nextKey === referenceKey) return
+    referenceKey = nextKey
+    referencesList.replaceChildren(); referenceStatus.textContent = ""
+    for(const reference of references) {
+      const item = document.createElement("li"); item.setAttribute("data-reference-href", reference.href)
+      const title = document.createElement("p"); title.textContent = reference.data.title
+      item.append(title)
+      if(reference.conflict) {
+        const warning = document.createElement("p"); warning.textContent = "Conflicting metadata for this reference. Resolve it in the editor before copying."; item.append(warning)
+      }
+      const jump = document.createElement("button"); jump.type = "button"; jump.textContent = "Go to citation"
+      jump.addEventListener("click", () => {
+        const current = collectReferences(body).find(entry => entry.href === reference.href)?.anchors[0]
+        if(current?.isConnected) { closeReferences(); current.scrollIntoView?.({block: "center"}); current.focus() }
+      })
+      item.append(jump); referencesList.append(item)
+    }
+    const unavailable = !formatReferences || references.some(reference => reference.conflict)
+    referencesPreview.textContent = ""
+    if(!unavailable) try { referencesPreview.textContent = formatReferences(references, "bibliography", referencesStyle.value) }
+    catch { referenceStatus.textContent = "Couldn’t format this reference." }
+    copyReferences.disabled = unavailable; copyBibtex.disabled = unavailable
+  }
+  const openReferences = href => {
+    updateReferences(); closeReuse()
+    if(!references.length) return
+    referencesPanel.hidden = false; referencesButton.setAttribute("aria-expanded", "true"); referencesPanel.focus()
+    if(href) Array.from(referencesList.children).find(item => item.getAttribute("data-reference-href") === href)?.scrollIntoView?.({block: "nearest"})
+  }
+  const referencesButton = iconButton("references", "References", "M4 3h6v18H4zM14 3h6v18h-6zM4 7h6M14 7h6", () => {
+    if(referencesPanel.hidden) openReferences(); else closeReferences()
+  })
+  referencesButton.setAttribute("aria-expanded", "false")
+  const copy = async format => {
+    try {
+      updateReferences()
+      if(!formatReferences || references.some(reference => reference.conflict) || !references.length) return
+      const output = formatReferences(references, format, referencesStyle.value)
+      if(!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable")
+      await navigator.clipboard.writeText(output)
+      if(!destroyed) referenceStatus.textContent = "Copied references"
+    } catch { if(!destroyed) referenceStatus.textContent = "Couldn’t copy references" }
+  }
+  const copyReferences = document.createElement("button"), copyBibtex = document.createElement("button")
+  copyReferences.type = copyBibtex.type = "button"
+  copyReferences.name = "copy-references"; copyReferences.textContent = "Copy references"
+  copyBibtex.name = "copy-bibtex"; copyBibtex.textContent = "Copy BibTeX"
+  copyReferences.addEventListener("click", () => copy("bibliography"))
+  copyBibtex.addEventListener("click", () => copy("bibtex"))
+  referencesFooter.append(referencesStyle, copyReferences, copyBibtex)
+  referencesPanel.append(referencesHeader, referencesList, referencesPreview, referencesFooter, referenceStatus); appendix.append(referencesPanel)
+  referencesClose.addEventListener("click", () => closeReferences(true))
+  referencesStyle.addEventListener("change", updateReferences)
+  referencesPanel.addEventListener("keydown", event => { if(event.key === "Escape") { event.preventDefault(); closeReferences(true) } })
+  const onReferenceClick = event => {
+    if(event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    const anchor = event.target instanceof Element ? event.target.closest("a[data-reference]") : null
+    const href = anchor?.getAttribute("href")
+    if(!href?.startsWith("#") || !collectReferences(body).some(reference => reference.anchors.includes(anchor))) return
+    event.preventDefault(); openReferences(href)
+  }
+  body.addEventListener("click", onReferenceClick)
   let metadataKey = ""
   const updatePane = () => {
     const author = document.head.querySelector('meta[name="author" i]')?.getAttribute("content")?.trim() ?? ""
@@ -395,6 +530,7 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
   const update = () => {
     frame = 0
     if(destroyed) return
+    updateReferences()
     const current = targets(body)
     const gutterTarget = current.find(target => target.kind === "heading" && target.element.getBoundingClientRect().width > 0)
       ?? current.find(target => target.element.getBoundingClientRect().width > 0)
@@ -493,6 +629,7 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
     if(destroyed) return
     destroyed = true
     observer.disconnect()
+    body.removeEventListener("click", onReferenceClick)
     resizeObserver?.disconnect()
     window.removeEventListener("resize", onLayout)
     window.removeEventListener("scroll", onLayout, true)
@@ -504,6 +641,7 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
     clearInterval(modeTimer)
     hideFeedback(); feedback.remove()
     pane.remove()
+    referencesPanel.remove()
     for(const [url, timer] of downloadURLs) { clearTimeout(timer); URL.revokeObjectURL(url) }
     downloadURLs.clear()
     fileHandle = null
@@ -513,7 +651,7 @@ export function mountDocumentReader(licenses = [], appIcon = "") {
     for(const control of controls.values()) control.group.remove()
     controls.clear(); style.remove()
   }
-  observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id", "class", "style", "role", "is", "name", "content", "rel", "href", "title"]})
+  observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id", "class", "style", "role", "is", "name", "content", "rel", "href", "title", "data-reference", "data-reference-locator"]})
   window.addEventListener("resize", onLayout)
   window.addEventListener("scroll", onLayout, true)
   document.addEventListener("fullscreenchange", onLayout)

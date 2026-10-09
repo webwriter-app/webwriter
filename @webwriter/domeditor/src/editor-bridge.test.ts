@@ -523,6 +523,8 @@ describe("editor bridge message guards", () => {
         marks: ["b", "a"],
         styles: {"font-family": "serif", color: "#123456"},
         attributes: {a: {href: "https://example.test", target: "_blank"}},
+        link: {active: true, identity: "link-1", href: "https://example.test", text: "Source", attributes: {}, targets: [],
+          references: [{href: "#source", label: "Source", data: '{"type":"book","title":"Source"}'}]},
         ruby: {
           active: true,
           canCreate: false,
@@ -541,6 +543,8 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, attributes: {strong: {href: "https://example.test"}}}},
       {...message, detail: {...message.detail, attributes: {a: {onclick: "alert(1)"}}}},
       {...message, detail: {...message.detail, attributes: {a: {href: 42}}}},
+      {...message, detail: {...message.detail, link: {...message.detail.link, references: [{href: "#source", label: "Source", data: 42}]}}},
+      {...message, detail: {...message.detail, link: {...message.detail.link, references: "invalid"}}},
       {...message, detail: {...message.detail, ruby: {...message.detail.ruby, active: "true"}}},
       {...message, detail: {...message.detail, ruby: {...message.detail.ruby, annotations: [{index: -1, text: "かん", hasMarkup: false}]}}},
       {...message, detail: {...message.detail, ruby: {...message.detail.ruby, fallbacks: [{index: 1, text: 42, hasMarkup: false}]}}},

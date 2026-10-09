@@ -23,6 +23,8 @@ import {
 import {$, cloneWithoutEditorMarkers, modifierKeyDown, textOffsetIn, textPointAtOffset} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
 import {isSectionElement} from "../sections"
+import {collectReferences, parseReference} from "../document-viewer.js"
+import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 
 export type MarkState = {
   /** Whether the current selection is a markable text range or caret. */
@@ -153,7 +155,7 @@ export class MarkFeature extends EditorFeature {
       const value = values[property === "color" ? "fill" : property]
       return value ? [[property, value]] : []
     })) as StyleMarkValues
-    const attributes: MarkAttributeValues = link ? {a: Object.fromEntries(markAttributeOptionsFor("a").filter(({name}) => name !== "download" || link!.hasAttribute(name)).map(({name}) => [name, link!.getAttribute(name) ?? (name === "href" ? link!.getAttributeNS("http://www.w3.org/1999/xlink", "href") : null) ?? ""]))} : {}
+    const attributes: MarkAttributeValues = link ? {a: Object.fromEntries(markAttributeOptionsFor("a").filter(({name}) => !["download", "data-reference", "data-reference-locator"].includes(name) || link!.hasAttribute(name)).map(({name}) => [name, link!.getAttribute(name) ?? (name === "href" ? link!.getAttributeNS("http://www.w3.org/1999/xlink", "href") : null) ?? ""]))} : {}
     return {marks, styles, attributes, link, values}
   }
 
@@ -412,8 +414,11 @@ export class MarkFeature extends EditorFeature {
   /** Element-specific attributes to apply to the next typed mark at a caret. */
   private storedAttributes: MarkAttributeValues | null = null
   private storedSelection: StoredSelection | null = null
+  private linkNodeIDs = new WeakMap<Node, string>()
+  private editingLink = false
 
   actions = {
+    editLink: (edit: LinkEdit & {type: "editLink"}) => this.editLink(edit),
     addMark: ({mark}: {type: "addMark", mark: MarkName}) => this.addMark(mark),
     removeMark: ({mark}: {type: "removeMark", mark: MarkName}) => this.removeMark(mark),
     toggleMark: ({mark}: {type: "toggleMark", mark: MarkName}) => this.toggleMark(mark),
@@ -464,7 +469,7 @@ export class MarkFeature extends EditorFeature {
     try {
       observer.observe(document.body, {
         attributes: true,
-        attributeFilter: ["style", ...markAttributeNames, ...svgStyleNames],
+        attributeFilter: ["style", "id", "title", "aria-label", "is", ...markAttributeNames, ...svgStyleNames],
         childList: true,
         characterData: true,
         subtree: true,
@@ -578,13 +583,102 @@ export class MarkFeature extends EditorFeature {
       if(!options.length) continue
       const elements = this.markElementsForSelection(context, mark)
       if(!elements.length) continue
-      result[mark] = Object.fromEntries(options.filter(option => option.name !== "download" || elements.every(element => element.hasAttribute("download"))).map(option => {
+      result[mark] = Object.fromEntries(options.filter(option => !["download", "data-reference", "data-reference-locator"].includes(option.name) || elements.every(element => element.hasAttribute(option.name))).map(option => {
         const values = elements.map(element => element.getAttribute(option.name) ?? "")
         const value = values.every(candidate => candidate === values[0]) ? values[0] : ""
         return [option.name, value]
       }))
     }
     return result
+  }
+
+  /** Keyboard state carries no retained DOM nodes across the editor boundary. */
+  getLinkState(): LinkSelectionState | null {
+    const state = this.getState()
+    if(!state.canMark || !state.marks.includes("a") || this.editor.features.math.activeMath) return null
+    const svg = this.svgContext()
+    const context = svg ?? this.getCaret() ?? this.getSelection()
+    if(!context) return null
+    const {range} = context
+    if(!range.startContainer.isConnected || !range.endContainer.isConnected) return null
+    const nodeID = (node: Node) => {
+      let id = this.linkNodeIDs.get(node)
+      if(!id) { id = crypto.randomUUID(); this.linkNodeIDs.set(node, id) }
+      return id
+    }
+    const attributes = {...(this.getAttributeState().a ?? {})}
+    const href = attributes.href ?? ""
+    const text = range.toString()
+    const anchors = svg ? svg.text.map(({node}) => this.svgValues(node).link).filter(Boolean)
+      : range.collapsed ? [this.markElementAt(range.startContainer, context.block, "a")].filter(Boolean)
+      : this.markElementsForSelection(context as MarkSelection, "a")
+    const identity = JSON.stringify([nodeID(range.startContainer), range.startOffset,
+      nodeID(range.endContainer), range.endOffset, text, attributes,
+      anchors.map(anchor => [nodeID(anchor!), Array.from(anchor!.attributes).flatMap(attribute => {
+        const value = attribute.name === "class" ? attribute.value.split(/\s+/).filter(name => !name.startsWith("◆")).join(" ") : attribute.value
+        return attribute.name === "class" && !value ? [] : [[attribute.name, value]]
+      })])])
+    const targets = new Map<string, string>()
+    const ids = new Set<string>()
+    const duplicateIDs = new Set<string>()
+    for(const element of document.querySelectorAll("[id]")) {
+      if(ids.has(element.id)) duplicateIDs.add(element.id)
+      ids.add(element.id)
+    }
+    const visit = (element: Element) => {
+      if(element.localName.includes("-") || element.hasAttribute("is") || element.namespaceURI !== "http://www.w3.org/1999/xhtml") return
+      if(element.id && !duplicateIDs.has(element.id)) {
+        const label = (element.getAttribute("aria-label") || element.textContent || element.id).trim().replace(/\s+/g, " ").slice(0, 100)
+        targets.set(`#${encodeURIComponent(element.id)}`, label || element.id)
+      }
+      for(const child of element.children) visit(child)
+    }
+    for(const element of document.body.children) visit(element)
+    const references = collectReferences(document.body).filter(reference => !reference.conflict)
+      .map(reference => ({href: reference.href, label: reference.data.title, data: JSON.stringify(reference.data)}))
+    return {active: true, identity, href, attributes, text,
+      targets: Array.from(targets, ([href, label]) => ({href, label})), references, referenceAllowed: !svg}
+  }
+
+  /** Apply a complete keyboard edit against the current selection, atomically. */
+  editLink(edit: LinkEdit): boolean {
+    if(!isLinkEdit(edit)) throw new TypeError("Invalid link edit")
+    const state = this.getLinkState()
+    if(!state || state.identity !== edit.identity) throw new Error("The selected link changed. Select it again before applying.")
+    const attributes = {...edit.attributes}
+    let href = edit.href.trim()
+    if(attributes["data-reference"] && !parseReference(attributes["data-reference"]))
+      throw new TypeError("Enter a title for the reference.")
+    // Choosing an existing source reuses its metadata, without a bibliography model.
+    const source = collectReferences(document.body).find(reference => reference.href === href)
+    if(href.startsWith("#") && source && !attributes["data-reference"]) {
+      if(source.conflict) throw new Error("This reference has conflicting metadata. Edit its citations first.")
+      attributes["data-reference"] = JSON.stringify(source.data)
+    }
+    const isReference = !!attributes["data-reference"]
+    if(isReference && !state.referenceAllowed) throw new Error("References require an HTML link.")
+    if(!href && isReference) href = this.referenceHref()
+    if(!href) throw new TypeError("Choose a document target or enter a web address.")
+    if(!href.startsWith("#")) {
+      let url: URL
+      try { url = new URL(href, document.baseURI) } catch { throw new TypeError("Enter a valid web address.") }
+      if(!["http:", "https:", "mailto:", "tel:", "ftp:", "file:"].includes(url.protocol))
+        throw new TypeError("Enter a web, email, or telephone address.")
+    }
+    else if(!isReference) {
+      let id: string
+      try { id = decodeURIComponent(href.slice(1)) } catch { throw new TypeError("Choose a valid document target.") }
+      const target = document.getElementById(id)
+      if(!target || !document.body.contains(target)) throw new Error("The document target no longer exists.")
+    }
+    const endUndoGroup = this.editor.doc?.beginUndoGroup()
+    this.editingLink = true
+    try {
+      this.setMarkAttribute("a", "href", href)
+      for(const [name, value] of Object.entries(attributes)) this.setMarkAttribute("a", name, value)
+    } finally { this.editingLink = false; endUndoGroup?.() }
+    this.editor.postMarkState()
+    return true
   }
 
   /** Structured state for the ruby element resolved from the current live selection. */
@@ -928,8 +1022,14 @@ export class MarkFeature extends EditorFeature {
   /** Sets or removes one supported element-specific attribute on active mark wrappers.
    * An empty download value enables downloads without a filename; null removes it. */
   setMarkAttribute(mark: MarkName, attribute: string, value: string | null): boolean {
+    if(mark === "a" && attribute === "data-reference" && value) {
+      const reference = parseReference(value)
+      if(!reference) throw new TypeError("References require CSL-JSON with a title and type")
+      value = JSON.stringify(reference)
+    }
     const svg = this.svgContext()
     if(svg) {
+      if(attribute.startsWith("data-reference")) return false
       if(mark !== "a" || !isMarkAttributeName(mark, attribute)) return false
       const state = this.svgState(svg)
       if(!state.marks.includes("a")) return false
@@ -964,7 +1064,7 @@ export class MarkFeature extends EditorFeature {
     if(caret) {
       const element = this.markElementAt(caret.range.startContainer, caret.block, mark)
       if(element) {
-        if((attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value) return false
+        if(attribute !== "data-reference" && (attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value) return false
         this.applyMarkAttribute(element, attribute, value)
       }
       else {
@@ -974,6 +1074,8 @@ export class MarkFeature extends EditorFeature {
         const markAttributes = {...(attributes[mark] ?? {})}
         if(value !== null && (value || attribute === "download")) markAttributes[attribute] = value
         else delete markAttributes[attribute]
+        if(mark === "a" && attribute === "data-reference" && value && !markAttributes.href)
+          markAttributes.href = this.referenceHref()
         if(Object.keys(markAttributes).length) attributes[mark] = markAttributes
         else delete attributes[mark]
         this.storeAttributes(attributes, caret.selection)
@@ -986,7 +1088,7 @@ export class MarkFeature extends EditorFeature {
     if(!context) return false
     const elements = this.markElementsForSelection(context, mark)
     if(!elements.length) return false
-    if(elements.every(element => (attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value)) return false
+    if(attribute !== "data-reference" && elements.every(element => (attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value)) return false
     elements.forEach(element => this.applyMarkAttribute(element, attribute, value))
     context.block.normalize()
     this.restoreSelection(context)
@@ -1647,7 +1749,7 @@ export class MarkFeature extends EditorFeature {
       const element = this.markElementAt(node, block, mark)
       if(!element) continue
       attributes[mark] = Object.fromEntries(
-        options.filter(option => option.name !== "download" || element.hasAttribute("download")).map(option => [option.name, element.getAttribute(option.name) ?? ""]),
+        options.filter(option => !["download", "data-reference", "data-reference-locator"].includes(option.name) || element.hasAttribute(option.name)).map(option => [option.name, element.getAttribute(option.name) ?? ""]),
       )
     }
     return attributes
@@ -1659,7 +1761,25 @@ export class MarkFeature extends EditorFeature {
     ) as MarkAttributeValues
   }
 
+  private referenceHref() {
+    const used = new Set(Array.from(document.querySelectorAll("a[href], [id]")).flatMap(node => [node.getAttribute("href"), `#${node.id}`]))
+    let href: string
+    do { href = `#ref-${crypto.randomUUID()}` } while(used.has(href))
+    return href
+  }
+
   private applyMarkAttribute(element: Element, attribute: string, value: string | null) {
+    if(!this.editingLink && element.localName === "a" && attribute === "href" && element.hasAttribute("data-reference") && value) {
+      const previous = element.getAttribute("href")
+      collectReferences(document.body).find(reference => reference.href === previous)?.anchors
+        .forEach(anchor => anchor.setAttribute("href", value))
+    }
+    if(element.localName === "a" && attribute === "data-reference" && value) {
+      if(!element.getAttribute("href")) element.setAttribute("href", this.referenceHref())
+      const href = element.getAttribute("href")
+      const existing = collectReferences(document.body).find(reference => reference.href === href)
+      existing?.anchors.forEach(anchor => anchor.setAttribute(attribute, value))
+    }
     if(value !== null && (value || attribute === "download")) element.setAttribute(attribute, value)
     else element.removeAttribute(attribute)
   }

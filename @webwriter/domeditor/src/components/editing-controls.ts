@@ -397,44 +397,11 @@ export abstract class EditingControls extends LitElement {
       if(attribute === "target") value = input.checked ? "_blank" : ""
       if(attribute === "download") value = input.checked ? "" : null
     }
-    if(mark === "a") this.applyLinkMark()
     this.dispatchEvent(new CustomEvent("mark-attribute-change", {
       detail: {mark, attribute, value},
       bubbles: true,
       composed: true,
     }))
-  }
-
-  protected applyLinkMark() {
-    if(!this.canMark || this.math?.active) return
-    this.dispatchEvent(new CustomEvent("ribbon-button-click", {
-      detail: {label: "mark:a", apply: true, keepDrawerOpen: true},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected renderMarkAttribute(mark: MarkName, option: MarkAttributeOption) {
-    return html`
-      <label class=${`mark-attribute${mark === "a" && option.name === "href" ? " mark-attribute-link" : ""}`}>
-        <span>${option.label}</span>
-        ${option.options ? html`<select
-          aria-label=${`${this.markOption(mark).label}: ${option.label}`}
-          .value=${this.markAttributes[mark]?.[option.name] ?? option.options[0]?.value ?? ""}
-          ?data-ribbon-input-persistent=${mark === "a"}
-          ?disabled=${!this.canMark}
-          @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
-        >${option.options.map(item => html`<option value=${item.value}>${item.label}</option>`)}</select>` : html`<input
-          type=${option.inputType ?? "text"}
-          aria-label=${`${this.markOption(mark).label}: ${option.label}`}
-          placeholder=${option.placeholder}
-          .value=${this.markAttributes[mark]?.[option.name] ?? ""}
-          ?data-ribbon-input-persistent=${mark === "a"}
-          ?disabled=${!this.canMark}
-          @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
-        />`}
-      </label>
-    `
   }
 
   protected renderDropdownAttribute(mark: MarkName, option: MarkAttributeOption, active = true) {
@@ -459,38 +426,8 @@ export abstract class EditingControls extends LitElement {
         title=${option.label}
         .value=${this.markAttributes[mark]?.[option.name] ?? ""}
         ?disabled=${!this.canMark || !active}
-        @focus=${() => { if(mark === "a" && option.name === "href") this.applyLinkMark() }}
         @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
       />
-    `
-  }
-
-  protected renderLinkDropdown() {
-    const download = this.markAttributes.a?.download
-    return html`
-      <div class="button-dropdown-form" role="group" aria-label="Link options">
-        <fieldset ?disabled=${!this.canMark || this.math?.active}>
-        <div class="link-options" role="group" aria-label="Link behavior">
-          <label class="mark-attribute">
-            <span>Open in new tab</span>
-            <input type="checkbox" aria-label="Link: Open in new tab" data-ribbon-input-persistent
-              .checked=${this.markAttributes.a?.target === "_blank"}
-              ?disabled=${!this.canMark}
-              @change=${(event: Event) => this.dispatchMarkAttribute("a", "target", event)} />
-          </label>
-          <label class="mark-attribute link-option-download">
-            <span>Download</span>
-            <input type="checkbox" aria-label="Link: Download" data-ribbon-input-persistent
-              .checked=${download !== undefined}
-              ?disabled=${!this.canMark}
-              @change=${(event: Event) => this.dispatchMarkAttribute("a", "download", event)} />
-          </label>
-          ${download !== undefined ? html`<div class="link-download-filename">
-            ${this.renderMarkAttribute("a", {name: "download", label: "Filename", placeholder: "Filename"})}
-          </div>` : ""}
-        </div>
-        </fieldset>
-      </div>
     `
   }
 
@@ -569,22 +506,8 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderSpanDropdown(selected: readonly MarkName[]) {
-    const linkActive = this.marks.includes("a")
-    const href = markAttributeOptionsFor("a").find(option => option.name === "href")
     return html`
       <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
-        <div class="mark-dropdown-option mark-dropdown-option-link" role="option" aria-selected=${linkActive}>
-          <input type="checkbox" data-ribbon-input-persistent aria-label="Select Link"
-            .checked=${linkActive} ?disabled=${!this.canMark || this.math?.active}
-            @change=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
-              detail: {label: "mark:a", keepDrawerOpen: true}, bubbles: true, composed: true,
-            }))} />
-          <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("MarkLink")}</span>
-          <span class="mark-dropdown-option-name">Link</span>
-          ${href ? html`<span class="mark-dropdown-link-url">${this.renderDropdownAttribute("a", href, !this.math?.active)}</span>` : ""}
-          ${this.commandShortcut("mark:a") ? html`<span class="mark-dropdown-shortcut">${this.commandShortcut("mark:a")}</span>` : ""}
-        </div>
-        ${this.renderLinkDropdown()}
         ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
       </div>
     `
@@ -619,7 +542,7 @@ export abstract class EditingControls extends LitElement {
         .selectionCount=${selected.length}
         .dropdown=${this.renderSpanDropdown(selected)}
         ?active=${this.marks.includes("a") || selected.length > 0}
-        ?disabled=${!this.canMark || this.math?.active}
+        ?disabled=${!this.canMark || !!this.allowedMarks && !this.allowedMarks.includes("a") || this.math?.active}
       ></ribbon-button>
     `
   }

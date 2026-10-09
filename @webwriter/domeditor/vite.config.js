@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
+import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
 
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
 
@@ -35,7 +36,8 @@ function localPackageServiceWorkerPlugin() {
 }
 
 export default defineConfig({
-    plugins: [localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url)))],
+    plugins: [localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+      referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url)))],
     publicDir: "../../static",
     resolve: {
       dedupe: ["yjs"],

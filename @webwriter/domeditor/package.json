@@ -22,6 +22,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.native-browser.json"
   },
   "dependencies": {
+    "@citation-js/core": "^0.8.2",
+    "@citation-js/plugin-csl": "^0.8.2",
+    "@citation-js/plugin-bibtex": "^0.8.2",
     "@jspm/generator": "^2.10.0",
     "@jspm/import-map": "^1.2.2",
     "@csstools/css-tokenizer": "^3.0.4",
@@ -36,6 +39,7 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
+    "esbuild": "^0.25.12",
     "@testing-library/jest-dom": "^6.9.1",
     "@y/websocket-server": "^0.1.1",
     "openai": "^4.104.0",

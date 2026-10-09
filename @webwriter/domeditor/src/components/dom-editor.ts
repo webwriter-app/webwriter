@@ -6,6 +6,8 @@ import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentRefe
 import "./developer-console"
 import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
+import "./link-keyboard"
+import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, nothing, type PropertyValues } from "lit"
@@ -445,6 +447,9 @@ export class DomEditor extends LitElement {
     graphicSelection: {attribute: false, state: true},
     mathSelection: {attribute: false, state: true},
     mathKeyboardHidden: {attribute: false, state: true},
+    linkSelection: {attribute: false, state: true},
+    linkKeyboardHidden: {attribute: false, state: true},
+    linkKeyboardError: {attribute: false, state: true},
     elementAttributes: {attribute: false, state: true},
     selectedElementTypes: {attribute: false, state: true},
     widgetOptions: {attribute: false, state: true},
@@ -565,6 +570,9 @@ export class DomEditor extends LitElement {
   private graphicSelection: GraphicSelectionState | null = null
   private mathSelection: MathSelectionState | null = null
   private mathKeyboardHidden = false
+  private linkSelection: LinkSelectionState | null = null
+  private linkKeyboardHidden = false
+  private linkKeyboardError = ""
   private selectedElementTypes: SelectedElementTypeState[] = []
   private elementAttributes: ElementAttributeState | null = null
   private widgetOptions: WidgetOptionsState | null = null
@@ -818,7 +826,7 @@ export class DomEditor extends LitElement {
     @keyframes document-loading-spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .document-loading-spinner { animation: none; } }
 
-    .math-keyboard-area {
+    .math-keyboard-area, .link-keyboard-area {
       position: absolute;
       z-index: 5;
       bottom: 0;
@@ -830,6 +838,10 @@ export class DomEditor extends LitElement {
     }
 
     .math-keyboard-area dom-editor-math-keyboard { height: 100%; max-height: none; pointer-events: auto; }
+
+    .link-keyboard-area { height: min(280px, 100%); }
+    .link-keyboard-area[hidden] { display: none; }
+    .link-keyboard-area dom-editor-link-keyboard { height: 100%; pointer-events: auto; }
 
     .ribbon-drag-shield {
       position: absolute;
@@ -5574,6 +5586,8 @@ export class DomEditor extends LitElement {
 
   protected updated(changed: PropertyValues) {
     super.updated(changed)
+    if(changed.has("linkSelection") && this.linkSelection?.active && !(changed.get("linkSelection") as LinkSelectionState | null)?.active)
+      this.linkKeyboardHidden = false
     if(changed.has("mathSelection") && this.mathSelection?.active) {
       if(!changed.get("mathSelection")) this.mathKeyboardHidden = false
     }
@@ -5593,6 +5607,14 @@ export class DomEditor extends LitElement {
     void this.execute({type: "editMath", command: `keyboard:${event.detail.command}`})
       .catch(() => { /* A removed/replaced document no longer has a formula caret. */ })
       .finally(() => this.focusEditor())
+  }
+
+  private handleLinkKeyboardCommand = (event: CustomEvent<LinkEdit>) => {
+    if(!this.linkSelection?.active || this.previewActive || this.liveSessionActive || !isLinkEdit(event.detail)) return
+    this.linkKeyboardError = ""
+    void this.execute({...event.detail, type: "editLink"})
+      .then(() => this.focusEditor())
+      .catch(error => { this.linkKeyboardError = error instanceof Error ? error.message : String(error) })
   }
 
   private handleHTMLSourceApply = () => {
@@ -6195,6 +6217,8 @@ export class DomEditor extends LitElement {
       this.markAttributes = Object.fromEntries(
         Object.entries(event.data.detail.attributes ?? {}).map(([mark, attributes]) => [mark, {...attributes}]),
       )
+      this.linkSelection = event.data.detail.link ?? null
+      if(!this.linkSelection) this.linkKeyboardError = ""
       this.ruby = event.data.detail.ruby ? {
         ...event.data.detail.ruby,
         annotations: event.data.detail.ruby.annotations.map(component => ({...component})),
@@ -6293,6 +6317,7 @@ export class DomEditor extends LitElement {
         this.marks = []
         this.markStyles = {}
         this.markAttributes = {}
+        this.linkSelection = null
         this.ruby = {...emptyRubyState}
       }
       this.listType = event.data.detail.list?.type ?? null
@@ -6651,6 +6676,9 @@ export class DomEditor extends LitElement {
     this.marks = []
     this.markStyles = {}
     this.markAttributes = {}
+    this.linkSelection = null
+    this.linkKeyboardError = ""
+    this.linkKeyboardHidden = false
     this.ruby = {...emptyRubyState}
     this.listType = null
     this.listStyle = ""
@@ -6937,6 +6965,18 @@ export class DomEditor extends LitElement {
             @live-widget-state-change=${this.handleLiveWidgetStateChange}
           ></live-session-overlay>
         ` : ""}
+        ${this.linkSelection?.active && !this.mathSelection?.active && !this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive ? html`
+          ${this.linkKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
+            title="Show link keyboard" aria-label="Show link keyboard"
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @click=${() => { this.linkKeyboardHidden = false }}>${ribbonIcon("MarkLink")}</button>` : nothing}
+          <section class="link-keyboard-area" aria-label="Link input" ?hidden=${this.linkKeyboardHidden}>
+            <dom-editor-link-keyboard .state=${this.linkSelection} .error=${this.linkKeyboardError}
+              @link-keyboard-command=${this.handleLinkKeyboardCommand}
+              @link-keyboard-close=${() => { this.linkKeyboardHidden = true; this.focusEditor() }}
+            ></dom-editor-link-keyboard>
+          </section>
+        ` : nothing}
         ${this.mathSelection?.active && this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
           <button class="math-keyboard-open" type="button" title="Show formula keyboard" aria-label="Show formula keyboard"
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}

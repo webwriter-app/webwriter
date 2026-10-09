@@ -1,4 +1,5 @@
 import {isCaptionEnumeration} from "./caption-enumeration"
+import {isLinkSelectionState, type LinkSelectionState} from "./links"
 import {
   canonicalMarkName,
   isMarkAttributeName,
@@ -390,6 +391,7 @@ export type SelectionChangeMessage = {
 }
 
 export type MarkStateChangeDetail = {
+  link?: LinkSelectionState
   svgText?: boolean
   /** True while the live DOM selection is a markable text range or caret. */
   canMark: boolean
@@ -846,7 +848,8 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
         isMarkAttributeName(exactMark, attribute) && typeof attributeValue === "string",
       )
   })) return false
-  return message.detail!.ruby === undefined || isRubyState(message.detail!.ruby)
+  return (message.detail!.ruby === undefined || isRubyState(message.detail!.ruby))
+    && (message.detail!.link === undefined || isLinkSelectionState(message.detail!.link))
 }
 
 export function isCommentStateChangeMessage(value: unknown): value is CommentStateChangeMessage {

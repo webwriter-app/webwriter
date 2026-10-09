@@ -806,3 +806,167 @@ describe("independent positioned flows", () => {
     expect(Array.from(paragraph.querySelectorAll("span"), node => node.textContent)).toEqual(["before", "after"])
   })
 })
+
+
+describe("inline references", () => {
+  const metadata = JSON.stringify({type: "book", title: "Learning", author: [{family: "Smith", given: "Alex"}]})
+
+  it("generates a fragment for a reference without a URL and preserves metadata in serialization", () => {
+    const paragraph = setContent('<p><a>citation</a></p>')
+    const anchor = paragraph.querySelector("a")!
+    $.move(anchor.firstChild!, 2)
+    expect(feature.setMarkAttribute("a", "data-reference", metadata)).toBe(true)
+    expect(anchor.getAttribute("href")).toMatch(/^#ref-/)
+    expect(anchor.getAttribute("data-reference")).toBe(metadata)
+    expect(cleanHTML()).toContain("data-reference=")
+    expect(document.body.querySelector("button, dialog")).toBeNull()
+  })
+
+  it("updates all occurrences by literal href without updating widgets or occurrence locators", () => {
+    setContent('<p><a href="#source">first</a> <em><a href="#source">second</a></em></p><custom-box><a href="#source">widget</a></custom-box>')
+    const anchors = document.querySelectorAll("a")
+    anchors.forEach(anchor => anchor.setAttribute("data-reference", metadata))
+    anchors[1].setAttribute("data-reference-locator", "42")
+    $.move(anchors[0].firstChild!, 2)
+    const next = JSON.stringify({type: "book", title: "Changed"})
+    expect(feature.setMarkAttribute("a", "data-reference", next)).toBe(true)
+    expect(anchors[0].getAttribute("data-reference")).toBe(next)
+    expect(anchors[1].getAttribute("data-reference")).toBe(next)
+    expect(anchors[2].getAttribute("data-reference")).toBe(metadata)
+    expect(anchors[1].getAttribute("data-reference-locator")).toBe("42")
+    expect(feature.setMarkAttribute("a", "data-reference-locator", "8")).toBe(true)
+    expect(anchors[0].getAttribute("data-reference-locator")).toBe("8")
+    expect(anchors[1].getAttribute("data-reference-locator")).toBe("42")
+  })
+
+  it("resolves conflicting copies even when the selected occurrence already has the requested metadata", () => {
+    setContent('<p><a href="#source">first</a> <a href="#source">second</a></p>')
+    const anchors = document.querySelectorAll("a")
+    anchors[0].setAttribute("data-reference", metadata)
+    anchors[1].setAttribute("data-reference", JSON.stringify({type: "book", title: "Conflict"}))
+    $.move(anchors[0].firstChild!, 2)
+    feature.setMarkAttribute("a", "data-reference", metadata)
+    expect(anchors[1].getAttribute("data-reference")).toBe(metadata)
+  })
+
+  it("rejects invalid reference metadata before changing the authored DOM", () => {
+    const paragraph = setContent('<p><a href="#source">citation</a></p>')
+    $.move(paragraph.querySelector("a")!.firstChild!, 2)
+    const before = cleanHTML()
+    for(const value of ['{', '[]', '{"type":"book"}'])
+      expect(() => feature.setMarkAttribute("a", "data-reference", value)).toThrow(TypeError)
+    expect(cleanHTML()).toBe(before)
+  })
+})
+
+
+describe("link keyboard edits", () => {
+  const currentIdentity = () => feature.getLinkState()!.identity
+
+  it("lists current authored targets and references without entering widgets", () => {
+    const paragraph = setContent('<p><a href="#intro">Text</a></p><h2 id="intro">Introduction</h2><h2 id="odd id">Odd title</h2><custom-box><h2 id="private">Private</h2></custom-box>')
+    const source = document.createElement("a")
+    source.href = "#source"
+    source.dataset.reference = JSON.stringify({type: "book", title: "Source title"})
+    document.body.append(source)
+    $.move(paragraph.querySelector("a")!.firstChild!, 2)
+    const state = feature.getLinkState()!
+    expect(state.active).toBe(true)
+    expect(state.href).toBe("#intro")
+    expect(state.targets).toEqual(expect.arrayContaining([
+      {href: "#intro", label: "Introduction"}, {href: "#odd%20id", label: "Odd title"},
+    ]))
+    expect(state.references).toEqual([{href: "#source", label: "Source title", data: source.dataset.reference}])
+    expect(state.targets.some(target => target.href === "#private")).toBe(false)
+    expect(document.querySelector("[data-link-identity]")).toBeNull()
+  })
+
+  it("updates a caret link without rebuilding irregular authored content", () => {
+    const paragraph = setContent('<p><a href="#intro" data-custom="keep">one <em>two</em><!--keep--></a></p><h2 id="intro">Introduction</h2>')
+    const anchor = paragraph.querySelector("a")!
+    const child = anchor.querySelector("em")!
+    $.move(child.firstChild!, 1)
+    feature.editLink({identity: currentIdentity(), href: "https://example.test", attributes: {target: "_blank", rel: "noopener"}})
+    expect(anchor.getAttribute("href")).toBe("https://example.test")
+    expect(anchor.getAttribute("data-custom")).toBe("keep")
+    expect(anchor.querySelector("em")).toBe(child)
+    expect(anchor.innerHTML).toBe("one <em>two</em><!--keep-->")
+    expect(document.getSelection()?.anchorNode).toBe(child.firstChild)
+  })
+
+  it("rejects a stale link after direct replacement or metadata changes", () => {
+    const paragraph = setContent('<p><a href="#intro">Text</a></p><h2 id="intro">Introduction</h2>')
+    const anchor = paragraph.querySelector("a")!
+    $.move(anchor.firstChild!, 2)
+    const identity = currentIdentity()
+    anchor.href = "https://remote.test"
+    const authored = cleanHTML()
+    expect(() => feature.editLink({identity, href: "https://local.test", attributes: {}})).toThrow(/selected link changed/i)
+    expect(cleanHTML()).toBe(authored)
+    const nextIdentity = currentIdentity()
+    anchor.replaceWith(anchor.cloneNode(true))
+    expect(() => feature.editLink({identity: nextIdentity, href: "https://local.test", attributes: {}})).toThrow(/selected link changed/i)
+  })
+
+  it("validates the entire reference edit before changing any link attribute", () => {
+    const paragraph = setContent('<p><a href="https://before.test">Text</a></p>')
+    $.move(paragraph.querySelector("a")!.firstChild!, 2)
+    const before = cleanHTML()
+    expect(() => feature.editLink({identity: currentIdentity(), href: "https://after.test", attributes: {"data-reference": "{"}})).toThrow(/title/i)
+    expect(cleanHTML()).toBe(before)
+    expect(() => feature.editLink({identity: currentIdentity(), href: "#missing", attributes: {}})).toThrow(/no longer exists/i)
+    expect(cleanHTML()).toBe(before)
+  })
+
+  it("creates a fragment reference and reuses an existing source for document links", () => {
+    const paragraph = setContent('<p><a>new</a> <a href="#old">old</a></p>')
+    const [first, second] = paragraph.querySelectorAll("a")
+    const metadata = JSON.stringify({type: "book", title: "Source"})
+    $.move(first.firstChild!, 1)
+    feature.editLink({identity: currentIdentity(), href: "", attributes: {"data-reference": metadata, "data-reference-locator": "3"}})
+    const href = first.getAttribute("href")!
+    expect(href).toMatch(/^#ref-/)
+    $.move(second.firstChild!, 1)
+    feature.editLink({identity: currentIdentity(), href, attributes: {"data-reference": null, "data-reference-locator": null}})
+    expect(second.getAttribute("href")).toBe(href)
+    expect(second.dataset.reference).toBe(metadata)
+    expect(second.dataset.referenceLocator).toBeUndefined()
+    expect(first.dataset.referenceLocator).toBe("3")
+  })
+
+  it("allows converting a reference to a web link without retaining source metadata", () => {
+    const paragraph = setContent('<p><a href="https://source.test">Text</a></p>')
+    const anchor = paragraph.querySelector("a")!
+    anchor.dataset.reference = JSON.stringify({type: "book", title: "Source"})
+    $.move(anchor.firstChild!, 2)
+    feature.editLink({identity: currentIdentity(), href: "https://source.test", attributes: {"data-reference": null, "data-reference-locator": null}})
+    expect(anchor.dataset.reference).toBeUndefined()
+    expect(anchor.getAttribute("href")).toBe("https://source.test")
+  })
+
+  it("reassigns only the selected citation when choosing another source", () => {
+    const paragraph = setContent('<p><a href="#old">one</a> <a href="#old">two</a> <a href="#new">three</a></p>')
+    const [first, second, third] = paragraph.querySelectorAll("a")
+    const old = JSON.stringify({type: "book", title: "Old"})
+    const next = JSON.stringify({type: "book", title: "New"})
+    first.dataset.reference = second.dataset.reference = old
+    third.dataset.reference = next
+    $.move(first.firstChild!, 1)
+    feature.editLink({identity: currentIdentity(), href: "#new", attributes: {"data-reference": next}})
+    expect(first.getAttribute("href")).toBe("#new")
+    expect(first.dataset.reference).toBe(next)
+    expect(second.getAttribute("href")).toBe("#old")
+    expect(second.dataset.reference).toBe(old)
+    expect(third.dataset.reference).toBe(next)
+  })
+
+  it("supports pending caret links without inserting editor-owned DOM", () => {
+    const paragraph = setContent('<p>Text</p>')
+    $.move(paragraph.firstChild!, 2)
+    feature.addMark("a")
+    const identity = currentIdentity()
+    feature.editLink({identity, href: "https://example.test", attributes: {target: "_blank"}})
+    expect(feature.getAttributeState().a?.href).toBe("https://example.test")
+    expect(cleanHTML()).toBe("<p>Text</p>")
+  })
+})

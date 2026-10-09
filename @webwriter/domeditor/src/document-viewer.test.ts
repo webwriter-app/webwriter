@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {mountDocumentReader} from "./document-viewer.js"
 import {creativeCommonsLicenses} from "./document-head"
+import {formatReferences} from "./reference-format"
 
 let reader: ReturnType<typeof mountDocumentReader>
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
@@ -175,8 +176,8 @@ describe("document pane", () => {
     expect(pane().firstElementChild!.getAttribute("rel")).toBe("noopener noreferrer")
     expect(pane().querySelector(".◆document-brand img")).not.toBeNull()
     expect(pane().querySelector<HTMLAnchorElement>(".◆document-reuse a")!.href).toBe("https://creativecommons.org/licenses/by/4.0/")
-    expect(Array.from(pane().querySelectorAll(".◆document-pane-actions button")).map(button => button.getAttribute("aria-label"))).toEqual(["Save document", "Print document"])
-    expect(pane().querySelectorAll("button svg")).toHaveLength(2)
+    expect(Array.from(pane().querySelectorAll(".◆document-pane-actions button:not([hidden])")).map(button => button.getAttribute("aria-label"))).toEqual(["Save document", "Print document"])
+    expect(pane().querySelectorAll("button:not([hidden]) svg")).toHaveLength(2)
     expect(document.body.innerHTML).toBe(authored)
     document.head.querySelector('meta[name="author"]')!.setAttribute("content", "Grace Hopper")
     document.head.querySelector('link[rel="license"]')!.setAttribute("href", "javascript:alert(1)")
@@ -598,5 +599,153 @@ describe("document reader controls", () => {
     await vi.advanceTimersByTimeAsync(2000)
     expect(bubble.isConnected).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe("document references", () => {
+  const appendix = () => document.body.shadowRoot!
+  const trigger = () => appendix().querySelector<HTMLButtonElement>('[name="references"]')!
+  const panel = () => appendix().querySelector<HTMLElement>(".◆document-references")!
+
+  const reference = (href: string, title: string, extra: Record<string, unknown> = {}) => {
+    const anchor = document.createElement("a")
+    anchor.href = href
+    anchor.setAttribute("data-reference", JSON.stringify({type: "book", title, ...extra}))
+    anchor.textContent = "citation"
+    return anchor
+  }
+
+  it("groups citations by literal href and reports conflicting metadata", () => {
+    const authored = document.body.innerHTML
+    const one = reference("#source", "First title")
+    const same = reference("#source", "First title")
+    const conflict = reference("#source", "Different title")
+    const url = reference("https://example.test/paper", "Web paper")
+    document.body.append(one, same, conflict, url)
+    const beforeMount = document.body.innerHTML
+    reader = mountDocumentReader()!
+
+    trigger().click()
+    expect(panel().hidden).toBe(false)
+    expect(panel().textContent).toContain("First title")
+    expect(panel().textContent).toContain("Web paper")
+    expect(panel().querySelectorAll("[data-reference-href]")).toHaveLength(2)
+    expect(panel().textContent).toMatch(/conflict|different metadata/i)
+    expect(document.body.innerHTML).toBe(beforeMount)
+    expect(authored).not.toBe(beforeMount)
+  })
+
+  it("ignores widget references and malformed metadata without preventing the panel from opening", () => {
+    const valid = reference("#valid-source", "Valid source")
+    const malformed = document.createElement("a")
+    malformed.href = "#bad-source"
+    malformed.setAttribute("data-reference", "{")
+    const widget = document.createElement("custom-reference-widget")
+    widget.append(reference("#widget-source", "Widget source"))
+    document.body.append(valid, malformed, widget)
+    const customizedWidget = document.createElement("span")
+    customizedWidget.setAttribute("is", "custom-reference-widget")
+    customizedWidget.append(reference("#is-widget-source", "Customized widget source"))
+    document.body.append(customizedWidget)
+    reader = mountDocumentReader()!
+
+    expect(() => trigger().click()).not.toThrow()
+    expect(panel().textContent).toContain("Valid source")
+    expect(panel().textContent).not.toContain("Widget source")
+    expect(panel().textContent).not.toContain("Customized widget source")
+    expect(panel().textContent).not.toContain("bad-source")
+  })
+
+  it("refreshes grouped sources when reference metadata changes", async () => {
+    const anchor = reference("#mutable", "Before")
+    document.body.append(anchor)
+    reader = mountDocumentReader()!
+    trigger().click()
+    expect(panel().textContent).toContain("Before")
+
+    anchor.setAttribute("data-reference", JSON.stringify({type: "book", title: "After"}))
+    await settle(); await settle()
+    expect(panel().textContent).toContain("After")
+    expect(panel().textContent).not.toContain("Before")
+  })
+
+  it("intercepts recognized fragment references while leaving URL references to native navigation", () => {
+    const fragment = reference("#known-source", "Known source")
+    const external = reference("https://example.test/source", "External source")
+    document.body.append(fragment, external)
+    reader = mountDocumentReader()!
+    trigger().click()
+
+    const fragmentClick = new MouseEvent("click", {bubbles: true, cancelable: true})
+    fragment.dispatchEvent(fragmentClick)
+    expect(fragmentClick.defaultPrevented).toBe(true)
+    expect(panel().hidden).toBe(false)
+
+    const externalClick = new MouseEvent("click", {bubbles: true, cancelable: true})
+    external.dispatchEvent(externalClick)
+    expect(externalClick.defaultPrevented).toBe(false)
+  })
+
+  it("removes its appendix UI on destroy and leaves authored references intact", () => {
+    const ref = reference("#source", "Source")
+    document.body.append(ref)
+    const authored = document.body.innerHTML
+    reader = mountDocumentReader()!
+    trigger().click()
+    expect(panel()).toBeTruthy()
+    reader.destroy()
+    reader = null
+    expect(appendix().querySelector('[name="references"]')).toBeNull()
+    expect(appendix().querySelector(".◆document-references")).toBeNull()
+    expect(document.body.innerHTML).toBe(authored)
+  })
+
+  it("copies APA bibliography text and BibTeX from the formatter", async () => {
+    const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue()
+    const ref = reference("#miller", "A useful book", {
+      author: [{family: "Miller", given: "Alex"}],
+      issued: {"date-parts": [[2021]]},
+      publisher: "Example Press",
+    })
+    document.body.append(ref)
+    reader = mountDocumentReader([], "", formatReferences)!
+    trigger().click()
+
+    appendix().querySelector<HTMLButtonElement>('[name="copy-references"]')!.click()
+    await settle()
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(write.mock.calls[0][0]).toContain("Miller")
+    expect(write.mock.calls[0][0]).toContain("2021")
+
+    appendix().querySelector<HTMLButtonElement>('[name="copy-bibtex"]')!.click()
+    await settle()
+    expect(write).toHaveBeenCalledTimes(2)
+    expect(write.mock.calls[1][0]).toMatch(/@book/i)
+    expect(write.mock.calls[1][0]).toContain("A useful book")
+  })
+
+  it("disables both copy actions when references sharing an href conflict", () => {
+    document.body.append(reference("#same", "First"), reference("#same", "Second"))
+    reader = mountDocumentReader([], "", formatReferences)!
+    trigger().click()
+    expect(appendix().querySelector<HTMLButtonElement>('[name="copy-references"]')!.disabled).toBe(true)
+    expect(appendix().querySelector<HTMLButtonElement>('[name="copy-bibtex"]')!.disabled).toBe(true)
+  })
+
+  it("keeps the source title visible when author metadata cannot be formatted", () => {
+    document.body.append(reference("#bad-author", "Still visible", {author: "not a CSL name"}))
+    reader = mountDocumentReader([], "", formatReferences)!
+    trigger().click()
+    expect(panel().textContent).toContain("Still visible")
+  })
+
+  it("reports clipboard failures in the references panel", async () => {
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("Denied"))
+    document.body.append(reference("#clipboard", "Clipboard source"))
+    reader = mountDocumentReader([], "", formatReferences)!
+    trigger().click()
+    appendix().querySelector<HTMLButtonElement>('[name="copy-references"]')!.click()
+    await settle()
+    expect(panel().querySelector('[role="status"]')!.textContent).toContain("Couldn’t copy references")
   })
 })

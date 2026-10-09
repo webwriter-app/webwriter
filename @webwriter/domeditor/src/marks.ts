@@ -241,7 +241,9 @@ export type MarkAttributeOption = {
 /** Curated attributes exposed as mark details. */
 export const markAttributeOptions: Partial<Record<MarkName, readonly MarkAttributeOption[]>> = {
   a: [
-    {name: "href", label: "Link", placeholder: "https://…", inputType: "url"},
+    {name: "href", label: "Link", placeholder: "https://… or #ref-…"},
+    {name: "data-reference", label: "Reference", placeholder: "CSL-JSON"},
+    {name: "data-reference-locator", label: "Page / location", placeholder: "42"},
     {name: "target", label: "Target", placeholder: "_blank"},
     {name: "download", label: "Download", placeholder: "Filename"},
     {name: "ping", label: "Ping", placeholder: "URLs"},

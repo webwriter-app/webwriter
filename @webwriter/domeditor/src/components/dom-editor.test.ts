@@ -210,6 +210,14 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
+function dispatchMarkState(editor: DomEditor, editorWindow: Window, detail: Record<string, unknown>) {
+  window.dispatchEvent(new MessageEvent("message", {
+    data: {type: markStateChangeEvent, detail, bridgeNonce: (editor as any).bridgeNonce},
+    source: editorWindow,
+    origin: window.location.origin,
+  }))
+}
+
 afterEach(async() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -7329,6 +7337,115 @@ describe("DomEditor.execute()", () => {
       detail: {label: "insert-math:frac"}, bubbles: true, composed: true,
     }))
     expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
+  })
+
+  it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const selection = {
+      active: true, identity: "link-1", href: "#intro", attributes: {href: "#intro"},
+      text: "Intro", targets: [{href: "#intro", label: "Intro"}],
+    }
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}, link: selection})
+    await editor.updateComplete
+
+    const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-link-keyboard")!
+    expect(keyboard.closest(".link-keyboard-area")).not.toBeNull()
+    keyboard.dispatchEvent(new CustomEvent("link-keyboard-command", {
+      detail: {identity: "link-1", href: "#intro", attributes: {target: "_blank"}},
+      bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({
+      type: "editLink", identity: "link-1", href: "#intro", attributes: {target: "_blank"},
+    })
+
+    const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close link keyboard"]')!
+    const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
+    close.dispatchEvent(pointer)
+    expect(pointer.defaultPrevented).toBe(true)
+    close.click()
+    await editor.updateComplete
+    expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(true)
+    const reopen = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show link keyboard"]')!
+    const reopenPointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
+    reopen.dispatchEvent(reopenPointer)
+    expect(reopenPointer.defaultPrevented).toBe(true)
+    reopen.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBe(keyboard)
+    expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(false)
+    expect(focusEditor).toHaveBeenCalled()
+  })
+
+  it.each(["Reference could not be saved", "Target view is unavailable"])(
+    "surfaces link keyboard reference/view errors: %s", async message => {
+      const {editor, editorWindow} = await mountEditor()
+      vi.spyOn(editor, "execute").mockRejectedValue(new Error(message))
+      const selection = {
+        active: true, identity: "link-1", href: "#intro", attributes: {href: "#intro"},
+        text: "Intro", targets: [{href: "#intro", label: "Intro"}],
+      }
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}, link: selection})
+      await editor.updateComplete
+      const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-link-keyboard")!
+      keyboard.dispatchEvent(new CustomEvent("link-keyboard-command", {
+        detail: {identity: "link-1", href: "#intro", attributes: {"data-reference": JSON.stringify({title: "Intro"})}},
+        bubbles: true, composed: true,
+      }))
+      await Promise.resolve()
+      await Promise.resolve()
+      await editor.updateComplete
+      expect(keyboard.shadowRoot!.querySelector('[role="alert"]')?.textContent).toBe(message)
+    },
+  )
+
+  it.each(["previewActive", "liveSessionActive"] as const)(
+    "ignores link keyboard commands while %s", async mode => {
+      const {editor, editorWindow} = await mountEditor()
+      const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+      const selection = {
+        active: true, identity: "link-1", href: "#intro", attributes: {href: "#intro"},
+        text: "Intro", targets: [{href: "#intro", label: "Intro"}],
+      }
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}, link: selection})
+      await editor.updateComplete
+      const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-link-keyboard")!
+      Object.assign(editor, {[mode]: true})
+      keyboard.dispatchEvent(new CustomEvent("link-keyboard-command", {
+        detail: {identity: "link-1", href: "https://example.com", attributes: {}}, bubbles: true, composed: true,
+      }))
+      expect(execute).not.toHaveBeenCalled()
+      await editor.updateComplete
+    },
+  )
+
+  it("retires the link keyboard on a newer node selection or link-free mark state", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const selection = {
+      active: true, identity: "link-1", href: "#intro", attributes: {href: "#intro"},
+      text: "Intro", targets: [{href: "#intro", label: "Intro"}],
+    }
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}, link: selection})
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).not.toBeNull()
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}], nodeSelected: true,
+      }, bridgeNonce: (editor as any).bridgeNonce},
+      source: editorWindow,
+      origin: window.location.origin,
+    }))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
+
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}, link: selection})
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).not.toBeNull()
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: [], attributes: {}})
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
   })
 
   it("shows formula input in the document column without a Formula toolbox", async () => {
