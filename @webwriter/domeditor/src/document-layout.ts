@@ -40,13 +40,13 @@ export function documentLayoutMode(body: HTMLElement = document.body): DocumentL
 /** Board structure and styles are authored content, usable without an editor. */
 export const boardClass = "ww-board"
 export const boardStyles = `
-html:has(> body.ww-board) { min-height: 100%; overflow: auto; background: #eaf0f6; }
+html:has(> body.ww-board) { height: 100%; overflow: auto; background: #eaf0f6; }
 body.ww-board {
   box-sizing: border-box; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 1rem;
-  width: max-content; min-width: 100%; max-width: none; min-height: 100vh; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
+  width: max-content; min-width: 100%; max-width: none; min-height: 100%; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
 }
 body.ww-board > section.ww-board-column:not([is]) {
-  box-sizing: border-box; flex: 0 0 min(20rem, calc(100vw - 2.5rem)); width: min(20rem, calc(100vw - 2.5rem)); min-width: 0;
+  box-sizing: border-box; flex: 0 0 min(450px, calc(100vw - 2.5rem)); width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
   display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
   margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
 }
@@ -54,7 +54,7 @@ body.ww-board > section.ww-board-column:not([is]) > h2:not([is]) {
   margin: 0; padding: 0 3.5rem 0 0; min-height: 1.5rem; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
 }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
-  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: 1rem;
+  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: .75rem;
   border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere;
 }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }

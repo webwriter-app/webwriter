@@ -836,7 +836,7 @@ export class EditingSelection {
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
     if(inlineMathRoot(selected) || isElement(selected) && selected.matches("caption, figcaption, details > summary")) return false
-    return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide"
+    return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide" || Boolean(boardLayoutRole(selected))
       || selected.localName === "figure" || !isMarkElement(selected) && !isSectionElement(selected))
   }
 

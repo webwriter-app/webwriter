@@ -62,6 +62,7 @@ import clearFormatting from "@tabler/icons/outline/clear-formatting.svg?raw"
 import clipboard from "@tabler/icons/outline/clipboard.svg?raw"
 import code from "@tabler/icons/outline/code.svg?raw"
 import columns3 from "@tabler/icons/outline/columns-3.svg?raw"
+import column from "@tabler/icons/outline/columns-1.svg?raw"
 import columnInsertLeft from "@tabler/icons/outline/column-insert-left.svg?raw"
 import columnInsertRight from "@tabler/icons/outline/column-insert-right.svg?raw"
 import colorSwatch from "@tabler/icons/outline/color-swatch.svg?raw"
@@ -88,6 +89,7 @@ import h4 from "@tabler/icons/outline/h-4.svg?raw"
 import h5 from "@tabler/icons/outline/h-5.svg?raw"
 import h6 from "@tabler/icons/outline/h-6.svg?raw"
 import heading from "@tabler/icons/outline/heading.svg?raw"
+import id from "@tabler/icons/outline/id.svg?raw"
 import highlight from "@tabler/icons/outline/highlight.svg?raw"
 import historyToggle from "@tabler/icons/outline/history-toggle.svg?raw"
 import circleDot from "@tabler/icons/outline/circle-dot.svg?raw"
@@ -263,6 +265,8 @@ const icons: Record<string, string> = {
   Document: fileDescription,
   FileHorizontal: fileHorizontal,
   Canvas: artboard,
+  BoardColumn: column,
+  BoardCard: id,
   ChevronRight: chevronRight,
   ArrowUp: arrowUp,
   ArrowDown: arrowDown,

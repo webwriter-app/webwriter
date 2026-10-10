@@ -3,8 +3,10 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
-import {$} from "../utility"
+import {$, pathFromNode} from "../utility"
 import {boardStyles, documentLayoutMode, type DocumentLayoutMode} from "../document-layout"
+import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
+import {getElementPresentation} from "../element-names"
 
 let editor: DOMEditor
 const head = document.head.cloneNode(true)
@@ -13,7 +15,20 @@ const convert = (mode: DocumentLayoutMode) => editor.setDocumentLayout(mode, edi
 const board = () => editor.features.board
 const columns = () => board().columns()
 const cards = () => columns().flatMap(column => board().cards(column))
-const grip = (label: string) => editor.appendix.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+const grip = (label: string) => {
+  const cardMatch = /^Drag card (\d+) in column (\d+)$/.exec(label), columnMatch = /^Drag column (\d+)$/.exec(label)
+  const overlayTarget = cardMatch ? board().cards(columns()[Number(cardMatch[2]) - 1] ?? document.createElement("section"))[Number(cardMatch[1]) - 1]
+    : columnMatch ? columns()[Number(columnMatch[1]) - 1] : null
+  const target = cardMatch
+    ? board().cards(columns()[Number(cardMatch[2]) - 1] ?? document.createElement("section"))[Number(cardMatch[1]) - 1]?.querySelector("p")
+    : columnMatch ? columns()[Number(columnMatch[1]) - 1]?.querySelector("h2") : null
+  if(target) {
+    if(!overlayTarget?.contains($.anchor)) $.move(target)
+    editor.features.selection.processSelection(); board().refresh()
+  }
+  const overlay = overlayTarget && board().transformOverlay(overlayTarget)
+  return overlay?.querySelector<HTMLButtonElement>("[part~='transform-overlay-mover']") ?? null!
+}
 const dragEvent = (type: string, dataTransfer: DataTransfer, x = 60, y = 60) => {
   const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, clientX: x, clientY: y})
   Object.defineProperty(event, "dataTransfer", {value: dataTransfer})
@@ -32,6 +47,179 @@ afterEach(() => {
 })
 
 describe("Board layout", () => {
+  it.each(["", "<br>"])("discards only empty column heading placeholders during layout conversion (%s)", placeholder => {
+    convert("board")
+    const heading = columns()[0].querySelector("h2")!
+    heading.innerHTML = placeholder
+    $.move(heading); editor.features.selection.processSelection()
+    heading.classList.add("◆", "◆empty-selected")
+    expect(heading.className).toContain("◆")
+    expect(convert("slides")).toBe(true)
+    expect(document.querySelector("h2")).toBeNull()
+    expect(document.querySelector(".ww-slide h1")).not.toBeNull()
+  })
+
+  it("allows deleting the last column, undoing it, and adding a column to an empty board", async () => {
+    convert("board"); await settle()
+    const column = columns()[0]
+    editor.features.selection.selectElement(column)
+    const deleter = board().transformOverlay(column)!.querySelector<HTMLButtonElement>('[part~="transform-overlay-delete"]')!
+    expect(deleter.disabled).toBe(false)
+    deleter.click(); await settle()
+    expect(columns()).toHaveLength(0)
+    expect(document.body.children).toHaveLength(0)
+    expect(editor.getDocumentLayoutState().mode).toBe("board")
+    expect(editor.appendix.querySelector('[part=board-add-card]')).toBeNull()
+    expect(editor.appendix.querySelector('[part=board-add-column]')).not.toBeNull()
+    editor.doc.undo(); await settle(); expect(columns()).toHaveLength(1)
+    editor.doc.redo(); await settle(); expect(columns()).toHaveLength(0)
+    editor.features.board.disable(); editor.features.board.enable(); await settle()
+    expect(columns()).toHaveLength(0)
+    editor.appendix.querySelector<HTMLButtonElement>('[part=board-add-column]')!.click(); await settle()
+    expect(columns()).toHaveLength(1)
+  })
+
+  it.each([false, true])("keeps paragraphs in both cards when splitting at the card boundary (column=%s)", intoColumn => {
+    convert("board")
+    const card = cards()[0]
+    card.innerHTML = '<p>Content</p>'
+    $.move(card, 0)
+    expect(board().splitAtSelection(intoColumn)).toBe(true)
+    expect(card.innerHTML).toBe("<p></p>")
+    expect(cards()[1].querySelector("p")?.textContent).toBe("Content")
+    $.move(cards()[1], cards()[1].childNodes.length)
+    expect(board().splitAtSelection(intoColumn)).toBe(true)
+    expect(cards()[2].querySelector("p")).not.toBeNull()
+  })
+
+  it("restores empty cards after DOM edits while preserving comments and unfamiliar valid content", async () => {
+    convert("board")
+    const card = cards()[0]
+    card.replaceChildren(document.createComment("keep"), document.createTextNode(" \n"))
+    await settle()
+    expect(card.querySelectorAll("p")).toHaveLength(1)
+    expect(card.innerHTML).toContain("<!--keep-->")
+    card.replaceChildren(document.createElement("custom-empty-card-widget"))
+    await settle()
+    expect(card.querySelector("p")).toBeNull()
+    const widget = card.firstElementChild!
+    card.replaceChildren(document.createElement("section"), widget)
+    await settle()
+    expect(card.querySelector("p")).toBeNull()
+  })
+
+  it.each(["ctrlKey", "metaKey"] as const)("splits a card at the caret with %s+Enter, preserving nested content and widgets", async modifier => {
+    convert("board")
+    const column = columns()[0], card = cards()[0]
+    card.innerHTML = '<section data-authored="yes"><p>ab<em>cdef</em>gh</p><!--keep--><custom-split-widget data-authored="yes"></custom-split-widget></section>'
+    const widget = card.querySelector("custom-split-widget")!
+    $.move(card.querySelector("em")!.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {key: "Enter", [modifier]: true, bubbles: true, cancelable: true})
+    card.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(board().cards(column)).toHaveLength(2)
+    const next = board().cards(column)[1]
+    expect(card.textContent).toBe("abcd"); expect(next.textContent).toBe("efgh")
+    expect(next.querySelector("section")?.getAttribute("data-authored")).toBe("yes")
+    expect(next.querySelector("custom-split-widget")).toBe(widget)
+    expect(next.innerHTML).toContain("<!--keep-->")
+    expect(board().containingCard($.anchor)).toBe(next)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["ctrlKey", "metaKey"] as const)("splits into a column with Shift+%s+Enter and moves following siblings intact", modifier => {
+    convert("board")
+    const column = columns()[0], card = cards()[0]
+    card.innerHTML = '<p>LeftRight</p>'
+    const comment = document.createComment("keep"), widget = document.createElement("custom-column-widget")
+    column.append(comment, widget); board().addCard(column)
+    const later = board().cards(column)[1]
+    $.move(card.querySelector("p")!.firstChild!, 4)
+    card.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, [modifier]: true, bubbles: true, cancelable: true}))
+    const next = columns()[1]
+    expect(columns()).toHaveLength(2)
+    expect(card.textContent).toBe("Left")
+    expect(board().cards(next)[0].textContent).toBe("Right")
+    expect(Array.from(next.childNodes).slice(2)).toEqual([comment, widget, later])
+    expect(board().containingColumn($.anchor)).toBe(next)
+  })
+
+  it("splits headings into cards or column headings and replaces selected text", () => {
+    convert("board")
+    const column = columns()[0], heading = column.querySelector("h2")!
+    heading.textContent = "BeforeSelectedAfter"
+    document.getSelection()!.setBaseAndExtent(heading.firstChild!, 6, heading.firstChild!, 14)
+    expect(board().splitAtSelection()).toBe(true)
+    expect(heading.textContent).toBe("Before")
+    expect(board().cards(column)[0].textContent).toBe("After")
+    $.move(heading.firstChild!, 3)
+    expect(board().splitAtSelection(true)).toBe(true)
+    expect(heading.textContent).toBe("Bef")
+    expect(columns()[1].querySelector("h2")!.textContent).toBe("ore")
+    expect(board().cards(columns()[1])).toHaveLength(2)
+  })
+
+  it("keeps a board split in one undo group and fails safely for detached selections", async () => {
+    convert("board"); cards()[0].innerHTML = '<p>BeforeAfter</p>'; await settle(); editor.doc.syncFromDOM()
+    const before = editor.toHTML(true)
+    $.move(cards()[0].firstChild!.firstChild!, 6)
+    expect(board().splitAtSelection(true)).toBe(true)
+    await settle(); const after = editor.toHTML(true)
+    editor.doc.undo(); await settle(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); await settle(); expect(editor.toHTML(true)).toBe(after)
+    const detached = document.createElement("p"); detached.textContent = "Detached"
+    $.isSettingRanges = true
+    try { document.getSelection()!.setBaseAndExtent(detached.firstChild!, 2, detached.firstChild!, 2) }
+    finally { $.isSettingRanges = false }
+    expect(board().splitAtSelection()).toBe(false)
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("posts columns and cards as selectable breadcrumb elements with live names and distinct icons", async () => {
+    convert("board")
+    document.body.innerHTML = '<!--root--><section class="ww-board-column"><h2>Todo</h2><!--keep--><custom-card></custom-card><article class="ww-board-card"><section><p>Text</p></section></article><article class="ww-board-card"></article></section><section class="ww-board-column"></section>'
+    await settle()
+    const [column, otherColumn] = columns(), [card, otherCard] = board().cards(column)
+    expect(getElementPresentation(column.querySelector("h2")!)).toEqual({name: "Column Heading", icon: "Heading"})
+    const cardHeading = document.createElement("h2"); card.append(cardHeading)
+    expect(getElementPresentation(cardHeading)).toEqual({name: "Heading 2", icon: "Heading 2"})
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+    const state = () => {
+      postMessage.mockClear(); editor.postSelectionPath()
+      return postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+    }
+    $.move(card.querySelector("p")!.firstChild!, 2); editor.features.selection.processSelection()
+    expect(state().path).toEqual([
+      {path: [], name: "Document", icon: "Document"},
+      {path: [1], name: "Column 1", icon: "BoardColumn"},
+      {path: [1, 3], name: "Card 1", icon: "BoardCard"},
+      {path: [1, 3, 0, 0], name: "Paragraph", icon: "Paragraph", sections: [
+        {path: [1, 3, 0], type: "section", name: "Section", icon: "Section"},
+      ]},
+    ])
+    for(const [target, path] of [[card, [1, 3]], [column, [1]]] as const) {
+      editor.features.selection.actions.selectNode({type: "selectNode", path: [...path]})
+      expect($.selectedElement).toBe(target)
+      expect(state()).toMatchObject({nodeSelected: true, path: expect.arrayContaining([
+        {path: [...path], ...getElementPresentation(target)},
+      ])})
+    }
+    column.before(otherColumn); card.before(otherCard)
+    expect(getElementPresentation(column)).toEqual({name: "Column 2", icon: "BoardColumn"})
+    expect(getElementPresentation(card)).toEqual({name: "Card 2", icon: "BoardCard"})
+    expect(getElementPresentation(column.querySelector("section")!)).toEqual({name: "Section", icon: "Section"})
+    const lookalike = document.createElement("article"); lookalike.className = "ww-board-card"
+    card.append(lookalike)
+    expect(getElementPresentation(lookalike)).toEqual({name: "Article", icon: "Article"})
+  })
+
+  it("sizes the board to the available viewport without reserving a side gutter", () => {
+    convert("board")
+    expect(getComputedStyle(document.documentElement).height).toBe("100%")
+    expect(getComputedStyle(document.documentElement).getPropertyValue("scrollbar-gutter")).not.toBe("stable")
+    expect(getComputedStyle(document.body).minHeight).toBe("100%")
+  })
+
   it("drags cards vertically and between columns, including an empty column", async () => {
     convert("board"); const one = cards()[0]
     board().addCard(columns()[0]); const two = cards()[1]
@@ -204,13 +392,15 @@ describe("Board layout", () => {
   it("refreshes controls after remote insertion without normalizing unfamiliar column content", async () => {
     convert("board"); await settle(); editor.doc.syncFromDOM()
     const remote = new Y.Doc(); Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
-    const column = new Y.XmlElement("section"), heading = new Y.XmlElement("h2"), widget = new Y.XmlElement("custom-card")
+    const column = new Y.XmlElement("section"), heading = new Y.XmlElement("h2"), widget = new Y.XmlElement("custom-card"), card = new Y.XmlElement("article")
+    card.setAttribute("class", "ww-board-card")
     column.setAttribute("class", "ww-board-column"); widget.setAttribute("data-authored", "yes")
-    column.insert(0, [heading, widget]); sharedDOMBody(remote).push([column])
+    column.insert(0, [heading, widget, card]); sharedDOMBody(remote).push([column])
     Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client"); await settle()
     expect(columns()).toHaveLength(2)
     expect(columns()[1].querySelector("custom-card")?.getAttribute("data-authored")).toBe("yes")
-    expect(board().cards(columns()[1])).toHaveLength(0)
+    expect(board().cards(columns()[1])).toHaveLength(1)
+    expect(board().cards(columns()[1])[0].innerHTML).toBe("<p></p>")
     expect(editor.appendix.querySelector('[aria-label="Add card to column 2"]')).not.toBeNull()
     remote.destroy()
   })
@@ -230,6 +420,185 @@ describe("Board layout", () => {
     editor.features.board.disable()
     expect(editor.appendix.querySelector("[part=board-actions]")).toBeNull()
     expect(document.body.innerHTML).not.toContain("◆board")
+  })
+
+  it("reserves card and column insertion slots without adding authored nodes", async () => {
+    convert("board"); await settle()
+    const content = document.body.innerHTML
+    const sheets = document.adoptedStyleSheets
+    const layout = sheets.find(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes("body.ww-board::after")))!
+    expect(layout).toBeDefined()
+    const controls = editor.appendix.querySelector<HTMLElement>("[part=board-actions]")!
+    expect(controls.querySelector('[part=board-add-card]')?.textContent).toBe("+ Add card")
+    expect(controls.querySelector('[part=board-add-column]')?.textContent).toBe("+ Add column")
+    expect(document.body.innerHTML).toBe(content)
+    editor.features.board.disable()
+    expect(document.adoptedStyleSheets).not.toContain(layout)
+    expect(document.body.innerHTML).toBe(content)
+  })
+
+  it("makes only add-button labels unselectable when a column is selected", async () => {
+    convert("board"); await settle()
+    const column = columns()[0], paragraph = cards()[0].querySelector("p")!
+    editor.features.selection.selectElement(column)
+    expect($.selectedElement).toBe(column)
+    expect(getComputedStyle(column).userSelect).not.toBe("none")
+    expect(getComputedStyle(paragraph).userSelect).not.toBe("none")
+    for(const button of editor.appendix.querySelectorAll('[part=board-actions] button')) {
+      expect(getComputedStyle(button).userSelect).toBe("none")
+    }
+    $.move(paragraph); editor.features.selection.processSelection()
+    expect(column.classList.contains("◆element-selected")).toBe(false)
+    expect(getComputedStyle(paragraph).userSelect).not.toBe("none")
+  })
+
+  it("highlights only breadcrumb and outline hover, and restores the editing target on exit", async () => {
+    convert("board"); await settle()
+    const column = columns()[0], card = cards()[0], paragraph = card.querySelector("p")!
+    $.move(paragraph); editor.features.selection.processSelection()
+    paragraph.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    board().refresh()
+    expect(board().transformOverlay(card)?.getAttribute("part")).not.toContain("transform-overlay-board-hovered")
+    for(const target of [card, column]) {
+      editor.features.selection.actions.hoverNode({type: "hoverNode", path: pathFromNode(document.body, target)!})
+      await settle()
+      expect(board().transformOverlay(target)?.getAttribute("part")).toContain("transform-overlay-board-hovered")
+      expect(editor.features.selection.hoverCaret?.getAttribute("part")).toContain("hover-caret-board")
+      expect(board().transformOverlay(target === card ? column : card)).toBeNull()
+      expect($.anchor).toBe(paragraph)
+      editor.features.selection.actions.hoverNode({type: "hoverNode", path: null})
+      await settle()
+      expect(board().transformOverlay(card)?.getAttribute("part")).not.toContain("transform-overlay-board-hovered")
+      expect(board().transformOverlay(column)).toBeNull()
+      expect(editor.features.selection.hoverCaret?.getAttribute("part")).not.toContain("hover-caret-board")
+    }
+  })
+
+  it("selects a column background without scrolling or intercepting its contents", async () => {
+    convert("board"); await settle()
+    const column = columns()[0], paragraph = cards()[0].querySelector("p")!
+    const scroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    const reveal = vi.spyOn(column, "scrollIntoView").mockImplementation(() => {})
+    const background = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
+    column.dispatchEvent(background)
+    expect(background.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(column)
+    expect(scroll).not.toHaveBeenCalled(); expect(reveal).not.toHaveBeenCalled()
+    expect(getComputedStyle(column).cursor).toBe("pointer")
+    expect(getComputedStyle(paragraph).cursor).not.toBe("pointer")
+    $.move(paragraph); editor.features.selection.processSelection()
+    const content = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
+    Object.defineProperty(content, "target", {value: paragraph})
+    board().captureListeners.pointerdown!(content)
+    expect(content.defaultPrevented).toBe(false)
+    expect($.selectedElement).not.toBe(column)
+  })
+
+  it("shows controls for only the selected card or column", async () => {
+    convert("board"); board().addColumn(); await settle(); geometry()
+    const [first, second] = columns(), [card] = board().cards(first)
+    const p = card.querySelector("p")!
+    $.move(p); editor.features.selection.processSelection(); board().refresh()
+    expect(board().transformOverlay(card)?.getAttribute("part")).not.toContain("transform-overlay-board-selected")
+    expect(board().transformOverlay(first)).toBeNull()
+    expect([first, card].filter(target => board().transformOverlay(target))).toEqual([card])
+    editor.features.selection.selectElement(card); board().refresh()
+    expect(board().transformOverlay(card)?.getAttribute("part")).toContain("transform-overlay-board-selected")
+    expect(board().transformOverlay(first)).toBeNull()
+    expect([first, card].filter(target => board().transformOverlay(target))).toEqual([card])
+    $.move(first.querySelector("h2")!); editor.features.selection.processSelection(); board().refresh()
+    expect(board().transformOverlay(first)?.getAttribute("part")).not.toContain("transform-overlay-board-selected")
+    expect(board().transformOverlay(card)).toBeNull()
+    expect([first, card].filter(target => board().transformOverlay(target))).toEqual([first])
+    editor.features.selection.selectElement(first); board().refresh()
+    expect(board().transformOverlay(first)?.getAttribute("part")).toContain("transform-overlay-board-selected")
+    expect([first, card].filter(target => board().transformOverlay(target))).toEqual([first])
+    $.move(second.querySelector("h2")!); editor.features.selection.processSelection(); board().refresh()
+    expect(board().transformOverlay(first)).toBeNull()
+    expect(board().transformOverlay(second)?.getAttribute("part")).not.toContain("transform-overlay-board-selected")
+    expect([first, second, card].filter(target => board().transformOverlay(target))).toEqual([second])
+    expect(editor.appendix.querySelectorAll('[aria-label^="Drag "], [aria-label^="Remove "], [aria-label="Move card up"], [aria-label="Move card down"], [aria-label="Move card left"], [aria-label="Move card right"]')).toHaveLength(0)
+  })
+
+  it("exposes mover, delete, and resize controls and preserves explicit selection when moving", async () => {
+    convert("board"); board().addColumn(); await settle(); geometry()
+    const [first, second] = columns(), card = board().cards(first)[0]
+    editor.features.selection.selectElement(card); board().refresh()
+    const cardOverlay = board().transformOverlay(card)!
+    expect(cardOverlay.querySelector('[aria-label="Move card 1 in column 1"]')).not.toBeNull()
+    expect(cardOverlay.querySelector('[aria-label="Delete card 1 in column 1"]')).not.toBeNull()
+    expect(cardOverlay.querySelector('[aria-label="Resize card 1 in column 1"]')).not.toBeNull()
+    cardOverlay.querySelector<HTMLButtonElement>('[aria-label="Move card 1 in column 1"]')!.click()
+    expect($.selectedElement).toBe(card)
+    cardOverlay.querySelector<HTMLButtonElement>('[aria-label="Delete card 1 in column 1"]')!.click()
+    expect(board().cards(first)).toHaveLength(0)
+    $.move(first.querySelector("h2")!); editor.features.selection.processSelection(); board().refresh()
+    const columnOverlay = board().transformOverlay(first)!
+    expect(columnOverlay.querySelector('[aria-label="Move column 1"]')).not.toBeNull()
+    expect(columnOverlay.querySelector('[aria-label="Delete column 1"]')).not.toBeNull()
+    expect(columnOverlay.querySelector('[aria-label="Resize column 1"]')).not.toBeNull()
+    columnOverlay.querySelector<HTMLButtonElement>('[aria-label="Delete column 1"]')!.click()
+    expect(columns()).toEqual([second])
+  })
+
+  it("cleans controls when selection targets are replaced and excludes them from serialization", async () => {
+    convert("board"); await settle(); geometry()
+    const column = columns()[0], card = board().cards(column)[0]
+    $.move(card.querySelector("p")!); editor.features.selection.processSelection(); board().refresh()
+    expect(board().transformOverlay(card)).not.toBeNull()
+    const saved = await editor.serializeHTML(true)
+    expect(saved).not.toContain("transform-overlay")
+    card.replaceWith(card.cloneNode(true)); await settle(); board().refresh()
+    expect(board().transformOverlay(card)).toBeNull()
+    expect(editor.appendix.querySelector('[aria-label^="Move card "]')).toBeNull()
+  })
+
+  it("restores authored dimensions when a board resize gesture is cancelled", async () => {
+    convert("board"); await settle()
+    const card = cards()[0]
+    card.style.maxWidth = "100px"; card.style.maxHeight = "50px"
+    geometry()
+    $.move(card.querySelector("p")!); editor.features.selection.processSelection(); board().refresh()
+    const handle = board().transformOverlay(card)?.querySelector<HTMLElement>("[part~='transform-overlay-board-resize-card']")!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 31, clientX: 160, clientY: 190}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, buttons: 1, pointerId: 31, clientX: 180, clientY: 210}))
+    await settle()
+    expect(card.style.maxHeight).not.toBe("50px")
+    expect(card.style.height).not.toBe("")
+    expect(card.style.maxWidth).toBe("100px")
+    expect(card.style.width).toBe("")
+    document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, composed: true, pointerId: 31}))
+    await settle()
+    expect(card.style.maxWidth).toBe("100px")
+    expect(card.style.maxHeight).toBe("50px")
+    expect(card.style.width).toBe("")
+    expect(card.style.height).toBe("")
+    expect(card.className).not.toContain("◆transform-target")
+    expect(document.body.className).not.toContain("◆transform-scaling-")
+  })
+
+  it("resizes columns horizontally despite vertical pointer movement and restores the size on undo", async () => {
+    convert("board"); await settle(); geometry()
+    const column = columns()[0]
+    $.move(column.querySelector("h2")!); editor.features.selection.processSelection(); board().refresh()
+    await settle(); editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const initial = {width: column.style.width, flexBasis: column.style.flexBasis, height: column.style.height, maxHeight: column.style.maxHeight}
+    const handle = board().transformOverlay(column)?.querySelector<HTMLElement>("[part~='transform-overlay-board-resize-column']")!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 32, clientX: 320, clientY: 270}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, buttons: 1, pointerId: 32, clientX: 340, clientY: 310}))
+    await settle()
+    expect(column.style.width).not.toBe(initial.width)
+    expect(column.style.flexBasis).not.toBe(initial.flexBasis)
+    expect(column.style.height).toBe(initial.height)
+    expect(column.style.maxHeight).toBe(initial.maxHeight)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 32}))
+    await settle(); editor.doc.undo(); await settle()
+    expect(column.style.width).toBe(initial.width)
+    expect(column.style.flexBasis).toBe(initial.flexBasis)
+    expect(column.style.height).toBe(initial.height)
+    expect(column.style.maxHeight).toBe(initial.maxHeight)
+    expect(column.className).not.toContain("◆transform-target")
+    expect(document.body.className).not.toContain("◆transform-scaling-")
   })
 
   it("keeps card and heading boundaries intact for deletion, deep splits, and cross-card edits", () => {
@@ -266,7 +635,7 @@ describe("Board layout", () => {
     expect(board().addColumn()).toBe(false); expect(board().addCard()).toBe(false)
     expect(convert("document")).toBe(false); editor.unlockEditing(owner)
     expect(editor.setDocumentLayout("document", "canvas")).toBe(false)
-    expect(board().removeColumn(columns()[0])).toBe(false)
+    expect(board().removeColumn(columns()[0])).toBe(true)
     convert("document")
     document.body.innerHTML = '<custom-document role="document"><p>Owned</p></custom-document>'
     const html = document.body.innerHTML

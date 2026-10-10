@@ -2,7 +2,7 @@ import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-e
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
-import {$, caretRect} from "../src/utility"
+import {$, caretRect, pathFromNode} from "../src/utility"
 import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
@@ -2148,6 +2148,29 @@ for(const mode of ["canvas", "slides"] as const) await check(`paragraphs grow wi
 })
 
 await check("Board columns and cards retain native editing and standalone layout", async () => {
+  const checkOverflow = async (doc: Document) => {
+    // Force classic scrollbars so macOS overlay scrollbars cannot mask the regression.
+    const style = doc.createElement("style")
+    style.textContent = "::-webkit-scrollbar { width: 16px; height: 16px; }"
+    doc.head.append(style)
+    try {
+      await layoutFrame()
+      const root = doc.documentElement
+      assert(root.scrollWidth > root.clientWidth, "wide board lost horizontal scrolling")
+      assert(root.scrollHeight === root.clientHeight, "horizontal scrollbar caused vertical board overflow")
+      assert(root.getBoundingClientRect().width === doc.defaultView!.innerWidth, "unused scrollbar gutter clipped the right edge of the board")
+      const card = doc.querySelector<HTMLElement>(".ww-board-card")!
+      const content = doc.createElement("div")
+      content.style.height = "1000px"
+      card.append(content)
+      await layoutFrame()
+      assert(root.scrollHeight > root.clientHeight, "tall board content lost vertical scrolling")
+      content.remove()
+      await layoutFrame()
+      assert(root.scrollHeight === root.clientHeight, "board retained vertical overflow after tall content was removed")
+    }
+    finally { style.remove() }
+  }
   const {render, html} = await import("lit")
   const {documentLayoutPreviewStyles, renderDocumentLayoutPreview} = await import("../src/components/layout-preview")
   const hero = document.createElement("div")
@@ -2172,7 +2195,31 @@ await check("Board columns and cards retain native editing and standalone layout
     const editor = view.editor!, board = editor.features.board, doc = frame.contentDocument!
     const theme = doc.createElement("style"); theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
     assert(editor.setDocumentLayout("board", "document"), "board did not convert")
-    board.addColumn(); board.addColumn(); board.addColumn()
+    await layoutFrame(); board.refresh()
+    const initialColumn = board.columns()[0].getBoundingClientRect()
+    const initialAddColumn = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add column"]')!.getBoundingClientRect()
+    assert(Math.abs(initialAddColumn.left - initialColumn.right - parseFloat(view.getComputedStyle(doc.body).columnGap)) < .5, "add-column slot drifted to the viewport edge on a narrow board")
+    for(const [intoColumn, offset] of [[false, 0], [false, 5], [true, 10]] as const) {
+      const source = board.cards(board.columns()[0])[0], text = source.querySelector("p")!.firstChild!
+      doc.getSelection()!.collapse(text, offset)
+      source.dispatchEvent(new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "Enter", ctrlKey: !intoColumn, metaKey: intoColumn, shiftKey: intoColumn, bubbles: true, cancelable: true}))
+      await layoutFrame()
+      const splitColumns = board.columns(), rightCard = intoColumn ? board.cards(splitColumns[1])[0] : board.cards(splitColumns[0])[1]
+      assert(source.textContent === "First card".slice(0, offset) && rightCard.textContent === "First card".slice(offset), "board shortcut did not split content at the caret")
+      assert(source.querySelector("p") && rightCard.querySelector("p"), "board split left a card without a paragraph")
+      assert(splitColumns.length === (intoColumn ? 2 : 1), "board shortcut split into the wrong container")
+      editor.doc.undo(); await layoutFrame()
+      assert(board.columns().length === 1 && board.cards(board.columns()[0]).length === 1 && board.cards(board.columns()[0])[0].textContent === "First card", "board shortcut split did not undo in one step")
+    }
+    board.addColumn(); await layoutFrame(); board.refresh()
+    const emptyColumn = board.columns().at(-1)!
+    const emptyAdd = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add card to column 2"]')!
+    const emptyAddBox = emptyAdd.getBoundingClientRect()
+    emptyAdd.click(); await layoutFrame()
+    const newCard = board.cards(emptyColumn)[0], newCardBox = newCard.getBoundingClientRect()
+    assert(Math.abs(emptyAddBox.top - newCardBox.top) < .5 && Math.abs(emptyAddBox.left - newCardBox.left) < .5 && Math.abs(emptyAddBox.width - newCardBox.width) < .5, "first-card slot did not match the inserted card in a minimum-height column")
+    board.removeCard(newCard)
+    board.addColumn(); board.addColumn()
     const columns = board.columns()
     columns.forEach((column, i) => {
       column.querySelector("h2")!.textContent = `Column ${i + 1}`
@@ -2180,9 +2227,10 @@ await check("Board columns and cards retain native editing and standalone layout
     })
     await layoutFrame()
     const rects = columns.map(column => column.getBoundingClientRect())
-    assert(rects.every(rect => Math.abs(rect.width - rects[0].width) < 1 && rect.width > 200), "column widths differ or collapse")
+    assert(rects.every(rect => Math.abs(rect.width - 450) < .5), "default board columns were not 450px wide")
     assert(rects.every((rect, i) => !i || rect.left > rects[i - 1].right), "columns did not grow horizontally")
     assert(doc.documentElement.scrollWidth > frame.clientWidth, "board did not overflow horizontally")
+    await checkOverflow(doc)
     for(const column of columns) {
       const cards = board.cards(column).map(card => card.getBoundingClientRect())
       assert(cards.every((rect, i) => !i || rect.top > cards[i - 1].bottom), "cards did not stack vertically")
@@ -2190,19 +2238,54 @@ await check("Board columns and cards retain native editing and standalone layout
     }
     view.scrollTo(0, 0); await layoutFrame()
     const first = columns[0], card = board.cards(first)[0], paragraph = card.querySelector("p")!
+    assert(view.getComputedStyle(card).paddingTop === "12px", "board card padding was not reduced to 12px")
     const selection = doc.getSelection()!
+    view.scrollTo(120, 0); await layoutFrame()
+    const scrollBefore = {x: view.scrollX, y: view.scrollY}
+    first.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    await layoutFrame()
+    assert(first.classList.contains("◆element-selected") && board.transformOverlay(first), "column background click did not select the column")
+    assert(view.scrollX === scrollBefore.x && view.scrollY === scrollBefore.y, "column background click scrolled the column into view")
+    assert(view.getComputedStyle(first).cursor === "pointer" && view.getComputedStyle(paragraph).cursor !== "pointer", "column background cursor leaked into card contents")
+    view.scrollTo(0, 0); await layoutFrame()
+    editor.features.selection.selectElement(first)
+    assert(first.classList.contains("◆element-selected") && selection.getRangeAt(0).startContainer === doc.body, "column selection did not select the container")
+    assert(view.getComputedStyle(first).userSelect !== "none" && view.getComputedStyle(paragraph).userSelect !== "none", "column selection disabled authored text selection")
+    assert(Array.from(editor.appendix.querySelectorAll('[part=board-actions] button')).every(button => view.getComputedStyle(button).userSelect === "none"), "board add-button labels remained selectable")
+    assert(view.getComputedStyle(paragraph, "::selection").backgroundColor === "rgba(0, 0, 0, 0)", "column selection painted descendant text")
     selection.collapse(paragraph.firstChild!, 5)
     editor.features.selection.processSelection(false, {scrollIntoView: false})
+    assert(!first.classList.contains("◆element-selected") && view.getComputedStyle(paragraph).userSelect !== "none", "column selection suppression leaked into card text editing")
     assert(doc.execCommand("insertText", false, " new"), "native card typing failed")
     assert(paragraph.textContent === "First new card", "native card typing changed structure")
     paragraph.dispatchEvent(new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     assert(card.querySelectorAll("p").length === 2, "Enter did not stay inside the card")
     const add = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add card to column 1"]')!
+    board.refresh()
+    const addBox = add.getBoundingClientRect(), lastCardBox = board.cards(first).at(-1)!.getBoundingClientRect()
+    const firstStyle = view.getComputedStyle(first), addStyle = view.getComputedStyle(add)
+    assert(Math.abs(addBox.left - lastCardBox.left) < .5 && Math.abs(addBox.width - lastCardBox.width) < .5, "add-card slot did not match card edges")
+    assert(Math.abs(addBox.top - lastCardBox.bottom - parseFloat(firstStyle.rowGap)) < .5, "add-card slot did not follow the last card")
+    assert(addStyle.borderTopStyle === "dashed" && addStyle.backgroundColor === "rgba(0, 0, 0, 0)", "add-card slot lost transparent dashed styling")
+    const addColumn = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add column"]')!
+    const lastColumn = columns.at(-1)!, lastColumnBox = lastColumn.getBoundingClientRect()
+    view.scrollTo(doc.documentElement.scrollWidth, 0); await layoutFrame(); board.refresh()
+    const addColumnBox = addColumn.getBoundingClientRect(), scrolledLastColumnBox = lastColumn.getBoundingClientRect()
+    assert(!addColumn.hidden && Math.abs(addColumnBox.left - scrolledLastColumnBox.right - parseFloat(view.getComputedStyle(doc.body).columnGap)) < .5, "add-column slot was clipped or misplaced")
+    assert(Math.abs(addColumnBox.width - lastColumnBox.width) < .5 && Math.abs(addColumnBox.top - scrolledLastColumnBox.top) < .5 && addColumnBox.height === 160, "add-column slot did not match a new empty column")
+    view.scrollTo(0, 0); await layoutFrame(); board.refresh()
     add.click(); await layoutFrame()
     assert(board.cards(first).length === 4, "column add-card control failed")
+    assert(Math.abs(board.cards(first).at(-1)!.getBoundingClientRect().height - addBox.height) < .5, `add-card slot did not match the new empty card height: card=${board.cards(first).at(-1)!.getBoundingClientRect().height}, slot=${addBox.height}`)
     assert(doc.querySelector("[part=board-actions], button") === null, "board UI leaked into authored content")
     const drag = async (label: string, x: number, y: number) => {
-      const grip = editor.appendix.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+      const cardMatch = /^Drag card (\d+) in column (\d+)$/.exec(label), columnMatch = /^Drag column (\d+)$/.exec(label)
+      const column = board.columns()[Number(cardMatch?.[2] ?? columnMatch?.[1]) - 1]
+      const target = cardMatch ? board.cards(column)[Number(cardMatch[1]) - 1] : column
+      if(!target.contains(selection.anchorNode)) selection.collapse(target.firstElementChild!, 0)
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+      board.refresh()
+      const grip = board.transformOverlay(target)!.querySelector<HTMLButtonElement>('[part~="transform-overlay-mover"]')!
       assert(grip?.draggable && doc.querySelector("[draggable]") === null, "Board drag handle missing or leaked into authored DOM")
       const win = view as Window & typeof globalThis, data = new win.DataTransfer()
       const start = new win.DragEvent("dragstart", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
@@ -2222,6 +2305,68 @@ await check("Board columns and cards retain native editing and standalone layout
     assert(board.cards(second)[0] === card && board.cards(first).length === 3, "native card drag did not move between columns")
     await drag("Drag column 1", second.getBoundingClientRect().right - 1, secondRect.top + 20)
     assert(board.columns()[0] === second && board.columns()[1] === first, "native column drag did not reorder horizontally")
+    selection.collapse(card.querySelector("p")!, 0)
+    editor.features.selection.processSelection(false, {scrollIntoView: false})
+    const cardOverlay = board.transformOverlay(card)!
+    assert(cardOverlay && !board.transformOverlay(second), "Board card selection did not show only card controls")
+    assert(!cardOverlay.part.contains("transform-overlay-board-selected"), "Board content selection retained element selection styling")
+    const grey = view.getComputedStyle(cardOverlay).getPropertyValue("--sl-color-gray-400").trim() || "#94a3b8"
+    assert(view.getComputedStyle(cardOverlay).getPropertyValue("--ww-transform-color").trim() === grey, "Board content controls did not use light grey")
+    paragraph.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerover", {bubbles: true}))
+    board.refresh()
+    assert(view.getComputedStyle(cardOverlay).getPropertyValue("--ww-transform-color").trim() === grey, "Background hover changed board affordance colors")
+    editor.features.selection.actions.hoverNode({type: "hoverNode", path: pathFromNode(doc.body, card)!})
+    await layoutFrame(); board.refresh()
+    assert(view.getComputedStyle(cardOverlay).getPropertyValue("--ww-transform-color") === view.getComputedStyle(editor.features.transformation.overlay).getPropertyValue("--ww-transform-color"), "Breadcrumb or outline card hover did not turn controls light blue")
+    assert(view.getComputedStyle(editor.features.selection.hoverCaret!).display === "none", "Board card hover showed a duplicate smaller outline")
+    editor.features.selection.actions.hoverNode({type: "hoverNode", path: null})
+    await layoutFrame(); board.refresh()
+    paragraph.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerout", {bubbles: true, relatedTarget: doc.body}))
+    board.refresh()
+    assert(view.getComputedStyle(cardOverlay).getPropertyValue("--ww-transform-color").trim() === grey, "Board card controls did not return to grey after hover")
+    assert(!editor.appendix.querySelector('[aria-label^="Drag "], [aria-label^="Remove "], [aria-label="Move card up"]'), "Old Board controls remain")
+    const mover = cardOverlay.querySelector('[part~="transform-overlay-mover"]')!
+    assert([mover, cardOverlay.querySelector('[part~="transform-overlay-delete"]')!].every(control => view.getComputedStyle(control).borderTopStyle === "dotted"), "Board grey affordance borders were not dotted")
+    assert(view.getComputedStyle(cardOverlay).outlineStyle === "dotted" && view.getComputedStyle(cardOverlay).outlineWidth === "2px", "Board card content selection lost its grey dotted outline")
+    assert(view.getComputedStyle(cardOverlay.querySelector('[part~="transform-overlay-scale"]')!).getPropertyValue("--ww-transform-color") === view.getComputedStyle(mover).getPropertyValue("--ww-transform-color"), "Board resize did not match its move control")
+    editor.features.selection.selectElement(card)
+    assert(board.transformOverlay(card)!.part.contains("transform-overlay-board-selected"), "Board card element selection lost blue controls")
+    assert([mover, cardOverlay.querySelector('[part~="transform-overlay-delete"]')!].every(control => view.getComputedStyle(control).borderTopStyle === "dotted"), "Board blue affordance borders were not dotted")
+    assert(view.getComputedStyle(cardOverlay).getPropertyValue("--ww-transform-color") === view.getComputedStyle(editor.features.transformation.overlay).getPropertyValue("--ww-transform-color"), "Board element controls did not use the standard active blue")
+    assert(view.getComputedStyle(cardOverlay).outlineStyle === "dotted" && view.getComputedStyle(cardOverlay).outlineWidth === "2px", "Board card element selection lost its dotted outline")
+    editor.features.selection.selectElement(second)
+    const columnOverlay = board.transformOverlay(second)!
+    assert(view.getComputedStyle(columnOverlay).outlineStyle === "dotted" && view.getComputedStyle(columnOverlay).getPropertyValue("--ww-transform-color") === view.getComputedStyle(editor.features.transformation.overlay).getPropertyValue("--ww-transform-color"), "Board column element selection lost its blue dotted outline")
+    selection.collapse(second.querySelector("h2")!, 0)
+    editor.features.selection.processSelection(false, {scrollIntoView: false})
+    assert(view.getComputedStyle(columnOverlay).outlineStyle === "dotted" && view.getComputedStyle(columnOverlay).getPropertyValue("--ww-transform-color").trim() === grey, "Board column content editing lost its grey dotted outline")
+    editor.features.selection.selectElement(card)
+    assert(!board.transformOverlay(second), "Board card element selection retained column controls")
+    const resizeTarget = async (target: HTMLElement, dx: number, dy: number) => {
+      editor.features.selection.selectElement(target)
+      const overlay = board.transformOverlay(target)!, handle = overlay.querySelector<HTMLElement>('[data-transform-mode="scale"]')!
+      const bounds = target.getBoundingClientRect(), dot = handle.getBoundingClientRect()
+      const x = dot.left + dot.width / 2, y = dot.top + dot.height / 2
+      const isCard = target.classList.contains("ww-board-card")
+      const outlineStyle = view.getComputedStyle(overlay)
+      const outlineCenter = parseFloat(outlineStyle.outlineOffset) + parseFloat(outlineStyle.outlineWidth) / 2
+      assert(Math.abs(x - (isCard ? bounds.left + bounds.width / 2 : bounds.right + outlineCenter)) < .5
+        && Math.abs(y - (isCard ? bounds.bottom + outlineCenter : bounds.top + bounds.height / 2)) < .5, "Board resize dot is not centered on the dotted outline edge")
+      const win = view as Window & typeof globalThis
+      // Synthetic pointers cannot acquire native capture; use the shared mouse
+      // gesture methods against the board's real handle and rendered geometry.
+      handle.addEventListener("mousedown", event => editor.features.transformation.startFlowScale(event, target), {once: true})
+      handle.dispatchEvent(new win.MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: x, clientY: y}))
+      editor.features.transformation.handleScaleDrag(new win.MouseEvent("mousemove", {buttons: 1, clientX: x + dx, clientY: y + dy}))
+      editor.features.transformation.handleScaleEnd()
+      const after = target.getBoundingClientRect()
+      assert(isCard ? after.height > bounds.height && Math.abs(after.width - bounds.width) < .5
+        : after.width > bounds.width && Math.abs(after.height - bounds.height) < .5, "Board resize did not grow on only its permitted axis")
+      assert(isCard ? !target.style.width && !target.style.maxWidth : !target.style.height && !target.style.maxHeight, "Board resize wrote dimensions on the other axis")
+      editor.doc.undo(); await layoutFrame()
+    }
+    await resizeTarget(card, 40, 30)
+    await resizeTarget(board.columns()[0], 30, 40)
     const saved = await editor.serializeHTML(true)
     const preview = doc.createElement("iframe")
     preview.setAttribute("sandbox", "allow-same-origin")
@@ -2232,7 +2377,31 @@ await check("Board columns and cards retain native editing and standalone layout
     assert(exportedColumns.length === 4 && exported.querySelector("[part=board-actions]") === null, "export lost structure or included controls")
     const exportedRects = exportedColumns.map(column => column.getBoundingClientRect())
     assert(exportedRects.every((rect, i) => Math.abs(rect.width - exportedRects[0].width) < 1 && (!i || rect.left > exportedRects[i - 1].right)), "standalone Board layout needs editor code")
+    await checkOverflow(exported)
     preview.remove()
+    for(const column of board.columns()) assert(board.removeColumn(column), "last board column could not be removed")
+    await layoutFrame(); board.refresh()
+    assert(board.columns().length === 0, "empty board recreated a column")
+    view.scrollTo(0, 0); await layoutFrame(); board.refresh()
+    const emptyBoardAdd = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add column"]')!
+    const emptyBoardBox = emptyBoardAdd.getBoundingClientRect(), bodyStyle = view.getComputedStyle(doc.body)
+    assert(!emptyBoardAdd.hidden && Math.abs(emptyBoardBox.left - doc.body.getBoundingClientRect().left - parseFloat(bodyStyle.paddingLeft)) < .5 && emptyBoardBox.width === 450, "empty board lost or misplaced its Add column control")
+    emptyBoardAdd.click(); await layoutFrame()
+    assert(board.columns().length === 1, "empty board could not add a column")
+    board.addCard(board.columns()[0])
+    doc.getSelection()!.collapse(board.columns()[0].querySelector("h2")!, 0)
+    editor.features.selection.processSelection(false, {scrollIntoView: false})
+    const {DomEditor: LayoutHost} = await import("../src/components/dom-editor")
+    const layoutHost = new LayoutHost() as unknown as {
+      editorDocument: Document; authoredDocumentSnapshot(): string; pristineDocumentLayoutSnapshot(snapshot: string): string | null
+    }
+    layoutHost.editorDocument = doc
+    const emptyBoardSnapshot = layoutHost.pristineDocumentLayoutSnapshot(layoutHost.authoredDocumentSnapshot())
+    assert(emptyBoardSnapshot !== null, "empty board could not be recognized as pristine")
+    assert(editor.setDocumentLayout("slides", "board"), "empty board could not convert to slides")
+    await layoutFrame()
+    const convertedSnapshot = layoutHost.authoredDocumentSnapshot(), pristineSlides = layoutHost.pristineDocumentLayoutSnapshot(convertedSnapshot)
+    assert(pristineSlides === emptyBoardSnapshot, "empty board-to-slides conversion changed its pristine document snapshot")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })

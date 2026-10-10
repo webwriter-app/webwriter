@@ -1,4 +1,4 @@
-import {documentLayoutMode, isSlide, slideLayoutRole} from "./document-layout"
+import {boardLayoutRole, documentLayoutMode, isBoardCard, isBoardColumn, isSlide, slideLayoutRole} from "./document-layout"
 
 export type ElementPresentation = {
   name: string
@@ -115,6 +115,15 @@ const fallbackPresentation = {name: "Content", icon: "Section"}
 /** Returns a user-facing name and icon key for an HTML element. */
 export function getElementPresentation(elementOrTagName: Element | string): ElementPresentation {
   if(typeof elementOrTagName !== "string") {
+    if(elementOrTagName.matches("h2:not([is])") && isBoardColumn(elementOrTagName.parentElement)) {
+      return {name: "Column Heading", icon: "Heading"}
+    }
+    const boardRole = boardLayoutRole(elementOrTagName)
+    if(boardRole) {
+      const peers = Array.from(elementOrTagName.parentElement!.children).filter(boardRole === "column" ? isBoardColumn : isBoardCard)
+      return {name: `${boardRole === "column" ? "Column" : "Card"} ${peers.indexOf(elementOrTagName as HTMLElement) + 1}`,
+        icon: boardRole === "column" ? "BoardColumn" : "BoardCard"}
+    }
     if(elementOrTagName === elementOrTagName.ownerDocument.body && documentLayoutMode(elementOrTagName as HTMLElement) === "canvas") {
       return {name: "Canvas", icon: "Canvas"}
     }

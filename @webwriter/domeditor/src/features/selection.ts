@@ -1291,6 +1291,7 @@ export class SelectionFeature extends EditorFeature {
     setPart(caret, "hover-caret-floats", false)
     setPart(caret, "hover-caret-transformed", false)
     setPart(caret, "hover-caret-selected-root", false)
+    setPart(caret, "hover-caret-board", false)
   }
 
   /** Resolve native and explicit hover against the live DOM. Freeform items
@@ -1307,6 +1308,11 @@ export class SelectionFeature extends EditorFeature {
     if(!this.isEnabled
       || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target)) {
       this.#clearHoverGeometry()
+      return
+    }
+    if(boardLayoutRole(target)) {
+      this.#clearHoverGeometry()
+      setPart(this.#ensureHoverCaret(), "hover-caret-board", true)
       return
     }
     if(this.#hoverOwner && this.#hoverOwner !== target && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
@@ -1836,6 +1842,7 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.list.clearSelectionPresentation()
       this.editor.features.canvas.syncSelection(null)
       this.editor.features.transformation.syncSelection(null)
+      this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
       document.body.classList.add("◆", "◆node-selection-active")
       for(const element of $.selectedElements) {
@@ -1901,7 +1908,9 @@ export class SelectionFeature extends EditorFeature {
     const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
     if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)
-    this.editor.features.transformation.syncSelection(layoutItem ?? selectedElement, Boolean(layoutItem && layoutItem !== selectedElement))
+    const transformTarget = layoutItem ?? selectedElement
+    this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
+    this.editor.features.board.refresh()
     this.editor.features.manipulation.refreshNodeDragTarget(this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
     this.editor.features.graphic.refresh()
     this.editor.features.layout.refresh()

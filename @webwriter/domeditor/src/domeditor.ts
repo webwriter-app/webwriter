@@ -16,7 +16,7 @@ import { TransformationFeature } from "./features/transformation"
 import {CanvasFeature} from "./features/canvas"
 import {SlidesFeature} from "./features/slides"
 import {BoardFeature} from "./features/board"
-import {documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
+import {boardLayoutRole, documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { WidgetFeature } from "./features/widget"
@@ -1033,7 +1033,7 @@ export class DOMEditor {
         return
       }
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
-      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && isSectionElement(currentElement)) {
+      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }

@@ -65,8 +65,9 @@ export class CanvasFeature extends EditorFeature {
   }
 
   emptyParagraph() {
-    if(documentLayoutMode() !== "document" || !this.getState().canConvert || document.body.children.length !== 1) return null
-    const paragraph = document.body.firstElementChild!
+    const items = this.items()
+    if(documentLayoutMode() !== "document" || !this.getState().canConvert || items.length !== 1) return null
+    const paragraph = items[0]
     return this.isEmptyParagraph(paragraph) ? paragraph : null
   }
 

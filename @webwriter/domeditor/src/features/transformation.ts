@@ -2,7 +2,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
-import {isSlide} from "../document-layout"
+import {boardLayoutRole, isSlide} from "../document-layout"
 import {floatSideFromStyles, type FloatSide} from "../element-styles"
 
 type TransformElement = HTMLElement | SVGSVGElement
@@ -70,16 +70,61 @@ export class TransformationFeature extends EditorFeature {
   #suppressClick = false
   readonly #cancelGesture = () => this.#finish(true)
 
-  #createScaler(direction: string, edge = false) {
+  #createScaler(direction: string, edge = false, prefix = "◆transform-overlay") {
     const point = document.createElement(edge ? "div" : "button")
     const part = edge ? "transform-overlay-edge" : "transform-overlay-scale"
-    point.id = `◆transform-overlay-scale-${direction}`
+    point.id = `${prefix}-scale-${direction}`
     point.classList.add(`◆${part}`)
     point.setAttribute("part", `${part} ${part}-${direction}`)
     point.dataset.transformMode = "scale"
+    point.dataset.resizeDirection = direction
     point.title = `Resize ${direction}`
     if(edge) point.setAttribute("aria-hidden", "true")
     return point
+  }
+
+  #createControl(name: string, title: string, mode?: Mode, prefix = "◆transform-overlay") {
+    const button = document.createElement("button")
+    button.id = `${prefix}-${name}`
+    button.type = "button"
+    button.classList.add("◆transform-overlay-button")
+    button.setAttribute("part", `transform-overlay-button transform-overlay-${name}`)
+    button.title = title
+    button.setAttribute("aria-label", title)
+    if(mode) button.dataset.transformMode = mode
+    return button
+  }
+
+  /** Board context controls share document affordances and resize gestures. */
+  createFlowOverlay(prefix: string, role: "card" | "column") {
+    const overlay = document.createElement("div")
+    overlay.id = prefix
+    overlay.setAttribute("part", "transform-overlay transform-overlay-board")
+    overlay.contentEditable = "false"
+    const edges = ["up", "right", "down", "left"].map(direction => {
+      const edge = this.#createScaler(direction, true, prefix)
+      edge.dataset.transformMode = "move"
+      edge.draggable = true
+      setPart(edge, "transform-overlay-edge-move", true)
+      return edge
+    })
+    const scaler = this.#createScaler(role === "card" ? "down-down" : "right-right", false, prefix)
+    setPart(scaler, `transform-overlay-board-resize-${role}`, true)
+    overlay.append(...edges, scaler,
+      this.#createControl("mover", "Move", "move", prefix), this.#createControl("delete", "Delete", undefined, prefix))
+    overlay.querySelectorAll("button").forEach(button => setPart(button, "transform-overlay-board-control", true))
+    overlay.querySelector<HTMLButtonElement>("[data-transform-mode=scale]")!.type = "button"
+    return overlay
+  }
+
+  startFlowScale(event: MouseEvent, target: HTMLElement) {
+    if(!this.isEnabled || this.#gesture || event.button !== 0 || this.editor.isEditingLocked || !this.#canTransform(target)) return
+    this.startTransform(target)
+    // The board owns its persistent context controls; the shared gesture
+    // machinery only needs its target and the originating resize handle.
+    this.overlay.setAttribute("visibility", "hidden")
+    this.handleScaleStart(event)
+    this.#syncControlParts()
   }
 
   /** Creates the arranger control: opens the float menu, or (when the
@@ -241,15 +286,7 @@ export class TransformationFeature extends EditorFeature {
     overlay.setAttribute("part", "transform-overlay transform-overlay-hidden")
     overlay.setAttribute("visibility", "hidden")
     overlay.contentEditable = "false"
-    const control = (name: string, title: string, mode?: Mode) => {
-      const button = document.createElement("button")
-      button.id = `◆transform-overlay-${name}`
-      button.classList.add("◆transform-overlay-button")
-      button.setAttribute("part", `transform-overlay-button transform-overlay-${name}`)
-      button.title = title
-      if(mode) button.dataset.transformMode = mode
-      return button
-    }
+    const control = (name: string, title: string, mode?: Mode) => this.#createControl(name, title, mode)
     const mover = control("mover", "Move", "move")
     const deleter = control("delete", "Delete")
     const rotator = control("rotator", "Rotate", "rotate")
@@ -781,7 +818,7 @@ export class TransformationFeature extends EditorFeature {
     if(!gesture.moved && Math.hypot(delta.x, delta.y) < 1) return
     gesture.moved = true
     this.#resetWritten()
-    const direction = gesture.handle.id.replace("◆transform-overlay-scale-", "")
+    const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
     const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
     const y = direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
     document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
@@ -807,6 +844,11 @@ export class TransformationFeature extends EditorFeature {
         if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
+      else if(boardLayoutRole(target) === "column" && x) {
+        this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
+        this.#write("flex-basis", `${Math.max(1, gesture.cssWidth + dw)}px`)
+      }
+      else if(boardLayoutRole(target) === "card" && y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       if(x) {
         const width = Math.max(0, gesture.cssWidth + dw)
         if(floatSideFromStyles(getComputedStyle(target).float, target.style, target.classList) !== "none") {

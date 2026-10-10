@@ -6260,7 +6260,7 @@ describe("DomEditor.execute()", () => {
       host.documentLayout = {...host.documentLayout, mode: action.mode}
       return true
     })
-    for(const mode of ["canvas", "slides", "board", "document", "board", "canvas"]) {
+    for(const mode of ["canvas", "slides", "board", "slides", "board", "document", "board", "canvas"]) {
       editor.shadowRoot!.querySelector<HTMLButtonElement>(`.document-layouts-bar [data-mode="${mode}"]`)!.click()
       await vi.waitFor(() => expect(host.documentLayoutConversionCount).toBe(0))
       snapshot()
@@ -6704,6 +6704,54 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0,2"]')!.click()
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2]})
+  })
+
+  it("shows board columns and cards as nested document tree and breadcrumb items", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    body.className = "ww-board"
+    body.innerHTML = '<section class="ww-board-column"><h2>Backlog</h2><!--keep--><article class="ww-board-card"><p>First</p><section><custom-widget>Widget</custom-widget></section></article><article class="ww-board-card"><p>Second</p></article></section><section class="ww-board-column"><h2>Done</h2><article class="ww-board-card"><p>Third</p></article></section>'
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree).toMatchObject({path: [], name: "Document", icon: "Document", children: [
+      {path: [0], name: "Column 1", icon: "BoardColumn", children: [
+        {path: [0, 0], name: "Column Heading", icon: "Heading", children: []},
+        {path: [0, 2], name: "Card 1", icon: "BoardCard", children: [
+          {path: [0, 2, 0], name: "Paragraph", icon: "Paragraph", children: []},
+          {path: [0, 2, 1, 0], name: "custom-widget", icon: "Packages", children: [], sections: [
+            {path: [0, 2, 1], type: "section", name: "Section", icon: "Section"},
+          ]},
+        ]},
+        {path: [0, 3], name: "Card 2", icon: "BoardCard", children: [
+          {path: [0, 3, 0], name: "Paragraph", icon: "Paragraph", children: []},
+        ]},
+      ]},
+      {path: [1], name: "Column 2", icon: "BoardColumn", children: [
+        {path: [1, 0], name: "Column Heading", icon: "Heading", children: []},
+        {path: [1, 1], name: "Card 1", icon: "BoardCard", children: [
+          {path: [1, 1, 0], name: "Paragraph", icon: "Paragraph", children: []},
+        ]},
+      ]},
+    ]})
+
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[0], tree.children[0].children[1], tree.children[0].children[1].children[1]]}},
+      source: iframe.contentWindow!,
+    }))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    await vi.waitFor(() => expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual([
+      "Document", "Column 1", "Card 1", "custom-widget",
+    ]))
+    expect(breadcrumb.shadowRoot!.querySelector('.item[data-path="0"] svg.icon-tabler-columns-1')).not.toBeNull()
+    expect(breadcrumb.shadowRoot!.querySelector('.item[data-path="0,2"] svg.icon-tabler-id')).not.toBeNull()
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .section-item"), item => item.textContent)).toEqual(["Section"])
+
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0,2"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2]})
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0]})
   })
 
   it("omits mark wrappers from the document tree while retaining real descendants", async () => {

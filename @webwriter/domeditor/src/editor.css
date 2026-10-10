@@ -564,6 +564,9 @@ body::part(selection-float-outline-capture) {
 body:is(.ww-canvas, .ww-slides)::part(hover-caret-selected-root) {
   display: none;
 }
+body::part(hover-caret-board) {
+  display: none !important;
+}
 
 body:has(.◆element-capture-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
   display: none;
@@ -1341,6 +1344,9 @@ dl > dd:is(:empty, :has(br:only-child))::after {
 body:empty::before {
   visibility: visible;
 }
+body.ww-board:empty::before {
+  display: none;
+}
 
 .◆empty-selected {
   anchor-name: --empty-selected;
@@ -1623,6 +1629,23 @@ body::part(transform-overlay-freeform) {
 }
 body::part(transform-overlay-capture-selected) {
   outline-style: solid;
+}
+body::part(transform-overlay-board) {
+  --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
+  --ww-transform-hover-color: var(--sl-color-gray-300, #cbd5e1);
+  outline: 2px dotted var(--ww-transform-color);
+  outline-offset: 2px;
+}
+body::part(transform-overlay-board-hovered),
+body::part(transform-overlay-board-selected) {
+  --ww-transform-color: var(--sl-color-primary-400);
+  --ww-transform-hover-color: var(--sl-color-primary-300);
+  outline: 2px dotted var(--ww-transform-color);
+  outline-offset: 2px;
+}
+body.ww-board:has(:is(.ww-board-column, .ww-board-card).◆element-selected)::part(selection-caret-node),
+body.ww-board:has(:is(.ww-board-column, .ww-board-card).◆element-selected)::part(selection-caret-capture) {
+  outline-color: transparent;
 }
 body:is(.ww-canvas, .ww-slides):has(.◆transform-target.◆element-selected)::part(selection-caret-node),
 body:is(.ww-canvas, .ww-slides):has(.◆transform-target.◆element-selected)::part(selection-caret-capture) {
@@ -2009,7 +2032,7 @@ body::part(transform-overlay-delete) {
   place-items: center;
   box-sizing: border-box;
   background: white;
-  border: 2px solid var(--sl-color-primary-400);
+  border: 2px solid var(--ww-transform-color);
   border-radius: 50%;
 }
 body::part(transform-overlay-mover) {
@@ -2019,6 +2042,9 @@ body::part(transform-overlay-mover) {
 }
 body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-mover),
 body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-delete) {
+  border-style: dotted;
+}
+body::part(transform-overlay-board-control) {
   border-style: dotted;
 }
 body::part(transform-overlay-mover)::before {
@@ -2247,6 +2273,12 @@ svg image.◆media-empty {
 }
 
 /* Board drags retain their authored position until the drop is committed. */
+body.ww-board > section.ww-board-column:not([is]) {
+  cursor: pointer;
+}
+body.ww-board > section.ww-board-column:not([is]) > * {
+  cursor: auto;
+}
 body.ww-board .◆board-dragging {
   opacity: .45;
 }

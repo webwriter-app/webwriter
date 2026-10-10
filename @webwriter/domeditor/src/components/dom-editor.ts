@@ -194,7 +194,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {canvasStyles, slidesStyles, boardStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasStyles, slidesStyles, boardStyles, boardLayoutRole, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -5858,7 +5858,7 @@ export class DomEditor extends LitElement {
             appendChildren(childElement, childPath, inherited)
             return
           }
-          if(slideRole !== "slide" && isSectionElement(childElement)) {
+          if(slideRole !== "slide" && !boardLayoutRole(childElement) && isSectionElement(childElement)) {
             const currentSection = sectionItem(childElement, childPath)
             const nextSections = [...inherited, currentSection]
             const childCount = item.children.length

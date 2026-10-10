@@ -241,6 +241,14 @@ describe("canvas document layout", () => {
     }
   })
 
+  it("recognizes an empty paragraph alongside bootstrap and metadata elements", () => {
+    document.body.innerHTML = '<p></p><script class="◆editor-only" type="module"></script><style></style>'
+    const paragraph = document.body.querySelector("p")!
+    expect(editor.features.canvas.emptyParagraph()).toBe(paragraph)
+    paragraph.textContent = "Authored content"
+    expect(editor.features.canvas.emptyParagraph()).toBeNull()
+  })
+
   it("rechecks a stale startCanvas request against current DOM", () => {
     const canvas = editor.features.canvas
     document.body.firstElementChild!.textContent = "content added after the button was rendered"
