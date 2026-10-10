@@ -42,7 +42,7 @@ type Granularity = "character" | "word" | "line"
 type Direction = "left" | "right" | "forward" | "backward"
 
 /** Focuses the outer editing surface, releasing focus held inside a widget. */
-function focusEditorWindow() {
+export function focusEditorWindow() {
   const widget = focusedWidgetHost()
   let focused: Element | null = widget
   while(focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement

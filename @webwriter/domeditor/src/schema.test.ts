@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
-import { Schema } from "./schema"
+import { Schema, parseWidgetMarks } from "./schema"
 import {normalizeTableStructure} from "./table"
 import { $ } from "./utility"
 
@@ -26,6 +26,15 @@ describe("create()", () => {
   })
   it("can create a comment element", () => {
     expect(editor.schema.create("#comment")).toBeInstanceOf(Comment)
+  })
+})
+
+describe("widget marks", () => {
+  it("parses explicit mark lists and treats underscore as allow-all", () => {
+    expect(parseWidgetMarks(" bold  italic ")).toEqual(["bold", "italic"])
+    expect(parseWidgetMarks("bold _ italic")).toBeUndefined()
+    expect(parseWidgetMarks("")).toEqual([])
+    expect(parseWidgetMarks(undefined)).toBeUndefined()
   })
 })
 
@@ -93,7 +102,88 @@ describe("findWrapping()", () => {
 })
 
 describe("fixInvalidContent()", () => {
-  // it("can fix an invalid tree by lifting", () => {})
+  it("lifts an invalid child through an intermediate ancestor and preserves its identity", () => {
+    const schema = new Schema({...Schema.baseSchema,
+      "x-lift-outer": {content: {selector: "p", min: 0, max: Infinity}},
+      "x-lift-middle": {content: {selector: "x-lift-inner", min: 0, max: Infinity}},
+      "x-lift-inner": {content: {selector: "h1", min: 0, max: Infinity}},
+    })
+    const outer = document.createElement("x-lift-outer")
+    const middle = document.createElement("x-lift-middle")
+    const inner = document.createElement("x-lift-inner")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Lift me"
+    inner.append(paragraph)
+    middle.append(inner)
+    outer.append(middle)
+
+    schema.fixInvalidContent(inner)
+
+    expect(outer.firstChild).toBe(paragraph)
+    expect(paragraph.textContent).toBe("Lift me")
+    expect(middle.isConnected).toBe(false)
+    expect(inner.isConnected).toBe(false)
+    expect(schema.isContentValid(outer)).toBe(true)
+  })
+
+  it("wraps a group member that fails the group's selector during repair", () => {
+    const schema = new Schema({...Schema.baseSchema,
+      "x-group-repair": {content: {group: "phrasing", selector: ":not([data-invalid])", min: 0, max: Infinity}},
+    })
+    const container = document.createElement("x-group-repair")
+    const valid = document.createElement("b")
+    const invalid = document.createElement("i")
+    invalid.setAttribute("data-invalid", "")
+    container.append(valid, invalid)
+
+    schema.fixInvalidContent(container)
+
+    expect(container.firstChild).toBe(valid)
+    expect(invalid.parentElement).toBe(container.lastElementChild)
+    expect(schema.isContentValid(container)).toBe(true)
+  })
+
+  it("lifts an invalid paragraph into its valid parent without replacing neighboring content", () => {
+    const schema = new Schema({...Schema.baseSchema,
+      "x-repair-lift": {content: {selector: "h1", min: 0, max: 0}},
+    })
+    const container = document.createElement("x-repair-lift")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Lift me"
+    const aside = document.createElement("aside")
+    aside.textContent = "Keep"
+    container.append(paragraph)
+    document.body.replaceChildren(container, aside)
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      schema.fixInvalidContent(container)
+      expect(document.body.firstChild).toBe(paragraph)
+      expect(document.body.lastChild).toBe(aside)
+      expect(document.body.innerHTML).toBe("<p>Lift me</p><aside>Keep</aside>")
+      expect(container.isConnected).toBe(false)
+    }
+    finally { error.mockRestore() }
+  })
+  it("removes an unfillable container while preserving its authored siblings", () => {
+    const schema = new Schema({...Schema.baseSchema,
+      "x-repair-unfillable": {content: {selector: "p[data-required]"}},
+    })
+    const container = document.createElement("x-repair-unfillable")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Keep"
+    const comment = document.createComment("retain")
+    document.body.replaceChildren(paragraph, container, comment)
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      schema.fixInvalidContent(container)
+      expect(error).toHaveBeenCalledWith(expect.objectContaining({message: "No possible fill for node"}))
+      expect(document.body.childNodes).toHaveLength(2)
+      expect(document.body.firstChild).toBe(paragraph)
+      expect(document.body.lastChild).toBe(comment)
+      expect(container.isConnected).toBe(false)
+    }
+    finally { error.mockRestore() }
+  })
   it("can fix an invalid element by wrapping", () => {
     document.body.innerHTML = `<ul><p>hello</p></ul>`
     editor.schema.fixInvalidContent(document.querySelector("ul")!)
@@ -109,7 +199,77 @@ describe("fixInvalidContent()", () => {
     editor.schema.fixInvalidContent(document.querySelector("ul")!)
     expectBodyToBe(`<ul><li>hello <b>world</b></li></ul>`)
   })
-  // it("can fix an invalid tree by filling", () => {})
+  it("wraps only the invalid run and keeps valid sibling nodes intact", () => {
+    document.body.innerHTML = `<ul><li id="keep">Existing</li><p>hello</p></ul>`
+    const list = document.querySelector("ul")!
+    const item = document.querySelector("li")!
+    const content = document.querySelector("p")!
+
+    editor.schema.fixInvalidContent(list)
+
+    expect(list.innerHTML).toBe(`<li id="keep">Existing</li><li><p>hello</p></li>`)
+    expect(list.firstElementChild).toBe(item)
+    expect(list.lastElementChild?.firstElementChild).toBe(content)
+  })
+  it("fills required content after removing an unrepairable child", () => {
+    const schema = new Schema({...Schema.baseSchema,
+      "x-repair-fill": {content: {selector: "p", min: 1, max: 1}},
+    })
+    const container = document.createElement("x-repair-fill")
+    const invalid = document.createElement("title")
+    container.append(invalid)
+
+    schema.fixInvalidContent(container)
+
+    expect(container.innerHTML).toBe(`<p></p>`)
+    expect(invalid.isConnected).toBe(false)
+  })
+  it("relocates a valid child that appears before its required predecessor", () => {
+    const schema = new Schema()
+    schema.extend({"x-repair-order": {content: {terms: [
+      {selector: "h1"}, {selector: "p"},
+    ]}}})
+    const container = document.createElement("x-repair-order")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Keep"
+    const heading = document.createElement("h1")
+    container.append(paragraph, heading)
+    const paragraphText = paragraph.firstChild
+
+    schema.fixInvalidContent(container)
+
+    expect(container.innerHTML).toBe(`<h1></h1><p>Keep</p>`)
+    expect(container.firstElementChild).toBe(heading)
+    expect(container.lastElementChild).toBe(paragraph)
+    expect(paragraph.firstChild).toBe(paragraphText)
+    expect(schema.isContentValid(container)).toBe(true)
+    schema.fixInvalidContent(container)
+    expect(container.firstElementChild).toBe(heading)
+    expect(container.lastElementChild).toBe(paragraph)
+  })
+  it("relocates a valid child from after its required successor", () => {
+    const schema = new Schema()
+    schema.extend({"x-repair-order-reverse": {content: {terms: [
+      {selector: "p"}, {selector: "h1"},
+    ]}}})
+    const container = document.createElement("x-repair-order-reverse")
+    const heading = document.createElement("h1")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Keep"
+    container.append(heading, paragraph)
+    const paragraphText = paragraph.firstChild
+
+    schema.fixInvalidContent(container)
+
+    expect(container.innerHTML).toBe(`<p>Keep</p><h1></h1>`)
+    expect(container.firstElementChild).toBe(paragraph)
+    expect(container.lastElementChild).toBe(heading)
+    expect(paragraph.firstChild).toBe(paragraphText)
+    expect(schema.isContentValid(container)).toBe(true)
+    schema.fixInvalidContent(container)
+    expect(container.firstElementChild).toBe(paragraph)
+    expect(container.lastElementChild).toBe(heading)
+  })
 })
 
 describe("table normalization", () => {
@@ -283,6 +443,11 @@ describe("isNodeValid()", () => {
       expect(editor.schema.isNodeValid(text(), {group: "phrasing", max: Infinity})).toBe(true)
       expect(editor.schema.isNodeValid(text(), {group: "flow", max: Infinity})).toBe(true)
     })
+    it("restricts group members with its selector", () => {
+      const rule = {group: "phrasing", selector: "b", max: Infinity}
+      expect(editor.schema.isNodeValid(el("b"), rule)).toBe(true)
+      expect(editor.schema.isNodeValid(el("i"), rule)).toBe(false)
+    })
     it("matches comment nodes through the '#comment' group entry", () => {
       expect(editor.schema.isNodeValid(comment(), {group: "flow", max: Infinity})).toBe(true)
       expect(editor.schema.isNodeValid(comment(), {group: "phrasing", max: Infinity})).toBe(false)
@@ -409,6 +574,20 @@ describe("isNodeValid()", () => {
       const p = el("p"); const b = el("b"); p.append(b)
       expect(editor.schema.isNodeValid(b, {transparent: true})).toBe(true)
     })
+    it("walks through nested transparent parents to the first concrete content rule", () => {
+      const p = el("p")
+      const link = el("a")
+      const slot = el("slot")
+      const bold = el("b")
+      p.append(link)
+      link.append(slot)
+      slot.append(bold)
+
+      expect(editor.schema.isNodeValid(bold, {transparent: true})).toBe(true)
+      const block = el("div")
+      slot.replaceChildren(block)
+      expect(editor.schema.isNodeValid(block, {transparent: true})).toBe(false)
+    })
     it("rejects nodes invalid in the parent's content rule", () => {
       const p = el("p"); const div = el("div"); p.append(div)
       expect(editor.schema.isNodeValid(div, {transparent: true})).toBe(false)
@@ -420,6 +599,15 @@ describe("isNodeValid()", () => {
     })
     it("rejects detached nodes (no parent to resolve against)", () => {
       expect(editor.schema.isNodeValid(el("b"), {transparent: true})).toBe(false)
+    })
+    it("rejects content when the transparent chain reaches a parent without a content rule", () => {
+      const unknownParent = el("x-no-content-rule")
+      const transparentChild = el("slot")
+      const child = el("b")
+      unknownParent.append(transparentChild)
+      transparentChild.append(child)
+
+      expect(editor.schema.isNodeValid(child, {transparent: true})).toBe(false)
     })
   })
 
@@ -610,6 +798,83 @@ describe("Schema methods", () => {
       expect(schema.isContentValid("webwriter-labels", [label("one"), label("two"), label("three")])).toBe(false)
     })
 
+    it("applies grouping, alternation and repetition precedence to nested expressions", () => {
+      schema.extendWidgets([
+        {tagName: "webwriter-expression", editingConfig: {content: "webwriter-first (webwriter-second | webwriter-third)+ webwriter-fourth?"}},
+        {tagName: "webwriter-first", editingConfig: {group: ""}},
+        {tagName: "webwriter-second", editingConfig: {group: ""}},
+        {tagName: "webwriter-third", editingConfig: {group: ""}},
+        {tagName: "webwriter-fourth", editingConfig: {group: ""}},
+      ])
+      const nodes = (...names: string[]) => names.map(el)
+
+      expect(schema.isContentValid("webwriter-expression", nodes("webwriter-first", "webwriter-second"))).toBe(true)
+      expect(schema.isContentValid("webwriter-expression", nodes("webwriter-first", "webwriter-third", "webwriter-second", "webwriter-fourth"))).toBe(true)
+      expect(schema.isContentValid("webwriter-expression", nodes("webwriter-first", "webwriter-fourth"))).toBe(false)
+      expect(schema.isContentValid("webwriter-expression", nodes("webwriter-first", "webwriter-second", "webwriter-first"))).toBe(false)
+      expect(schema.isContentValid("webwriter-expression", nodes("webwriter-first", "webwriter-second", "webwriter-fourth", "webwriter-third"))).toBe(false)
+    })
+
+    it("accepts empty expressions and open-ended bounded repetitions", () => {
+      schema.extendWidgets([
+        {tagName: "webwriter-empty-expression", editingConfig: {content: "   "}},
+        {tagName: "webwriter-open-repeat", editingConfig: {content: "p{1,}"}},
+      ])
+      expect(schema.isContentValid("webwriter-empty-expression", [])).toBe(true)
+      expect(schema.isContentValid("webwriter-empty-expression", [el("p")])).toBe(false)
+      expect(schema.isContentValid("webwriter-open-repeat", [el("p")])).toBe(true)
+      expect(schema.isContentValid("webwriter-open-repeat", [el("p"), el("p"), el("p")])).toBe(true)
+      expect(schema.isContentValid("webwriter-open-repeat", [])).toBe(false)
+    })
+
+    it.each([
+      "|p", "p|", "p||div", "(p", "p)", "()", "p?*", "p**", "p+?",
+      "p{,2}", "p{2,1}", "p{1.5}", "p{1,2,3}", "p{1001}",
+      "p{9007199254740992}", "p,div", "missing-child",
+    ])("rejects malformed or out-of-range content expression %s", expression => {
+      expect(() => schema.extendWidgets([{
+        tagName: "webwriter-invalid-expression",
+        editingConfig: {content: expression},
+      }])).toThrow(SyntaxError)
+    })
+
+    it("keeps validity and insertion queries from mutating the installed expression or DOM", () => {
+      schema.extendWidgets([
+        {tagName: "webwriter-query", editingConfig: {content: "webwriter-query-part (p | h2)+"}},
+        {tagName: "webwriter-query-part", editingConfig: {group: ""}},
+      ])
+      document.body.innerHTML = '<webwriter-query data-owner="author"><webwriter-query-part data-part="kept"></webwriter-query-part><p id="one">One</p><h2 id="two">Two</h2></webwriter-query>'
+      const widget = document.querySelector("webwriter-query")!
+      const originalHtml = widget.outerHTML
+      const originalRule = structuredClone(schema.get("webwriter-query").content)
+      const children = Array.from(widget.childNodes)
+
+      expect(schema.isContentValid(widget)).toBe(true)
+      schema.findValidContentTypes(widget)
+      schema.findValidContentTypes(widget, undefined, [children[0]])
+      expect(schema.get("webwriter-query").content).toEqual(originalRule)
+      expect(widget.outerHTML).toBe(originalHtml)
+      expect(Array.from(widget.childNodes)).toEqual(children)
+    })
+
+    it("keeps correction idempotent for valid irregular widget DOM", () => {
+      schema.extendWidgets([{tagName: "webwriter-valid", editingConfig: {content: "p+"}}])
+      document.body.innerHTML = '<webwriter-valid data-note="preserve"><p id="first">A<!--inside--></p><p><em title="kept">B</em></p></webwriter-valid>'
+      const widget = document.querySelector("webwriter-valid")!
+      const firstParagraph = widget.firstElementChild
+      const originalHtml = widget.outerHTML
+      const observer = new MutationObserver(() => {})
+      observer.observe(widget, {childList: true, subtree: true, attributes: true, characterData: true})
+
+      schema.checkAndCorrect(widget, true)
+      schema.checkAndCorrect(widget, true)
+      expect(widget.outerHTML).toBe(originalHtml)
+      expect(widget.firstElementChild).toBe(firstParagraph)
+      expect(schema.isContentValid(widget)).toBe(true)
+      expect(observer.takeRecords()).toEqual([])
+      observer.disconnect()
+    })
+
     it("rejects references to nodes or groups not present in the installed schema", () => {
       expect(() => schema.extendWidgets([{
         tagName: "webwriter-broken",
@@ -640,11 +905,32 @@ describe("Schema methods", () => {
       expect(schema.findAlternativeIndex(container, [heading])).toBe(1)
     })
 
+    it("chooses the closest of multiple valid positions", () => {
+      schema.extend({"x-two-paragraph-slots": {content: {selector: "*", min: 0, max: Infinity}}})
+      const container = el("x-two-paragraph-slots")
+      const before = el("p")
+      const heading = el("h1")
+      const after = el("p")
+      container.append(before, heading, after)
+
+      // The heading can move to any position. Its current slot wins over
+      // farther valid positions.
+      expect(schema.findAlternativeIndex(container, [heading])).toBe(1)
+    })
+
     it("returns null when no position can make the container valid", () => {
       const container = constrainedContainer("p", ["h1"])
       const invalid = container.firstChild!
 
       expect(schema.findAlternativeIndex(container, [invalid])).toBeNull()
+    })
+
+    it("returns null when an alternative-index candidate has been disconnected", () => {
+      const container = constrainedContainer("h1 p", ["p", "h1"])
+      const heading = container.lastChild!
+      heading.remove()
+
+      expect(schema.findAlternativeIndex(container, [heading])).toBeNull()
     })
 
     it("does not pass undefined placeholders to content validation", () => {
@@ -990,6 +1276,17 @@ describe("Schema methods", () => {
   })
 
   describe("findValidContentTypes()", () => {
+    it("intersects conjunction candidates without changing the container", () => {
+      const paragraph = el("p")
+      paragraph.append(document.createComment("keep"), el("strong"))
+      const children = Array.from(paragraph.childNodes)
+      const html = paragraph.outerHTML
+      const rule = {conditions: [{group: "phrasing"}, {selector: "strong, em"}]}
+      expect(schema.findValidContentTypes(paragraph, rule).sort()).toEqual(["em", "strong"])
+      expect(paragraph.outerHTML).toBe(html)
+      expect(Array.from(paragraph.childNodes)).toEqual(children)
+    })
+
     it("lists the selector options of a type", () => {
       expect(schema.findValidContentTypes("ul")).toEqual(["li"])
     })
@@ -1010,6 +1307,15 @@ describe("Schema methods", () => {
     it("is empty for an exhausted rule", () => {
       expect(schema.findValidContentTypes(el("ul"), {selector: "li", min: 0, max: 0})).toEqual([])
     })
+    it("filters candidates for a group selector and exhausted widget expressions", () => {
+      expect(schema.findValidContentTypes("p", {group: "phrasing", selector: "b", max: Infinity})).toEqual(["b"])
+
+      schema.extendWidgets([{tagName: "webwriter-one-child", editingConfig: {content: "p"}}])
+      const paragraph = el("p")
+      const rule = schema.get("webwriter-one-child").content!
+      expect(schema.isNodeValid(paragraph, rule)).toBe(true)
+      expect(schema.findValidContentTypes("webwriter-one-child", rule)).toEqual([])
+    })
     it("is empty for non-element containers", () => {
       expect(schema.findValidContentTypes(text())).toEqual([])
     })
@@ -1021,6 +1327,24 @@ describe("Schema methods", () => {
     })
     it("is empty for detached transparent containers", () => {
       expect(schema.findValidContentTypes(el("slot"))).toEqual([])
+    })
+
+    it("returns no candidates when prior content violates the transparent parent rule", () => {
+      const paragraph = el("p")
+      const slot = el("slot")
+      paragraph.append(slot)
+      expect(schema.findValidContentTypes(slot, undefined, [el("div")])).toEqual([])
+    })
+  })
+
+  describe("namespace selectors", () => {
+    it("matches explicit SVG and wildcard namespace selectors on namespaced elements", () => {
+      const rect = schema.create("svg|rect")
+      const math = schema.create("math|mi")
+      expect(schema.isNodeValid(rect, {selector: "svg|rect", max: Infinity})).toBe(true)
+      expect(schema.isNodeValid(rect, {selector: "*|rect", max: Infinity})).toBe(true)
+      expect(schema.isNodeValid(math, {selector: "*|mi", max: Infinity})).toBe(true)
+      expect(schema.isNodeValid(math, {selector: "svg|mi", max: Infinity})).toBe(false)
     })
   })
 

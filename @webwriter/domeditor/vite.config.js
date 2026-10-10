@@ -43,6 +43,19 @@ export default defineConfig({
       dedupe: ["yjs"],
     },
     test: {
+      coverage: {
+        provider: "v8",
+        include: ["src/**/*.ts"],
+        exclude: ["src/**/*.test.ts", "src/**/*.d.ts"],
+        reporter: ["text", "html", "json", "json-summary"],
+        reportsDirectory: "./coverage",
+        thresholds: {
+          statements: 87.18,
+          branches: 81.75,
+          functions: 89.5,
+          lines: 90.85,
+        },
+      },
       execArgv: ["--max-old-space-size=8192"],
       // Vitest 4 restores spies without clearing their retained DOM call history.
       clearMocks: true,

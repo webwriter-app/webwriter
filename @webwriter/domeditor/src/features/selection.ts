@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -1528,7 +1528,7 @@ export class SelectionFeature extends EditorFeature {
   /** Places a collapsed document selection, even if a widget or a table
    * previously owned editing focus. Existing caret rendering follows it. */
   selectDropRange(range: Range, {scrollIntoView = true} = {}) {
-    if(focusedWidgetHost() && document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    if(focusedWidgetHost()) focusEditorWindow()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
     this.#endDrag()

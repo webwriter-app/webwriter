@@ -204,6 +204,7 @@ class ContentExpressionParser {
     while(this.#peek() !== undefined && this.#peek() !== ")" && this.#peek() !== "|") {
       terms.push(this.#parseRepeat())
     }
+    if(terms.length === 0) this.#error("Expected a node, group or parenthesized expression")
     return sequenceExpression(terms)
   }
 
@@ -1019,8 +1020,8 @@ export class Schema {
         t.replaceWith(...replacement)
       }
       else if((moveIndex = this.findAlternativeIndex(el, [invalidNode])) !== null) {
-        newChildNodes.splice(moveIndex, 0, invalidNode)
         newChildNodes.splice(i, 1)
+        newChildNodes.splice(moveIndex, 0, invalidNode)
       }
       else {
         newChildNodes[i] = undefined

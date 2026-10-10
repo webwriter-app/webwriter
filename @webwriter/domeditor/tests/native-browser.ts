@@ -1190,6 +1190,38 @@ await check("selection feature treats custom element as atomic", async () => {
   paragraph.innerHTML = '<b>before</b><native-audit-widget></native-audit-widget><video></video><i>after</i>'
   fixture.append(paragraph)
   try {
+    const button = widget.shadowRoot!.querySelector("button")!
+    editor.features.selection.captureElement(widget)
+    button.focus()
+    const destination = paragraph.querySelector("b")!.firstChild!
+    const drop = document.createRange()
+    drop.setStart(destination, 2)
+    drop.collapse(true)
+    editor.features.selection.selectDropRange(drop, {scrollIntoView: false})
+    assert(editor.features.selection.captureSelectedWidget === null, "drop caret retained widget capture")
+    assert(widget.shadowRoot!.activeElement !== button, "drop caret retained shadow button focus")
+    assert($.anchor === destination && $.anchorOffset === 2, "drop caret did not reach its text destination")
+    for(const mode of ["closed", "nested open", "nested closed"] as const) {
+      const host = document.createElement("native-drop-widget")
+      const shadow = host.attachShadow({mode: mode === "closed" ? "closed" : "open"})
+      const nested = mode.startsWith("nested") ? document.createElement("native-nested-drop-widget") : null
+      const focusRoot = nested ? nested.attachShadow({mode: mode === "nested closed" ? "closed" : "open"}) : shadow
+      if(nested) shadow.append(nested)
+      const control = document.createElement("button")
+      control.textContent = "Widget control"
+      focusRoot.append(control)
+      paragraph.append(host)
+      try {
+        editor.features.selection.captureElement(host)
+        control.focus()
+        assert(document.activeElement === host && focusRoot.activeElement === control, `${mode} shadow control did not receive focus`)
+        editor.features.selection.selectDropRange(drop, {scrollIntoView: false})
+        assert(editor.features.selection.captureSelectedWidget === null, `${mode} drop retained capture`)
+        assert(document.activeElement !== host && focusRoot.activeElement !== control, `${mode} drop retained shadow focus`)
+        assert($.anchor === destination && $.anchorOffset === 2, `${mode} drop lost its destination`)
+      }
+      finally { host.remove() }
+    }
     const leaves = [paragraph.querySelector("native-audit-widget")!, paragraph.querySelector("video")!]
     let step = 0
     const press = (key: string) => {

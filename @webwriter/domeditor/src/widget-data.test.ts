@@ -314,6 +314,34 @@ describe("scoped widget data", () => {
     expect(read(peer)).toEqual({a: 3, b: 4})
   })
 
+  it("orders undo and redo across independent widget data histories", async () => {
+    const peer = create(html() + html().replace('id="widget"', 'id="second"'))
+    const blocks = Array.from(peer.root.querySelectorAll<HTMLScriptElement>('script[slot="data"]'))
+    let clock = 1000
+    const time = vi.spyOn(performance, "now").mockImplementation(() => ++clock)
+    cleanups.push(() => time.mockRestore())
+    const values = () => blocks.map(block => JSON.parse(block.textContent!))
+    for(const index of [0, 1]) {
+      blocks[index].textContent = JSON.stringify({a: index + 2, b: 1})
+      peer.shared.syncFromDOM()
+      await tick()
+      peer.shared.stopCapturing()
+    }
+    expect(values()).toEqual([{a: 2, b: 1}, {a: 3, b: 1}])
+    peer.shared.undo()
+    await tick()
+    expect(values()).toEqual([{a: 2, b: 1}, {a: 1, b: 1}])
+    peer.shared.undo()
+    await tick()
+    expect(values()).toEqual([{a: 1, b: 1}, {a: 1, b: 1}])
+    peer.shared.redo()
+    await tick()
+    expect(values()).toEqual([{a: 2, b: 1}, {a: 1, b: 1}])
+    peer.shared.redo()
+    await tick()
+    expect(values()).toEqual([{a: 2, b: 1}, {a: 3, b: 1}])
+  })
+
   it("persists offline individual data and isolates users", async () => {
     const first = create(html(), {documentId: "lesson", userId: "alice"})
     write(first, {answer: 42})
