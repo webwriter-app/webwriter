@@ -587,18 +587,38 @@ describe("canvas document layout", () => {
     expect(document.body.children).toHaveLength(2)
   })
 
-  it("keeps centered items still and uses the pointer for items spanning both canvas edges", () => {
+  it.each(["left", "right", "top", "bottom", "oversized"])("does not autoscroll for a canvas item at %s while the pointer is away from the edge", edge => {
     const canvas = editor.features.canvas
     canvas.actions.startCanvas({type: "startCanvas"})
     const slot = editor.appendix.querySelector("slot")!
     const initial = slot.style.transform
     const center = {x: window.innerWidth / 2, y: window.innerHeight / 2}
-    expect(canvas.panAtEdge(center, makeRect(center.x - 50, center.y - 50, 100, 100))).toBe(false)
-    const oversized = makeRect(-100, -100, window.innerWidth + 200, window.innerHeight + 200)
-    expect(canvas.panAtEdge(center, oversized)).toBe(false)
+    const rect = edge === "oversized" ? makeRect(-100, -100, window.innerWidth + 200, window.innerHeight + 200)
+      : makeRect(edge === "left" ? -10 : edge === "right" ? window.innerWidth - 50 : center.x - 50,
+        edge === "top" ? -10 : edge === "bottom" ? window.innerHeight - 50 : center.y - 50, 100, 100)
+    mockGeometry(document.body.firstElementChild!, rect)
+    expect(canvas.panAtEdge(center)).toBe(false)
+    expect(canvas.panAtEdge({x: 32, y: 32})).toBe(false)
+    expect(canvas.panAtEdge({x: window.innerWidth - 32, y: window.innerHeight - 32})).toBe(false)
     expect(slot.style.transform).toBe(initial)
-    expect(canvas.panAtEdge({x: window.innerWidth - 1, y: center.y}, oversized)).toBe(true)
-    expect(slot.style.transform).not.toBe(initial)
+  })
+
+  it.each(["left", "right", "top", "bottom"])("autoscrolls toward the %s edge only while the pointer is near it", edge => {
+    const canvas = editor.features.canvas
+    canvas.actions.startCanvas({type: "startCanvas"})
+    const slot = editor.appendix.querySelector("slot")!
+    const initial = new DOMMatrix(slot.style.transform)
+    const center = {x: window.innerWidth / 2, y: window.innerHeight / 2}
+    mockGeometry(document.body.firstElementChild!, makeRect(center.x - 50, center.y - 50, 100, 100))
+    const point = {x: edge === "left" ? 31 : edge === "right" ? window.innerWidth - 31 : center.x,
+      y: edge === "top" ? 31 : edge === "bottom" ? window.innerHeight - 31 : center.y}
+    expect(canvas.panAtEdge(point)).toBe(true)
+    const after = new DOMMatrix(slot.style.transform)
+    expect(after.e - initial.e).toBeCloseTo(edge === "left" ? 1 / 3 : edge === "right" ? -1 / 3 : 0)
+    expect(after.f - initial.f).toBeCloseTo(edge === "top" ? 1 / 3 : edge === "bottom" ? -1 / 3 : 0)
+    const stopped = slot.style.transform
+    expect(canvas.panAtEdge(center)).toBe(false)
+    expect(slot.style.transform).toBe(stopped)
   })
 
   it("keeps spaces as text input and returns irregular canvas content to document flow", () => {

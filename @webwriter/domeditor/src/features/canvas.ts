@@ -245,8 +245,8 @@ export class CanvasFeature extends EditorFeature {
     if(this.active) this.viewer?.reveal(rect)
   }
 
-  panAtEdge(point: Point, rect?: {left: number, top: number, right: number, bottom: number}) {
-    return this.isEnabled && this.active ? this.viewer?.panAtEdge(point, rect) ?? false : false
+  panAtEdge(point: Point) {
+    return this.isEnabled && this.active ? this.viewer?.panAtEdge(point) ?? false : false
   }
 
   private cameraChanged = () => {

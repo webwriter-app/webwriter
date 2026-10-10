@@ -957,9 +957,8 @@ describe("transform controls and geometry", () => {
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 19, clientX: 150, clientY: 125}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 19, buttons: 1, clientX: 170, clientY: 125}))
-    const rect = target.getBoundingClientRect()
     tick()
-    expect(pan).toHaveBeenLastCalledWith({x: 170, y: 125}, expect.objectContaining({left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom}))
+    expect(pan).toHaveBeenLastCalledWith({x: 170, y: 125})
     tick()
     expect(pan).toHaveBeenCalledTimes(2)
 
@@ -1026,6 +1025,106 @@ describe("transform controls and geometry", () => {
     expect(editor.toHTML(true)).toBe(finalHTML)
     editor.doc.redo()
     expect(sibling).toHaveAttribute("data-after", "later")
+  })
+
+  it.each(["p", "demo-widget", "svg"])("raises a canvas %s as soon as its move starts, without changing coordinates or content", async tag => {
+    const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
+    const sibling = targetElement("section")
+    target.innerHTML = tag === "svg" ? '<g><circle r="5"/></g><!--keep-->' : '<unfamiliar-node>keep</unfamiliar-node><!--keep-->'
+    const nested = target.firstElementChild as HTMLElement | SVGElement
+    nested.style.cssText = "position: absolute; z-index: 77"
+    document.body.classList.add("ww-canvas")
+    Object.assign(target.style, {position: "absolute", left: "20px", top: "30px"})
+    Object.assign(sibling.style, {position: "absolute", zIndex: "5"})
+    mockRect(target)
+    selectNode(target)
+    const nodes = Array.from(document.body.childNodes)
+    const content = target.innerHTML
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const startingHTML = editor.toHTML(true)
+    const mover = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+
+    mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    expect(Number(target.style.zIndex)).toBeGreaterThan(Number(sibling.style.zIndex))
+    expect(target.style.left).toBe("20px")
+    expect(target.style.top).toBe("30px")
+    expect(target.innerHTML).toBe(content)
+    expect(Array.from(document.body.childNodes)).toEqual(nodes)
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 100, clientY: 100}))
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const finalHTML = editor.toHTML(true)
+    expect(finalHTML).not.toBe(startingHTML)
+    expect(editor.doc.body.toString()).toContain('z-index: 6')
+    expect(finalHTML).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(startingHTML)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(finalHTML)
+  })
+
+  it("keeps the last moved canvas item in front throughout dragging and subsequent move starts", () => {
+    document.body.classList.add("ww-canvas")
+    const first = targetElement(), second = targetElement("section")
+    for(const target of [first, second]) {
+      Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
+      mockRect(target)
+    }
+    selectNode(first)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, clientX: 120, clientY: 100}))
+    feature.handleMoveEnd()
+    expect(Number(first.style.zIndex)).toBeGreaterThan(Number(second.style.zIndex))
+    expect(first.style.left).toBe("20px")
+    selectNode(second)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0}))
+    expect(Number(second.style.zIndex)).toBeGreaterThan(Number(first.style.zIndex))
+    feature.handleMoveEnd()
+    const style = second.style.cssText
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0}))
+    feature.handleMoveEnd()
+    expect(second.style.cssText).toBe(style)
+  })
+
+  it.each(["document", "slides", "nested-canvas", "right-button", "locked", "disconnected"])("does not automatically raise a move in %s", scenario => {
+    const target = targetElement(), sibling = targetElement()
+    Object.assign(target.style, {position: "absolute", zIndex: "1"})
+    Object.assign(sibling.style, {position: "absolute", zIndex: "2"})
+    if(scenario !== "document") document.body.classList.add(scenario === "slides" ? "ww-slides" : "ww-canvas")
+    if(scenario === "nested-canvas") {
+      const wrapper = append(document.createElement("section"))
+      wrapper.append(target, sibling)
+    }
+    mockRect(target)
+    selectNode(target)
+    if(scenario === "locked") vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    if(scenario === "disconnected") target.remove()
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: scenario === "right-button" ? 2 : 0}))
+    feature.handleMoveEnd()
+    expect(target.style.zIndex).toBe("1")
+    expect(sibling.style.zIndex).toBe("2")
+  })
+
+  it("keeps canvas activation on cancellation and preserves a concurrent stacking change", () => {
+    document.body.classList.add("ww-canvas")
+    const target = targetElement(), sibling = targetElement()
+    Object.assign(target.style, {position: "absolute", zIndex: "1", left: "0px", top: "0px"})
+    Object.assign(sibling.style, {position: "absolute", zIndex: "2"})
+    mockRect(target)
+    selectNode(target)
+    const mover = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+    mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(target.style.zIndex).toBe("3")
+    expect(target.style.left).toBe("0px")
+    expect(document.body).not.toHaveClass("◆transform-moving")
+
+    mover.dispatchEvent(pointer("pointerdown", {pointerId: 4, clientX: 100, clientY: 100}))
+    target.style.zIndex = "9"
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 4}))
+    expect(target.style.zIndex).toBe("9")
   })
 
   it.each(["relative", "sticky", "fixed"] as const)("retains %s positioning while moving in canvas", position => {

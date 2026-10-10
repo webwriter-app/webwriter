@@ -645,6 +645,10 @@ export class TransformationFeature extends EditorFeature {
       try { handle.setPointerCapture?.(event.pointerId) }
       catch { this.#finish(true); return false }
     }
+    // Activating a canvas move raises the item even without displacement.
+    if(mode === "move" && this.editor.features.canvas.active && target.parentElement === document.body) {
+      this.moveZ(target, true, true)
+    }
     return true
   }
 
@@ -806,7 +810,7 @@ export class TransformationFeature extends EditorFeature {
       this.#panFrame = requestAnimationFrame(() => {
         this.#panFrame = null
         const pointer = this.#panEvent
-        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY}, this.targetRect)) this.handleMoveDrag(pointer)
+        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
       })
     }
   }

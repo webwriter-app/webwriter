@@ -10,7 +10,7 @@ export class CanvasViewer {
   zoomAt(zoom: number, point?: Point): void
   fit(): void
   reveal(rect: Rect): void
-  panAtEdge(point: Point, rect?: Rect): boolean
+  panAtEdge(point: Point): boolean
   applyCamera(): void
   startPan(event: PointerEvent): void
   movePan(event: PointerEvent): void
