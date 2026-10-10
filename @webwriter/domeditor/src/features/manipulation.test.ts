@@ -1012,6 +1012,12 @@ function expectFarFloat(element: HTMLElement, side: "left" | "right") {
   expect(element.style.getPropertyValue("--ww-float-size")).toBe("")
 }
 
+function expectNoFloat(element: HTMLElement) {
+  expect(element).not.toHaveClass("ww-float-left")
+  expect(element).not.toHaveClass("ww-float-right")
+  expect(element.style.float).toBe("")
+}
+
 beforeEach(async () => {
   vi.restoreAllMocks()
   document.documentElement.removeAttribute("class")
@@ -1072,8 +1078,7 @@ describe("column insertion", () => {
     expect(block.textContent).toBe("beforeafter")
     expect(block.querySelector("b")).toBe(bold)
     expect(document.body.children).toHaveLength(2)
-    expect(image.style.maxWidth).toBe("var(--ww-float-width)")
-    expect(image).toHaveClass("ww-float-right")
+    expectFarFloat(image, "right")
     expect(image.parentElement).toBe(block.parentElement)
     expect(block.previousElementSibling).toBe(image)
     expect(bold.innerHTML).toBe("after")
@@ -1086,7 +1091,8 @@ describe("column insertion", () => {
     $.move(block.firstChild!, 2)
     const widget = document.createElement("float-widget")
     editor.features.manipulation.insert(widget)
-    expect(widget.style.float).toBe(content ? "" : "right")
+    if(content) expectNoFloat(widget)
+    else expectClassFloat(widget, "right")
     if(!content) expect(widget.nextElementSibling).toBe(block)
   })
 
@@ -1423,7 +1429,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       document.body.dispatchEvent(event)
 
       expect(event.defaultPrevented).toBe(true)
-      expectBodyToBe(`<section><${tag}><b><i>he</i></b></${tag}><p><b><i>llo</i></b><span> world</span></p><p>after</p></section>`)
+      expectBodyToBe(`<section><${tag} id="he"><b><i>he</i></b></${tag}><p><b><i>llo</i></b><span> world</span></p><p>after</p></section>`)
       expect(document.querySelectorAll("p")[1]).toBe(following)
       expect($.anchor).toBe(document.querySelectorAll("i")[1].firstChild)
       expect($.anchorOffset).toBe(0)
@@ -1568,20 +1574,22 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
   it("inserts HTML through its action handler", () => {
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
-    expectFarFloat(document.body.firstElementChild as HTMLElement, "right")
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p"])
+    expectNoFloat(document.body.firstElementChild as HTMLElement)
   })
   it("sanitizes arbitrary HTML while preserving safe inline styles", () => {
+    const activeContent = "script, style, link[rel~='stylesheet']"
+    const existingActiveContent = Array.from(document.querySelectorAll(activeContent))
     editor.features.manipulation.actions.insert({
       type: "insert",
       html: '<style>body { display: none }</style><link rel="stylesheet"><dialog><p style="color: red" onclick="evil()">Safe<script>while(true) {}</script></p></dialog>',
     })
 
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p"])
     expect(document.body.firstElementChild?.textContent).toBe("Safe")
     expect((document.body.firstElementChild as HTMLElement).style.color).toBe("red")
-    expectFarFloat(document.body.firstElementChild as HTMLElement, "right")
-    expect(document.querySelector("script, style, link[rel~='stylesheet']")).toBeNull()
+    expectNoFloat(document.body.firstElementChild as HTMLElement)
+    expect(Array.from(document.querySelectorAll(activeContent))).toEqual(existingActiveContent)
   })
   it("schema-corrects arbitrary HTML before insertion", () => {
     const correct = vi.spyOn(editor.schema, "checkAndCorrect")
@@ -1608,9 +1616,9 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["section", "p"])
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["section"])
     expect(document.querySelector("section > webwriter-demo")).not.toBeNull()
-    expectFarFloat(document.querySelector("section")!, "right")
+    expectNoFloat(document.querySelector("section")!)
   })
   it("preserves authored contenteditable through inserted widget undo and redo", async () => {
     editor.features.manipulation.actions.insert({
@@ -1637,8 +1645,8 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["webwriter-demo", "p"])
-    expectFarFloat(widget as HTMLElement, "right")
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["webwriter-demo"])
+    expectNoFloat(widget as HTMLElement)
   })
   it.each(["node", "HTML"] as const)("replaces a capture-selected widget through %s insertion", kind => {
     document.body.innerHTML = "<p>before</p><opaque-widget><span>Authored fallback</span></opaque-widget><p>after</p>"
@@ -1773,7 +1781,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const widget = document.querySelector("webwriter-demo")!
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect((document.querySelector("webwriter-demo") as HTMLElement | null)?.style.float).toBe("right")
+    expectNoFloat(document.querySelector("webwriter-demo") as HTMLElement)
   })
   it.each([0, 6, 12])("places an atomic widget beside a paragraph at text offset %i", offset => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
@@ -1786,9 +1794,22 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       html: "<webwriter-demo></webwriter-demo>",
     })
 
-    expect((document.querySelector("webwriter-demo") as HTMLElement | null)?.style.float).toBe("right")
+    expectNoFloat(document.querySelector("webwriter-demo") as HTMLElement)
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.nextElementSibling).toBe(document.querySelector("p"))
+    const paragraphs = Array.from(document.querySelectorAll("p"))
+    if(offset === 0) {
+      expect(widget.nextElementSibling).toBe(paragraphs[0])
+      expect(paragraphs[0].textContent).toBe("before after")
+    }
+    else if(offset === 12) {
+      expect(widget.previousElementSibling).toBe(paragraphs[0])
+      expect(paragraphs[0].textContent).toBe("before after")
+    }
+    else {
+      expect(paragraphs.map(paragraph => paragraph.textContent)).toEqual(["before", " after"])
+      expect(widget.previousElementSibling).toBe(paragraphs[0])
+      expect(widget.nextElementSibling).toBe(paragraphs[1])
+    }
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
   })
@@ -1865,7 +1886,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe("<hgroup><h1>a</h1><p>b</p></hgroup>")
+    expectBodyToBe('<hgroup><h1 id="a">a</h1><p>b</p></hgroup>')
   })
   it("splits nested marks with their containing block", () => {
     document.body.innerHTML = "<p><b><i>hello</i></b> world</p>"
@@ -1891,13 +1912,13 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     document.body.innerHTML = "<h1>hello</h1>"
     $.move(document.body.firstElementChild!.firstChild!, 2)
     editor.features.manipulation.insert()
-    expectBodyToBe("<h1>he</h1><p>llo</p>")
+    expectBodyToBe('<h1 id="he">he</h1><p>llo</p>')
   })
   it("splits an inseperable element into a default node when strict", () => {
     document.body.innerHTML = "<h1>hello</h1>"
     $.move(document.body.firstElementChild!.firstChild!, 2)
     editor.features.manipulation.insert(undefined, 0, true)
-    expectBodyToBe("<h1>he</h1><p>llo</p>")
+    expectBodyToBe('<h1 id="he">he</h1><p>llo</p>')
   })/*
   it("can laxly insert invalid content", () => {
     document.body.innerHTML = "<p>hello world</p>"
@@ -1961,7 +1982,7 @@ describe("heading groups", () => {
 
     editor.features.manipulation.addHeadingGroupText("after")
 
-    expectBodyToBe("<hgroup><x-note></x-note><p></p><h1>Title</h1><p>Deck</p><p></p><x-widget></x-widget></hgroup>")
+    expectBodyToBe('<hgroup><x-note></x-note><p></p><h1 id="title">Title</h1><p>Deck</p><p></p><x-widget></x-widget></hgroup>')
     expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
       heading: "h1", beforeCount: 1, afterCount: 2,
     })
@@ -1976,7 +1997,7 @@ describe("heading groups", () => {
     })
     editor.features.manipulation.setHeadingGroupLevel("h4")
 
-    expectBodyToBe("<hgroup><h4></h4><p>Supporting text</p><custom-title></custom-title></hgroup>")
+    expectBodyToBe('<hgroup><h4 id="heading"></h4><p>Supporting text</p><custom-title></custom-title></hgroup>')
   })
 })
 
@@ -2390,7 +2411,7 @@ describe("delete()", () => {
     document.body.innerHTML = "<p>a</p><p></p><h1>b</h1>"
     $.selectGap(document.body.children[1])
     editor.features.manipulation.delete("backward")
-    expectBodyToBe("<p>a</p><h1>b</h1>")
+    expectBodyToBe('<p>a</p><h1 id="b">b</h1>')
   })
   it("removes only an empty next element on forward delete", () => {
     document.body.innerHTML = "<p>a</p><h1></h1><p>b</p>"
@@ -2402,7 +2423,7 @@ describe("delete()", () => {
     document.body.innerHTML = "<p>a</p><p></p><h1>b</h1>"
     $.move(document.body.lastElementChild!.firstChild!, 0)
     editor.features.manipulation.delete("backward")
-    expectBodyToBe("<p>a</p><h1>b</h1>")
+    expectBodyToBe('<p>a</p><h1 id="b">b</h1>')
   })
   it("removes an empty next element when deleting forward at the previous element's end", () => {
     document.body.innerHTML = "<p>a</p><h1></h1><p>b</p>"
@@ -2712,7 +2733,7 @@ describe("paste()", () => {
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe("<h1>Heading</h1>")
+    expectBodyToBe('<h1 id="heading">Heading</h1>')
   })
 
   it("fills the DOM with correct HTML clipboard content", async () => {
@@ -2776,7 +2797,7 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expectBodyToBe("<p>he</p><h1>Title</h1><p>llo</p>")
+    expectBodyToBe('<p>he</p><h1 id="title">Title</h1><p>llo</p>')
   })
   it("preserves a pasted custom element as an atomic native float", async () => {
     await navigator.clipboard.write([new ClipboardItem({
@@ -3192,7 +3213,7 @@ describe("setBlockType()", () => {
 
     editor.features.manipulation.setBlockType("h3")
 
-    expectBodyToBe("<section><h3>one</h3><h3>two</h3><h3>three</h3></section>")
+    expectBodyToBe('<section><h3 id="one">one</h3><h3 id="two">two</h3><h3 id="three">three</h3></section>')
     expect(document.querySelector("section")).toBe(section)
   })
 
@@ -3233,7 +3254,7 @@ describe("setBlockType()", () => {
     const count = editor.features.manipulation.setBlockType("h2")
 
     expect(count).toBe(2)
-    expectBodyToBe("<h2>before</h2><demo-widget><p>inside</p></demo-widget><h2>after</h2>")
+    expectBodyToBe('<h2 id="before">before</h2><demo-widget><p>inside</p></demo-widget><h2 id="after">after</h2>')
   })
 
   it("retains parent selector constraints when unfamiliar siblings are present", () => {
@@ -3251,7 +3272,7 @@ describe("setBlockType()", () => {
 
     editor.features.manipulation.actions.setBlockType({type: "setBlockType", tag: "h1"})
 
-    expectBodyToBe("<h1></h1>")
+    expectBodyToBe('<h1 id="heading"></h1>')
     expect($.anchor).toBe(document.querySelector("h1"))
   })
 })
@@ -4192,9 +4213,10 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<p><strong>source <span>nested</span></strong> rest</p>'
     const source = document.querySelector("strong")!
     const child = source.querySelector("span")!
-    vi.spyOn(editor, "hitTestBeneathAppendix").mockReturnValue(child)
     vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 125, clientY: 50}), source)).toBeNull()
+    const event = new MouseEvent("mousemove", {clientX: 125, clientY: 50, bubbles: true})
+    child.dispatchEvent(event)
+    expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
   })
 
   it.each([
@@ -4556,7 +4578,7 @@ describe("unified content transfer", () => {
   })
 
   it("strips marks in imported templates while preserving widget and foreign subtrees", () => {
-    const {fragment} = editor.parseHTMLFragment('<template><p><span><abbr>plain</abbr></span></p></template><test-widget><span><abbr>widget</abbr></span></test-widget><p is="custom-text"><span>customized</span></p><svg><text><span>foreign</span></text></svg>', true)
+    const {fragment} = editor.parseHTMLFragment('<template><p><span><abbr>plain</abbr></span></p></template><test-widget><span><abbr>widget</abbr></span></test-widget><p is="custom-text"><span>customized</span></p><svg><text><span>foreign</span></text></svg>', true, false)
     expect(fragment.querySelector("template")?.innerHTML).toBe('<p>plain</p>')
     expect(fragment.querySelector("test-widget")?.innerHTML).toBe('<span><abbr>widget</abbr></span>')
     expect(fragment.querySelector('[is="custom-text"]')?.innerHTML).toBe('<span>customized</span>')
@@ -4646,7 +4668,7 @@ describe("unified content transfer", () => {
       await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
       await editor.features.manipulation.paste()
     }
-    expectBodyToBe('<h2>Title</h2><p><b>Bold</b></p><picture><img src="photo.png"></picture><p><i>Caption</i></p><ul><li>Item</li></ul>')
+    expectBodyToBe('<h2 id="title">Title</h2><p><b>Bold</b></p><picture><img src="photo.png"></picture><p><i>Caption</i></p><ul><li>Item</li></ul>')
   })
 
   it.each(["paste", "clipboard", "drop"])("unwraps forms and extracts control values on %s", async method => {
@@ -5288,7 +5310,7 @@ describe("conversion boundaries", () => {
     const first = document.querySelector("p")!.firstChild!, second = document.querySelector("h2")!.firstChild!
     $.selectRange(first, 7, second, 6)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
-    expect(editor.toHTML(true)).toBe("<p>before </p><ul><li><p>first</p></li><!--keep--><li><p>second</p></li></ul><h2> after</h2><p>other</p>")
+    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li><p>first</p></li><!--keep--><li><p>second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
   })
 
   it("leaves an invalid heading conversion untouched", () => {

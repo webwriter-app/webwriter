@@ -1102,14 +1102,15 @@ describe("Schema methods", () => {
 })
 
 describe("media constraints", () => {
-  it("retains a standalone image's column placement on its media wrapper", () => {
+  it("preserves authored column classes when wrapping a standalone image", () => {
     const group = document.createElement("div")
     group.className = "ww-column-group"
     group.innerHTML = '<p class="ww-column-left">Left</p><img class="authored ww-column-right" alt="Right">'
     const image = group.querySelector("img")!
     editor.schema.enforceMedia(group)
-    expect(group.querySelector(":scope > picture.ww-column-right > img")).toBe(image)
-    expect(image.className).toBe("authored")
+    expect(group.querySelector(":scope > picture > img")).toBe(image)
+    expect(image.className).toBe("authored ww-column-right")
+    expect(group.className).toBe("ww-column-group")
     expect(group.querySelector(".ww-column-left")!.textContent).toBe("Left")
   })
 

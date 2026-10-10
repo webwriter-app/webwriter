@@ -51,7 +51,7 @@ describe("media editing", () => {
     expect(frame).not.toBeNull()
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
     expect(frame.getAttribute("src")).toBe("https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html")
-    expect(frame.style.float).toBe("right")
+    expect(frame.parentElement).toBe(document.body)
     expect(editor.toHTML(true)).toContain('sandbox="allow-scripts"')
   })
 

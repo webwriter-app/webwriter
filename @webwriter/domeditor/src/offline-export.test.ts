@@ -39,12 +39,12 @@ describe("offline HTML resources", () => {
     vi.mocked(bundleOfflineModules).mockResolvedValue({js: "customElements.define('test-offline', class extends HTMLElement {})", css: ".widget {color: red}"})
     const exported = new DOMParser().parseFromString(await activeEditor.serializeHTML(true), "text/html")
     expect(bundleOfflineModules).toHaveBeenCalledOnce()
-    expect(exported.querySelectorAll('script[type="module"]')).toHaveLength(1)
-    expect(exported.querySelector<HTMLScriptElement>('script[type="module"]')!.src).toMatch(/^data:text\/javascript;base64,/)
+    expect(exported.querySelectorAll('script[type="module"]:not(#webwriter-document-viewer)')).toHaveLength(1)
+    expect(exported.querySelector<HTMLScriptElement>('script[type="module"]:not(#webwriter-document-viewer)')!.src).toMatch(/^data:text\/javascript;base64,/)
     expect(exported.querySelector("style")!.textContent).toContain(".widget")
     restoreOriginalResourceURLs(exported)
     expect(exported.querySelector("style[data-webwriter-offline-package-style]")).toBeNull()
-    expect(Array.from(exported.querySelectorAll<HTMLScriptElement>('script[type="module"]')).map(script => script.src)).toEqual([
+    expect(Array.from(exported.querySelectorAll<HTMLScriptElement>('script[type="module"]:not(#webwriter-document-viewer)')).map(script => script.src)).toEqual([
       "https://cdn.example/a.js", "https://cdn.example/b.js",
     ])
   })
@@ -186,7 +186,7 @@ describe("offline HTML resources", () => {
     const source = 'const markup = "</script><h1>inside a string</h1>"'
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(source))
     const exported = await exportDocument()
-    expect(decodeData(exported.querySelector("script")!.src)).toBe(source)
+    expect(decodeData(exported.querySelector<HTMLScriptElement>('script[data-webwriter-original-src="/app.js"]')!.src)).toBe(source)
     expect(exported.querySelector("h1")).toBeNull()
     expect(exported.querySelector("p")!.textContent).toBe("After")
   })

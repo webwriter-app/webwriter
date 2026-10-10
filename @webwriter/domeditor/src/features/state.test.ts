@@ -64,10 +64,11 @@ describe("Focused AI proposals", () => {
       })
       expect(result).toBe(`Queued: ${summary}`)
       expect(fetch).toHaveBeenCalledTimes(4)
-      expect(editor.toHTML(true)).toBe(`<p>Existing introduction</p>${html}<!--preserve-->`)
+      const documentHTML = html.replace("<h2>", '<h2 id="practice">')
+      expect(editor.toHTML(true)).toBe(`<p>Existing introduction</p>${documentHTML}<!--preserve-->`)
       expect(editor.doc.body.toString()).not.toContain(html)
       state.acceptAIEdit({type: "acceptAIEdit", editId: proposalId})
-      expect(editor.toHTML(true)).toContain(html)
+      expect(editor.toHTML(true)).toContain(documentHTML)
     })
   })
 
@@ -201,7 +202,7 @@ describe("StateFeature", () => {
     expect(first.html + second.html).toBe(editor.toHTML(true))
     const outline = read({type: "readAIDocument", mode: "outline", limit: 1}) as any
     expect(outline.nodes[0].tagName).toBe("hgroup")
-    expect(read({type: "readAIDocument", target: outline.nodes[0].target})).toMatchObject({html: "<hgroup><h1>Title</h1></hgroup>", truncated: false, tagName: "hgroup", htmlScope: "node"})
+    expect(read({type: "readAIDocument", target: outline.nodes[0].target})).toMatchObject({html: '<hgroup><h1 id="title">Title</h1></hgroup>', truncated: false, tagName: "hgroup", htmlScope: "node"})
     expect(() => read({type: "readAIDocument", offset: -1})).toThrow()
     editor.destroy()
   })
@@ -304,8 +305,9 @@ describe("StateFeature", () => {
     const html = await editor.getActionHandler("serializeDocument")({type: "serializeDocument"})
 
     expect(html).toContain('<p class="authored">Hello</p>')
-    expect(html).not.toContain("◆")
-    expect(html).not.toContain("contenteditable")
+    const serialized = new DOMParser().parseFromString(html as string, "text/html")
+    expect(serialized.body.innerHTML).not.toContain("◆")
+    expect(serialized.querySelector("[contenteditable]")).toBeNull()
     editor.destroy()
   })
 
@@ -330,15 +332,15 @@ describe("StateFeature", () => {
     expect(html).toContain('data-webwriter-original-src="/photo.png"')
     expect(html).toContain('src="data:image/png;base64,AQID"')
     expect(html).toContain('data-webwriter-original-src="/app.js"')
-    const embeddedScript = new DOMParser().parseFromString(html, "text/html").querySelector("script")!
+    const embeddedScript = new DOMParser().parseFromString(html, "text/html").querySelector('script[data-webwriter-original-src="/app.js"]')!
     expect(atob(embeddedScript.src.split(",")[1])).toBe("window.offline = true")
     expect(html).not.toContain('<script src="/app.js"')
 
     const parsed = new DOMParser().parseFromString(html, "text/html")
     restoreOriginalResourceURLs(parsed)
     expect(parsed.querySelector("img")?.getAttribute("src")).toBe("/photo.png")
-    expect(parsed.querySelector("script")?.getAttribute("src")).toBe("/app.js")
-    expect(parsed.querySelector("script")?.textContent).toBe("")
+    expect(parsed.querySelector('script[src="/app.js"]')?.getAttribute("src")).toBe("/app.js")
+    expect(parsed.querySelector('script[src="/app.js"]')?.textContent).toBe("")
     expect(parsed.querySelector("[data-webwriter-original-src]")).toBeNull()
     editor.destroy()
   })
@@ -348,7 +350,7 @@ describe("StateFeature", () => {
     const editor = new DOMEditor()
 
     const context = editor.getActionHandler("readAIDocument")({type: "readAIDocument"}) as {html: string, text: string}
-    expect(context.html).toContain("<h1>Before</h1>")
+    expect(context.html).toContain('<h1 id="before">Before</h1>')
     expect(context.text).toContain("Keep me informed")
 
     const result = editor.getActionHandler("replaceAIDocument")({
@@ -358,7 +360,7 @@ describe("StateFeature", () => {
 
     expect(result.status).toBe("applied")
     expect(result.removedUnsafeItems).toBeGreaterThan(0)
-    expect(editor.toHTML(true)).toBe('<main style="color: red"><h1>After</h1><a>Link</a></main>')
+    expect(editor.toHTML(true)).toBe('<main style="color: red"><h1 id="after">After</h1><a>Link</a></main>')
     editor.destroy()
   })
 
@@ -469,26 +471,24 @@ describe("StateFeature", () => {
     editor.destroy()
   })
 
-  it("never uses any mark-drawer element as the saved-path HTML root", () => {
-    for(const tag of [...markNames, "strong", "em"]) {
-      document.body.replaceChildren()
-      const paragraph = document.createElement("p")
-      const mark = document.createElement(tag)
-      mark.textContent = "Selected"
-      paragraph.append(mark)
-      document.body.append(paragraph)
-      const editor = new DOMEditor()
-      document.getSelection()!.setPosition(document.body, 0)
+  it.each([...markNames, "strong", "em"])("never uses %s as the saved-path HTML root", tag => {
+    document.body.replaceChildren()
+    const paragraph = document.createElement("p")
+    const mark = document.createElement(tag)
+    mark.textContent = "Selected"
+    paragraph.append(mark)
+    document.body.append(paragraph)
+    const editor = new DOMEditor()
+    document.getSelection()!.setPosition(document.body, 0)
 
-      const result = editor.getActionHandler("beginHTMLSelectionEdit")({
-        type: "beginHTMLSelectionEdit",
-        path: [0, 0],
-      }) as {html: string}
+    const result = editor.getActionHandler("beginHTMLSelectionEdit")({
+      type: "beginHTMLSelectionEdit",
+      path: [0, 0],
+    }) as {html: string}
 
-      expect(result.html, tag).toBe(`<p><${tag}>Selected</${tag}></p>`)
-      editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
-      editor.destroy()
-    }
+    expect(result.html, tag).toBe(`<p><${tag}>Selected</${tag}></p>`)
+    editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
+    editor.destroy()
   })
 
   it("uses a capture-selected widget as the HTML root despite a stale native caret", () => {
@@ -527,7 +527,7 @@ describe("StateFeature", () => {
       type: "beginHTMLSelectionEdit",
     }) as {html: string}
 
-    expect(result.html).toBe("<section><h2>Title</h2><p>Body</p></section>")
+    expect(result.html).toBe('<section><h2 id="title">Title</h2><p>Body</p></section>')
     editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
     editor.destroy()
   })

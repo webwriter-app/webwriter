@@ -920,13 +920,13 @@ describe("DomEditor iframe setup", () => {
     editor.addEventListener("file-error", listener)
     ;(editor as any).reportFileError(new Error("The disk is full"))
     await editor.updateComplete
-    const alert = editor.shadowRoot!.querySelector('[role="alert"]')!
+    const alert = editor.shadowRoot!.querySelector<HTMLElement>(".file-error")!
     expect(alert.textContent).toContain("The disk is full")
     expect(listener).toHaveBeenCalledOnce()
-    expect(iframe.contentDocument!.querySelector('[role="alert"]')).toBeNull()
+    expect(iframe.contentDocument!.querySelector(".file-error")).toBeNull()
     alert.querySelector("button")!.click()
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector('[role="alert"]')).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".file-error")).toBeNull()
   })
 
 
@@ -953,7 +953,8 @@ describe("DomEditor iframe setup", () => {
     const preview = new DOMParser().parseFromString(html, "text/html")
     expect(preview.querySelector("[onclick], [onerror], [srcdoc]")).toBeNull()
     expect(preview.querySelector("template")!.content.querySelector("[onerror]")).toBeNull()
-    expect([...preview.querySelectorAll("script")].every(script => script.src && !script.textContent)).toBe(true)
+    expect([...preview.querySelectorAll("script")].every(script =>
+      script.src && !script.textContent || script.type === "application/json")).toBe(true)
     expect(preview.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).toContain("strict-dynamic")
     expect(preview.querySelector("p")!.textContent).toBe("Keep")
   })
@@ -4946,7 +4947,7 @@ describe("DomEditor.execute()", () => {
       composed: true,
     }))
 
-    expect(execute).toHaveBeenCalledWith({type: "insertMedia", media: "picture"})
+    expect(execute).toHaveBeenCalledWith({type: "insertElement", tag: "picture"})
     await Promise.resolve()
     focusEditor.mockClear()
 
@@ -5123,7 +5124,7 @@ describe("DomEditor.execute()", () => {
     }))
     toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "setCaption", position: "above"}}))
     expect(execute).toHaveBeenCalledWith({type: "setCaption", position: "above"})
-    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType, styles: {"text-align": "right"}})
+    expect(execute).toHaveBeenCalledWith({type: "setStyle", topLevel: true, styles: {"text-align": "right"}})
     expect(execute).toHaveBeenCalledWith({type: "setSelectedElementAttribute", selectionType, name: "lang", value: "de"})
     expect(execute).toHaveBeenCalledWith({type: "setSelectedWidgetOption", selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI}, name: "count", value: 3})
     toolbox.dispatchEvent(new CustomEvent("widget-action", {
@@ -6192,7 +6193,7 @@ describe("DomEditor.execute()", () => {
       }))
       await editor.updateComplete
       const bar = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-bar")!
-      expect(bar.querySelector("h2")!.textContent).toBe("Layouts")
+      expect(bar.querySelector("h2")!.textContent).toBe("Layouts & Recently opened")
       const cards = Array.from(bar.querySelectorAll<HTMLButtonElement>("button[data-mode]"))
       expect(cards.map(card => card.dataset.mode)).toEqual(["document", "canvas", "slides", "board"])
       expect(cards.filter(card => card.getAttribute("aria-pressed") === "true").map(card => card.dataset.mode)).toEqual([mode])
@@ -7693,7 +7694,7 @@ describe("DomEditor.execute()", () => {
     await heading.updateComplete
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Heading"]')!.click()
-    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "h1"})
+    expect(execute).toHaveBeenCalledWith({type: "insertElement", tag: "h1"})
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
@@ -7701,7 +7702,7 @@ describe("DomEditor.execute()", () => {
     await submenu.updateComplete
     submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 3"]')!.click()
 
-    expect(execute).toHaveBeenLastCalledWith({type: "setBlockType", tag: "h3"})
+    expect(execute).toHaveBeenLastCalledWith({type: "insertElement", tag: "h3"})
 
     expect(submenu.shadowRoot!.querySelector('button[title="Divider"]')).toBeNull()
   })

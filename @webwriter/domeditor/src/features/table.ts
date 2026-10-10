@@ -1011,7 +1011,7 @@ export class TableFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
-  private finishResize = () => {
+  finishResize = () => {
     this.stopResize()
     this.pendingCell = null
     this.pointerSelecting = false

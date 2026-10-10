@@ -239,7 +239,7 @@ describe("development server", () => {
     ]))
     const {document} = (await request(`/api/documents/${id}`)).value
     expect(document.content).toContain('<title>Kitchen Sink</title>')
-    expect(document.content).toContain('class="ww-column-group"')
+    expect(document.content).toContain('class="sample-empty" style="float: left;"')
     await request(`/api/documents/${id}`, {
       method: "PATCH",
       body: JSON.stringify({content: "<p>My kitchen sink</p>"}),

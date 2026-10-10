@@ -52,9 +52,9 @@ describe("list ribbon drawer", () => {
       .toEqual([
         "Image", "Audio", "Video", "Graphic", "Website",
       ])
-    expect(button("Details").action).toBe("insert-details")
+    expect(button("Details").action).toBe("element:details")
     expect(button("Details").icon).toBe("Details")
-    expect(button("Media").action).toBe("Image")
+    expect(button("Media").action).toBe("element:picture")
     expect(button("Media").dropdownOnClick).toBe(false)
 
     const listener = vi.fn()
@@ -67,12 +67,10 @@ describe("list ribbon drawer", () => {
     expect(button("Media").shadowRoot!.querySelector(".submenu-trigger")!.getAttribute("aria-expanded")).toBe("true")
     expect(menu.hidden).toBe(false)
     menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Image"]')!.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {label: "Image"},
-    }))
+    expect(listener.mock.calls[0][0].detail.label).toBe("element:picture")
     await button("Details").updateComplete
     button("Details").shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
-    expect(listener.mock.calls.at(-1)![0].detail.label).toBe("insert-details")
+    expect(listener.mock.calls.at(-1)![0].detail.label).toBe("element:details")
   })
 
   it("groups heading insertions without dialog, form or HTML controls", async () => {
@@ -136,7 +134,7 @@ describe("list ribbon drawer", () => {
     const list = ribbon.shadowRoot!.querySelector<RibbonButton>(
       'ribbon-drawer[label="Elements"] ribbon-button[label="List"]',
     )!
-    const enumeration = list.submenu.find(item => typeof item !== "string" && item.action === "toggle-list:ol")
+    const enumeration = list.submenu.find(item => typeof item !== "string" && item.action === "element:ol")
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Elements"] ribbon-button[label="Enumeration"]')).toBeNull()
     expect(list.active).toBe(true)
     expect(typeof enumeration === "string" ? [] : enumeration?.submenu?.map(item => typeof item === "string" ? item : item.action))
@@ -202,12 +200,10 @@ describe("list ribbon drawer", () => {
     await menu.updateComplete
     menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Enumeration"]')!.click()
 
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({label: "toggle-list:ol"}),
-    }))
+    expect(listener.mock.calls[0][0].detail.label).toBe("element:ol")
   })
 
-  it("dispatches a toggle action from the active list button", async () => {
+  it("dispatches an element insertion action from the active list button", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -219,8 +215,6 @@ describe("list ribbon drawer", () => {
     )!
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {label: "toggle-list:ul", keepDrawerOpen: false},
-    }))
+    expect(listener.mock.calls[0][0].detail.label).toBe("element:ul")
   })
 })

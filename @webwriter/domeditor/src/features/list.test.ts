@@ -1144,6 +1144,23 @@ it("excludes positioned blocks and their text descendants from list wrapping", (
   expect(Array.from(document.querySelectorAll("li"), node => node.textContent)).toEqual(["before", "after"])
 })
 
+it("wraps text blocks selected entirely inside a positioned editing flow", () => {
+  document.body.innerHTML = '<p>before</p><aside style="position: fixed"><p>floating</p></aside><p>after</p>'
+  const floating = document.querySelector("aside")!
+  const before = document.body.firstElementChild
+  const paragraph = floating.querySelector("p")!
+  const after = document.body.lastElementChild
+  $.selectRange(floating, 0, floating, 1)
+  editor.features.list.toggleList("ul")
+
+  expect(floating.parentElement).toBe(document.body)
+  expect(floating.querySelector("ul > li > p")).toBe(paragraph)
+  expect(before?.parentElement).toBe(document.body)
+  expect(after?.parentElement).toBe(document.body)
+  expect(before?.textContent).toBe("before")
+  expect(after?.textContent).toBe("after")
+})
+
 it.each(["ul", "ol"] as const)("converts headings to paragraphs when wrapping in %s", type => {
   document.body.innerHTML = '<h2 id="intro" class="authored ◆old">One <b>two</b><!--keep--></h2><p>Other</p>'
   const bold = document.querySelector("b")!

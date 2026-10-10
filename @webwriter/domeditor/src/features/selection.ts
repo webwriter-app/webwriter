@@ -1081,6 +1081,8 @@ export class SelectionFeature extends EditorFeature {
       this.#endDrag()
       this.clearSelectedSection()
       this.#releaseCaptureSelection()
+      this.editor.features.table.finishResize()
+      this.editor.features.table.clearCellSelection(false)
       const target = this.#modifierSelectionTarget(widget ?? event.target)
       if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
         const elements = $.selectedElements

@@ -270,7 +270,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/dl > dt:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Term";/)
     expect(editorStyleString).toMatch(/dl > dd:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Description";/)
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
-    expect(editorStyleString).toMatch(/\.◆media-empty\s*\{[\s\S]*?border:\s*1px dashed #6b7280;/)
+    expect(editorStyleString).toMatch(/:is\(picture, img, video, iframe, embed, object\)\.◆media-empty,\s*body::part\(graphic-image-placeholder\)\s*\{[^}]*border:\s*1px dashed #6b7280;/)
     expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
     expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?width:\s*100%;/)
     expect(editorStyleString).not.toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?(?:height|aspect-ratio):/)

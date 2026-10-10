@@ -161,6 +161,9 @@ describe("table cell selection", () => {
       expect($.selectedElement).toBe(table)
       expect(editor.features.table.hasCellSelection).toBe(false)
       expect(table).toHaveClass("◆element-selected")
+      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
+      expect(document.body).not.toHaveClass("◆table-cell-selection")
+      expect(document.body).not.toHaveClass("◆table-column-edge")
 
       // Node selection disables hit testing on descendants, so even a small
       // pointer movement can arrive on TABLE instead of the clicked cell.

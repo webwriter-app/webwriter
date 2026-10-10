@@ -597,37 +597,37 @@ describe("DOM MathML editing", () => {
     }
   })
 
-  it.each(["p", "section", "td", "body"])("keeps inline text boundaries and block gaps in %s", tag => {
-    for(const display of ["inline", "block"]) {
-      for(const surroundings of ["only", "first", "last", "middle", "adjacent", "whitespace"]) {
-        const math = load("<mi>x</mi>")
-        math.setAttribute("display", display)
-        const parent = tag === "body" ? document.body : document.createElement(tag)
-        const nodes: Node[] = [math]
-        if(["last", "middle"].includes(surroundings)) nodes.unshift(document.createTextNode("before"))
-        if(["first", "middle"].includes(surroundings)) nodes.push(document.createTextNode("after"))
-        if(surroundings === "adjacent") nodes.push(math.cloneNode(true))
-        if(surroundings === "whitespace") nodes.push(document.createTextNode("  "))
-        parent.replaceChildren(...nodes)
-        if(tag !== "body") {
-          if(tag === "td") {
-            document.body.innerHTML = "<table><tbody><tr></tr></tbody></table>"
-            document.querySelector("tr")!.append(parent)
-          }
-          else document.body.replaceChildren(parent)
-        }
-        const index = Array.from(parent.childNodes).indexOf(math)
-        for(const offset of [index, index + 1]) {
-          $.move(parent, offset)
-          editor.features.selection.processSelection()
-          expect($.anchor).toBe(parent)
-          expect($.anchorOffset).toBe(offset)
-          expect($.isGapSelection).toBe(display === "block")
-          expect($.isTextSelection).toBe(display === "inline")
-          expect(editor.features.selection.captureSelectedElement).toBeNull()
-          expect(document.body.classList.contains("◆gap-caret-visible")).toBe(display === "block")
-        }
+  it.each(["p", "section", "td", "body"].flatMap(tag =>
+    ["inline", "block"].flatMap(display =>
+      ["only", "first", "last", "middle", "adjacent", "whitespace"].map(surroundings => ({tag, display, surroundings}))
+    )
+  ))("keeps $display math boundaries in $tag with $surroundings surroundings", ({tag, display, surroundings}) => {
+    const math = load("<mi>x</mi>")
+    math.setAttribute("display", display)
+    const parent = tag === "body" ? document.body : document.createElement(tag)
+    const nodes: Node[] = [math]
+    if(["last", "middle"].includes(surroundings)) nodes.unshift(document.createTextNode("before"))
+    if(["first", "middle"].includes(surroundings)) nodes.push(document.createTextNode("after"))
+    if(surroundings === "adjacent") nodes.push(math.cloneNode(true))
+    if(surroundings === "whitespace") nodes.push(document.createTextNode("  "))
+    parent.replaceChildren(...nodes)
+    if(tag !== "body") {
+      if(tag === "td") {
+        document.body.innerHTML = "<table><tbody><tr></tr></tbody></table>"
+        document.querySelector("tr")!.append(parent)
       }
+      else document.body.replaceChildren(parent)
+    }
+    const index = Array.from(parent.childNodes).indexOf(math)
+    for(const offset of [index, index + 1]) {
+      $.move(parent, offset)
+      editor.features.selection.processSelection()
+      expect($.anchor).toBe(parent)
+      expect($.anchorOffset).toBe(offset)
+      expect($.isGapSelection).toBe(display === "block")
+      expect($.isTextSelection).toBe(display === "inline")
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(document.body.classList.contains("◆gap-caret-visible")).toBe(display === "block")
     }
   })
 

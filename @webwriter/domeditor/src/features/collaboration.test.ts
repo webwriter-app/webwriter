@@ -97,7 +97,10 @@ describe("DOMEditor collaboration wiring", () => {
     editor.features.history.actions.undo({type: "undo"})
     expect(paragraph.hasAttribute("style")).toBe(false)
     editor.features.history.actions.redo({type: "redo"})
-    expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
+    // Happy DOM caches CSS declarations across removal and restoration of the
+    // same style value; inspect the restored authored attribute directly.
+    expect(paragraph.getAttribute("style")).toBe("color: rebeccapurple !important;")
+    expect(editor.doc.body.toString()).toContain("color: rebeccapurple !important")
   })
 
   it("synchronizes table header rows through undo, redo, and serialization", async () => {
@@ -176,13 +179,13 @@ describe("DOMEditor collaboration wiring", () => {
     editor.features.manipulation.actions.setBlockType({type: "setBlockType", tag: "h2"})
     await mutationsDelivered()
 
-    expect(editor.toHTML(true)).toBe("<h2>Hello</h2>")
-    expect(editor.doc.body.toString()).toContain("<h2>Hello</h2>")
+    expect(editor.toHTML(true)).toBe('<h2 id="hello">Hello</h2>')
+    expect(editor.doc.body.toString()).toContain('<h2 id="hello">Hello</h2>')
 
     editor.features.history.actions.undo({type: "undo"})
     expect(editor.toHTML(true)).toBe("<p>Hello</p>")
     editor.features.history.actions.redo({type: "redo"})
-    expect(editor.toHTML(true)).toBe("<h2>Hello</h2>")
+    expect(editor.toHTML(true)).toBe('<h2 id="hello">Hello</h2>')
   })
 
   it("synchronizes ordered-list metadata and includes it in undo, redo, and serialization", async () => {
@@ -216,12 +219,12 @@ describe("DOMEditor collaboration wiring", () => {
     editor.features.manipulation.actions.addFigureCaption({type: "addFigureCaption", position: "after"})
     await mutationsDelivered()
 
-    expect(editor.toHTML(true)).toBe('<figure><picture><img src="diagram.png" alt="Diagram"></picture><figcaption></figcaption></figure>')
-    expect(editor.doc.body.toString()).toContain('<figure><picture><img alt="Diagram" src="diagram.png"></img></picture><figcaption></figcaption></figure>')
+    expect(editor.toHTML(true)).toBe('<figure id="figure"><picture><img src="diagram.png" alt="Diagram"></picture><figcaption></figcaption></figure>')
+    expect(editor.doc.body.toString()).toContain('<figure id="figure"><picture><img alt="Diagram" src="diagram.png"></img></picture><figcaption></figcaption></figure>')
     editor.features.history.actions.undo({type: "undo"})
     expect(editor.toHTML(true)).toBe('<picture><img src="diagram.png" alt="Diagram"></picture>')
     editor.features.history.actions.redo({type: "redo"})
-    expect(editor.toHTML(true)).toBe('<figure><picture><img src="diagram.png" alt="Diagram"></picture><figcaption></figcaption></figure>')
+    expect(editor.toHTML(true)).toBe('<figure id="figure"><picture><img src="diagram.png" alt="Diagram"></picture><figcaption></figcaption></figure>')
   })
 
   it("synchronizes section wrappers and includes them in undo and redo", async () => {

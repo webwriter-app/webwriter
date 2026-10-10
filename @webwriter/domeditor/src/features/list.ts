@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
 
 const listSelector = "ul, ol, dl, menu"
@@ -949,6 +949,7 @@ export class ListFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode) return []
     const range = selection.getRangeAt(0)
+    const flowRoot = editingFlowRoot(range.startContainer)
     const isTextBlock = (element: Element) => element !== document.body
       && !element.matches(`${listSelector}, ${listItemSelector}, details`)
       && this.editor.schema.isBlock(element)
@@ -965,7 +966,7 @@ export class ListFeature extends EditorFeature {
 
     const candidates = Array.from(document.body.querySelectorAll("*"))
       .filter(element => {
-        if(!$.includesNode(element) || !isTextBlock(element) || element.closest(listSelector)) return false
+        if(!$.includesNode(element) || editingFlowRoot(element) !== flowRoot || !isTextBlock(element) || element.closest(listSelector)) return false
         try {
           return range.intersectsNode(element)
         }

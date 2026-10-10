@@ -331,7 +331,7 @@ describe("DependencyFeature", () => {
     document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script><link rel="stylesheet" href="${demoPackage.styles[0]}"><script src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"></script>`)
     const fetch = vi.spyOn(globalThis, "fetch")
     const parsed = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
-    expect(parsed.querySelector("script, link[rel='stylesheet']")).toBeNull()
+    expect(parsed.querySelector("script:not(#webwriter-document-viewer), link[rel='stylesheet']")).toBeNull()
     expect(fetch).not.toHaveBeenCalled()
     editor.destroy()
   })

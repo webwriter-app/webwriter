@@ -436,6 +436,7 @@ export class ManipulationFeature extends EditorFeature {
   floatDropTarget(event: MouseEvent, source: Element, range?: Range) {
     this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
+    if(event.target instanceof Node && source.contains(event.target)) return null
     const root = getDocumentRoot()
     const key = source.isConnected ? source : source.outerHTML
     const contains = (rect: DOMRect) => event.clientX >= rect.left && event.clientX < rect.right

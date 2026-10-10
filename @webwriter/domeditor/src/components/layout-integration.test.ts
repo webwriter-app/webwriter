@@ -213,13 +213,13 @@ describe("layout host and toolbox integration", () => {
     expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"])
     for(const button of buttons) button.click()
     expect(actions).toEqual(["far-left", "none", "far-right"].map(side => ({type: "setFloat", side})))
-    expect(execute.mock.calls.map(([action]) => action)).toEqual(actions)
+    expect(execute.mock.calls.map(([action]) => action)).toEqual(actions.map(action => ({...action, topLevel: true})))
     const down = allButtons[0], up = allButtons[4]
     expect(down.querySelector(".icon-tabler-arrow-down")).not.toBeNull()
     expect(up.querySelector(".icon-tabler-arrow-up")).not.toBeNull()
     up.click(); down.click()
     expect(actions.slice(-2)).toEqual([{type:"moveFloat", direction:"up"}, {type:"moveFloat", direction:"down"}])
-    expect(execute.mock.calls.slice(-2).map(([action]) => action)).toEqual(actions.slice(-2))
+    expect(execute.mock.calls.slice(-2).map(([action]) => action)).toEqual(actions.slice(-2).map(action => ({...action, topLevel: true})))
   })
 
   it("keeps an inline float selection visible when a narrow style overrides it", async () => {

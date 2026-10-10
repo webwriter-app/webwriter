@@ -28,6 +28,7 @@ import type {ElementAttributeState} from "../element-attributes"
 import type {LayoutSelectionState} from "../layouts"
 import {insertMathStructureButtons} from "./ribbon-menu-config"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
+import {getElementPresentation} from "../element-names"
 import {
   graphicShapeOptions,
   type GraphicLayerOperation,
@@ -2445,6 +2446,9 @@ export abstract class EditingControls extends LitElement {
 
   protected commandShortcut(action: string) {
     const command = appCommands.find(candidate => candidate.action === action)
+      ?? (action.startsWith("element:")
+        ? appCommands.find(candidate => candidate.action === getElementPresentation(action.slice("element:".length)).name)
+        : undefined)
     return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "") : ""
   }
 
