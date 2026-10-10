@@ -216,6 +216,20 @@ export class DomEditorToolbox extends EditingControls {
     .ai-toolbox-content[hidden] {display: none}
     :host([active-tool="AI"]) .toolbox-pane-content {overflow: hidden}
 
+    @media (max-height: 600px) {
+      .ai-tab-label-prefix {display: none}
+      :host([active-tool="AI"]) .toolbox-tab:not([data-active]) {display: none}
+      :host([active-tool="AI"]) .toolbox-pane,
+      :host([active-tool="AI"]) .toolbox-pane-content,
+      :host([active-tool="AI"]) .ai-toolbox-content,
+      :host([active-tool="AI"]) .ai-chat-panel[data-open] {overflow: visible}
+      :host([active-tool="AI"]) .ai-chat-header {position: absolute; z-index: 3; top: -30px; left: auto; right: 28px; height: 30px; gap: .15rem; padding: 0; border: 0; background: transparent}
+      :host([active-tool="AI"]) .ai-chat-header-button {width: 24px; height: 24px}
+      :host([active-tool="AI"]) .ai-chat-switcher {flex: 0 0 24px; width: 24px; height: 24px; padding: 0; color: transparent; background-position: center; background-size: .9rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3 2.5h10v8H7l-4 3v-11Z' stroke='%23526b86' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E")}
+      :host([active-tool="AI"]) .ai-chat-switcher option {color: #2f3742}
+      :host([active-tool="AI"]) .ai-chat-panel[data-open] .ai-chat-composer {height: 5.5rem}
+    }
+
     :host([hidden]) {
       display: none;
     }
@@ -1384,7 +1398,7 @@ export class DomEditorToolbox extends EditingControls {
                       class="toolbox-tab-label"
                       ?data-contextual=${contextualLabel !== null}
                       aria-hidden=${!active}
-                    >${label}</span>
+                    >${tool.label === "AI" ? html`<span class="ai-tab-label-prefix">Ask </span>AI` : label}</span>
                   </button>
                   <button
                     class="toolbox-tab-close"

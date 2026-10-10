@@ -112,6 +112,7 @@ export class AppRibbon extends EditingControls {
   static properties = {
     ...EditingControls.properties,
     expanded: {type: Boolean, reflect: true},
+    heightConstrained: {state: true},
     menuOpen: {type: Boolean, reflect: true},
     documentDialog: {state: true},
     logoUrl: {type: String, attribute: "logo-url"},
@@ -201,6 +202,7 @@ export class AppRibbon extends EditingControls {
 
     .ribbon {
       box-sizing: border-box;
+      container: ribbon / inline-size;
       display: flex;
       flex-direction: column;
       position: relative;
@@ -255,6 +257,27 @@ export class AppRibbon extends EditingControls {
 
     .brand:hover:not(:disabled) .brand-logo {
       opacity: 0.8;
+    }
+
+    .ribbon-top[data-app-menu-tab] .brand::before {
+      content: "";
+      position: absolute;
+      inset: 1px 0 -1px;
+      box-sizing: border-box;
+      background: #ffffff;
+      border: solid #a8a8a8;
+      border-width: 1px 0 0 1px;
+      border-radius: 0.45rem 0 0 0;
+      pointer-events: none;
+    }
+
+    .ribbon-top[data-app-menu-tab] .brand-logo {
+      position: relative;
+    }
+
+    .ribbon-top[data-app-menu-tab] ribbon-tab[label="File"]::part(button) {
+      border-left-color: transparent;
+      border-top-left-radius: 0;
     }
 
     .brand:focus-visible {
@@ -391,6 +414,15 @@ export class AppRibbon extends EditingControls {
 
     ${aiChatStyles}
 
+    @container ribbon (max-width: 42rem) {
+      .tabs {min-width: 0}
+      .tabs > ribbon-tab[label="File"] {min-width: 0; --file-label-min-width: 0px}
+      .ai-bar-slot {flex: 0 0 24px; width: 24px; max-width: 24px}
+      .ai-chat-panel:not([data-open]) {width: 24px}
+      .ai-chat-panel:not([data-open]) .ai-chat-brand-button {inset: 0; width: 100%; height: 100%; padding: 3px; transition: var(--ww-ui-transition, background-color 120ms ease)}
+      .ai-chat-panel:not([data-open]) .ai-chat-composer {display: none}
+    }
+
     .document-dialog {
       box-sizing: border-box;
       width: min(42rem, calc(100vw - 2rem));
@@ -497,6 +529,10 @@ export class AppRibbon extends EditingControls {
         left: anchor(left);
         width: max(200px, anchor-size(width));
       }
+    }
+
+    .ribbon-top[data-app-menu-tab] ~ ribbon-menu {
+      left: 0;
     }
 
     .history-button {
@@ -1091,7 +1127,26 @@ export class AppRibbon extends EditingControls {
 
   private previewTransitionTimer: ReturnType<typeof setTimeout> | undefined
 
-  private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
+  private heightConstrained = false
+  private expandedBeforeHeightConstraint = true
+
+  private updateHeightConstraint() {
+    const constrained = window.innerHeight <= 600
+    if(constrained === this.heightConstrained) return
+    this.heightConstrained = constrained
+    if(constrained) {
+      this.expandedBeforeHeightConstraint = this.expanded
+      this.expanded = false
+      this.menuOpen = false
+      this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => drawer.closeDrawer())
+    }
+    else this.expanded = this.expandedBeforeHeightConstraint
+  }
+
+  private readonly handleWindowResize = () => {
+    this.updateHeightConstraint()
+    this.scheduleResponsiveLayout()
+  }
 
   private readonly handleAIProviderChange = () => {
     this.aiProviders = this.aiProviderStore.providers
@@ -1158,6 +1213,7 @@ export class AppRibbon extends EditingControls {
     document.addEventListener("pointerdown", this.handleDocumentPointerDown)
     document.addEventListener("keydown", this.handleDocumentKeydown, true)
     window.addEventListener("resize", this.handleWindowResize)
+    this.updateHeightConstraint()
   }
 
   disconnectedCallback() {
@@ -1268,6 +1324,10 @@ export class AppRibbon extends EditingControls {
   }
 
   private toggleExpanded() {
+    if(this.heightConstrained) {
+      this.toggleFileMenu()
+      return
+    }
     if(this.previewActive) {
       this.selectStart()
       return
@@ -1793,12 +1853,14 @@ export class AppRibbon extends EditingControls {
 
   private selectMenu(event: Event) {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
-    if(label === "File") {
-      this.closeAIChat()
-      const open = !this.menuOpen
-      this.dismissCollapsedMenu()
-      this.menuOpen = open
-    }
+    if(label === "File") this.toggleFileMenu()
+  }
+
+  private toggleFileMenu() {
+    this.closeAIChat()
+    const open = !this.menuOpen
+    this.dismissCollapsedMenu()
+    this.menuOpen = open
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
@@ -1830,6 +1892,7 @@ export class AppRibbon extends EditingControls {
       this.expanded = this.liveSessionRole !== "learner"
       this.menuOpen = false
     }
+    if(this.heightConstrained) this.expanded = false
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -2932,6 +2995,7 @@ export class AppRibbon extends EditingControls {
             <select
               class="ai-chat-switcher"
               aria-label="Current AI chat"
+              title=${this.activeAIChat?.title ?? "Current AI chat"}
               data-ribbon-input-persistent
               .value=${this.activeAIChatId}
               ?disabled=${this.aiBusy}
@@ -3145,15 +3209,16 @@ export class AppRibbon extends EditingControls {
         @ribbon-icon-hover=${this.handleRibbonIconHover}
         @ribbon-drawer-state-change=${this.handleRibbonDrawerState}
       >
-        <div class="ribbon-top">
+        <div class="ribbon-top" ?data-app-menu-tab=${this.heightConstrained && this.menuOpen}>
           <button
             class="brand"
             type="button"
-            aria-controls="ribbon-content"
-            aria-expanded=${this.expanded}
+            aria-controls=${this.heightConstrained ? "ribbon-file-menu" : "ribbon-content"}
+            aria-expanded=${this.heightConstrained ? this.menuOpen : this.expanded}
+            aria-haspopup=${this.heightConstrained ? "menu" : nothing}
             ?disabled=${!this.previewActive && (this.previewTransitioning || aiReviewPending)}
-            aria-label=${this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
-            title=${this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            aria-label=${this.heightConstrained ? this.menuOpen ? "Close File menu" : "Open File menu" : this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            title=${this.heightConstrained ? this.menuOpen ? "Close File menu" : "Open File menu" : this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
             @click=${this.toggleExpanded}
           >
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}
@@ -3258,6 +3323,7 @@ export class AppRibbon extends EditingControls {
         <ai-settings-dialog .store=${this.aiProviderStore}></ai-settings-dialog>
         ${this.renderDocumentDialogs()}
         <ribbon-menu
+          id="ribbon-file-menu"
           .groups=${[
             {...fileMenu, buttons: fileMenu.buttons.map(button =>
               (typeof button === "string" ? button : button.label) === "Open"

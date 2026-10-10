@@ -55,11 +55,12 @@ export class SelectionFeature extends EditorFeature {
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
   #modifierClick = false
+  #touchSelection = false
   #selectedSection: Element | null = null
   #atomicExtension: {range: Range, backwards: boolean} | null = null
-  #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
+  #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string} | null = null
   #settingBoxSelection = false
-  #boxDrag: {x: number, y: number, pointerId?: number, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
+  #boxDrag: {x: number, y: number, pointerId?: number, pointerType: string, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
   #selectionMarkers = new Set<Element>()
   #atomicOverlays = new Map<Element, HTMLElement>()
   #atomicOverlayFrame: number | null = null
@@ -610,6 +611,7 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("blur", this.#handleWindowBlur)
     this.#endDrag()
     this.#modifierClick = false
+    this.#touchSelection = false
     this.#atomicExtension = null
     $.clearLayoutRanges()
     this.#releaseCaptureSelection()
@@ -739,7 +741,7 @@ export class SelectionFeature extends EditorFeature {
     focus.collapse(true)
     const target = document.body
     this.#drag = {anchor, focus, lastFocus: focus.cloneRange(), scope, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
-      nativeClick, moved: false, target, pointerId: event.pointerId}
+      nativeClick, moved: false, target, pointerId: event.pointerId, pointerType: event.pointerType}
     this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
     this.isInDragSelection = true
     // BODY capture suppresses descendant :hover; retain the native hover path
@@ -816,7 +818,7 @@ export class SelectionFeature extends EditorFeature {
     // It remains inside the document iframe, below the surrounding editor UI.
     overlay.showPopover?.()
     this.#boxDrag = {x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
-      pointerId: event.pointerId, overlay, elements: [], previews: new Map()}
+      pointerId: event.pointerId, pointerType: event.pointerType, overlay, elements: [], previews: new Map()}
     this.isInDragSelection = true
     document.body.classList.add("◆", "◆selection-dragging")
     if(event.pointerId !== undefined) {
@@ -888,6 +890,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #handlePointerDown(ev: PointerEvent, fromCanvasSlot = false) {
+    if(ev.pointerType === "touch" && ev.isPrimary === false) return
     if(this.#handleModifierClick(ev)) return
     if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
       || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) return
@@ -899,6 +902,8 @@ export class SelectionFeature extends EditorFeature {
     }
     this.#endDrag()
     this.clearSelectedSection()
+    this.#touchSelection = ev.pointerType === "touch"
+    if(ev.pointerType === "touch") document.body.focus({preventScroll: true})
     const graphic = graphicContainerForNode(ev.target instanceof Node ? ev.target : null)
     // The graphic feature enters capture on a selected canvas/shape. Native
     // caret hit testing must not replace that node selection with an outer gap.
@@ -936,7 +941,7 @@ export class SelectionFeature extends EditorFeature {
     const extend = ev.shiftKey && (!clickedItem || clickedItem === this.#layoutSelectionItem($.anchor, $.anchor))
     const point = $.selectCoords(ev.clientX, ev.clientY, extend, ev.target, this.editor.schema)
     const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
-    const nativeClick = !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
+    const nativeClick = ev.pointerType !== "touch" && !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
       && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
     if(!nativeClick) ev.preventDefault()
     this.#beginDrag(ev, nativeClick)
@@ -944,6 +949,11 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    // Preserve the pointer stream for editor selection instead of browser
+    // panning/long-press selection. Widget controls and appendix UI stay native.
+    touchstart: event => {
+      if(event.touches.length === 1 && (this.#drag?.pointerType === "touch" || this.#boxDrag?.pointerType === "touch")) event.preventDefault()
+    },
     pointerdown: event => {
       this.#handleKeyState(event)
       if(this.#handleModifierClick(event)) return
@@ -1424,7 +1434,7 @@ export class SelectionFeature extends EditorFeature {
     return node
   }
 
-  /** The shared node, capture, gap, and drag text caret, or null before first use. */
+  /** The shared node, capture, gap, and text caret, or null before first use. */
   get selectionCaret() {
     return this.editor.appendix.querySelector<HTMLElement>(".◆selection-caret")
   }
@@ -1614,7 +1624,7 @@ export class SelectionFeature extends EditorFeature {
     this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
       "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
-      "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
+      "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
       "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
@@ -2023,10 +2033,14 @@ export class SelectionFeature extends EditorFeature {
         }
       }
     }
-    // Native text carets can disappear while another app owns the drag.
+    // Native text carets can disappear after prevented touch gestures or
+    // while another app owns the drag.
     // Reuse the shared appendix caret at the collapsed selection's geometry.
-    if(document.body.classList.contains("◆drop-selection-active")
+    const touchCaret = this.#touchSelection && sel.isCollapsed && Boolean(document.activeElement?.contains(sel.focusNode))
+      && !document.body.classList.contains("◆math-boundary-caret")
+    if((document.body.classList.contains("◆drop-selection-active") || touchCaret)
       && (kind === "text" || kind === "empty") && !$.isEmptyDocumentSelection) {
+      if(touchCaret) this.#markSelection(document.body, "◆touch-caret-visible")
       const rect = caretRect(sel.focusNode, sel.focusOffset)
       const caret = this.#showSelectionCaret("text")
       caret.style.left = `${rect.left}px`
@@ -2185,7 +2199,8 @@ export class SelectionFeature extends EditorFeature {
         $.extendBy("line")
       }
     },
-    "pointerup": () => {
+    "pointerup": event => {
+      if(event.pointerType === "touch" && event.isPrimary === false) return
       this.isInDragSelection = false
       if(getDocumentRoot().childNodes.length === 0) {
         $.selectDocumentStart()

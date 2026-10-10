@@ -78,6 +78,40 @@ export function replayHostDrag(detail: Partial<HostDragDetail>, doc: Document = 
   return !target.dispatchEvent(drag)
 }
 
+export type HostPointerDetail = {
+  event: "pointerdown" | "pointermove" | "pointerup" | "pointercancel"
+  x: number
+  y: number
+  pointerId: number
+  buttons: number
+  ctrlKey?: boolean
+  altKey?: boolean
+  shiftKey?: boolean
+  metaKey?: boolean
+}
+
+/** Chrome device emulation can deliver touch to the cross-site iframe element
+ * itself. Replay that input through the document's ordinary pointer handlers. */
+export function replayHostPointer(detail: Partial<HostPointerDetail>, doc: Document = document) {
+  if(!["pointerdown", "pointermove", "pointerup", "pointercancel"].includes(detail.event ?? "")
+    || !Number.isFinite(detail.x) || !Number.isFinite(detail.y) || !Number.isInteger(detail.pointerId)) return false
+  let target = doc.elementFromPoint(detail.x!, detail.y!) ?? doc.body
+  // Preserve composed origins for widget controls and appendix UI.
+  for(let inner = target.shadowRoot?.elementFromPoint?.(detail.x!, detail.y!);
+    inner && inner !== target; inner = target.shadowRoot?.elementFromPoint?.(detail.x!, detail.y!)) {
+    if(target === doc.body && inner.localName === "slot" && !inner.getAttribute("name")) break
+    target = inner
+  }
+  const event = new PointerEvent(detail.event!, {
+    bubbles: true, composed: true, cancelable: true, pointerType: "touch", isPrimary: true,
+    pointerId: detail.pointerId, button: detail.event === "pointermove" ? -1 : 0,
+    buttons: detail.buttons ?? 0, clientX: detail.x, clientY: detail.y,
+    ctrlKey: detail.ctrlKey === true, altKey: detail.altKey === true,
+    shiftKey: detail.shiftKey === true, metaKey: detail.metaKey === true,
+  })
+  return !target.dispatchEvent(event)
+}
+
 export type AIEditReviewAction = "accept" | "reject"
 
 export type AIEditReviewMessage = {

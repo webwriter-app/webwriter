@@ -585,6 +585,48 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.classList.contains("window-inactive")).toBe(true)
   })
 
+  it("keeps touch input reachable while the host window lacks focus", async () => {
+    const {iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    const matchMedia = window.matchMedia.bind(window)
+    vi.spyOn(window, "matchMedia").mockImplementation(query => query === "(pointer: coarse)"
+      ? {...matchMedia(query), matches: true} as MediaQueryList : matchMedia(query))
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    iframe.contentWindow!.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+  })
+
+  it("relays touch targeted at the iframe without duplicating native frame input", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const post = vi.spyOn(host, "postFrameControl")
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
+    const touch = (type: string, target: EventTarget = iframe, pointerId = 7) => {
+      const event = new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
+        pointerType: "touch", pointerId, isPrimary: pointerId === 7, clientX: 30, clientY: 50, buttons: 1})
+      target.dispatchEvent(event)
+      return event
+    }
+    expect(touch("pointerdown").defaultPrevented).toBe(true)
+    expect(post).toHaveBeenLastCalledWith("pointer", expect.objectContaining({event: "pointerdown", x: 20, y: 30, pointerId: 7}))
+    touch("pointerdown", iframe, 8)
+    touch("pointerup", iframe, 8)
+    touch("pointermove")
+    expect(post).toHaveBeenLastCalledWith("pointer", expect.objectContaining({event: "pointermove", pointerId: 7}))
+    touch("pointercancel")
+    const count = post.mock.calls.length
+    touch("pointermove")
+    touch("pointerdown", iframe.contentDocument!.body)
+    expect(post.mock.calls.length).toBe(count)
+    const mouse = new PointerEvent("pointerdown", {bubbles: true, pointerType: "mouse"})
+    iframe.dispatchEvent(mouse)
+    expect(mouse.defaultPrevented).toBe(false)
+    expect(post.mock.calls.length).toBe(count)
+  })
+
   it.each([false, true])("lets the opaque frame preserve selection before focusing (restore: %s)", async restoreSelection => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -3447,6 +3489,20 @@ describe("DomEditor file actions", () => {
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
   })
 
+  it("keeps the size warning dismissed until a new editor is loaded", async () => {
+    const {editor} = await mountEditor()
+    const warning = editor.shadowRoot!.querySelector<HTMLElement>(".size-warning")!
+    expect(warning.textContent).toContain("WebWriter may not work correctly at this size.")
+    warning.querySelector<HTMLButtonElement>("button")!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".size-warning")).toBeNull()
+    editor.requestUpdate()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".size-warning")).toBeNull()
+    const {editor: reloaded} = await mountEditor()
+    expect(reloaded.shadowRoot!.querySelector(".size-warning")).not.toBeNull()
+  })
+
   it("shows only accessible recently opened documents beside Layouts and in the Open submenu", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
@@ -3462,8 +3518,11 @@ describe("DomEditor file actions", () => {
     const entries = [...nav.querySelectorAll<HTMLButtonElement>(".document-layout-document")]
     expect(entries.map(button => button.title)).toEqual(documents.slice(0, 10).map(document => document.title))
     expect(nav.previousElementSibling?.classList.contains("document-layout-cards")).toBe(true)
-    expect(editor.shadowRoot!.querySelector(".document-layouts-heading #recent-documents-title")?.textContent).toBe("Recently opened")
+    expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-full-title")?.textContent).toBe("Recently opened")
+    expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-short-title")?.textContent).toBe("Recent")
     expect(nav.querySelector("h2")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-combined-title")?.textContent).toBe(" & Recently opened")
+    expect(editor.shadowRoot!.querySelectorAll(".document-layout-cards .layout-preset-icon svg")).toHaveLength(4)
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
     expect(ribbon.recentDocuments.map(document => document.title)).toEqual(entries.map(button => button.title))

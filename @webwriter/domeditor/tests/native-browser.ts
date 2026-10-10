@@ -5,7 +5,7 @@ import type {DomEditor} from "../src/components/dom-editor"
 import {$, caretRect, pathFromNode} from "../src/utility"
 import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
 import {floatSideFromStyles} from "../src/element-styles"
-import {initializeEditorMessage, replayHostDrag, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
+import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import * as Y from "yjs"
 
@@ -1117,6 +1117,67 @@ await check("editor command preserves a live selection", () => {
   assert(document.querySelector("#before > span")?.textContent === " inserted", `command did not insert at the selected caret: ${document.body.innerHTML}`)
 })
 
+await check("touch caret and ranges use shared pointer selection", async () => {
+  const lifecycle = document.querySelector<HTMLIFrameElement>("#lifecycle")!
+  for(let attempt = 0; attempt < 100 && !lifecycle.contentWindow?.editor; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  const paragraph = document.createElement("p")
+  paragraph.innerHTML = '<b>before</b><!--keep--><i>after</i>'
+  fixture.append(paragraph)
+  try {
+    paragraph.scrollIntoView()
+    await layoutFrame()
+    const before = paragraph.querySelector("b")!.firstChild!, after = paragraph.querySelector("i")!.firstChild!
+    const range = document.createRange()
+    const point = (node: Node) => {
+      range.setStart(node, 2); range.collapse(true)
+      const rect = range.getBoundingClientRect()
+      return {clientX: rect.left, clientY: rect.top + rect.height / 2}
+    }
+    const start = point(before), end = point(after)
+    const touch = (type: string, coordinates = start) => {
+      const event = new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
+        button: 0, pointerId: 71, pointerType: "touch", isPrimary: true, ...coordinates})
+      paragraph.dispatchEvent(event)
+      return event
+    }
+    assert(touch("pointerdown").defaultPrevented, "touch did not retain the editor caret")
+    const touchStart = new TouchEvent("touchstart", {bubbles: true, cancelable: true,
+      touches: [new Touch({identifier: 71, target: paragraph, ...start})]})
+    paragraph.dispatchEvent(touchStart)
+    assert(touchStart.defaultPrevented, "touch selection left native panning enabled")
+    touch("pointerup")
+    assert($.anchor === before && $.anchorOffset === 2 && $.isEmpty, "touch tap did not place the caret at the hit-tested point")
+    for(let tap = 0; tap < 2; tap++) {
+      touch("pointerdown"); touch("pointerup")
+      await layoutFrame()
+      const caret = editor.features.selection.selectionCaret!
+      assert(caret?.classList.contains("◆selection-caret-text") && getComputedStyle(caret).display !== "none"
+        && caret.getBoundingClientRect().height > 0, `touch release hid the shared text caret: ${caret?.getAttribute("part")}, ${caret && getComputedStyle(caret).display}, ${caret?.getBoundingClientRect().height}, focus ${document.activeElement?.localName}`)
+      assert(caret.getRootNode() === editor.appendix && !editor.toHTML(true).includes("◆touch-caret-visible"), "touch caret leaked into authored HTML")
+    }
+    touch("pointerdown")
+    touch("pointermove", end)
+    touch("pointerup", end)
+    assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2, "touch drag did not use shared range selection")
+    assert(!editor.features.selection.isInDragSelection && !document.body.classList.contains("◆selection-dragging"), "touch selection did not clean up")
+    const relay = (event: "pointerdown" | "pointermove" | "pointerup", coordinates = start) => replayHostPointer({
+      event, x: coordinates.clientX, y: coordinates.clientY, pointerId: 72, buttons: event === "pointerup" ? 0 : 1,
+    })
+    for(let tap = 0; tap < 2; tap++) {
+      relay("pointerdown"); relay("pointerup")
+      await layoutFrame()
+      assert($.anchor === before && $.anchorOffset === 2 && $.isEmpty
+        && document.body.classList.contains("◆touch-caret-visible"), "relayed touch tap lost the shared caret")
+    }
+    relay("pointerdown"); relay("pointermove", end); relay("pointerup", end)
+    assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2
+      && !editor.features.selection.isInDragSelection, "relayed touch did not retain and clean up the shared range")
+  }
+  finally {paragraph.remove()}
+})
+
 await check("selection feature treats custom element as atomic", async () => {
   const widget = fixture.querySelector("native-audit-widget")!
   $.selectElement(widget)
@@ -2183,6 +2244,15 @@ await check("Board columns and cards retain native editing and standalone layout
   assert(heroColumns.length === 3 && heroColumns.every(column => column.getBoundingClientRect().width > 35), "Board hero columns shrank to thin strips")
   const heroHeights = new Set(Array.from(shadow.querySelectorAll<HTMLElement>(".board-card"), card => card.getBoundingClientRect().height))
   assert(heroHeights.size === 3 && shadow.querySelectorAll(".layout-preset-line").length > 15 && shadow.querySelector(".mock-image"), "Board hero lacks varied cards and skeleton content")
+  for(const width of [120, 90, 160]) {
+    hero.style.width = `${width}px`
+    await layoutFrame()
+    const visible = heroColumns.filter(column => getComputedStyle(column).display !== "none")
+    assert(visible.length === (width < 160 ? 2 : 3), `Board hero did not adapt its column count at ${width}px: ${visible.length} columns, preview=${shadow.querySelector(".board")!.getBoundingClientRect().width}px, container=${getComputedStyle(shadow.querySelector(".board")!).container}`)
+    assert(visible.every(column => column.getBoundingClientRect().width > 30), "compact Board hero columns shrank to thin strips")
+    assert(visible.every(column => Math.abs(column.getBoundingClientRect().top - visible[0].getBoundingClientRect().top) < 1), "Board hero columns wrapped")
+    assert(shadow.querySelector(".board")!.scrollWidth <= shadow.querySelector(".board")!.clientWidth, "Board hero overflowed")
+  }
   hero.remove()
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
@@ -3496,6 +3566,317 @@ await check("iframe reactivation restores hit testing without changing the docum
     if(frame.contentDocument) Reflect.deleteProperty(frame.contentDocument, "hasFocus")
     frame.remove()
   }
+})
+
+await check("ribbon collapses when vertical space is constrained", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:400px;height:900px"
+  frame.srcdoc = '<!doctype html><style>body{margin:0}</style><script type="module">import {AppRibbon} from "/src/components/ribbon.ts"; const ribbon = new AppRibbon(); ribbon.style.setProperty("--ww-ui-transition", "none"); document.body.append(ribbon);</script>'
+  fixture.append(frame)
+  try {
+    let ribbon: import("../src/components/ribbon").AppRibbon | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      ribbon = frame.contentDocument?.querySelector("app-ribbon") ?? null
+      if(ribbon?.shadowRoot?.querySelector("ribbon-drawer")) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(ribbon?.shadowRoot, "ribbon fixture did not initialize")
+    for(const [width, height, expected] of [[400, 900, 140], [1200, 500, 40], [400, 500, 40], [400, 900, 140], [400, 500, 40]]) {
+      frame.style.width = `${width}px`
+      frame.style.height = `${height}px`
+      await layoutFrame(); await layoutFrame()
+      assert(Math.abs(ribbon!.getBoundingClientRect().height - expected) < 1, `ribbon height was not ${expected}px at ${width}x${height}`)
+      assert(ribbon!.expanded === (expected === 140), "ribbon state did not match its visible height")
+      assert(ribbon!.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!.hidden === (expected === 40), "collapsed ribbon left its drawers visible")
+    }
+    ribbon!.logoUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M0 0h24v24H0z"/></svg>'
+    await ribbon!.updateComplete; await layoutFrame()
+    const brand = ribbon!.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
+    const fileButton = ribbon!.shadowRoot!.querySelector('ribbon-tab[label="File"]')!.shadowRoot!.querySelector("button")!
+    const stableElements = [brand, brand.querySelector("img")!, fileButton.querySelector("file-label")!]
+    const closedBounds = stableElements.map(element => element.getBoundingClientRect())
+    brand.click()
+    await ribbon!.updateComplete; await layoutFrame()
+    assert(!ribbon!.expanded && ribbon!.menuOpen && Math.abs(ribbon!.getBoundingClientRect().height - 40) < 1, "short-screen app icon did not open File without expanding the ribbon")
+    assert(ribbon!.shadowRoot!.querySelector(".brand")!.getAttribute("aria-controls") === "ribbon-file-menu", "short-screen app icon did not identify the File menu")
+    const view = frame.contentWindow!
+    assert(view.getComputedStyle(brand, "::before").backgroundColor === view.getComputedStyle(fileButton).backgroundColor, "app icon did not share the open File tab background")
+    assert(view.getComputedStyle(fileButton).borderLeftColor === "rgba(0, 0, 0, 0)", "app icon and File tab retained a border seam")
+    stableElements.forEach((element, index) => {
+      const before = closedBounds[index], after = element.getBoundingClientRect()
+      assert((["x", "y", "width", "height"] as const).every(key => Math.abs(before[key] - after[key]) < 0.1), "opening File moved the app icon or label")
+    })
+    const menuBounds = ribbon!.shadowRoot!.querySelector("ribbon-menu")!.getBoundingClientRect()
+    assert(Math.abs(menuBounds.left - brand.getBoundingClientRect().left) < 0.1, "short-screen File menu did not align with the app icon")
+    brand.click()
+    await ribbon!.updateComplete; await layoutFrame()
+    assert(view.getComputedStyle(brand).backgroundColor === "rgba(0, 0, 0, 0)", "app icon retained its menu tab background after closing")
+
+    ribbon!.expanded = false
+    await ribbon!.updateComplete; await layoutFrame()
+    assert(Math.abs(ribbon!.getBoundingClientRect().height - 40) < 1, "manual ribbon collapse did not retain its normal height")
+  }
+  finally {frame.remove()}
+})
+
+await check("AI toolbox adapts its width and short-screen controls", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:900px;height:900px;background:white"
+  frame.src = "/"
+  fixture.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if(app?.shadowRoot?.querySelector("app-ribbon")?.shadowRoot?.querySelector(".ai-chat-brand-button")) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app?.shadowRoot, "AI app fixture did not initialize")
+    const ribbon = app!.shadowRoot!.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!.click()
+    const toolbox = app!.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!
+    for(let attempt = 0; attempt < 100 && (toolbox.activeTool !== "AI" || !toolbox.shadowRoot?.querySelector(".ai-chat-panel[data-open]")); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(toolbox.activeTool === "AI", "sparkles did not open AI toolbox")
+    const root = toolbox.shadowRoot!, view = frame.contentWindow!
+    const composer = root.querySelector<HTMLElement>(".ai-chat-composer")!
+    const tab = root.querySelector<HTMLElement>('[data-tool="AI"]')!
+    const controls = [root.querySelector<HTMLElement>(".ai-chat-switcher")!, ...root.querySelectorAll<HTMLElement>(".ai-chat-header-button")]
+    for(const [width, height] of [[900, 900], [380, 900], [399, 500], [400, 500], [900, 500], [380, 900]]) {
+      frame.style.width = `${width}px`
+      frame.style.height = `${height}px`
+      await new Promise(resolve => setTimeout(resolve, 250))
+      await layoutFrame()
+      const pane = toolbox.getBoundingClientRect(), page = app!.getBoundingClientRect()
+      if(width < 400) assert(Math.abs(pane.left - page.left - 1) < 1 && Math.abs(pane.width - page.width + 2) < 1, "narrow AI toolbox did not fill the page width")
+      else assert(pane.width === 216, "AI toolbox did not restore its normal width")
+      const prefix = root.querySelector<HTMLElement>(".ai-tab-label-prefix")!
+      assert((view.getComputedStyle(prefix).display === "none") === (height <= 600), "AI tab label did not adapt to screen height")
+      const expectedComposer = (height <= 600 ? 5.5 : 7) * parseFloat(view.getComputedStyle(frame.contentDocument!.documentElement).fontSize)
+      assert(Math.abs(composer.getBoundingClientRect().height - expectedComposer) < 1, "AI message box did not adapt to screen height")
+      if(height <= 600) {
+        const label = tab.getBoundingClientRect()
+        for(const control of controls) {
+          const bounds = control.getBoundingClientRect()
+          assert(Math.abs((bounds.top + bounds.bottom - label.top - label.bottom) / 2) < 1 && bounds.width === 24, "AI controls were not icon buttons beside the tab")
+          assert(control.contains(root.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)), "compact AI control was not clickable")
+        }
+        ribbon.aiChats = ribbon.aiChats.map(chat => chat.id === ribbon.activeAIChatId ? {...chat, title: "Test conversation"} : chat)
+        await ribbon.updateComplete
+        const previousChats = ribbon.aiChats.length
+        root.querySelector<HTMLButtonElement>('[aria-label="New chat"]')!.click()
+        await ribbon.updateComplete
+        assert(ribbon.aiChats.length === previousChats + 1, "compact new-chat button did not work")
+      }
+    }
+  }
+  finally {frame.remove()}
+})
+
+await check("narrow ribbons show only the AI sparkles button", async () => {
+  const {AppRibbon} = await import("../src/components/ribbon")
+  const ribbon = new AppRibbon()
+  ribbon.style.display = "block"
+  fixture.append(ribbon)
+  try {
+    await ribbon.updateComplete
+    ribbon.aiPrompt = "Keep this draft"
+    ribbon.fileName = "A long document filename.html"
+    await ribbon.updateComplete
+    const root = ribbon.shadowRoot!
+    const panel = root.querySelector<HTMLElement>(".ai-chat-panel")!
+    const composer = panel.querySelector<HTMLElement>(".ai-chat-composer")!
+    const sparkles = panel.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
+    const fileTab = root.querySelector<HTMLElement>('ribbon-tab[label="File"]')!
+    const fileLabel = fileTab.shadowRoot!.querySelector<HTMLElement>("file-label")!
+    const fileName = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!
+    const compactLabel = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-menu-label")!
+    for(const width of [1000, 650, 400, 1000]) {
+      ribbon.style.width = `${width}px`
+      await layoutFrame()
+      if(width < 700) {
+        assert(Math.abs(panel.getBoundingClientRect().width - 24) < 1, "narrow AI bar did not shrink to a button")
+        assert(getComputedStyle(composer).display === "none", "narrow AI bar still showed the composer")
+        assert(sparkles.getBoundingClientRect().width > 0 && getComputedStyle(sparkles).visibility === "visible", "sparkles button was hidden")
+        const buttonBox = panel.getBoundingClientRect(), iconBox = sparkles.querySelector("svg")!.getBoundingClientRect()
+        assert(Math.abs((buttonBox.left + buttonBox.right - iconBox.left - iconBox.right) / 2) < .5
+          && Math.abs((buttonBox.top + buttonBox.bottom - iconBox.top - iconBox.bottom) / 2) < .5,
+          "sparkles were not centered on the compact AI button")
+        assert(getComputedStyle(fileName).display === "none" && getComputedStyle(compactLabel).display !== "none", "narrow File menu still showed the filename")
+        assert(compactLabel.textContent === "File" && fileTab.getBoundingClientRect().width < 100, "compact File label retained filename space")
+      }
+      else {
+        assert(panel.getBoundingClientRect().width > 124, "wide AI bar did not expand")
+        assert(getComputedStyle(composer).display !== "none" && getComputedStyle(composer).visibility === "visible", "wide AI composer did not return")
+        assert(getComputedStyle(fileName).display !== "none" && getComputedStyle(compactLabel).display === "none", "wide File menu did not restore the filename")
+      }
+      assert(panel.querySelector<HTMLTextAreaElement>("textarea")!.value === "Keep this draft", "responsive AI bar lost its draft")
+      assert(fileName.textContent === "A long document filename.html", "responsive File menu lost its filename")
+    }
+    ribbon.style.width = "400px"
+    await layoutFrame()
+    sparkles.click()
+    await ribbon.updateComplete
+    assert(ribbon.aiChatOpen && sparkles.getAttribute("aria-expanded") === "true", "compact sparkles button did not open AI chat")
+  }
+  finally {ribbon.remove()}
+})
+
+await check("recent documents fit one layout card when space is limited", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
+  frame.src = "/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if(app?.shadowRoot?.querySelector(".document-layouts-documents")) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app?.shadowRoot, "app did not initialize")
+    const host = app as any
+    await host.recentDocumentsReady
+    host.backendSession = {apiBaseUrl: "https://storage.example/api", user: {id: "ada"}}
+    host.backendClient = {session: host.backendSession}
+    host.savedDocuments = Array.from({length: 10}, (_, index) => ({id: `doc-${index}`, title: `Lesson ${index}`, format: "html", updatedAt: "2026-10-10T12:00:00Z"}))
+    host.recentDocuments = host.savedDocuments.map((entry: {id: string; title: string}, index: number) => ({
+      id: `recent-${index}`, title: entry.title, openedAt: 100 - index, kind: "backend",
+      documentId: entry.id, apiBaseUrl: host.backendSession.apiBaseUrl, userId: "ada",
+    }))
+    await host.refreshRecentDocuments()
+    await app!.updateComplete
+    const root = app!.shadowRoot!, bar = root.querySelector<HTMLElement>(".document-layouts-bar")!
+    const nav = root.querySelector<HTMLElement>(".document-layouts-documents")!
+    const list = nav.querySelector<HTMLElement>("ul")!
+    assert(list?.children.length === 10, "recent entries were lost")
+    let singleRowHeight = 0
+    for(const width of [1200, 1000, 950, 800, 680, 650, 600, 400, 800, 1200]) {
+      bar.style.width = `${width}px`
+      await layoutFrame()
+      const card = root.querySelector<HTMLElement>(".layout-preset")!.getBoundingClientRect()
+      const recent = nav.getBoundingClientRect()
+      if(width === 680) singleRowHeight = bar.getBoundingClientRect().height
+      const headingView = frame.contentWindow!
+      assert((headingView.getComputedStyle(root.querySelector(".recent-documents-short-title")!).display !== "none") === (width <= 650), "recent heading did not shorten in the narrow layout")
+      assert((headingView.getComputedStyle(root.querySelector(".recent-documents-full-title")!).display !== "none") === (width > 650), "recent heading did not restore at wider widths")
+      assert(Math.abs(card.top - recent.top) < 1, `recent list wrapped at ${width}px`)
+      if(width < 1000) {
+        assert(Math.abs(card.width * 1.25 - recent.width) < 1,
+          `recent list was not 25% wider than a layout card at ${width}px`)
+        const cards = [...root.querySelectorAll<HTMLElement>(".document-layout-cards .layout-preset")].map(element => element.getBoundingClientRect())
+        if(width <= 650) {
+          assert(Math.abs(bar.getBoundingClientRect().height - singleRowHeight) < 1, "2x2 layout grid increased the pane height")
+          assert(Math.abs(cards[0].top - cards[1].top) < 1 && Math.abs(cards[2].top - cards[3].top) < 1
+            && cards[2].top > cards[0].bottom && Math.abs(cards[0].left - cards[2].left) < 1
+            && Math.abs(cards[1].left - cards[3].left) < 1, "narrow layout cards did not form a 2x2 grid")
+          assert(recent.left > cards[1].right && Math.abs(recent.bottom - cards[3].bottom) < 1,
+            "recent list did not span both card rows")
+          for(const element of root.querySelectorAll<HTMLElement>(".document-layout-cards .layout-preset")) {
+            const box = element.getBoundingClientRect()
+            const hero = element.querySelector(".document-layout-preview")!.getBoundingClientRect()
+            const label = element.querySelector(".layout-preset-name")!.getBoundingClientRect()
+            assert(Math.abs(hero.left - box.left - 1) < 1 && Math.abs(hero.top - box.top - 1) < 1
+              && Math.abs(hero.width - box.width + 2) < 1 && Math.abs(hero.height - box.height + 2) < 1,
+              "2x2 card hero did not fill the card")
+            assert(Math.abs((label.left + label.right - box.left - box.right) / 2) < 1
+              && Math.abs((label.top + label.bottom - box.top - box.bottom) / 2) < 1,
+              "2x2 card label was not centered over its hero")
+          }
+        }
+        else {
+          assert(cards.every(box => Math.abs(box.top - card.top) < 1), "layout cards did not restore one row")
+          assert(Math.abs(card.height - recent.height) < 1, "recent list did not match the card row height")
+        }
+        assert(list.scrollHeight > list.clientHeight, "compact list did not scroll")
+        const last = list.querySelectorAll<HTMLButtonElement>("button")[9]
+        last.focus()
+        assert(list.scrollTop > 0, "keyboard focus did not reveal the last entry")
+        assert(Math.abs(root.querySelector("#recent-documents-title")!.getBoundingClientRect().left - recent.left) < 1,
+          "recent heading did not align with its card")
+      }
+      else {
+        assert(recent.width > card.width * 1.9, "wide list did not restore two columns")
+        const rem = parseFloat(frame.contentWindow!.getComputedStyle(frame.contentDocument!.documentElement).fontSize)
+        assert(Math.abs(card.width - (10 * rem - 10)) < 1, "layout cards did not shrink by 10px")
+      }
+    }
+    const fullHeight = bar.getBoundingClientRect().height
+    frame.style.height = "500px"
+    for(const width of [1200, 800, 400]) {
+      bar.style.width = `${width}px`
+      await layoutFrame(); await layoutFrame()
+      const height = bar.getBoundingClientRect().height
+      assert(height >= fullHeight * .45 && height <= fullHeight * .55, "short layout panel was not half-height")
+      const cards = [...root.querySelectorAll<HTMLElement>(".document-layout-cards .layout-preset")]
+      assert(cards.every(card => Math.abs(card.getBoundingClientRect().top - cards[0].getBoundingClientRect().top) < 1), "short layout cards did not form one row")
+      const view = frame.contentWindow!
+      assert(cards.every(card => view.getComputedStyle(card.querySelector(".document-layout-preview")!).display === "none"
+        && view.getComputedStyle(card.querySelector(".layout-preset-icon")!).display !== "none"), "short layout cards did not show only icons and names")
+      assert(view.getComputedStyle(root.querySelector(".document-layouts-combined-title")!).display !== "none"
+        && view.getComputedStyle(root.querySelector("#recent-documents-title")!).display === "none", "short panel did not use its combined heading")
+      list.scrollTop = 0
+      const entries = [...list.querySelectorAll<HTMLElement>("li")].map(entry => entry.getBoundingClientRect())
+      assert(Math.abs(entries[0].top - entries[1].top) < 1 && Math.abs(entries[2].top - entries[3].top) < 1
+        && entries[2].top > entries[0].bottom && Math.abs(entries[0].left - entries[2].left) < 1,
+        "short recent list did not form a 2x2 grid")
+      assert(nav.getBoundingClientRect().top > cards[0].getBoundingClientRect().bottom, "recent documents were not below the layout row")
+      list.querySelectorAll<HTMLButtonElement>("button")[0].focus()
+      list.querySelectorAll<HTMLButtonElement>("button")[9].focus()
+      assert(list.scrollTop > 0, "short recent list lost keyboard access to later entries")
+    }
+    frame.style.height = "900px"
+    bar.style.width = "1200px"
+    await layoutFrame(); await layoutFrame()
+    assert(Math.abs(bar.getBoundingClientRect().height - fullHeight) < 1, "layout panel did not restore its full height")
+    assert(frame.contentWindow!.getComputedStyle(root.querySelector(".document-layouts-combined-title")!).display === "none", "full layout panel kept its combined heading")
+    const warning = root.querySelector<HTMLElement>(".size-warning")!
+    assert(warning.textContent!.includes("WebWriter may not work correctly at this size."), "size warning text changed")
+    for(const [width, height, visible] of [[300, 900, false], [299, 900, true], [900, 300, false], [900, 299, true], [900, 900, false]] as const) {
+      frame.style.width = `${width}px`
+      frame.style.height = `${height}px`
+      await layoutFrame(); await layoutFrame()
+      assert((frame.contentWindow!.getComputedStyle(warning).display !== "none") === visible, `size warning threshold failed at ${width}x${height}`)
+      if(visible) {
+        const banner = warning.getBoundingClientRect()
+        const ribbon = root.querySelector("app-ribbon")!.getBoundingClientRect()
+        assert(banner.height > 0 && banner.bottom <= ribbon.top + 1, "size warning obscured the ribbon")
+      }
+    }
+    for(const [width, height] of [[99, 99], [75, 75], [50, 50], [50, 900], [900, 50]]) {
+      frame.style.width = `${width}px`
+      frame.style.height = `${height}px`
+      await layoutFrame(); await layoutFrame()
+      const view = frame.contentWindow!
+      const banner = warning.getBoundingClientRect()
+      const text = warning.querySelector<HTMLElement>("span")!
+      const dismiss = warning.querySelector<HTMLButtonElement>("button")!.getBoundingClientRect()
+      const fontSize = parseFloat(view.getComputedStyle(text).fontSize)
+      assert(fontSize >= 6 && fontSize < 12, "tiny banner font did not scale within its readable range")
+      assert(banner.right <= width && banner.bottom <= height, `size warning did not fit at ${width}x${height}`)
+      const range = frame.contentDocument!.createRange()
+      range.selectNodeContents(text)
+      const lines = [...range.getClientRects()]
+      assert(lines.every(line => line.left >= banner.left && line.right <= banner.right && line.bottom <= banner.bottom), "tiny warning text was clipped")
+      assert(dismiss.right <= width && dismiss.bottom <= height && dismiss.width >= 6, "tiny warning dismiss button was clipped")
+      assert(view.getComputedStyle(warning.querySelector("button")!).float === "right"
+        && dismiss.height <= parseFloat(view.getComputedStyle(text).lineHeight) + .1, "tiny close button did not float within one text line")
+      assert(lines[0].right <= dismiss.left + 1, "tiny warning text did not flow around the close button")
+    }
+    frame.style.width = "299px"
+    frame.style.height = "900px"
+    await layoutFrame()
+    warning.querySelector<HTMLButtonElement>("button")!.click()
+    await app!.updateComplete
+    assert(!root.querySelector(".size-warning"), "size warning did not dismiss")
+    frame.style.width = "900px"
+    await layoutFrame()
+    frame.style.width = "299px"
+    await layoutFrame()
+    assert(!root.querySelector(".size-warning"), "size warning returned after resizing")
+  }
+  finally { frame.remove() }
 })
 
 await check("bottom layout cards retain native editing focus after rendering", async () => {

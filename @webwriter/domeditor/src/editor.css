@@ -1515,6 +1515,15 @@ body::part(selection-caret-text) {
   background: currentColor;
 }
 
+body.◆touch-caret-visible,
+body.◆touch-caret-visible * {
+  caret-color: transparent !important;
+}
+
+body.◆touch-caret-visible::part(selection-caret-text) {
+  animation: var(--ww-ui-animation, blink 1s step-end infinite);
+}
+
 body.◆drop-selection-active::part(selection-caret-text),
 body.◆drop-selection-active::part(selection-caret-gap),
 body.◆insertion-gap-preview::part(selection-caret-gap),

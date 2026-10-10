@@ -177,6 +177,22 @@ describe("AI prompt ribbon", () => {
     }))
   })
 
+  it("preserves a draft when the sparkles button opens and closes the toolbox chat", async () => {
+    const ribbon = await mountRibbon()
+    ribbon.aiPrompt = "Continue this draft"
+    await ribbon.updateComplete
+    const sparkles = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
+    sparkles.click()
+    await ribbon.updateComplete
+    expect(ribbon.aiToolboxTarget!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.value).toBe("Continue this draft")
+    expect(sparkles.getAttribute("aria-expanded")).toBe("true")
+    sparkles.click()
+    await ribbon.updateComplete
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect(ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.value).toBe("Continue this draft")
+    expect(ribbon.shadowRoot!.activeElement).toBe(sparkles)
+  })
+
   it("expands into a multiline chat with history, new chats, and chat switching", async () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)

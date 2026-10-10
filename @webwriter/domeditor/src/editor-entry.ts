@@ -1,5 +1,5 @@
 import { DOMEditor } from "./domeditor"
-import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag} from "./editor-bridge"
+import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
 import {isAppendixInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
 
@@ -123,6 +123,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     else if(data.command === "shortcuts" && data.shortcuts) shortcuts = data.shortcuts
     else if(data.command === "username" && typeof data.username === "string") setUsername(data.username)
     else if(data.command === "drag") replayHostDrag(event.data)
+    else if(data.command === "pointer") replayHostPointer(event.data)
   })
   void editor
 }

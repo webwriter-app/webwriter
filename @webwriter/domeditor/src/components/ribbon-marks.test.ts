@@ -71,6 +71,10 @@ describe("mark ribbon controls", () => {
     await fileLabel.updateComplete
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.textContent).toBe("lesson")
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.tagName).toBe("STRONG")
+    const compactLabel = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-menu-label")!
+    expect(compactLabel.textContent).toBe("File")
+    expect(compactLabel.title).toBe("lesson")
+    expect(getComputedStyle(compactLabel).display).toBe("none")
     expect(fileLabel.shadowRoot!.querySelector(".location-icon")).toBeNull()
     expect(fileLabel.shadowRoot!.querySelector("button")).toBeNull()
     const fileChevron = fileTab.shadowRoot!.querySelector<HTMLElement>(".file-chevron")!
@@ -315,6 +319,47 @@ describe("mark ribbon controls", () => {
       expect(getComputedStyle(button).minWidth).toBe("24px")
       expect(button.shadowRoot!.querySelector(".main-button")).not.toBeNull()
     }
+  })
+
+  it("collapses for short viewports and restores the prior expansion state", async () => {
+    const previousHeight = window.innerHeight
+    try {
+      window.innerHeight = 500
+      const {ribbon} = await mountRibbon()
+      expect(ribbon.expanded).toBe(false)
+      expect(ribbon.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!.hidden).toBe(true)
+      const appButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
+      expect(appButton.getAttribute("aria-label")).toBe("Open File menu")
+      appButton.click()
+      await ribbon.updateComplete
+      expect(ribbon.expanded).toBe(false)
+      expect(ribbon.menuOpen).toBe(true)
+      expect(ribbon.shadowRoot!.querySelector(".ribbon-top")!.hasAttribute("data-app-menu-tab")).toBe(true)
+      expect(appButton.getAttribute("aria-expanded")).toBe("true")
+      appButton.click()
+      await ribbon.updateComplete
+      expect(ribbon.menuOpen).toBe(false)
+      expect(ribbon.shadowRoot!.querySelector(".ribbon-top")!.hasAttribute("data-app-menu-tab")).toBe(false)
+      ribbon.expanded = true
+      await ribbon.updateComplete
+      expect(ribbon.expanded).toBe(false)
+      window.innerHeight = 900
+      window.dispatchEvent(new Event("resize"))
+      await ribbon.updateComplete
+      expect(ribbon.expanded).toBe(true)
+      ribbon.expanded = false
+      await ribbon.updateComplete
+      window.innerHeight = 500
+      window.dispatchEvent(new Event("resize"))
+      await ribbon.updateComplete
+      expect(appButton.getAttribute("aria-label")).toBe("Open File menu")
+      window.innerHeight = 900
+      window.dispatchEvent(new Event("resize"))
+      await ribbon.updateComplete
+      expect(ribbon.expanded).toBe(false)
+      expect(appButton.getAttribute("aria-label")).toBe("Expand ribbon")
+    }
+    finally {window.innerHeight = previousHeight}
   })
 
   it("starts at full height before enabling transitions for app-button toggles", async () => {

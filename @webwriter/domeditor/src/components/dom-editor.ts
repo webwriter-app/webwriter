@@ -119,6 +119,7 @@ import {
   type CommentState,
   type RibbonDropPosition,
   type HostDragDetail,
+  type HostPointerDetail,
 } from "../editor-bridge"
 import {elementStylePropertyNames, paragraphStylePropertyNameSet, type FloatSide} from "../element-styles"
 import "./breadcrumb"
@@ -463,6 +464,7 @@ export class DomEditor extends LitElement {
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     documentLayoutsDismissed: {attribute: false, state: true},
+    sizeWarningDismissed: {state: true},
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     documentLoading: {attribute: false, state: true},
@@ -655,6 +657,7 @@ export class DomEditor extends LitElement {
   private fileName = ""
   private fileDirty = false
   private documentLayoutsDismissed = false
+  private sizeWarningDismissed = false
   private documentLayoutConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
@@ -679,6 +682,7 @@ export class DomEditor extends LitElement {
   private previewFramePending = false
   /** Data of the ribbon drag in progress, relayed to the editor frame. */
   private ribbonDrag: Record<string, string> | null = null
+  private frameTouchPointer: number | null = null
   private previewDocumentHTML: string | null = null
   private previewFrameRevision = 0
   private previewShellRevision = -1
@@ -768,9 +772,23 @@ export class DomEditor extends LitElement {
       display: contents;
     }
 
-    app-ribbon {
+    .ribbon-header {
       grid-row: 1;
       grid-column: 1 / -1;
+      min-width: 0;
+    }
+
+    .size-warning {display: none; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
+    .size-warning span {flex: 1; min-width: 0}
+    .size-warning button {order: 1; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
+    .size-warning button:hover {background: rgb(101 85 43 / 10%)}
+    .size-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    @media (width < 300px), (height < 300px) {
+      .size-warning {display: flex}
+    }
+    @media (width < 100px), (height < 100px) {
+      .size-warning {display: flow-root; box-sizing: border-box; max-width: calc(100vw - 1px); padding: clamp(2px, min(4vw, 4vh), 4px); font-size: clamp(6px, min(12vw, 12vh), 12px)}
+      .size-warning button {float: right; width: 1.3em; height: 1.3em; margin-left: .25em; font: inherit}
     }
 
     dom-editor-breadcrumb,
@@ -883,6 +901,10 @@ export class DomEditor extends LitElement {
       grid-row: 2 / 4;
       grid-column: 2;
       justify-self: end;
+    }
+
+    @media (width < 400px) {
+      dom-editor-toolbox[active-tool="AI"] {grid-column: 1 / -1; justify-self: stretch; width: 100%}
     }
 
     dom-editor-toolbox:not([active-tool]) {
@@ -1012,6 +1034,7 @@ export class DomEditor extends LitElement {
       box-sizing: border-box;
       transition: var(--ww-ui-transition, transform 180ms ease);
       min-width: 0;
+      container: document-layouts / inline-size;
       padding: 0.55rem 0.8rem 0.65rem;
       border-top: 1px solid #c8c8c8;
       background: #f2f2f2;
@@ -1024,7 +1047,9 @@ export class DomEditor extends LitElement {
     .document-layouts-close:hover { background: #e2e5e9; }
     .document-layouts-close:focus-visible { outline: 2px solid #5e91bf; outline-offset: 2px; }
     .document-layouts-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
-    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 10rem)); gap: 0.45rem; }
+    .document-layouts-combined-title {display: none}
+    .recent-documents-short-title {display: none}
+    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, calc(10rem - 10px))); gap: 0.45rem; }
     .document-layouts-bar .layout-preset { min-height: 0; }
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
@@ -1040,6 +1065,43 @@ export class DomEditor extends LitElement {
     .document-layouts-documents button:disabled {opacity: .5; cursor: default}
     .document-layouts-documents p {margin: .3rem 0; color: #687383; font-size: .7rem}
 
+    @container document-layouts (max-width: calc(63rem - 40px)) {
+      .document-layouts-options {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.25fr); align-items: stretch; gap: .45rem}
+      .document-layouts-bar .document-layout-cards {grid-column: span 4; grid-template-columns: repeat(4, minmax(0, 1fr))}
+      .document-layouts-bar .recent-documents-title {width: calc((100% - 1.8rem) / 5.25 * 1.25)}
+      .document-layouts-documents {position: relative; width: 100%; margin-left: 0; min-height: 0}
+      .document-layouts-documents ul {position: absolute; inset: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: 1.6rem; grid-auto-flow: row; overflow-y: auto; padding: 2px; box-sizing: border-box}
+    }
+
+    @container document-layouts (max-width: 40rem) {
+      .document-layouts-options {grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.25fr); height: calc(6.45rem + 2px)}
+      .document-layouts-bar .document-layout-cards {grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); min-height: 0}
+      .document-layouts-bar .document-layout-preview {height: 0; min-height: 0; flex: 1 1 auto}
+      .document-layouts-bar .recent-documents-title {width: calc((100% - .9rem) / 3.25 * 1.25)}
+      .recent-documents-full-title {display: none}
+      .recent-documents-short-title {display: inline}
+      @media (min-height: 601px) {
+        .document-layouts-bar .layout-preset {position: relative; padding: 0; gap: 0}
+        .document-layouts-bar .document-layout-preview {position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: inherit}
+        .document-layouts-bar .layout-preset-name {position: absolute; z-index: 1; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: calc(100% - .5rem); box-sizing: border-box; padding: .2rem .35rem; border-radius: .25rem; background: rgb(255 255 255 / 85%)}
+      }
+    }
+
+    @media (max-height: 600px) {
+      .document-layouts-bar {padding-block: .25rem; min-height: 5.85rem}
+      .document-layouts-heading {min-height: 1rem; margin-bottom: .2rem}
+      .document-layouts-combined-title {display: inline}
+      .document-layouts-bar .recent-documents-title {display: none}
+      .document-layouts-options {display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1.25rem 2.6rem; gap: .15rem; height: auto}
+      .document-layouts-bar .document-layout-cards {grid-column: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none; gap: .3rem}
+      .document-layouts-bar .layout-preset {flex-direction: row; align-items: center; justify-content: center; gap: .25rem; padding: 0 .25rem}
+      .document-layouts-bar .document-layout-preview {display: none}
+      .document-layouts-bar .layout-preset-icon {display: block; flex: 0 0 .85rem; width: .85rem; height: .85rem}
+      .document-layouts-bar .layout-preset-icon svg {display: block; width: 100%; height: 100%}
+      .document-layouts-documents {grid-column: 1; position: relative; width: 100%; margin: 0; min-height: 0}
+      .document-layouts-documents ul {position: absolute; inset: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-flow: row; grid-auto-rows: calc((100% - .15rem) / 2); gap: .15rem .45rem; padding: 2px; box-sizing: border-box; overflow-y: auto}
+    }
+
     iframe {
       display: block;
       flex: 1 1 auto;
@@ -1054,6 +1116,14 @@ export class DomEditor extends LitElement {
 
     iframe.window-inactive {
       pointer-events: none;
+    }
+
+    /* Touch must be able to focus the frame even while DevTools owns focus.
+     * Retiring the hit-test target is only needed for mouse cursor refresh. */
+    @media (pointer: coarse) {
+      iframe.window-inactive {
+        pointer-events: auto;
+      }
     }
   `
 
@@ -2325,6 +2395,33 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private relayFrameTouch = (event: PointerEvent) => {
+    const frame = this.editorIframe()
+    if(!frame || this.previewActive || event.pointerType !== "touch") return
+    if(event.type === "pointerdown") {
+      if(event.isPrimary === false || event.composedPath()[0] !== frame) return
+      this.frameTouchPointer = event.pointerId
+      try { frame.setPointerCapture(event.pointerId) } catch { /* Synthetic browser tests have no active pointer. */ }
+    }
+    if(this.frameTouchPointer !== event.pointerId) return
+    event.preventDefault()
+    const rect = frame.getBoundingClientRect()
+    this.postFrameControl("pointer", {
+      event: event.type === "lostpointercapture" ? "pointercancel" : event.type as HostPointerDetail["event"],
+      x: event.clientX - rect.left, y: event.clientY - rect.top,
+      pointerId: event.pointerId, buttons: event.buttons,
+      ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, metaKey: event.metaKey,
+    } satisfies HostPointerDetail)
+    if(event.type === "pointerup" || event.type === "pointercancel" || event.type === "lostpointercapture") {
+      this.frameTouchPointer = null
+      if(frame.hasPointerCapture?.(event.pointerId)) frame.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  private handleFrameTouchStart = (event: TouchEvent) => {
+    if(this.frameTouchPointer !== null && event.touches.length === 1) event.preventDefault()
+  }
+
   private dismissEditorMenus() {
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
@@ -2381,7 +2478,7 @@ export class DomEditor extends LitElement {
     // Entering a child frame also blurs the host Window. Check the completed
     // focus change before treating it as a switch to another app/window.
     queueMicrotask(() => {
-      if(!this.isConnected || this.ownerDocument.hasFocus()) return
+      if(!this.isConnected || this.ownerDocument.hasFocus() || matchMedia("(pointer: coarse)").matches) return
       // Retire Chrome's iframe hit-test target while inactive, so returning
       // directly to the frame refreshes native cursors without a ribbon detour.
       this.editorIframe()?.classList.add("window-inactive")
@@ -6636,6 +6733,7 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.frameTouchPointer = null
     this.cancelFileInput?.()
     this.recentRefreshGeneration++
     clearTimeout(this.frameStartTimer)
@@ -6868,6 +6966,11 @@ export class DomEditor extends LitElement {
     const documentLoading = this.documentLoading || this.linkedDocumentLoading
     return html`
       <header class="app-bar">
+        <div class="ribbon-header">
+          ${this.sizeWarningDismissed ? "" : html`<div class="size-warning" role="alert">
+            <button type="button" aria-label="Dismiss size warning" title="Dismiss" @click=${() => {this.sizeWarningDismissed = true}}>×</button>
+            <span>WebWriter may not work correctly at this size.</span>
+          </div>`}
         <app-ribbon
           ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
           ?inert=${this.htmlPending}
@@ -6914,6 +7017,7 @@ export class DomEditor extends LitElement {
           @package-catalog-request=${this.loadPackageCatalog}
           @app-settings-change=${this.handleAppSettingsChange}
         ></app-ribbon>
+        </div>
         ${this.previewActive ? html`
           <live-session-controls
             .playing=${this.liveStreamPlaying}
@@ -6989,6 +7093,9 @@ export class DomEditor extends LitElement {
           ?hidden=${this.previewActive && !this.previewFramePending}
           ?inert=${this.previewActive}
           @load=${this.handleEditorFrameLoad}
+          @pointerdown=${this.relayFrameTouch} @pointermove=${this.relayFrameTouch}
+          @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}
+          @lostpointercapture=${this.relayFrameTouch} @touchstart=${this.handleFrameTouchStart}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
         ></iframe>` : ""}
         ${this.ribbonDrag && !this.previewActive ? html`<div class="ribbon-drag-shield"
@@ -7074,8 +7181,8 @@ export class DomEditor extends LitElement {
           <div class="document-layouts-clip">
             <section class="document-layouts-bar" aria-labelledby="document-layouts-title">
               <div class="document-layouts-heading">
-                <h2 id="document-layouts-title">Layouts</h2>
-                <h2 id="recent-documents-title" class="recent-documents-title">Recently opened</h2>
+                <h2 id="document-layouts-title">Layouts<span class="document-layouts-combined-title"> &amp; Recently opened</span></h2>
+                <h2 id="recent-documents-title" class="recent-documents-title"><span class="recent-documents-full-title">Recently opened</span><span class="recent-documents-short-title">Recent</span></h2>
                 <button class="document-layouts-close" type="button" aria-label="Hide layouts" title="Hide layouts"
                   @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
                   @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}

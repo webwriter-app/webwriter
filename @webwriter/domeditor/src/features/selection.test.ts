@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { DOMEditor } from "../domeditor"
 import { SelectionFeature } from "./selection"
 import { $ } from "../utility"
-import { selectionChangeEvent } from "../editor-bridge"
+import { replayHostPointer, selectionChangeEvent } from "../editor-bridge"
 
 let editor: DOMEditor
 let feature: SelectionFeature
@@ -3372,6 +3372,124 @@ describe("selection invariants", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
     return paragraph
   }
+
+  describe("touch uses shared pointer selection", () => {
+    it("routes iframe-targeted touch through the same caret and range selection", () => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      vi.spyOn(document, "elementFromPoint").mockReturnValue(paragraph)
+      const relay = (event: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", x = 20) =>
+        replayHostPointer({event, x, y: 30, pointerId: 7, buttons: event === "pointerup" ? 0 : 1})
+      expect(relay("pointerdown")).toBe(true)
+      relay("pointerup")
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      expect(document.body).toHaveClass("◆touch-caret-visible")
+      relay("pointerdown")
+      relay("pointermove", 40)
+      expect($.anchorOffset).toBe(2)
+      expect($.focusOffset).toBe(4)
+      relay("pointercancel", 40)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(editor.toHTML(true)).not.toContain("◆")
+      expect(replayHostPointer({event: "pointerdown", x: NaN, y: 30, pointerId: 7})).toBe(false)
+    })
+
+    function touch(target: EventTarget, type: string, x = 20, y = 30, pointerId = 7) {
+      const event = new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
+        button: 0, pointerType: "touch", isPrimary: pointerId === 7, pointerId, clientX: x, clientY: y})
+      target.dispatchEvent(event)
+      return event
+    }
+
+    function touchStart(target: EventTarget) {
+      const event = new Event("touchstart", {bubbles: true, composed: true, cancelable: true})
+      Object.defineProperty(event, "touches", {value: [{identifier: 7}]})
+      target.dispatchEvent(event)
+      return event
+    }
+
+    it("places a caret on tap without compatibility mouse events", () => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      expect(touch(paragraph, "pointerdown").defaultPrevented).toBe(true)
+      expect(touchStart(paragraph).defaultPrevented).toBe(true)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      // A browser focus action must not replace the shared hit-test result.
+      $.move(text, 0)
+      touch(paragraph, "pointerup")
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      expect($.isEmpty).toBe(true)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(touchStart(paragraph).defaultPrevented).toBe(false)
+      for(let tap = 0; tap < 2; tap++) {
+        touch(paragraph, "pointerdown", 30 + tap * 10)
+        touch(paragraph, "pointerup", 30 + tap * 10)
+        document.dispatchEvent(new Event("selectionchange"))
+        expect(feature.selectionCaret).toHaveClass("◆selection-caret-text")
+        expect(feature.selectionCaret!.getAttribute("part")).not.toContain("selection-caret-hidden")
+        expect(document.body).toHaveClass("◆touch-caret-visible")
+      }
+      pointer(paragraph, "pointerdown", 20, 30)
+      pointer(paragraph, "pointerup", 20, 30)
+      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      expect(feature.selectionCaret!.getAttribute("part")).toContain("selection-caret-hidden")
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointerup")
+      feature.disable()
+      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      expect(feature.selectionCaret).toBeNull()
+    })
+
+    it.each(["pointerup", "pointercancel", "lostpointercapture"])("extends a range through irregular inline DOM and cleans up on %s", ending => {
+      document.body.innerHTML = '<section><p><b>hello</b><!--keep--><i>world</i></p></section>'
+      const paragraph = document.querySelector("p")!, before = paragraph.querySelector("b")!.firstChild!, after = paragraph.querySelector("i")!.firstChild!
+      vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
+      vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
+      vi.spyOn(document, "caretPositionFromPoint").mockImplementation(x => ({offsetNode: x < 50 ? before : after, offset: 2}) as unknown as CaretPosition)
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointermove", 80)
+      expect($.anchor).toBe(before)
+      expect($.focus).toBe(after)
+      expect(document.getSelection()!.toString()).toBe("llowo")
+      expect(document.body).toHaveClass("◆selection-dragging")
+      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      touch(paragraph, ending, 80)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(document.body).not.toHaveClass("◆selection-dragging")
+      expect(editor.toHTML(true)).not.toContain("◆")
+    })
+
+    it("ignores a second finger while extending the first finger's range", () => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointerdown", 40, 30, 8)
+      touch(paragraph, "pointerup", 40, 30, 8)
+      touch(paragraph, "pointermove", 40)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      expect($.focusOffset).toBe(4)
+    })
+
+    it("leaves widget shadow controls and appendix buttons native", () => {
+      const paragraph = textDocument()
+      hitTest()
+      $.move(paragraph.firstChild!, 1)
+      const widget = document.querySelector("second-widget")!, control = document.createElement("button")
+      widget.attachShadow({mode: "open"}).append(control)
+      expect(touch(control, "pointerdown").defaultPrevented).toBe(false)
+      expect(touchStart(control).defaultPrevented).toBe(false)
+      expect(feature.captureSelectedWidget).toBe(widget)
+      const button = document.createElement("button")
+      editor.addAppendix(button)
+      expect(touch(button, "pointerdown").defaultPrevented).toBe(false)
+      expect(touchStart(button).defaultPrevented).toBe(false)
+      expect(feature.isInDragSelection).toBe(false)
+    })
+  })
 
   describe.each(["canvas", "slides"] as const)("root-bounded text dragging in %s", mode => {
     afterEach(() => { document.body.className = "" })

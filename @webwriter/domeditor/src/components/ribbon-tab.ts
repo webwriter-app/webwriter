@@ -146,6 +146,7 @@ export class RibbonTab extends LitElement {
     const isFileTab = this.label === "File"
     return html`
       <button
+        part="button"
         type="button"
         role=${isFileTab ? "button" : "tab"}
         aria-selected=${isFileTab ? nothing : this.active}
