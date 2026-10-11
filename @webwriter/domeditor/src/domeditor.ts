@@ -32,7 +32,7 @@ import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isEditorOwnedAttribute, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
+import { $, adoptStylesheet, clearEditorArtifacts, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   editorFrameControlMessage,
@@ -756,6 +756,7 @@ export class DOMEditor {
       || selection.anchorNode === document.body || selection.focusNode === document.body
       || !selection.anchorNode.isConnected || !selection.focusNode.isConnected
     const defaultBlock = this.schema.ensureStaticContent(document.body)
+    if(defaultBlock) this.doc?.markMinimumContentRepair(defaultBlock)
     if(moveSelection && defaultBlock) $.move(defaultBlock)
     return defaultBlock
   }
@@ -1614,21 +1615,7 @@ export class DOMEditor {
   }
   
   clearEditingArtifacts(node: Document | DocumentFragment = document) {
-    const clean = (root: ParentNode) => Array.from(root.childNodes).forEach(child => {
-      if(!(child instanceof Element)) return
-      if(child.hasAttribute("data-webwriter-editor-only") || child.classList.contains("◆editor-only")) {
-        child.remove()
-        return
-      }
-      this.ignoreAttrs.forEach(attribute => child.removeAttribute(attribute))
-      if(isEditorOwnedAttribute(child, "contenteditable")) child.removeAttribute("contenteditable")
-      const markers = Array.from(child.classList).filter(name => name.startsWith("◆"))
-      if(markers.length) child.classList.remove(...markers)
-      if(!child.classList.length) child.removeAttribute("class")
-      if(child instanceof HTMLTemplateElement) clean(child.content)
-      clean(child)
-    })
-    clean(node)
+    clearEditorArtifacts(node, this.ignoreAttrs)
   }
 
   /** Sanitizes detached authored HTML and repairs it with the active schema

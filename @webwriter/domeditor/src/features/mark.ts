@@ -20,7 +20,7 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$, cloneWithoutEditorMarkers, modifierKeyDown, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, textOffsetIn, textPointAtOffset} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
@@ -615,7 +615,7 @@ export class MarkFeature extends EditorFeature {
     const identity = JSON.stringify([nodeID(range.startContainer), range.startOffset,
       nodeID(range.endContainer), range.endOffset, text, attributes,
       anchors.map(anchor => [nodeID(anchor!), Array.from(anchor!.attributes).flatMap(attribute => {
-        const value = attribute.name === "class" ? attribute.value.split(/\s+/).filter(name => !name.startsWith("◆")).join(" ") : attribute.value
+        const value = attribute.name === "class" ? authoredClassValue(attribute.value) : attribute.value
         return attribute.name === "class" && !value ? [] : [[attribute.name, value]]
       })])])
     const targets = new Map<string, string>()
@@ -1561,8 +1561,8 @@ export class MarkFeature extends EditorFeature {
   private normalizedAttributes(element: Element): [string, string][] {
     return Array.from(element.attributes).flatMap(attribute => {
       if(attribute.name === "class") {
-        const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).sort()
-        return classes.length? [["class", classes.join(" ")] as [string, string]]: []
+        const classes = authoredClassValue(attribute.value, true)
+        return classes ? [["class", classes] as [string, string]] : []
       }
       if(attribute.name === "style" && element instanceof HTMLElement) {
         const declarations: string[] = []

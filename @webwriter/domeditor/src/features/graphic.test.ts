@@ -301,6 +301,27 @@ describe("graphic editing", () => {
     expect(document.querySelector("svg")).toBeNull()
   })
 
+  it("does not replace a graphic moved into an atomic widget while a file is being read", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    let finishRead!: (source: string) => void
+    const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, "files", {value: [{name: "drawing.svg", text: () => new Promise<string>(resolve => {
+      finishRead = resolve
+    })}]})
+    input.dispatchEvent(new Event("change"))
+
+    const widget = document.createElement("demo-graphic-widget")
+    document.body.append(widget)
+    widget.append(graphic)
+    finishRead('<svg xmlns="http://www.w3.org/2000/svg"><circle r="7"/></svg>')
+    await pending
+
+    expect(graphic.isConnected).toBe(true)
+    expect(widget.querySelector("svg circle")).toBeNull()
+  })
+
   it("shows a move cursor over preset paths inside a captured graphic", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "heart"})
     const graphic = document.querySelector("svg")!

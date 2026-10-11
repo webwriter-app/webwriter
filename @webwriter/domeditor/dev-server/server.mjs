@@ -332,6 +332,16 @@ export async function createDevServer(options = {}) {
     return transaction
   }
 
+  // Document updates are read-modify-write transactions too. Serialize them
+  // after request bodies are read so concurrent partial updates merge against
+  // the latest persisted document without holding the queue open on clients.
+  let documentTransactionQueue = Promise.resolve()
+  const withDocumentTransaction = operation => {
+    const transaction = documentTransactionQueue.then(operation)
+    documentTransactionQueue = transaction.catch(() => {})
+    return transaction
+  }
+
   let viteServer
   const liveSessionTokens = new Map()
   const widgetDataCapabilities = new Map()
@@ -746,7 +756,7 @@ export async function createDevServer(options = {}) {
         const now = new Date().toISOString()
         const id = randomUUID()
         const document = {id, ...documentInput(await readJSON(request)), createdAt: now, updatedAt: now}
-        await atomicJSONWrite(join(documentsDirectory, `${id}.json`), document)
+        await withDocumentTransaction(() => atomicJSONWrite(join(documentsDirectory, `${id}.json`), document))
         json(response, 201, {document}, {Location: `/api/documents/${id}`})
         return
       }
@@ -756,25 +766,35 @@ export async function createDevServer(options = {}) {
         const id = decodeURIComponent(documentMatch[1])
         if(!safeId(id)) return apiError(response, 400, "Invalid document ID")
         const documentPath = join(documentsDirectory, `${id}.json`)
-        const existing = await readJSONFile(documentPath, null)
-        if(!existing) return apiError(response, 404, "Document not found")
-        if(request.method === "GET") return json(response, 200, {document: existing})
+        if(request.method === "GET") {
+          const existing = await readJSONFile(documentPath, null)
+          if(!existing) return apiError(response, 404, "Document not found")
+          return json(response, 200, {document: existing})
+        }
         if(request.method === "PUT" || request.method === "PATCH") {
-          const updated = {
-            ...existing,
-            ...documentInput(await readJSON(request), existing),
-            id,
-            createdAt: existing.createdAt,
-            updatedAt: new Date().toISOString(),
-          }
-          await atomicJSONWrite(documentPath, updated)
-          return json(response, 200, {document: updated})
+          const input = await readJSON(request)
+          return await withDocumentTransaction(async () => {
+            const existing = await readJSONFile(documentPath, null)
+            if(!existing) return apiError(response, 404, "Document not found")
+            const updated = {
+              ...existing,
+              ...documentInput(input, existing),
+              id,
+              createdAt: existing.createdAt,
+              updatedAt: new Date().toISOString(),
+            }
+            await atomicJSONWrite(documentPath, updated)
+            return json(response, 200, {document: updated})
+          })
         }
         if(request.method === "DELETE") {
-          await rm(documentPath)
-          response.writeHead(204)
-          response.end()
-          return
+          return await withDocumentTransaction(async () => {
+            const existing = await readJSONFile(documentPath, null)
+            if(!existing) return apiError(response, 404, "Document not found")
+            await rm(documentPath)
+            response.writeHead(204)
+            response.end()
+          })
         }
       }
 

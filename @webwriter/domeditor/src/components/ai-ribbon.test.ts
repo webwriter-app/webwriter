@@ -179,7 +179,9 @@ describe("AI prompt ribbon", () => {
 
   it("preserves a draft when the sparkles button opens and closes the toolbox chat", async () => {
     const ribbon = await mountRibbon()
-    ribbon.aiPrompt = "Continue this draft"
+    const prompt = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    prompt.value = "Continue this draft"
+    prompt.dispatchEvent(new Event("input", {bubbles: true}))
     await ribbon.updateComplete
     const sparkles = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
     sparkles.click()

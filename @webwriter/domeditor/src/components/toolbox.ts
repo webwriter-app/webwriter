@@ -12,6 +12,7 @@ import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, renderDocumentLayoutPreview, documentLayoutLabel, documentLayoutModes} from "./layout-preview"
+import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
 import {mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
@@ -550,17 +551,10 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-widget-primary {font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-options .develop-field, .specialized-widget-primary .develop-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center;}
     .specialized-widget-primary input, .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
-    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; min-width: 0; min-height: 1.7rem; border: 0; border-radius: 0; overflow: visible;}
-    .specialized-choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; background: #f2f2f2; color: inherit; font: .6rem system-ui, sans-serif; cursor: pointer;}
-    .specialized-choice-group button:first-child {border-top-left-radius: 4px;}
-    .specialized-choice-group button:last-child {border-bottom-right-radius: 4px;}
-    .specialized-choice-group button[data-top-right] {border-top-right-radius: 4px;}
-    .specialized-choice-group button[data-bottom-left] {border-bottom-left-radius: 4px;}
-    .specialized-choice-group button[aria-pressed="true"] {background: #e2edf8; color: #375d84;}
+    .specialized-choice-group {min-height: 1.7rem;}
+    .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: .6rem system-ui, sans-serif;}
     .specialized-choice-group button {display: flex; align-items: center; justify-content: center; gap: .2rem;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
-    .specialized-choice-group button:hover {background: #edf3f9;}
-    .specialized-choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
     .media-toolbox-controls .media-attribute style-combobox {width: 100%;}
     .specialized-options {display: flex; flex-direction: column; gap: .4rem; min-width: 0;}
     .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
@@ -597,6 +591,7 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     ${documentLayoutPreviewStyles}
+    ${choiceGroupStyles}
 
     .document-layout-zoom { margin: 0; }
     .document-layout-picker { position: relative; }

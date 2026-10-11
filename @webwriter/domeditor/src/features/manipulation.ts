@@ -4,7 +4,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -28,6 +28,7 @@ import {
   elementAttributeEditability,
   isUnsafeElementAttributeValue,
   sanitizeAuthoredClass,
+  setElementAttributeValue,
 } from "../element-attributes"
 
 /** Unit by which a collapsed selection is extended before deleting. */
@@ -528,12 +529,11 @@ export class ManipulationFeature extends EditorFeature {
         }
       })
     }
-    const authoredClasses = (value: string | null) => (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
     this.floatDropTargetsObserver = new MutationObserver(records => {
       if(records.some(record => {
         if(record.type !== "attributes") return true
         const value = (record.target as Element).getAttribute(record.attributeName!)
-        return record.attributeName === "class" ? authoredClasses(record.oldValue) !== authoredClasses(value) : record.oldValue !== value
+        return record.attributeName === "class" ? authoredClassValue(record.oldValue) !== authoredClassValue(value) : record.oldValue !== value
       })) schedule()
     })
     this.floatDropTargetsObserver.observe(document.documentElement, {subtree:true, childList:true, characterData:true, attributes:true, attributeOldValue:true})
@@ -1688,8 +1688,8 @@ export class ManipulationFeature extends EditorFeature {
         else target.setAttribute(attribute.name, attribute.value)
         return
       }
-      const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
-      if(classes.length) target.setAttribute("class", classes.join(" "))
+      const classes = authoredClassValue(attribute.value)
+      if(classes) target.setAttribute("class", classes)
     })
   }
 
@@ -3511,8 +3511,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     const set = (attributeName: string, nextValue: string | null) => {
       if(attributeName.toLowerCase() === "class") setClass(nextValue)
-      else if(nextValue === null) node.removeAttribute(attributeName)
-      else node.setAttribute(attributeName, nextValue)
+      else setElementAttributeValue(node, attributeName, nextValue, previousName)
     }
 
     // Set the new name before removing the old one so an invalid XML name

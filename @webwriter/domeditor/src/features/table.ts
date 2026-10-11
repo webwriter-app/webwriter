@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, removeEditorMarker} from "../utility"
+import {$, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
   normalizeTableStructure,
@@ -38,14 +38,10 @@ function newCellForRow(row: HTMLTableRowElement, source?: HTMLTableCellElement |
       if(attribute.name !== "id" && attribute.name !== "rowspan" && attribute.name !== "colspan"
         && attribute.name !== "class") cell.setAttribute(attribute.name, attribute.value)
     })
-    const authoredClasses = Array.from(source.classList).filter(name => !name.startsWith("◆"))
+    const authoredClasses = authoredClassValue(source.getAttribute("class")).split(" ").filter(Boolean)
     if(authoredClasses.length) cell.classList.add(...authoredClasses)
   }
   return cell as HTMLTableCellElement
-}
-
-function authoredClassValue(value: string | null) {
-  return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).sort().join(" ")
 }
 
 function inlineWidthInPixels(element: HTMLElement) {
@@ -126,7 +122,7 @@ export class TableFeature extends EditorFeature {
           mutation.type !== "attributes"
           || mutation.attributeName !== "class"
           || !(mutation.target instanceof Element)
-          || authoredClassValue(mutation.oldValue) !== authoredClassValue(mutation.target.getAttribute("class"))
+          || authoredClassValue(mutation.oldValue, true) !== authoredClassValue(mutation.target.getAttribute("class"), true)
         ))
         if(hasAuthoredMutation) this.scheduleRefresh()
       })
@@ -615,7 +611,11 @@ export class TableFeature extends EditorFeature {
 
   private splitTable() {
     const table = this.selectedTable
-    if(!table) return
+    if(!this.editableTable(table)) return
+    const current = buildTableMap(table)
+    const boundary = this.selectedPlacement(current, "first")
+    if(!boundary || boundary.row === 0 || current.placements.some(placement =>
+      placement.row < boundary.row && placement.row + placement.rowSpan > boundary.row)) return
     const map = this.normalizeTable(table)
     const first = this.selectedPlacement(map, "first")
     if(!first || first.row === 0) return
@@ -775,12 +775,18 @@ export class TableFeature extends EditorFeature {
         })
     }
     clearTableMarkers(table)
+    const fragment = table.ownerDocument.createDocumentFragment()
+    fragment.append(table)
+    const {html} = this.editor.serializeClipboardFragment(fragment)
+    const exported = buildTableMap(table)
     const plain = Array.from({length: rectangle.bottom - rectangle.top + 1}, (_, rowOffset) =>
-      Array.from({length: rectangle.right - rectangle.left + 1}, (_, columnOffset) =>
-        map.matrix[rectangle.top + rowOffset]?.[rectangle.left + columnOffset]?.cell.textContent ?? "",
+      Array.from({length: rectangle.right - rectangle.left + 1}, (_, columnOffset) => {
+        const cell = exported.matrix[rowOffset]?.[columnOffset]?.cell
+        return cell ? plainTextFromDOM(cell, element => this.editor.schema.isBlock(element)) : ""
+      },
       ).join("\t"),
     ).join("\n")
-    return {table, html: table.outerHTML, plain}
+    return {table, html, plain}
   }
 
   /** Missing clipboard capabilities return false. Permission and runtime
@@ -796,9 +802,31 @@ export class TableFeature extends EditorFeature {
   }
 
   async cut() {
+    const table = this.selectedTable
+    if(!this.isEnabled || !this.editableTable(table)) return false
+    const anchor = this.anchorCell
+    const focus = this.focusCell
+    const selected = this.selectedCells
+    const snapshot = selected.map(cell => {
+      const range = cell.ownerDocument.createRange()
+      range.selectNodeContents(cell)
+      return {cell, parent: cell.parentNode, html: (cloneWithoutEditorMarkers(cell, true, {inert: true}) as Element).outerHTML,
+        identity: captureRangeIdentity(range)}
+    })
     const copied = await this.copy()
-    if(copied) this.deleteSelection()
-    return copied
+    if(!copied || !this.isEnabled || !this.editableTable(table)
+      || this.anchorCell !== anchor || this.focusCell !== focus) return false
+    const current = this.selectedCells
+    if(current.length !== selected.length || current.some((cell, index) => cell !== selected[index])) return false
+    if(snapshot.some(({cell, parent, html, identity}) => {
+      if(cell.parentNode !== parent || tableForNode(cell) !== table
+        || (cloneWithoutEditorMarkers(cell, true, {inert: true}) as Element).outerHTML !== html) return true
+      const range = cell.ownerDocument.createRange()
+      range.selectNodeContents(cell)
+      const now = captureRangeIdentity(range)
+      return now.size !== identity.size || [...identity].some(node => !now.has(node))
+    })) return false
+    return this.deleteSelection()
   }
 
   private clipboardMatrix(html: string, plain: string) {

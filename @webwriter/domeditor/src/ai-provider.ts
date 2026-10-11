@@ -336,6 +336,7 @@ export class AIProviderStore extends EventTarget {
   } | null = null
   private backendSequence = 0
   private activationSequence = 0
+  private readonly activationQueues = new WeakMap<object, Promise<void>>()
 
   constructor(private readonly storage: Storage | null = safeLocalStorage()) {
     super()
@@ -531,8 +532,24 @@ export class AIProviderStore extends EventTarget {
       this.setActive(providerId)
       return
     }
-    await backend.setActiveAIProvider(providerId)
-    if(sequence !== this.activationSequence || this.backend !== backend) return
+    const queue = this.activationQueues.get(backend) ?? Promise.resolve()
+    const transaction = queue.then(async () => {
+      if(sequence !== this.activationSequence || this.backend !== backend) return false
+      await backend.setActiveAIProvider(providerId)
+      return true
+    })
+    this.activationQueues.set(backend, transaction.then(() => {}, () => {}))
+    let activated: boolean
+    try {
+      activated = await transaction
+    }
+    catch(error) {
+      // A stale request must not surface an error after the user's later
+      // selection has already become authoritative.
+      if(sequence !== this.activationSequence || this.backend !== backend) return
+      throw error
+    }
+    if(!activated || sequence !== this.activationSequence || this.backend !== backend) return
     this.selectedProviderId = providerId
     this.notify()
   }

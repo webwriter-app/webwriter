@@ -14,6 +14,12 @@ export const originalURLAttribute = (name: string) => `data-webwriter-original-$
 export const originalPackageEntriesAttribute = "data-webwriter-original-package-entries"
 export const offlinePackageStyleAttribute = "data-webwriter-offline-package-style"
 
+/** Escape a value inserted into a double-quoted HTML attribute. */
+export const escapeHTMLAttribute = (value: string) => value
+  .replaceAll("&", "&amp;")
+  .replaceAll('"', "&quot;")
+  .replaceAll("<", "&lt;")
+
 export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "xlink:href", "style", "integrity"] as const
 
 /** Restores authored resource URLs from a document produced by an offline save. */

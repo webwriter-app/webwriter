@@ -76,6 +76,19 @@ export function webWriterPackageExportName(type: WebWriterPackageExportType, nam
   return name.trim().startsWith(".") ? name.trim() : `./${name.trim()}`
 }
 
+/** Source path used when creating a new package export of each toolbox type. */
+export function defaultPackageExportSource(type: WebWriterPackageExportType, name: string) {
+  if(type === "test") return `./tests/${name}.test.ts`
+  if(type === "migration") return "./src/migrate.ts"
+  if(type === "snippet") return `./src/snippets/${name}.html`
+  if(type === "theme") return `./src/themes/${name}.css`
+  if(type === "icon") return "./src/icon.svg"
+  if(type === "editing-config") return "./editing-config.json"
+  if(type === "custom-elements") return "./custom-elements.json"
+  if(type === "other") return `./src/${name}`
+  return `./src/widgets/${name}.ts`
+}
+
 /** Changes the source condition without discarding build/default conditions. */
 export function withPackageExportSource(target: PackageExportTarget, source: string): PackageExportTarget {
   return typeof target === "string" ? source : {...target, source}

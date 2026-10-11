@@ -191,6 +191,14 @@ describe("authenticated cloud services", () => {
     const fetch = vi.fn().mockResolvedValueOnce(response(metadata)).mockResolvedValueOnce(response(cloudSession))
     expect(await discoverHostBackend(undefined, fetch)).toMatchObject({kind: "webwriter-cloud-service"})
     expect(new URL(fetch.mock.calls[0][0]).origin).toBe(origin)
+    expect(fetch.mock.calls[0][1]).toMatchObject({redirect: "error", credentials: "omit", cache: "no-store"})
     expect(await discoverHostBackend(undefined, fetch)).toBeNull()
+  })
+
+  it("propagates cancellation while discovering the current host backend", async () => {
+    const abort = {name: "AbortError", message: "cancelled"}
+    const fetch = vi.fn().mockRejectedValue(abort)
+    await expect(discoverHostBackend(undefined, fetch)).rejects.toBe(abort)
+    expect(fetch).toHaveBeenCalledOnce()
   })
 })

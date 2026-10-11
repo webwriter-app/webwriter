@@ -13,8 +13,8 @@ import {
   documentTheme,
   editingDocumentThemeSource,
 } from "../document-themes"
-import {adoptStylesheet, createStylesheet} from "../utility"
-import {elementAttributeEditability, isUnsafeElementAttributeValue} from "../element-attributes"
+import {adoptStylesheet, authoredClassValue, createStylesheet} from "../utility"
+import {elementAttributeEditability, isUnsafeElementAttributeValue, setElementAttributeValue} from "../element-attributes"
 
 const editorOnlySelector = ".◆editor-only, [data-webwriter-editor-only]"
 const textContentElements = new Set(["script", "style", "title", "noscript", "template"])
@@ -293,7 +293,7 @@ export class HeadFeature extends EditorFeature {
     return Array.from(element.attributes).flatMap(attribute => {
       if(attribute.name === "data-webwriter-editor-only") return []
       if(attribute.name.toLowerCase() !== "class") return [{name: attribute.name, value: attribute.value}]
-      const value = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+      const value = authoredClassValue(attribute.value)
       return value ? [{name: attribute.name, value}] : []
     })
   }
@@ -550,7 +550,7 @@ export class HeadFeature extends EditorFeature {
         || element.localName === "link" && nextName.toLowerCase() === "rel"
           && value.toLowerCase().split(/\s+/).includes("stylesheet")) return false
       if(nextName.toLowerCase() === "class") {
-        value = value.split(/\s+/).filter(className => className && !className.startsWith("◆")).join(" ")
+        value = authoredClassValue(value)
         if(!value) {
           if(!element.hasAttribute("class")) return false
           element.removeAttribute("class")
@@ -561,7 +561,8 @@ export class HeadFeature extends EditorFeature {
         && element.namespaceURI === "http://www.w3.org/1999/xhtml"
         && previousName.toLowerCase() === nextName.toLowerCase())
       if(sameName && element.getAttribute(nextName) === value) return false
-      element.setAttribute(nextName, value)
+      try { setElementAttributeValue(element, nextName, value, previousName) }
+      catch { return false }
       if(previousName && !sameName) element.removeAttribute(previousName)
       return true
     })

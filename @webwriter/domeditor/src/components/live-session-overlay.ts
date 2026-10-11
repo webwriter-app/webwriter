@@ -1,5 +1,7 @@
 import {LitElement, css, html} from "lit"
 import {keyed} from "lit/directives/keyed.js"
+import {styleMap} from "lit/directives/style-map.js"
+import {safeCssColor} from "../css-color"
 
 export type LiveSessionPoint = {
   x: number
@@ -44,8 +46,6 @@ export type LiveWidgetStateChangeDetail = {
 }
 
 const percentage = (value: number) => `${Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100}%`
-
-const pointStyle = (point: LiveSessionPoint) => `left:${percentage(point.x)};top:${percentage(point.y)}`
 
 /** Lightweight, editor-owned visualization for a live session.
  *
@@ -175,10 +175,6 @@ export class LiveSessionOverlay extends LitElement {
     return learner.name.trim().split(/\s+/).filter(Boolean).map(word => word[0]).join("").slice(0, 2).toUpperCase() || "?"
   }
 
-  private learnerStyle(color: string) {
-    return `--learner-color:${color}`
-  }
-
   private dispatchWidgetState(path: string, value: string) {
     const detail: LiveWidgetStateChangeDetail = {
       path,
@@ -197,7 +193,13 @@ export class LiveSessionOverlay extends LitElement {
         <div
           class="state-region"
           data-learner-id=${learner.id}
-          style=${`${this.learnerStyle(learner.color)};left:${percentage(region.x)};top:${percentage(region.y)};width:${percentage(region.width)};height:${percentage(region.height)}`}
+          style=${styleMap({
+            "--learner-color": safeCssColor(learner.color),
+            left: percentage(region.x),
+            top: percentage(region.y),
+            width: percentage(region.width),
+            height: percentage(region.height),
+          })}
           aria-hidden="true"
         ></div>
       `)}
@@ -205,7 +207,11 @@ export class LiveSessionOverlay extends LitElement {
         <div
           class="cursor"
           data-learner-id=${learner.id}
-          style=${`${this.learnerStyle(learner.color)};${pointStyle(learner.cursor)}`}
+          style=${styleMap({
+            "--learner-color": safeCssColor(learner.color),
+            left: percentage(learner.cursor.x),
+            top: percentage(learner.cursor.y),
+          })}
           title=${learner.name}
           role="img"
           aria-label=${`${learner.name} cursor`}
@@ -216,7 +222,11 @@ export class LiveSessionOverlay extends LitElement {
           class="click-ring"
           data-learner-id=${learner.id}
           data-sequence=${learner.click.sequence}
-          style=${`${this.learnerStyle(learner.color)};${pointStyle(learner.click)}`}
+          style=${styleMap({
+            "--learner-color": safeCssColor(learner.color),
+            left: percentage(learner.click.x),
+            top: percentage(learner.click.y),
+          })}
           aria-hidden="true"
         ></div>
       `) : ""}
@@ -224,7 +234,7 @@ export class LiveSessionOverlay extends LitElement {
         <div
           class="scroll-marker"
           data-learner-id=${learner.id}
-          style=${`${this.learnerStyle(learner.color)};top:${percentage(learner.scroll)}`}
+          style=${styleMap({"--learner-color": safeCssColor(learner.color), top: percentage(learner.scroll)})}
           title=${`${learner.name} scroll position`}
           aria-hidden="true"
         ></div>
@@ -239,7 +249,7 @@ export class LiveSessionOverlay extends LitElement {
         class="widget-affordance"
         data-widget-path=${widget.path}
         aria-label=${`Learner state for ${widget.path}`}
-        style=${pointStyle(widget)}
+        style=${styleMap({left: percentage(widget.x), top: percentage(widget.y)})}
         .value=${selected}
         @change=${(event: Event) => this.dispatchWidgetState(widget.path, (event.currentTarget as HTMLSelectElement).value)}
       >

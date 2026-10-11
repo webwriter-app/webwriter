@@ -1131,3 +1131,90 @@ describe("table actions", () => {
     expect(document.querySelector("tfoot td")?.textContent).toBe("B")
   })
 })
+
+describe("table clipboard and split regressions", () => {
+  it.each(["application/json", "application/xml"])("exports authored %s widget defaults through native and programmatic copy", async type => {
+    const defaults = type === "application/json" ? '{"answer":"default"}' : '<data>default</data>'
+    const privateData = type === "application/json" ? '{"answer":"private-participant"}' : '<data>private-participant</data>'
+    editor.schema.extendWidgets([{tagName: "table-data-widget", editingConfig: {sharedData: true}}])
+    document.body.innerHTML = `<table><tbody><tr><td><table-data-widget id="table-data"><script type="${type}" slot="data">${defaults}</script></table-data-widget></td></tr></tbody></table>`
+    editor.doc.syncFromDOM()
+    document.querySelector("script")!.textContent = privateData
+    editor.doc.syncFromDOM()
+    editor.features.table.selectCells(cells()[0])
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    expect(data.getData("text/html")).toContain(defaults)
+    expect(data.getData("text/html") + data.getData("text/plain")).not.toContain("private-participant")
+    expect(data.getData("text/html")).not.toContain("◆")
+    const original = navigator.clipboard.write
+    const write = vi.fn(async (items: ClipboardItem[]) => {
+      const html = await items[0].getType("text/html")
+      const plain = await items[0].getType("text/plain")
+      expect(await html.text()).toContain(defaults)
+      expect(await html.text() + await plain.text()).not.toContain("private-participant")
+    })
+    Object.defineProperty(navigator.clipboard, "write", {configurable: true, value: write})
+    try { expect(await editor.features.table.copy()).toBe(true); expect(write).toHaveBeenCalledOnce() }
+    finally { Object.defineProperty(navigator.clipboard, "write", {configurable: true, value: original}) }
+  })
+
+  it.each(["selection", "content", "replacement", "widget", "disable"])("does not cut stale cells after a pending clipboard write: %s", async change => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first, second] = cells()
+    editor.features.table.selectCells(first)
+    let resolve!: () => void
+    const original = navigator.clipboard.write
+    Object.defineProperty(navigator.clipboard, "write", {configurable: true, value: () => new Promise<void>(done => { resolve = done })})
+    try {
+      const cut = editor.features.table.cut()
+      if(change === "selection") editor.features.table.selectCells(second)
+      if(change === "content") first.textContent = "Changed"
+      if(change === "replacement") first.firstChild!.replaceWith(document.createTextNode("A"))
+      if(change === "widget") {
+        const widget = document.createElement("atomic-table-widget")
+        document.body.append(widget)
+        widget.append(first.closest("table")!)
+      }
+      if(change === "disable") editor.features.table.disable()
+      resolve()
+      expect(await cut).toBe(false)
+      expect(first.isConnected).toBe(true)
+      expect(second.isConnected).toBe(true)
+    }
+    finally {
+      editor.features.table.enable()
+      Object.defineProperty(navigator.clipboard, "write", {configurable: true, value: original})
+    }
+  })
+
+  it("cuts the unchanged original cells and supports undo", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.table.selectCells(cells()[0])
+    const original = navigator.clipboard.write
+    Object.defineProperty(navigator.clipboard, "write", {configurable: true, value: async () => {}})
+    try {
+      expect(await editor.features.table.cut()).toBe(true)
+      editor.doc.syncFromDOM()
+      expect(cells().map(cell => cell.textContent)).toEqual(["B"])
+      editor.doc.undo()
+      expect(cells().map(cell => cell.textContent)).toEqual(["A", "B"])
+    }
+    finally { Object.defineProperty(navigator.clipboard, "write", {configurable: true, value: original}) }
+  })
+
+  it.each(["2", "0", "3"])("leaves a table intact when a rowspan=%s crosses the split", span => {
+    document.body.innerHTML = `<table id="keep"><caption>Caption</caption><colgroup><col span="2"></colgroup><tbody><tr><td rowspan="${span}">A</td><td>B</td></tr><tr><td>C</td></tr><tr><td>D</td></tr></tbody></table>`
+    const table = document.querySelector("table")!
+    editor.features.table.selectCells(cells()[2])
+    const markup = table.outerHTML
+    const nodes = [...table.querySelectorAll("*")]
+    editor.features.table.actions.splitTable({type: "splitTable"})
+    expect(document.querySelectorAll("table")).toHaveLength(1)
+    expect(table.outerHTML).toBe(markup)
+    expect([...table.querySelectorAll("*")]).toEqual(nodes)
+    expect(editor.features.table.selectedCells).toEqual([cells()[2]])
+  })
+})

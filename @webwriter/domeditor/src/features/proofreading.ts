@@ -1,6 +1,6 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {createProofreader, normalizeProofreadingDictionary, type Proofreader, type ProofreadingIssue} from "../proofreading"
-import {$, createStylesheet, adoptStylesheet, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
+import {$, authoredClassValue, createStylesheet, adoptStylesheet, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 import {render} from "lit"
 import {proofreadingCardStyles, proofreadingKindLabels, renderProofreadingCard} from "../components/proofreading-card"
 import {getDocumentRoot} from "../document-template"
@@ -297,10 +297,9 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   private hasProseChanges(records: MutationRecord[]) {
-    const authoredClasses = (value: string | null) => (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).sort().join(" ")
     return records.some(record => {
       if(record.type !== "attributes" || !(record.target instanceof Element)) return true
-      if(record.attributeName === "class") return authoredClasses(record.oldValue) !== authoredClasses(record.target.getAttribute("class"))
+      if(record.attributeName === "class") return authoredClassValue(record.oldValue, true) !== authoredClassValue(record.target.getAttribute("class"), true)
       if(record.attributeName === "contenteditable" && record.target.classList.contains("◆widget-editable")) return false
       return true
     })

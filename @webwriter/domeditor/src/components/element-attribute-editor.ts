@@ -3,6 +3,7 @@ import "./style-combobox"
 import {isMediaType, mediaAttributeOptions} from "../media"
 import {groupedLanguageOptions} from "../language-suggestions"
 import {ribbonOptionIcon} from "../ribbon-icons"
+import {choiceGroupStyles} from "./choice-group.styles"
 import {
   elementAttributeEditability,
   elementAttributeOptions,
@@ -57,6 +58,8 @@ export class ElementAttributeEditor extends LitElement {
   }
 
   static styles = css`
+    ${choiceGroupStyles}
+
     :host {
       display: block;
       min-width: 0;
@@ -68,16 +71,8 @@ export class ElementAttributeEditor extends LitElement {
     :host([expanded]) .field {grid-template-columns: 4.4rem minmax(0, 1fr);}
     :host([expanded]) input, :host([expanded]) select {border-color: #c5ccd5; border-radius: 4px;}
 
-    .choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; min-width: 0; border: 0; border-radius: 0; overflow: visible;}
-    .choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; display: grid; place-items: center; min-width: 0; min-height: 1.7rem; padding: .15rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; background: #f2f2f2; color: inherit; cursor: pointer;}
+    .choice-group button {display: grid; place-items: center; min-height: 1.7rem; padding: .15rem;}
     .choice-group svg {display: block; width: 1rem; height: 1rem;}
-    .choice-group button:first-child {border-top-left-radius: 4px;}
-    .choice-group button:last-child {border-bottom-right-radius: 4px;}
-    .choice-group button[data-top-right] {border-top-right-radius: 4px;}
-    .choice-group button[data-bottom-left] {border-bottom-left-radius: 4px;}
-    .choice-group button[aria-pressed="true"] {background: #e2edf8; color: #375d84;}
-    .choice-group button:hover {background: #edf3f9;}
-    .choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
 
     :host([disabled]) {
       opacity: 0.55;

@@ -1063,6 +1063,7 @@ describe("package ribbon controls", () => {
     button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
       .dispatchEvent(new MouseEvent("mouseenter"))
     await button.updateComplete
+    await Promise.resolve()
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(details.style.left).toBe("122px")
@@ -1097,9 +1098,55 @@ describe("package ribbon controls", () => {
     button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
       .dispatchEvent(new MouseEvent("mouseenter"))
     await button.updateComplete
+    await Promise.resolve()
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(Number.parseFloat(details.style.left)).toBeGreaterThanOrEqual(142)
+  })
+
+  it("keeps package details inside a narrow viewport on both axes", async () => {
+    const previousWidth = window.innerWidth
+    const previousHeight = window.innerHeight
+    Object.defineProperty(window, "innerWidth", {value: 320, configurable: true})
+    Object.defineProperty(window, "innerHeight", {value: 300, configurable: true})
+    try {
+      const ribbon = new AppRibbon()
+      ribbon.activeMenu = "Start"
+      const pkg = packageFixture("viewport")
+      ribbon.packages = [pkg]
+      document.body.append(ribbon)
+      await ribbon.updateComplete
+
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
+        'ribbon-drawer[label="Packages"] ribbon-button[label="Viewport"]',
+      )!
+      await button.updateComplete
+      Object.defineProperty(button, "getBoundingClientRect", {
+        value: () => ({left: 150, top: 250, right: 178, bottom: 278, width: 28, height: 28}),
+        configurable: true,
+      })
+      const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
+      Object.defineProperty(details, "getBoundingClientRect", {
+        value: () => ({left: 0, top: 0, right: 272, bottom: 100, width: 272, height: 100}),
+        configurable: true,
+      })
+      button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+        .dispatchEvent(new MouseEvent("mouseenter"))
+      await button.updateComplete
+      await Promise.resolve()
+      await button.updateComplete
+
+      const left = Number.parseFloat(details.style.left)
+      const top = Number.parseFloat(details.style.top)
+      expect(left).toBeGreaterThanOrEqual(8)
+      expect(left + 272).toBeLessThanOrEqual(312)
+      expect(top).toBeGreaterThanOrEqual(8)
+      expect(top + 100).toBeLessThanOrEqual(292)
+    }
+    finally {
+      Object.defineProperty(window, "innerWidth", {value: previousWidth, configurable: true})
+      Object.defineProperty(window, "innerHeight", {value: previousHeight, configurable: true})
+    }
   })
 
   it("keeps installed packages first whether the drawer is open or closed", async () => {

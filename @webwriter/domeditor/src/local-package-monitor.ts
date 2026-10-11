@@ -1,4 +1,4 @@
-import {normalizeLocalPackagePath, type LocalPackageDirectory, type LocalPackageFile} from "./local-package"
+import {normalizeLocalPackagePath, readLocalPackageFile, type LocalPackageDirectory, type LocalPackageFile} from "./local-package"
 
 type FileSystemObserverLike = {
   observe(target: LocalPackageDirectory, options?: {recursive?: boolean}): Promise<void> | void
@@ -17,23 +17,9 @@ type FileState = {exists: boolean, lastModified?: number, size?: number}
 
 const observerFromGlobal = () => (globalThis as unknown as {FileSystemObserver?: FileSystemObserverConstructor}).FileSystemObserver
 
-async function readPath(directory: LocalPackageDirectory, path: string): Promise<LocalPackageFile> {
-  const parts = normalizeLocalPackagePath(path).split("/")
-  if(!parts.length) throw new Error("The package path is empty")
-  let current = directory
-  for(const part of parts.slice(0, -1)) {
-    if(current.getDirectoryHandle) {
-      try { current = await current.getDirectoryHandle(part) }
-      catch { current = await current.getFileHandle(part) as unknown as LocalPackageDirectory }
-    }
-    else current = await current.getFileHandle(part) as unknown as LocalPackageDirectory
-  }
-  return (await current.getFileHandle(parts.at(-1)!)).getFile()
-}
-
 async function fileState(directory: LocalPackageDirectory, path: string): Promise<FileState> {
   try {
-    const file = await readPath(directory, path) as LocalPackageFile & {lastModified?: number, size?: number}
+    const file = await readLocalPackageFile(directory, path) as LocalPackageFile & {lastModified?: number, size?: number}
     return {exists: true, lastModified: file.lastModified, size: file.size}
   }
   catch {

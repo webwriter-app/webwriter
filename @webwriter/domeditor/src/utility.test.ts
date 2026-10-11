@@ -8,10 +8,11 @@ import {
   cloneInert, cloneRangeIn, cloneRangeContents, cloneWithoutEditorMarkers, roundByDPR, roundTo, midpoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getStaticCoords,
-  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker,
+  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, authoredClassValue, removeEditorMarker,
   pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement
 } from "./utility"
 import { Schema } from "./schema"
+import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect} from "./utility"
 
 // Tests for the EditingSelection class. No DOMEditor is instantiated, so the
 // selection state is not post-processed by any editor feature.
@@ -1715,6 +1716,18 @@ describe("removeEditorMarker()", () => {
   })
 })
 
+describe("authoredClassValue()", () => {
+  it("omits editor markers while preserving authored class order by default", () => {
+    expect(authoredClassValue("second ◆selected first ◆")).toBe("second first")
+    expect(authoredClassValue(null)).toBe("")
+  })
+
+  it("canonicalizes authored class order only when requested", () => {
+    expect(authoredClassValue("second ◆selected first", true)).toBe("first second")
+    expect(authoredClassValue("first second", true)).toBe("first second")
+  })
+})
+
 describe("DOM path and text point helpers", () => {
   it("round trips child-node paths including text and comments", () => {
     setBody("<div><!--comment-->text<span>tail</span></div>")
@@ -1740,6 +1753,79 @@ describe("DOM path and text point helpers", () => {
   })
 })
 
+
+describe("authored snapshot cleanup", () => {
+  it("preserves unfamiliar content and namespaces while cleaning nested templates", () => {
+    const root = document.createElement("template")
+    root.innerHTML = '<unfamiliar-node class="keep ◆selected" data-authored="yes" data-ignore="remove"><!--keep--><template><demo-widget class="◆widget-editable keep" contenteditable=""><i class="◆editor-only">UI</i><template><b class="◆caret keep">nested</b></template></demo-widget></template><svg><template class="keep ◆selected"></template></svg></unfamiliar-node>'
+    const node = root.content.firstElementChild!
+    const comment = node.firstChild
+    const template = node.querySelector("template")!
+    const widget = template.content.querySelector("demo-widget")!
+    const nested = widget.querySelector("template")!
+    const svgTemplate = node.querySelector("svg template")!
+
+    expect(clearEditorArtifacts(root.content, ["data-ignore"])).toBe(root.content)
+
+    expect(root.content.firstElementChild).toBe(node)
+    expect(node.firstChild).toBe(comment)
+    expect(node.getAttribute("data-authored")).toBe("yes")
+    expect(node.hasAttribute("data-ignore")).toBe(false)
+    expect(node.className).toBe("keep")
+    expect(widget.hasAttribute("contenteditable")).toBe(false)
+    expect(widget.querySelector("i")).toBeNull()
+    expect(nested.content.querySelector("b")?.outerHTML).toBe('<b class="keep">nested</b>')
+    expect(svgTemplate.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    expect(svgTemplate.getAttribute("class")).toBe("keep")
+  })
+
+  it("cleans the root and preserves authored editability and private widget shadows", () => {
+    const root = document.createElement("div")
+    root.innerHTML = '<p contenteditable="">authored</p><p contenteditable="false">locked</p><demo-widget class="◆widget-editable" contenteditable=""></demo-widget><aside data-webwriter-editor-only>UI</aside>'
+    root.className = "authored ◆selected"
+    const widget = root.querySelector("demo-widget")!
+    const shadow = widget.attachShadow({mode: "open"})
+    shadow.innerHTML = '<p class="◆selected" contenteditable="">private</p>'
+    const privateHTML = shadow.innerHTML
+
+    clearEditorArtifacts(root)
+
+    expect(root.className).toBe("authored")
+    expect(root.querySelectorAll("p")[0].getAttribute("contenteditable")).toBe("")
+    expect(root.querySelectorAll("p")[1].getAttribute("contenteditable")).toBe("false")
+    expect(widget.hasAttribute("contenteditable")).toBe(false)
+    expect(widget.hasAttribute("class")).toBe(false)
+    expect(root.querySelector("aside")).toBeNull()
+    expect(shadow.innerHTML).toBe(privateHTML)
+  })
+
+  it("keeps attribute-only and marker-only cleaning contracts distinct", () => {
+    const root = document.createElement("template")
+    root.innerHTML = '<demo-widget class="keep ◆widget-editable" contenteditable=""><span class="◆editor-only">UI</span></demo-widget>'
+    const widget = root.content.firstElementChild!
+    clearEditorOwnedAttributes(root)
+    expect(widget.hasAttribute("contenteditable")).toBe(false)
+    expect(widget.className).toBe("keep ◆widget-editable")
+    clearEditorMarkerClasses(root)
+    expect(widget.className).toBe("keep")
+    expect(widget.querySelector("span")?.textContent).toBe("UI")
+  })
+})
+
+describe("nodeEdgeRect", () => {
+  it("uses the first and last line boxes and falls back for an empty rect list", () => {
+    const element = document.createElement("p")
+    const first = new DOMRect(5, 10, 20, 30)
+    const last = new DOMRect(5, 40, 10, 30)
+    vi.spyOn(element, "getClientRects").mockReturnValue([first, last] as unknown as DOMRectList)
+    const bounding = new DOMRect(5, 10, 20, 60)
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(bounding)
+    expect(nodeEdgeRect(element)).toBe(first)
+    expect(nodeEdgeRect(element, "last")).toBe(last)
+    vi.mocked(element.getClientRects).mockReturnValue([] as unknown as DOMRectList)
+    expect(nodeEdgeRect(element, "last")).toBe(bounding)
+  })
+})
 
 describe("clearInlinePlacement", () => {
   it.each(["custom-card", "svg"])("clears float placement from a %s without changing authored content or unrelated presentation", tag => {

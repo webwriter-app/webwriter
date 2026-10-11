@@ -171,7 +171,7 @@ describe("graphic ribbon", () => {
     expect([...drawer.querySelectorAll<HTMLInputElement | StyleCombobox | HTMLButtonElement>("input, style-combobox, button")]
       .every(control => control.disabled)).toBe(true)
 
-    toolbox.graphic = undefined
+    toolbox.graphic = null
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="shape-paint"]')).toBeNull()
   })

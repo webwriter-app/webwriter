@@ -1,5 +1,6 @@
 import {captionNumberStyles, defaultCaptionEnumeration, isCaptionEnumeration, type CaptionSeries} from "../caption-enumeration"
 import {LitElement, css, html, nothing} from "lit"
+import {fixedPopupPosition} from "./popup-position"
 import {
   WEBWRITER_GENERATOR,
   creativeCommonsLicenses,
@@ -273,13 +274,10 @@ class DocumentThemePicker extends LitElement {
     const bounds = listbox?.getBoundingClientRect()
     const width = bounds?.width ?? 272
     const height = bounds?.height ?? 360
-    const margin = 8
-    const left = Math.min(Math.max(margin, trigger.left), Math.max(margin, window.innerWidth - width - margin))
-    const below = trigger.bottom + 4
-    const top = below + height <= window.innerHeight - margin
-      ? below
-      : Math.max(margin, trigger.top - height - 4)
-    this.position = {left, top}
+    this.position = fixedPopupPosition(trigger, {width, height}, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
     this.requestUpdate()
   }
 

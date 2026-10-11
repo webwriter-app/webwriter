@@ -1,16 +1,17 @@
 import * as Y from "yjs"
 import {Awareness} from "y-protocols/awareness"
 import {messageSync, WebsocketProvider} from "y-websocket"
-import {$, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
+import {$, cloneWithoutEditorMarkers, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
 import {documentLayoutMode} from "./document-layout"
 import {updateDocumentPermalinks} from "./document-permalinks"
 import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
-import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, type WidgetDataOptions} from "./widget-data"
+import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, widgetDataHistoryGroup, type WidgetDataOptions} from "./widget-data"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
 const INTERNAL_NAMESPACE = "__domeditor_namespace"
 const INTERNAL_QUALIFIED_NAME = "__domeditor_qualified_name"
+const INTERNAL_MINIMUM_REPAIR = "__domeditor_minimum_repair"
 const INTERNAL_USER_ATTRIBUTE_PREFIX = "__domeditor_user_attribute__"
 const INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX = "__domeditor_namespaced_attribute__"
 const COMMENT_NODE_NAME = "domeditor-comment"
@@ -168,6 +169,8 @@ export class SharedDOMDoc {
   readonly #remoteReactionOrigin = {source: "domeditor-remote-reaction"}
   readonly #nodes = new WeakMap<YXmlNode, Node>()
   readonly #xmlNodes = new WeakMap<Node, YXmlNode>()
+  readonly #minimumRepairs = new Set<Element>()
+  readonly #repairBaselines = new WeakMap<Element, string>()
   readonly #document: Document
 
   #relativeSelection: RelativeSelection | null = null
@@ -181,6 +184,8 @@ export class SharedDOMDoc {
   #awaitingInitialSync = false
   #undoGroupDepth = 0
   #undoGroupTimeout = 0
+  #undoGroup: object | undefined
+  readonly #unobserveDataHistory: () => void
   readonly #documentPermalinks: boolean
 
   constructor(
@@ -242,7 +247,8 @@ export class SharedDOMDoc {
     this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
       trackedOrigins: new Set([this.#domOrigin]),
     })
-    stampUndo(this.#undoManager)
+    stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo)
+    this.#unobserveDataHistory = this.widgetData.observeHistory(this.#clearRedo)
 
     const DocumentMutationObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
     this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
@@ -354,7 +360,7 @@ export class SharedDOMDoc {
     if(this.#undoManager) {
       this.#undoManager.destroy()
       this.#undoManager = new Y.UndoManager(this.#undoScopes(), {trackedOrigins: new Set([this.#domOrigin])})
-      stampUndo(this.#undoManager)
+      stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo)
     }
   }
 
@@ -668,6 +674,7 @@ export class SharedDOMDoc {
     this.doc.transact(() => {
       if(records) this.#reconcileMutations(records)
       else this.#reconcileDocument()
+      this.#reconcileMinimumRepairs()
     }, origin)
     if(this.#isObserving && (!records || records.some(record => record.type === "childList"))) {
       const templates = this.#templateContents()
@@ -681,6 +688,58 @@ export class SharedDOMDoc {
       (selection.anchorNode === this.root || this.root.contains(selection.anchorNode)) &&
       (selection.focusNode === this.root || this.root.contains(selection.focusNode))) {
       this.updateLocalSelection(selection)
+    }
+  }
+
+  /** Transient collaboration provenance for a generated minimum flow child.
+   * The authored DOM stays authoritative, and any authored edit ends it. */
+  markMinimumContentRepair(element: Element) {
+    if(element.parentElement !== this.root) return
+    this.#repairBaselines.set(element, this.#repairMarkup(element))
+    this.#minimumRepairs.add(element)
+  }
+
+  #repairMarkup(element: Element) {
+    const clone = cloneWithoutEditorMarkers(element, true, {inert: true}) as Element
+    const fragment = clone.ownerDocument.createDocumentFragment()
+    fragment.append(clone)
+    this.widgetData.writeDefaults(fragment)
+    return clone.outerHTML
+  }
+
+  #reconcileMinimumRepairs() {
+    const parents = new Map<Element, Element[]>()
+    for(const element of this.#minimumRepairs) {
+      const shared = this.#xmlNodes.get(element)
+      if(!this.root.contains(element) || !(shared instanceof Y.XmlElement)) {
+        this.#minimumRepairs.delete(element)
+        continue
+      }
+      const baseline = shared.getAttribute(INTERNAL_MINIMUM_REPAIR)
+      if(!baseline || element.parentElement !== this.root || this.#repairMarkup(element) !== baseline) {
+        if(baseline) shared.removeAttribute(INTERNAL_MINIMUM_REPAIR)
+        this.#repairBaselines.delete(element)
+        this.#minimumRepairs.delete(element)
+        continue
+      }
+      const parent = element.parentElement!
+      const siblings = parents.get(parent) ?? []
+      siblings.push(element)
+      parents.set(parent, siblings)
+    }
+    for(const [parent, repairs] of parents) {
+      if(repairs.length < 2) continue
+      // Yjs child order converges on every replica. Keep its first pristine
+      // repair, while authored paragraphs and edited repairs remain untouched.
+      const candidates = new Set(repairs)
+      const ordered = Array.from(parent.children).filter(child => candidates.has(child))
+      for(const duplicate of ordered.slice(1)) {
+        duplicate.remove()
+        this.#minimumRepairs.delete(duplicate)
+        this.#repairBaselines.delete(duplicate)
+      }
+      const sharedParent = this.#xmlNodes.get(parent)
+      if(sharedParent instanceof Y.XmlElement) this.#reconcileYElement(parent, sharedParent)
     }
   }
 
@@ -797,7 +856,8 @@ export class SharedDOMDoc {
       this.stopCapturing()
       this.#undoGroupTimeout = this.#undoManager.captureTimeout
       this.#undoManager.captureTimeout = Infinity
-      this.widgetData.startUndoGroup()
+      this.#undoGroup = {}
+      this.widgetData.startUndoGroup(this.#undoGroup)
     }
     let ended = false
     return () => {
@@ -808,6 +868,7 @@ export class SharedDOMDoc {
         if(--this.#undoGroupDepth === 0) {
           this.#undoManager.captureTimeout = this.#undoGroupTimeout
           this.widgetData.endUndoGroup()
+          this.#undoGroup = undefined
           this.stopCapturing()
         }
       }
@@ -978,12 +1039,31 @@ export class SharedDOMDoc {
 
   undo() {
     this.#commitPendingDOMChanges()
-    this.#historyManager("undo").undo()
+    this.#applyHistory("undo")
   }
 
   redo() {
     this.#commitPendingDOMChanges()
-    this.#historyManager("redo").redo()
+    this.#applyHistory("redo")
+  }
+
+  readonly #clearRedo = () => {
+    this.#undoManager.clear(false, true)
+    this.widgetData.clearRedo()
+  }
+
+  #applyHistory(kind: "undo" | "redo") {
+    const latest = this.#historyManager(kind)
+    const stack = (manager: Y.UndoManager) => kind === "undo" ? manager.undoStack : manager.redoStack
+    const group = stack(latest).at(-1)?.meta.get(widgetDataHistoryGroup)
+    if(!group) { latest[kind](); return }
+    // Data must be undone before DOM edits can remove its binding; redo the
+    // DOM first so restored widgets are present when data is rendered.
+    const data = this.widgetData.historyManagers(kind)
+    const managers = kind === "undo" ? [...data, this.#undoManager] : [this.#undoManager, ...data]
+    for(const manager of new Set(managers)) {
+      if(stack(manager).at(-1)?.meta.get(widgetDataHistoryGroup) === group) manager[kind]()
+    }
   }
 
   #historyManager(kind: "undo" | "redo") {
@@ -996,6 +1076,8 @@ export class SharedDOMDoc {
 
   destroy() {
     this.#activeDOMPreview?.reject()
+    this.#unobserveDataHistory()
+    this.#minimumRepairs.clear()
     this.stopObserve()
     if(this.#ownsWidgetData) this.widgetData.destroy()
     this.doc.off("beforeTransaction", this.#flushPendingDOMChanges)
@@ -1278,6 +1360,9 @@ export class SharedDOMDoc {
   #addNodePair(node: Node, yNode: YXmlNode) {
     this.#nodes.set(yNode, node)
     this.#xmlNodes.set(node, yNode)
+    if(isElement(node) && yNode instanceof Y.XmlElement && yNode.doc && yNode.hasAttribute(INTERNAL_MINIMUM_REPAIR)) {
+      this.#minimumRepairs.add(node)
+    }
   }
 
   #createYNode(node: Node, addPair = true): YXmlNode | null {
@@ -1305,6 +1390,8 @@ export class SharedDOMDoc {
     if(!isElement(node) || this.#isInsideIgnoredElement(node)) return null
 
     const yElement = new Y.XmlElement(node.localName)
+    const repair = this.#repairBaselines.get(node)
+    if(repair) yElement.setAttribute(INTERNAL_MINIMUM_REPAIR, repair)
     if(node.prefix) yElement.setAttribute(INTERNAL_QUALIFIED_NAME, `${node.prefix}:${node.localName}`)
     if(node.namespaceURI !== this.#document.documentElement.namespaceURI) {
       yElement.setAttribute(INTERNAL_NAMESPACE, node.namespaceURI ?? "")
@@ -1400,7 +1487,7 @@ export class SharedDOMDoc {
 
     const current = yElement.getAttributes()
     for(const name of Object.keys(current)) {
-      if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME) continue
+      if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === INTERNAL_MINIMUM_REPAIR) continue
       if(!desired.has(name)) yElement.removeAttribute(name)
     }
     desired.forEach((value, name) => {
@@ -1410,6 +1497,7 @@ export class SharedDOMDoc {
 
   #copyYAttributesToDOM(yElement: Y.XmlElement, element: Element, excluded: string[] = []) {
     const shared = yElement.getAttributes()
+    if(this.#xmlNodes.get(element) === yElement && typeof shared[INTERNAL_MINIMUM_REPAIR] === "string") this.#minimumRepairs.add(element)
     const sharedClassNames = String(shared.class ?? "").split(/\s+/).filter(Boolean)
     const internalClassNames = Array.from(element.classList).filter(name => this.#isIgnoredClass(name))
     const classNames = Array.from(new Set([...sharedClassNames, ...internalClassNames]))
@@ -1450,7 +1538,7 @@ export class SharedDOMDoc {
     if(attribute.namespaceURI !== null) {
       return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
     }
-    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE || attribute.name === INTERNAL_QUALIFIED_NAME ||
+    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE || attribute.name === INTERNAL_QUALIFIED_NAME || attribute.name === INTERNAL_MINIMUM_REPAIR ||
       attribute.name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX) ||
       attribute.name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
       return `${INTERNAL_USER_ATTRIBUTE_PREFIX}${encodeURIComponent(attribute.name)}`
@@ -1459,7 +1547,7 @@ export class SharedDOMDoc {
   }
 
   #decodeYAttribute(name: string): DOMAttribute | null {
-    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === "class") return null
+    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === INTERNAL_MINIMUM_REPAIR || name === "class") return null
     if(name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
       try {
         const value = JSON.parse(decodeURIComponent(name.slice(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX.length)))

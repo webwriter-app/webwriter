@@ -1,4 +1,5 @@
 import {css, html, nothing, render} from "lit"
+import {styleMap} from "lit/directives/style-map.js"
 import {aiChatStyles} from "./ai-chat.styles"
 import {version} from "../../package.json"
 import {
@@ -20,6 +21,7 @@ import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOpt
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
+import {safeCssColor} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
 import {uiMotionDisabled} from "../utility"
 import "./ai-settings"
@@ -2812,7 +2814,7 @@ export class AppRibbon extends EditingControls {
           <div class="learners-summary" aria-label=${`${enabledCount} of ${this.liveLearners.length} learners visualized`}>
             <span class="learners-summary-avatars" aria-hidden="true">
               ${visibleAvatars.map(learner => html`
-                <span class="learner-avatar" style=${`--learner-color:${learner.color}`}>${learner.initials}</span>
+                <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})}>${learner.initials}</span>
               `)}
             </span>
             <span>${this.liveLearners.length
@@ -2846,7 +2848,7 @@ export class AppRibbon extends EditingControls {
                 composed: true,
               }))}
             >
-              <span class="learner-avatar" style=${`--learner-color:${learner.color}`} aria-hidden="true">${learner.initials}</span>
+              <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})} aria-hidden="true">${learner.initials}</span>
               <span class="learner-toggle-name">${learner.name}</span>
               <span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>
             </button>

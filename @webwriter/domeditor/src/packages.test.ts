@@ -7,6 +7,7 @@ import {
   PACKAGE_DOCUMENTATION_MAX_CHARS,
   PACKAGE_DOCUMENTATION_MAX_LINES,
   WebWriterPackageRegistry,
+  defaultPackageExportSource,
   describePackageExport,
   localizeSnippet,
   mergeEditingConfig,
@@ -466,5 +467,8 @@ describe("package export editing", () => {
       {source: "./src/old.ts", default: "./dist/demo.*"},
       "./src/new.ts",
     )).toEqual({source: "./src/new.ts", default: "./dist/demo.*"})
+    expect(defaultPackageExportSource("widget", "demo")).toBe("./src/widgets/demo.ts")
+    expect(defaultPackageExportSource("snippet", "example")).toBe("./src/snippets/example.html")
+    expect(defaultPackageExportSource("other", "helpers/index.js")).toBe("./src/helpers/index.js")
   })
 })

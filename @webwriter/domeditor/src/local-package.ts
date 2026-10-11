@@ -58,6 +58,13 @@ export type LocalPackageDocumentationReadOptions = PackageDocumentationReadOptio
   localRevision?: number
 }
 
+export const localPackageMetadataFields = new Set([
+  "name", "version", "description", "license", "keywords", "author", "contributors",
+  "customElements", "editingConfig",
+])
+
+export type LocalPackageMetadataUpdate = {remove: true} | {remove: false, value: unknown}
+
 export class LocalPackageError extends Error {
   constructor(public readonly code: "missing-manifest" | "invalid-manifest" | "manifest-read-failed", message: string, options?: ErrorOptions) {
     super(message, options)
@@ -111,6 +118,72 @@ export function normalizeLocalPackagePath(value: string) {
 
 const normalizePath = normalizeLocalPackagePath
 
+const isMetadataRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value)
+
+/** Validates a package export target, including nested conditional exports. */
+export function isLocalPackageExportTarget(value: unknown): boolean {
+  if(typeof value === "string") {
+    try { normalizeLocalPackagePath(value); return true }
+    catch { return false }
+  }
+  return isMetadataRecord(value)
+    && Object.keys(value).length > 0
+    && Object.values(value).every(isLocalPackageExportTarget)
+}
+
+export const optionalPackageMetadata = (value: string): LocalPackageMetadataUpdate => value.trim()
+  ? {remove: false, value}
+  : {remove: true}
+
+export function parsePackageMetadataJSON(field: string, value: string) {
+  try { return JSON.parse(value) as unknown }
+  catch { throw new Error(`${field} must be valid JSON`) }
+}
+
+export const isPersonMetadata = (value: unknown) => typeof value === "string" || isMetadataRecord(value)
+  && Object.values(value).every(part => typeof part === "string")
+
+export function parsePackagePerson(label: string, value: string) {
+  const trimmed = value.trim()
+  const person = trimmed.startsWith("{") ? parsePackageMetadataJSON(label, trimmed) : trimmed
+  if(!isPersonMetadata(person)) throw new Error(`${label} must be a name or a JSON person object`)
+  return person
+}
+
+export const parseLocalPackageMetadata = (field: string, value: string): LocalPackageMetadataUpdate => {
+  if(field === "customElements") {
+    if(!value.trim()) return {remove: true}
+    normalizeLocalPackagePath(value.trim())
+    return {remove: false, value: value.trim()}
+  }
+  if(field === "description" || field === "license") return optionalPackageMetadata(value)
+  if(field === "keywords") {
+    const keywords = [...new Set(value.split(/\r?\n|,/).map(keyword => keyword.trim()).filter(Boolean))]
+    if(!keywords.includes("webwriter-widget")) throw new Error("Keywords must include webwriter-widget")
+    return {remove: false, value: keywords}
+  }
+  if(field === "author") {
+    if(!value.trim()) return {remove: true}
+    return {remove: false, value: parsePackagePerson("Author", value)}
+  }
+  if(field === "contributors") {
+    if(!value.trim()) return {remove: true}
+    const contributors = parsePackageMetadataJSON("Contributors", value)
+    if(!Array.isArray(contributors) || !contributors.every(isPersonMetadata)) {
+      throw new Error("Contributors must be a JSON array of names or person objects")
+    }
+    return {remove: false, value: contributors}
+  }
+  if(field === "editingConfig") {
+    if(!value.trim()) return {remove: true}
+    const editingConfig = parsePackageMetadataJSON("Editing config", value)
+    if(!isMetadataRecord(editingConfig)) throw new Error("Editing config must be a JSON object")
+    return {remove: false, value: editingConfig}
+  }
+  return {remove: false, value}
+}
+
 const localReadmeCandidates = ["README.md", "readme.md", "README.markdown", "readme.markdown", "README.txt"]
 
 const localAbortReason = (signal: AbortSignal | undefined) => signal?.reason
@@ -123,18 +196,9 @@ const localThrowIfAborted = (signal: AbortSignal | undefined) => {
 const isManifest = (value: unknown): value is WebWriterPackageManifest => {
   if(!value || typeof value !== "object") return false
   const manifest = value as Partial<WebWriterPackageManifest>
-  const validExportTarget = (target: unknown): boolean => {
-    if(typeof target === "string") {
-      try { normalizePath(target); return true }
-      catch { return false }
-    }
-    if(!target || typeof target !== "object" || Array.isArray(target)) return false
-    const entries = Object.entries(target)
-    return entries.length > 0 && entries.every(([, nested]) => validExportTarget(nested))
-  }
   const validExports = manifest.exports === undefined || (
     typeof manifest.exports === "object" && manifest.exports !== null && !Array.isArray(manifest.exports)
-    && Object.entries(manifest.exports).every(([name, target]) => name.startsWith(".") && validExportTarget(target))
+    && Object.entries(manifest.exports).every(([name, target]) => name.startsWith(".") && isLocalPackageExportTarget(target))
   )
   return typeof manifest.name === "string" && manifest.name.length > 0
     && typeof manifest.version === "string" && manifest.version.length > 0
@@ -144,7 +208,9 @@ const isManifest = (value: unknown): value is WebWriterPackageManifest => {
     && (manifest.editingConfig === undefined || typeof manifest.editingConfig === "object" && manifest.editingConfig !== null && !Array.isArray(manifest.editingConfig))
 }
 
-async function readFile(directory: LocalPackageDirectory, path: string) {
+/** Reads a package-relative file from a directory handle, including paths
+ * whose intermediate components are file-like handles in browser shims. */
+export async function readLocalPackageFile(directory: LocalPackageDirectory, path: string): Promise<LocalPackageFile> {
   const parts = normalizePath(path).split("/").filter(Boolean)
   if(!parts.length) throw new Error("The package path is empty")
   let current: LocalPackageDirectory = directory
@@ -168,7 +234,7 @@ export async function readLocalPackageReadme(
   let lastError: unknown
   for(const path of localReadmeCandidates) {
     try {
-      const file = await readFile(directory, path)
+      const file = await readLocalPackageFile(directory, path)
       if(typeof file.size === "number" && file.size > PACKAGE_DOCUMENTATION_MAX_BYTES) {
         return {
           source: "local",
@@ -238,7 +304,7 @@ export async function readLocalPackageReadme(
 
 async function fileExists(directory: LocalPackageDirectory, path: string) {
   try {
-    await readFile(directory, path)
+    await readLocalPackageFile(directory, path)
     return true
   }
   catch {
@@ -299,7 +365,7 @@ export function editingConfigWarnings(editingConfig: PackageEditingConfig, conte
 export async function loadLocalPackage(directory: LocalPackageDirectory, options: LocalPackageOptions): Promise<LocalPackageLoadResult> {
   let manifestText: string
   try {
-    manifestText = await (await readFile(directory, "package.json")).text()
+    manifestText = await (await readLocalPackageFile(directory, "package.json")).text()
   }
   catch(error) {
     if(isPermissionError(error)) {
@@ -333,7 +399,7 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
   const configPath = resolve("./editing-config.json")
   if(configPath) {
     try {
-      const configText = await (await readFile(directory, configPath)).text()
+      const configText = await (await readLocalPackageFile(directory, configPath)).text()
       const parsed: unknown = JSON.parse(configText)
       if(parsed && typeof parsed === "object" && !Array.isArray(parsed)) externalConfig = parsed as PackageEditingConfig
       else warnings.push({code: "invalid-editing-config", path: configPath, message: "The editing-config.json is not an object; inline config was used."})

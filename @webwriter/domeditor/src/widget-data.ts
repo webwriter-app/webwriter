@@ -125,8 +125,15 @@ function serialize(block: HTMLScriptElement, value: Value): string {
 }
 
 export const widgetDataHistoryTime = "widget-data-history-time"
-export function stampUndo(manager: Y.UndoManager) {
-  const stamp = ({stackItem}: {stackItem: {meta: Map<unknown, unknown>}}) => stackItem.meta.set(widgetDataHistoryTime, performance.now())
+export const widgetDataHistoryGroup = "widget-data-history-group"
+export function stampUndo(manager: Y.UndoManager, group?: () => object | undefined, changed?: () => void) {
+  const stamp = ({stackItem}: {stackItem: {meta: Map<unknown, unknown>}}) => {
+    stackItem.meta.set(widgetDataHistoryTime, performance.now())
+    const token = manager.undoing || manager.redoing
+      ? manager.currStackItem?.meta.get(widgetDataHistoryGroup) : group?.()
+    if(token) stackItem.meta.set(widgetDataHistoryGroup, token)
+    if(!manager.undoing && !manager.redoing) changed?.()
+  }
   manager.on("stack-item-added", stamp)
   manager.on("stack-item-updated", stamp)
 }
@@ -139,7 +146,8 @@ export class WidgetDataBindings {
   readonly #origin = {}
   #busy = false
   #destroyed = false
-  #grouping = false
+  #grouping: object | undefined
+  readonly #historyObservers = new Set<() => void>()
   readonly #captureTimeouts = new WeakMap<Y.UndoManager, number>()
   readonly #fallbackDocumentId: string
 
@@ -250,7 +258,7 @@ export class WidgetDataBindings {
       const data = connection.doc.getMap("data")
       if(!data.has("value")) connection.doc.transact(() => data.set("value", mirrorValue(binding.before)), this.#origin)
       binding.undo = new Y.UndoManager(data, {trackedOrigins: new Set([this.#origin])})
-      stampUndo(binding.undo)
+      stampUndo(binding.undo, () => this.#grouping, () => this.#historyObservers.forEach(callback => callback()))
       if(this.#grouping) this.#group(binding.undo)
       binding.observe = () => {
         // Notify outside the Yjs transaction, so widget callbacks start their own operations.
@@ -388,11 +396,22 @@ export class WidgetDataBindings {
   }
 
   history(kind: "undo" | "redo") {
+    return this.historyManagers(kind)[0]
+  }
+
+  historyManagers(kind: "undo" | "redo") {
     return [...this.#bindings.values()].flatMap(binding => binding.undo ? [binding.undo] : [])
       .filter(manager => (kind === "undo" ? manager.undoStack : manager.redoStack).length)
       .sort((a, b) => Number((kind === "undo" ? b.undoStack : b.redoStack).at(-1)?.meta.get(widgetDataHistoryTime) ?? 0)
-        - Number((kind === "undo" ? a.undoStack : a.redoStack).at(-1)?.meta.get(widgetDataHistoryTime) ?? 0))[0]
+        - Number((kind === "undo" ? a.undoStack : a.redoStack).at(-1)?.meta.get(widgetDataHistoryTime) ?? 0))
   }
+
+  observeHistory(callback: () => void) {
+    this.#historyObservers.add(callback)
+    return () => { this.#historyObservers.delete(callback) }
+  }
+
+  clearRedo() { for(const manager of this.historyManagers("redo")) manager.clear(false, true) }
 
   stopCapturing() { for(const binding of this.#bindings.values()) binding.undo?.stopCapturing() }
 
@@ -401,13 +420,13 @@ export class WidgetDataBindings {
     manager.captureTimeout = Infinity
   }
 
-  startUndoGroup() {
-    this.#grouping = true
+  startUndoGroup(group: object = {}) {
+    this.#grouping = group
     for(const binding of this.#bindings.values()) if(binding.undo) this.#group(binding.undo)
   }
 
   endUndoGroup() {
-    this.#grouping = false
+    this.#grouping = undefined
     for(const binding of this.#bindings.values()) {
       if(binding.undo) binding.undo.captureTimeout = this.#captureTimeouts.get(binding.undo) ?? binding.undo.captureTimeout
     }
@@ -435,6 +454,7 @@ export class WidgetDataBindings {
 
   destroy() {
     this.#destroyed = true
+    this.#historyObservers.clear()
     for(const binding of this.#bindings.values()) {
       if(this.root.contains(binding.block)) binding.block.textContent = binding.defaults
       this.#dispose(binding)

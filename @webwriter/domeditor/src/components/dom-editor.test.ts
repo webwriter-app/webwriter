@@ -7,6 +7,7 @@ import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import {elementDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
+import type {ShapeKeyboard} from "./shape-keyboard"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonMenu} from "./ribbon-menu"
@@ -1161,6 +1162,41 @@ describe("DomEditor iframe setup", () => {
     const loaded = new DOMParser().parseFromString(host.editorSrcdocFromHTML('<html lang="fr"><head></head><body><p>Bonjour</p></body></html>'), "text/html")
     expect(loaded.documentElement.lang).toBe("fr")
     expect(loaded.body.textContent).toBe("Bonjour")
+  })
+
+  it("preserves authored meta refresh metadata in the editor frame HTML", async () => {
+    const {editor} = await mountEditor()
+    const source = new DOMParser().parseFromString((editor as any).editorSrcdocFromHTML(
+      '<!doctype html><html><head><meta http-equiv="refresh" content="5; URL=/next" data-authored="yes"></head><body>Keep editing</body></html>',
+    ), "text/html")
+    const refresh = source.head.querySelector('meta[http-equiv="refresh"]')
+
+    expect(refresh?.getAttribute("http-equiv")).toBe("refresh")
+    expect(refresh?.getAttribute("content")).toBe("5; URL=/next")
+    expect(refresh?.getAttribute("data-authored")).toBe("yes")
+    expect(source.body.textContent).toBe("Keep editing")
+  })
+
+  it("shows a startup error from the current editor frame and rejects readiness", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const frameOrigin = host.frameShellURL("editor", host.frameRevision).split("/frame-shell.html")[0]
+    const rejectReady = vi.fn()
+    host.editorWindow = null
+    host.editorReadyPromise = new Promise(() => {})
+    host.editorReadyReject = rejectReady
+
+    host.handleEditorMessage(new MessageEvent("message", {
+      origin: frameOrigin,
+      source: iframe.contentWindow,
+      data: {type: "webwriter-frame-error", kind: "editor", revision: String(host.frameRevision),
+        bridgeNonce: host.bridgeNonce, message: "Unsupported refresh"},
+    }))
+
+    expect(host.fileError).toBe("Unsupported refresh")
+    expect(host.documentLoading).toBe(false)
+    expect(rejectReady).toHaveBeenCalledWith(expect.objectContaining({message: "Unsupported refresh"}))
+    await expect(host.waitForEditorWindow()).rejects.toThrow("Unsupported refresh")
   })
 
   it.each(["canvas", "slides"] as const)("uses the selected %s layout for File → New and keeps its fresh state clean", async mode => {
@@ -7462,7 +7498,7 @@ describe("DomEditor.execute()", () => {
     await select({active: true, capture: false})
     expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBeNull()
     await select({active: true, capture: true})
-    const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-shape-keyboard")!
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
     expect(keyboard.closest(".document-stage")).not.toBeNull()
     const paint = {fill: "#60a5fa", stroke: "#334155", "stroke-width": "8", opacity: "0.5"}
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!

@@ -1,4 +1,4 @@
-import { DOMEditor } from "../domeditor"
+import type { DOMEditor } from "../domeditor"
 import {isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 
 export type DocumentListenerMap = {[key in keyof DocumentEventMap]?: (event: DocumentEventMap[key]) => void}

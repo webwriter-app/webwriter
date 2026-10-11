@@ -17,6 +17,49 @@ function create(markup = html(), options: WidgetDataOptions = {}) {
   return {root, shared, block: () => root.querySelector<HTMLScriptElement>('script[slot="data"]')!, widget: () => root.querySelector("data-widget")!}
 }
 const read = (peer: ReturnType<typeof create>) => JSON.parse(peer.block().textContent!)
+
+describe("grouped document and widget data history", () => {
+  it("undoes and redoes DOM and multiple widget data edits together, retaining remote data", async () => {
+    const connection = resolver()
+    const peer = create(html("shared") + html("shared").replace('id="widget"', 'id="second"'), connection)
+    const blocks = [...peer.root.querySelectorAll<HTMLScriptElement>('script[slot="data"]')]
+    peer.shared.stopCapturing()
+    const end = peer.shared.beginUndoGroup()
+    const nested = peer.shared.beginUndoGroup()
+    peer.widget().setAttribute("status", "answered")
+    for(const block of blocks) block.textContent = '{"a":2,"b":1}'
+    end()
+    nested()
+    for(const doc of connection.docs.values()) doc.transact(() =>
+      (doc.getMap("data").get("value") as Y.Map<unknown>).set("b", 9), "remote")
+    await tick()
+    peer.shared.undo()
+    await tick()
+    expect(peer.widget().hasAttribute("status")).toBe(false)
+    expect(blocks.map(block => JSON.parse(block.textContent!))).toEqual([{a: 1, b: 9}, {a: 1, b: 9}])
+    peer.shared.redo()
+    await tick()
+    expect(peer.widget().getAttribute("status")).toBe("answered")
+    expect(blocks.map(block => JSON.parse(block.textContent!))).toEqual([{a: 2, b: 9}, {a: 2, b: 9}])
+  })
+
+  it.each(["document", "data"])("clears the complete grouped redo branch after a new %s edit", async kind => {
+    const peer = create()
+    const end = peer.shared.beginUndoGroup()
+    peer.widget().setAttribute("status", "answered")
+    peer.block().textContent = '{"a":2,"b":1}'
+    end()
+    peer.shared.undo()
+    await tick()
+    if(kind === "document") peer.widget().setAttribute("title", "new edit")
+    else peer.block().textContent = '{"a":3,"b":1}'
+    peer.shared.syncFromDOM()
+    peer.shared.redo()
+    await tick()
+    expect(peer.widget().hasAttribute("status")).toBe(false)
+    expect(read(peer).a).toBe(kind === "data" ? 3 : 1)
+  })
+})
 const write = (peer: ReturnType<typeof create>, value: unknown) => {
   peer.block().textContent = JSON.stringify(value)
   peer.shared.syncFromDOM()

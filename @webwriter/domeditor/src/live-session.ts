@@ -2,6 +2,7 @@ import * as Y from "yjs"
 import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates} from "y-protocols/awareness"
 import {WebsocketProvider} from "y-websocket"
 import {acceptLearnerUpdate} from "./live-session-permissions.js"
+import {isCssColor} from "./css-color"
 
 export type LiveSessionRole = "host" | "learner"
 export type LiveSessionStepKind = "document" | "cursor" | "pointer" | "click" | "scroll" | "widget"
@@ -103,7 +104,7 @@ const isLearnerIdentity = (value: unknown): value is Pick<LiveSessionLearner, "i
   const learner = value as Partial<LiveSessionLearner>
   return typeof learner.id === "string" && learnerIdPattern.test(learner.id)
     && typeof learner.name === "string" && learner.name.length <= 200
-    && typeof learner.color === "string" && learner.color.length <= 64
+    && isCssColor(learner.color)
 }
 
 const clone = <T>(value: T): T => {

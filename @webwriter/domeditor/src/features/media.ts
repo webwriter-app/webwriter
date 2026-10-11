@@ -9,7 +9,7 @@ import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
-import {$, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
+import {$, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -84,8 +84,8 @@ const isTimedResourceElement = (node: Node, resource?: TimedMediaResourceType): 
 
 const stateAttributes = (element: Element) => Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
   if(attribute.name !== "class") return [[attribute.name, attribute.value]]
-  const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
-  return classes.length ? [["class", classes.join(" ")]] : []
+  const classes = authoredClassValue(attribute.value)
+  return classes ? [["class", classes]] : []
 }))
 
 const equalAttributes = (element: Element, expected: Record<string, string>) => {
@@ -1539,8 +1539,8 @@ export class MediaFeature extends EditorFeature {
       const source = selected.getAttribute(mediaSourceAttribute(selected))
       Array.from(selected.attributes).forEach(attribute => {
         if(attribute.name === "class") {
-          const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
-          if(classes.length) replacement.setAttribute("class", classes.join(" "))
+          const classes = authoredClassValue(attribute.value)
+          if(classes) replacement.setAttribute("class", classes)
           return
         }
         if(attribute.name === "src" || attribute.name === "data") return

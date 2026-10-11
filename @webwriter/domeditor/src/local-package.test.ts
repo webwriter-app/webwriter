@@ -1,7 +1,15 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
 import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS} from "./packages"
-import {loadLocalPackage, localPackageWatchPaths, readLocalPackageReadme, type LocalPackageDirectory} from "./local-package"
+import {
+  isLocalPackageExportTarget,
+  loadLocalPackage,
+  localPackageWatchPaths,
+  parseLocalPackageMetadata,
+  parsePackagePerson,
+  readLocalPackageReadme,
+  type LocalPackageDirectory,
+} from "./local-package"
 
 type Node = {files?: Record<string, string>, directories?: Record<string, Node>}
 const directory = (node: Node): LocalPackageDirectory => ({
@@ -35,6 +43,32 @@ const manifest = (overrides: Record<string, unknown> = {}) => JSON.stringify({
 })
 
 const urlFor = (path: string) => `http://local.test/pkg/${path}`
+
+describe("local package metadata", () => {
+  it("validates nested conditional export targets and rejects unsafe paths", () => {
+    expect(isLocalPackageExportTarget("./dist/widget.js")).toBe(true)
+    expect(isLocalPackageExportTarget({browser: "./dist/widget.js", default: {import: "./src/widget.js"}})).toBe(true)
+    expect(isLocalPackageExportTarget({browser: "./dist/widget.js", default: "../outside.js"})).toBe(false)
+    expect(isLocalPackageExportTarget({})).toBe(false)
+    expect(isLocalPackageExportTarget({browser: ["./dist/widget.js"]})).toBe(false)
+  })
+
+  it("parses package metadata while preserving its optional and structured forms", () => {
+    expect(parseLocalPackageMetadata("license", "  ")).toEqual({remove: true})
+    expect(parseLocalPackageMetadata("keywords", "widget, webwriter-widget\nwidget")).toEqual({
+      remove: false, value: ["widget", "webwriter-widget"],
+    })
+    expect(parseLocalPackageMetadata("author", '{"name":"Ada Lovelace","email":"ada@example.test"}')).toEqual({
+      remove: false, value: {name: "Ada Lovelace", email: "ada@example.test"},
+    })
+    expect(parseLocalPackageMetadata("contributors", '["Grace Hopper", {"name":"Katherine Johnson"}]')).toEqual({
+      remove: false, value: ["Grace Hopper", {name: "Katherine Johnson"}],
+    })
+    expect(parsePackagePerson("Contributor", "  Grace Hopper  ")).toBe("Grace Hopper")
+    expect(() => parseLocalPackageMetadata("keywords", "widget")).toThrow("must include webwriter-widget")
+    expect(() => parseLocalPackageMetadata("contributors", '[{"name":1}]')).toThrow("JSON array of names or person objects")
+  })
+})
 
 describe("loadLocalPackage", () => {
   it("derives polling paths for the manifest and generated wildcard assets", () => {

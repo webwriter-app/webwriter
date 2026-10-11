@@ -1543,6 +1543,78 @@ await check("iframe lifecycle reaches load and cleans up", async () => {
   assert(!frame.isConnected && !document.querySelector("#lifecycle"), "iframe was not removed")
 })
 
+await check("editing frame blocks meta refresh and retains same-document navigation", async () => {
+  const frameOrigin = `http://localhost:${location.port}`
+  const frames = new Set<HTMLIFrameElement>()
+  const makeFrame = (kind: "editor" | "preview") => {
+    const frame = document.createElement("iframe")
+    frames.add(frame)
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin")
+    frame.src = `${frameOrigin}/frame-shell.html?kind=${kind}&revision=0#nonce=${crypto.randomUUID()}`
+    fixture.append(frame)
+    return frame
+  }
+  const waitForMessage = <T>(frame: HTMLIFrameElement, type: string, timeoutMs = 4000) => new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", receive)
+      reject(new Error(`timed out waiting for ${type}`))
+    }, timeoutMs)
+    const receive = (event: MessageEvent) => {
+      if(event.source !== frame.contentWindow || event.origin !== frameOrigin || event.data?.type !== type) return
+      clearTimeout(timer)
+      window.removeEventListener("message", receive)
+      resolve(event.data as T)
+    }
+    window.addEventListener("message", receive)
+  })
+  const install = async (frame: HTMLIFrameElement, html: string) => {
+    const ready = waitForMessage<{type: string, revision: string}>(frame, "webwriter-frame-shell-ready")
+    await ready
+    frame.contentWindow!.postMessage({type: "webwriter-frame-document", html}, frameOrigin)
+  }
+  try {
+    const crossOrigin = `http://127.0.0.1:${location.port}`
+    for(const [delay, targetOrigin] of [["0", crossOrigin], ["0.5", frameOrigin], ["0.5", crossOrigin], ["0", frameOrigin]] as const) {
+      const frame = makeFrame("editor")
+      const destination = `${targetOrigin}/?meta-refresh-target=${crypto.randomUUID()}`
+      const source = `<!doctype html><html><head><meta http-equiv="refresh" content="${delay};url=${destination}" data-authored="yes"></head><body>authored<script>setTimeout(() => parent.postMessage({type:'refresh-frame-state', href:location.href, metaContent:document.querySelector('meta[http-equiv=refresh]')?.content, hasRefresh:!!document.querySelector('meta[http-equiv=refresh]')}, '*'), 1100)</script></body></html>`
+      await install(frame, source)
+      const report = waitForMessage<{type: string, href: string, metaContent: string, hasRefresh: boolean}>(frame, "refresh-frame-state", 1800)
+      const state = await report
+      assert(state.hasRefresh && state.metaContent === `${delay};url=${destination}`, `editor frame did not retain authored ${delay}s refresh metadata`)
+      assert(new URL(state.href).pathname === "/frame-shell.html", `editor frame followed ${delay}s refresh to ${state.href}`)
+      frame.remove()
+    }
+
+    const frame = makeFrame("editor")
+    await install(frame, `<!doctype html><html><head></head><body><a id="fragment" href="#inside">fragment</a><script>document.querySelector('a').click();parent.postMessage({type:'fragment-frame-state',href:location.href}, '*')</script></body></html>`)
+    const fragmentState = waitForMessage<{type: string, href: string}>(frame, "fragment-frame-state")
+    const state = await fragmentState
+    assert(new URL(state.href).hash === "#inside", "same-document fragment navigation was blocked")
+
+    const replaced = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("parent iframe src replacement was blocked")), 2000)
+      frame.addEventListener("load", () => { clearTimeout(timer); resolve() }, {once: true})
+    })
+    frame.src = "about:blank"
+    await replaced
+    assert(frame.contentDocument?.URL === "about:blank", "trusted parent replacement did not load")
+    frame.remove()
+
+    const preview = makeFrame("preview")
+    const previewNonce = crypto.randomUUID()
+    const previewTarget = `${frameOrigin}/frame-shell.html?kind=preview&revision=after-refresh#nonce=${previewNonce}`
+    await install(preview, `<!doctype html><meta http-equiv="refresh" content="0.5;url=${previewTarget}"><body>Preview refresh remains active</body>`)
+    const previewReady = await waitForMessage<{type: string, kind: string, revision: string, bridgeNonce: string}>(
+      preview, "webwriter-frame-shell-ready", 4000,
+    )
+    assert(previewReady.kind === "preview" && previewReady.revision === "after-refresh" && previewReady.bridgeNonce === previewNonce,
+      "preview shell did not follow its authored meta refresh")
+    preview.remove()
+  }
+  finally { frames.forEach(frame => frame.remove()) }
+})
+
 await check("dead-key composition stays outside authored formulas", async () => {
   const paragraph = document.createElement("p")
   fixture.append(paragraph)
@@ -3694,12 +3766,16 @@ await check("AI toolbox adapts its width and short-screen controls", async () =>
           assert(Math.abs((bounds.top + bounds.bottom - label.top - label.bottom) / 2) < 1 && bounds.width === 24, "AI controls were not icon buttons beside the tab")
           assert(control.contains(root.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)), "compact AI control was not clickable")
         }
-        ribbon.aiChats = ribbon.aiChats.map(chat => chat.id === ribbon.activeAIChatId ? {...chat, title: "Test conversation"} : chat)
+        const testRibbon = ribbon as unknown as {
+          aiChats: {id: string, title: string, messages: unknown[]}[]
+          activeAIChatId: string
+        }
+        testRibbon.aiChats = testRibbon.aiChats.map(chat => chat.id === testRibbon.activeAIChatId ? {...chat, title: "Test conversation"} : chat)
         await ribbon.updateComplete
-        const previousChats = ribbon.aiChats.length
+        const previousChats = testRibbon.aiChats.length
         root.querySelector<HTMLButtonElement>('[aria-label="New chat"]')!.click()
         await ribbon.updateComplete
-        assert(ribbon.aiChats.length === previousChats + 1, "compact new-chat button did not work")
+        assert(testRibbon.aiChats.length === previousChats + 1, "compact new-chat button did not work")
       }
     }
   }
@@ -3713,7 +3789,9 @@ await check("narrow ribbons show only the AI sparkles button", async () => {
   fixture.append(ribbon)
   try {
     await ribbon.updateComplete
-    ribbon.aiPrompt = "Keep this draft"
+    const prompt = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    prompt.value = "Keep this draft"
+    prompt.dispatchEvent(new Event("input", {bubbles: true}))
     ribbon.fileName = "A long document filename.html"
     await ribbon.updateComplete
     const root = ribbon.shadowRoot!

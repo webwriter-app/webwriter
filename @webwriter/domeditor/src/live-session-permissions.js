@@ -13,11 +13,27 @@ const mapNames = {
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value)
 const isFiniteNumber = value => typeof value === "number" && Number.isFinite(value)
 const validPoint = value => isRecord(value) && isFiniteNumber(value.x) && isFiniteNumber(value.y)
+const validColor = value => {
+  if(typeof value !== "string" || value.length > 64 || !value.trim() || /[;{}\u0000-\u001f]/.test(value)) return false
+  const color = value.trim()
+  if(typeof globalThis.CSS?.supports === "function") return CSS.supports("color", color)
+  if(typeof globalThis.document === "undefined") {
+    // Node-based permission checks do not have the browser's CSS parser.
+    // Reject declaration/function injection, but retain named CSS colors.
+    return !/url\s*\(/i.test(color)
+      && (/^#[\da-f]{3,8}$/i.test(color)
+        || /^[a-z][a-z0-9-]*$/i.test(color)
+        || /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)\([^;{}]+\)$/i.test(color))
+  }
+  const style = document.createElement("span").style
+  style.color = color
+  return style.color !== ""
+}
 
 const validLearner = (value, learnerId) => isRecord(value)
   && value.id === learnerId && learnerIdPattern.test(learnerId)
   && typeof value.name === "string" && value.name.length <= 200
-  && typeof value.color === "string" && value.color.length <= 64
+  && validColor(value.color)
   && isFiniteNumber(value.firstSeen) && isFiniteNumber(value.lastSeen)
   && typeof value.connected === "boolean"
 

@@ -196,6 +196,42 @@ describe("development server", () => {
     expect((await request(`/api/documents/${id}`)).response.status).toBe(404)
   })
 
+  it("merges concurrent partial document updates", async () => {
+    const created = await request("/api/documents", {
+      method: "POST",
+      body: JSON.stringify({title: "Concurrent", content: "<p>Original</p>", format: "html"}),
+    })
+    const id = created.value.document.id
+    const delayedPatch = patch => {
+      let resolveResult
+      let rejectResult
+      const result = new Promise((resolve, reject) => { resolveResult = resolve; rejectResult = reject })
+      const outgoing = httpRequest(`${baseUrl}/api/documents/${id}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+      }, response => {
+        const chunks = []
+        response.on("data", chunk => chunks.push(chunk))
+        response.on("end", () => resolveResult({status: response.statusCode, value: JSON.parse(Buffer.concat(chunks).toString("utf8"))}))
+      })
+      outgoing.once("error", rejectResult)
+      outgoing.flushHeaders()
+      return {outgoing, result, patch}
+    }
+    const first = delayedPatch({title: "Concurrent title"})
+    const second = delayedPatch({content: "<p>Concurrent content</p>"})
+    // Let the server receive both headers and begin reading both request
+    // bodies before either partial update is available.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    first.outgoing.end(JSON.stringify(first.patch))
+    second.outgoing.end(JSON.stringify(second.patch))
+    const responses = await Promise.all([first.result, second.result])
+
+    expect(responses.map(response => response.status)).toEqual([200, 200])
+    const saved = (await request(`/api/documents/${id}`)).value.document
+    expect(saved).toEqual(expect.objectContaining({title: "Concurrent title", content: "<p>Concurrent content</p>"}))
+  })
+
   it("seeds the MathML preset and preserves edits across restarts", async () => {
     const id = "preset-mozilla-mathml-test"
     const documents = (await request("/api/documents")).value.documents

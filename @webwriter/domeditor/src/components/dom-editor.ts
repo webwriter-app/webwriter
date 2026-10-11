@@ -23,18 +23,19 @@ import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
+  defaultPackageExportSource,
   describePackageExport,
   editingConfigKey,
   normalizeEditingConfig,
   packageEditingConfigOptions,
   INSTALLED_PACKAGES_STORAGE_KEY,
   INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
-  SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL as scopedCustomElementRegistryPolyfillUrl,
   packageMemberAction,
   refreshPackageLabels,
   packageTestTimeout,
   WebWriterPackageRegistry,
   webWriterPackageExportName,
+  webWriterPackageExportTypes,
   withPackageExportSource,
   type PackageEditingConfig,
   type PackageMember,
@@ -57,8 +58,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {clearEditorOwnedAttributes, clearEditorMarkerClasses, clearInlinePlacement, isWidgetShadowInteraction, getInertDocument} from "../utility"
-import {stripActiveContent} from "../active-content"
+import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, getInertDocument} from "../utility"
 import {
   imageMapAreaAttributeOptions,
   isImageMapHotspotShape,
@@ -129,21 +129,27 @@ import type {OpenDocumentMenu} from "./open-document-menu"
 import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
-import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {escapeHTMLAttribute, serializeDoctype} from "../serialization"
+import {editorFrameHTML, previewFrameHTML} from "../frame-document"
 import {isPackageImportMap, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
-import {applyPreviewWidgetSnapshot, cleanPreviewEditorArtifacts, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
+import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {editorFrameOrigin} from "../frame-origins"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "../frame-local-packages"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
 import {
+  isLocalPackageExportTarget,
+  localPackageMetadataFields,
   normalizeLocalPackagePath,
+  parseLocalPackageMetadata,
+  parsePackageMetadataJSON,
+  parsePackagePerson,
   type LocalPackageWarning,
 } from "../local-package"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {LocalPackageManager, type LocalPackageRecord} from "../local-package-manager"
-import {defaultDocumentTheme, documentTheme} from "../document-themes"
+import {defaultDocumentTheme} from "../document-themes"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 import {aiPage, type AIChangeOperation} from "../ai-tools"
 import type {TableSelectionState} from "../table"
@@ -208,28 +214,6 @@ type FilePickerWindow = Window & typeof globalThis & {
 type FileFormat = "html" | "offline"
 type StorageLocation = "local" | "development-server"
 
-const escapeAttribute = (value: string) => value
-  .replaceAll("&", "&amp;")
-  .replaceAll("\"", "&quot;")
-  .replaceAll("<", "&lt;")
-
-const ensureDefaultDocumentTheme = (root: Document) => {
-  const hasTheme = Array.from(root.head.querySelectorAll<HTMLStyleElement>("style[data-ww-theme]"))
-    .some(style => documentTheme(style.getAttribute("data-ww-theme") ?? ""))
-  if(hasTheme) return
-  const style = root.createElement("style")
-  style.setAttribute("data-ww-theme", defaultDocumentTheme.value)
-  style.setAttribute("blocking", "render")
-  style.textContent = defaultDocumentTheme.source
-  root.head.append(style)
-}
-
-const defaultDocumentThemeHTML = () => {
-  const root = document.implementation.createHTMLDocument()
-  ensureDefaultDocumentTheme(root)
-  return root.head.querySelector("style")!.outerHTML
-}
-
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const previewEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/preview-entry.ts" : "assets/preview-entry.js"}`
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
@@ -240,91 +224,7 @@ const executeTimeoutMs = 15_000
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
 
-const localPackageMetadataFields = new Set([
-  "name", "version", "description", "license", "keywords", "author", "contributors",
-  "customElements", "editingConfig",
-])
-
-const localPackageExportTypes = new Set<WebWriterPackageExportType>([
-  "widget", "test", "migration", "snippet", "theme", "icon", "editing-config", "custom-elements", "other",
-])
-
-const defaultPackageExportSource = (type: WebWriterPackageExportType, name: string) => {
-  if(type === "test") return `./tests/${name}.test.ts`
-  if(type === "migration") return "./src/migrate.ts"
-  if(type === "snippet") return `./src/snippets/${name}.html`
-  if(type === "theme") return `./src/themes/${name}.css`
-  if(type === "icon") return "./src/icon.svg"
-  if(type === "editing-config") return "./editing-config.json"
-  if(type === "custom-elements") return "./custom-elements.json"
-  if(type === "other") return `./src/${name}`
-  return `./src/widgets/${name}.ts`
-}
-
-type LocalPackageMetadataUpdate = {remove: true} | {remove: false, value: unknown}
-
-const optionalPackageMetadata = (value: string): LocalPackageMetadataUpdate => value.trim()
-  ? {remove: false, value}
-  : {remove: true}
-
-const parsePackageMetadataJSON = (field: string, value: string) => {
-  try { return JSON.parse(value) as unknown }
-  catch { throw new Error(`${field} must be valid JSON`) }
-}
-
-const isPersonMetadata = (value: unknown) => typeof value === "string" || isRecord(value)
-  && Object.values(value).every(part => typeof part === "string")
-
-const parsePackagePerson = (label: string, value: string) => {
-  const trimmed = value.trim()
-  const person = trimmed.startsWith("{") ? parsePackageMetadataJSON(label, trimmed) : trimmed
-  if(!isPersonMetadata(person)) throw new Error(`${label} must be a name or a JSON person object`)
-  return person
-}
-
-function isPackageExportTarget(value: unknown): boolean {
-  if(typeof value === "string") {
-    try { normalizeLocalPackagePath(value); return true }
-    catch { return false }
-  }
-  return isRecord(value) && Object.keys(value).length > 0
-    && Object.values(value).every(isPackageExportTarget)
-}
-
-const parseLocalPackageMetadata = (field: string, value: string): LocalPackageMetadataUpdate => {
-  if(field === "customElements") {
-    if(!value.trim()) return {remove: true}
-    normalizeLocalPackagePath(value.trim())
-    return {remove: false, value: value.trim()}
-  }
-  if(field === "description" || field === "license") {
-    return optionalPackageMetadata(value)
-  }
-  if(field === "keywords") {
-    const keywords = [...new Set(value.split(/\r?\n|,/).map(keyword => keyword.trim()).filter(Boolean))]
-    if(!keywords.includes("webwriter-widget")) throw new Error("Keywords must include webwriter-widget")
-    return {remove: false, value: keywords}
-  }
-  if(field === "author") {
-    if(!value.trim()) return {remove: true}
-    return {remove: false, value: parsePackagePerson("Author", value)}
-  }
-  if(field === "contributors") {
-    if(!value.trim()) return {remove: true}
-    const contributors = parsePackageMetadataJSON("Contributors", value)
-    if(!Array.isArray(contributors) || !contributors.every(isPersonMetadata)) {
-      throw new Error("Contributors must be a JSON array of names or person objects")
-    }
-    return {remove: false, value: contributors}
-  }
-  if(field === "editingConfig") {
-    if(!value.trim()) return {remove: true}
-    const editingConfig = parsePackageMetadataJSON("Editing config", value)
-    if(!isRecord(editingConfig)) throw new Error("Editing config must be a JSON object")
-    return {remove: false, value: editingConfig}
-  }
-  return {remove: false, value}
-}
+const localPackageExportTypes = new Set(webWriterPackageExportTypes.map(({value}) => value))
 
 const isAbortError = (error: unknown) => error instanceof DOMException
   ? error.name === "AbortError"
@@ -518,6 +418,7 @@ export class DomEditor extends LitElement {
   private editorDocument: Document | null = null
   private editorWindow: Window | null = null
   private editorOpaque = false
+  private editorFrameStartupError: {revision: number, message: string} | null = null
   private editorShellRevision = -1
   private editorShellInstanceId: string | null = null
   private editorInitializedRevision = -1
@@ -1132,45 +1033,15 @@ export class DomEditor extends LitElement {
   }
 
   private editorSrcdocFromHTML(documentHTML: string | null) {
-    // Keep authored script elements in the live DOM for serialization, but
-    // give only the editor bootstrap and explicitly installed package assets
-    // execution permission in this isolated editing frame. The nonce is
-    // also passed through the authenticated bridge, so a document script
-    // cannot learn or forge it before editor initialization.
-    const nonce = escapeAttribute(this.bridgeNonce)
-    // Installed widget bundles include shader and code compilers. They need
-    // string evaluation, while authored scripts still require the secret nonce.
-    const hasWidgetScripts = this.installedPackages.some(pkg => pkg.scripts.length)
-    const packageEvaluation = hasWidgetScripts ? " 'unsafe-eval'" : ""
-    // Libraries such as CodeMirror create their own style elements inside
-    // widget shadows. They cannot inherit the nonce on their module script.
-    const packageStyles = hasWidgetScripts ? "* data: blob: 'unsafe-inline'" : `'nonce-${nonce}'`
-    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
-    const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">`
-    const bridge = `<meta class="◆ ◆editor-only" name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeAttribute(window.location.origin)}">`
-    // Happy DOM deliberately disables external script execution but reports
-    // each attempted iframe load as an uncaught exception. Keep virtual test
-    // frames inert; browser builds retain the executable script types.
-    const testScriptType = import.meta.env.MODE === "test" ? ' type="application/json"' : ""
-    const editorScriptType = import.meta.env.MODE === "test" ? "application/json" : "module"
-    const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script><script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
-    const bootstrap = `${csp}${bridge}${bootstrapScripts}`
-    if(documentHTML === null) {
-      return `<!-- frame ${this.frameRevision} --><!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head>${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}</head><body></body></html>`
-    }
-
-    const parsed = new DOMParser().parseFromString(documentHTML, "text/html")
-    restoreOriginalResourceURLs(parsed)
-    // The iframe receives its trusted resolution through load-widgets.
-    parsed.getElementById(packageImportMapId)?.remove()
-    ensureDefaultDocumentTheme(parsed)
-    parsed.head.insertAdjacentHTML("beforeend", `${bridge}${bootstrapScripts}`)
-    const cspElement = parsed.createElement("meta")
-    cspElement.classList.add("◆", "◆editor-only")
-    cspElement.httpEquiv = "Content-Security-Policy"
-    cspElement.content = policy
-    parsed.head.prepend(cspElement)
-    return `<!-- frame ${this.frameRevision} -->${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
+    return editorFrameHTML(documentHTML, {
+      bridgeNonce: this.bridgeNonce,
+      revision: this.frameRevision,
+      language: this.settings.language,
+      packages: this.installedPackages,
+      hostOrigin: window.location.origin,
+      entryURL: editorEntryUrl,
+      executeScripts: import.meta.env.MODE !== "test",
+    })
   }
 
   /** Serialize the most recent host-side snapshot into a bootstrap payload
@@ -1180,22 +1051,7 @@ export class DomEditor extends LitElement {
     if(!source?.documentElement) return this.frameDocumentHTML
     const inertDocument = getInertDocument(source)
     const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
-    const removeEditorOnly = (parent: Node) => {
-      for(const child of Array.from(parent.childNodes)) {
-        if(child.nodeType === Node.ELEMENT_NODE) {
-          const element = child as Element
-          if(element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only")) {
-            element.remove()
-            continue
-          }
-          if(element.localName === "template") removeEditorOnly((element as HTMLTemplateElement).content)
-        }
-        removeEditorOnly(child)
-      }
-    }
-    removeEditorOnly(root)
-    clearEditorOwnedAttributes(root)
-    clearEditorMarkerClasses(root)
+    clearEditorArtifacts(root)
     return `${serializeDoctype(source.doctype)}${root.outerHTML}`
   }
 
@@ -1217,67 +1073,15 @@ export class DomEditor extends LitElement {
   }
 
   private preparePreviewDocument(source: Document) {
-    const nonce = crypto.randomUUID()
-    // srcdoc inherits the host URL for relative links; explicitly retain
-    // native carousel navigation inside the preview frame.
-    if(source.body.classList.contains("ww-slides")) {
-      source.querySelectorAll<HTMLAnchorElement>('body > nav.ww-slides-navigation a[href^="#"], body.ww-slides .ww-slide-directions a[href^="#"]').forEach(link => {
-        link.setAttribute("href", `about:srcdoc${link.getAttribute("href")}`)
-      })
-    }
-    cleanPreviewEditorArtifacts(source)
-
-    // Remove authored executable content before installing the trusted widget
-    // and preview bridge scripts in the isolated frame.
-    stripActiveContent(source, {allowStyles: true, allowIframes: true})
-
-    // Use the same dependency selection as saving, after stripping authored code.
-    if(import.meta.env.MODE !== "test") {
-      source.querySelectorAll<HTMLElement>("[src], [href]").forEach(element => {
-        for(const name of ["src", "href"]) {
-          const value = element.getAttribute(name)
-          if(!value) continue
-          const rewritten = frameLocalPackageURL(value, window.location.origin, editorFrameOrigin())
-          if(rewritten !== value) element.setAttribute(name, rewritten)
-        }
-      })
-    }
-    const frameOrigin = import.meta.env.MODE === "test" ? window.location.origin : editorFrameOrigin()
-    appendSerializedAssets(source,
-      framePackages(this.installedPackages, window.location.origin, frameOrigin),
-      frameImportMap(this.packageImportMap, window.location.origin, frameOrigin))
-    if(source.head) {
-      const scripts = Array.from(source.head.querySelectorAll("script"))
-      const policy = source.createElement("meta")
-      policy.httpEquiv = "Content-Security-Policy"
-      const packageEvaluation = scripts.some(script => script.hasAttribute("src")) ? " 'unsafe-eval'" : ""
-      policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
-      source.head.prepend(policy)
-      if(import.meta.env.MODE !== "test") {
-        const bridge = source.createElement("meta")
-        bridge.className = "◆ ◆editor-only"
-        bridge.name = "webwriter-preview-bridge"
-        bridge.setAttribute("data-nonce", this.bridgeNonce)
-        bridge.setAttribute("data-host-origin", window.location.origin)
-        source.head.append(bridge)
-        const entry = source.createElement("script")
-        entry.className = "◆ ◆editor-only"
-        entry.type = "module"
-        entry.src = previewEntryUrl
-        source.head.append(entry)
-      }
-      if(import.meta.env.MODE === "test") scripts.forEach(script => script.type = "application/json")
-      // Set the serialized attribute after connecting the nodes to the cloned
-      // document; a frame's nonce-hiding machinery can clear it on insertion.
-      source.head.querySelectorAll("script").forEach(script => script.setAttribute("nonce", nonce))
-    }
-
-    // `designMode` is a document property rather than serialized markup. A
-    // srcdoc that does not load editor-entry therefore starts in its default
-    // "off" state; explicitly clearing it also documents that invariant for
-    // DOM implementations that retain a cloned property.
-    source.designMode = "off"
-    return `${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`
+    return previewFrameHTML(source, {
+      bridgeNonce: this.bridgeNonce,
+      packages: this.installedPackages,
+      importMap: this.packageImportMap,
+      hostOrigin: window.location.origin,
+      frameOrigin: import.meta.env.MODE === "test" ? window.location.origin : editorFrameOrigin(),
+      entryURL: previewEntryUrl,
+      executeScripts: import.meta.env.MODE !== "test",
+    })
   }
 
   private get syncUrl() {
@@ -2188,19 +1992,14 @@ export class DomEditor extends LitElement {
     this.editorReadyReject = null
   }
 
-  private authoredClasses(value: string | null) {
-    return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
-  }
-
   /** Dirty tracking for a generated Canvas or Slides document ignores local
    * markers and native empty-block placeholders. */
   private authoredDocumentSnapshot() {
     const root = this.editorDocument?.documentElement.cloneNode(true) as HTMLElement | undefined
     if(!root) return null
-    root.querySelectorAll(".◆editor-only, [data-webwriter-editor-only]").forEach(element => element.remove())
-    clearEditorOwnedAttributes(root)
+    clearEditorArtifacts(root)
     for(const element of [root, ...root.querySelectorAll("*")]) {
-      const classes = this.authoredClasses(element.getAttribute("class"))
+      const classes = authoredClassValue(element.getAttribute("class"))
       if(classes) element.setAttribute("class", classes)
       else element.removeAttribute("class")
       if(element.getAttribute("style") === "") element.removeAttribute("style")
@@ -2303,7 +2102,7 @@ export class DomEditor extends LitElement {
     const hasAttributes = (element: Element, expected: Record<string, string> = {}) => {
       const attributes = Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
         if(attribute.name === "class") {
-          const value = this.authoredClasses(attribute.value)
+          const value = authoredClassValue(attribute.value)
           return value ? [[attribute.name, value]] : []
         }
         if(attribute.name === "style" && !attribute.value.trim()) return []
@@ -2372,7 +2171,7 @@ export class DomEditor extends LitElement {
         ? element?.getAttributeNS(mutation.attributeNamespace, mutation.attributeName!) ?? null
         : element?.getAttribute(mutation.attributeName!) ?? null
       if(mutation.attributeName === "class") {
-        return this.authoredClasses(mutation.oldValue) !== this.authoredClasses(current)
+        return authoredClassValue(mutation.oldValue) !== authoredClassValue(current)
       }
       // DOM synchronization can set an attribute to the value it already has.
       return mutation.oldValue !== current
@@ -3079,6 +2878,7 @@ export class DomEditor extends LitElement {
   private async reloadDocument(htmlSource: string, isNewDocument = false) {
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
+    this.editorFrameStartupError = null
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
     stripExcludedMarks(parsed.body)
@@ -3354,7 +3154,7 @@ export class DomEditor extends LitElement {
       this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
-      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true)
+      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeHTMLAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true)
       await this.applyDefaultLayout(layout, this.frameRevision)
       this.fileDirty = !this.isFreshDocumentUnchanged()
       this.updateDocumentURL(null)
@@ -4382,7 +4182,7 @@ export class DomEditor extends LitElement {
       await this.updateLocalPackageManifest(record, manifest => {
         const exports = isRecord(manifest.exports) ? {...manifest.exports} as Record<string, PackageExportTarget> : {}
         const target = exports[exportName]
-        if(!target || !isPackageExportTarget(target)) throw new Error(`Export '${exportName}' is no longer available`)
+        if(!target || !isLocalPackageExportTarget(target)) throw new Error(`Export '${exportName}' is no longer available`)
         if(field === "source") {
           normalizeLocalPackagePath(value)
           exports[exportName] = withPackageExportSource(target, value)
@@ -6259,10 +6059,23 @@ export class DomEditor extends LitElement {
       }
       return
     }
+    if(event.data?.type === "webwriter-frame-error") {
+      const frame = this.editorIframe()
+      if(event.origin !== editorFrameOrigin() || event.source !== frame?.contentWindow
+        || event.data.kind !== "editor" || event.data.revision !== String(this.frameRevision)
+        || event.data.bridgeNonce !== this.bridgeNonce || typeof event.data.message !== "string") return
+      const message = event.data.message.slice(0, 2000)
+      this.editorFrameStartupError = {revision: this.frameRevision, message}
+      this.fileError = message
+      this.documentLoading = false
+      this.editorReadyReject?.(new Error(message))
+      return
+    }
     if(event.data?.type === "webwriter-editor-frame-ready") {
       const frame = this.editorIframe()
       if(event.origin !== editorFrameOrigin() || event.source !== frame?.contentWindow
         || event.data.bridgeNonce !== this.bridgeNonce || this.editorInitializedRevision === this.frameRevision) return
+      this.editorFrameStartupError = null
       this.editorInitializedRevision = this.frameRevision
       this.initializeEditorFrame(frame)
       return
@@ -6582,6 +6395,9 @@ export class DomEditor extends LitElement {
   }
 
   private waitForEditorWindow() {
+    if(this.editorFrameStartupError?.revision === this.frameRevision) {
+      return Promise.reject(new Error(this.editorFrameStartupError.message))
+    }
     if(this.editorWindow) {
       const editorWindow = this.editorWindow
       return this.packageLoadPromise

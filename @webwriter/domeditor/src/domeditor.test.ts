@@ -17,6 +17,38 @@ const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
 const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
+describe("collaborative minimum flow content", () => {
+  it("keeps one default paragraph when a remote deletion and its later repair arrive separately", async () => {
+    document.body.innerHTML = "<p>Last paragraph</p>"
+    const first = new DOMEditor()
+    first.doc.syncFromDOM()
+    const initial = Y.encodeStateAsUpdate(first.doc.doc)
+    const vector = Y.encodeStateVector(first.doc.doc)
+    document.body.firstElementChild!.remove()
+    first.doc.syncFromDOM()
+    const deletion = Y.encodeStateAsUpdate(first.doc.doc, vector)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    first.doc.syncFromDOM()
+    const repaired = Y.encodeStateAsUpdate(first.doc.doc, vector)
+    expect(document.body.querySelectorAll("p")).toHaveLength(1)
+    first.destroy()
+    document.body.replaceChildren()
+    const second = new DOMEditor({initialState: {update: Array.from(initial)}})
+    try {
+      Y.applyUpdate(second.doc.doc, deletion, "remote")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      second.doc.syncFromDOM()
+      expect(document.body.querySelectorAll("p")).toHaveLength(1)
+      Y.applyUpdate(second.doc.doc, repaired, "remote")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      second.doc.syncFromDOM()
+      expect(document.body.querySelectorAll("p")).toHaveLength(1)
+      expect(second.toHTML()).not.toContain("__domeditor_minimum_repair")
+    }
+    finally { second.destroy(); document.body.replaceChildren() }
+  })
+})
+
 describe("collaborative disclosure structure", () => {
   it("preserves missing summaries through remote updates, unrelated local input, and shared snapshot startup", async () => {
     document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details><p>Other</p>'
@@ -335,7 +367,9 @@ describe("DOMEditor stylesheets", () => {
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(3)
     editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).toBe("<body><p>typed</p><p></p></body>")
+    // The mirror also carries transient repair provenance; its authored
+    // projection must contain only the original content and restored block.
+    expect((editor.doc.yxmlToDomNode(editor.doc.body) as unknown as Element).outerHTML).toBe("<body><p>typed</p><p></p></body>")
   })
 
   it("repairs only native body text runs while retaining comments, widgets and whitespace", () => {

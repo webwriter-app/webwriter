@@ -4,6 +4,7 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {$, atomicEditingContainer, isAppendixInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
+import {getDocumentRoot} from "../document-template"
 import {
   SVG_NAMESPACE,
   graphicContainerForNode,
@@ -626,7 +627,8 @@ export class GraphicFeature extends EditorFeature {
             if(!file) return
             if(!/\.svg$/i.test(file.name)) throw new TypeError("Choose an SVG file")
             const source = await file.text()
-            if(cancelled || target && !target.isConnected) return
+            if(cancelled || target && (!target.isConnected || !getDocumentRoot().contains(target)
+              || atomicEditingContainer(target.parentElement, this.editor.schema))) return
             const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
             const root = parsed.documentElement
             if(parsed.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== SVG_NAMESPACE) {

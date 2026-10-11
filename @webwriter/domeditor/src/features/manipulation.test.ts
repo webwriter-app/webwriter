@@ -2991,6 +2991,37 @@ describe("explicit multi-element selection editing", () => {
     expect(document.body.children).toHaveLength(5)
   })
 
+  it("preserves attribute namespaces when renaming qualified names and rejects unbound prefixes", () => {
+    const svgNamespace = "http://www.w3.org/2000/svg"
+    const xlinkNamespace = "http://www.w3.org/1999/xlink"
+    const xmlnsNamespace = "http://www.w3.org/2000/xmlns/"
+    const svg = document.createElementNS(svgNamespace, "svg")
+    svg.setAttributeNS(xmlnsNamespace, "xmlns:xlink", xlinkNamespace)
+    svg.setAttributeNS(xmlnsNamespace, "xmlns:ww", "urn:example:widget")
+    svg.setAttributeNS(xlinkNamespace, "xlink:href", "original")
+    document.body.replaceChildren(svg)
+    const setAttribute = (name: string, previousName?: string) => editor.features.manipulation.actions.setElementAttribute({
+      type: "setElementAttribute", path: [0], localName: "svg", namespaceURI: svgNamespace,
+      name, previousName, value: "updated",
+    })
+
+    setAttribute("xlink:label", "xlink:href")
+    expect(svg.getAttributeNodeNS(xlinkNamespace, "label")?.name).toBe("xlink:label")
+    expect(svg.hasAttribute("xlink:href")).toBe(false)
+
+    setAttribute("ww:reference", "xlink:label")
+    expect(svg.getAttributeNodeNS("urn:example:widget", "reference")?.name).toBe("ww:reference")
+    expect(svg.hasAttribute("xlink:label")).toBe(false)
+
+    setAttribute("href", "ww:reference")
+    expect(svg.getAttributeNode("href")?.namespaceURI).toBeNull()
+    expect(svg.hasAttribute("ww:reference")).toBe(false)
+
+    expect(() => setAttribute("missing:reference", "href")).toThrow(/namespace prefix is not bound/)
+    expect(svg.getAttribute("href")).toBe("updated")
+    expect(svg.hasAttribute("missing:reference")).toBe(false)
+  })
+
   it("uses the current selection and safely ignores disconnected members", () => {
     document.body.innerHTML = '<p id="first">one</p><p id="second">two</p><p id="third">three</p>'
     const [first, second, third] = Array.from(document.body.children)

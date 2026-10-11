@@ -1,13 +1,12 @@
-import {appendSerializedAssets} from "../serialization"
+import {appendSerializedAssets, escapeHTMLAttribute} from "../serialization"
 import { EditorFeature } from "."
-import { DOMEditor } from "../domeditor"
+import type { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
 import {packageCdnUrl, packageInsertionItems, packageTestTimeout, packageWidgetSchemaDefinitions, resolvePackageExport, WebWriterPackageRegistry, type PackageTestCase, type PackageTestResult, type WebWriterPackage} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
 
-const escapeHTMLAttribute = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;")
 
 export class DependencyFeature extends EditorFeature {
   private readonly packageRegistry = new WebWriterPackageRegistry()
@@ -16,6 +15,7 @@ export class DependencyFeature extends EditorFeature {
   private dependencyPlan: PackageDependencyPlan | null = null
   private widgetLoadSequence = 0
   private readonly pendingAssetCancellations = new Set<() => void>()
+  private readonly pendingPackageTestCancellations = new Set<() => void>()
 
   actions = {
     [loadWidgetsMessage]: (message: LoadWidgetsMessage) => this.loadWidgets(message),
@@ -54,9 +54,14 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     return new Promise(resolve => {
       const tests = new Map<string, PackageTestCase>()
       let timer: ReturnType<typeof setTimeout> | undefined
+      let settled = false
+      let cancel = () => {}
       const finish = (status: PackageTestResult["status"], error?: string) => {
+        if(settled) return
+        settled = true
         clearTimeout(timer)
         window.removeEventListener("message", onMessage)
+        this.pendingPackageTestCancellations.delete(cancel)
         frame.remove()
         const cases = [...tests.values()]
         resolve({status: status === "passed" && cases.some(test => !test.passed) ? "failed" : status, tests: cases, ...(error ? {error} : {})})
@@ -78,6 +83,8 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
       }
       window.addEventListener("message", onMessage)
       timer = setTimeout(() => finish("timeout"), timeout)
+      cancel = () => finish("error", "The package test was canceled")
+      this.pendingPackageTestCancellations.add(cancel)
       this.editor.addAppendix(frame)
     })
   }
@@ -192,7 +199,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
   }
 
   disable() {
-    if(!this.isEnabled) return
+    Array.from(this.pendingPackageTestCancellations).forEach(cancel => cancel())
     this.widgetLoadSequence++
     this.pendingAssetCancellations.forEach(cancel => cancel())
     this.pendingAssetCancellations.clear()

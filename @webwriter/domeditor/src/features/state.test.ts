@@ -1046,7 +1046,7 @@ describe("StateFeature", () => {
     expect(html).toContain('data-webwriter-original-src="/photo.png"')
     expect(html).toContain('src="data:image/png;base64,AQID"')
     expect(html).toContain('data-webwriter-original-src="/app.js"')
-    const embeddedScript = new DOMParser().parseFromString(html, "text/html").querySelector('script[data-webwriter-original-src="/app.js"]')!
+    const embeddedScript = new DOMParser().parseFromString(html, "text/html").querySelector<HTMLScriptElement>('script[data-webwriter-original-src="/app.js"]')!
     expect(atob(embeddedScript.src.split(",")[1])).toBe("window.offline = true")
     expect(html).not.toContain('<script src="/app.js"')
 

@@ -1,4 +1,6 @@
-import { Schema } from "./schema"
+import {clearEditorMarkerClasses} from "./editor-artifacts"
+export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker, widgetEditableMarker} from "./editor-artifacts"
+import type { Schema } from "./schema"
 import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
@@ -245,7 +247,8 @@ function hasLayoutRect(node: Node) {
   return rect.width > 0 || rect.height > 0
 }
 
-function nodeEdgeRect(node: Node, edge: "first" | "last" = "first") {
+/** The first or last rendered line box, with a bounding-box fallback. */
+export function nodeEdgeRect(node: Node, edge: "first" | "last" = "first") {
   if(isElement(node)) {
     const rects = Array.from(node.getClientRects())
     return edge === "last" ? rects.at(-1) ?? node.getBoundingClientRect() : rects[0] ?? node.getBoundingClientRect()
@@ -1463,63 +1466,6 @@ export function textPointAtOffset(root: Element, offset: number, fallback?: [Nod
     remaining -= text.length
   }
   return fallback ?? (lastText ? [lastText, lastText.length] : [root, 0])
-}
-
-/** Marks a widget whose `contenteditable` attribute the editor set. */
-export const widgetEditableMarker = "◆widget-editable"
-
-/** Whether the editor set this attribute to tell a widget that it is being
- * edited. It is never authored content, so collaboration, history and
- * serialization ignore it. */
-export function isEditorOwnedAttribute(element: Element, name: string) {
-  return name.toLowerCase() === "contenteditable" && element.classList.contains(widgetEditableMarker)
-    && element.getAttribute("contenteditable") === ""
-}
-
-/** Removes editor-owned attributes from a node and all descendants,
- * including inert template contents. */
-export function clearEditorOwnedAttributes(root: Node) {
-  const visit = (node: Node) => {
-    if(node.nodeType === Node.ELEMENT_NODE) {
-      const element = node as Element
-      if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
-      if(element.localName === "template" && "content" in element) {
-        Array.from((element as HTMLTemplateElement).content.childNodes).forEach(visit)
-      }
-    }
-    Array.from(node.childNodes).forEach(visit)
-  }
-  visit(root)
-  return root
-}
-
-/** Removes transient editor marker classes from a node and all descendants,
- * including inert template contents, while preserving authored classes. */
-export function clearEditorMarkerClasses(root: Node) {
-  const visit = (node: Node) => {
-    if(node.nodeType === Node.ELEMENT_NODE) {
-      const element = node as Element
-      if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
-      const markers = Array.from(element.classList).filter(name => name.startsWith("◆"))
-      if(markers.length) element.classList.remove(...markers)
-      if(!element.classList.length) element.removeAttribute("class")
-      if(element.localName === "template" && "content" in element) {
-        Array.from((element as HTMLTemplateElement).content.childNodes).forEach(visit)
-      }
-    }
-    Array.from(node.childNodes).forEach(visit)
-  }
-  visit(root)
-  return root
-}
-
-/** Removes selected transient marker classes while retaining authored classes.
- * The umbrella marker is removed when no other editor marker remains. */
-export function removeEditorMarker(element: Element, ...markers: string[]) {
-  element.classList.remove(...markers)
-  if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
-  if(!element.classList.length) element.removeAttribute("class")
-  return element
 }
 
 /** Clones a node without copying transient editor marker classes. */

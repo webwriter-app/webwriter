@@ -6,9 +6,10 @@ import {
   type VersionHistoryState,
   type VersionHistoryUser,
 } from "../editor-bridge"
-import {isEditorOwnedAttribute, isOnApple, modifierKeyDown} from "../utility"
+import {authoredClassValue, isEditorOwnedAttribute, isOnApple, modifierKeyDown} from "../utility"
 import {userInitials} from "../user-identity"
 import {hydrateWidgetGroupings} from "../widget-grouping-dom"
+import {safeCssColor} from "../css-color"
 
 type StoredCheckpoint = {
   id: string
@@ -375,7 +376,7 @@ export class HistoryFeature extends EditorFeature {
         || isEditorOwnedAttribute(source, attribute.name)) continue
       if(attribute.name.toLowerCase() !== "class") target.setAttribute(attribute.name, attribute.value)
     }
-    const authoredClasses = Array.from(source.classList).filter(name => !name.startsWith("◆"))
+    const authoredClasses = authoredClassValue(source.getAttribute("class")).split(" ").filter(Boolean)
     const classNames = Array.from(new Set([...authoredClasses, ...internalClasses]))
     if(classNames.length) target.setAttribute("class", classNames.join(" "))
     else target.removeAttribute("class")
@@ -435,7 +436,7 @@ export class HistoryFeature extends EditorFeature {
             if(this.editor.ignoreAttrs.includes(name) || isEditorOwnedAttribute(target, name)) continue
             if(name === "class") {
               const markers = Array.from(target.classList).filter(value => value.startsWith("◆"))
-              const authored = (record.oldValue ?? "").split(/\s+/).filter(value => value && !value.startsWith("◆"))
+              const authored = authoredClassValue(record.oldValue).split(" ").filter(Boolean)
               const value = [...authored, ...markers].join(" ")
               if(value) target.setAttribute("class", value)
               else target.removeAttribute("class")
@@ -517,7 +518,7 @@ export class HistoryFeature extends EditorFeature {
     const name = typeof user.name === "string" && user.name.trim()
       ? user.name.trim()
       : `User ${clientId.toString(36).toUpperCase()}`
-    const color = typeof user.color === "string" && user.color.trim() ? user.color.trim() : "#64748b"
+    const color = safeCssColor(user.color)
     return {clientId, name, initials: userInitials(name), color}
   }
 
@@ -582,7 +583,7 @@ export class HistoryFeature extends EditorFeature {
         if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())
           || isEditorOwnedAttribute(element, attribute.name)) return []
         if(attribute.name.toLowerCase() !== "class") return [[attribute.name, attribute.value] as const]
-        const className = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+        const className = authoredClassValue(attribute.value)
         return className ? [[attribute.name, className] as const] : []
       })
       .sort(([left], [right]) => left.localeCompare(right))

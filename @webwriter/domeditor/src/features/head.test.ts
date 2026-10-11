@@ -152,6 +152,35 @@ describe("document head editing", () => {
     expect(document.head.querySelector('link[rel="license"]')).toBeNull()
   })
 
+  it("preserves and resolves namespaces when renaming qualified head attributes", () => {
+    const xlinkNamespace = "http://www.w3.org/1999/xlink"
+    const xmlnsNamespace = "http://www.w3.org/2000/xmlns/"
+    const meta = document.createElement("meta")
+    meta.setAttributeNS(xmlnsNamespace, "xmlns:xlink", xlinkNamespace)
+    meta.setAttributeNS(xmlnsNamespace, "xmlns:ww", "urn:example:widget")
+    meta.setAttributeNS(xlinkNamespace, "xlink:href", "original")
+    document.head.append(meta)
+    editor.doc.syncFromDOM()
+    const id = editor.features.head.state().elements.find(element => element.tagName === "meta")!.id
+    const setAttribute = editor.features.head.actions.setDocumentHeadElementAttribute
+
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "xlink:label", value: "renamed", previousName: "xlink:href"})).toBe(true)
+    expect(meta.getAttributeNodeNS(xlinkNamespace, "label")?.name).toBe("xlink:label")
+    expect(meta.hasAttribute("xlink:href")).toBe(false)
+
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "ww:reference", value: "changed", previousName: "xlink:label"})).toBe(true)
+    expect(meta.getAttributeNodeNS("urn:example:widget", "reference")?.name).toBe("ww:reference")
+    expect(meta.hasAttribute("xlink:label")).toBe(false)
+
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "content", value: "plain", previousName: "ww:reference"})).toBe(true)
+    expect(meta.getAttributeNode("content")?.namespaceURI).toBeNull()
+    expect(meta.hasAttribute("ww:reference")).toBe(false)
+
+    expect(setAttribute({type: "setDocumentHeadElementAttribute", id, name: "missing:field", value: "unsafe", previousName: "content"})).toBe(false)
+    expect(meta.getAttribute("content")).toBe("plain")
+    expect(meta.hasAttribute("missing:field")).toBe(false)
+  })
+
   it("uses the package version for newly added generator metadata", () => {
     editor.features.head.actions.addDocumentHeadElement({type: "addDocumentHeadElement", kind: "generator"})
 

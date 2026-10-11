@@ -181,6 +181,21 @@ const backendCandidates = () => {
   return [...new Map(urls.map(url => [url.href, url])).values()]
 }
 
+/** Fetches the shared session JSON envelope; callers apply their own service
+ * and origin policy after parsing it. */
+async function fetchSessionJSON(url: URL, signal: AbortSignal | undefined, fetchImplementation: typeof fetch,
+  options: {redirect?: RequestRedirect} = {}) {
+  const response = await fetchImplementation.call(globalThis, url, {
+    signal,
+    ...(options.redirect ? {redirect: options.redirect} : {}),
+    headers: {Accept: "application/json"},
+    cache: "no-store",
+    credentials: "omit",
+  })
+  if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) return null
+  return await response.json() as unknown
+}
+
 export async function probeDevelopmentBackend(
   signal?: AbortSignal,
   fetchImplementation = globalThis.fetch,
@@ -191,14 +206,7 @@ export async function probeDevelopmentBackend(
   const candidates = base === undefined ? backendCandidates() : [new URL(`${base}/session`)]
   for(const url of candidates) {
     try {
-      const response = await fetchImplementation.call(globalThis, url, {
-        signal,
-        headers: {Accept: "application/json"},
-        cache: "no-store",
-        credentials: "omit",
-      })
-      if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) continue
-      const session = sessionFrom(await response.json())
+      const session = sessionFrom(await fetchSessionJSON(url, signal, fetchImplementation))
       if(session?.kind === "webwriter-dev-server" && session.authentication === "none"
         && (base === undefined || normalizedBaseUrl(session.apiBaseUrl) === base)) return session
     }
@@ -271,11 +279,7 @@ export class CloudAuthenticationError extends Error {}
 /** Discover only the current host; localhost port fallback belongs to dev setups. */
 export async function discoverHostBackend(signal?: AbortSignal, fetchImplementation = globalThis.fetch) {
   try {
-    const response = await fetchImplementation.call(globalThis, new URL("/api/session", location.href), {
-      signal, credentials: "omit", cache: "no-store", redirect: "error", headers: {Accept: "application/json"},
-    })
-    if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) return null
-    const value = await response.json()
+    const value = await fetchSessionJSON(new URL("/api/session", location.href), signal, fetchImplementation, {redirect: "error"})
     if(!isRecord(value)) return null
     const session = sessionFrom(value.kind === "webwriter-cloud-service" ? {...value, user: value.user ?? {id: "", name: ""}} : value)
     if(!session || session.kind === "webwriter-cloud-service" && new URL(session.apiBaseUrl).origin !== location.origin) return null

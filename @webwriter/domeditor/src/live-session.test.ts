@@ -152,6 +152,9 @@ describe("LiveSession", () => {
     expect(() => new LiveSession({id: "lesson", role: "host", token: "short"})).toThrow("token")
     expect(() => new LiveSession({id: "lesson", role: "learner", learner: {id: "bad/id", name: "Learner", color: "#fff"}})).toThrow("identity")
     expect(() => new LiveSession({id: "lesson", role: "learner", learner: {id: "learner", name: "x".repeat(201), color: "#fff"}})).toThrow("identity")
+    expect(() => new LiveSession({id: "lesson", role: "learner", learner: {
+      id: "learner", name: "Learner", color: "red; background-image: url(https://attacker.test/pixel)",
+    }})).toThrow("identity")
   })
 
   it("does not exchange local transport updates across bearer tokens", () => {

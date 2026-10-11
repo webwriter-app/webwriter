@@ -478,5 +478,22 @@ describe("DependencyFeature", () => {
       expect(() => editor.features.dependency.runPackageTest("javascript:alert(1)")).toThrow("HTTP")
       editor.destroy()
     })
+
+    it("cancels pending package tests on disable and editor destruction", async () => {
+      const editor = new DOMEditor()
+      const pending = start(editor, 60_000)
+
+      editor.features.dependency.disable()
+
+      await expect(pending.result).resolves.toEqual({status: "error", tests: [], error: "The package test was canceled"})
+      expect(pending.frame.isConnected).toBe(false)
+      editor.destroy()
+
+      const destroyedEditor = new DOMEditor()
+      const destroyed = start(destroyedEditor, 60_000)
+      destroyedEditor.destroy()
+      await expect(destroyed.result).resolves.toEqual({status: "error", tests: [], error: "The package test was canceled"})
+      expect(destroyed.frame.isConnected).toBe(false)
+    })
   })
 })

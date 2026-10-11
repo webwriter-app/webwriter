@@ -52,6 +52,7 @@ export class RibbonButton extends LitElement {
     muted: {type: Boolean, reflect: true},
     details: {attribute: false},
     detailsOpen: {type: Boolean, attribute: "details-open", reflect: true},
+    detailsPosition: {attribute: false, state: true},
     selectionCount: {type: Number, attribute: "selection-count"},
     toggle: {type: Boolean, reflect: true},
     variant: {type: String, reflect: true},
@@ -1326,26 +1327,34 @@ export class RibbonButton extends LitElement {
     if(!this.details) return
     const rect = this.getBoundingClientRect()
     const viewportWidth = Math.max(1, window.innerWidth)
-    const width = Math.min(272, Math.max(1, viewportWidth - 16))
+    const viewportHeight = Math.max(1, window.innerHeight)
     const margin = 8
     const gap = 6
     const buttonRight = Number.isFinite(rect.right) ? rect.right : rect.left + rect.width
-    const leftPosition = rect.left - width - gap
-    const rightPosition = buttonRight + gap
-    const leftSpace = rect.left - margin - gap
-    const rightSpace = viewportWidth - buttonRight - margin - gap
-    const fitsLeft = leftPosition >= margin
-    const fitsRight = rightPosition + width <= viewportWidth - margin
-    let left = leftPosition
-    if(!fitsLeft && fitsRight) left = rightPosition
-    else if(!fitsLeft && !fitsRight && leftSpace < rightSpace) {
-      left = rightPosition
-    }
-    const top = Math.max(8, rect.top)
-    this.detailsPosition = {left, top}
+    this.detailsPosition = {left: margin, top: margin}
     this.detailsOpen = true
     void this.updateComplete.then(() => {
-      this.showPopoverElement(this.renderRoot.querySelector<HTMLElement>(".details"))
+      if(!this.detailsOpen || !this.isConnected) return
+      const details = this.renderRoot.querySelector<HTMLElement>(".details")
+      if(!details) return
+      this.showPopoverElement(details)
+      const bounds = details.getBoundingClientRect()
+      const width = bounds.width > 0 ? bounds.width : Math.min(272, Math.max(1, viewportWidth - margin * 2))
+      const height = bounds.height > 0 ? bounds.height : Math.min(288, Math.max(1, viewportHeight - margin * 2))
+      const leftPosition = rect.left - width - gap
+      const rightPosition = buttonRight + gap
+      const leftSpace = rect.left - margin - gap
+      const rightSpace = viewportWidth - buttonRight - margin - gap
+      const fitsLeft = leftPosition >= margin
+      const fitsRight = rightPosition + width <= viewportWidth - margin
+      let left = leftPosition
+      if(!fitsLeft && fitsRight) left = rightPosition
+      else if(!fitsLeft && !fitsRight && leftSpace < rightSpace) {
+        left = rightPosition
+      }
+      left = Math.min(Math.max(margin, left), Math.max(margin, viewportWidth - width - margin))
+      const top = Math.min(Math.max(margin, rect.top), Math.max(margin, viewportHeight - height - margin))
+      this.detailsPosition = {left, top}
     })
   }
 

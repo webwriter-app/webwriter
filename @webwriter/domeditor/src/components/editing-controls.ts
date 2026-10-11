@@ -4,6 +4,7 @@ import type {WidgetGroupingContext} from "../widget-grouping.js"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {isGraphicPresetType} from "../graphic-shapes"
 import {LitElement, html, nothing} from "lit"
+import {styleMap} from "lit/directives/style-map.js"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
 import type {ElementStyleEditor} from "./element-style-editor"
@@ -25,6 +26,7 @@ import {
 } from "../editor-bridge"
 import {widgetOptionValue, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
 import type {ElementAttributeState} from "../element-attributes"
+import {safeCssColor} from "../css-color"
 import type {LayoutSelectionState} from "../layouts"
 import {insertMathStructureButtons} from "./ribbon-menu-config"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
@@ -2545,7 +2547,7 @@ export abstract class EditingControls extends LitElement {
         <button class="history-checkpoint" type="button" data-checkpoint-id=${entry.id}
           aria-pressed=${selected} title=${entry.label} ?disabled=${this.historyLoading}
           @click=${this.selectHistoryCheckpoint}>
-          <span class="history-checkpoint-avatar" style=${`--history-user-color: ${entry.user.color}`}
+          <span class="history-checkpoint-avatar" style=${styleMap({"--history-user-color": safeCssColor(entry.user.color)})}
             aria-hidden="true">${entry.user.initials}</span>
           <span class="history-checkpoint-label">${isUnsaved ? "Unsaved changes" : this.historyTimestamp(entry.timestamp)}</span>
           <span class="history-checkpoint-meta">By ${this.historyAuthor(entry.user)}</span>

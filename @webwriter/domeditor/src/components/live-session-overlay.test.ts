@@ -111,4 +111,20 @@ describe("live session overlay", () => {
     expect(overlay.shadowRoot!.querySelectorAll(".cursor")).toHaveLength(100)
     expect(overlay.shadowRoot!.querySelectorAll(".scroll-marker")).toHaveLength(100)
   })
+
+  it("keeps untrusted learner colors inside the CSS color property", async () => {
+    const overlay = new LiveSessionOverlay()
+    overlay.learners = [{
+      id: "learner-1",
+      name: "Learner",
+      color: "red; background-image: url(https://attacker.test/pixel)",
+      cursor: {x: 0.25, y: 0.5},
+    }]
+    document.body.append(overlay)
+    await overlay.updateComplete
+
+    const cursor = overlay.shadowRoot!.querySelector<HTMLElement>(".cursor")!
+    expect(cursor.style.getPropertyValue("--learner-color")).toBe("#64748b")
+    expect(cursor.style.backgroundImage).toBe("")
+  })
 })

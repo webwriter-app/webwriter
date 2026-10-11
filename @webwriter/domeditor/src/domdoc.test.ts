@@ -55,6 +55,91 @@ async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
 }
 
+describe("concurrent minimum-content repairs", () => {
+  function repair(peer: ReturnType<typeof createShared>) {
+    peer.root.replaceChildren()
+    peer.shared.syncFromDOM()
+    const paragraph = document.createElement("p")
+    peer.root.append(paragraph)
+    peer.shared.markMinimumContentRepair(paragraph)
+    peer.shared.syncFromDOM()
+    return paragraph
+  }
+
+  it("converges concurrent repairs without putting provenance in the authored DOM", () => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    repair(first)
+    repair(second)
+    const left = Y.encodeStateAsUpdate(first.shared.doc)
+    const right = Y.encodeStateAsUpdate(second.shared.doc)
+    Y.applyUpdate(first.shared.doc, right, "remote")
+    Y.applyUpdate(second.shared.doc, left, "remote")
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    Y.applyUpdate(second.shared.doc, Y.encodeStateAsUpdate(first.shared.doc), "remote")
+    expect(first.root.innerHTML).toBe("<p></p>")
+    expect(second.root.innerHTML).toBe(first.root.innerHTML)
+    expect(cloneShared(first.shared).root.innerHTML).toBe("<p></p>")
+  })
+
+  it.each(["text", "attributes", "comments", "custom-element"])("retains an edited repair and authored empty paragraphs: %s", edit => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    const paragraph = repair(first)
+    repair(second)
+    if(edit === "text") paragraph.textContent = "Keep"
+    if(edit === "attributes") paragraph.setAttribute("data-authored", "keep")
+    if(edit === "comments") paragraph.append(document.createComment("keep"))
+    if(edit === "custom-element") paragraph.append(document.createElement("repair-widget"))
+    const authored = document.createElement("p")
+    first.root.append(authored)
+    first.shared.syncFromDOM()
+    const left = Y.encodeStateAsUpdate(first.shared.doc)
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    Y.applyUpdate(second.shared.doc, left, "remote")
+    expect(first.root.querySelectorAll("p")).toHaveLength(3)
+    expect(second.root.innerHTML).toBe(first.root.innerHTML)
+    expect(first.root.contains(paragraph)).toBe(true)
+    expect(first.root.contains(authored)).toBe(true)
+    expect(first.root.innerHTML).not.toContain("__domeditor_minimum_repair")
+  })
+
+  it("ends provenance on an edit even when the paragraph later becomes empty again", () => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    const paragraph = repair(first)
+    repair(second)
+    paragraph.textContent = "Typed"
+    first.shared.syncFromDOM()
+    paragraph.textContent = ""
+    first.shared.syncFromDOM()
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    expect(first.root.children).toHaveLength(2)
+    expect(first.root.contains(paragraph)).toBe(true)
+  })
+
+  it("ends repair provenance when a widget adopts generated paragraphs", () => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    repair(first)
+    repair(second)
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    const paragraph = first.root.firstElementChild!
+    const widget = document.createElement("repair-widget")
+    first.root.append(widget)
+    widget.append(paragraph)
+    first.shared.syncFromDOM()
+    const another = document.createElement("p")
+    first.root.append(another)
+    first.shared.markMinimumContentRepair(another)
+    first.shared.syncFromDOM()
+    widget.append(another)
+    first.shared.syncFromDOM()
+    expect(widget.innerHTML).toBe("<p></p><p></p>")
+    expect(cloneShared(first.shared).root.querySelector("repair-widget")!.innerHTML).toBe(widget.innerHTML)
+  })
+})
+
 afterEach(() => {
   sharedDocs.splice(0).reverse().forEach(shared => shared.destroy())
   document.body.replaceChildren()
@@ -690,6 +775,7 @@ describe("DOM to Yjs synchronization", () => {
     const paragraph = root.firstElementChild!
     paragraph.setAttribute("__domeditor_node_kind", "comment")
     paragraph.setAttribute("__domeditor_namespace", "authored-value")
+    paragraph.setAttribute("__domeditor_minimum_repair", "authored-value")
     paragraph.setAttribute("__domeditor_user_attribute__example", "user-value")
 
     shared.syncFromDOM()
@@ -698,6 +784,7 @@ describe("DOM to Yjs synchronization", () => {
     expect(peerParagraph.localName).toBe("p")
     expect(peerParagraph.getAttribute("__domeditor_node_kind")).toBe("comment")
     expect(peerParagraph.getAttribute("__domeditor_namespace")).toBe("authored-value")
+    expect(peerParagraph.getAttribute("__domeditor_minimum_repair")).toBe("authored-value")
     expect(peerParagraph.getAttribute("__domeditor_user_attribute__example")).toBe("user-value")
   })
 

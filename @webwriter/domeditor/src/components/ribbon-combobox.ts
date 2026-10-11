@@ -1,5 +1,6 @@
 import {LitElement, css, html, nothing} from "lit"
 import type {StyleMarkOption} from "../marks"
+import {fixedPopupPosition} from "./popup-position"
 
 export type RibbonComboboxChangeDetail = {
   name: string
@@ -276,18 +277,15 @@ export class RibbonCombobox extends LitElement {
     const trigger = this.getBoundingClientRect()
     const listbox = this.renderRoot.querySelector<HTMLElement>(".listbox")
     const listboxHeight = listbox?.getBoundingClientRect().height ?? 0
-    const margin = 8
     const width = this.variant === "color"? 0: Math.max(trigger.width, 144)
     const effectiveWidth = width || listbox?.getBoundingClientRect().width || 154
-    const left = Math.min(
-      Math.max(margin, trigger.left),
-      Math.max(margin, window.innerWidth - effectiveWidth - margin),
-    )
-    const below = trigger.bottom + 4
-    const top = below + listboxHeight <= window.innerHeight - margin
-      ? below
-      : Math.max(margin, trigger.top - listboxHeight - 4)
-    this.listboxPosition = {left, top, width}
+    this.listboxPosition = {
+      ...fixedPopupPosition(trigger, {width: effectiveWidth, height: listboxHeight}, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }),
+      width,
+    }
     this.requestUpdate()
   }
 
