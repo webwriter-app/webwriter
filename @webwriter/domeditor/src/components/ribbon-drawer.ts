@@ -208,16 +208,16 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="sharing-preview"]) {
-      --ribbon-drawer-expanded-width: 6.25rem;
-      --ribbon-drawer-width: min(6.25rem, calc(100vw - 1rem));
+      --ribbon-drawer-expanded-width: 4.5rem;
+      --ribbon-drawer-width: min(4.5rem, calc(100vw - 1rem));
       --ribbon-drawer-height: 6rem;
     }
 
     :host([layout="learners"]) {
       --ribbon-drawer-expanded-width: 20rem;
-      --ribbon-drawer-width: min(30rem, calc(100vw - 1rem));
-      --ribbon-drawer-height: min(22rem, calc(100vh - 3rem));
-      --ribbon-drawer-more-height: min(16rem, calc(100vh - 9rem));
+      --ribbon-drawer-min-width: 0;
+      flex: 1 1 0;
+      container: reader-sharing / inline-size;
     }
 
     :host([layout="metadata"]) {
@@ -443,6 +443,10 @@ export class RibbonDrawer extends LitElement {
       gap: 0.1rem;
     }
 
+    :host([layout="sharing-preview"]) .drawer {
+      padding-inline: 0.2rem;
+    }
+
     :host([layout="sharing-preview"]) .controls {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: repeat(2, minmax(0, 1fr));
@@ -452,28 +456,26 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="learners"]) .controls {
-      grid-template-columns: minmax(3.5rem, 0.55fr) minmax(5rem, 0.8fr) minmax(9rem, 1.45fr);
-      grid-template-rows: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 2rem minmax(0, 1fr);
       grid-auto-flow: row;
-      grid-auto-columns: minmax(0, 1fr);
-      grid-auto-rows: minmax(0, 1fr);
-      gap: 0.1rem;
+      gap: 0.15rem;
+      align-items: stretch;
     }
 
-    :host([layout="learners"]) ::slotted(.live-session-switch) {
+    :host([layout="learners"]) .drawer {
+      padding-inline-start: 0;
+      border-left: 0;
+    }
+
+    :host([layout="learners"]) ::slotted(.reader-sharing-bar) {
       grid-column: 1;
       grid-row: 1;
     }
 
-    :host([layout="learners"]) ::slotted(.sharing-qr) {
-      grid-column: 2;
-      grid-row: 1;
-      min-width: 0;
-    }
-
-    :host([layout="learners"]) ::slotted(.learners-summary) {
-      grid-column: 3;
-      grid-row: 1;
+    :host([layout="learners"]) ::slotted(.reader-learners) {
+      grid-column: 1;
+      grid-row: 2;
     }
 
     :host([layout="metadata"]) .controls,

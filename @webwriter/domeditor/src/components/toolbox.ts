@@ -1,3 +1,4 @@
+import type {LiveSessionFeedback, LiveSessionLearner} from "../live-session"
 import "./float-info"
 import type {FloatInfo} from "./float-info"
 import {css, html, svg, nothing, type TemplateResult} from "lit"
@@ -24,7 +25,7 @@ import "./style-combobox"
 import {defaultGraphicShapePaint, graphicShapeOptions, SVG_NAMESPACE, type GraphicShapePaint} from "../graphic"
 import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
 
-export type ToolboxTool = "Edit" | "Style" | "AI" | "Review"
+export type ToolboxTool = "Edit" | "Style" | "AI" | "Review" | "Feedback"
 
 const tools: readonly {label: ToolboxTool, icon: string}[] = [
   {label: "Edit", icon: "Pencil"},
@@ -39,7 +40,7 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * contract. */
 export class DomEditorToolbox extends EditingControls {
   protected usesNativePointerInteraction(event: MouseEvent) {
-    return event.composedPath().some(target => target instanceof HTMLElement && target.classList.contains("ai-toolbox-content"))
+    return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content")))
   }
 
   protected renderGraphicDrawer() {
@@ -53,6 +54,14 @@ export class DomEditorToolbox extends EditingControls {
   static properties = {
     ...EditingControls.properties,
     shapePaint: {attribute: false},
+    preview: {type: Boolean, reflect: true},
+    feedbackActive: {type: Boolean},
+    feedbackRole: {type: String},
+    feedbackParticipants: {attribute: false},
+    feedbackMessages: {attribute: false},
+    feedbackDraft: {state: true},
+    feedbackParticipant: {state: true},
+    feedbackError: {state: true},
     disableAI: {type: Boolean, attribute: "disable-ai", reflect: true},
     aiSidebar: {type: Boolean, attribute: "ai-sidebar", reflect: true},
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
@@ -73,6 +82,16 @@ export class DomEditorToolbox extends EditingControls {
   shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
   private shapeFillColor = "#ffffff"
   private selectedShapeFillColor = "#ffffff"
+
+  preview = false
+  feedbackActive = false
+  feedbackRole: "host" | "learner" | "" = ""
+  feedbackParticipants: Pick<LiveSessionLearner, "id" | "name" | "connected">[] = []
+  feedbackMessages: LiveSessionFeedback[] = []
+  private feedbackDraft = ""
+  private feedbackParticipant = ""
+  private feedbackError = ""
+  private normalTool: ToolboxTool | null = null
 
   disableAI = false
   aiSidebar = false
@@ -182,6 +201,24 @@ export class DomEditorToolbox extends EditingControls {
 
     :host([disable-ai]:not([active-tool])) {width: 94px}
     :host([disable-ai]:not([show-style-toolbox]):not([active-tool])) {width: 66px}
+
+    :host([preview]:not([active-tool])) {
+      width: 108px;
+    }
+
+    .feedback-content {display: flex; flex-direction: column; gap: .65rem; padding: .65rem; font-size: .72rem}
+    .feedback-content p {margin: 0; color: #7b8795; line-height: 1.4}
+    .feedback-content form, .feedback-content label {display: grid; gap: .35rem}
+    .feedback-content form {gap: .65rem}
+    .feedback-content select, .feedback-content textarea, .feedback-content button {box-sizing: border-box; width: 100%; min-width: 0; padding: .35rem; border: 1px solid #c8d2df; border-radius: .25rem; color: inherit; background: transparent; font: inherit}
+    .feedback-content textarea {min-height: 6rem; resize: vertical}
+    .feedback-content button {cursor: pointer}
+    .feedback-content button:disabled {opacity: .5; cursor: default}
+    .feedback-content :focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
+    .feedback-messages {display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none}
+    .feedback-messages li {display: grid; gap: .25rem; padding: .5rem; border: 1px solid #c8d2df; border-radius: .25rem; overflow-wrap: anywhere}
+    .feedback-messages p {white-space: pre-wrap; color: inherit}
+    .feedback-messages time {font-size: .62rem; color: #7b8795}
 
     :host([active-tool]) {
       width: 216px;
@@ -745,7 +782,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   protected get currentMenuGroups(): RibbonMenuGroup[] {
-    if(this.activeTool === "AI") return []
+    if(this.activeTool === "AI" || this.activeTool === "Feedback") return []
     return contextDrawerPolicy({
       menu: "Edit",
       surface: "toolbox",
@@ -1293,6 +1330,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   selectTool(tool: ToolboxTool | null) {
+    if(tool && (this.preview ? tool !== "Feedback" : tool === "Feedback")) return
     if(tool === "AI" && this.disableAI) return
     if(tool === "Style" && !this.showStyleToolbox) return
     const nextTool = tool
@@ -1302,8 +1340,8 @@ export class DomEditorToolbox extends EditingControls {
     const previousMenu = this.activeMenu
     this.activeTool = nextTool
     if(nextTool) {
-      this.activeMenu = nextTool === "Review" || nextTool === "AI" ? "Edit" : nextTool
-      if(nextTool !== "AI" && (nextTool !== "Style" || previousMenu === nextTool)) {
+      this.activeMenu = nextTool === "Review" || nextTool === "AI" || nextTool === "Feedback" ? "Edit" : nextTool
+      if(nextTool !== "Feedback" && nextTool !== "AI" && (nextTool !== "Style" || previousMenu === nextTool)) {
         this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
       }
     }
@@ -1331,6 +1369,18 @@ export class DomEditorToolbox extends EditingControls {
 
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
+    if(changed.has("preview")) {
+      if(this.preview) {
+        this.normalTool = this.activeTool === "Feedback" ? null : this.activeTool
+        this.selectTool(null)
+      }
+      else if(changed.get("preview") === true) this.selectTool(this.normalTool)
+    }
+    if(changed.has("feedbackActive") && !this.feedbackActive) {
+      this.feedbackDraft = ""
+      this.feedbackParticipant = ""
+      this.feedbackError = ""
+    }
     if(this.disableAI && this.activeTool === "AI") this.selectTool(null)
     if(changed.has("activeTool") && this.activeTool === null) this.advancedOpen.clear()
     if(!this.showStyleToolbox && this.activeTool === "Style") {
@@ -1365,6 +1415,47 @@ export class DomEditorToolbox extends EditingControls {
     })
   }
 
+  private renderFeedback() {
+    const connected = this.feedbackParticipants.filter(participant => participant.connected)
+    const canSend = this.feedbackActive && this.feedbackRole === "host"
+      && connected.some(participant => participant.id === this.feedbackParticipant) && Boolean(this.feedbackDraft.trim())
+    return html`<section class="feedback-content" aria-label="Session feedback">
+      ${this.feedbackRole === "learner" ? nothing : html`
+        ${!this.feedbackActive ? html`<p>Start sharing to give feedback to participants.</p>` : !connected.length ? html`<p>Waiting for participants</p>` : nothing}
+        <form @submit=${(event: SubmitEvent) => {
+          event.preventDefault()
+          if(!canSend) return
+          const accepted = this.dispatchEvent(new CustomEvent("live-feedback-send", {
+            detail: {participant: this.feedbackParticipant, text: this.feedbackDraft.trim()},
+            bubbles: true, composed: true, cancelable: true,
+          }))
+          if(accepted) { this.feedbackDraft = ""; this.feedbackError = "" }
+          else this.feedbackError = "Could not send feedback. Check that the participant is connected."
+        }}>
+          <label>Participant<select aria-label="Feedback participant" .value=${this.feedbackParticipant}
+            ?disabled=${!this.feedbackActive || !connected.length}
+            @change=${(event: Event) => { this.feedbackParticipant = (event.currentTarget as HTMLSelectElement).value; this.feedbackError = "" }}>
+            <option value="">Select participant</option>
+            ${this.feedbackParticipants.map(participant => html`<option value=${participant.id} ?disabled=${!participant.connected}>${participant.name}</option>`)}
+          </select></label>
+          <label>Feedback<textarea aria-label="Feedback message" maxlength="4000" .value=${this.feedbackDraft}
+            ?disabled=${!this.feedbackActive || !connected.length}
+            @input=${(event: Event) => { this.feedbackDraft = (event.currentTarget as HTMLTextAreaElement).value }}></textarea></label>
+          <button type="submit" ?disabled=${!canSend}>Send feedback</button>
+        </form>
+        ${this.feedbackError ? html`<p role="alert">${this.feedbackError}</p>` : nothing}
+      `}
+      <ul class="feedback-messages" aria-label=${this.feedbackRole === "learner" ? "Received feedback" : "Sent feedback"} aria-live="polite">
+        ${this.feedbackMessages.map(message => html`<li>
+          ${this.feedbackRole === "host" ? html`<strong>${this.feedbackParticipants.find(participant => participant.id === message.participant)?.name ?? "Participant"}</strong>` : nothing}
+          <p>${message.text}</p>
+          <time datetime=${new Date(message.time).toISOString()}>${new Date(message.time).toLocaleTimeString()}</time>
+        </li>`)}
+      </ul>
+      ${this.feedbackRole === "learner" && !this.feedbackMessages.length ? html`<p>No feedback yet</p>` : nothing}
+    </section>`
+  }
+
   render() {
     return html`
       <div
@@ -1379,7 +1470,7 @@ export class DomEditorToolbox extends EditingControls {
       >
         <div class="toolbox-tabs-area">
           <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
-            ${tools.filter(tool => (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
+            ${(this.preview ? [{label: "Feedback" as const, icon: "Comments"}] : tools).filter(tool => (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
               const active = this.activeTool === tool.label
               const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
               const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
@@ -1390,7 +1481,7 @@ export class DomEditorToolbox extends EditingControls {
                   class="toolbox-tab"
                   ?data-active=${active}
                   ?data-contextual=${contextualLabel !== null}
-                  ?data-available=${contextualLabel !== null && this.activeTool === null}
+                  ?data-available=${(contextualLabel !== null || tool.label === "Feedback") && this.activeTool === null}
                   data-hover-kind=${tool.label === "Review" && this.activeTool !== "Review" ? this.proofreadingState.issues.find(issue => issue.id === this.proofreadingState.hoveredIssueId)?.kind ?? nothing : nothing}
                 >
                   <button
@@ -1445,6 +1536,7 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
+            ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}
             ${this.activeTool === "Review" ? this.renderProofreadingSection() : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
@@ -1452,7 +1544,7 @@ export class DomEditorToolbox extends EditingControls {
             ${this.activeTool === "Edit" ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
-          ${(this.activeTool === "Edit" || this.consoleOpen) ? this.renderEditModeFooter() : ""}
+          ${(this.activeTool === "Edit" || this.consoleOpen && this.activeTool !== "Feedback") ? this.renderEditModeFooter() : ""}
         </aside>
       </div>
     `

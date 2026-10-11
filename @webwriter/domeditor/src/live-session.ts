@@ -16,6 +16,13 @@ export type LiveSessionLearner = {
   connected: boolean
 }
 
+export type LiveSessionFeedback = {
+  id: string
+  participant: string
+  text: string
+  time: number
+}
+
 export type LiveSessionPoint = {x: number, y: number}
 export type LiveSessionClick = LiveSessionPoint & {button?: number}
 export type LiveSessionScroll = {top: number, left?: number, height?: number, viewport?: number}
@@ -95,6 +102,7 @@ const META = "live-session-meta"
 const LEARNERS = "live-session-learners"
 const STEPS = "live-session-steps"
 const STATES = "live-session-states"
+const FEEDBACK = "live-session-feedback"
 const transportSessions = new Map<string, Set<LiveSession>>()
 const sessionIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
 const learnerIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
@@ -144,6 +152,7 @@ export class LiveSession {
   readonly #learnerMap: Y.Map<LiveSessionLearner>
   readonly #stepArray: Y.Array<LiveSessionStep>
   readonly #stateMap: Y.Map<LiveSessionLearnerState>
+  readonly #feedbackArray: Y.Array<LiveSessionFeedback>
   readonly #transportOrigin = {}
   readonly #listeners = new Set<LiveSessionChangeListener>()
   readonly #clientLearners = new Map<number, string>()
@@ -173,6 +182,7 @@ export class LiveSession {
     this.#learnerMap = this.doc.getMap(LEARNERS)
     this.#stepArray = this.doc.getArray(STEPS)
     this.#stateMap = this.doc.getMap(STATES)
+    this.#feedbackArray = this.doc.getArray(FEEDBACK)
 
     if(this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
       this.#meta.set("baseHTML", options.baseHTML)
@@ -199,6 +209,7 @@ export class LiveSession {
     this.#learnerMap.observe(this.#handleCollectionChange)
     this.#stateMap.observe(this.#handleCollectionChange)
     this.#meta.observe(this.#handleCollectionChange)
+    this.#feedbackArray.observe(this.#handleCollectionChange)
     this.awareness.on("change", this.#handleAwarenessChange)
 
     if(options.serverUrl) {
@@ -263,6 +274,24 @@ export class LiveSession {
     return [...this.#stateMap.values()]
       .filter(state => state && typeof state.learner === "string")
       .map(state => clone(state)).sort((a, b) => a.learner.localeCompare(b.learner))
+  }
+
+  get feedback() {
+    return this.#feedbackArray.toArray()
+      .filter(message => message && typeof message.id === "string"
+        && typeof message.participant === "string" && typeof message.text === "string"
+        && Number.isFinite(message.time)
+        && (this.role === "host" || message.participant === this.#learner?.id))
+      .map(message => clone(message))
+  }
+
+  sendFeedback(participant: string, text: string): LiveSessionFeedback | null {
+    if(this.#destroyed || this.role !== "host" || this.status !== "connected"
+      || !this.learners.some(learner => learner.id === participant && learner.connected)
+      || typeof text !== "string" || !text.trim() || text.length > 4000) return null
+    const message = {id: identifier("feedback"), participant, text: text.trim(), time: Date.now()}
+    this.#feedbackArray.push([message])
+    return clone(message)
   }
 
   get status() {
@@ -336,6 +365,7 @@ export class LiveSession {
     this.#learnerMap.unobserve(this.#handleCollectionChange)
     this.#stateMap.unobserve(this.#handleCollectionChange)
     this.#meta.unobserve(this.#handleCollectionChange)
+    this.#feedbackArray.unobserve(this.#handleCollectionChange)
     this.awareness.off("change", this.#handleAwarenessChange)
     this.awareness.destroy()
     this.doc.destroy()

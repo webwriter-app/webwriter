@@ -185,6 +185,7 @@ import {
 import {
   LiveSession,
   type LiveSessionChange,
+  type LiveSessionFeedback,
   type LiveSessionLearner as SessionLearner,
   type LiveSessionLearnerState,
   type LiveSessionStep,
@@ -392,6 +393,7 @@ export class DomEditor extends LitElement {
     liveSessionLink: {attribute: false, state: true},
     liveLearners: {attribute: false, state: true},
     liveSteps: {attribute: false, state: true},
+    liveFeedback: {attribute: false, state: true},
     liveStreamStep: {attribute: false, state: true},
     liveStreamPlaying: {attribute: false, state: true},
     liveStreamTime: {attribute: false, state: true},
@@ -616,6 +618,7 @@ export class DomEditor extends LitElement {
   private liveSessionUnsubscribe: (() => void) | null = null
   private liveLearners: LiveLearnerRibbonItem[] = []
   private liveSteps: LiveSessionStep[] = []
+  private liveFeedback: LiveSessionFeedback[] = []
   private liveStreamStep = 0
   private liveStreamPlaying = false
   private liveStreamTime = 0
@@ -715,6 +718,11 @@ export class DomEditor extends LitElement {
     }
 
     dom-editor-breadcrumb[hidden] { display: none; }
+
+    live-session-controls {
+      grid-column: 1;
+      min-width: 0;
+    }
 
     dom-editor-breadcrumb {
       grid-column: 1;
@@ -821,7 +829,7 @@ export class DomEditor extends LitElement {
     }
 
     @media (width < 400px) {
-      dom-editor-toolbox[active-tool="AI"] {grid-column: 1 / -1; justify-self: stretch; width: 100%}
+      dom-editor-toolbox:is([active-tool="AI"], [active-tool="Feedback"]) {grid-column: 1 / -1; justify-self: stretch; width: 100%}
     }
 
     dom-editor-toolbox:not([active-tool]) {
@@ -837,7 +845,7 @@ export class DomEditor extends LitElement {
       grid-column: 1;
     }
 
-    .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage:not(:has(+ dom-editor-toolbox[active-tool="AI"]:not([hidden]))) {
+    .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage:not(:has(+ dom-editor-toolbox:is([active-tool="AI"], [active-tool="Feedback"]):not([hidden]))) {
       grid-column: 1 / -1;
     }
 
@@ -1233,6 +1241,7 @@ export class DomEditor extends LitElement {
     })
     if(!appendOnly) this.resetLiveStateCache()
     this.liveSteps = steps
+    this.liveFeedback = session.feedback
 
     const sessionLearners = session.learners
     const knownIds = new Set(sessionLearners.map(learner => learner.id))
@@ -2448,6 +2457,7 @@ export class DomEditor extends LitElement {
     this.liveSessionLink = ""
     this.liveLearners = []
     this.liveSteps = []
+    this.liveFeedback = []
     this.liveStreamStep = 0
     this.liveStreamPlaying = false
     this.liveStreamTime = 0
@@ -7155,6 +7165,14 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
+        .preview=${this.previewActive}
+        .feedbackActive=${this.liveSessionActive}
+        .feedbackRole=${this.liveSessionRole}
+        .feedbackParticipants=${this.liveLearners}
+        .feedbackMessages=${this.liveFeedback}
+        @live-feedback-send=${(event: CustomEvent<{participant: string, text: string}>) => {
+          if(!this.previewActive || !this.liveSession?.sendFeedback(event.detail.participant, event.detail.text)) event.preventDefault()
+        }}
         .shapePaint=${this.shapePaint}
         @shape-paint-change=${(event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
           if(this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive) this.shapePaint = {...event.detail.paint}
@@ -7174,7 +7192,7 @@ export class DomEditor extends LitElement {
         .htmlPending=${this.htmlPending}
         .table=${this.tableSelection}
         .aiSidebar=${!this.breadcrumbVisible && this.aiToolboxOpen}
-        ?hidden=${(!this.breadcrumbVisible && !this.aiToolboxOpen) || this.previewActive || this.liveSessionActive}
+        ?hidden=${!this.previewActive && ((!this.breadcrumbVisible && !this.aiToolboxOpen) || this.liveSessionActive)}
         @toolbox-change=${this.handleToolboxChange}
         @proofreading-action=${this.handleProofreadingAction}
         @document-layout-change=${this.handleDocumentLayoutChange}

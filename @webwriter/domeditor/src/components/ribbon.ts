@@ -1,7 +1,8 @@
 import {css, html, nothing, render} from "lit"
+import type {QRCodeElement} from "./qr-code"
 import {styleMap} from "lit/directives/style-map.js"
 import {aiChatStyles} from "./ai-chat.styles"
-import {switchInputStyles} from "./dropdown-content.styles"
+import {sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
 import {version} from "../../package.json"
 import {
   requestsReadOnlyAI,
@@ -699,42 +700,99 @@ export class AppRibbon extends EditingControls {
 
     .learners-summary {
       display: flex;
+      flex: 1 1 auto;
       align-items: center;
       gap: 0.35rem;
       min-width: 0;
       padding: 0 0.3rem;
-      color: var(--ribbon-control-color, #526b86);
+      color: #7b8795;
       font-size: 0.68rem;
+    }
+
+    .reader-learners:has(.learners-summary) .learner-list {
+      display: none;
     }
 
     .live-session-switch {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
+      flex: 0 1 auto;
+      min-width: 0;
       align-self: center;
       align-items: center;
       gap: 0.35rem;
       min-height: 1.55rem;
-      padding: 0.25rem;
+      padding: 0.25rem 0.25rem 0.25rem 0;
       border-radius: 0.3rem;
       color: var(--ribbon-control-color, #334155);
       font-size: 0.66rem;
       cursor: pointer;
     }
 
+    .live-session-switch span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .live-session-switch:hover {
       color: var(--ribbon-control-color, #1e4f87);
     }
 
-    .live-session-switch:focus-within {
+    .live-session-switch:has(input:focus-visible) {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
     }
 
     ${switchInputStyles}
 
-    .learners-summary-avatars {
+    ${sharingLinkStyles}
+
+    .reader-sharing-bar {
       display: flex;
-      min-width: 1.5rem;
+      align-items: center;
+      gap: 0.3rem;
+      min-width: 0;
+      padding: 0 0.25rem 0 0;
+    }
+
+    .reader-sharing-bar .session-share {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .reader-sharing-bar .sharing-link-input {
+      text-overflow: ellipsis;
+      border-color: var(--reader-link-border-color, #c8d2df);
+    }
+
+    .reader-sharing-bar .sharing-link-copy {
+      background: var(--sharing-link-copy-background, var(--ribbon-area-background));
+    }
+
+    .reader-link-popup {
+      display: none;
+    }
+
+    .reader-learners {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    @container reader-sharing (max-width: 20rem) {
+      .reader-sharing-bar .session-share > .sharing-link-field {
+        display: none;
+      }
+
+      .reader-sharing-bar .session-share {
+        flex: 0 0 1.75rem;
+      }
+
+      .reader-link-popup {
+        display: block;
+      }
     }
 
     .learner-avatar {
@@ -759,12 +817,16 @@ export class AppRibbon extends EditingControls {
     .learner-list {
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+      flex: 1 1 0;
+      align-content: start;
+      /* Two complete learner rows fill the remaining drawer height. */
+      grid-auto-rows: calc((100% - 0.25rem) / 2);
+      grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
       gap: 0.25rem;
       width: 100%;
-      max-height: 100%;
+      min-height: 0;
       overflow: auto;
-      padding: 0.25rem;
+      padding: 0.125rem 0.25rem;
     }
 
     .learner-toggle {
@@ -773,7 +835,7 @@ export class AppRibbon extends EditingControls {
       align-items: center;
       gap: 0.35rem;
       min-width: 0;
-      height: 1.8rem;
+      height: 100%;
       padding: 0 0.4rem;
       border: 1px solid #cbd5e1;
       border-radius: 0.35rem;
@@ -782,6 +844,12 @@ export class AppRibbon extends EditingControls {
       font: inherit;
       font-size: 0.66rem;
       cursor: pointer;
+    }
+
+    .learner-toggle .learner-avatar {
+      width: 1.1rem;
+      height: 1.1rem;
+      flex-shrink: 0;
     }
 
     .learner-toggle[aria-pressed="false"] {
@@ -876,6 +944,10 @@ export class AppRibbon extends EditingControls {
 
     .ribbon-content[hidden] {
       display: none;
+    }
+
+    .ribbon-content:has(> ribbon-drawer[layout="learners"]) {
+      padding-inline-start: 0.35rem;
     }
 
     .ribbon-content > ribbon-drawer:not(:first-child) {
@@ -1014,6 +1086,8 @@ export class AppRibbon extends EditingControls {
   liveSessionActive = false
 
   liveSessionRole: "host" | "learner" | "" = ""
+
+  private readerSharingCopyPending = false
 
   liveSessionLink = ""
 
@@ -1178,6 +1252,7 @@ export class AppRibbon extends EditingControls {
   }
 
   disconnectedCallback() {
+    this.readerSharingCopyPending = false
     if(this.aiToolboxTarget) render(nothing, this.aiToolboxTarget)
     this.aiProviderStore.removeEventListener("change", this.handleAIProviderChange)
     void this.cancelAIWork()
@@ -1232,6 +1307,16 @@ export class AppRibbon extends EditingControls {
       (Number.parseFloat(contentStyle.paddingRight) || 0)
     const availableWidth = content.clientWidth - inlinePadding
     if(availableWidth <= 0) return
+
+    // Reader controls fill the remaining ribbon width and adapt inside the
+    // drawer instead of being exchanged for a collapsed summary.
+    if(this.previewActive && this.liveSessionRole !== "learner") {
+      drawers.forEach(drawer => {
+        drawer.compact = false
+        drawer.collapsed = false
+      })
+      return
+    }
 
     const widths = drawers.map(drawer => drawer.layoutWidths)
     const layouts: Array<"collapsed" | "compact" | "expanded"> = drawers
@@ -1855,6 +1940,10 @@ export class AppRibbon extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    if(this.readerSharingCopyPending && this.liveSessionActive && this.liveSessionLink) {
+      this.readerSharingCopyPending = false
+      void this.copyReaderSharing(this.liveSessionLink)
+    }
     const previousTarget = changed.get("aiToolboxTarget") as HTMLElement | null | undefined
     if(previousTarget && previousTarget !== this.aiToolboxTarget) render(nothing, previousTarget)
     if(this.aiToolboxTarget) render(this.settings.disableAI ? nothing : this.renderAIChat(true), this.aiToolboxTarget, {host: this})
@@ -2496,32 +2585,135 @@ export class AppRibbon extends EditingControls {
     }
   }
 
-  private get sharingLink() {
-    return this.liveSessionActive && this.liveSessionLink
-      ? this.liveSessionLink
-      : this.collaborationLink
+  private renderReaderLinkField(link: string, slot = "") {
+    return html`<label class="sharing-link-field" slot=${slot}>
+      <span class="sharing-link-input-row">
+        <input class="sharing-link-input" aria-label="Reader sharing link" readonly .value=${link}
+          ?disabled=${!link}
+          placeholder="Sharing link"
+          @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()} />
+        <button class=${`sharing-link-copy${this.sharingCopyLinkSuccess ? " is-success" : ""}`}
+          type="button" aria-label="Copy reader link" ?disabled=${!link}
+          title=${this.sharingCopyLinkSuccess ? "Copied link" : "Copy link"}
+          @click=${() => void this.copyReaderSharing(link)}>${ribbonIcon("Copy")}</button>
+      </span>
+    </label>`
   }
 
-  private renderSharingButton(previewOnly = false) {
-    const link = this.sharingLink
-    const enabled = !previewOnly || Boolean(this.liveSessionActive && this.liveSessionLink)
+  private async readerSharingClipboardData(link: string) {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    if(!button) throw new Error("Sharing controls unavailable")
+    const blob = await this.sharingQRCodeBlob()
+    if(!blob || !this.isConnected || !this.liveSessionActive || this.liveSessionLink !== link) throw new Error("Sharing link changed")
+    const imageURL = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+    const content = document.createElement("div")
+    const anchor = document.createElement("a")
+    anchor.href = link
+    anchor.textContent = link
+    const image = document.createElement("img")
+    image.src = imageURL
+    image.alt = "QR code"
+    content.append(anchor, document.createElement("br"), image)
+    return {
+      "text/html": new Blob([content.innerHTML], {type: "text/html"}),
+      "image/png": blob,
+      "text/plain": new Blob([link], {type: "text/plain"}),
+    }
+  }
+
+  private async copyReaderSharing(link: string) {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    try {
+      if(!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        throw new Error("Clipboard unavailable")
+      }
+      const data = this.readerSharingClipboardData(link)
+      // Start the clipboard write during the click; promised formats preserve
+      // browser user activation while the QR image is generated.
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": data.then(value => value["text/html"]),
+        "image/png": data.then(value => value["image/png"]),
+        "text/plain": data.then(value => value["text/plain"]),
+      })])
+      if(button?.isConnected) button.showNotification("Link and QR code copied!", 2800)
+    }
+    catch {
+      if(button?.isConnected) button.showNotification("Could not copy link and QR code", 2800)
+    }
+  }
+
+  private async sharingQRCodeBlob() {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    await button?.updateComplete
+    const qrCode = button?.shadowRoot?.querySelector<QRCodeElement>("webwriter-qr-code")
+    if(!qrCode) return null
+    await qrCode.updateComplete
+    return qrCode.toBlob()
+  }
+
+  private async copySharingQRCode() {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    try {
+      const blob = await this.sharingQRCodeBlob()
+      if(!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Clipboard unavailable")
+      await navigator.clipboard.write([new ClipboardItem({[blob.type || "image/png"]: blob})])
+      button?.showNotification("Copied QR code")
+    }
+    catch {
+      button?.showNotification("Could not copy QR code")
+    }
+  }
+
+  private async downloadSharingQRCode() {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    try {
+      const blob = await this.sharingQRCodeBlob()
+      if(!blob) throw new Error("QR export unavailable")
+      const url = URL.createObjectURL(blob)
+      try {
+        const link = document.createElement("a")
+        link.href = url
+        link.download = "webwriter-qr-code.png"
+        link.click()
+      }
+      finally { URL.revokeObjectURL(url) }
+    }
+    catch {
+      button?.showNotification("Could not download QR code")
+    }
+  }
+
+  private renderSharingButton() {
+    const link = this.liveSessionActive ? this.liveSessionLink : ""
     return html`
-      <ribbon-button
-        class="session-share"
-        label="Share"
-        action="Share"
-        icon="Share"
+      <ribbon-button class="session-share" label="QR" action="QR" icon="QR" compact icon-only variant="reader-sharing"
         dropdown-on-click
-        .dropdown=${this.renderSharingDropdown(link, true)}
-        keep-drawer-open
-        dropdown-no-scroll
-        ?disabled=${!enabled}
-      ></ribbon-button>
+        .dropdown=${html`<div class="sharing-dropdown" role="group" aria-label="Share">
+          <div class="sharing-qr-group" role="group" aria-label="QR code">
+            <webwriter-qr-code class="sharing-qr-code" .value=${link} .size=${224}></webwriter-qr-code>
+            <div class="sharing-dropdown-actions">
+              <button class="sharing-dropdown-action" type="button" @click=${() => void this.downloadSharingQRCode()}>
+                ${ribbonIcon("FileDownload")}<span>Download QR code</span>
+              </button>
+              <button class="sharing-dropdown-action" type="button" @click=${() => void this.copySharingQRCode()}>
+                ${ribbonIcon("Copy")}<span>Copy QR code</span>
+              </button>
+            </div>
+          </div>
+        </div>`}
+        keep-drawer-open dropdown-no-scroll ?disabled=${!link}
+      >${this.renderReaderLinkField(link, "trailing")}</ribbon-button>
     `
   }
 
   private handleLiveSessionToggle = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement
+    this.readerSharingCopyPending = input.checked
     this.dispatchEvent(new CustomEvent<{enabled: boolean}>("live-session-toggle", {
       detail: {enabled: input.checked},
       bubbles: true,
@@ -2530,53 +2722,44 @@ export class AppRibbon extends EditingControls {
   }
 
   private renderLearnersDrawer() {
-    const enabledCount = this.liveLearners.filter(learner => learner.enabled).length
-    const visibleAvatars = this.liveLearners.filter(learner => learner.enabled).slice(0, 4)
     return html`
-      <ribbon-drawer label="Learners" icon="Plus" layout="learners" expandable>
-        ${this.liveSessionActive ? html`
-          <div class="learners-summary" aria-label=${`${enabledCount} of ${this.liveLearners.length} learners visualized`}>
-            <span class="learners-summary-avatars" aria-hidden="true">
-              ${visibleAvatars.map(learner => html`
-                <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})}>${learner.initials}</span>
-              `)}
-            </span>
-            <span>${this.liveLearners.length
-              ? `${enabledCount}/${this.liveLearners.length} shown`
-              : "Waiting for learners"}</span>
+      <ribbon-drawer label="Learners" icon="Plus" layout="learners">
+        <div class="reader-sharing-bar" role="group" aria-label="Reader sharing">
+          <label class="live-session-switch">
+            <input type="checkbox" role="switch" aria-label="Share"
+              .checked=${this.liveSessionActive} @change=${this.handleLiveSessionToggle} />
+            <span>Share</span>
+          </label>
+          ${this.renderSharingButton()}
+          <ribbon-button class="reader-link-popup" label="Reader sharing link" icon="Link" compact
+            dropdown-on-click .dropdown=${html`<div class="sharing-dropdown">${this.renderReaderLinkField(this.liveSessionLink)}</div>`}
+            keep-drawer-open dropdown-no-scroll ?disabled=${!this.liveSessionActive || !this.liveSessionLink}></ribbon-button>
+        </div>
+        <div class="reader-learners">
+          ${this.liveSessionActive && !this.liveLearners.length ? html`
+            <div class="learners-summary" role="status">Waiting for participants</div>
+          ` : nothing}
+          <div class="learner-list" role="group" aria-label="Session learners">
+            ${this.liveLearners.map(learner => html`
+              <button
+                class="learner-toggle"
+                type="button"
+                data-learner-id=${learner.id}
+                aria-pressed=${learner.enabled}
+                aria-label=${`${learner.name}, ${learner.connected ? "connected" : "disconnected"}`}
+                title=${learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}
+                @click=${() => this.dispatchEvent(new CustomEvent("live-learner-toggle", {
+                  detail: {id: learner.id, enabled: !learner.enabled},
+                  bubbles: true,
+                  composed: true,
+                }))}
+              >
+                <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})} aria-hidden="true">${learner.initials}</span>
+                <span class="learner-toggle-name">${learner.name}</span>
+                <span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>
+              </button>
+            `)}
           </div>
-        ` : ""}
-        <label class="live-session-switch">
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="LIVE"
-            .checked=${this.liveSessionActive}
-            @change=${this.handleLiveSessionToggle}
-          />
-          <span>LIVE</span>
-        </label>
-        ${this.renderSharingButton(true)}
-        <div slot="more" class="learner-list" role="group" aria-label="Session learners">
-          ${this.liveLearners.map(learner => html`
-            <button
-              class="learner-toggle"
-              type="button"
-              data-learner-id=${learner.id}
-              aria-pressed=${learner.enabled}
-              aria-label=${`${learner.name}, ${learner.connected ? "connected" : "disconnected"}`}
-              title=${learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}
-              @click=${() => this.dispatchEvent(new CustomEvent("live-learner-toggle", {
-                detail: {id: learner.id, enabled: !learner.enabled},
-                bubbles: true,
-                composed: true,
-              }))}
-            >
-              <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})} aria-hidden="true">${learner.initials}</span>
-              <span class="learner-toggle-name">${learner.name}</span>
-              <span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>
-            </button>
-          `)}
         </div>
       </ribbon-drawer>
     `
@@ -2584,13 +2767,13 @@ export class AppRibbon extends EditingControls {
 
   protected renderDrawers() {
     if(this.previewActive && this.liveSessionRole !== "learner") {
-      return [html`
+      return [this.renderLearnersDrawer(), html`
         <ribbon-drawer label="Sharing" icon="Share" layout="sharing-preview">
           <ribbon-button class="sharing-action" label="Download" action="Download"
             .submenu=${fileFormatButtons("download")}></ribbon-button>
           <ribbon-button class="sharing-action" label="Print" action="Print"></ribbon-button>
         </ribbon-drawer>
-      `, this.renderLearnersDrawer()]
+      `]
     }
     return super.renderDrawers()
   }
@@ -2973,7 +3156,7 @@ export class AppRibbon extends EditingControls {
                       lazy-dropdown
                       dropdown-no-scroll
                       ?custom-icon=${this.presenceUsers.length > 0}
-                      ?disabled=${historyPreviewPending}
+                      ?disabled=${this.previewActive || historyPreviewPending}
                       .dropdown=${this.renderSharingDropdown(this.collaborationLink)}
                       @ribbon-dropdown-open=${() => {
                         this.menuOpen = false

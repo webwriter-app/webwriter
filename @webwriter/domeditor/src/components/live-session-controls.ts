@@ -74,8 +74,12 @@ export class LiveSessionControls extends LitElement {
       font-weight: 700;
       font-size: 0.68rem;
       font-variant-numeric: tabular-nums;
-      text-align: center;
+      text-align: left;
       white-space: nowrap;
+    }
+
+    :host([live]) .status {
+      text-align: center;
     }
 
     .play-icon {
@@ -165,6 +169,7 @@ export class LiveSessionControls extends LitElement {
     const position = duration > 0 ? time / duration : 1
     return html`
       <div class="controls" role="group" aria-label="Playback controls">
+        <span class="status" role="status" aria-live="polite">${status}</span>
         <button
           type="button"
           aria-label=${this.playing ? "Pause" : "Play"}
@@ -184,7 +189,6 @@ export class LiveSessionControls extends LitElement {
           @input=${this.seek}
         />
         <span class="time">${this.formatTime(time)}</span>
-        <span class="status" role="status" aria-live="polite">${status}</span>
       </div>
     `
   }

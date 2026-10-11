@@ -29,6 +29,8 @@ describe("live session controls", () => {
     expect(range.getAttribute("aria-valuetext")).toBe("01:05 of 01:05")
     expect(controls.shadowRoot!.querySelector(".time")?.textContent).toBe("01:05")
     expect(controls.shadowRoot!.querySelector(".status")?.textContent).toBe("PREVIEW")
+    expect(controls.shadowRoot!.querySelector(".controls")!.firstElementChild)
+      .toBe(controls.shadowRoot!.querySelector(".status"))
   })
 
   it("pins the scrubber exactly to the edge as the timeline grows between whole seconds", async () => {
@@ -76,6 +78,8 @@ describe("live session controls", () => {
     controls.live = true
     await controls.updateComplete
     expect(controls.shadowRoot!.querySelector(".status")?.textContent).toBe("LIVE")
+    expect(controls.shadowRoot!.querySelector(".controls")!.firstElementChild)
+      .toBe(controls.shadowRoot!.querySelector(".status"))
     const range = controls.shadowRoot!.querySelector<HTMLInputElement>("input[type=range]")!
     expect(range.value).toBe("0.4")
     controls.currentTime = 9

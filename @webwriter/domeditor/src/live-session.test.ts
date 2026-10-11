@@ -16,6 +16,48 @@ const create = (options: ConstructorParameters<typeof LiveSession>[0]) => {
 }
 
 describe("LiveSession", () => {
+  it("delivers host feedback to the intended participant and keeps it out of the document timeline", async () => {
+    const host = create({id: "feedback", role: "host", baseHTML: "<p>Document</p>"})
+    const ada = create({id: "feedback", role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}})
+    const lin = create({id: "feedback", role: "learner", learner: {id: "lin", name: "Lin", color: "#08c"}})
+    const changes = vi.fn()
+    ada.onChange(changes)
+    const message = host.sendFeedback("ada", "  Good work!\nTry the next question.  ")!
+    await Promise.resolve()
+    expect(message.text).toBe("Good work!\nTry the next question.")
+    expect(host.feedback).toEqual([message])
+    expect(ada.feedback).toEqual([message])
+    expect(lin.feedback).toEqual([])
+    expect(changes).toHaveBeenCalled()
+    expect(host.baseHTML).toBe("<p>Document</p>")
+    expect(host.steps).toEqual([])
+    const returned = ada.feedback
+    returned[0].text = "Changed locally"
+    expect(host.feedback[0].text).toBe(message.text)
+    expect(ada.sendFeedback("lin", "Forged")).toBeNull()
+    ada.doc.getArray("live-session-feedback").push([{...message, id: "forged", participant: "lin"}])
+    expect(host.feedback).toEqual([message])
+    expect(lin.feedback).toEqual([])
+    const activity = ada.publish({kind: "pointer", pointer: {x: 0.2, y: 0.3}})
+    // The forged update taints this peer; a clean participant can still edit.
+    const cleanActivity = lin.publish({kind: "pointer", pointer: {x: 0.4, y: 0.5}})
+    expect(host.steps.map(step => step.id)).toContain(cleanActivity.id)
+    expect(host.steps.map(step => step.id)).not.toContain(activity.id)
+  })
+
+  it("rejects empty, oversized, disconnected, unknown, and stopped-session feedback", () => {
+    const host = create({id: "feedback-preconditions", role: "host", baseHTML: "<p>Document</p>"})
+    const ada = create({id: "feedback-preconditions", role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}})
+    expect(host.sendFeedback("unknown", "Hello")).toBeNull()
+    expect(host.sendFeedback("ada", " ")).toBeNull()
+    expect(host.sendFeedback("ada", "x".repeat(4001))).toBeNull()
+    ada.stop()
+    expect(host.sendFeedback("ada", "Disconnected")).toBeNull()
+    host.stop()
+    expect(host.sendFeedback("ada", "Stopped")).toBeNull()
+    expect(host.feedback).toEqual([])
+  })
+
   it("does not propagate direct learner mutations of host metadata", () => {
     const host = create({id: "protected", role: "host", baseHTML: "<p>Host</p>"})
     const learner = create({id: "protected", role: "learner", baseHTML: "<p>Untrusted</p>", learner: {id: "ada", name: "Ada", color: "#f00"}})

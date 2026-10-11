@@ -23,6 +23,83 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("reuses toolbox tabs and pane for Feedback in preview and restores the normal tool", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Edit")
+    toolbox.preview = true
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBeNull()
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll('[role="tab"]'), tab => tab.getAttribute("data-tool"))).toEqual(["Feedback"])
+    const tab = toolButton(toolbox, "Feedback")
+    expect(tab.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(true)
+    expect(tab.querySelector("svg")).not.toBeNull()
+    tab.click()
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Feedback")
+    expect(tab.getAttribute("aria-selected")).toBe("true")
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector(".feedback-content")!.textContent).toContain("Start sharing")
+    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).toBeNull()
+    toolbox.consoleOpen = true
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBeNull()
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close Feedback"]')!.click()
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(true)
+    toolbox.preview = false
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolButton(toolbox, "Feedback")).toBeNull()
+  })
+
+  it("sends feedback to a selected connected participant and preserves drafts after rejected delivery", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.preview = true
+    toolbox.feedbackActive = true
+    toolbox.feedbackRole = "host"
+    toolbox.feedbackParticipants = [{id: "ada", name: "Ada", connected: true}]
+    await toolbox.updateComplete
+    toolbox.selectTool("Feedback")
+    await toolbox.updateComplete
+    const participant = toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Feedback participant"]')!
+    participant.value = "ada"
+    participant.dispatchEvent(new Event("change", {bubbles: true}))
+    const input = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>("textarea")!
+    input.value = "Great work <b>Ada</b>"
+    input.dispatchEvent(new Event("input", {bubbles: true}))
+    await toolbox.updateComplete
+    const send = vi.fn((event: Event) => event.preventDefault())
+    toolbox.addEventListener("live-feedback-send", send)
+    const form = toolbox.shadowRoot!.querySelector("form")!
+    form.dispatchEvent(new Event("submit", {cancelable: true}))
+    await toolbox.updateComplete
+    expect(send.mock.calls[0][0]).toMatchObject({detail: {participant: "ada", text: "Great work <b>Ada</b>"}})
+    expect(input.value).toBe("Great work <b>Ada</b>")
+    expect(toolbox.shadowRoot!.querySelector('[role="alert"]')).not.toBeNull()
+    toolbox.removeEventListener("live-feedback-send", send)
+    form.dispatchEvent(new Event("submit", {cancelable: true}))
+    await toolbox.updateComplete
+    expect(input.value).toBe("")
+    toolbox.feedbackParticipants = [{id: "ada", name: "Ada", connected: false}]
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
+  })
+
+  it("shows received feedback as plain text without participant sending controls", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.preview = true
+    toolbox.feedbackActive = true
+    toolbox.feedbackRole = "learner"
+    toolbox.feedbackMessages = [{id: "one", participant: "ada", time: Date.now(), text: "Try <script>this</script> next"}]
+    await toolbox.updateComplete
+    toolbox.selectTool("Feedback")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector("form")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".feedback-messages p")!.textContent).toBe("Try <script>this</script> next")
+    expect(toolbox.shadowRoot!.querySelector(".feedback-messages script")).toBeNull()
+  })
+
   it("offers a document spell-checking toggle even when the checker is loading or failed", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")

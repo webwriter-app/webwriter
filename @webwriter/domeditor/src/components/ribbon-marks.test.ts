@@ -191,6 +191,31 @@ describe("mark ribbon controls", () => {
     expect(fileTab.active).toBe(true)
   })
 
+  it("disables Collaboration and closes its menu during preview", async () => {
+    const {ribbon} = await mountRibbon()
+    const action = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
+    await action.updateComplete
+    const button = action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    button.click()
+    await action.updateComplete
+    expect(button.getAttribute("aria-expanded")).toBe("true")
+
+    ribbon.previewActive = true
+    await ribbon.updateComplete
+    await action.updateComplete
+    expect(action.disabled).toBe(true)
+    expect(button.disabled).toBe(true)
+    expect(button.getAttribute("aria-expanded")).toBe("false")
+    button.click()
+    await action.updateComplete
+    expect(button.getAttribute("aria-expanded")).toBe("false")
+
+    ribbon.previewActive = false
+    await ribbon.updateComplete
+    await action.updateComplete
+    expect(button.disabled).toBe(false)
+  })
+
   it("shows at most two strongly overlapping collaborator initials in the top action", async () => {
     const {ribbon} = await mountRibbon()
     ribbon.presenceUsers = [
@@ -1172,7 +1197,8 @@ it("opens preview from the reader-sharing hint at the bottom of the collaboratio
   await action.updateComplete
   action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
   await action.updateComplete
-  menu.querySelector<HTMLButtonElement>(".sharing-preview-button")!.click()
+  expect(action.disabled).toBe(true)
+  expect(menu.querySelector(".sharing-preview-button")).toBeNull()
   expect(commands).toHaveBeenCalledOnce()
   await action.updateComplete
   expect(menu.hidden).toBe(true)

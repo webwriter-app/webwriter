@@ -5854,6 +5854,35 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("opens the preview Feedback toolbox and delivers messages through the live session", async () => {
+    const {editor, iframe} = await mountEditor()
+    const authored = iframe.contentDocument!.body.innerHTML
+    const host = new LiveSession({id: "editor-feedback", role: "host", baseHTML: "<p>Document</p>"})
+    const participant = new LiveSession({id: "editor-feedback", role: "learner", learner: {id: "ada", name: "Ada", color: "#123456"}})
+    try {
+      ;(editor as any).previewActive = true
+      ;(editor as any).connectLiveSession(host, "host")
+      await editor.updateComplete
+      const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+      await toolbox.updateComplete
+      expect(toolbox.hidden).toBe(false)
+      expect(editor.shadowRoot!.querySelector("live-session-controls")).not.toBeNull()
+      expect(toolbox.preview).toBe(true)
+      toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Feedback"]')!.click()
+      await toolbox.updateComplete
+      expect(toolbox.activeTool).toBe("Feedback")
+      const send = new CustomEvent("live-feedback-send", {detail: {participant: "ada", text: "Well done!"}, cancelable: true})
+      expect(toolbox.dispatchEvent(send)).toBe(true)
+      await vi.waitFor(() => expect(toolbox.feedbackMessages).toHaveLength(1))
+      expect(participant.feedback[0].text).toBe("Well done!")
+      expect(iframe.contentDocument!.body.innerHTML).toBe(authored)
+      participant.stop()
+      const stale = new CustomEvent("live-feedback-send", {detail: {participant: "ada", text: "Too late"}, cancelable: true})
+      expect(toolbox.dispatchEvent(stale)).toBe(false)
+    }
+    finally { participant.destroy(); editor.remove() }
+  })
+
   it("keeps serverless recordings local and resets the clock between preview and live", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -5861,8 +5890,8 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await ribbon.updateComplete
     const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
-    const share = () => ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Learners"] ribbon-button[label="Share"]')!
-    const toggle = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="LIVE"]')!
+    const share = () => ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Learners"] ribbon-button[label="QR"]')!
+    const toggle = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="Share"]')!
     expect(share().disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Download"]')).not.toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Print"]')).not.toBeNull()
@@ -5885,7 +5914,7 @@ describe("DomEditor.execute()", () => {
       await ribbon.updateComplete
       expect(share().disabled).toBe(true)
       expect((editor as any).liveSessionLink).toBe("")
-      expect(ribbon.shadowRoot!.querySelector(".learners-summary")?.textContent).toContain("Waiting for learners")
+      expect(ribbon.shadowRoot!.querySelector(".learners-summary")?.textContent).toContain("Waiting for participants")
       expect(controls.live).toBe(true)
       expect(controls.currentTime).toBe(0)
       const session = (editor as unknown as {liveSession: LiveSession}).liveSession
@@ -5971,7 +6000,7 @@ describe("DomEditor.execute()", () => {
       await ribbon.updateComplete
 
       const share = ribbon.shadowRoot!.querySelector<RibbonButton>(
-        'ribbon-drawer[label="Learners"] ribbon-button[label="Share"]',
+        'ribbon-drawer[label="Learners"] ribbon-button[label="QR"]',
       )!
       expect(share.disabled).toBe(true)
       expect(ribbon.liveSessionLink).toBe("")
