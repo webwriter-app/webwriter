@@ -211,6 +211,29 @@ export class BoardFeature extends EditorFeature {
       return target
     })
   }
+  joinBackward(acrossColumns = false) {
+    const selection = document.getSelection()
+    if(!this.active || this.editor.isEditingLocked || !selection?.rangeCount || !selection.isCollapsed || !this.allowsSelection()
+      || atomicEditingContainer(selection.anchorNode, this.editor.schema)) return false
+    const source = acrossColumns ? this.containingColumn(selection.anchorNode) : this.containingCard(selection.anchorNode)
+    // Removing a wrapper with authored metadata would discard document content.
+    if(!source || !this.plainWrapper(source, acrossColumns ? "ww-board-column" : "ww-board-card")) return false
+    const peers = acrossColumns ? this.columns() : this.cards(source.parentElement!)
+    const previous = peers[peers.indexOf(source) - 1]
+    if(!previous) return false
+    const scope = this.editingScope(selection.anchorNode)!, offset = previous.childNodes.length, end = this.editor.doc.beginUndoGroup()
+    try {
+      previous.append(...Array.from(source.childNodes))
+      source.remove()
+      if(acrossColumns) $.move(scope)
+      else $.move(previous, offset)
+      this.editor.features.selection.processSelection()
+    }
+    finally { end() }
+    previous.scrollIntoView?.({block: "nearest", inline: "nearest"})
+    this.refresh(); this.editor.postSelectionPath()
+    return true
+  }
   removeColumn(column: HTMLElement) {
     if(!isBoardColumn(column) || column.parentElement !== document.body) return false
     return this.edit(() => { column.remove(); return this.columns()[0]?.firstElementChild as HTMLElement ?? this.columns()[0] ?? document.body })
@@ -363,6 +386,9 @@ export class BoardFeature extends EditorFeature {
       if(!this.active || event.isComposing || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)) return
       if(event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey) {
         event.preventDefault(); event.stopImmediatePropagation(); this.splitAtSelection(event.shiftKey)
+      }
+      else if(event.key === "Backspace" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+        event.preventDefault(); event.stopImmediatePropagation(); this.joinBackward(event.shiftKey)
       }
       else if(event.key === "Enter" && this.editingScope(document.getSelection()?.anchorNode ?? null)?.matches("h2")) {
         event.preventDefault(); event.stopImmediatePropagation(); this.addCard()

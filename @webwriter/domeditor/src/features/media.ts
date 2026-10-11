@@ -1344,7 +1344,7 @@ export class MediaFeature extends EditorFeature {
       const template = document.createElement("template")
       template.innerHTML = mediaDefaultHTML(media)
       const element = template.content.firstElementChild!
-      this.editor.features.manipulation.insert(template.content)
+      this.editor.features.manipulation.insert(template.content, 0, false, this.editor.features.canvas.active || undefined)
       if(element.isConnected) {
         $.selectElement(element)
         this.editor.features.selection.processSelection()

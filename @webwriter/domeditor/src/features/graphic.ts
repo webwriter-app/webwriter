@@ -678,7 +678,7 @@ export class GraphicFeature extends EditorFeature {
         if(shape === "text-box") element = this.#setLabel(element, "Text")
         this.#fitStandaloneGraphic(graphic, element)
       }
-      this.editor.features.manipulation.insert(graphic)
+      this.editor.features.manipulation.insert(graphic, 0, false, this.editor.features.canvas.active || undefined)
       if(graphic.isConnected) {
         if(shape) this.editor.features.selection.selectElement(graphic)
         else this.editor.features.selection.captureElement(graphic)

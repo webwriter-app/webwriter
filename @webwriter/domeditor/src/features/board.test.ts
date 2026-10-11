@@ -159,6 +159,96 @@ describe("Board layout", () => {
     expect(board().cards(columns()[1])).toHaveLength(2)
   })
 
+  it.each(["ctrlKey", "metaKey"] as const)("joins backwards across cards with %s+Backspace, preserving irregular content", modifier => {
+    convert("board")
+    const column = columns()[0], previous = cards()[0]
+    previous.innerHTML = '<section><p>Before</p></section><!--previous-->'
+    const between = document.createComment("between")
+    column.append(between); board().addCard(column)
+    const current = board().cards(column)[1]
+    current.innerHTML = '<!--keep--><custom-join-widget data-authored="yes"></custom-join-widget><section data-authored="yes"><p>After</p></section>'
+    const content = Array.from(current.childNodes)
+    const offset = previous.childNodes.length
+    $.move(current.querySelector("p")!.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {key: "Backspace", [modifier]: true, bubbles: true, cancelable: true})
+    current.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(board().cards(column)).toEqual([previous])
+    expect(Array.from(previous.childNodes).slice(offset)).toEqual(content)
+    expect(between.parentNode).toBe(column)
+    expect(previous.textContent).toBe("BeforeAfter")
+    expect($.anchor).toBe(previous); expect(document.getSelection()!.anchorOffset).toBe(offset)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["ctrlKey", "metaKey"] as const)("joins backwards across columns with Shift+%s+Backspace without merging their cards", modifier => {
+    convert("board")
+    const previous = columns()[0], originalCard = cards()[0]
+    previous.querySelector("h2")!.textContent = "Before"
+    board().addColumn()
+    const current = columns()[1], heading = current.querySelector("h2")!
+    heading.textContent = "After"
+    const comment = document.createComment("keep"), widget = document.createElement("custom-column-widget")
+    current.append(comment, widget); board().addCard(current)
+    const content = Array.from(current.childNodes), movedCard = board().cards(current)[0]
+    const offset = previous.childNodes.length
+    $.move(movedCard.querySelector("p")!)
+    const event = new KeyboardEvent("keydown", {key: "Backspace", shiftKey: true, [modifier]: true, bubbles: true, cancelable: true})
+    movedCard.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(columns()).toEqual([previous])
+    expect(Array.from(previous.childNodes).slice(offset)).toEqual(content)
+    expect(board().cards(previous)).toEqual([originalCard, movedCard])
+    expect(previous.querySelectorAll("h2")).toHaveLength(2)
+    expect(board().containingColumn($.anchor)).toBe(previous)
+    expect(board().allowsSelection()).toBe(true)
+  })
+
+  it.each([false, true])("undoes and redoes a backwards join as one change (columns=%s)", acrossColumns => {
+    convert("board")
+    cards()[0].innerHTML = '<p>Before</p>'
+    if(acrossColumns) board().addColumn()
+    const column = columns()[acrossColumns ? 1 : 0]
+    board().addCard(column)
+    const current = board().cards(column).at(-1)!
+    current.innerHTML = '<p>After</p><!--keep-->'
+    editor.doc.syncFromDOM()
+    const before = editor.toHTML(true)
+    $.move(current.querySelector("p")!.firstChild!, 2)
+    expect(board().joinBackward(acrossColumns)).toBe(true)
+    const after = editor.toHTML(true)
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("fails safely at the first card or column and for headings, selections, widgets, or authored wrapper metadata", () => {
+    convert("board")
+    const column = columns()[0], first = cards()[0]
+    $.move(first.querySelector("p")!)
+    expect(board().joinBackward()).toBe(false)
+    expect(board().joinBackward(true)).toBe(false)
+    $.move(column.querySelector("h2")!)
+    expect(board().joinBackward()).toBe(false)
+    board().addCard(column)
+    const current = board().cards(column)[1]
+    current.innerHTML = '<p>After</p><custom-join-widget>Atomic</custom-join-widget>'
+    const before = editor.toHTML(true)
+    document.getSelection()!.setBaseAndExtent(current.firstChild!.firstChild!, 0, current.firstChild!.firstChild!, 2)
+    expect(board().joinBackward()).toBe(false)
+    $.move(current.querySelector("custom-join-widget")!.firstChild!)
+    expect(board().joinBackward()).toBe(false)
+    $.move(current.firstChild!.firstChild!)
+    current.id = "authored"
+    expect(board().joinBackward()).toBe(false)
+    current.removeAttribute("id")
+    const detached = document.createTextNode("Detached")
+    $.isSettingRanges = true
+    try { document.getSelection()!.setBaseAndExtent(detached, 2, detached, 2) }
+    finally { $.isSettingRanges = false }
+    expect(board().joinBackward()).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
   it("keeps a board split in one undo group and fails safely for detached selections", async () => {
     convert("board"); cards()[0].innerHTML = '<p>BeforeAfter</p>'; await settle(); editor.doc.syncFromDOM()
     const before = editor.toHTML(true)
@@ -190,7 +280,7 @@ describe("Board layout", () => {
     }
     $.move(card.querySelector("p")!.firstChild!, 2); editor.features.selection.processSelection()
     expect(state().path).toEqual([
-      {path: [], name: "Document", icon: "Document"},
+      {path: [], name: "Board", icon: "Columns"},
       {path: [1], name: "Column 1", icon: "BoardColumn"},
       {path: [1, 3], name: "Card 1", icon: "BoardCard"},
       {path: [1, 3, 0, 0], name: "Paragraph", icon: "Paragraph", sections: [

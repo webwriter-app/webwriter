@@ -175,9 +175,24 @@ export class CanvasFeature extends EditorFeature {
     return this.viewer?.clientPoint(x, y) ?? {x, y}
   }
 
+  /** Click insertion owns a new root item, independent of the old selection. */
+  insertCentered<T>(command: () => T): T {
+    if(!this.active || this.placing || this.editor.isEditingLocked) return command()
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      return this.editor.features.selection.withoutSelectionScroll(() => {
+        const range = document.createRange()
+        range.selectNodeContents(document.body); range.collapse(false)
+        this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
+        return this.preservePlacement(command, true)
+      })
+    }
+    finally { end() }
+  }
+
   /** Apply placement only to items created by this local command. Never run
    * this from a MutationObserver: widgets and remote edits own their changes. */
-  preservePlacement<T>(command: () => T): T {
+  preservePlacement<T>(command: () => T, centered = false): T {
     if((!this.active && !this.editor.features.slides.active) || this.placing) return command()
     const selection = document.getSelection()
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null
@@ -200,8 +215,9 @@ export class CanvasFeature extends EditorFeature {
     const anchor = before.find(item => selected && (item === selected || item.contains(selected)))
     const rect = anchor?.getBoundingClientRect()
     const bodyRect = body.getBoundingClientRect()
+    const center = {x: window.innerWidth / 2, y: window.innerHeight / 2}
     const origin = this.active
-      ? rect ? this.clientPoint(rect.left, rect.top) : this.clientPoint(window.innerWidth / 2 - 160, window.innerHeight / 2)
+      ? centered ? this.clientPoint(center.x, center.y) : rect ? this.clientPoint(rect.left, rect.top) : this.clientPoint(window.innerWidth / 2 - 160, window.innerHeight / 2)
       : rect ? {x: rect.left - bodyRect.left + body.scrollLeft, y: rect.top - bodyRect.top + body.scrollTop} : {x: 20, y: 20}
     const height = rect ? rect.height / this.zoom : 0
     this.placing = true
@@ -233,6 +249,17 @@ export class CanvasFeature extends EditorFeature {
           }
           if(sharedHeight !== null) item.style.height = `${sharedHeight}px`
           offset += item.getBoundingClientRect().height / this.zoom + 24
+        }
+        if(centered && this.active && added.length) {
+          // Measure the final border boxes: margins, authored transforms and
+          // intrinsic widget sizes all affect their visual center.
+          const rects = added.map(item => item.getBoundingClientRect())
+          const x = (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2
+          const y = (Math.min(...rects.map(rect => rect.top)) + Math.max(...rects.map(rect => rect.bottom))) / 2
+          for(const item of added) {
+            item.style.left = `${parseFloat(item.style.left) + (center.x - x) / this.zoom}px`
+            item.style.top = `${parseFloat(item.style.top) + (center.y - y) / this.zoom}px`
+          }
         }
       }
       this.placing = false
@@ -317,7 +344,7 @@ export class CanvasFeature extends EditorFeature {
       const target = event.composedPath()[0]
       if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target)) return
       if(target.name === "hand") { this.hand = !this.hand; this.schedule() }
-      else if(target.name === "text") this.insertText({x: window.innerWidth / 2 - 160 * this.zoom, y: window.innerHeight / 2})
+      else if(target.name === "text") this.insertCentered(() => this.insertText({x: window.innerWidth / 2, y: window.innerHeight / 2}))
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
     },
     dblclick: event => {

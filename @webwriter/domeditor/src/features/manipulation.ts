@@ -2738,7 +2738,7 @@ export class ManipulationFeature extends EditorFeature {
       this.hoverInsertion(false)
       const previous = this.commandPlacement
       this.commandPlacement = true
-      try { this.createRibbonElement(tag) }
+      try { this.editor.features.canvas.insertCentered(() => this.createRibbonElement(tag)) }
       finally { this.commandPlacement = previous }
     },
     insertRibbonDrop: ({html, position}: {type: "insertRibbonDrop", html: string, position: RibbonDropPosition}) => this.insertRibbonDrop(html, position),
@@ -3110,8 +3110,11 @@ export class ManipulationFeature extends EditorFeature {
    * one split); <body> and <html> are never split. Splitting continues the
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
-  insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement) {
+  insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
+    if(node && commandInsertion && !this.ribbonDropInsertion && this.editor.features.canvas.active) {
+      return this.editor.features.canvas.insertCentered(() => this.insert(node, splitDepth, strict, false))
+    }
     if(!node && this.editor.features.board.active && this.editor.features.board.editingScope($.anchor)?.matches("h2")) return this.editor.features.board.addCard()
     if(node) {
       this.hoverInsertion(false)
@@ -3689,8 +3692,12 @@ export class ManipulationFeature extends EditorFeature {
    * structural placement path as HTML clipboard content. */
   insertHTML(html: string, strict=false, commandInsertion = true) {
     const {fragment} = this.editor.parseHTMLFragment(html)
-    if(strict) this.insert(fragment, 0, true, commandInsertion)
-    else this.insertClipboardFragment(fragment, true, commandInsertion)
+    const insert = () => {
+      if(strict) this.insert(fragment, 0, true, commandInsertion)
+      else this.insertClipboardFragment(fragment, true, commandInsertion)
+    }
+    if(commandInsertion && !this.ribbonDropInsertion) this.editor.features.canvas.insertCentered(insert)
+    else insert()
   }
 
   /** Runs package migrations on `html`, then restores the selection captured

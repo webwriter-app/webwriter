@@ -6808,7 +6808,7 @@ describe("DomEditor.execute()", () => {
     body.className = "ww-board"
     body.innerHTML = '<section class="ww-board-column"><h2>Backlog</h2><!--keep--><article class="ww-board-card"><p>First</p><section><custom-widget>Widget</custom-widget></section></article><article class="ww-board-card"><p>Second</p></article></section><section class="ww-board-column"><h2>Done</h2><article class="ww-board-card"><p>Third</p></article></section>'
     const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(tree).toMatchObject({path: [], name: "Document", icon: "Document", children: [
+    expect(tree).toMatchObject({path: [], name: "Board", icon: "Columns", children: [
       {path: [0], name: "Column 1", icon: "BoardColumn", children: [
         {path: [0, 0], name: "Column Heading", icon: "Heading", children: []},
         {path: [0, 2], name: "Card 1", icon: "BoardCard", children: [
@@ -6837,8 +6837,9 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await breadcrumb.updateComplete
     await vi.waitFor(() => expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual([
-      "Document", "Column 1", "Card 1", "custom-widget",
+      "Board", "Column 1", "Card 1", "custom-widget",
     ]))
+    expect(breadcrumb.shadowRoot!.querySelector('.item[data-path=""] svg.icon-tabler-columns-3')).not.toBeNull()
     expect(breadcrumb.shadowRoot!.querySelector('.item[data-path="0"] svg.icon-tabler-columns-1')).not.toBeNull()
     expect(breadcrumb.shadowRoot!.querySelector('.item[data-path="0,2"] svg.icon-tabler-id')).not.toBeNull()
     expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .section-item"), item => item.textContent)).toEqual(["Section"])

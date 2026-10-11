@@ -124,8 +124,10 @@ export function getElementPresentation(elementOrTagName: Element | string): Elem
       return {name: `${boardRole === "column" ? "Column" : "Card"} ${peers.indexOf(elementOrTagName as HTMLElement) + 1}`,
         icon: boardRole === "column" ? "BoardColumn" : "BoardCard"}
     }
-    if(elementOrTagName === elementOrTagName.ownerDocument.body && documentLayoutMode(elementOrTagName as HTMLElement) === "canvas") {
-      return {name: "Canvas", icon: "Canvas"}
+    if(elementOrTagName === elementOrTagName.ownerDocument.body) {
+      const mode = documentLayoutMode(elementOrTagName as HTMLElement)
+      if(mode === "canvas") return {name: "Canvas", icon: "Canvas"}
+      if(mode === "board") return {name: "Board", icon: "Columns"}
     }
     const role = slideLayoutRole(elementOrTagName)
     if(role === "root") return {name: "Slides", icon: "KeywordPresentation"}

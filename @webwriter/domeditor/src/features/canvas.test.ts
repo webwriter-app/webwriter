@@ -470,6 +470,63 @@ describe("canvas document layout", () => {
     expect(inserted.style.width).toBe("")
   })
 
+  it.each(["p", "h2", "details", "table", "widget", "table-command", "media-command", "details-command", "list-command", "graphic-command"])("centers clicked %s insertion in the current panned and zoomed view", tag => {
+    document.body.innerHTML = '<p>Existing content</p>'
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const canvas = editor.features.canvas, existing = document.body.firstElementChild as HTMLElement
+    const slot = editor.appendix.querySelector("slot")!
+    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    mockGeometry(slot, makeRect(-1700, -900, 0, 0))
+    const camera = slot.style.transform
+    Object.assign(existing.style, {left: "-5000px", top: "-4000px"})
+    const original = existing.outerHTML
+    $.move(existing.firstChild!, 3)
+    function geometry(this: HTMLElement | SVGSVGElement) {
+      if(this.parentElement !== document.body) return makeRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0)
+      const width = parseFloat(this.style.width) || 180, height = this.localName.includes("-") ? 460 : 84
+      // Include offsets from authored margins and transforms as well as the camera.
+      return makeRect(-1700 + ((parseFloat(this.style.left) || 0) + 19) * canvas.zoom,
+        -900 + ((parseFloat(this.style.top) || 0) - 13) * canvas.zoom, width * canvas.zoom, height * canvas.zoom)
+    }
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(geometry)
+    vi.spyOn(SVGSVGElement.prototype, "getBoundingClientRect").mockImplementation(geometry)
+    if(tag === "widget") {
+      editor.schema.extendWidgets([{tagName: "centered-canvas-widget", editingConfig: {}}])
+      editor.features.selection.withoutSelectionScroll(() => editor.features.selection.captureElement(existing))
+      editor.features.manipulation.actions.insert({type: "insert", html: '<centered-canvas-widget style="width:540px"></centered-canvas-widget>'})
+    }
+    else if(tag === "table-command") editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
+    else if(tag === "media-command") editor.features.media.actions.insertMedia({type: "insertMedia", media: "picture"})
+    else if(tag === "details-command") editor.features.list.actions.insertDetails({type: "insertDetails"})
+    else if(tag === "list-command") editor.features.list.insertList("ul")
+    else if(tag === "graphic-command") editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    else editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+    const inserted = document.body.lastElementChild as HTMLElement
+    expect(inserted).not.toBe(existing)
+    expect(inserted.parentElement).toBe(document.body)
+    expect(existing.outerHTML).toBe(original)
+    const rect = inserted.getBoundingClientRect()
+    expect(rect.left + rect.width / 2).toBeCloseTo(window.innerWidth / 2)
+    expect(rect.top + rect.height / 2).toBeCloseTo(window.innerHeight / 2)
+    expect(slot.style.transform).toBe(camera)
+    if(tag === "widget") expect(inserted.style.width).toBe("540px")
+    if(tag === "p") expect(inserted.style.width).toBe("")
+  })
+
+  it("centers click insertion without requiring a retained selection and undoes placement with insertion", () => {
+    document.body.innerHTML = '<p>Keep</p>'
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    document.getSelection()!.removeAllRanges()
+    editor.doc.syncFromDOM()
+    const before = editor.toHTML(true)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "details"})
+    const after = editor.toHTML(true)
+    expect(document.body.querySelector("details")).not.toBeNull()
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
+  })
+
   it("only creates a paragraph when a double click is outside existing canvas items", () => {
     document.body.innerHTML = "<section><p>Existing text</p></section><custom-widget></custom-widget>"
     editor.doc.syncFromDOM()
