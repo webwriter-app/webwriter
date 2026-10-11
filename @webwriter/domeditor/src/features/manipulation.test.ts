@@ -2698,6 +2698,62 @@ describe("cut()", () => {
     finally { Object.defineProperty(navigator.clipboard, "write", {value: write, configurable: true}) }
   })
 })
+describe("insertion beside a lone float", () => {
+  it.each(["left", "right"])("places typing, Enter, pasted blocks and command elements after a lone %s float", side => {
+    for(const operation of ["typing", "enter", "paste", "command", "node"]) {
+      document.body.innerHTML = `<audio controls style="float:${side}"></audio><!--keep-->`
+      const floated = document.querySelector("audio")!, comment = floated.nextSibling!
+      $.move(document.body, 0)
+      if(operation === "typing" || operation === "enter") {
+        document.body.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true,
+          inputType: operation === "typing" ? "insertText" : "insertParagraph", data: operation === "typing" ? "Hello" : null}))
+      }
+      else if(operation === "paste") {
+        const clipboardData = new DataTransfer()
+        clipboardData.setData("text/html", "<p>Hello</p>")
+        document.dispatchEvent(new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData}))
+      }
+      else if(operation === "command") editor.features.manipulation.insertHTML("<h2>Hello</h2>")
+      else editor.features.manipulation.insert(document.createElement("hr"))
+      expect(document.body.firstElementChild).toBe(floated)
+      expect(floated.nextElementSibling?.localName).toBe(operation === "node" ? "hr" : operation === "command" ? "h2" : "p")
+      if(operation !== "node" && operation !== "enter") expect(floated.nextElementSibling?.textContent).toBe("Hello")
+      expect(comment.isConnected).toBe(true)
+      expect(floated.getAttribute("style")).toBe(`float:${side}`)
+      expect(editor.toHTML(true)).not.toContain("◆")
+    }
+  })
+
+  it("preserves explicit insertion order when normal flow already exists", () => {
+    document.body.innerHTML = '<audio style="float:right"></audio><p>Existing</p>'
+    $.move(document.body, 0)
+    editor.features.manipulation.insert(document.createElement("hr"))
+    expect(document.body.firstElementChild?.localName).toBe("hr")
+  })
+
+  it("uses a stylesheet float in a template root and supports undo and redo", () => {
+    const style = document.createElement("style")
+    style.textContent = "audio {float: right}"
+    document.head.append(style)
+    try {
+      document.body.innerHTML = '<demo-widget role="document"><audio controls></audio></demo-widget>'
+      const root = document.querySelector("demo-widget")!, floated = root.firstElementChild!
+      $.move(root, 0)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      editor.features.manipulation.insertHTML("<p>Hello</p>")
+      expect(root.firstElementChild).toBe(floated)
+      expect(floated.nextElementSibling?.textContent).toBe("Hello")
+      editor.doc.syncFromDOM()
+      editor.doc.undo()
+      expect(document.querySelector("demo-widget")!.children).toHaveLength(1)
+      editor.doc.redo()
+      expect(document.querySelector("demo-widget")!.lastElementChild?.textContent).toBe("Hello")
+    }
+    finally { style.remove() }
+  })
+})
+
 describe("paste()", () => {
   it("handles a native plain-text paste into an empty document", () => {
     const clipboardData = new DataTransfer()
@@ -3152,6 +3208,41 @@ describe("text input normalization", () => {
   })
 })
 describe("setBlockType()", () => {
+  it("changes only scoped headings in a mixed selection and preserves DOM and undo", () => {
+    document.body.innerHTML = '<section><h2 id="intro" class="lead"><b>Hello</b><!--keep--></h2><p>Paragraph</p><h3>Other level</h3><h2>Second</h2><test-widget><h2>Widget heading</h2></test-widget></section>'
+    const section = document.querySelector("section")!, first = document.querySelector("h2")!
+    const children = Array.from(first.childNodes)
+    const paragraph = document.querySelector("p"), other = document.querySelector("h3"), widget = document.querySelector("test-widget")
+    $.selectRange(section, 0, section, section.childNodes.length)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const converted = editor.features.manipulation.setBlockType("h6", {localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml"})
+    expect(converted).toBe(2)
+    const replacement = document.querySelector("h6")!
+    expect(replacement.id).toBe("intro")
+    expect(replacement).toHaveClass("lead")
+    expect(Array.from(replacement.childNodes)).toEqual(children)
+    expect(document.querySelector("section")).toBe(section)
+    expect(document.querySelector("p")).toBe(paragraph)
+    expect(document.querySelector("h3")).toBe(other)
+    expect(widget!.innerHTML).toBe("<h2>Widget heading</h2>")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelectorAll("section > h2")).toHaveLength(2)
+    editor.doc.redo()
+    expect(document.querySelectorAll("section > h6")).toHaveLength(2)
+  })
+
+  it("does nothing when the scoped heading was replaced before the command", () => {
+    document.body.innerHTML = '<h2>Heading</h2>'
+    const heading = document.querySelector("h2")!
+    $.move(heading.firstChild!)
+    heading.replaceWith(document.createElement("p"))
+    expect(editor.features.manipulation.setBlockType("h1", {localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml"})).toBe(0)
+    expectBodyToBe("<p></p>")
+  })
+
   it.each(["caret", "range", "node"])("converts paragraphs to heading text and back with a %s selection", selection => {
     document.body.innerHTML = '<section><test-widget></test-widget><!--keep--><p id="intro" class="lead">  first\n<b>hello</b><br>tail</p></section>'
     const section = document.querySelector("section")!

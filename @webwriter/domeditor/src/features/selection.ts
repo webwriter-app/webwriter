@@ -1596,10 +1596,10 @@ export class SelectionFeature extends EditorFeature {
     this.#refreshHoverGeometry()
   }
 
-  /** Creates the virtual caret used only for a completely empty document.
+  /** Creates the virtual caret for a document with no in-flow content.
    * Chromium keeps a valid BODY@0 selection in that state but does not paint
    * its native caret consistently. The visual element stays in the shadow
-   * appendix and is positioned from the BODY selection marker. */
+   * appendix and is positioned at the selected root’s content edge. */
   #createEmptyDocumentCaret() {
     const node = document.createElement("div")
     node.classList.add("◆", "◆editor-only", "◆empty-document-caret")
@@ -1612,7 +1612,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** The shadow-DOM visual caret for an empty document, if created. */
   get emptyDocumentCaret() {
-    return this.editor.appendix.querySelector(".◆empty-document-caret")
+    return this.editor.appendix.querySelector<HTMLElement>(".◆empty-document-caret")
   }
 
   /** Retains marker owners so removal also cleans disconnected content. */
@@ -2011,8 +2011,15 @@ export class SelectionFeature extends EditorFeature {
       const element = getContainer($.commonAncestor)
       if(!element) return
       this.#markSelection(element, "◆empty-selected")
-      if(element === getDocumentRoot() && !this.emptyDocumentCaret) {
-        this.#createEmptyDocumentCaret()
+      if(element === getDocumentRoot()) {
+        const caret = this.emptyDocumentCaret ?? this.#createEmptyDocumentCaret()
+        const style = getComputedStyle(element)
+        const rtl = style.direction === "rtl"
+        const inlineOffset = (parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) || 0)
+          + (parseFloat(rtl ? style.paddingRight : style.paddingLeft) || 0)
+        const topOffset = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.paddingTop) || 0)
+        caret.style.setProperty("--empty-caret-left", rtl ? `calc(anchor(right) - ${inlineOffset}px)` : `calc(anchor(left) + ${inlineOffset}px)`)
+        caret.style.setProperty("--empty-caret-top", `calc(anchor(top) + ${topOffset}px)`)
       }
     }
     if(kind === "text" && sel.isCollapsed) {

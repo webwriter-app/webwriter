@@ -1,4 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
+import {UndoManager, type Transaction} from "yjs"
 import {
   canonicalMarkName,
   excludedMarkNames,
@@ -20,11 +21,17 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, textOffsetIn, textPointAtOffset} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
-import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
+import {isLinkEdit, normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
+
+// Bounded domain labels, with separate email matching to avoid linking just its domain.
+const automaticLinkDomain = String.raw`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})(?![a-z0-9_@-])`
+const automaticLinkEmailLocal = "[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+const automaticLinkPattern = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_@./:-])(?:https?:\/\/[^\s<>"'\x60]+|(?<email>(?<![a-z0-9!#$%&'*+/=?^_\x60{|}~.-])(?=[^@\s]{1,64}@)${automaticLinkEmailLocal}@${automaticLinkDomain})|${automaticLinkDomain}(?::\d{1,5})?(?!\d|:\d)(?:[/?#][^\s<>"'\x60]*)?)`, "giu")
 
 export type MarkState = {
   /** Whether the current selection is a markable text range or caret. */
@@ -416,6 +423,124 @@ export class MarkFeature extends EditorFeature {
   private storedSelection: StoredSelection | null = null
   private linkNodeIDs = new WeakMap<Node, string>()
   private editingLink = false
+  private automaticLinkBlock: Element | null = null
+  private composing = false
+  private automaticLinks = new WeakMap<Element, {text: string, href: string}>()
+
+  private readonly handleHistoryTransaction = (transaction: Transaction) => {
+    if(!(transaction.origin instanceof UndoManager)) return
+    // Undo/redo restores authored DOM verbatim, including plain URL text.
+    this.observer?.takeRecords()
+    this.automaticLinkBlock = null
+    this.queueStateRefresh()
+  }
+
+  private editedLinkBlock() {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode || this.editor.features.selection.isCaptureSelection) return null
+    const block = this.closestBlock(selection.anchorNode)
+    if(!block || block !== this.closestBlock(selection.focusNode) || !block.isConnected
+      || !this.editor.features.manipulation.isTextBlock(block)
+      || !this.isEditableHTMLContext(selection.anchorNode, block)
+      || block.closest("a, code, pre, kbd, samp, textarea")
+      || this.allowedMarksAt(selection.anchorNode)?.includes("a") === false) return null
+    return block
+  }
+
+  private queueAutomaticLinks(records?: MutationRecord[]) {
+    if(records && !records.some(record => record.type === "characterData" || record.type === "childList")) return
+    const block = this.editedLinkBlock()
+    if(!block || records && !records.some(record => (record.type === "characterData" || record.type === "childList")
+      && (block.contains(record.target) || Array.from(record.addedNodes).some(node => node.contains(block))))) return
+    this.automaticLinkBlock = block
+    this.queueStateRefresh()
+  }
+
+  private applyAutomaticLinks(block: Element) {
+    if(this.editor.isEditingLocked || !block.isConnected || block !== this.editedLinkBlock()) return
+    const selection = document.getSelection()!
+    const anchor = this.textOffset(block, selection.anchorNode!, selection.anchorOffset)
+    const focus = this.textOffset(block, selection.focusNode!, selection.focusOffset)
+    if(anchor === null || focus === null) return
+    let changed = false
+    // Only links created here may be reinterpreted as their text is edited.
+    const links = Array.from(block.querySelectorAll("a")).filter(link => this.closestBlock(link) === block
+      && !link.closest("code, pre, kbd, samp, [contenteditable='false'], [hidden], [inert]")
+      && !atomicEditingContainer(link, this.editor.schema) && this.allowedMarksAt(link)?.includes("a") !== false)
+    const changedURLs = new Set<string>()
+    for(const link of links) {
+      const previous = this.automaticLinks.get(link)
+      if(!previous) continue
+      if(link.getAttribute("href") !== previous.href) this.automaticLinks.delete(link)
+      else if(link.textContent !== previous.text) changedURLs.add(previous.href)
+    }
+    for(const link of links) {
+      const previous = this.automaticLinks.get(link)
+      if(!previous || !changedURLs.has(previous.href)) continue
+      link.replaceWith(...Array.from(link.childNodes))
+      this.automaticLinks.delete(link)
+      changed = true
+    }
+    let text = ""
+    let parts: {node: Text, start: number}[] = []
+    const flush = () => {
+      const replacements: {node: Text, start: number, end: number, href: string}[] = []
+      let partIndex = 0
+      for(const match of text.matchAll(automaticLinkPattern)) {
+        let value = match[0].replace(/[.,;:!?]+$/, "")
+        for(const [open, close] of [["(", ")"], ["[", "]"], ["{", "}"]]) {
+          let balance = 0
+          for(const character of value) balance += character === open ? 1 : character === close ? -1 : 0
+          while(balance < 0 && value.endsWith(close)) { value = value.slice(0, -1); balance++ }
+        }
+        const address = match.groups?.email
+          ? `mailto:${encodeURIComponent(value).replace(/%40/g, "@").replace(/%2B/g, "+")}` : value
+        const href = normalizeLinkHref(address)
+        if(!href) continue
+        const start = match.index!, end = start + value.length
+        while(partIndex < parts.length && parts[partIndex].start + parts[partIndex].node.length <= start) partIndex++
+        for(let index = partIndex; index < parts.length && parts[index].start < end; index++) {
+          const part = parts[index]
+          replacements.push({node: part.node, start: Math.max(0, start - part.start),
+            end: Math.min(part.node.length, end - part.start), href})
+        }
+      }
+      // Apply from the end so offsets in each original text node stay valid.
+      for(const {node, start, end, href} of replacements.reverse()) {
+        if(start >= end || !node.isConnected) continue
+        if(end < node.length) node.splitText(end)
+        const content = start ? node.splitText(start) : node
+        const link = document.createElement("a")
+        link.setAttribute("href", href)
+        link.setAttribute("target", "_blank")
+        link.setAttribute("rel", "noopener noreferrer")
+        content.replaceWith(link)
+        link.append(content)
+        this.automaticLinks.set(link, {text: content.data, href})
+        changed = true
+      }
+      text = ""
+      parts = []
+    }
+    const visit = (node: Node) => {
+      if(node instanceof Text) { parts.push({node, start: text.length}); text += node.data; return }
+      if(!(node instanceof Element)) return
+      if(node !== block && (node.namespaceURI !== "http://www.w3.org/1999/xhtml"
+        || isOutOfFlow(node)
+        || node.matches("a, code, pre, kbd, samp, script, style, template, textarea, br, [contenteditable='false'], [hidden], [inert]")
+        || this.editor.schema.isBlock(node) || this.allowedMarksAt(node)?.includes("a") === false
+        || isAtomicEditingElement(node, this.editor.schema))) { flush(); return }
+      Array.from(node.childNodes).forEach(visit)
+    }
+    visit(block)
+    flush()
+    if(changed) {
+      const [anchorNode, anchorOffset] = this.textPoint(block, anchor)
+      const [focusNode, focusOffset] = this.textPoint(block, focus)
+      if(anchorNode.isConnected && focusNode.isConnected) selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+      this.observer?.takeRecords()
+    }
+  }
 
   actions = {
     editLink: (edit: LinkEdit & {type: "editLink"}) => this.editLink(edit),
@@ -458,6 +583,9 @@ export class MarkFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     beforeinput: event => this.handleBeforeInput(event),
     keydown: event => this.handleShortcut(event),
+    input: event => { if(!(event as InputEvent).isComposing) this.queueAutomaticLinks() },
+    compositionstart: () => { this.composing = true },
+    compositionend: () => { this.composing = false; this.queueAutomaticLinks() },
     selectionchange: () => this.clearStoredMarksIfSelectionChanged(),
   }
 
@@ -465,7 +593,10 @@ export class MarkFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
-    const observer = new FrameMutationObserver(() => this.queueStateRefresh())
+    const observer = new FrameMutationObserver(records => {
+      this.queueAutomaticLinks(records)
+      this.queueStateRefresh()
+    })
     try {
       observer.observe(document.body, {
         attributes: true,
@@ -475,6 +606,7 @@ export class MarkFeature extends EditorFeature {
         subtree: true,
       })
       this.observer = observer
+      this.editor.doc.doc.on("afterTransaction", this.handleHistoryTransaction)
     }
     catch {
       observer.disconnect()
@@ -483,8 +615,11 @@ export class MarkFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.editor.doc.doc.off("afterTransaction", this.handleHistoryTransaction)
     this.observer?.disconnect()
     this.observer = null
+    this.automaticLinkBlock = null
+    this.composing = false
     this.stateRefreshQueued = false
     this.clearStoredMarks()
     super.disable()
@@ -646,6 +781,10 @@ export class MarkFeature extends EditorFeature {
     const state = this.getLinkState()
     if(!state || state.identity !== edit.identity) throw new Error("The selected link changed. Select it again before applying.")
     const attributes = {...edit.attributes}
+    if(!state.href && !state.attributes.target && !Object.hasOwn(attributes, "target")) {
+      attributes.target = "_blank"
+      attributes.rel = [...new Set([...(attributes.rel ?? "").split(/\s+/).filter(Boolean), "noopener", "noreferrer"])].join(" ")
+    }
     let href = edit.href.trim()
     if(attributes["data-reference"] && !parseReference(attributes["data-reference"]))
       throw new TypeError("Enter a title for the reference.")
@@ -659,13 +798,10 @@ export class MarkFeature extends EditorFeature {
     if(isReference && !state.referenceAllowed) throw new Error("References require an HTML link.")
     if(!href && isReference) href = this.referenceHref()
     if(!href) throw new TypeError("Choose a document target or enter a web address.")
-    if(!href.startsWith("#")) {
-      let url: URL
-      try { url = new URL(href, document.baseURI) } catch { throw new TypeError("Enter a valid web address.") }
-      if(!["http:", "https:", "mailto:", "tel:", "ftp:", "file:"].includes(url.protocol))
-        throw new TypeError("Enter a web, email, or telephone address.")
-    }
-    else if(!isReference) {
+    const normalized = normalizeLinkHref(href)
+    if(normalized === null) throw new TypeError("Enter a valid web address.")
+    href = normalized
+    if(href.startsWith("#") && !isReference) {
       let id: string
       try { id = decodeURIComponent(href.slice(1)) } catch { throw new TypeError("Choose a valid document target.") }
       const target = document.getElementById(id)
@@ -1975,6 +2111,11 @@ export class MarkFeature extends EditorFeature {
     queueMicrotask(() => {
       this.stateRefreshQueued = false
       if(this.isEnabled) {
+        if(!this.composing && this.automaticLinkBlock) {
+          const block = this.automaticLinkBlock
+          this.automaticLinkBlock = null
+          this.applyAutomaticLinks(block)
+        }
         this.editor.postMarkState()
         // Keep the established selection-path event as the final bridge
         // update for a DOM mutation while still refreshing mark state.

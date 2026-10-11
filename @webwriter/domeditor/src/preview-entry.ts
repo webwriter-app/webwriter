@@ -1,5 +1,8 @@
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementPath, previewWidgetElements} from "./live-preview"
 import type {LiveSessionWidgetState} from "./live-session"
+import {openFrameLinksInNewTabs} from "./frame-links"
+
+openFrameLinksInNewTabs(window)
 
 const bridge = document.querySelector<HTMLMetaElement>('meta[name="webwriter-preview-bridge"]')
 const nonce = bridge?.getAttribute("data-nonce")

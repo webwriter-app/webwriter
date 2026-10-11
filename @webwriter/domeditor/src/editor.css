@@ -1406,8 +1406,8 @@ body::part(empty-document-caret) {
   display: none;
   position: fixed;
   position-anchor: --empty-selected;
-  left: anchor(left);
-  top: anchor(top);
+  left: var(--empty-caret-left, anchor(left));
+  top: var(--empty-caret-top, anchor(top));
   box-sizing: border-box;
   width: 1px;
   height: 1lh;
@@ -1432,7 +1432,6 @@ html:not(.◆canvas-active) body.◆empty-selected::part(empty-document-caret) {
 
 body:has(> [role~="document"].◆empty-selected)::part(empty-document-caret) {
   display: block;
-  left: anchor(left);
 }
 
 :is(ul, ol, dl, menu):empty {

@@ -98,6 +98,24 @@ describe("selection preservation across authored DOM shapes", () => {
 })
 
 describe("figure node selection", () => {
+  it.each(["ltr", "rtl"])("aligns the empty flow caret with the %s content edge beside a lone float", direction => {
+    document.body.innerHTML = '<audio controls style="float:right"></audio>'
+    document.body.style.cssText = `direction:${direction};padding:24px 32px 16px 40px;border:2px solid`
+    try {
+      $.move(document.body, 0)
+      feature.processSelection(undefined, {scrollIntoView: false})
+      const caret = feature.emptyDocumentCaret as HTMLElement
+      expect(caret.style.getPropertyValue("--empty-caret-left")).toBe(direction === "rtl" ? "calc(anchor(right) - 34px)" : "calc(anchor(left) + 42px)")
+      expect(caret.style.getPropertyValue("--empty-caret-top")).toBe("calc(anchor(top) + 26px)")
+      expect(caret.getRootNode()).toBe(editor.appendix)
+      expect(editor.toHTML(true)).not.toContain("◆")
+      document.body.style.paddingTop = "48px"
+      feature.processSelection(undefined, {scrollIntoView: false})
+      expect(caret.style.getPropertyValue("--empty-caret-top")).toBe("calc(anchor(top) + 50px)")
+    }
+    finally { document.body.style.cssText = "" }
+  })
+
   it.each(["left", "right"])("clicks outside a lone %s-floated figure to select document start", side => {
     document.body.innerHTML = `<figure style="float:${side}"><img><figcaption>Keep</figcaption></figure>`
     const figure = document.querySelector("figure")!

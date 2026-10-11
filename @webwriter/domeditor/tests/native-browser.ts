@@ -237,6 +237,7 @@ await check("whitespace beside a lone floated figure selects document start", as
     theme.textContent = defaultDocumentTheme.source
     doc.head.append(theme)
     for(const side of ["left", "right"]) {
+      doc.body.style.direction = side === "left" ? "rtl" : "ltr"
       doc.body.innerHTML = `<figure style="float:${side};width:200px;height:200px"><img><figcaption>Keep</figcaption></figure>`
       const figure = doc.querySelector("figure")!
       doc.getSelection()!.setBaseAndExtent(doc.body, 0, doc.body, 1)
@@ -253,8 +254,17 @@ await check("whitespace beside a lone floated figure selects document start", as
         "whitespace click did not select document start")
       const caret = frameEditor.features.selection.emptyDocumentCaret!
       assert(caret && view.getComputedStyle(caret).display !== "none", "document-start caret is hidden")
+      await layoutFrame()
+      const caretRect = caret.getBoundingClientRect(), bodyRect = doc.body.getBoundingClientRect()
+      const bodyStyle = view.getComputedStyle(doc.body)
+      const contentLeft = bodyStyle.direction === "rtl"
+        ? bodyRect.right - (parseFloat(bodyStyle.borderRightWidth) || 0) - (parseFloat(bodyStyle.paddingRight) || 0)
+        : bodyRect.left + (parseFloat(bodyStyle.borderLeftWidth) || 0) + (parseFloat(bodyStyle.paddingLeft) || 0)
+      const contentTop = bodyRect.top + (parseFloat(bodyStyle.borderTopWidth) || 0) + (parseFloat(bodyStyle.paddingTop) || 0)
+      assert(Math.abs(caretRect.left - contentLeft) < 1 && Math.abs(caretRect.top - contentTop) < 1,
+        `document-start caret is outside the content edge: caret=${caretRect.left},${caretRect.top}; content=${contentLeft},${contentTop}`)
       doc.body.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Start"}))
-      assert(figure.previousElementSibling?.textContent === "Start", "typing at document start did not create a preceding paragraph")
+      assert(figure.nextElementSibling?.textContent === "Start", "typing in empty document flow did not create a paragraph after the float")
       assert(figure.querySelector("figcaption")!.textContent === "Keep", "typing replaced the figure caption")
     }
   }
@@ -1018,9 +1028,15 @@ await check("link keyboard preserves iframe selections and applies document, web
     assert(view.editor, `link editor did not initialize: ${view.editorError}`)
     const local = view.editor!, doc = frame.contentDocument!, anchor = doc.querySelector("a")!
     const text = anchor.firstChild!, selection = doc.getSelection()!
+    await layoutFrame()
     doc.body.focus(); selection.setBaseAndExtent(text, 2, text, 2)
     keyboard.state = local.features.mark.getLinkState()
     await keyboard.updateComplete
+    await layoutFrame()
+    assert(keyboard.shadowRoot!.activeElement === keyboard.shadowRoot!.querySelector('[aria-label="Web address"]'),
+      `opening the link keyboard did not focus Web address: host=${document.activeElement?.localName}, field=${keyboard.shadowRoot!.activeElement?.outerHTML}`)
+    assert(selection.anchorNode === text && selection.anchorOffset === 2 && selection.focusNode === text && selection.focusOffset === 2,
+      "focusing Web address changed the authored document selection")
     keyboard.addEventListener("link-keyboard-command", event => {
       try { local.features.mark.editLink((event as CustomEvent).detail); keyboard.state = local.features.mark.getLinkState() }
       catch(error) { errors.push(String(error)) }
@@ -1038,7 +1054,7 @@ await check("link keyboard preserves iframe selections and applies document, web
     keyboard.shadowRoot!.querySelector<HTMLButtonElement>("#tab-web")!.click()
     await keyboard.updateComplete
     const url = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Web address"]')!
-    url.focus(); url.value = "https://example.test/source"; url.dispatchEvent(new Event("input"))
+    url.focus(); url.value = "example.test/source"; url.dispatchEvent(new Event("input"))
     const applyWeb = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Apply web link"]')!
     for(const width of [760, 360]) {
       keyboard.style.width = `${width}px`
@@ -1050,7 +1066,7 @@ await check("link keyboard preserves iframe selections and applies document, web
       assert(Math.abs(applyWeb.getBoundingClientRect().right - url.getBoundingClientRect().right) <= 1, "Web arrow is not at the end of the input")
     }
     applyWeb.click()
-    assert(anchor.getAttribute("href") === "https://example.test/source", "web address was not applied")
+    assert(anchor.getAttribute("href") === "https://example.test/source", "web address was not normalized to an absolute HTTPS URL")
     keyboard.state = local.features.mark.getLinkState()
     await keyboard.updateComplete
     keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[role="tab"]:last-child')!.click()
@@ -1070,6 +1086,19 @@ await check("link keyboard preserves iframe selections and applies document, web
     assert(anchor.getAttribute("href")?.startsWith("#ref-"), "reference without a web representation did not get a fragment")
     assert(JSON.parse(anchor.dataset.reference!).title === "Reference source", "reference metadata was not applied")
     assert(anchor.textContent === "Link text" && !doc.body.innerHTML.includes("link-keyboard"), "keyboard changed authored text or leaked UI")
+    const automaticBlock = doc.createElement("p"), untouchedBlock = doc.createElement("p")
+    automaticBlock.textContent = "Visit auto.example.test/path and email reader+tag@example.test."
+    untouchedBlock.textContent = "https://untouched.example.test"
+    doc.body.append(automaticBlock, untouchedBlock)
+    const automaticText = automaticBlock.firstChild as Text
+    selection.setBaseAndExtent(automaticText, automaticText.length, automaticText, automaticText.length)
+    automaticBlock.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await layoutFrame()
+    assert(automaticBlock.querySelector("a")?.getAttribute("href") === "https://auto.example.test/path", "typed URL was not automatically linked")
+    assert(automaticBlock.querySelectorAll("a")[1]?.getAttribute("href") === "mailto:reader+tag@example.test", "typed email address was not automatically linked with mailto")
+    assert(!untouchedBlock.querySelector("a"), "automatic linking scanned an unrelated text block")
+    assert(selection.anchorNode?.textContent === "." && selection.anchorOffset === 1 && selection.isCollapsed,
+      "automatic linking moved the native caret")
     assert(!errors.length, errors.join("; "))
     for(const width of [760, 360]) {
       keyboard.style.width = `${width}px`
@@ -1087,7 +1116,7 @@ await check("link keyboard preserves iframe selections and applies document, web
         keyboard.shadowRoot!.querySelector<HTMLButtonElement>(`#tab-${tab}`)!.click()
         await keyboard.updateComplete
         await layoutFrame()
-        inputPositions.push(keyboard.shadowRoot!.querySelector<HTMLElement>(".search-bar")!.getBoundingClientRect().top)
+        inputPositions.push(keyboard.shadowRoot!.querySelector<HTMLElement>(".search-bar")!.getBoundingClientRect().top - keyboard.getBoundingClientRect().top)
       }
       assert(Math.max(...inputPositions) - Math.min(...inputPositions) <= 1, `input shifted between tabs at width ${width}`)
     }
@@ -1575,7 +1604,7 @@ await check("editing frame blocks meta refresh and retains same-document navigat
   try {
     const crossOrigin = `http://127.0.0.1:${location.port}`
     for(const [delay, targetOrigin] of [["0", crossOrigin], ["0.5", frameOrigin], ["0.5", crossOrigin], ["0", frameOrigin]] as const) {
-      const frame = makeFrame("editor")
+      const frame = makeFrame(targetOrigin === crossOrigin ? "editor" : "preview")
       const destination = `${targetOrigin}/?meta-refresh-target=${crypto.randomUUID()}`
       const source = `<!doctype html><html><head><meta http-equiv="refresh" content="${delay};url=${destination}" data-authored="yes"></head><body>authored<script>setTimeout(() => parent.postMessage({type:'refresh-frame-state', href:location.href, metaContent:document.querySelector('meta[http-equiv=refresh]')?.content, hasRefresh:!!document.querySelector('meta[http-equiv=refresh]')}, '*'), 1100)</script></body></html>`
       await install(frame, source)
@@ -1587,7 +1616,7 @@ await check("editing frame blocks meta refresh and retains same-document navigat
     }
 
     const frame = makeFrame("editor")
-    await install(frame, `<!doctype html><html><head></head><body><a id="fragment" href="#inside">fragment</a><script>document.querySelector('a').click();parent.postMessage({type:'fragment-frame-state',href:location.href}, '*')</script></body></html>`)
+    await install(frame, `<!doctype html><html><head></head><body><a id="fragment" href="#inside">fragment</a><script>location.hash = 'inside';parent.postMessage({type:'fragment-frame-state',href:location.href}, '*')</script></body></html>`)
     const fragmentState = waitForMessage<{type: string, href: string}>(frame, "fragment-frame-state")
     const state = await fragmentState
     assert(new URL(state.href).hash === "#inside", "same-document fragment navigation was blocked")
@@ -1601,16 +1630,32 @@ await check("editing frame blocks meta refresh and retains same-document navigat
     assert(frame.contentDocument?.URL === "about:blank", "trusted parent replacement did not load")
     frame.remove()
 
-    const preview = makeFrame("preview")
-    const previewNonce = crypto.randomUUID()
-    const previewTarget = `${frameOrigin}/frame-shell.html?kind=preview&revision=after-refresh#nonce=${previewNonce}`
-    await install(preview, `<!doctype html><meta http-equiv="refresh" content="0.5;url=${previewTarget}"><body>Preview refresh remains active</body>`)
-    const previewReady = await waitForMessage<{type: string, kind: string, revision: string, bridgeNonce: string}>(
-      preview, "webwriter-frame-shell-ready", 4000,
-    )
-    assert(previewReady.kind === "preview" && previewReady.revision === "after-refresh" && previewReady.bridgeNonce === previewNonce,
-      "preview shell did not follow its authored meta refresh")
-    preview.remove()
+    for(const kind of ["editor", "preview"] as const) {
+      const links = makeFrame(kind)
+      await install(links, `<!doctype html><body><script>
+        const opened = [];
+        window.open = (...args) => { opened.push(args); return null };
+        setTimeout(() => {
+          for(const target of ['_self', '_top', '_parent', 'named', '_blank']) {
+            const a = document.createElement('a'); a.href = 'https://example.test/' + target; a.target = target;
+            document.body.append(a); a.click();
+          }
+          const host = document.createElement('demo-widget'); document.body.append(host);
+          const shadow = host.attachShadow({mode:'open'}); shadow.innerHTML = '<a href="https://widget.test">Widget</a>';
+          shadow.querySelector('a').click();
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.innerHTML = '<a href="https://svg.test"><text>SVG</text></a>'; document.body.append(svg);
+          svg.querySelector('text').dispatchEvent(new MouseEvent('auxclick', {button:1, bubbles:true, cancelable:true}));
+          const fragment = document.createElement('a'); fragment.href = '#chapter'; document.body.append(fragment); fragment.click();
+          parent.postMessage({type:'frame-link-state', opened, href:location.href, targets:[...document.querySelectorAll('a[target]')].map(a => a.target)}, '*');
+        }, 50);
+      </script></body>`)
+      const state = await waitForMessage<{opened: string[][], href: string, targets: string[]}>(links, "frame-link-state")
+      assert(state.opened.length === 8 && state.opened.every(args => args[1] === "_blank" && args[2] === "noopener,noreferrer"), `${kind} did not redirect every link to a new tab`)
+      assert(new URL(state.href).pathname === "/frame-shell.html" && !state.href.endsWith("#chapter"), `${kind} link navigated the frame`)
+      assert(state.targets.join(",") === "_self,_top,_parent,named,_blank", `${kind} changed authored link targets`)
+      links.remove()
+    }
   }
   finally { frames.forEach(frame => frame.remove()) }
 })

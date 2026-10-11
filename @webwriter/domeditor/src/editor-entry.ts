@@ -1,4 +1,5 @@
 import { DOMEditor } from "./domeditor"
+import {openFrameLinksInNewTabs} from "./frame-links"
 import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
 import {isAppendixInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
@@ -146,6 +147,7 @@ const initialize = (event: MessageEvent) => {
   window.editor = editor
 }
 
+openFrameLinksInNewTabs(window)
 window.addEventListener("message", initialize)
 
 const bridge = document.querySelector<HTMLMetaElement>('meta[name="webwriter-editor-bridge"]')

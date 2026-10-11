@@ -6,7 +6,7 @@ vi.mock("./frame-local-packages", () => ({connectFrameLocalPackages: vi.fn()}))
 describe("frame shell refresh handling without Navigation API", () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it("refuses head and body refresh while preserving ordinary, template, and preview documents", async () => {
+  it("refuses head and body refresh while preserving ordinary and template documents in both frames", async () => {
     const win = window as Window & {happyDOM?: {setURL(url: string): Promise<void>}, navigation?: unknown}
     const navigationDescriptor = Object.getOwnPropertyDescriptor(window, "navigation")
     Object.defineProperty(window, "navigation", {value: undefined, configurable: true})
@@ -25,7 +25,7 @@ describe("frame shell refresh handling without Navigation API", () => {
       {kind: "editor", html: '<!doctype html><body><meta http-equiv="refresh" content="0;url=/lost">Body refresh</body>', refused: true},
       {kind: "editor", html: '<!doctype html><body><template><meta http-equiv="refresh" content="0;url=/inert"></template>Template</body>', refused: false},
       {kind: "editor", html: "<!doctype html><body>Ordinary document</body>", refused: false},
-      {kind: "preview", html: '<!doctype html><head><meta http-equiv="refresh" content="0;url=/preview"></head><body>Preview</body>', refused: false},
+      {kind: "preview", html: '<!doctype html><head><meta http-equiv="refresh" content="0;url=/preview"></head><body>Preview</body>', refused: true},
     ] as const
 
     try {
@@ -53,7 +53,7 @@ describe("frame shell refresh handling without Navigation API", () => {
           expect(writes).toHaveLength(before)
           expect(document.querySelector('[role="alert"]')?.textContent).toContain("automatic refresh redirects")
           expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
-            type: "webwriter-frame-error", kind: "editor", revision, bridgeNonce: nonce,
+            type: "webwriter-frame-error", kind: testCase.kind, revision, bridgeNonce: nonce,
           }), hostOrigin)
           document.body.replaceChildren()
         }

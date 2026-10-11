@@ -39,6 +39,49 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("shows a Heading drawer and matching level button group for %s", async localName => {
+    const toolbox = await mountElement(localName)
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!
+    expect(drawer.label).toBe("Heading")
+    expect(drawer.icon).toBe("Heading")
+    expect(drawer.iconUrl).toBe("")
+    const group = drawer.querySelector<HTMLElement>(".heading-level .specialized-choice-group")!
+    expect(group.getAttribute("role")).toBe("group")
+    expect(group.style.getPropertyValue("--choice-columns")).toBe("3")
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6"])
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(buttons.filter(button => button.getAttribute("aria-pressed") === "true").map(button => button.getAttribute("aria-label"))).toEqual([`Heading ${localName.slice(1)}`])
+    expect(buttons[2].hasAttribute("data-top-right")).toBe(true)
+    expect(buttons[3].hasAttribute("data-bottom-left")).toBe(true)
+    const changes = vi.fn()
+    toolbox.addEventListener("heading-level-change", changes)
+    buttons[5].click()
+    expect(changes.mock.calls[0][0].detail).toEqual({level: "h6", selectionType: {
+      localName, namespaceURI: "http://www.w3.org/1999/xhtml",
+    }})
+    toolbox.elementAttributes = selectedElement("h3")
+    toolbox.elementStyle = styleState("h3")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('.heading-level button[aria-pressed="true"]')!.getAttribute("aria-label")).toBe("Heading 3")
+  })
+
+  it("scopes a heading level change to its drawer in a mixed selection", async () => {
+    const toolbox = await mountElement("h1")
+    toolbox.selectedElementTypes = ["h1", "h2", "p"].map(localName => ({
+      element: selectedElement(localName), style: styleState(localName), count: 2,
+      styleProperties: [], configuredWidgetOptions: [],
+    }))
+    await toolbox.updateComplete
+    const changes = vi.fn()
+    toolbox.addEventListener("heading-level-change", changes)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-specialized="h2"] .heading-level button[aria-label="Heading 4"]')!.click()
+    expect(changes.mock.calls[0][0].detail).toEqual({level: "h4", selectionType: {
+      localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml",
+    }})
+    expect(toolbox.shadowRoot!.querySelector('[data-specialized="p"] .heading-level')).toBeNull()
+  })
+
   it("shows one scoped drawer for each selected type and updates them when the selection changes", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

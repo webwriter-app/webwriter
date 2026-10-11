@@ -1,7 +1,7 @@
 import {LitElement, css, html, nothing} from "lit"
 import {ribbonIcon} from "../ribbon-icons"
 import {parseReference} from "../document-viewer.js"
-import type {LinkEdit, LinkSelectionState} from "../links"
+import {normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
 
 type LinkTarget = {href: string, label: string}
 type ReferenceValue = LinkTarget & {data: string}
@@ -16,10 +16,7 @@ const emptyReference = (): ReferenceDraft => ({
 export const linkHistoryKey = "webwriter.link-history.v1"
 const historyLimit = 100
 const validHref = (href: unknown): href is string => {
-  if(typeof href !== "string" || !href.trim()) return false
-  if(href.startsWith("#")) return href.length > 1
-  try { return ["http:", "https:", "mailto:", "tel:", "ftp:", "file:"].includes(new URL(href, document.baseURI).protocol) }
-  catch { return false }
+  return typeof href === "string" && normalizeLinkHref(href) !== null
 }
 
 /** DOM-backed link choices with a disposable, local history of used sources. */
@@ -86,14 +83,13 @@ export class LinkKeyboard extends LitElement {
   search = ""
   webHref = ""
   referenceSearch = ""
-  openNewTab = false
+  openNewTab = true
   download = false
   history: LinkHistory = {urls: [], references: []}
   referenceDetails = false
   reference = emptyReference()
   dialogOpen = false
   #stateIdentity = ""
-  #initialTarget = ""
   #initialDownload: string | null = null
   #pendingEdit: LinkEdit | null = null
 
@@ -110,7 +106,18 @@ export class LinkKeyboard extends LitElement {
   willUpdate(changed: Map<string, unknown>) {
     if(changed.has("state")) this.#syncState()
   }
-  updated() {
+  async focusWebAddress() {
+    this.activeTab = "web"
+    await this.updateComplete
+    if(this.isConnected && this.state?.active && !this.closest("[hidden]")) {
+      this.renderRoot.querySelector<HTMLInputElement>("#link-search")?.focus({preventScroll: true})
+    }
+  }
+
+  updated(changed: Map<string, unknown>) {
+    if(changed.has("state") && this.state?.active && !this.state.href && !(changed.get("state") as LinkSelectionState | null)?.active) {
+      void this.focusWebAddress()
+    }
     const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
     if(this.dialogOpen && dialog && !dialog.open) dialog.showModal()
     else if(!this.dialogOpen && dialog?.open) dialog.close()
@@ -214,9 +221,8 @@ export class LinkKeyboard extends LitElement {
     if(!applied) { this.activeTab = "web"; this.search = "" }
     this.webHref = state.href && !state.href.startsWith("#") ? state.href : ""
     this.referenceSearch = parseReference(state.attributes["data-reference"] ?? "")?.title ?? (applied ? this.referenceSearch : "")
-    this.openNewTab = state.attributes.target === "_blank"
+    this.openNewTab = state.attributes.target === "_blank" || (!state.href && !state.attributes.target)
     this.download = "download" in state.attributes
-    this.#initialTarget = state.attributes.target ?? ""
     this.#initialDownload = Object.hasOwn(state.attributes, "download") ? state.attributes.download : null
   }
   #values(): Array<LinkTarget | ReferenceValue> {
@@ -233,13 +239,18 @@ export class LinkKeyboard extends LitElement {
     this.#apply(value.href, attributes)
   }
   #currentAttributes(): Record<string, string | null> {
-    return Object.fromEntries(Object.entries(this.state?.attributes ?? {}).filter(([name]) => name !== "href"))
+    const attributes = Object.fromEntries(Object.entries(this.state?.attributes ?? {}).filter(([name]) => name !== "href"))
+    if(!this.state?.href && !attributes.target) {
+      attributes.target = "_blank"
+      attributes.rel = [...new Set([...(attributes.rel ?? "").split(/\s+/).filter(Boolean), "noopener", "noreferrer"])].join(" ")
+    }
+    return attributes
   }
   #applyWeb() {
     const attributes = this.#currentAttributes()
     attributes["data-reference"] = null
     attributes["data-reference-locator"] = null
-    if(this.openNewTab !== (this.#initialTarget === "_blank")) {
+    if(this.openNewTab !== (attributes.target === "_blank")) {
       attributes.target = this.openNewTab ? "_blank" : null
       if(this.openNewTab) {
         const rel = new Set((attributes.rel ?? "").split(/\s+/).filter(Boolean))
@@ -272,6 +283,12 @@ export class LinkKeyboard extends LitElement {
     this.#apply(href, attributes)
   }
   #apply(href: string, attributes: Record<string, string | null>) {
+    const normalized = normalizeLinkHref(href)
+    if(normalized === null) { this.validationError = "Enter a valid address."; return }
+    href = normalized
+    this.validationError = ""
+    if(this.activeTab === "web") this.webHref = href
+    if(this.dialogOpen && this.reference.href.trim()) this.reference = {...this.reference, href}
     this.#pendingEdit = {identity: this.state?.identity ?? "", href, attributes}
     this.dispatchEvent(new CustomEvent("link-keyboard-command", {detail: this.#pendingEdit, bubbles: true, composed: true}))
   }

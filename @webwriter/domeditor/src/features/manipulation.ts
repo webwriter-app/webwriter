@@ -2092,10 +2092,10 @@ export class ManipulationFeature extends EditorFeature {
     return this.editor.schema.isContentValid(parent, proposed)
   }
 
-  setBlockType(tag: BlockFormatTag) {
+  setBlockType(tag: BlockFormatTag, selectionType?: ElementSelectionType) {
     if(!isBlockFormatTag(tag)) throw new TypeError(`Unsupported block format '${tag}'`)
-    this.ensureTextBlock()
-    const blocks = this.selectedTextBlocks()
+    if(!selectionType) this.ensureTextBlock()
+    const blocks = selectionType ? this.selectedElementsOfType(selectionType).filter(block => this.isTextBlock(block)) : this.selectedTextBlocks()
     const selection = document.getSelection()
     const saved = selection?.anchorNode && selection.focusNode ? {
       anchorNode: selection.anchorNode,
@@ -2110,7 +2110,7 @@ export class ManipulationFeature extends EditorFeature {
         || /^h[1-6]$/.test(tag) && block.closest("li, dt, dd")) return converted
       const candidate = document.createElement(tag)
       this.copyAuthoredAttributes(block, candidate)
-      if(!this.editor.schema.isContentValid(candidate, Array.from(block.childNodes))
+      if(!this.editor.schema.isContentValid(candidate, Array.from(block.childNodes).filter(node => node.nodeType !== Node.COMMENT_NODE))
         || !this.canReplaceTextBlock(block, candidate)) {
         return converted
       }
@@ -2335,6 +2335,19 @@ export class ManipulationFeature extends EditorFeature {
     return true
   }
 
+  /** Start empty document flow after its lone float so the float can wrap
+   * newly authored content. Re-read the DOM and styles at insertion time. */
+  private moveInsertionAfterLoneFloat(nodes?: Node[]) {
+    if(this.editor.features.canvas.active || this.editor.features.slides.active || !$.isEmptyDocumentSelection) return
+    if(nodes?.some(node => isElement(node) && isOutOfFlow(node))) return
+    const root = getDocumentRoot()
+    if(Array.from(root.childNodes).some(node => !isOutOfFlow(node)
+      && (isElement(node) || node instanceof Text && node.data.trim()))) return
+    const floats = Array.from(root.children).filter(element => ["left", "right"].includes(getComputedStyle(element).float))
+    if(floats.length !== 1) return
+    $.move(root, Array.from(root.childNodes).indexOf(floats[0]) + 1)
+  }
+
   /** Materializes the virtual insertion point used for an empty document or
    * an element gap as a real schema-conformant text block. Returns the block
    * when one was created and null for an ordinary editing selection. */
@@ -2366,6 +2379,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Inserts a new element at an empty-document or gap selection, choosing
    * the default node when allowed and otherwise a schema-conformant text block. */
   private insertTextBlockAtSelection() {
+    this.moveInsertionAfterLoneFloat()
     const container = getContainer($.range.startContainer)
     const index = Math.max(0, getIndexBefore($.range) + 1)
     const validTypes = this.editor.schema.findValidTypesToInsert()
@@ -2494,6 +2508,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     this.selectCapturedElementForInsertion()
     if(allowFloat && !commandInsertion && this.insertFloat(fragment)) return
+    this.moveInsertionAfterLoneFloat(Array.from(fragment.childNodes))
     for(const math of Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
       let ancestor = math.parentElement
@@ -2817,8 +2832,8 @@ export class ManipulationFeature extends EditorFeature {
     setBlockStyle: ({styles}: {type: "setBlockStyle", styles: Record<string, ElementStyleMutation>}) => {
       this.setBlockStyle(styles)
     },
-    setBlockType: ({tag}: {type: "setBlockType", tag: BlockFormatTag}) => {
-      this.setBlockType(tag)
+    setBlockType: ({tag, selectionType}: {type: "setBlockType", tag: BlockFormatTag, selectionType?: ElementSelectionType}) => {
+      this.setBlockType(tag, selectionType)
     },
     setHeadingGroupLevel: ({level}: {type: "setHeadingGroupLevel", level: HeadingGroupSelectionState["heading"]}) => {
       this.setHeadingGroupLevel(level)
@@ -3123,6 +3138,7 @@ export class ManipulationFeature extends EditorFeature {
       this.selectCapturedElementForInsertion()
     }
     if(node && !commandInsertion && this.insertFloat(node)) return
+    if(node) this.moveInsertionAfterLoneFloat(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])
     if(!node && this.ensureTextBlock()) {
       return
     }

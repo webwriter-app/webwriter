@@ -992,6 +992,7 @@ export class DomEditorToolbox extends EditingControls {
     if(!localName || localName === "body" || style.target?.documentRoot) return nothing
     const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
     if(!this.isElementDrawerVisible(localName, namespaceURI)) return nothing
+    const heading = namespaceURI === "http://www.w3.org/1999/xhtml" && /^h[1-6]$/.test(localName)
     const profile = specializedElementStyle(localName)
     const widget = Boolean(widgetOptions || localName.includes("-"))
     if(!profile && !widget && !group) return nothing
@@ -1004,13 +1005,13 @@ export class DomEditorToolbox extends EditingControls {
     const count = advanced.filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
-    const label = group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
+    const label = heading ? "Heading" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const commands = group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
     const hasOptions = advanced.length > 0 || commands !== nothing
-    return html`<ribbon-drawer label=${label} icon=${attributes?.icon ?? label} .iconUrl=${attributes?.iconUrl ?? ""} layout="element-style"
+    return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : attributes?.icon ?? label} .iconUrl=${heading ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
       <button type="button" class="style-reset" slot="heading-action" title="Reset element styles" aria-label="Reset element styles"
@@ -1021,6 +1022,19 @@ export class DomEditorToolbox extends EditingControls {
           }))
           configuredWidgetOptions.forEach(option => dispatchOption(option.name, null))
         }}>${ribbonIcon("Restore")}Reset</button>
+      ${heading ? html`<div class="specialized-widget-primary heading-level"><div class="develop-field">
+        <span class="field-label" id=${`heading-level-${localName}`}>Level</span>
+        <div class="specialized-choice-group" style="--choice-columns: 3" role="group" aria-labelledby=${`heading-level-${localName}`}>
+          ${[1, 2, 3, 4, 5, 6].map(level => html`<button type="button"
+            ?data-top-right=${level === 3} ?data-bottom-left=${level === 4}
+            aria-label=${`Heading ${level}`} title=${`Heading ${level}`} aria-pressed=${localName === `h${level}`}
+            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+            @click=${() => this.dispatchEvent(new CustomEvent("heading-level-change", {
+              detail: {level: `h${level}`, selectionType: selectionType ?? {localName, namespaceURI}},
+              bubbles: true, composed: true,
+            }))}><span aria-hidden="true">${ribbonIcon(`Heading ${level}`)}</span></button>`)}
+        </div>
+      </div></div>` : nothing}
       ${widgetOptions ? html`<div class="widget-options specialized-widget-primary">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>` : nothing}
       <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary} .state=${style}></element-style-editor>
       ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}

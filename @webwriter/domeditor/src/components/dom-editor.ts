@@ -8,6 +8,7 @@ import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
 import "./shape-keyboard"
 import "./link-keyboard"
+import type {LinkKeyboard} from "./link-keyboard"
 import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
@@ -3729,15 +3730,18 @@ export class DomEditor extends LitElement {
     }
     if(label?.startsWith("mark-detail:")) {
       const mark = canonicalMarkName(label.slice("mark-detail:".length))
-      if(mark) void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
+      if(mark) void this.execute({type: "toggleMark", mark}).finally(() => mark === "a" ? this.focusLinkKeyboard() : this.focusEditor())
       else this.focusEditor()
       return
     }
     if(label?.startsWith("mark:")) {
       const detail = (event as CustomEvent<{keepDrawerOpen?: boolean, apply?: boolean}>).detail
       const keepDrawerOpen = Boolean(detail?.keepDrawerOpen)
-      const restoreFocus = () => { if(!keepDrawerOpen) this.focusEditor() }
       const mark = canonicalMarkName(label.slice("mark:".length))
+      const restoreFocus = () => {
+        if(mark === "a") return this.focusLinkKeyboard()
+        if(!keepDrawerOpen) this.focusEditor()
+      }
       const group = mark ? mergedMarkGroupFor(mark) : undefined
       if(!mark) restoreFocus()
       else if(detail?.apply === true) void this.execute({type: "addMark", mark}).finally(restoreFocus)
@@ -4874,6 +4878,16 @@ export class DomEditor extends LitElement {
   }
 
 
+  private handleHeadingLevelChange = (event: Event) => {
+    const detail = (event as CustomEvent<{level?: unknown, selectionType?: unknown}>).detail
+    if(typeof detail?.level !== "string" || !/^h[1-6]$/.test(detail.level)
+      || !isElementSelectionType(detail.selectionType)
+      || detail.selectionType.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || !/^h[1-6]$/.test(detail.selectionType.localName)) return
+    void this.execute({type: "setBlockType", tag: detail.level as NonNullable<HeadingGroupSelectionState["heading"]>,
+      selectionType: detail.selectionType}).finally(() => this.focusEditor())
+  }
+
   private handleHeadingGroupLevelChange = (event: Event) => {
     const level = (event as CustomEvent<{level?: unknown}>).detail?.level
     if(typeof level !== "string" || !/^h[1-6]$/.test(level)) {
@@ -5540,6 +5554,14 @@ export class DomEditor extends LitElement {
     void this.execute({type: "editMath", command: `keyboard:${event.detail.command}`})
       .catch(() => { /* A removed/replaced document no longer has a formula caret. */ })
       .finally(() => this.focusEditor())
+  }
+
+  private async focusLinkKeyboard() {
+    this.linkKeyboardHidden = false
+    await this.updateComplete
+    const keyboard = this.renderRoot.querySelector<LinkKeyboard>("dom-editor-link-keyboard")
+    if(keyboard) await keyboard.focusWebAddress()
+    else this.focusEditor()
   }
 
   private handleLinkKeyboardCommand = (event: CustomEvent<LinkEdit>) => {
@@ -6744,6 +6766,7 @@ export class DomEditor extends LitElement {
       "mark-attribute-change": this.handleMarkAttributeChange.bind(this),
       "ruby-action": this.handleRubyAction.bind(this),
       "list-attribute-change": this.handleListAttributeChange.bind(this),
+      "heading-level-change": this.handleHeadingLevelChange.bind(this),
       "heading-group-level-change": this.handleHeadingGroupLevelChange.bind(this),
       "comment-action": this.handleCommentAction.bind(this),
       "media-attribute-change": this.handleMediaAttributeChange.bind(this),
@@ -6902,7 +6925,7 @@ export class DomEditor extends LitElement {
         ${this.frameStarted ? html`<iframe
           class="editor-frame"
           title="DOM editor"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("editor", this.frameRevision)}
           srcdoc=${import.meta.env.MODE === "test" ? this.editorSrcdoc : nothing}
@@ -6940,7 +6963,7 @@ export class DomEditor extends LitElement {
           ${this.linkKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
             title="Show link keyboard" aria-label="Show link keyboard"
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
-            @click=${() => { this.linkKeyboardHidden = false }}>${ribbonIcon("MarkLink")}</button>` : nothing}
+            @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon("MarkLink")}</button>` : nothing}
           <section class="link-keyboard-area" aria-label="Link input" ?hidden=${this.linkKeyboardHidden}>
             <dom-editor-link-keyboard .state=${this.linkSelection} .error=${this.linkKeyboardError}
               @link-keyboard-command=${this.handleLinkKeyboardCommand}

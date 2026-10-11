@@ -1653,7 +1653,7 @@ describe("DomEditor iframe setup", () => {
     const {editor, iframe} = await mountEditor()
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
-    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox")
     expect(srcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic'/)
     expect(srcdoc).toMatch(/style-src 'none'/)
     expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
@@ -7526,6 +7526,27 @@ describe("DomEditor.execute()", () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  it.each(["mark:a", "mark-detail:a"])("focuses Web address after adding a link with %s", async label => {
+    const {editor, editorWindow} = await mountEditor()
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {}}, link: {
+        active: true, identity: "new-link", href: "", attributes: {}, text: "Text", targets: [],
+      }})
+    })
+    editor.shadowRoot!.querySelector("dom-editor-toolbox")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label}, bubbles: true, composed: true,
+    }))
+    await editor.updateComplete
+    await Promise.resolve()
+    await vi.waitFor(() => {
+      const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-link-keyboard")!
+      expect(keyboard?.shadowRoot?.activeElement).toBe(keyboard?.shadowRoot?.querySelector('[aria-label="Web address"]'))
+      expect(keyboard).not.toBeNull()
+    })
+    expect(execute).toHaveBeenCalledWith({type: "toggleMark", mark: "a"})
+  })
+
   it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -7562,6 +7583,7 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBe(keyboard)
     expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(false)
+    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(keyboard.shadowRoot!.querySelector('[aria-label="Web address"]')))
     expect(focusEditor).toHaveBeenCalled()
   })
 
@@ -8114,4 +8136,24 @@ it("updates the dev-server username without reconnecting or losing the saved doc
   expect(host.backendDocumentId).toBe("current-document")
   expect(host.username).toBe("Dev Ada")
   expect(post).toHaveBeenCalledWith("username", {username: "Dev Ada"})
+})
+
+
+describe("heading toolbox level changes", () => {
+  it("forwards a scoped heading command and rejects invalid levels and scopes", async () => {
+    const editor = new DomEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const selectionType = {localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml"}
+    const listener = (editor as any).editingUIListeners["heading-level-change"]
+    listener(new CustomEvent("heading-level-change", {detail: {level: "h4", selectionType}}))
+    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "h4", selectionType})
+    for(const detail of [{level: "h7", selectionType}, {level: "h1"},
+      {level: "h1", selectionType: {...selectionType, localName: "p"}},
+      {level: "h1", selectionType: {...selectionType, namespaceURI: "http://www.w3.org/2000/svg"}}]) {
+      listener(new CustomEvent("heading-level-change", {detail}))
+    }
+    expect(execute).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+  })
 })
