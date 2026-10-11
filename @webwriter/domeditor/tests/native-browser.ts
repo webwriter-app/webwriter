@@ -136,7 +136,7 @@ const dragTextInside = (editor: DOMEditor, element: HTMLElement) => {
   assert(!doc.getSelection()?.isCollapsed && element.contains(doc.getSelection()!.anchorNode) && element.contains(doc.getSelection()!.focusNode), "dragging inside an item did not select text")
   assert(element.getAttribute("style") === style, "dragging text moved or resized the item")
   const edge = editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
-  assert(edge.dataset.transformMode === "move" && getComputedStyle(edge).cursor === "move", "item borders do not offer moving")
+  assert(edge.dataset.transformMode === "move" && getComputedStyle(edge).cursor === "grab", "item borders do not offer moving")
   const overlay = editor.features.transformation.overlay, box = element.getBoundingClientRect()
   for(const name of ["mover", "orderer"]) assert(getComputedStyle(overlay.querySelector(`#◆transform-overlay-${name}`)!).display === "none", "obsolete move/layers affordance is visible")
   for(const direction of ["up", "down", "left", "right"]) {
@@ -2709,6 +2709,13 @@ await check("CSS Slides use native fragment links while editing", async () => {
     assert(slideEditor.features.transformation.target === second.firstElementChild && !second.firstElementChild!.classList.contains("◆element-selected"), "slide caret does not show item controls independently of node selection")
     assert(getComputedStyle(slideEditor.features.transformation.overlay).outlineStyle === "dotted", "slide text selection lacks the dotted item outline")
     assert(getComputedStyle(second.firstElementChild!).caretColor !== "rgba(0, 0, 0, 0)", "slide item controls hide the text caret")
+    assert(getComputedStyle(second).width === "1280px" && getComputedStyle(second).height === "720px", "slide dimensions depend on the viewport")
+    slideEditor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+    assert(Math.abs(second.getBoundingClientRect().width - 1280) < 1, "actual-size slide zoom is incorrect")
+    slideEditor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-in"})
+    assert(Math.abs(second.getBoundingClientRect().width - 1536) < 1, "slide zoom does not scale fixed dimensions")
+    slideEditor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "fit-content"})
+    await layoutFrame()
     dragTextInside(slideEditor, second.firstElementChild as HTMLElement)
     viewport.scrollLeft = 0
     await layoutFrame()

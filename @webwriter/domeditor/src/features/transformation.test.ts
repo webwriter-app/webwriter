@@ -234,6 +234,8 @@ describe("selection-owned transformation", () => {
       const target = targetElement()
       target.id = "resized-item"
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      // These rect mocks model unscaled CSS pixels. Zoom has separate coverage.
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
       Object.assign(target.style, {width: "100px", height: "50px", left: "0px", top: "0px"})
       mockRect(target)
       selectNode(target)
@@ -276,6 +278,8 @@ describe("selection-owned transformation", () => {
       target.innerHTML = "<span>content</span><!--keep-->"
       const children = Array.from(target.childNodes)
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      // These rect mocks model unscaled CSS pixels. Zoom has separate coverage.
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
       Object.assign(target.style, {width: "100px", height: "50px", left: "0px", top: "0px"})
       mockRect(target)
       selectNode(target)
@@ -300,6 +304,8 @@ describe("selection-owned transformation", () => {
       document.body.innerHTML = "<article><p>Hello <em>world</em></p><p></p><hr><table><tr><td>A</td><td>B</td></tr></table><ul></ul><demo-widget></demo-widget></article>"
       const article = document.querySelector("article")!
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      // These rect mocks model unscaled CSS pixels. Zoom has separate coverage.
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
       return article
     }
 
@@ -732,6 +738,7 @@ describe("transform controls and geometry", () => {
     const target = targetElement(capture ? "demo-widget" : "p")
     document.body.replaceChildren(target)
     expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
     Object.assign(target.style, {width: "160px", height: "80px", transformOrigin: "0 0"})
     target.style.setProperty("rotate", "30deg")
     expect(getComputedStyle(target).getPropertyValue("rotate")).toBe("30deg")
@@ -755,10 +762,9 @@ describe("transform controls and geometry", () => {
       expect(new DOMMatrix(caret.style.transform).b).not.toBe(0)
     }
     expectGeometry()
-    if(mode === "canvas") {
-      editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
-      expectGeometry()
-    }
+    if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    else editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-in"})
+    expectGeometry()
     target.style.setProperty("rotate", "90deg")
     feature.updateInfo()
     expectGeometry()

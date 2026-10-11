@@ -4187,7 +4187,7 @@ describe("unified content transfer", () => {
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 800, 600))
     vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x: (x - 100) / 2, y: (y - 50) / 2}))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
-      const scale = mode === "canvas" ? 2 : 1
+      const scale = mode === "canvas" ? 2 : editor.features.slides.zoom
       return new DOMRect(100 + parseFloat(this.style.left || "0") * scale, 50 + parseFloat(this.style.top || "0") * scale, 80 * scale, 40 * scale)
     })
     const message = packageDrop("user-snippet:saved", target, 300, 150)!
@@ -4196,8 +4196,8 @@ describe("unified content transfer", () => {
     const inserted = target.lastElementChild as HTMLElement
     expect(inserted.innerHTML, target.outerHTML).toBe('<b>Saved</b><!--keep-->')
     expect(inserted.style.width).toBe("80px")
-    expect(inserted.style.left).toBe(mode === "canvas" ? "60px" : "160px")
-    expect(inserted.style.top).toBe(mode === "canvas" ? "30px" : "80px")
+    expect(inserted.style.left).toBe(mode === "canvas" ? "60px" : `${200 / editor.features.slides.zoom - 40}px`)
+    expect(inserted.style.top).toBe(mode === "canvas" ? "30px" : `${100 / editor.features.slides.zoom - 20}px`)
     expect(inserted.parentElement).toBe(target)
   })
 
@@ -4280,6 +4280,7 @@ describe("unified content transfer", () => {
   it("centers ribbon elements within the slide under the drop", () => {
     document.body.removeAttribute("class")
     expect(editor.features.slides.convert("slides")).toBe(true)
+    editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
     const slide = document.querySelector<HTMLElement>("section.ww-slide")!
     vi.spyOn(slide, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 800, 600))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {

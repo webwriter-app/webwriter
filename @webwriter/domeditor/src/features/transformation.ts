@@ -437,7 +437,8 @@ export class TransformationFeature extends EditorFeature {
     const style = getComputedStyle(element)
     const angle = this.#angle(style.getPropertyValue("rotate"))
     const scale = this.#scale(style.getPropertyValue("scale"))
-    const own = new DOMMatrix().rotate(angle).scale(scale[0], scale[1])
+    const zoom = parseFloat(style.getPropertyValue("zoom")) || 1
+    const own = new DOMMatrix().scale(zoom).rotate(angle).scale(scale[0], scale[1])
       .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
     own.e = own.f = 0
     return this.#matrix(renderedParentElement(element)).multiply(own)

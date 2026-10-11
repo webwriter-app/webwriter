@@ -177,12 +177,14 @@ export class CanvasFeature extends EditorFeature {
 
   /** Click insertion owns a new root item, independent of the old selection. */
   insertCentered<T>(command: () => T): T {
-    if(!this.active || this.placing || this.editor.isEditingLocked) return command()
+    if((!this.active && !this.editor.features.slides.active) || this.placing || this.editor.isEditingLocked) return command()
+    const root = this.active ? document.body : this.editor.features.slides.insertionSlide()
+    if(!root) return undefined as T
     const end = this.editor.doc.beginUndoGroup()
     try {
       return this.editor.features.selection.withoutSelectionScroll(() => {
         const range = document.createRange()
-        range.selectNodeContents(document.body); range.collapse(false)
+        range.selectNodeContents(root); range.collapse(false)
         this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
         return this.preservePlacement(command, true)
       })
@@ -215,11 +217,14 @@ export class CanvasFeature extends EditorFeature {
     const anchor = before.find(item => selected && (item === selected || item.contains(selected)))
     const rect = anchor?.getBoundingClientRect()
     const bodyRect = body.getBoundingClientRect()
-    const center = {x: window.innerWidth / 2, y: window.innerHeight / 2}
+    const zoom = this.active ? this.zoom : this.editor.features.slides.zoom
+    const center = this.active ? {x: window.innerWidth / 2, y: window.innerHeight / 2}
+      : {x: bodyRect.left + bodyRect.width / 2, y: bodyRect.top + bodyRect.height / 2}
     const origin = this.active
       ? centered ? this.clientPoint(center.x, center.y) : rect ? this.clientPoint(rect.left, rect.top) : this.clientPoint(window.innerWidth / 2 - 160, window.innerHeight / 2)
-      : rect ? {x: rect.left - bodyRect.left + body.scrollLeft, y: rect.top - bodyRect.top + body.scrollTop} : {x: 20, y: 20}
-    const height = rect ? rect.height / this.zoom : 0
+      : centered ? this.editor.features.slides.clientPoint(body, center.x, center.y)
+        : rect ? this.editor.features.slides.clientPoint(body, rect.left, rect.top) : {x: 20, y: 20}
+    const height = rect ? rect.height / zoom : 0
     this.placing = true
     let completed = false
     try { const result = command(); completed = true; return result }
@@ -245,20 +250,20 @@ export class CanvasFeature extends EditorFeature {
           if(!item.style.width && anchor?.style.width) item.style.width = anchor.style.width
           if(!item.matches("p:not([is])")) {
             if(!item.style.width) item.style.width = "320px"
-            if(!this.active && rect) item.style.width = `${rect.width}px`
+            if(!this.active && rect) item.style.width = `${rect.width / zoom}px`
           }
           if(sharedHeight !== null) item.style.height = `${sharedHeight}px`
-          offset += item.getBoundingClientRect().height / this.zoom + 24
+          offset += item.getBoundingClientRect().height / zoom + 24
         }
-        if(centered && this.active && added.length) {
+        if(centered && added.length) {
           // Measure the final border boxes: margins, authored transforms and
           // intrinsic widget sizes all affect their visual center.
           const rects = added.map(item => item.getBoundingClientRect())
           const x = (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2
           const y = (Math.min(...rects.map(rect => rect.top)) + Math.max(...rects.map(rect => rect.bottom))) / 2
           for(const item of added) {
-            item.style.left = `${parseFloat(item.style.left) + (center.x - x) / this.zoom}px`
-            item.style.top = `${parseFloat(item.style.top) + (center.y - y) / this.zoom}px`
+            item.style.left = `${parseFloat(item.style.left) + (center.x - x) / zoom}px`
+            item.style.top = `${parseFloat(item.style.top) + (center.y - y) / zoom}px`
           }
         }
       }

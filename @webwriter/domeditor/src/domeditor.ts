@@ -1225,7 +1225,7 @@ export class DOMEditor {
       slides: rootReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
       board: rootReason ?? this.features.board.conversionReason(),
     }
-    return {mode, zoom: canvas.zoom, conversions,
+    return {mode, zoom: mode === "slides" ? Math.round(this.features.slides.zoom * 100) : canvas.zoom, conversions,
       canConvert: Object.entries(conversions).some(([target, reason]) => target !== mode && reason === null)}
   }
 

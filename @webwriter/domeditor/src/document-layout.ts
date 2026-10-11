@@ -100,6 +100,8 @@ body.ww-canvas details:not([is]) { background-color: white; }
 
 export const slidesClass = "ww-slides"
 export const slideClass = "ww-slide"
+export const slideWidth = 1280
+export const slideHeight = 720
 export const slidesStyles = `
 @media screen {
   html:has(> body.ww-slides) { height: 100%; overflow: hidden; }
@@ -107,11 +109,18 @@ export const slidesStyles = `
 }
 body.ww-slides > .ww-slides-viewport {
   position: relative; display: flex; width: 100%; max-width: none; height: 100%; min-height: 0;
-  margin: auto; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-behavior: smooth;
+  margin: auto; overflow-x: auto; overflow-y: auto; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-behavior: smooth;
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
-  box-sizing: border-box; display: block; flex: 0 0 auto; width: min(100vw, 177.7777778dvh); min-width: 0; height: min(100dvh, 56.25vw); overflow: clip;
-  margin: auto max(0px, calc((100vw - 177.7777778dvh) / 2)); padding: 1.25rem var(--ww-page-gutter, 1.25rem); position: relative; scroll-snap-align: center; background: #fff;
+  box-sizing: border-box; display: block; flex: 0 0 auto; width: ${slideWidth}px; min-width: ${slideWidth}px; height: ${slideHeight}px; min-height: ${slideHeight}px; aspect-ratio: 16 / 9; overflow: clip;
+  margin: auto max(0px, calc((100vw - ${slideWidth}px) / 2)); padding: 1.25rem var(--ww-page-gutter, 1.25rem); position: relative; scroll-snap-align: center; background: #fff;
+}
+@media screen {
+  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
+    --ww-slide-scale: min(1, calc(100vw / ${slideWidth}px), calc(100dvh / ${slideHeight}px));
+    zoom: var(--ww-slide-scale);
+    margin-inline: max(0px, calc((100vw / var(--ww-slide-scale) - ${slideWidth}px) / 2));
+  }
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > :not(style, script, link, meta, template, .ww-slide-directions) {
   position: absolute; box-sizing: border-box; margin: 0; max-width: none; max-inline-size: none;
@@ -160,7 +169,7 @@ body.ww-slides .ww-slide-directions > a:focus-visible { outline: 2px solid curre
 }
 @media print {
   body.ww-slides > .ww-slides-viewport { position: static; display: block; width: 100%; height: auto; min-height: 0; overflow: visible; }
-  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) { width: 100%; height: auto; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; break-after: page; }
+  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) { width: ${slideWidth}px; height: ${slideHeight}px; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; break-after: page; }
   body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):last-child { break-after: auto; }
   body.ww-slides > nav.ww-slides-navigation, body.ww-slides .ww-slide-directions { display: none; }
 }

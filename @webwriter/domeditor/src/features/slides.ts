@@ -1,11 +1,54 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles} from "../document-layout"
+import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
 
 /** A CSS carousel with authored fragment links. Authoring and caret placement
  * belong to the editor; navigating and reading the saved deck need no script. */
 export class SlidesFeature extends EditorFeature {
+  protected handlesAppendixInteractions = true
+  private zoomControls: HTMLElement | null = null
+  private removeZoomStyle: (() => void) | null = null
+  private viewZoom = 1
+  private fitting = true
+  private viewing = false
+  get zoom() { return this.active ? this.viewZoom : 1 }
+
+  insertionSlide() {
+    this.ensureContent()
+    return this.containingSlide(document.getSelection()?.anchorNode ?? null) ?? this.current()
+  }
+
+  clientPoint(slide: HTMLElement, x: number, y: number) {
+    const rect = slide.getBoundingClientRect()
+    return {x: (x - rect.left) / this.zoom + slide.scrollLeft, y: (y - rect.top) / this.zoom + slide.scrollTop}
+  }
+
+  private applyZoom(zoom: number) {
+    if(!this.active || !Number.isFinite(zoom)) return
+    const slide = this.current()
+    this.viewZoom = Math.max(.1, Math.min(4, zoom))
+    this.removeZoomStyle?.()
+    this.removeZoomStyle = this.editor.addMainDOMStyleRule(`@media screen {
+      body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
+        zoom: ${this.viewZoom}; margin-inline: max(0px, calc((100vw / ${this.viewZoom} - ${slideWidth}px) / 2));
+      }
+    }`)
+    slide?.scrollIntoView?.({block: "nearest", inline: "center", behavior: "instant"})
+    const output = this.zoomControls?.querySelector("output")
+    if(output) output.textContent = `${Math.round(this.zoom * 100)}%`
+    this.editor.features.transformation.updateInfo()
+    this.editor.features.layout.refresh()
+    this.editor.features.graphic.refresh()
+    this.schedule()
+    this.editor.postSelectionPath()
+  }
+
+  private fit = () => {
+    if(this.active && this.fitting) this.applyZoom(Math.min(1, window.innerWidth / slideWidth, window.innerHeight / slideHeight))
+    this.schedule()
+  }
+
   private controls: HTMLElement | null = null
   private stylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
@@ -303,6 +346,12 @@ export class SlidesFeature extends EditorFeature {
   }
 
   actions = {
+    navigateSlides: ({operation}: {type: "navigateSlides", operation: "zoom-in" | "zoom-out" | "actual-size" | "fit-content"}) => {
+      if(!this.active) return
+      this.fitting = operation === "fit-content"
+      if(this.fitting) this.fit()
+      else this.applyZoom(operation === "actual-size" ? 1 : this.zoom * (operation === "zoom-in" ? 1.2 : 1 / 1.2))
+    },
     startSlides: ({}: {type: "startSlides"}) => Boolean(this.editor.features.canvas.emptyParagraph()) && this.convert("slides"),
     addSlide: ({}: {type: "addSlide"}) => this.edit("add"),
     removeSlide: ({}: {type: "removeSlide"}) => this.edit("remove"),
@@ -329,6 +378,13 @@ export class SlidesFeature extends EditorFeature {
     if(event.dataTransfer) event.dataTransfer.dropEffect = "none"
   }
   captureListeners: DocumentListenerMap = {
+    wheel: event => {
+      if(!this.active || !event.ctrlKey && !event.metaKey || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)) return
+      event.preventDefault(); event.stopImmediatePropagation()
+      this.fitting = false
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1
+      this.applyZoom(this.zoom * Math.exp(-event.deltaY * unit * .002))
+    },
     scroll: () => this.schedule(),
     pointerover: event => { if(this.controlEvent(event)) this.schedule() },
     pointerout: event => { if(this.controlEvent(event)) this.schedule() },
@@ -388,6 +444,12 @@ export class SlidesFeature extends EditorFeature {
     if(!this.controls) return
     // Also cover layout/class changes, which the document content observer does not watch.
     this.ensureContent()
+    if(this.active !== this.viewing) {
+      this.viewing = this.active
+      if(this.active) { this.fitting = true; this.fit() }
+      else { this.removeZoomStyle?.(); this.removeZoomStyle = null; this.viewZoom = 1 }
+    }
+    if(this.zoomControls) this.zoomControls.hidden = !this.active
     const nav = this.active ? this.navigation() : null
     if(nav !== this.markedNavigation) {
       if(this.markedNavigation) removeEditorMarker(this.markedNavigation, "◆slide-navigation-editing")
@@ -444,7 +506,27 @@ export class SlidesFeature extends EditorFeature {
     this.controls = document.createElement("div"); this.controls.setAttribute("part", "slide-navigation-actions"); this.controls.contentEditable = "false"
     this.controls.setAttribute("role", "toolbar"); this.controls.setAttribute("aria-label", "Slide actions")
     this.editor.addAppendix(this.controls)
+    this.zoomControls = document.createElement("div")
+    this.zoomControls.setAttribute("part", "slide-zoom-controls")
+    this.zoomControls.contentEditable = "false"
+    this.zoomControls.setAttribute("role", "toolbar"); this.zoomControls.setAttribute("aria-label", "Slide zoom")
+    for(const [operation, label, text] of [["zoom-out", "Zoom out", "−"], ["zoom-in", "Zoom in", "+"], ["actual-size", "Actual size", "100%"], ["fit-content", "Fit slide", "Fit"]] as const) {
+      if(operation === "zoom-in") this.zoomControls.append(document.createElement("output"))
+      const button = document.createElement("button")
+      button.type = "button"; button.name = operation; button.textContent = text
+      button.title = label; button.setAttribute("aria-label", label)
+      button.addEventListener("pointerdown", event => event.preventDefault())
+      button.addEventListener("click", () => this.actions.navigateSlides({type: "navigateSlides", operation}))
+      this.zoomControls.append(button)
+    }
+    this.editor.addAppendix(this.zoomControls)
     this.stylesheet = createStylesheet(`
+      [part=slide-zoom-controls] {position:fixed;right:1rem;bottom:1rem;z-index:2;display:flex;align-items:center;gap:6px;padding:6px;border-radius:10px;background:white;color:#2f3742;font:13px system-ui}
+      [part=slide-zoom-controls][hidden] {display:none}
+      [part=slide-zoom-controls] button {font:inherit;border:0;border-radius:6px;padding:7px 10px;background:#f2f2f2;color:inherit;cursor:pointer}
+      [part=slide-zoom-controls] output {min-width:3em;text-align:center}
+      @media print {[part=slide-zoom-controls] {display:none}}
+
       [part=slide-navigation-actions] {position:fixed;inset:0;z-index:2;pointer-events:none}
       [part=slide-navigation-actions][hidden] {display:none}
       [part=slide-navigation-actions] button {position:fixed;pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:32px;height:32px;margin:0;padding:0;border:1px solid currentColor;border-radius:50%;background:#fff;color:#2f3742;font:20px/1 system-ui;cursor:pointer;user-select:none;-webkit-user-drag:none}
@@ -463,14 +545,17 @@ export class SlidesFeature extends EditorFeature {
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
     this.resizeObserver = new ResizeObserver(this.schedule)
-    window.addEventListener("resize", this.schedule)
+    window.addEventListener("resize", this.fit)
     this.observer = new MutationObserver(this.schedule); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
     this.refresh()
   }
   disable() {
     super.disable(); this.observer?.disconnect(); this.observer = null
     this.resizeObserver?.disconnect(); this.resizeObserver = null
-    window.removeEventListener("resize", this.schedule)
+    window.removeEventListener("resize", this.fit)
+    this.removeZoomStyle?.(); this.removeZoomStyle = null
+    this.zoomControls?.remove(); this.zoomControls = null
+    this.viewing = false; this.viewZoom = 1
     if(this.markedNavigation) removeEditorMarker(this.markedNavigation, "◆slide-navigation-editing")
     if(this.activeLink) removeEditorMarker(this.activeLink, "◆slide-current")
     this.activeLink = null

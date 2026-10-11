@@ -975,8 +975,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!anchor) return null
     if(!target) return {anchor: relativePositionToJSON(anchor), layout: "document", ...(float ? {float: this.floatSide(float, event.clientX)} : {})}
     const point = target === document.body ? this.editor.features.canvas.clientPoint(event.clientX, event.clientY)
-      : {x: event.clientX - target.getBoundingClientRect().left + target.scrollLeft,
-        y: event.clientY - target.getBoundingClientRect().top + target.scrollTop}
+      : this.editor.features.slides.clientPoint(target, event.clientX, event.clientY)
     return {anchor: relativePositionToJSON(anchor), layout: target === document.body ? "canvas" : "slides", ...point}
   }
 
@@ -996,14 +995,13 @@ export class ManipulationFeature extends EditorFeature {
         if(!element.style.width && !element.matches("p:not([is])")) element.style.width = "320px"
       }
       if(element.parentElement !== target) target.append(element)
-      offset += element.getBoundingClientRect().height / (target === document.body ? this.editor.features.canvas.zoom : 1) + 24
+      offset += element.getBoundingClientRect().height / (target === document.body ? this.editor.features.canvas.zoom : this.editor.features.slides.zoom) + 24
     }
     const rects = placed.map(element => element.getBoundingClientRect())
     const center = {x: (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2,
       y: (Math.min(...rects.map(rect => rect.top)) + Math.max(...rects.map(rect => rect.bottom))) / 2}
     const local = target === document.body ? this.editor.features.canvas.clientPoint(center.x, center.y)
-      : {x: center.x - target.getBoundingClientRect().left + target.scrollLeft,
-        y: center.y - target.getBoundingClientRect().top + target.scrollTop}
+      : this.editor.features.slides.clientPoint(target, center.x, center.y)
     for(const element of placed) {
       if(element instanceof HTMLElement || element instanceof SVGSVGElement) {
         element.style.left = `${parseFloat(element.style.left) + point.x - local.x}px`
@@ -1409,8 +1407,10 @@ export class ManipulationFeature extends EditorFeature {
       if(source) {
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
         if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
+        const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
         const container = this.floatDropHit?.container
-        if(container) {
+        if(slide) this.placeRibbonElements([inserted], slide, this.editor.features.slides.clientPoint(slide, event.clientX, event.clientY))
+        else if(container) {
           const side = this.floatSide(container, event.clientX)
           this.placeFloat(inserted, container, side)
         }
@@ -1442,6 +1442,18 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private insertDroppedFragment(fragment: DocumentFragment, event: MouseEvent, range: Range) {
+    const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
+    if(slide) {
+      // Reuse freeform import and placement, preserving each imported subtree.
+      const point = this.editor.features.slides.clientPoint(slide, event.clientX, event.clientY)
+      range.selectNodeContents(slide); range.collapse(false)
+      this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
+      const before = Array.from(slide.children)
+      this.insertClipboardFragment(fragment, false)
+      const added = Array.from(slide.children).filter(element => !before.includes(element))
+      this.placeRibbonElements(added, slide, point)
+      return
+    }
     const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
     const container = isElement(element) && element.namespaceURI !== MATH_NAMESPACE ? this.floatDropTarget(event, element, range) : null
     if(container && isElement(element) && this.placeFloat(element, container, this.floatSide(container, event.clientX))) $.selectElement(element)
@@ -2528,6 +2540,11 @@ export class ManipulationFeature extends EditorFeature {
     if(!nodes.length) return
     const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
     const isInlineContent = nodes.every(node => this.isInlineClipboardNode(node))
+    if(this.editor.features.slides.active && (!isInlineContent || nodes.some(node => node instanceof Element && !isMarkElement(node) && !node.matches("br,wbr"))) && !isSlide($.range.startContainer)) {
+      fragment.replaceChildren(...nodes)
+      this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, false, commandInsertion))
+      return
+    }
     const widget = nodes.length === 1 ? this.insertedWidget(nodes[0]) : null
     if(widget && !this.editor.schema.isPhrasing(widget)) {
       this.withNormalization(() => this.insertBlockWidget(widget))
@@ -3128,10 +3145,10 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
-    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
-    if(node && commandInsertion && !this.ribbonDropInsertion && this.editor.features.canvas.active) {
+    if(node && commandInsertion && !this.ribbonDropInsertion && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
       return this.editor.features.canvas.insertCentered(() => this.insert(node, splitDepth, strict, false))
     }
+    if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(!node && this.editor.features.board.active && this.editor.features.board.editingScope($.anchor)?.matches("h2")) return this.editor.features.board.addCard()
     if(node) {
       this.hoverInsertion(false)

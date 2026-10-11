@@ -725,7 +725,7 @@ export class ListFeature extends EditorFeature {
       return this.activeList
     }
     const list = document.createElement(type)
-    this.editor.features.manipulation.insert(list, 0, false, this.editor.features.canvas.active || undefined)
+    this.editor.features.manipulation.insert(list, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     if(list.isConnected) this.moveToVirtual(list, 0)
     this.syncVirtualMarker()
     return list
@@ -804,7 +804,7 @@ export class ListFeature extends EditorFeature {
       details.append($.slice)
       details.open = true
     }
-    this.editor.features.manipulation.insert(details, 0, false, this.editor.features.canvas.active || undefined)
+    this.editor.features.manipulation.insert(details, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     if(details.isConnected) $.move(summary)
   }
 

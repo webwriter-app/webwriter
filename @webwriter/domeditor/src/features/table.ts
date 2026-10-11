@@ -460,7 +460,7 @@ export class TableFeature extends EditorFeature {
     }
     if(this.editor.features.manipulation.convertInsertion("table")) return
     const table = createTable(rows, columns)
-    this.editor.features.manipulation.insert(table, 0, false, this.editor.features.canvas.active || undefined)
+    this.editor.features.manipulation.insert(table, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     while(table.isConnected && table.parentElement && !this.editor.schema.isContentValid(table.parentElement)) {
       const parent = table.parentElement
       $.selectElement(table)
