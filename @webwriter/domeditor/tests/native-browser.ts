@@ -492,6 +492,56 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
   }
 })
 
+await check("character deletion preserves adjacent spaces", async () => {
+  const paragraph = document.createElement("p")
+  document.body.append(paragraph)
+  try {
+    for(const html of ["hello x", "hello <b>x</b>", "hello x world", "hello <b>x</b> world", "hello&nbsp;x", "hello  x", "hello <span> </span>x", "hello x<br>"]) {
+      for(const direction of ["backward", "forward"] as const) {
+        paragraph.innerHTML = html
+        const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+        let text = walker.nextNode()!
+        while(!text.textContent!.includes("x")) text = walker.nextNode()!
+        const offset = text.textContent!.indexOf("x") + (direction === "backward" ? 1 : 0)
+        $.move(text, offset)
+        editor.features.manipulation.delete(direction)
+        await layoutFrame()
+        const expected = html.includes("world") ? "hello  world" : html.includes("  ") || html.includes("<span>") ? "hello  " : "hello "
+        assert(paragraph.textContent?.replace(/\u00a0/g, " ") === expected,
+          `${direction} deletion changed spaces in ${html}: ${JSON.stringify(paragraph.textContent)}`)
+      }
+    }
+    for(const html of ["hello x", "hello <b>x</b>", "hello <b> x</b>"]) {
+      paragraph.innerHTML = html
+      $.move(paragraph, paragraph.childNodes.length)
+      editor.features.manipulation.delete("backward")
+      assert(paragraph.textContent?.replace(/\u00a0/g, " ") === (html.includes("> x") ? "hello  " : "hello "), `element caret deletion changed spaces in ${html}: ${JSON.stringify(paragraph.textContent)}`)
+    }
+    for(const html of ["hello word", "hello <b>word</b>", "hello word ", "hello <b>word</b> "]) {
+      paragraph.innerHTML = html
+      const text = paragraph.querySelector("b")?.firstChild ?? paragraph.firstChild!
+      $.move(text, text.textContent!.indexOf("word") + 4)
+      for(let length = 3; length >= 0; length--) {
+        document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+        await layoutFrame()
+        const expected = `hello ${"word".slice(0, length)}${html.endsWith(" ") ? " " : ""}`
+        assert(paragraph.textContent?.replace(/\u00a0/g, " ") === expected,
+          `repeated deletion changed spaces in ${html}: ${JSON.stringify(paragraph.textContent)} instead of ${JSON.stringify(expected)}`)
+      }
+    }
+    for(const html of ["hello w", "hello <b>w</b>", "hello <!--keep--><b><i>w</i></b>"]) {
+      paragraph.innerHTML = html
+      const text = paragraph.querySelector("i")?.firstChild ?? paragraph.querySelector("b")?.firstChild ?? paragraph.firstChild!
+      $.move(text, text.textContent!.length)
+      document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+      await layoutFrame()
+      document.execCommand("insertText", false, "x")
+      assert(paragraph.textContent?.replace(/\u00a0/g, " ") === "hello x", `typing after deletion lost the space in ${html}: ${JSON.stringify(paragraph.textContent)}`)
+    }
+  }
+  finally { paragraph.remove() }
+})
+
 await check("new paragraphs and line breaks reveal the caret at the document end", async () => {
   const section = document.createElement("section")
   section.style.paddingTop = `${window.innerHeight}px`
@@ -3847,10 +3897,11 @@ await check("narrow ribbons show only the AI sparkles button", async () => {
     const fileLabel = fileTab.shadowRoot!.querySelector<HTMLElement>("file-label")!
     const fileName = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!
     const compactLabel = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-menu-label")!
-    for(const width of [1000, 650, 400, 1000]) {
+    for(const width of [1000, 650, 500, 450, 400, 650, 1000]) {
       ribbon.style.width = `${width}px`
       await layoutFrame()
-      if(width < 700) {
+      assert(getComputedStyle(sparkles).transitionDuration.split(",").every(duration => parseFloat(duration) === 0), "AI sparkles still transitioned during resize")
+      if(width <= 448) {
         assert(Math.abs(panel.getBoundingClientRect().width - 24) < 1, "narrow AI bar did not shrink to a button")
         assert(getComputedStyle(composer).display === "none", "narrow AI bar still showed the composer")
         assert(sparkles.getBoundingClientRect().width > 0 && getComputedStyle(sparkles).visibility === "visible", "sparkles button was hidden")
@@ -3858,14 +3909,16 @@ await check("narrow ribbons show only the AI sparkles button", async () => {
         assert(Math.abs((buttonBox.left + buttonBox.right - iconBox.left - iconBox.right) / 2) < .5
           && Math.abs((buttonBox.top + buttonBox.bottom - iconBox.top - iconBox.bottom) / 2) < .5,
           "sparkles were not centered on the compact AI button")
-        assert(getComputedStyle(fileName).display === "none" && getComputedStyle(compactLabel).display !== "none", "narrow File menu still showed the filename")
-        assert(compactLabel.textContent === "File" && fileTab.getBoundingClientRect().width < 100, "compact File label retained filename space")
       }
       else {
         assert(panel.getBoundingClientRect().width > 124, "wide AI bar did not expand")
         assert(getComputedStyle(composer).display !== "none" && getComputedStyle(composer).visibility === "visible", "wide AI composer did not return")
-        assert(getComputedStyle(fileName).display !== "none" && getComputedStyle(compactLabel).display === "none", "wide File menu did not restore the filename")
       }
+      if(width <= 672) {
+        assert(getComputedStyle(fileName).display === "none" && getComputedStyle(compactLabel).display !== "none", "narrow File menu still showed the filename")
+        assert(compactLabel.textContent === "File" && fileTab.getBoundingClientRect().width < 100, "compact File label retained filename space")
+      }
+      else assert(getComputedStyle(fileName).display !== "none" && getComputedStyle(compactLabel).display === "none", "wide File menu did not restore the filename")
       assert(panel.querySelector<HTMLTextAreaElement>("textarea")!.value === "Keep this draft", "responsive AI bar lost its draft")
       assert(fileName.textContent === "A long document filename.html", "responsive File menu lost its filename")
     }

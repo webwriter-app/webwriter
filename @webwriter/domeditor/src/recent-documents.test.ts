@@ -101,3 +101,13 @@ describe("recent documents", () => {
     await expect(saveRecentDocuments([cloud()], unavailable)).resolves.toBeUndefined()
   })
 })
+
+it("parses editing-link references and rejects malformed capability URLs", () => {
+  const token = "a".repeat(43)
+  expect(parseDocumentOpenReference(`https://storage.example/nested/api/shared-documents/${token}`))
+    .toEqual({kind: "shared", apiBaseUrl: "https://storage.example/nested/api", token})
+  for(const value of [`https://user:secret@storage.example/api/shared-documents/${token}`, `https://storage.example/api/shared-documents/${token}?other=1`,
+    "https://storage.example/api/shared-documents/short", `https://storage.example/api/shared-documents/${token}#fragment`]) {
+    expect(parseDocumentOpenReference(value)).toBeNull()
+  }
+})

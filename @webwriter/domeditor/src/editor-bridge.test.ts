@@ -563,7 +563,7 @@ describe("editor bridge message guards", () => {
   it("requires complete presence-user records with integer client ids", () => {
     const message = {
       type: presenceChangeEvent,
-      detail: {users: [{clientId: 7, name: "Ada", initials: "AL", color: "#336699"}]},
+      detail: {connectionStatus: "connected", users: [{clientId: 7, name: "Ada", initials: "AL", color: "#336699", lastChange: 123}]},
     }
     expect(isPresenceChangeMessage(message)).toBe(true)
     expect(isPresenceChangeMessage({type: presenceChangeEvent, detail: {users: []}})).toBe(true)
@@ -571,6 +571,9 @@ describe("editor bridge message guards", () => {
     expectAllRejected(isPresenceChangeMessage, [
       {type: presenceChangeEvent, detail: {users: null}},
       {type: presenceChangeEvent, detail: {users: [null]}},
+      {...message, detail: {...message.detail, connectionStatus: "online"}},
+      {...message, detail: {users: [{...message.detail.users[0], lastChange: "now"}]}},
+      {...message, detail: {users: [{...message.detail.users[0], connectionStatus: "connecting"}]}},
       {...message, detail: {users: [{clientId: 7.5, name: "Ada", initials: "AL", color: "#336699"}]}},
       {...message, detail: {users: [{clientId: 7, name: "Ada", initials: "AL"}]}},
     ])

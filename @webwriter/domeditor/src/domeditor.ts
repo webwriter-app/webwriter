@@ -663,6 +663,7 @@ export class DOMEditor {
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
+          connectionParams: Object.fromEntries([...syncUrl.searchParams].filter(([key]) => key !== "session")),
           documentPermalinks: true,
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
@@ -924,8 +925,8 @@ export class DOMEditor {
     this.postBridgeEvent(type, detail)
   }
 
-  postPresence(users: PresenceUser[]) {
-    this.postBridgeEvent(presenceChangeEvent, {users})
+  postPresence(users: PresenceUser[], connectionStatus?: "connected" | "connecting" | "disconnected") {
+    this.postBridgeEvent(presenceChangeEvent, {users, connectionStatus})
   }
 
   postDocumentHeadState(state: DocumentHeadState) {

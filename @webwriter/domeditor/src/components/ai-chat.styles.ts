@@ -144,12 +144,7 @@ export const aiChatStyles = css`
       color: #3977c7;
       background: transparent;
       cursor: pointer;
-      transition: var(--ww-ui-transition,
-        top 220ms ease,
-        left 220ms ease,
-        width 220ms ease,
-        height 220ms ease,
-        background-color 120ms ease);
+      transition: none;
     }
 
     .ai-chat-brand-button:hover {

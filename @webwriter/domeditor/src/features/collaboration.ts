@@ -22,6 +22,7 @@ export class CollaborationFeature extends EditorFeature {
   readonly #carets = new Map<number, HTMLElement>()
   #frame: number | null = null
   readonly #handleAwarenessChange = () => this.renderPresence(true)
+  readonly #handleProviderStatus = () => this.renderPresence(true)
   /** Document edits and scrolling can occur many times per frame. */
   readonly #scheduleRender = () => {
     if(this.#frame === null) this.#frame = requestAnimationFrame(() => {
@@ -34,6 +35,7 @@ export class CollaborationFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     this.editor.doc.awareness.on("change", this.#handleAwarenessChange)
+    this.editor.doc.provider?.on("status", this.#handleProviderStatus)
     this.editor.doc.doc.on("afterTransaction", this.#scheduleRender)
     window.addEventListener("resize", this.#scheduleRender)
     document.addEventListener("scroll", this.#scheduleRender, true)
@@ -43,6 +45,7 @@ export class CollaborationFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.awareness.off("change", this.#handleAwarenessChange)
+    this.editor.doc.provider?.off("status", this.#handleProviderStatus)
     this.editor.doc.doc.off("afterTransaction", this.#scheduleRender)
     window.removeEventListener("resize", this.#scheduleRender)
     document.removeEventListener("scroll", this.#scheduleRender, true)
@@ -64,7 +67,7 @@ export class CollaborationFeature extends EditorFeature {
       ...this.#user(clientId, state.user),
     } satisfies PresenceUser))
     const usersByClientId = new Map(users.map(user => [user.clientId, user]))
-    if(notify) this.editor.postPresence(users)
+    if(notify) this.editor.postPresence(users, this.editor.doc.connectionStatus)
     const carets: CaretLayout[] = []
 
     for(const [clientId, state] of states) {
@@ -174,6 +177,9 @@ export class CollaborationFeature extends EditorFeature {
       name,
       initials: userInitials(name),
       color: colorProbe.style.color ? color : "#64748b",
+      ...(Number.isFinite(user.lastChange) ? {lastChange: user.lastChange} : {}),
+      ...(user.connectionStatus === "connected" || user.connectionStatus === "disconnected"
+        ? {connectionStatus: user.connectionStatus} : {}),
     }
   }
 

@@ -1,4 +1,4 @@
-import {dropdownContentStyles} from "./dropdown-content.styles"
+import {dropdownContentStyles, switchInputStyles} from "./dropdown-content.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageKeywordPresentation} from "../package-keywords"
@@ -265,6 +265,8 @@ export class RibbonButton extends LitElement {
     .submenu-toggle[aria-expanded="true"] .submenu-chevron {
       transform: rotate(225deg);
     }
+
+    :host([custom-icon]) .button-icon { width: auto; height: auto; }
 
     .button-icon {
       display: block;
@@ -571,35 +573,52 @@ export class RibbonButton extends LitElement {
       text-align: center;
     }
 
+    .sharing-reader-hint { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin: 0.5rem 0 0; padding-top: 0.75rem; border-top: 1px solid #d8dee6; color: #6b7280; font-size: 0.65rem; text-align: right; }
+    .sharing-preview-button { display: flex; flex-direction: row; align-items: center; gap: 0.7rem; flex: 0 0 auto; width: auto; height: 1.2rem; min-height: 0; padding: 0.2rem 0.2rem 0.2rem 0; font-size: 0.65rem; white-space: nowrap; color: #6b7280; background: transparent; border: 0; border-radius: 0.35rem; cursor: pointer; }
+    .sharing-preview-button:hover { color: #4b5563; background: #f3f4f6; }
+    .sharing-preview-button:focus-visible { outline: 2px solid #3977c7; }
+    .sharing-preview-button:disabled { opacity: 0.5; cursor: default; }
+    .sharing-preview-icon { box-sizing: border-box; display: grid; place-items: center; flex: 0 0 auto; width: 0.8rem; height: 0.8rem; padding: 0.064rem; border: 1.2px solid currentColor; border-radius: 50%; }
+    .sharing-preview-icon svg { display: block; width: 100%; height: 100%; }
+    ${switchInputStyles}
+    .sharing-toggle {
+      --switch-width: 2.75rem;
+      --switch-height: 1.5rem;
+      --switch-knob-size: 1.14rem;
+      --switch-travel: 1.23rem;
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-start;
+      align-items: center;
+      gap: 0.5rem;
+      padding-block: 0.35rem;
+      font-size: 0.85rem;
+      text-align: left;
+      border-radius: 0.35rem;
+    }
+    .sharing-toggle strong { flex: 1; font-weight: 700; text-align: left; }
+    .sharing-invite-icon { display: grid; place-items: center; flex: 0 0 auto; padding: 0.25rem; color: #526b86; }
+    .sharing-invite-icon svg { display: block; width: 1.2em; height: 1.2em; }
+    .sharing-toggle[aria-checked="true"] { background: #eef5ff; }
+    .sharing-toggle:hover:not(:disabled) { background: #e8eef5; }
+    .sharing-toggle:active:not(:disabled) { background: #dcecff; }
+    .sharing-toggle:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
+    .sharing-toggle:disabled { opacity: 0.5; cursor: default; }
+    .collaboration-status { margin-block: 0.5rem 0; }
+    .collaboration-empty { color: #6b7280; text-align: center; }
+    .collaboration-authors { list-style: none; padding: 0; margin: 0; }
+    .collaboration-authors li { display: flex; align-items: center; gap: 0.5rem; margin-block: 0.5rem; }
+    .collaboration-authors .presence-user {
+      display: grid; place-items: center; flex: 0 0 1.5rem; width: 1.5rem; height: 1.5rem;
+      border-radius: 50%; background: var(--presence-color); color: white; font-size: 0.55rem; font-weight: 700;
+    }
+    .author-status, .author-change { display: block; font-size: 0.7rem; color: #526b86; }
+
     .sharing-dropdown {
       display: flex;
       flex-direction: column;
       gap: 0.45rem;
       min-width: 0;
-    }
-
-    .sharing-dropdown webwriter-qr-code[hidden] {
-      display: none;
-    }
-
-    .sharing-document-actions,
-    .sharing-qr-group {
-      border: 1px solid #c8d2df;
-      border-radius: 0.25rem;
-      overflow: hidden;
-    }
-
-    .sharing-document-actions {
-      display: flex;
-      padding: 0.15rem;
-    }
-
-    .sharing-document-actions ribbon-button {
-      flex: 1;
-    }
-
-    .sharing-document-actions ribbon-button + ribbon-button {
-      border-left: 1px solid #c8d2df;
     }
 
     .sharing-link-field {
@@ -683,65 +702,6 @@ export class RibbonButton extends LitElement {
     .sharing-link-copy:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -1px;
-    }
-
-    .sharing-dropdown-qr {
-      box-sizing: border-box;
-      width: 100%;
-      min-height: 0;
-      display: flex;
-      justify-content: center;
-      padding: 0.35rem;
-    }
-
-    .sharing-dropdown-qr-code {
-      width: 100%;
-      aspect-ratio: 1 / 1;
-      height: auto;
-      max-width: 100%;
-      display: block;
-      object-fit: contain;
-    }
-
-    .sharing-dropdown-actions {
-      display: flex;
-      border-top: 1px solid #c8d2df;
-    }
-
-    .sharing-dropdown-action {
-      width: 50%;
-      min-height: 1.5rem;
-      padding: 0.35rem;
-      display: inline-grid;
-      place-items: center;
-      border: 0;
-      border-radius: 0;
-    }
-
-    .sharing-dropdown-action + .sharing-dropdown-action {
-      border-left: 1px solid #c8d2df;
-    }
-
-    .sharing-dropdown-action svg {
-      width: 1.25rem;
-      height: 1.25rem;
-    }
-
-    .sharing-dropdown-action.is-active,
-    .sharing-dropdown-action[aria-pressed="true"] {
-      color: #174f8b;
-      border-color: #8eb6df;
-      background: #eef4fb;
-    }
-
-    .sharing-dropdown-action.is-success {
-      color: #0f7a43;
-      border-color: #66ad78;
-      background: #e2f4ea;
-    }
-
-    .sharing-dropdown-action:focus:not(:focus-visible) {
-      outline: none;
     }
 
     .form-attribute-boolean input {
@@ -1309,8 +1269,8 @@ export class RibbonButton extends LitElement {
       <svg viewBox="-10 -10 120 120" focusable="false"><path d=${this.iconPath} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
     </span>`
     return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
-      ${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
-      ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}
+      <slot name="icon">${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
+      ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}</slot>
       ${this.iconUrl ? html`<img
         src=${this.iconUrl}
         alt=""

@@ -59,6 +59,8 @@ export type YDelta = Y.YXmlEvent["delta"][number]
 export type CollaborationUser = {
   name?: string
   color?: string
+  lastChange?: number
+  connectionStatus?: "connected" | "disconnected"
 }
 
 export type RelativeSelection = {
@@ -91,6 +93,7 @@ export type SharedDOMDocOptions = {
   awareness?: Awareness
   connect?: boolean
   user?: CollaborationUser
+  connectionParams?: Record<string, string>
 }
 
 type DOMAttribute = {
@@ -254,6 +257,7 @@ export class SharedDOMDoc {
     this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
     this.startObserve()
     this.doc.on("beforeTransaction", this.#flushPendingDOMChanges)
+    this.doc.on("afterTransaction", this.#publishLastChange)
 
     const defaultUser: CollaborationUser = {
       name: `User ${this.doc.clientID.toString(36).toUpperCase()}`,
@@ -265,6 +269,7 @@ export class SharedDOMDoc {
     if(this.serverUrl && this.sessionId) {
       this.provider = new WebsocketProvider(this.serverUrl, this.sessionId, this.doc as any, {
         awareness: this.awareness,
+        params: options.connectionParams,
         // Wait for the room's first snapshot before proposing an initial tree.
         // BroadcastChannel sync does not establish that server boundary.
         disableBc: true,
@@ -529,6 +534,21 @@ export class SharedDOMDoc {
   setUser(user: CollaborationUser) {
     const previous = this.awareness.getLocalState()?.user as CollaborationUser | undefined
     this.awareness.setLocalStateField("user", {...previous, ...user})
+  }
+
+  get connectionStatus(): "connected" | "connecting" | "disconnected" {
+    if(this.provider?.wsconnected) return "connected"
+    return this.provider?.shouldConnect ? "connecting" : "disconnected"
+  }
+
+  readonly #publishLastChange = (transaction: Y.Transaction) => {
+    if(!transaction.local || transaction.origin === this.#initialOrigin || transaction.origin === this.#remoteReactionOrigin) return
+    const changedTypes = transaction.changedParentTypes
+    if(![this.#body, this.#documentHead, this.#documentAttributes, this.#headMetadata]
+      .some(type => type && changedTypes.has(type as Y.AbstractType<any>))) return
+    const user = this.awareness.getLocalState()?.user
+    if(!user || typeof user !== "object") return
+    this.awareness.setLocalStateField("user", {...user, lastChange: Date.now()})
   }
 
   setSelection(anchorNode: YXmlNode, anchorOffset = 0, focusNode = anchorNode, focusOffset = anchorOffset) {
@@ -1081,6 +1101,7 @@ export class SharedDOMDoc {
     this.stopObserve()
     if(this.#ownsWidgetData) this.widgetData.destroy()
     this.doc.off("beforeTransaction", this.#flushPendingDOMChanges)
+    this.doc.off("afterTransaction", this.#publishLastChange)
     this.#metadata.unobserve(this.#handleMirrorChange)
     this.#body.unobserveDeep(this.#handleYChanges)
     this.#documentHead?.unobserveDeep(this.#handleYChanges)

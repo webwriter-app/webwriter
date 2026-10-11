@@ -196,6 +196,41 @@ describe("development server", () => {
     expect((await request(`/api/documents/${id}`)).response.status).toBe(404)
   })
 
+  it("persists sharing links, serves shared documents, and revokes shared sockets", async () => {
+    const created = await request("/api/documents", {
+      method: "POST",
+      body: JSON.stringify({title: "Shared", content: "<p>Visible</p>"}),
+    })
+    const id = created.value.document.id
+    const sharingPath = `/api/documents/${id}/sharing`
+    expect((await request(sharingPath)).value).toEqual({sharing: {enabled: false}})
+
+    const enabled = await request(sharingPath, {method: "PUT", body: JSON.stringify({enabled: true})})
+    const token = enabled.value.sharing.token
+    expect(token).toMatch(/^[A-Za-z0-9_-]{40,}$/)
+    expect((await request(sharingPath, {method: "PUT", body: JSON.stringify({enabled: true})})).value.sharing.token).toBe(token)
+    expect((await request(`/api/shared-documents/${token}`)).value.document).toEqual(expect.objectContaining({id, content: "<p>Visible</p>"}))
+    expect((await request(`/api/documents/${id}`)).value.document).not.toHaveProperty("sharing")
+
+    const websocketUrl = `${baseUrl.replace(/^http/, "ws")}/document-${id}?share=${token}`
+    const socket = await openWebSocket(websocketUrl)
+    const disabled = await request(sharingPath, {method: "PUT", body: JSON.stringify({enabled: false})})
+    expect(disabled.value).toEqual({sharing: {enabled: false}})
+    await new Promise(resolve => socket.once("close", resolve))
+    expect((await request(`/api/shared-documents/${token}`)).response.status).toBe(404)
+    await expect(openWebSocket(websocketUrl)).rejects.toBeInstanceOf(Error)
+
+    const reenabled = await request(sharingPath, {method: "PUT", body: JSON.stringify({enabled: true})})
+    const deleteToken = reenabled.value.sharing.token
+    const deleteSocket = await openWebSocket(`${baseUrl.replace(/^http/, "ws")}/document-${id}?share=${deleteToken}`)
+    expect((await request(`/api/documents/${id}`, {method: "PATCH", body: JSON.stringify({title: "Still shared"})})).value.document)
+      .not.toHaveProperty("sharing")
+    expect((await request(sharingPath)).value.sharing.token).toBe(deleteToken)
+    expect((await request(`/api/documents/${id}`, {method: "DELETE"})).response.status).toBe(204)
+    await new Promise(resolve => deleteSocket.once("close", resolve))
+    await expect(openWebSocket(`${baseUrl.replace(/^http/, "ws")}/document-${id}?share=${deleteToken}`)).rejects.toBeInstanceOf(Error)
+  })
+
   it("merges concurrent partial document updates", async () => {
     const created = await request("/api/documents", {
       method: "POST",

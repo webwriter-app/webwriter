@@ -130,6 +130,7 @@ describe("AI prompt ribbon", () => {
     expect(getComputedStyle(panel).maxWidth).toBe("600px")
     expect(getComputedStyle(panel).containerType).toBe("inline-size")
     expect(getComputedStyle(panel).transition).not.toContain("width")
+    expect(getComputedStyle(panel.querySelector(".ai-chat-brand-button")!).transition).toBe("none")
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-tab")).toBeNull()
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-expand")).toBeNull()
     expect(ribbon.shadowRoot!.querySelector(".icon-tabler-sparkles-2")).not.toBeNull()

@@ -1853,7 +1853,7 @@ describe("DomEditor ribbon drag relay", () => {
 })
 
 describe("DomEditor breadcrumb visibility", () => {
-  it("toggles the breadcrumb and toolbox together and restores them when the ribbon expands", async () => {
+  it("hides the breadcrumb and toolbox when collapsed and restores them when the ribbon expands", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const breadcrumb = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-breadcrumb")!
@@ -1873,26 +1873,17 @@ describe("DomEditor breadcrumb visibility", () => {
 
     const fileMenu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
     await fileMenu.updateComplete
-    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Show breadcrumb"]')!.click()
-    await editor.updateComplete
-    await ribbon.updateComplete
-    await fileMenu.updateComplete
-    expect(breadcrumb.hidden).toBe(false)
-    expect(getComputedStyle(breadcrumb).display).not.toBe("none")
-    expect(toolbox.hidden).toBe(false)
-    expect(ribbon.expanded).toBe(false)
-
-    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Hide breadcrumb"]')!.click()
-    await editor.updateComplete
-    expect(breadcrumb.hidden).toBe(true)
-    expect(getComputedStyle(breadcrumb).display).toBe("none")
-    expect(toolbox.hidden).toBe(true)
+    expect(fileMenu.shadowRoot!.querySelector('[title="Show breadcrumb"]')).toBeNull()
+    expect(fileMenu.shadowRoot!.querySelector('[title="Hide breadcrumb"]')).toBeNull()
 
     ribbon.expanded = true
     await ribbon.updateComplete
     await editor.updateComplete
     expect(breadcrumb.hidden).toBe(false)
     expect(toolbox.hidden).toBe(false)
+    await ribbon.updateComplete
+    await fileMenu.updateComplete
+    expect(fileMenu.shadowRoot!.querySelector('[title="Hide breadcrumb"]')).toBeNull()
   })
 })
 
@@ -5385,7 +5376,7 @@ describe("DomEditor.execute()", () => {
     })
   })
 
-  it("renders presence circles before undo and overlaps up to three collaborators", async () => {
+  it("replaces the collaboration icon with up to two initials avatars", async () => {
     const {editor, editorWindow} = await mountEditor()
 
     window.dispatchEvent(new MessageEvent("message", {
@@ -5408,18 +5399,18 @@ describe("DomEditor.execute()", () => {
     const users = ribbon.shadowRoot!.querySelector<HTMLElement>(".presence-users")!
     const circles = Array.from(users.querySelectorAll<HTMLElement>(".presence-user"))
 
-    expect(circles).toHaveLength(3)
-    expect(circles.map(circle => circle.textContent)).toEqual(["AL", "GH", "LI"])
+    expect(circles).toHaveLength(2)
+    expect(circles.map(circle => circle.textContent)).toEqual(["AL", "GH"])
     expect(circles.map(circle => circle.style.getPropertyValue("--presence-color"))).toEqual([
       "#e11d48",
       "#2563eb",
-      "#059669",
     ])
     expect(users.querySelector(".presence-more")).toBeNull()
-    expect(users.nextElementSibling?.querySelector('[aria-label="Undo"]')).not.toBeNull()
+    expect(users.parentElement?.getAttribute("label")).toBe("Collaboration")
+    expect(users.getAttribute("slot")).toBe("icon")
   })
 
-  it("adds a smaller Tabler plus circle with the connected peer count", async () => {
+  it("keeps at most two collaboration avatars when four peers are connected", async () => {
     const {editor, editorWindow} = await mountEditor()
 
     window.dispatchEvent(new MessageEvent("message", {
@@ -5441,12 +5432,8 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     await ribbon.updateComplete
     const users = ribbon.shadowRoot!.querySelector<HTMLElement>(".presence-users")!
-    const more = users.querySelector<HTMLElement>(".presence-more")!
-
-    expect(users.querySelectorAll(".presence-user")).toHaveLength(3)
-    expect(more.querySelector(".icon-tabler-plus")).not.toBeNull()
-    expect(more.querySelector(".presence-more-count")?.textContent).toBe("4")
-    expect(more.getAttribute("aria-label")).toBe("+ 4 peers connected")
+    expect(users.querySelectorAll(".presence-user")).toHaveLength(2)
+    expect(users.querySelector(".presence-more")).toBeNull()
     expect(users.dataset.userCount).toBe("4")
   })
 
@@ -8197,4 +8184,135 @@ describe("heading toolbox level changes", () => {
     expect(execute).toHaveBeenCalledTimes(1)
     await Promise.resolve()
   })
+})
+
+describe("document collaboration menu", () => {
+  it("enables and revokes editing links through the server for a saved document", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const setDocumentSharing = vi.fn().mockResolvedValueOnce({enabled: true, token: "editing-token"}).mockResolvedValueOnce({enabled: false})
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
+    host.backendDocumentId = "saved"
+    host.storageLocation = "development-server"
+    host.collaborationRoom = "document-saved"
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(setDocumentSharing).toHaveBeenCalledWith("saved", true)
+    expect(new URL(host.collaborationLink).searchParams.get("open")).toBe("http://localhost:1234/api/shared-documents/editing-token")
+    expect(host.linkSharingEnabled).toBe(true)
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: false}}))
+    expect(setDocumentSharing).toHaveBeenLastCalledWith("saved", false)
+    expect(host.collaborationLink).toBe("")
+  })
+
+  it("prompts before moving a local document and does nothing when cancelled", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const save = vi.spyOn(host, "saveBackendDocument").mockResolvedValue(true)
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal("confirm", confirm)
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Move this document to the server"))
+    expect(save).not.toHaveBeenCalled()
+    expect(host.linkSharingBusy).toBe(false)
+    expect(host.linkSharingEnabled).toBe(false)
+  })
+
+  it("moves a local document before creating an editing link", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const setDocumentSharing = vi.fn().mockResolvedValue({enabled: true, token: "editing-token"})
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
+    host.fileHandle = {name: "Local.html"}
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    vi.spyOn(host, "saveBackendDocument").mockImplementation(async () => {
+      expect(setDocumentSharing).not.toHaveBeenCalled()
+      host.backendDocumentId = "moved"
+      host.storageLocation = "development-server"
+      return true
+    })
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(reload).toHaveBeenCalledOnce()
+    expect(host.fileHandle).toBeNull()
+    expect(host.collaborationRoom).toBe("document-moved")
+    expect(new URL(host.syncUrl).searchParams.get("session")).toBe("document-moved")
+    expect(setDocumentSharing).toHaveBeenCalledWith("moved", true)
+  })
+
+  it("does not enable sharing when the move fails or the document is replaced during the request", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const setDocumentSharing = vi.fn()
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    vi.spyOn(host, "saveBackendDocument").mockResolvedValue(undefined)
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(setDocumentSharing).not.toHaveBeenCalled()
+    expect(host.collaborationError).toContain("Save the document")
+    host.backendDocumentId = "original"
+    host.storageLocation = "development-server"
+    host.collaborationRoom = "document-original"
+    setDocumentSharing.mockImplementation(async () => {
+      host.backendDocumentId = "replacement"
+      return {enabled: true, token: "old-token"}
+    })
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(host.linkSharingEnabled).toBe(false)
+  })
+})
+
+
+it("opens a server editing link without an account and passes its token to collaboration", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  const token = "a".repeat(43)
+  const session = {kind: "webwriter-dev-server", version: 1, authentication: "none", user: {id: "local", name: "Local"},
+    apiBaseUrl: "http://localhost:1234/api", collaborationUrl: "ws://localhost:1234", adminUrl: "http://localhost:1234/admin", capabilities: ["documents", "collaboration"]}
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(session), {headers: {"Content-Type": "application/json"}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({document: {id: "shared", title: "Shared", format: "html", content: "<p>Editable</p>"}}), {headers: {"Content-Type": "application/json"}}))
+  vi.stubGlobal("fetch", fetch)
+  const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+  await host.restoreLinkedDocument(`http://localhost:1234/api/shared-documents/${token}`)
+  expect(reload).toHaveBeenCalledWith("<p>Editable</p>")
+  expect(host.backendDocumentId).toBe("shared")
+  expect(new URL(host.syncUrl).searchParams.get("session")).toBe("document-shared")
+  expect(new URL(host.syncUrl).searchParams.get("share")).toBe(token)
+  expect(host.previewActive).toBe(false)
+  expect(fetch.mock.calls.every(([, init]) => !init.headers.Authorization)).toBe(true)
+})
+
+it("moves a server Save As copy into its own collaboration room", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  host.backendDocumentId = "original"
+  host.collaborationRoom = "document-original"
+  host.sharedDocumentToken = "original-token"
+  host.collaborationLink = "original-link"
+  host.linkSharingEnabled = true
+  host.backendClient = {apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue({id: "copy", title: "Copy", format: "html", content: "<p>Copy</p>"})}
+  mockSaveSnapshot(editor, "<p>Copy</p>")
+  const reconnect = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+  await host.saveBackendDocument(true)
+  expect(reconnect).toHaveBeenCalledOnce()
+  expect(host.collaborationRoom).toBe("document-copy")
+  expect(host.sharedDocumentToken).toBeNull()
+  expect(host.linkSharingEnabled).toBe(false)
+  expect(new URL(location.href).searchParams.get("open")).toBe("http://localhost:1234/api/documents/copy")
+})
+
+it("preserves the editing capability URL when saving a shared document", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  const reference = `http://localhost:1234/api/shared-documents/${"a".repeat(43)}`
+  const url = new URL(location.href)
+  url.searchParams.set("open", reference)
+  history.replaceState(null, "", url)
+  host.backendDocumentId = "shared"
+  host.collaborationRoom = "document-shared"
+  host.sharedDocumentToken = "a".repeat(43)
+  host.backendClient = {apiBaseUrl: "http://localhost:1234/api", updateDocument: vi.fn().mockResolvedValue({id: "shared", title: "Shared", format: "html"})}
+  mockSaveSnapshot(editor, "<p>Edited</p>")
+  await host.saveBackendDocument()
+  expect(new URL(location.href).searchParams.get("open")).toBe(reference)
+  expect(host.sharedDocumentToken).toBe("a".repeat(43))
 })

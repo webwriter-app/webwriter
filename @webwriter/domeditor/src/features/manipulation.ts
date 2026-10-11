@@ -4,7 +4,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple } from "../utility"
+import { $, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -3314,10 +3314,14 @@ export class ManipulationFeature extends EditorFeature {
           document.getSelection()?.setBaseAndExtent(before.startContainer, before.startOffset, before.endContainer, before.endOffset)
           return
         }
+        const deletedContent = !$.isEmpty
         $.delete()
+        if(deletedContent) this.preserveTrailingDeletionSpace()
       }
       else {
+        const deletedContent = !$.isEmpty
         $.delete()
+        if(deletedContent) this.preserveTrailingDeletionSpace()
       }
       if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
         const {elementBefore, elementAfter} = $
@@ -3350,6 +3354,29 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     })
+  }
+
+  /** Range deletion leaves trailing ASCII spaces collapsed by native editing.
+   * Keep the space before the caret visible and available for the next input,
+   * as native deletion does, without changing whitespace-preserving content. */
+  private preserveTrailingDeletionSpace() {
+    const range = $.range
+    if(!range.collapsed) return
+    const container = getContainer(range.startContainer)
+    if(!container.isConnected || atomicEditingContainer(range.startContainer)) return
+    const offset = textOffsetIn(container, range.startContainer, range.startOffset)
+    if(offset === null || offset === 0) return
+    const [node, index] = textPointAtOffset(container, offset - 1)
+    if(!(node instanceof Text) || node.data[index] !== " " || atomicEditingContainer(node)) return
+    if(!["normal", "nowrap", "pre-line", ""].includes(getComputedStyle(node.parentElement!).whiteSpace)) return
+    const after = range.cloneRange()
+    after.selectNodeContents(container)
+    after.setStart(range.startContainer, range.startOffset)
+    if(after.toString().trim() || Array.from(container.querySelectorAll("*")).some(element =>
+      after.intersectsNode(element) && (!isMarkElement(element) || isAtomicEditingElement(element)))) return
+    const {startContainer, startOffset} = range
+    node.replaceData(index, 1, "\u00a0")
+    $.move(startContainer, startOffset)
   }
 
   /** Wraps the selection. Given a `wrapping` element (or a fragment, whose

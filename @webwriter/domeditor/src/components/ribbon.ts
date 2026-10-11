@@ -1,6 +1,7 @@
 import {css, html, nothing, render} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {aiChatStyles} from "./ai-chat.styles"
+import {switchInputStyles} from "./dropdown-content.styles"
 import {version} from "../../package.json"
 import {
   requestsReadOnlyAI,
@@ -30,7 +31,6 @@ import "./element-attribute-editor"
 import "./element-style-editor"
 import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import "./package-search"
-import type {QRCodeElement} from "./qr-code"
 import "./ribbon-button"
 import {type RibbonButton, type RibbonButtonDetails} from "./ribbon-button"
 import "./ribbon-combobox"
@@ -46,7 +46,6 @@ import {
   fileFormatButtons,
   menuTabs,
   orderedListStyles,
-  placeholderSharingLink,
   insertMathStructureButtons,
   type RibbonMenuName,
 } from "./ribbon-menu-config"
@@ -119,6 +118,11 @@ export class AppRibbon extends EditingControls {
     documentDialog: {state: true},
     logoUrl: {type: String, attribute: "logo-url"},
     presenceUsers: {attribute: false},
+    collaborationLink: {attribute: false},
+    linkSharingEnabled: {type: Boolean},
+    linkSharingBusy: {type: Boolean},
+    collaborationStatus: {type: String},
+    collaborationError: {type: String},
     packages: {attribute: false},
     editingSnippetId: {attribute: false},
     installedPackages: {attribute: false},
@@ -416,9 +420,12 @@ export class AppRibbon extends EditingControls {
     @container ribbon (max-width: 42rem) {
       .tabs {min-width: 0}
       .tabs > ribbon-tab[label="File"] {min-width: 0; --file-label-min-width: 0px}
+    }
+
+    @container ribbon (max-width: 28rem) {
       .ai-bar-slot {flex: 0 0 24px; width: 24px; max-width: 24px}
       .ai-chat-panel:not([data-open]) {width: 24px}
-      .ai-chat-panel:not([data-open]) .ai-chat-brand-button {inset: 0; width: 100%; height: 100%; padding: 3px; transition: var(--ww-ui-transition, background-color 120ms ease)}
+      .ai-chat-panel:not([data-open]) .ai-chat-brand-button {inset: 0; width: 100%; height: 100%; padding: 3px}
       .ai-chat-panel:not([data-open]) .ai-chat-composer {display: none}
     }
 
@@ -573,12 +580,14 @@ export class AppRibbon extends EditingControls {
       margin-left: auto;
     }
 
+    .file-share-action:has(.presence-user + .presence-user) { width: 2.25rem; min-width: 2.25rem; flex-basis: 2.25rem; }
+
     .presence-users {
       display: flex;
       flex: 0 0 auto;
       align-items: center;
-      height: 40px;
-      margin: 0 0.35rem 0 0.5rem;
+      height: 1.75rem;
+      margin: 0;
     }
 
     .presence-user,
@@ -595,7 +604,7 @@ export class AppRibbon extends EditingControls {
     }
 
     .presence-user {
-      margin-left: -0.45rem;
+      margin-left: -0.9rem;
       color: #ffffff;
       background: var(--presence-color);
       font-size: 0.55rem;
@@ -610,7 +619,7 @@ export class AppRibbon extends EditingControls {
     }
 
     .presence-more {
-      margin-left: -0.45rem;
+      margin-left: -0.9rem;
       flex-basis: 1.25rem;
       width: 1.25rem;
       height: 1.25rem;
@@ -721,39 +730,7 @@ export class AppRibbon extends EditingControls {
       outline-offset: -2px;
     }
 
-    .live-session-switch input {
-      appearance: none;
-      position: relative;
-      margin: 0;
-      width: 1.9rem;
-      height: 1.05rem;
-      border: 1px solid #9aa9b8;
-      border-radius: 999px;
-      background: #d8dee6;
-      cursor: pointer;
-    }
-
-    .live-session-switch input::after {
-      position: absolute;
-      top: 0.12rem;
-      left: 0.12rem;
-      width: 0.69rem;
-      height: 0.69rem;
-      border-radius: 50%;
-      background: white;
-      box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
-      content: "";
-      transition: var(--ww-ui-transition, transform 120ms ease);
-    }
-
-    .live-session-switch input:checked {
-      border-color: #3977c7;
-      background: #3977c7;
-    }
-
-    .live-session-switch input:checked::after {
-      transform: translateX(0.83rem);
-    }
+    ${switchInputStyles}
 
     .learners-summary-avatars {
       display: flex;
@@ -995,6 +972,11 @@ export class AppRibbon extends EditingControls {
   logoUrl = ""
 
   presenceUsers: PresenceUser[] = []
+  collaborationLink = ""
+  linkSharingEnabled = false
+  linkSharingBusy = false
+  collaborationStatus = "disconnected"
+  collaborationError = ""
 
   packages: WebWriterPackage[] = []
   editingSnippetId: string | null = null
@@ -1015,31 +997,11 @@ export class AppRibbon extends EditingControls {
 
   private tableGridColumns = 2
 
-  private sharingQRCodeImageDataURL = ""
-
-  private sharingQRCodeImageLink = ""
-
-  private sharingQRCodeImageLoading = false
-
-  private sharingQRCodeImageRetryScheduled = false
-
   private sharingCopyLinkActive = false
 
   private sharingCopyLinkSuccess = false
 
-  private sharingCopyQRActive = false
-
-  private sharingCopyQRSuccess = false
-
-  private sharingDownloadQRActive = false
-
   private sharingCopyLinkActiveTimer: ReturnType<typeof setTimeout> | undefined
-
-  private sharingCopyQRActiveTimer: ReturnType<typeof setTimeout> | undefined
-
-  private sharingCopyQRSuccessTimer: ReturnType<typeof setTimeout> | undefined
-
-  private sharingDownloadQRActiveTimer: ReturnType<typeof setTimeout> | undefined
 
   private sharingCopyLinkSuccessTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -1223,9 +1185,6 @@ export class AppRibbon extends EditingControls {
     this.previewTransitionTimer = undefined
     if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
     if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
-    if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
-    if(this.sharingCopyQRSuccessTimer !== undefined) clearTimeout(this.sharingCopyQRSuccessTimer)
-    if(this.sharingDownloadQRActiveTimer !== undefined) clearTimeout(this.sharingDownloadQRActiveTimer)
     this.ribbonContentObserver?.disconnect()
     this.ribbonContentObserver = undefined
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
@@ -2445,184 +2404,50 @@ export class AppRibbon extends EditingControls {
     `
   }
 
-  private sharingButton() {
-    return this.renderRoot.querySelector<RibbonButton>(
-      'ribbon-button.sharing-qr',
-    ) ?? this.renderRoot.querySelector<RibbonButton>("ribbon-button.file-share-action")
-  }
-
-  private sharingQRCodeElement() {
-    return this.sharingButton()?.shadowRoot?.querySelector<QRCodeElement>("webwriter-qr-code")
-  }
-
-  private async sharingQRCodeBlob() {
-    const qrCode = this.sharingQRCodeElement()
-    if(!qrCode) return null
-    await qrCode.updateComplete
-    return qrCode.toBlob()
-  }
-
-  private async ensureSharingQRCodeImage(link: string) {
-    if(this.sharingQRCodeImageLoading) return
-    if(this.sharingQRCodeImageLink === link && this.sharingQRCodeImageDataURL) return
-    if(this.sharingQRCodeImageLink !== link) {
-      this.sharingQRCodeImageDataURL = ""
-      this.sharingQRCodeImageLink = ""
-    }
-    this.sharingQRCodeImageLoading = true
-    try {
-      const qrCode = this.sharingQRCodeElement()
-      if(!qrCode) {
-        this.scheduleSharingQRCodeImageRetry(link)
-        return
-      }
-      await qrCode.updateComplete
-      const dataURL = qrCode.toDataURL()
-      if(dataURL && dataURL.startsWith("data:image/png")) {
-        this.sharingQRCodeImageDataURL = dataURL
-        this.sharingQRCodeImageLink = link
-        this.requestUpdate()
-        return
-      }
-
-      const blob = await qrCode.toBlob()
-      if(!blob) {
-        this.scheduleSharingQRCodeImageRetry(link)
-        return
-      }
-
-      const fallbackDataURL = await new Promise<string | null>(resolve => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null)
-        reader.onerror = () => resolve(null)
-        reader.readAsDataURL(blob)
-      })
-      if(!fallbackDataURL?.startsWith("data:image/png")) {
-        this.scheduleSharingQRCodeImageRetry(link)
-        return
-      }
-
-      this.sharingQRCodeImageDataURL = fallbackDataURL
-      this.sharingQRCodeImageLink = link
-      this.requestUpdate()
-    }
-    finally {
-      this.sharingQRCodeImageLoading = false
-    }
-  }
-
-  private scheduleSharingQRCodeImageRetry(link: string) {
-    if(this.sharingQRCodeImageRetryScheduled || !this.renderRoot.isConnected) return
-    this.sharingQRCodeImageRetryScheduled = true
-    requestAnimationFrame(() => {
-      this.sharingQRCodeImageRetryScheduled = false
-      void this.ensureSharingQRCodeImage(link)
-    })
-  }
-
-  private async handleSharingQRCodeImageError() {
-    if(!this.sharingQRCodeImageLink || !this.renderRoot.isConnected) return
-    this.sharingQRCodeImageDataURL = ""
-    this.scheduleSharingQRCodeImageRetry(this.sharingQRCodeImageLink)
-    this.requestUpdate()
-  }
-
-  private renderSharingDropdown(link: string) {
+  private renderSharingDropdown(link: string, sessionShare = false) {
     return html`
-      <div class="sharing-dropdown" role="group" aria-label="Sharing options">
-        <div class="sharing-document-actions" role="group" aria-label="Document actions">
-          <ribbon-button label="Print" action="Print" variant="toolbar"></ribbon-button>
-          <ribbon-button label="Download" action="Download" variant="toolbar" .submenu=${fileFormatButtons("download")}></ribbon-button>
-        </div>
-        <webwriter-qr-code hidden .value=${link} .size=${56}></webwriter-qr-code>
-        <label class="sharing-link-field">
-          <span class="sharing-link-label">Link</span>
+      <div class="sharing-dropdown" role="group" aria-label="Collaboration">
+        ${sessionShare ? nothing : html`
+          <button class="sharing-toggle" type="button" role="switch" aria-label="Invite to edit or review"
+              aria-checked=${this.linkSharingEnabled} ?disabled=${this.linkSharingBusy}
+              @click=${() => this.dispatchEvent(new CustomEvent("link-sharing-change", {
+                detail: {enabled: !this.linkSharingEnabled}, bubbles: true, composed: true,
+              }))}>
+            <span class="sharing-invite-icon" aria-hidden="true">${ribbonIcon("UserEdit")}</span>
+            <strong>Invite to edit or review</strong>
+            <span class="sharing-switch" aria-hidden="true" ?data-checked=${this.linkSharingEnabled}></span>
+          </button>`}
+        ${link && (sessionShare || this.linkSharingEnabled) ? html`<label class="sharing-link-field">
+          <span class="sharing-link-label">Editing link</span>
           <span class="sharing-link-input-row">
-            <input
-              class="sharing-link-input"
-              aria-label="Sharing link"
-              readonly
-              .value=${link}
-              @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()}
-            />
-            <button
-              class=${`sharing-link-copy${this.sharingCopyLinkActive ? " is-active" : ""}${this.sharingCopyLinkSuccess ? " is-success" : ""}`}
-              type="button"
-              aria-label="Copy link"
-              aria-pressed=${this.sharingCopyLinkActive}
+            <input class="sharing-link-input" aria-label="Sharing link" readonly .value=${link}
+              @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()} />
+            <button class="sharing-link-copy" type="button" aria-label="Copy link"
               title=${this.sharingCopyLinkSuccess ? "Copied link" : "Copy link"}
-              @click=${() => void this.copySharingLinkAndShowFeedback(link)}
-            >${ribbonIcon("Copy")}</button>
+              @click=${() => void this.copySharingLinkAndShowFeedback(link)}>${ribbonIcon("Copy")}</button>
           </span>
-        </label>
-        <div class="sharing-qr-group" role="group" aria-label="QR code">
-          <div class="sharing-dropdown-qr" aria-label="Sharing QR code" role="img">
-            <img
-              class="sharing-dropdown-qr-code"
-              alt="Sharing QR code"
-              draggable="true"
-              src=${this.sharingQRCodeImageDataURL || undefined}
-              @error=${() => void this.handleSharingQRCodeImageError()}
-            />
-          </div>
-          <div class="sharing-dropdown-actions">
-            <button
-              class=${`button-dropdown-more sharing-dropdown-action${this.sharingCopyQRActive ? " is-active" : ""}${this.sharingCopyQRSuccess ? " is-success" : ""}`}
-              type="button"
-              aria-pressed=${this.sharingCopyQRActive}
-              @click=${() => void this.copySharingQRCodeAndShowFeedback()}
-              aria-label="Copy QR code"
-              title=${this.sharingCopyQRSuccess ? "Copied QR code" : "Copy QR code"}
-            >${ribbonIcon("Copy")}<span>Copy QR code</span></button>
-            <button
-              class=${`button-dropdown-more sharing-dropdown-action${this.sharingDownloadQRActive ? " is-active" : ""}`}
-              type="button"
-              aria-pressed=${this.sharingDownloadQRActive}
-              @click=${() => void this.downloadSharingQRCodeAndShowFeedback()}
-              aria-label="Download QR code"
-              title="Download QR code"
-            >${ribbonIcon("FileDownload")}<span>Download QR code</span></button>
-          </div>
-        </div>
+        </label>` : nothing}
+        ${this.collaborationError ? html`<p role="alert">${this.collaborationError}</p>` : nothing}
+        ${this.collaborationStatus === "disconnected" ? nothing : html`<p class="collaboration-status" role="status">${this.collaborationStatus === "connected" ? "Connected" : "Connecting…"}</p>`}
+        <ul class="collaboration-authors" aria-label="Connected authors">
+          ${this.presenceUsers.map(user => html`<li>
+            <span class="presence-user" style=${styleMap({"--presence-color": safeCssColor(user.color)})}>${user.initials}</span>
+            <span><strong>${user.name}</strong>${user.connectionStatus === "disconnected" ? nothing : html`<span class="author-status">Connected</span>`}
+              <span class="author-change">${user.lastChange ? `Last change: ${new Date(user.lastChange).toLocaleString()}` : "No changes yet"}</span></span>
+          </li>`)}
+        </ul>
+        ${!this.presenceUsers.length ? html`<p class="collaboration-empty">No other authors connected</p>` : nothing}
+        ${sessionShare ? nothing : html`
+          <p class="sharing-reader-hint">
+            <button class="sharing-preview-button" type="button" aria-label="Share with readers: open preview" title="Open preview"
+              ?disabled=${Boolean(this.pendingAIEdit) || this.historyState.preview !== null}
+              @click=${() => {
+                this.renderRoot.querySelector<RibbonButton>(".file-share-action")?.closeSubmenu()
+                if(!this.previewActive) this.handleTopButtonClick("Preview")
+              }}><span>Share with readers</span><span class="sharing-preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span></button>
+          </p>`}
       </div>
     `
-  }
-
-  private async copySharingContent(link: string): Promise<boolean> {
-    try {
-      if(!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-        return await this.copySharingLink(link)
-      }
-
-      const qrCode = this.sharingQRCodeElement()
-      if(!qrCode) {
-        return await this.copySharingLink(link)
-      }
-      await qrCode.updateComplete
-      const qrDataURL = qrCode.toDataURL()
-      if(!qrDataURL) {
-        return await this.copySharingLink(link)
-      }
-
-      const content = document.createElement("div")
-      const linkElement = document.createElement("a")
-      linkElement.href = link
-      linkElement.textContent = link
-      const qrImage = document.createElement("img")
-      qrImage.src = qrDataURL
-      qrImage.alt = `QR code for ${link}`
-      content.append(linkElement, document.createElement("br"), qrImage)
-
-      await navigator.clipboard.write([new ClipboardItem({
-        "text/html": content.innerHTML,
-        "text/plain": link,
-      })])
-      return true
-    }
-    catch {
-      // Clipboard access can be denied by the browser or document context.
-      return false
-    }
   }
 
   private async copySharingLink(link: string): Promise<boolean> {
@@ -2671,106 +2496,10 @@ export class AppRibbon extends EditingControls {
     }
   }
 
-  private async copySharingQRCode(): Promise<boolean> {
-    try {
-      const blob = await this.sharingQRCodeBlob()
-      if(!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false
-      await navigator.clipboard.write([new ClipboardItem({[blob.type || "image/png"]: blob})])
-      return true
-    }
-    catch {
-      // Clipboard access can be denied by the browser or document context.
-      return false
-    }
-  }
-
-  private async copySharingQRCodeAndShowFeedback() {
-    this.sharingCopyQRActive = true
-    this.sharingCopyQRSuccess = false
-    if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
-    if(this.sharingCopyQRSuccessTimer !== undefined) clearTimeout(this.sharingCopyQRSuccessTimer)
-    this.requestUpdate()
-    const copied = await this.copySharingQRCode()
-    this.sharingCopyQRActive = false
-    this.sharingCopyQRSuccess = copied
-    this.requestUpdate()
-    this.sharingCopyQRActiveTimer = setTimeout(() => {
-      this.sharingCopyQRActive = false
-      this.requestUpdate()
-    }, 140)
-    if(copied) {
-      this.sharingCopyQRSuccessTimer = setTimeout(() => {
-        this.sharingCopyQRSuccess = false
-        this.requestUpdate()
-      }, 900)
-    }
-  }
-
-  private async downloadSharingQRCode(): Promise<boolean> {
-    try {
-      const blob = await this.sharingQRCodeBlob()
-      if(!blob) return false
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `webwriter-qr-code.${blob.type === "image/svg+xml" ? "svg" : "png"}`
-      link.click()
-      URL.revokeObjectURL(url)
-      return true
-    }
-    catch {
-      // QR export can fail when the browser cannot rasterize the QR code.
-      return false
-    }
-  }
-
-  private async downloadSharingQRCodeAndShowFeedback() {
-    this.sharingDownloadQRActive = true
-    if(this.sharingDownloadQRActiveTimer !== undefined) clearTimeout(this.sharingDownloadQRActiveTimer)
-    this.requestUpdate()
-    await this.downloadSharingQRCode()
-    this.sharingDownloadQRActive = false
-    this.requestUpdate()
-    this.sharingDownloadQRActiveTimer = setTimeout(() => {
-      this.sharingDownloadQRActive = false
-      this.requestUpdate()
-    }, 140)
-  }
-
   private get sharingLink() {
     return this.liveSessionActive && this.liveSessionLink
       ? this.liveSessionLink
-      : placeholderSharingLink
-  }
-
-  private handleSharingButtonClick = (event: Event) => {
-    const label = (event as CustomEvent<{label?: string}>).detail?.label
-    if(label !== "Share") return
-    event.stopPropagation()
-    void this.copySharingContent(this.sharingLink).then(copied => {
-      if(copied) this.sharingButton()?.showNotification("Copied QR code and link")
-    })
-  }
-
-  private renderSharingDrawer(drawer: RibbonMenuGroup, excludeShare = false) {
-    return html`
-      <ribbon-drawer label="Sharing" icon="Share" layout=${excludeShare ? "sharing-preview" : "sharing"}>
-        ${drawer.buttons.map(button => {
-          const item = typeof button === "string" ? {label: button} : button
-          if(excludeShare && item.label === "Share") return ""
-          if(item.label === "Share") return this.renderSharingButton()
-          return html`
-            <ribbon-button
-              class="sharing-action"
-              label=${item.label}
-              .action=${item.action ?? item.label}
-              .icon=${item.icon ?? item.label}
-              .submenu=${item.submenu ?? []}
-            ></ribbon-button>
-          `
-        })}
-      </ribbon-drawer>
-    `
+      : this.collaborationLink
   }
 
   private renderSharingButton(previewOnly = false) {
@@ -2778,17 +2507,15 @@ export class AppRibbon extends EditingControls {
     const enabled = !previewOnly || Boolean(this.liveSessionActive && this.liveSessionLink)
     return html`
       <ribbon-button
-        class="sharing-qr"
+        class="session-share"
         label="Share"
         action="Share"
-        variant="qr"
-        .qrValue=${link}
-        .dropdown=${this.renderSharingDropdown(link)}
+        icon="Share"
+        dropdown-on-click
+        .dropdown=${this.renderSharingDropdown(link, true)}
         keep-drawer-open
         dropdown-no-scroll
         ?disabled=${!enabled}
-        @ribbon-button-click=${this.handleSharingButtonClick}
-        @ribbon-dropdown-open=${() => void this.ensureSharingQRCodeImage(link)}
       ></ribbon-button>
     `
   }
@@ -2857,15 +2584,19 @@ export class AppRibbon extends EditingControls {
 
   protected renderDrawers() {
     if(this.previewActive && this.liveSessionRole !== "learner") {
-      const sharing = menuGroups.File.find(group => group.label === "Sharing")!
-      return [this.renderSharingDrawer(sharing, true), this.renderLearnersDrawer()]
+      return [html`
+        <ribbon-drawer label="Sharing" icon="Share" layout="sharing-preview">
+          <ribbon-button class="sharing-action" label="Download" action="Download"
+            .submenu=${fileFormatButtons("download")}></ribbon-button>
+          <ribbon-button class="sharing-action" label="Print" action="Print"></ribbon-button>
+        </ribbon-drawer>
+      `, this.renderLearnersDrawer()]
     }
     return super.renderDrawers()
   }
 
   protected renderDrawer(drawer: RibbonMenuGroup) {
     if(drawer.label === "File") return this.renderFileDrawer(drawer)
-    if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
     if(drawer.label === "Packages") return this.renderPackageDrawer()
     if(drawer.label === "Elements") return this.renderInsertionDrawer(drawer)
     return super.renderDrawer(drawer)
@@ -2929,9 +2660,10 @@ export class AppRibbon extends EditingControls {
 
   private renderPresence() {
     if(!this.presenceUsers.length) return ""
-    const visibleUsers = this.presenceUsers.slice(0, 3)
+    const visibleUsers = this.presenceUsers.slice(0, 2)
     return html`
       <div
+        slot="icon"
         class="presence-users"
         role="group"
         aria-label="Active collaborators"
@@ -2940,23 +2672,11 @@ export class AppRibbon extends EditingControls {
         ${visibleUsers.map(user => html`
           <span
             class="presence-user"
-            style=${`--presence-color: ${user.color}`}
+            style=${styleMap({"--presence-color": safeCssColor(user.color)})}
             title=${user.name}
             aria-label=${user.name}
           >${user.initials}</span>
         `)}
-        ${this.presenceUsers.length >= 4 ? html`
-          <span
-            class="presence-more"
-            title=${`+ ${this.presenceUsers.length} peers connected`}
-            aria-label=${`+ ${this.presenceUsers.length} peers connected`}
-          >
-            <span class="presence-more-content">
-              <span class="presence-more-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
-              <span class="presence-more-count">${this.presenceUsers.length}</span>
-            </span>
-          </span>
-        ` : ""}
       </div>
     `
   }
@@ -3189,8 +2909,8 @@ export class AppRibbon extends EditingControls {
 
   render() {
     const configuredFileMenu = menuGroups.File.find(group => group.label === "File")!
-    const fileMenu = {...configuredFileMenu, buttons: [...configuredFileMenu.buttons,
-      ...(this.settings.activeCloudServiceId ? [{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: fileFormatButtons("download")}] : [])]}
+    const fileMenu = {...configuredFileMenu, buttons: [...configuredFileMenu.buttons.filter(button => (typeof button === "string" ? button : button.label) !== "Print"),
+      ...(this.settings.activeCloudServiceId ? [{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: fileFormatButtons("download")}] : []), "Print"]}
     const visibleTabs = this.previewActive ? ["File"] : menuTabs
     const aiReviewPending = Boolean(this.pendingAIEdit)
     const historyPreviewPending = this.historyState.preview !== null
@@ -3245,20 +2965,21 @@ export class AppRibbon extends EditingControls {
                     <ribbon-button
                       class="file-quick-action file-share-action"
                       variant="tab"
-                      label="Share"
-                      action="Share"
+                      label="Collaboration"
+                      icon="UserShare"
+                      action="Collaboration"
                       compact
                       dropdown-on-click
                       lazy-dropdown
                       dropdown-no-scroll
-                      ?disabled=${this.previewActive && !(this.liveSessionActive && this.liveSessionLink)}
-                      .qrValue=${this.sharingLink}
-                      .dropdown=${this.renderSharingDropdown(this.sharingLink)}
+                      ?custom-icon=${this.presenceUsers.length > 0}
+                      ?disabled=${historyPreviewPending}
+                      .dropdown=${this.renderSharingDropdown(this.collaborationLink)}
                       @ribbon-dropdown-open=${() => {
                         this.menuOpen = false
-                        void this.ensureSharingQRCodeImage(this.sharingLink)
+                        this.dispatchEvent(new CustomEvent("collaboration-menu-open", {bubbles: true, composed: true}))
                       }}
-                    ></ribbon-button>
+                    >${this.renderPresence()}</ribbon-button>
                   </div>
                 ` : ""}
               `)}
@@ -3278,7 +2999,7 @@ export class AppRibbon extends EditingControls {
               : void this.showRibbonDialog("settings")}
           >${this.backendState === "connected" ? this.backendClient?.session.kind === "webwriter-dev-server" ? "Local dev" : "Cloud"
             : this.backendState === "probing" ? "Connecting…" : "Sign in"}</button>
-          ${this.renderPresence()}
+
           <div class="ribbon-top-actions">
             ${this.previewActive ? "" : html`
               <div class="history-controls" role="group" aria-label="Undo and redo">
@@ -3329,7 +3050,6 @@ export class AppRibbon extends EditingControls {
                 ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
             ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
             {label: "Settings", buttons: [
-              ...(!this.previewActive ? [{label: this.breadcrumbVisible ? "Hide breadcrumb" : "Show breadcrumb", icon: this.breadcrumbVisible ? "Hidden" : "Visible", action: "toggle-breadcrumb"}] : []),
               ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
               {label: "Settings", warning: this.cloudSessionWarning},
             ]},

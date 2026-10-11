@@ -127,6 +127,20 @@ export class BackendClient {
     await this.request<void>(`documents/${encodeURIComponent(id)}`, {method: "DELETE"})
   }
 
+  async getDocumentSharing(id: string) {
+    return (await this.request<{sharing: {enabled: boolean, token?: string}}>(`documents/${encodeURIComponent(id)}/sharing`)).sharing
+  }
+
+  async setDocumentSharing(id: string, enabled: boolean) {
+    return (await this.request<{sharing: {enabled: boolean, token?: string}}>(`documents/${encodeURIComponent(id)}/sharing`, {
+      method: "PUT", body: JSON.stringify({enabled}),
+    })).sharing
+  }
+
+  async getSharedDocument(token: string) {
+    return (await this.request<{document: BackendDocument}>(`shared-documents/${encodeURIComponent(token)}`)).document
+  }
+
   async listAIProviders() {
     return await this.request<ProviderCollection>("providers")
   }
@@ -286,4 +300,13 @@ export async function discoverHostBackend(signal?: AbortSignal, fetchImplementat
     return session
   }
   catch(error) {if(isAbortError(error)) throw error; return null}
+}
+
+/** Connect a link recipient without requiring an account or persisting credentials. */
+export async function connectSharingBackend(apiBaseUrl: string, fetchImplementation = globalThis.fetch) {
+  const base = cloudServiceURL(apiBaseUrl)
+  const value = await fetchSessionJSON(new URL(`${base}/session`), AbortSignal.timeout(10000), fetchImplementation, {redirect: "error"})
+  const session = sessionFrom(isRecord(value) ? {...value, user: value.user ?? {id: "", name: ""}} : value)
+  if(!session || session.apiBaseUrl.replace(/\/$/, "") !== base) throw new Error("This server does not support document sharing.")
+  return new BackendClient(session, fetchImplementation)
 }

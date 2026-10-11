@@ -96,10 +96,10 @@ describe("mark ribbon controls", () => {
     expect(quickActions.classList.contains("file-quick-actions")).toBe(true)
     const quickButtons = Array.from(quickActions.querySelectorAll<RibbonButton>("ribbon-button"))
     await Promise.all(quickButtons.map(button => button.updateComplete))
-    expect(quickButtons.map(button => button.label)).toEqual(["Save", "Share"])
+    expect(quickButtons.map(button => button.label)).toEqual(["Save", "Collaboration"])
     expect(quickButtons.every(button => button.compact)).toBe(true)
     expect(quickButtons[0].shadowRoot!.querySelector(".icon-tabler-device-floppy")).not.toBeNull()
-    expect(quickButtons[1].shadowRoot!.querySelector(".icon-tabler-share")).not.toBeNull()
+    expect(quickButtons[1].icon).toBe("UserShare")
     expect(ribbon.activeMenu).toBe("Start")
     ribbon.fileDirty = true
     await ribbon.updateComplete
@@ -114,6 +114,15 @@ describe("mark ribbon controls", () => {
     expect(saveEvents).toEqual(["Save"])
     expect(ribbon.activeMenu).toBe("Start")
 
+    ribbon.linkSharingEnabled = true
+    ribbon.collaborationLink = "https://webwriter.app/shared/lesson-token"
+    ribbon.presenceUsers = [
+      {clientId: 1, name: "Ada Lovelace", initials: "AL", color: "#123456", lastChange: new Date("2026-10-11T10:00:00Z").getTime()},
+      {clientId: 2, name: "Lin Chen", initials: "LC", color: "#654321"},
+      {clientId: 3, name: "Sam Taylor", initials: "ST", color: "#abcdef"},
+    ]
+    await ribbon.updateComplete
+    await quickButtons[1].updateComplete
     quickButtons[1].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     await quickButtons[1].updateComplete
     expect(quickButtons[1].shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
@@ -133,32 +142,40 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(quickShareMenu.shadowRoot!.querySelector<HTMLElement>(".menu")!).overflow)
       .toBe("hidden")
     expect(quickShareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
-      .toBe("https://webwriter.app/share/placeholder")
-    const qrGenerator = quickShareMenu.querySelector<HTMLElement>("webwriter-qr-code")!
-    expect(getComputedStyle(qrGenerator).display).toBe("none")
-    expect(quickShareMenu.querySelectorAll("img.sharing-dropdown-qr-code")).toHaveLength(1)
-    const sharingDropdown = quickShareMenu.querySelector<HTMLElement>(".sharing-dropdown")!
-    const documentActions = sharingDropdown.querySelector<HTMLElement>(".sharing-document-actions")!
-    expect(sharingDropdown.firstElementChild).toBe(documentActions)
-    expect(getComputedStyle(documentActions).display).toBe("flex")
-    expect(Array.from(documentActions.querySelectorAll<RibbonButton>("ribbon-button"), button => button.label))
-      .toEqual(["Print", "Download"])
-    const qrGroup = sharingDropdown.querySelector<HTMLElement>(".sharing-qr-group")!
-    expect(getComputedStyle(qrGroup).borderTopWidth).toBe("1px")
-    expect(qrGroup.querySelector("img.sharing-dropdown-qr-code")).not.toBeNull()
-    expect(Array.from(qrGroup.querySelectorAll("button"), button => button.getAttribute("aria-label")))
-      .toEqual(["Copy QR code", "Download QR code"])
-    expect(Array.from(qrGroup.querySelectorAll("button span"), label => label.textContent))
-      .toEqual(["Copy QR code", "Download QR code"])
-    const linkRow = quickShareMenu.querySelector<HTMLElement>(".sharing-link-input-row")!
-    const linkCopy = quickShareMenu.querySelector<HTMLElement>(".sharing-link-copy")!
-    expect(getComputedStyle(linkRow).display).toBe("block")
-    expect(getComputedStyle(linkRow).width).toBe("100%")
-    expect(getComputedStyle(linkCopy).position).toBe("absolute")
-    expect(getComputedStyle(linkCopy).right).toBe("4.48px")
-    expect(getComputedStyle(linkCopy).width).toBe("18.4px")
-    expect(getComputedStyle(linkCopy).height).toBe("18.4px")
-    expect(getComputedStyle(linkCopy).backgroundColor).toBe("rgba(255, 255, 255, 0.5)")
+      .toBe("https://webwriter.app/shared/lesson-token")
+    const inviteButton = quickShareMenu.querySelector<HTMLButtonElement>('button[role="switch"][aria-label="Invite to edit or review"]')!
+    expect(inviteButton.getAttribute("aria-checked")).toBe("true")
+    const inviteSwitch = inviteButton.querySelector<HTMLElement>(".sharing-switch")!
+    expect(inviteSwitch.hasAttribute("data-checked")).toBe(true)
+    expect(getComputedStyle(inviteSwitch).width).toBe("44px")
+    expect(getComputedStyle(inviteSwitch).height).toBe("24px")
+    const inviteLabel = inviteButton.querySelector("strong")!
+    expect(inviteLabel.textContent).toBe("Invite to edit or review")
+    expect(getComputedStyle(inviteLabel).fontWeight).toBe("700")
+    expect(getComputedStyle(inviteLabel).textAlign).toBe("left")
+    expect(getComputedStyle(inviteButton).flexDirection).toBe("row")
+    expect(getComputedStyle(inviteButton).backgroundColor).toBe("#eef5ff")
+    expect(inviteButton.querySelectorAll("button, input")).toHaveLength(0)
+    expect(inviteButton.querySelector("svg")?.classList.contains("icon-tabler-user-edit")).toBe(true)
+    expect(getComputedStyle(inviteButton).fontSize).toBe(getComputedStyle(inviteLabel).fontSize)
+    expect(parseFloat(getComputedStyle(inviteButton.querySelector("svg")!).width)).toBeCloseTo(parseFloat(getComputedStyle(inviteLabel).fontSize) * 1.2)
+    expect(parseFloat(getComputedStyle(inviteButton.querySelector("svg")!).height)).toBeCloseTo(parseFloat(getComputedStyle(inviteLabel).fontSize) * 1.2)
+    const invitations = vi.fn()
+    ribbon.addEventListener("link-sharing-change", invitations)
+    inviteLabel.click()
+    expect(invitations).toHaveBeenCalledOnce()
+    expect(invitations.mock.calls[0][0].detail.enabled).toBe(false)
+    expect(quickShareMenu.querySelectorAll("webwriter-qr-code, img.sharing-dropdown-qr-code")).toHaveLength(0)
+    expect(quickShareMenu.querySelectorAll('ribbon-button[label="Print"], ribbon-button[label="Download"]')).toHaveLength(0)
+    const collaborators = Array.from(quickShareMenu.querySelectorAll<HTMLElement>(".collaboration-authors li"))
+    expect(collaborators).toHaveLength(3)
+    expect(collaborators[0].querySelector(".author-status")?.textContent).toBe("Connected")
+    expect(collaborators[0].querySelector(".author-change")?.textContent).toContain("Last change:")
+    expect(collaborators[1].querySelector(".author-change")?.textContent).toBe("No changes yet")
+    const presence = quickButtons[1].querySelector<HTMLElement>(".presence-users")!
+    expect(presence.getAttribute("aria-label")).toBe("Active collaborators")
+    expect(Array.from(presence.querySelectorAll(".presence-user"), user => user.textContent)).toEqual(["AL", "LC"])
+    expect(getComputedStyle(presence.querySelectorAll<HTMLElement>(".presence-user")[1]!).marginLeft).toBe("-14.4px")
 
     quickButtons[1].closeSubmenu()
     await quickButtons[1].updateComplete
@@ -174,27 +191,19 @@ describe("mark ribbon controls", () => {
     expect(fileTab.active).toBe(true)
   })
 
-  it("allows native QR image dragging while preserving pointer handling for ribbon buttons", async () => {
+  it("shows at most two strongly overlapping collaborator initials in the top action", async () => {
     const {ribbon} = await mountRibbon()
-    const share = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
-    const button = share.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
-    button.click()
-    await share.updateComplete
-    const menu = share.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
-    await menu.updateComplete
-    const image = menu.querySelector<HTMLImageElement>(".sharing-dropdown-qr-code")!
-    expect(image.getAttribute("draggable")).toBe("true")
-
-    for(const type of ["pointerdown", "mousedown"]) {
-      const imageEvent = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, button: 0})
-      image.dispatchEvent(imageEvent)
-      expect(imageEvent.defaultPrevented).toBe(false)
-      expect(menu.hidden).toBe(false)
-
-      const buttonEvent = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, button: 0})
-      button.dispatchEvent(buttonEvent)
-      expect(buttonEvent.defaultPrevented).toBe(true)
-    }
+    ribbon.presenceUsers = [
+      {clientId: 1, name: "Ada Lovelace", initials: "AL", color: "#123456"},
+      {clientId: 2, name: "Lin Chen", initials: "LC", color: "#654321"},
+      {clientId: 3, name: "Sam Taylor", initials: "ST", color: "#abcdef"},
+    ]
+    await ribbon.updateComplete
+    const action = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
+    await action.updateComplete
+    expect(action.label).toBe("Collaboration")
+    expect(Array.from(action.querySelectorAll(".presence-user"), user => user.textContent)).toEqual(["AL", "LC"])
+    expect(getComputedStyle(action.querySelectorAll<HTMLElement>(".presence-user")[1]!).marginLeft).toBe("-14.4px")
   })
 
   it("closes the other menu when opening File or Share without pointer events", async () => {
@@ -269,7 +278,7 @@ describe("mark ribbon controls", () => {
     await fileMenu.updateComplete
     expect(fileMenu.groups.map(group => group.label)).toEqual(["File", "Editing", "Settings"])
     expect(fileMenu.groups[0]!.buttons.map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["New", "Open", "Save", "Save as"])
+      .toEqual(["New", "Open", "Save", "Save as", "Print"])
 
     ribbon.previewActive = true
     await ribbon.updateComplete
@@ -499,7 +508,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["File", "Sharing"])
+      .toEqual(["File"])
 
     const fileDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="File"]')!
     const fileNameInput = fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')!
@@ -523,7 +532,7 @@ describe("mark ribbon controls", () => {
       .toContain("icon-tabler-cloud")
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(fileButtons.map(button => button.label))
-      .toEqual(["New", "Open", "Save", "Save as"])
+      .toEqual(["New", "Open", "Save", "Save as", "Print"])
     expect(fileButtons.every(button => getComputedStyle(
       button.shadowRoot!.querySelector<HTMLElement>(".button-row")!,
     ).boxSizing === "border-box")).toBe(true)
@@ -546,62 +555,12 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(fileDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
       .toBe("repeat(4, minmax(0, 1fr))")
 
-    const sharingDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Sharing"]')!
-    const sharingButtons = Array.from(sharingDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
-    expect(sharingButtons.map(button => button.label)).toEqual(["Share", "Print", "Download"])
-    expect(sharingButtons.every(button => getComputedStyle(
-      button.shadowRoot!.querySelector<HTMLElement>(".button-row")!,
-    ).boxSizing === "border-box")).toBe(true)
-    expect(getComputedStyle(sharingDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
-      .toBe("minmax(5rem, 1.15fr) minmax(0, 1fr)")
-    const shareButton = sharingButtons[0]
-    expect(shareButton.variant).toBe("qr")
-    expect(shareButton.qrValue).toBe("https://webwriter.app/share/placeholder")
-    expect(getComputedStyle(shareButton).gridColumn).toBe("span 1")
-    expect(getComputedStyle(shareButton).gridRow).toBe("span 2")
-    await shareButton.updateComplete
-    expect(shareButton.shadowRoot!.querySelector(".submenu-trigger")).not.toBeNull()
-    const qrCode = shareButton.shadowRoot!.querySelector("webwriter-qr-code")!
-    await (qrCode as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
-    expect(qrCode.shadowRoot!.querySelector(".code svg")).not.toBeNull()
-    const exportCanvas = qrCode.shadowRoot!.querySelector<HTMLCanvasElement>(".export-code canvas")
-    if(exportCanvas) {
-      expect(exportCanvas.width).toBe(512)
-      expect(exportCanvas.height).toBe(512)
-    }
-
-    shareButton.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await shareButton.updateComplete
-    const shareMenu = shareButton.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
-    await shareMenu.updateComplete
-    expect(shareMenu.noScroll).toBe(true)
-    const shareDocumentActions = Array.from(shareMenu.querySelectorAll<RibbonButton>("ribbon-button"))
-    expect(shareDocumentActions.map(button => button.label)).toEqual(["Print", "Download"])
-    expect(shareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
-      .toBe("https://webwriter.app/share/placeholder")
-    expect(Array.from(shareMenu.querySelectorAll("button")).map(button => button.getAttribute("aria-label")))
-      .toEqual(["Copy link", "Copy QR code", "Download QR code"])
-    expect(shareMenu.querySelector("img.sharing-dropdown-qr-code")).not.toBeNull()
-
-    const toDataURL = vi.spyOn(
-      qrCode as unknown as {toDataURL: () => string | null},
-      "toDataURL",
-    ).mockReturnValue("data:image/png;base64,qr")
-    const clipboardWrite = vi.spyOn(navigator.clipboard, "write").mockResolvedValue()
-    shareButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
-    await new Promise(resolve => setTimeout(resolve))
-    expect(clipboardWrite).toHaveBeenCalledOnce()
-    const clipboardItem = clipboardWrite.mock.calls[0]![0][0]
-    expect(clipboardItem.types).toEqual(expect.arrayContaining(["text/html", "text/plain"]))
-    expect(await (await clipboardItem.getType("text/plain")).text())
-      .toBe("https://webwriter.app/share/placeholder")
-    expect(await (await clipboardItem.getType("text/html")).text()).toContain("<img")
-    await shareButton.updateComplete
-    const notification = shareButton.shadowRoot!.querySelector<HTMLElement>(".button-notification")!
-    expect(notification.textContent?.trim()).toBe("Copied QR code and link")
-    expect(notification.getAttribute("role")).toBe("status")
-    expect(notification.classList.contains("visible")).toBe(true)
-    toDataURL.mockRestore()
+    const fileMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("#ribbon-file-menu")!
+    await fileMenu.updateComplete
+    const fileMenuLabels = fileMenu.groups.flatMap(group => group.buttons)
+      .map(button => typeof button === "string" ? button : button.label)
+    expect(fileMenuLabels[fileMenuLabels.indexOf("Download") + 1]).toBe("Print")
+    expect(fileMenuLabels.filter(label => label === "Print")).toHaveLength(1)
   })
 
   it("keeps the marks drawer fixed with grouped controls on the right", async () => {
@@ -1169,4 +1128,113 @@ it("keeps SVG text links available and shows style state while disabling More", 
   expect(drawer.querySelector<RibbonButton>(".mark-span")!.disabled).toBe(false)
   expect(drawer.querySelector<RibbonButton>('[action="mark:b"]')!.active).toBe(true)
   expect(drawer.querySelector<RibbonButton>(".mark-remove")!.disabled).toBe(false)
+})
+
+it("opens preview from the reader-sharing hint at the bottom of the collaboration menu", async () => {
+  const {ribbon} = await mountRibbon()
+  const action = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
+  await action.updateComplete
+  const commands = vi.fn()
+  ribbon.addEventListener("ribbon-button-click", commands)
+  action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+  await action.updateComplete
+  const menu = action.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+  await menu.updateComplete
+  const hint = menu.querySelector<HTMLElement>(".sharing-reader-hint")!
+  expect(hint.querySelector("span")?.textContent).toBe("Share with readers")
+  expect(hint.parentElement?.lastElementChild).toBe(hint)
+  expect(getComputedStyle(hint).borderTopWidth).toBe("1px")
+  expect(getComputedStyle(hint).paddingTop).toBe("12px")
+  expect(getComputedStyle(hint).fontSize).toBe("10.4px")
+  expect(getComputedStyle(hint).color).toBe("#6b7280")
+  const play = hint.querySelector<HTMLButtonElement>("button")!
+  expect(play.querySelector("svg")).not.toBeNull()
+  expect(play.querySelector("span")?.textContent).toBe("Share with readers")
+  expect(hint.children).toHaveLength(1)
+  expect(getComputedStyle(play).width).toBe("auto")
+  expect(getComputedStyle(play).flexDirection).toBe("row")
+  expect(getComputedStyle(play).whiteSpace).toBe("nowrap")
+  expect(getComputedStyle(play).gap).toBe("0.7rem")
+  expect(getComputedStyle(play).fontSize).toBe("10.4px")
+  expect(getComputedStyle(play).height).toBe("19.2px")
+  expect(getComputedStyle(play.querySelector<HTMLElement>(".sharing-preview-icon")!).width).toBe("12.8px")
+  expect(getComputedStyle(play).color).toBe("#6b7280")
+  expect(getComputedStyle(hint).justifyContent).toBe("flex-end")
+  expect(getComputedStyle(hint).textAlign).toBe("right")
+  play.querySelector<HTMLElement>("span")!.click()
+  expect(commands).toHaveBeenCalledOnce()
+  expect(commands.mock.calls[0][0].detail.label).toBe("Preview")
+  await action.updateComplete
+  expect(menu.hidden).toBe(true)
+
+  ribbon.previewActive = true
+  await ribbon.updateComplete
+  await action.updateComplete
+  action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+  await action.updateComplete
+  menu.querySelector<HTMLButtonElement>(".sharing-preview-button")!.click()
+  expect(commands).toHaveBeenCalledOnce()
+  await action.updateComplete
+  expect(menu.hidden).toBe(true)
+})
+
+it("shows the empty-author hint regardless of invitations and the editing link only while enabled", async () => {
+  const {ribbon} = await mountRibbon()
+  ribbon.collaborationLink = "https://webwriter.app/edit/lesson"
+  ribbon.collaborationStatus = "disconnected"
+  await ribbon.updateComplete
+  const action = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
+  await action.updateComplete
+  action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+  await action.updateComplete
+  const menu = action.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+  await menu.updateComplete
+  expect(menu.querySelector(".collaboration-status")).toBeNull()
+  expect(menu.textContent).not.toContain("Disconnected")
+  expect(menu.textContent).toContain("No other authors connected")
+  expect(menu.querySelector(".sharing-link-input")).toBeNull()
+  const emptyHint = menu.querySelector<HTMLElement>(".collaboration-empty")!
+  expect(getComputedStyle(emptyHint).color).toBe("#6b7280")
+  expect(getComputedStyle(emptyHint).textAlign).toBe("center")
+
+  ribbon.linkSharingEnabled = true
+  await ribbon.updateComplete
+  await action.updateComplete
+  const input = menu.querySelector<HTMLInputElement>(".sharing-link-input")!
+  expect(input.value).toBe(ribbon.collaborationLink)
+  expect(input.readOnly).toBe(true)
+  expect(getComputedStyle(input).borderTopWidth).toBe("1px")
+  expect(menu.querySelector(".sharing-toggle")?.nextElementSibling).toBe(input.closest(".sharing-link-field"))
+  expect(input.nextElementSibling?.getAttribute("aria-label")).toBe("Copy link")
+  expect(menu.textContent).toContain("No other authors connected")
+  expect(menu.textContent).not.toContain("Disconnected")
+
+  ribbon.linkSharingEnabled = false
+  await ribbon.updateComplete
+  await action.updateComplete
+  expect(menu.querySelector(".sharing-link-input")).toBeNull()
+  expect(menu.textContent).toContain("No other authors connected")
+})
+
+it("restores Download and Print in the preview ribbon with their existing actions", async () => {
+  const {ribbon} = await mountRibbon()
+  ribbon.previewActive = true
+  await ribbon.updateComplete
+  const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Sharing"]')!
+  await drawer.updateComplete
+  const buttons = Array.from(drawer.querySelectorAll<RibbonButton>("ribbon-button"))
+  await Promise.all(buttons.map(button => button.updateComplete))
+  expect(buttons.map(button => button.label)).toEqual(["Download", "Print"])
+  expect(buttons[0].submenu).toEqual([
+    {label: "HTML (.html)", action: "download:html", icon: "HTML"},
+    {label: "Offline HTML (.offline.html)", action: "download:offline", icon: "OfflineHTML"},
+  ])
+  const commands = vi.fn()
+  ribbon.addEventListener("ribbon-button-click", commands)
+  buttons[0].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+  buttons[1].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+  expect(commands.mock.calls.map(([event]) => event.detail.label)).toEqual(["Download", "Print"])
+  ribbon.previewActive = false
+  await ribbon.updateComplete
+  expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"]')).toBeNull()
 })

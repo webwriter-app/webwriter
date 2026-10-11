@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "character deletion preserves adjacent spaces",
   "Elements pullout reserves matching padding after its opening animation",
   "Board columns and cards retain native editing and standalone layout",
   "tiny images open media inputs in a speech bubble",

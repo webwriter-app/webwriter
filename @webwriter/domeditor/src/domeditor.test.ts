@@ -1185,3 +1185,14 @@ describe("independent disclosure elements", () => {
     finally {editor.destroy()}
   })
 })
+
+it("passes a shared editing capability to the document WebSocket", () => {
+  document.body.innerHTML = "<p>Shared content</p>"
+  const editor = new DOMEditor({syncUrl: "ws://localhost:1234?session=document-saved&share=editing-token"})
+  try {
+    expect(editor.doc.sessionId).toBe("document-saved")
+    expect(new URL(editor.doc.provider!.url).searchParams.get("share")).toBe("editing-token")
+    expect(new URL(editor.doc.provider!.url).searchParams.has("session")).toBe(false)
+  }
+  finally {editor.destroy(); document.body.replaceChildren()}
+})

@@ -2223,6 +2223,49 @@ describe("Tab paragraph behavior", () => {
   })
 })
 describe("delete()", () => {
+  it.each(["hello w", "hello <b>w</b>", "hello <!--keep--><b data-authored='keep'><i>w</i></b>"])("preserves the trailing space when deleting the last letter in %s", html => {
+    document.body.innerHTML = `<p>${html}</p>`
+    const paragraph = document.querySelector("p")!
+    const text = paragraph.querySelector("i, b")?.lastChild ?? paragraph.firstChild!
+    const target = text instanceof Text ? text : text.firstChild!
+    $.selectRange(target, target.textContent!.length - 1, target, target.textContent!.length)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    editor.features.manipulation.delete("backward")
+
+    expect(paragraph.textContent).toBe("hello\u00a0")
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    if(html.includes("<!--")) {
+      expect(paragraph.innerHTML).toContain("<!--keep-->")
+      expect(paragraph.querySelector("b")!.getAttribute("data-authored")).toBe("keep")
+    }
+    editor.doc.syncFromDOM()
+    const deleted = editor.toHTML(true)
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("hello\u00a0")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(deleted)
+  })
+
+  it.each(["pre", "pre-wrap", "break-spaces"])("preserves ordinary spaces under white-space: %s", whiteSpace => {
+    document.body.innerHTML = `<p style="white-space: ${whiteSpace}">hello w</p>`
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 6, text, 7)
+    editor.features.manipulation.delete("backward")
+    expect(document.querySelector("p")!.textContent).toBe("hello ")
+  })
+
+  it.each([" world", "<opaque-widget></opaque-widget>", "<br>"])("leaves spaces before following content unchanged: %s", following => {
+    document.body.innerHTML = `<p>hello w${following}</p>`
+    const paragraph = document.querySelector("p")!, text = paragraph.firstChild!
+    $.selectRange(text, 6, text, 7)
+    editor.features.manipulation.delete("backward")
+    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe(`hello ${following}`)
+  })
+
   describe.each(["backward", "forward"] as const)("selecting an adjacent widget on %s deletion", direction => {
     it.each(["gap", "inline", "block"])("selects before deleting from a %s caret", shape => {
       const widget = document.createElement("opaque-widget")

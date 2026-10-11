@@ -26,8 +26,6 @@ export const storageLocations = [
 ] as const
 export type StorageLocation = typeof storageLocations[number]["value"]
 
-export const placeholderSharingLink = "https://webwriter.app/share/placeholder"
-
 type InsertionSection = "Text" | "Lists" | "Media"
 
 const groupedGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
@@ -195,9 +193,9 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
         "Open",
         {label: "Save", submenu: fileFormatButtons("save")},
         {label: "Save as", submenu: fileFormatButtons("save-as")},
+        "Print",
       ],
     },
-    {label: "Sharing", buttons: ["Share", "Print", {label: "Download", submenu: fileFormatButtons("download")}]},
   ],
   Start: [
     {label: "Marks", buttons: []},

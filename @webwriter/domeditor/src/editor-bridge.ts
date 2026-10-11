@@ -514,10 +514,13 @@ export type PresenceUser = {
   name: string
   initials: string
   color: string
+  lastChange?: number
+  connectionStatus?: "connected" | "disconnected"
 }
 
 export type PresenceChangeDetail = {
   users: PresenceUser[]
+  connectionStatus?: "connected" | "connecting" | "disconnected"
 }
 
 export type PresenceChangeMessage = {
@@ -936,6 +939,7 @@ export function isPresenceChangeMessage(value: unknown): value is PresenceChange
   const message = value as Partial<PresenceChangeMessage>
   if(message.type !== presenceChangeEvent || !message.detail || typeof message.detail !== "object") return false
   if(!Array.isArray(message.detail.users)) return false
+  if(message.detail.connectionStatus !== undefined && !["connected", "connecting", "disconnected"].includes(message.detail.connectionStatus)) return false
   return message.detail.users.every(user => {
     if(!user || typeof user !== "object") return false
     const presenceUser = user as Partial<PresenceUser>
@@ -943,6 +947,8 @@ export function isPresenceChangeMessage(value: unknown): value is PresenceChange
       && typeof presenceUser.name === "string"
       && typeof presenceUser.initials === "string"
       && typeof presenceUser.color === "string"
+      && (presenceUser.lastChange === undefined || Number.isFinite(presenceUser.lastChange))
+      && (presenceUser.connectionStatus === undefined || presenceUser.connectionStatus === "connected" || presenceUser.connectionStatus === "disconnected")
   })
 }
 

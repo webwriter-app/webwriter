@@ -72,7 +72,7 @@ describe("collapsed ribbon file menu", () => {
   it("shows editing menus only while collapsed and outside preview", async () => {
     const {ribbon, menu} = await mount()
     expect(menu.groups.flatMap(group => group.buttons).map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["New", "Open", "Save", "Save as", "Format", "Insert", "Packages", "Hide breadcrumb", "Developer console", "Settings"])
+      .toEqual(["New", "Open", "Save", "Save as", "Print", "Format", "Insert", "Packages", "Developer console", "Settings"])
     ribbon.expanded = true
     await ribbon.updateComplete
     await menu.updateComplete
@@ -88,6 +88,19 @@ describe("collapsed ribbon file menu", () => {
     await ribbon.updateComplete
     await menu.updateComplete
     expect(menu.shadowRoot!.querySelector('[title="Developer console"]')).not.toBeNull()
+  })
+
+  it("places Print immediately after Download in the File menu", async () => {
+    const {ribbon, menu} = await mount()
+    ribbon.settings = {...ribbon.settings, activeCloudServiceId: "test-server"}
+    await ribbon.updateComplete
+    await menu.updateComplete
+    const labels = menu.groups.flatMap(group => group.buttons)
+      .map(button => typeof button === "string" ? button : button.label)
+    expect(labels[labels.indexOf("Download") + 1]).toBe("Print")
+    expect(menu.groups[0].buttons.at(-1)).toBe("Print")
+    expect(labels.filter(label => label === "Print")).toHaveLength(1)
+    expect(menu.groups.some(group => group.label === "Sharing")).toBe(false)
   })
 
   it("flattens marks into three sections and dispatches existing commands", async () => {

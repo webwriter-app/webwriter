@@ -28,6 +28,8 @@ import hyphen from "@tabler/icons/outline/minus.svg?raw"
 import signRight from "@tabler/icons/outline/sign-right.svg?raw"
 import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
+import userShare from "./assets/user-share.svg?raw"
+import userEdit from "@tabler/icons/outline/user-edit.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
@@ -311,6 +313,8 @@ const icons: Record<string, string> = {
   Print: printer,
   QR: qrcode,
   Share: share,
+  UserShare: userShare,
+  UserEdit: userEdit,
   Paste: clipboard,
   Cut: scissors,
   Copy: copy,

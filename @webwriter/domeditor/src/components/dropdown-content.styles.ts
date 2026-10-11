@@ -229,3 +229,52 @@ export const dropdownContentStyles = css`
     }
 
 `
+
+/** Shared switch appearance, sized by each control through custom properties. */
+export const switchInputStyles = css`
+    .live-session-switch input, .sharing-toggle .sharing-switch {
+      appearance: none;
+      position: relative;
+      box-sizing: border-box;
+      flex-shrink: 0;
+      margin: 0;
+      width: var(--switch-width, 1.9rem);
+      height: var(--switch-height, 1.05rem);
+      border: 1px solid #9aa9b8;
+      border-radius: 999px;
+      background: #d8dee6;
+      cursor: pointer;
+    }
+
+    .live-session-switch input::after, .sharing-toggle .sharing-switch::after {
+      position: absolute;
+      top: 0.12rem;
+      left: 0.12rem;
+      width: var(--switch-knob-size, 0.69rem);
+      height: var(--switch-knob-size, 0.69rem);
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
+      content: "";
+      transition: var(--ww-ui-transition, transform 120ms ease);
+    }
+
+    .live-session-switch input:checked, .sharing-toggle .sharing-switch[data-checked] {
+      border-color: #3977c7;
+      background: #3977c7;
+    }
+
+    .live-session-switch input:checked::after, .sharing-toggle .sharing-switch[data-checked]::after {
+      transform: translateX(var(--switch-travel, 0.83rem));
+    }
+
+    .live-session-switch input:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 2px;
+    }
+
+    .live-session-switch input:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+`

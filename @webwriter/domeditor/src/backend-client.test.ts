@@ -202,3 +202,14 @@ describe("authenticated cloud services", () => {
     expect(fetch).toHaveBeenCalledOnce()
   })
 })
+
+it("manages editing-link sharing through the server", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(response({sharing: {enabled: false}}))
+    .mockResolvedValueOnce(response({sharing: {enabled: true, token: "link-token"}}))
+    .mockResolvedValueOnce(response({document: {id: "saved", content: "<p>Shared</p>"}}))
+  const client = new BackendClient(session, fetch)
+  await expect(client.getDocumentSharing("saved")).resolves.toEqual({enabled: false})
+  await expect(client.setDocumentSharing("saved", true)).resolves.toEqual({enabled: true, token: "link-token"})
+  expect(fetch.mock.calls[1]).toEqual(["http://localhost:1234/api/documents/saved/sharing", expect.objectContaining({method: "PUT", body: JSON.stringify({enabled: true})})])
+  await expect(client.getSharedDocument("link-token")).resolves.toEqual({id: "saved", content: "<p>Shared</p>"})
+})

@@ -167,6 +167,7 @@ import {
 } from "../graphic"
 import {
   BackendClient,
+  connectSharingBackend,
   probeDevelopmentBackend,
   connectCloudService,
   discoverHostBackend,
@@ -327,6 +328,11 @@ export class DomEditor extends LitElement {
     commentState: {attribute: false, state: true},
     proofreadingState: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
+    collaborationLink: {state: true},
+    linkSharingEnabled: {state: true},
+    linkSharingBusy: {state: true},
+    collaborationStatus: {state: true},
+    collaborationError: {state: true},
     packages: {attribute: false, state: true},
     installedPackages: {attribute: false, state: true},
     packagesLoading: {attribute: false, state: true},
@@ -512,6 +518,14 @@ export class DomEditor extends LitElement {
   private htmlSourceHighlightActive = false
   private htmlSourceRefreshQueued = false
   private presenceUsers: PresenceUser[] = []
+  private collaborationLink = ""
+  private linkSharingEnabled = false
+  private linkSharingBusy = false
+  private collaborationStatus = "disconnected"
+  private collaborationError = ""
+  private collaborationRoom: string | null = null
+  private sharedDocumentToken: string | null = null
+  private sharingRequestRevision = 0
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
   private packageImportMap: IImportMap | null = null
@@ -1095,6 +1109,8 @@ export class DomEditor extends LitElement {
       if(key === liveSessionTokenParameter || key === liveSessionParameter || key === "role" || key === "open") return
       syncUrl.searchParams.set(key, value)
     })
+    if(this.collaborationRoom) syncUrl.searchParams.set("session", this.collaborationRoom)
+    if(this.sharedDocumentToken) syncUrl.searchParams.set("share", this.sharedDocumentToken)
     return syncUrl.href
   }
 
@@ -1495,6 +1511,7 @@ export class DomEditor extends LitElement {
     if(linkedBase && service && this.settings.activeCloudServiceId !== service.id) {
       this.settings = {...this.settings, activeCloudServiceId: service.id, cloudServicesConfigured: true}
       this.backendDocumentId = null
+      this.clearDocumentCollaboration()
       persistAppSettings(this.settings)
     }
     const discovery = service && discoverAdditional ? this.discoverAdditionalCloudServices(
@@ -2769,7 +2786,10 @@ export class DomEditor extends LitElement {
     if(previous.activeCloudServiceId !== settings.activeCloudServiceId
       || JSON.stringify(connection(active(previous))) !== JSON.stringify(connection(active(settings)))) {
       if(previous.activeCloudServiceId !== settings.activeCloudServiceId
-        || active(previous)?.username !== active(settings)?.username || active(previous)?.url !== active(settings)?.url) this.backendDocumentId = null
+        || active(previous)?.username !== active(settings)?.username || active(previous)?.url !== active(settings)?.url) {
+        this.backendDocumentId = null
+        this.clearDocumentCollaboration()
+      }
       this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
       this.documentDialogClient = null
       this.savedDocuments = []
@@ -3045,6 +3065,7 @@ export class DomEditor extends LitElement {
   }
 
   private updateBackendDocumentURL(id: string, client: BackendClient) {
+    if(this.sharedDocumentToken) return
     const apiBaseUrl = client.apiBaseUrl ?? this.backendSession?.apiBaseUrl
     if(apiBaseUrl) this.updateDocumentURL(`${apiBaseUrl.replace(/\/$/, "")}/documents/${encodeURIComponent(id)}`)
   }
@@ -3055,6 +3076,31 @@ export class DomEditor extends LitElement {
     this.linkedDocumentLoading = true
     try {
       const reference = parseDocumentOpenReference(value)
+      if(reference?.kind === "shared") {
+        const client = await connectSharingBackend(reference.apiBaseUrl)
+        const token = reference.token
+        const revision = this.documentChangeSequence
+        const document = await client.getSharedDocument(token)
+        await startupReady
+        if(!this.isConnected || this.liveSessionActive || !currentLink()) return
+        if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening the editing link. Open the link again.")
+        this.backendClient = client
+        this.backendSession = client.session
+        this.backendState = "connected"
+        this.collaborationRoom = `document-${document.id}`
+        this.sharedDocumentToken = token
+        await this.reloadDocument(document.content)
+        this.backendDocumentId = document.id
+        this.fileHandle = null
+        this.storageLocation = "development-server"
+        this.fileName = this.baseFileName(document.title)
+        this.fileFormat = document.format
+        this.fileDirty = false
+        this.linkSharingEnabled = true
+        this.collaborationLink = location.href
+        this.previewActive = false
+        return
+      }
       if(!reference) throw new Error("The document link is invalid.")
       if(!this.isConnected || this.liveSessionActive || !currentLink()) return
       const beforeLoad = async () => {
@@ -3117,6 +3163,7 @@ export class DomEditor extends LitElement {
         void this.refreshRecentDocuments()
         if(this.backendDocumentId === summary.id) {
           this.backendDocumentId = null
+          this.clearDocumentCollaboration()
           this.updateDocumentURL(null)
           this.fileDirty = true
         }
@@ -3164,6 +3211,7 @@ export class DomEditor extends LitElement {
       this.fileHandle = null
       this.downloadedFileName = null
       this.backendDocumentId = null
+      this.clearDocumentCollaboration()
       this.fileName = ""
       this.fileFormat = "html"
       await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeHTMLAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true)
@@ -3204,6 +3252,7 @@ export class DomEditor extends LitElement {
       const source = await file.text()
       if(beforeLoad && !await beforeLoad()) return
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
+      this.clearDocumentCollaboration()
       await this.reloadDocument(source)
       this.backendDocumentId = null
       this.fileHandle = handle
@@ -3299,6 +3348,7 @@ export class DomEditor extends LitElement {
       this.downloadedFileName = name
       if(!localCopy) {
         this.backendDocumentId = null
+        this.clearDocumentCollaboration()
         this.fileName = this.baseFileName(name)
         this.fileFormat = selectedFormat
         this.fileDirty = revision !== this.documentChangeSequence
@@ -3324,6 +3374,10 @@ export class DomEditor extends LitElement {
       if(beforeLoad && !await beforeLoad()) return
       if(this.backendClient !== client) throw new Error("The document storage connection changed while opening the file.")
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
+      this.collaborationLink = ""
+      this.linkSharingEnabled = false
+      this.collaborationRoom = `document-${document.id}`
+      this.sharedDocumentToken = null
       await this.reloadDocument(document.content)
       this.backendDocumentId = document.id
       this.fileHandle = null
@@ -3335,6 +3389,7 @@ export class DomEditor extends LitElement {
       if(session) await this.rememberOpenedDocument({id: crypto.randomUUID(), title: document.title, openedAt: Date.now(),
         kind: "backend", documentId: document.id, apiBaseUrl: session.apiBaseUrl, userId: session.user.id})
       this.updateBackendDocumentURL(document.id, client)
+      void this.refreshDocumentSharing()
       this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
       this.focusEditor()
     }
@@ -3379,6 +3434,11 @@ export class DomEditor extends LitElement {
         this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
       }
       if(this.backendClient !== client) throw new Error("The cloud service changed while saving the document.")
+      if(this.backendDocumentId !== document.id) {
+        this.sharedDocumentToken = null
+        this.collaborationLink = ""
+        this.linkSharingEnabled = false
+      }
       this.backendDocumentId = document.id
       this.storageLocation = "development-server"
       this.fileName = this.baseFileName(document.title)
@@ -3387,11 +3447,90 @@ export class DomEditor extends LitElement {
       const {id, title: savedTitle, format, createdAt, updatedAt} = document
       this.savedDocuments = [{id, title: savedTitle, format, createdAt, updatedAt}, ...this.savedDocuments.filter(summary => summary.id !== id)]
       this.updateBackendDocumentURL(id, client)
+      if(this.collaborationRoom && this.collaborationRoom !== `document-${id}`) {
+        const previousRoom = this.collaborationRoom
+        this.collaborationRoom = `document-${id}`
+        try { await this.reloadEditor(this.installedPackages) }
+        catch(error) {this.collaborationRoom = previousRoom; throw error}
+      }
+      if(!this.linkSharingBusy) void this.refreshDocumentSharing()
       return true
     }
     catch(error) {
       this.reportFileError(error)
     }
+  }
+
+  private clearDocumentCollaboration() {
+    this.sharingRequestRevision++
+    this.collaborationRoom = null
+    this.sharedDocumentToken = null
+    this.collaborationLink = ""
+    this.linkSharingEnabled = false
+    this.collaborationError = ""
+    this.collaborationStatus = "disconnected"
+    this.presenceUsers = []
+  }
+
+  private async refreshDocumentSharing() {
+    const revision = ++this.sharingRequestRevision
+    const client = this.backendClient
+    const id = this.backendDocumentId
+    this.collaborationError = ""
+    if(!client || !id || this.sharedDocumentToken) {
+      this.linkSharingEnabled = Boolean(this.sharedDocumentToken)
+      this.collaborationLink = this.sharedDocumentToken ? location.href : ""
+      return
+    }
+    try {
+      if(typeof client.getDocumentSharing !== "function") return
+      const sharing = await client.getDocumentSharing(id)
+      if(revision !== this.sharingRequestRevision || client !== this.backendClient || id !== this.backendDocumentId) return
+      this.applyDocumentSharing(sharing, client)
+    }
+    catch(error) {
+      if(revision === this.sharingRequestRevision && client === this.backendClient && id === this.backendDocumentId) this.collaborationError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private applyDocumentSharing(sharing: {enabled: boolean, token?: string}, client: BackendClient) {
+    this.linkSharingEnabled = sharing.enabled
+    const url = new URL(location.href)
+    for(const key of ["session", "share", "role", liveSessionParameter, liveSessionTokenParameter]) url.searchParams.delete(key)
+    url.searchParams.set("open", `${client.apiBaseUrl}/shared-documents/${encodeURIComponent(sharing.token ?? "")}`)
+    this.collaborationLink = sharing.enabled && sharing.token ? url.href : ""
+  }
+
+  private handleLinkSharingChange = async (event: Event) => {
+    if(this.linkSharingBusy || this.sharedDocumentToken || this.fileOperationActive) return
+    const enabled = (event as CustomEvent<{enabled: boolean}>).detail.enabled
+    this.sharingRequestRevision++
+    this.linkSharingBusy = true
+    this.collaborationError = ""
+    try {
+      if(enabled && (!this.backendDocumentId || this.storageLocation !== "development-server")) {
+        if(!window.confirm("Link sharing requires a document saved on the server. Move this document to the server and enable sharing?")) return
+        if(!this.backendClient) throw new Error("Connect to a server in Settings before enabling link sharing.")
+        await this.runFileOperation(async () => { await this.saveBackendDocument(true, this.fileFormat) })
+        if(!this.backendDocumentId || this.storageLocation !== "development-server") throw new Error("Save the document on the server before enabling link sharing.")
+        this.fileHandle = null
+        this.downloadedFileName = null
+      }
+      const client = this.backendClient
+      const id = this.backendDocumentId
+      if(!client || !id) return
+      if(enabled && this.collaborationRoom !== `document-${id}`) {
+        const previousRoom = this.collaborationRoom
+        this.collaborationRoom = `document-${id}`
+        try { await this.reloadEditor(this.installedPackages) }
+        catch(error) {this.collaborationRoom = previousRoom; throw error}
+      }
+      if(client !== this.backendClient || id !== this.backendDocumentId) return
+      const sharing = await client.setDocumentSharing(id, enabled)
+      if(client === this.backendClient && id === this.backendDocumentId) this.applyDocumentSharing(sharing, client)
+    }
+    catch(error) { this.collaborationError = error instanceof Error ? error.message : String(error) }
+    finally { this.linkSharingBusy = false; this.requestUpdate() }
   }
 
   private printDocument() {
@@ -6394,6 +6533,7 @@ export class DomEditor extends LitElement {
     if(isPresenceChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.presenceUsers = event.data.detail.users.map(user => ({...user}))
+      this.collaborationStatus = event.data.detail.connectionStatus ?? (this.presenceUsers.length ? "connected" : "disconnected")
       return
     }
     if(isDocumentHeadStateChangeMessage(event.data)) {
@@ -6557,7 +6697,7 @@ export class DomEditor extends LitElement {
     const open = new URL(location.href).searchParams.get("open")
     const reference = open === null ? null : parseDocumentOpenReference(open)
     const openingLinkedDocument = !liveSessionId && open !== null
-    if(!liveSessionId && reference?.kind !== "backend" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
+    if(!liveSessionId && reference?.kind !== "backend" && reference?.kind !== "shared" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
     this.restoreInstalledPackages()
     const catalog = this.loadPackageCatalog()
@@ -6796,6 +6936,8 @@ export class DomEditor extends LitElement {
       "widget-option-change": this.handleWidgetOptionChange.bind(this),
       "widget-action": this.handleWidgetAction.bind(this),
       "widget-sharing-change": this.handleWidgetSharingChange,
+      "link-sharing-change": this.handleLinkSharingChange,
+      "collaboration-menu-open": () => {if(!this.linkSharingBusy) void this.refreshDocumentSharing()},
       "widget-grouping-change": this.handleWidgetGroupingChange,
       "widget-grouping-context": this.handleWidgetGroupingContext,
       "media-type-change": this.handleMediaTypeChange.bind(this),
@@ -6836,6 +6978,11 @@ export class DomEditor extends LitElement {
           logo-url=${appIconUrl}
           .breadcrumbVisible=${this.breadcrumbVisible}
           .presenceUsers=${this.presenceUsers}
+          .collaborationLink=${this.collaborationLink}
+          .linkSharingEnabled=${this.linkSharingEnabled}
+          .linkSharingBusy=${this.linkSharingBusy || Boolean(this.sharedDocumentToken)}
+          .collaborationStatus=${this.collaborationStatus}
+          .collaborationError=${this.collaborationError}
           .packages=${this.packages}
           .localPackages=${this.localPackages}
           .installedPackages=${this.installedPackages}

@@ -749,6 +749,21 @@ describe("SharedDOMDoc initialization", () => {
 })
 
 describe("DOM to Yjs synchronization", () => {
+  it("publishes lastChange only for local authored document updates", () => {
+    const {root, shared} = createShared("<p>content</p>")
+    shared.setUser({lastChange: 1})
+    const now = vi.spyOn(Date, "now").mockReturnValue(1234)
+
+    shared.syncFromDOM()
+    expect((shared.awareness.getLocalState()?.user as {lastChange?: number}).lastChange).toBe(1)
+
+    root.firstElementChild!.textContent = "edited"
+    shared.syncFromDOM()
+    expect((shared.awareness.getLocalState()?.user as {lastChange?: number}).lastChange).toBe(1234)
+
+    now.mockRestore()
+  })
+
   it("synchronizes transitions into and out of editor-only state", async () => {
     const {root, shared} = createShared("<p>content</p>")
     const paragraph = root.firstElementChild!
