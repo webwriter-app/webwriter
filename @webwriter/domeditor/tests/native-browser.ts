@@ -4512,6 +4512,41 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
   finally { window.removeEventListener("message", update); frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }
 })
 
+await check("Elements pullout reserves matching padding after its opening animation", async () => {
+  const {RibbonDrawer} = await import("../src/components/ribbon-drawer")
+  const {RibbonButton} = await import("../src/components/ribbon-button")
+  for(const compact of [false, true]) {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "elements"
+    drawer.collapsed = true
+    drawer.compact = compact
+    drawer.style.cssText = "position:fixed;left:100px;top:100px;width:84px;height:90px;--ribbon-drawer-panel-padding-block:8px"
+    for(const label of ["Paragraph", "Heading", "List", "Details", "Table", "Image", "Graphic", "Audio", "Website", "Video"]) {
+      const button = new RibbonButton()
+      button.label = label
+      button.variant = "insertion"
+      if(compact) button.slot = "compact"
+      drawer.append(button)
+    }
+    document.body.append(drawer)
+    try {
+      await drawer.updateComplete
+      drawer.openDrawer()
+      await drawer.updateComplete
+      await new Promise(resolve => setTimeout(resolve, 260))
+      await layoutFrame()
+      const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+      const primary = drawer.shadowRoot!.querySelector<HTMLElement>(".elements-primary-controls")!
+      const panel = controls.getBoundingClientRect(), content = primary.getBoundingClientRect()
+      assert(content.top - panel.top >= 8, `top padding missing (compact: ${compact})`)
+      assert(panel.bottom - content.bottom >= 8, `bottom padding clipped: ${panel.bottom - content.bottom}px (compact: ${compact})`)
+      assert(Math.abs((content.top - panel.top) - (panel.bottom - content.bottom)) <= 1, "top and bottom padding differ")
+    }
+    finally {drawer.remove()}
+  }
+})
+
+
 const failed = checks.filter(item => item.error)
 document.querySelector("#status")!.textContent = `${checks.length - failed.length} passed, ${failed.length} failed`
 document.querySelector("#report")!.textContent = JSON.stringify(checks, null, 2)

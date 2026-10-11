@@ -78,7 +78,9 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   // body need not emit focusin, and cross-origin hosts cannot observe Window.focus.
   window.addEventListener("focus", () => post({type: "editor-frame-window-focus"}))
   window.addEventListener("blur", () => post({type: "editor-frame-window-blur"}))
+  document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true})
   document.addEventListener("keydown", event => {
+    post({type: "editor-frame-interaction"})
     if(event.defaultPrevented || event.isComposing) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return

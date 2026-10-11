@@ -689,6 +689,7 @@ export class DOMEditor {
       this.postSelectionPath()
       document.addEventListener("copy", this.#onCopy)
       window.addEventListener("message", this.handleMessage)
+      window.addEventListener("resize", this.handleLayoutResize)
     }
     catch(error) {
       try {
@@ -761,6 +762,8 @@ export class DOMEditor {
     return defaultBlock
   }
 
+  private handleLayoutResize = () => this.postSelectionPath()
+
   destroy() {
     if(this.#destroyed) return
     this.#destroyed = true
@@ -779,6 +782,7 @@ export class DOMEditor {
     document.removeEventListener("selectionchange", this.handleSelectionChange)
     document.removeEventListener("copy", this.#onCopy)
     window.removeEventListener("message", this.handleMessage)
+    window.removeEventListener("resize", this.handleLayoutResize)
     this.#bodySchemaObserver?.disconnect()
     this.#bodySchemaObserver = null
     if(this.doc) attempt(() => this.doc.destroy())
@@ -1007,10 +1011,17 @@ export class DOMEditor {
       ...(anchors.has(element) ? {positionAnchor: true} : {}),
       ...(() => {
         const inline = (element as Element & {style?: CSSStyleDeclaration}).style
-        const side = floatSideFromStyles(getComputedStyle(element).float, {
+        const computed = getComputedStyle(element)
+        const side = floatSideFromStyles(computed.float, {
           getPropertyValue: name => inline?.getPropertyValue(name) ?? "",
         }, element.classList)
-        return side === "none" ? {} : {float: side}
+        return side === "none" ? {} : {float: side,
+          ...(side === "far-left" && computed.float === "right"
+            && computed.getPropertyValue("--ww-responsive-float").trim() === "right"
+            ? {floatForcedRight: true} : {}),
+          ...(side === "far-right" && computed.float === "none"
+            && computed.getPropertyValue("--ww-responsive-float").trim() === "none"
+            ? {floatRightInFlow: true} : {})}
       })(),
     })
     const sectionPathItem = (section: Element): SelectionPathSection => ({

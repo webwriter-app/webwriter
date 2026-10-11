@@ -4435,19 +4435,22 @@ describe("DomEditor.execute()", () => {
       if(action.type === "getStyleState") return {
         target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
         inline: width ? {width: {value: width, priority: ""}} : {},
-        computed: {width: "300px"}, context: {display: "block", parentDisplay: "block"},
+        computed: {width: "300px"}, context: {display: "block", parentDisplay: "block", floatLeftForcedRight: width === "120px", floatRightInFlow: width === "240px"},
       }
     })
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool(null)
     toolbox.selectTool("Edit")
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width?.value).toBe("120px"))
+    expect(toolbox.elementStyle.context.floatLeftForcedRight).toBe(true)
     width = "240px"
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [1], name: "Paragraph"}]}},
       source: editorWindow,
     }))
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width?.value).toBe("240px"))
+    expect(toolbox.elementStyle.context.floatLeftForcedRight).toBe(false)
+    expect(toolbox.elementStyle.context.floatRightInFlow).toBe(true)
     width = null
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [2], name: "Paragraph"}]}},
@@ -6153,15 +6156,42 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
   })
 
+  it("keeps ribbon drawers and navigation menus above the toolbox and its tabs", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    expect(getComputedStyle(toolbox).position).toBe("relative")
+    expect(getComputedStyle(tabs).position).toBe("relative")
+    const toolboxLayer = Number(getComputedStyle(toolbox).zIndex)
+    expect(getComputedStyle(ribbon).position).toBe("relative")
+    expect(Number(getComputedStyle(ribbon).zIndex)).toBeGreaterThan(toolboxLayer)
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[layout="elements"]')!
+    drawer.collapsed = true
+    await drawer.updateComplete
+    drawer.openDrawer()
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(Number(getComputedStyle(ribbon).zIndex)).toBeGreaterThan(toolboxLayer)
+    drawer.closeDrawer()
+    ribbon.expanded = false
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector("ribbon-menu")).not.toBeNull()
+    expect(Number(getComputedStyle(ribbon).zIndex)).toBeGreaterThan(toolboxLayer)
+  })
+
   it("renders and updates superscript float direction icons", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<p>Text</p>"
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    const sendFloat = async (float?: "far-left" | "far-right") => {
+    const sendFloat = async (float?: "far-left" | "far-right", floatForcedRight = false) => {
       window.dispatchEvent(new MessageEvent("message", {
         data: {type: selectionChangeEvent, detail: {path: [
           {path: [], name: "Document"},
-          {path: [0], name: "Paragraph", ...(float ? {float} : {})},
+          {path: [0], name: "Paragraph", ...(float ? {float} : {}), floatForcedRight},
         ]}},
         source: editorWindow,
       }))
@@ -6173,6 +6203,17 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Left float")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-float-left")).not.toBeNull()
     expect(getComputedStyle(breadcrumb.shadowRoot!.querySelector(".position-float svg")!).width).toBe("16px")
+    await sendFloat("far-left", true)
+    const info = breadcrumb.shadowRoot!.querySelector<import("./float-info").FloatInfo>("float-info")!
+    expect(info).not.toBeNull()
+    info.showBriefly()
+    await info.updateComplete
+    iframe.contentDocument!.dispatchEvent(new KeyboardEvent("keydown", {key: "a", bubbles: true}))
+    expect(info.open).toBe(false)
+    info.showBriefly()
+    await info.updateComplete
+    iframe.contentDocument!.dispatchEvent(new WheelEvent("wheel", {bubbles: true}))
+    expect(info.open).toBe(false)
     await sendFloat("far-right")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Right float")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-float-right")).not.toBeNull()

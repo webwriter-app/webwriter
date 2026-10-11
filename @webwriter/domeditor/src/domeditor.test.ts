@@ -852,6 +852,33 @@ describe("breadcrumb positioning", () => {
     })
   })
 
+  it("reports a left float forced right by the responsive lane without changing authored HTML", () => {
+    withSelection('<style>.responsive {float: right !important; --ww-responsive-float: right}</style><p id="target" class="responsive" style="float: left">Text</p>', (editor, readPath) => {
+      const target = document.getElementById("target")!
+      const before = editor.toHTML(true)
+      expect(readPath().at(-1)).toMatchObject({float: "far-left", floatForcedRight: true})
+      expect(editor.features.manipulation.getStyleState(["float"], target).context.floatLeftForcedRight).toBe(true)
+      target.classList.remove("responsive")
+      expect(readPath().at(-1)?.floatForcedRight).toBeUndefined()
+      target.classList.add("responsive")
+      expect(editor.toHTML(true)).toBe(before)
+    })
+  })
+
+  it.each(["p", "custom-widget"])("reports a responsive right float in normal flow for %s without changing authored HTML", tag => {
+    withSelection(`<style>.responsive {float: none !important; --ww-responsive-float: none}</style><${tag} id="target" class="responsive" style="float: right">Text</${tag}>`, (editor, readPath) => {
+      const target = document.getElementById("target")!
+      const before = editor.toHTML(true)
+      expect(readPath().at(-1)).toMatchObject({float: "far-right", floatRightInFlow: true})
+      expect(editor.features.manipulation.getStyleState(["float"], target).context.floatRightInFlow).toBe(true)
+      target.classList.remove("responsive")
+      expect(readPath().at(-1)?.floatRightInFlow).toBeUndefined()
+      expect(editor.features.manipulation.getStyleState(["float"], target).context.floatRightInFlow).toBe(false)
+      target.classList.add("responsive")
+      expect(editor.toHTML(true)).toBe(before)
+    })
+  })
+
   it.each(["relative", "sticky"])("marks the %s element's own normal-flow anchor", position => {
     withSelection(`<div><p id="target" style="position: ${position}; top: 8px">Text</p></div>`, (_editor, readPath) => {
       const path = readPath()

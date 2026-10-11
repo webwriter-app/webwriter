@@ -259,13 +259,17 @@ export type SelectionPathItem = {
   position?: "absolute" | "fixed" | "relative" | "sticky"
   /** The element's authored left or right float, including floats hidden by responsive styles. */
   float?: "far-left" | "far-right"
+  /** Responsive single-lane layout currently places this left float on the right. */
+  floatForcedRight?: boolean
+  /** Responsive layout has no side lanes and keeps this right float in normal flow. */
+  floatRightInFlow?: boolean
   /** Whether this element anchors positioning in the current selection path. */
   positionAnchor?: boolean
   /** Transparent section wrappers applying to this structural element. */
   sections?: SelectionPathSection[]
 }
 
-export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor" | "float"> & {
+export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor" | "float" | "floatForcedRight" | "floatRightInFlow"> & {
   /** The child-node path from BODY to the section wrapper. */
   path: number[]
   /** The wrapper's semantic HTML element type. */
@@ -329,6 +333,8 @@ export type ElementStyleState = {
     display: string
     parentDisplay: string
     positioning?: boolean
+    floatLeftForcedRight?: boolean
+    floatRightInFlow?: boolean
   }
 }
 
@@ -695,6 +701,8 @@ const isOptionalBoolean = (value: unknown) => value === undefined || isBoolean(v
 const isSelectionPosition = (value: UnknownRecord) => isOptional(value.position, position => ["absolute", "fixed", "relative", "sticky"].includes(position as string))
   && isOptional(value.positionAnchor, isBoolean)
   && isOptional(value.float, float => float === "far-left" || float === "far-right")
+  && isOptional(value.floatForcedRight, isBoolean)
+  && isOptional(value.floatRightInFlow, isBoolean)
 
 const isSelectionPathItem = (value: unknown) => {
   if(!isRecord(value)) return false

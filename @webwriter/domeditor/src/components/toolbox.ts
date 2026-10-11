@@ -1,3 +1,5 @@
+import "./float-info"
+import type {FloatInfo} from "./float-info"
 import {css, html, svg, nothing, type TemplateResult} from "lit"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
@@ -127,7 +129,8 @@ export class DomEditorToolbox extends EditingControls {
     .float-action-controls {padding: .4rem 0; gap: .125rem}
     .float-placement-label {font-size: .65rem; color: var(--sl-color-neutral-600, #666)}
     .float-button-group {display: flex; width: 100%; gap: 0}
-    .float-button-group button {display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
+    .float-button-group button {position: relative; display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
+    .float-button-group float-info {position: absolute; top: -3px; right: -2px; z-index: 2}
     .float-button-group .float-move {flex: 0 0 auto; padding: .35rem .2rem}
     .float-button-group button + button {margin-left: -.5px}
     .float-button-group button:first-child {border-radius: .2rem 0 0 .2rem}
@@ -1232,9 +1235,17 @@ export class DomEditorToolbox extends EditingControls {
               title=${side === "none" ? "Clear float" : `Float ${side === "far-left" ? "left" : "right"}`}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
-                detail: {type: "setFloat", side}, bubbles: true, composed: true,
-              }))}>${ribbonIcon(side === "none" ? "Float none" : side === "far-left" ? "Float left" : "Float right")}</button>`)}
+              @click=${(event: Event) => {
+                this.dispatchEvent(new CustomEvent("layout-action", {
+                  detail: {type: "setFloat", side}, bubbles: true, composed: true,
+                }))
+                const info = (event.currentTarget as HTMLElement).querySelector<FloatInfo>("float-info")
+                info?.showBriefly()
+              }}>${ribbonIcon(side === "none" ? "Float none" : side === "far-left" ? "Float left" : "Float right")}
+                ${(side === "far-left" && this.elementStyle.context.floatLeftForcedRight)
+                  || (side === "far-right" && this.elementStyle.context.floatRightInFlow)
+                  ? html`<float-info .side=${side === "far-right" ? "right" : "left"} .badge=${float === side}></float-info>` : nothing}
+              </button>`)}
             <button type="button" class="float-move" aria-label="Move up" title="Move up"
               ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}

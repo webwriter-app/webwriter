@@ -166,7 +166,8 @@ export class AppRibbon extends EditingControls {
       box-sizing: border-box;
       display: block;
       position: relative;
-      z-index: 1;
+      /* Ribbon menus and drawers must paint above the toolbox and its tabs. */
+      z-index: 3;
       width: 100%;
       height: 140px;
       max-height: 140px;
@@ -192,10 +193,6 @@ export class AppRibbon extends EditingControls {
     :host(:not([expanded])) {
       height: 120px;
       max-height: 40px;
-    }
-
-    :host([package-drawer-open]) {
-      z-index: 3;
     }
 
     :host(:not([expanded])) .ribbon {

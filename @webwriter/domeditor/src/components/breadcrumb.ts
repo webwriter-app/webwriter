@@ -1,3 +1,4 @@
+import "./float-info"
 import { LitElement, css, html } from "lit"
 import {uiMotionDisabled} from "../utility"
 import { repeat } from "lit/directives/repeat.js"
@@ -544,6 +545,8 @@ export class DomEditorBreadcrumb extends LitElement {
         && entry.item.position === other.item.position
         && entry.item.positionAnchor === other.item.positionAnchor
         && entry.item.float === other.item.float
+        && entry.item.floatForcedRight === other.item.floatForcedRight
+        && entry.item.floatRightInFlow === other.item.floatRightInFlow
         && this.sectionsEqual(entry.item.sections, other.item.sections)
         && this.pathsEqual(entry.item.path, other.item.path)
     })
@@ -560,6 +563,8 @@ export class DomEditorBreadcrumb extends LitElement {
         && section.position === other.position
         && section.positionAnchor === other.positionAnchor
         && section.float === other.float
+        && section.floatForcedRight === other.floatForcedRight
+        && section.floatRightInFlow === other.floatRightInFlow
         && this.pathsEqual(section.path, other.path)
     })
   }
@@ -925,6 +930,8 @@ export class DomEditorBreadcrumb extends LitElement {
       ${positionAnchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
       ${balloon ? html`<span class="position-icon position-balloon" role="img" aria-label=${`${position} positioning`} title=${`${position} positioning`}>${ribbonIcon(balloon)}</span>` : ""}
       ${float ? html`<span class="position-icon position-float" role="img" aria-label=${float === "far-left" ? "Left float" : "Right float"} title=${float === "far-left" ? "Left float" : "Right float"}>${ribbonIcon(float === "far-left" ? "Float left" : "Float right")}</span>` : ""}
+      ${(float === "far-left" && current.floatForcedRight) || (float === "far-right" && current.floatRightInFlow)
+        ? html`<float-info placement="right" .side=${float === "far-right" ? "right" : "left"}></float-info>` : ""}
     </sup>`
   }
 

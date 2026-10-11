@@ -1079,6 +1079,45 @@ describe("package ribbon controls", () => {
     expect(RibbonButton.styles.toString()).not.toContain("background: #f2f2f2")
   })
 
+  it("keeps widget details open across the trigger, popup and gap, then cleans up on exit", async () => {
+    vi.useFakeTimers()
+    try {
+      const button = new RibbonButton()
+      button.details = {heading: "Widget information"}
+      document.body.append(button)
+      await button.updateComplete
+      const row = button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+      const popup = button.shadowRoot!.querySelector<HTMLElement>(".details")!
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      await button.updateComplete
+      await Promise.resolve()
+      const position = popup.style.cssText
+      row.dispatchEvent(new MouseEvent("mouseleave", {relatedTarget: popup}))
+      popup.dispatchEvent(new MouseEvent("mouseenter", {relatedTarget: row}))
+      vi.advanceTimersByTime(200)
+      expect(button.hasAttribute("details-open")).toBe(true)
+      popup.dispatchEvent(new MouseEvent("mouseleave", {relatedTarget: row}))
+      row.dispatchEvent(new MouseEvent("mouseenter", {relatedTarget: popup}))
+      await button.updateComplete
+      expect(popup.style.cssText).toBe(position)
+      row.dispatchEvent(new MouseEvent("mouseleave"))
+      vi.advanceTimersByTime(60)
+      popup.dispatchEvent(new MouseEvent("mouseenter"))
+      vi.advanceTimersByTime(200)
+      expect(button.hasAttribute("details-open")).toBe(true)
+      popup.dispatchEvent(new MouseEvent("mouseleave"))
+      vi.advanceTimersByTime(120)
+      await button.updateComplete
+      expect(button.hasAttribute("details-open")).toBe(false)
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      await button.updateComplete
+      row.dispatchEvent(new MouseEvent("mouseleave"))
+      button.remove()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+    finally {vi.useRealTimers()}
+  })
+
   it("opens package details to the right when there is no room on the left", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
@@ -1193,7 +1232,7 @@ describe("package ribbon controls", () => {
     }))
     await ribbon.updateComplete
     expect(ribbon.hasAttribute("package-drawer-open")).toBe(false)
-    expect(AppRibbon.styles.toString()).toContain(':host([package-drawer-open])')
+    expect(getComputedStyle(ribbon).zIndex).toBe("3")
   })
 
   it.each([

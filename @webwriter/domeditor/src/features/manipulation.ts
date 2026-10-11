@@ -2214,7 +2214,9 @@ export class ManipulationFeature extends EditorFeature {
         ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},
       inline,
       computed,
-      context: {display: computedStyle.display, parentDisplay, positioning: this.editor.features.canvas.active || this.editor.features.slides.active},
+      context: {display: computedStyle.display, parentDisplay, positioning: this.editor.features.canvas.active || this.editor.features.slides.active,
+        floatLeftForcedRight: computedStyle.getPropertyValue("--ww-responsive-float").trim() === "right",
+        floatRightInFlow: computedStyle.getPropertyValue("--ww-responsive-float").trim() === "none"},
     }
   }
 

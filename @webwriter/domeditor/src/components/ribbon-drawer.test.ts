@@ -481,6 +481,83 @@ describe("responsive ribbon drawer", () => {
     expect(drawer.hasAttribute("drawer-scrollable")).toBe(true)
   })
 
+  it.each([false, true])("matches Elements pullout bottom padding to the top (compact: %s)", async compact => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "elements"
+    drawer.collapsed = true
+    drawer.compact = compact
+    document.body.append(drawer)
+    await drawer.updateComplete
+    drawer.openDrawer()
+    await drawer.updateComplete
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const style = getComputedStyle(controls)
+    expect(style.paddingTop).toBe(style.paddingBottom)
+    expect(Number.parseFloat(style.paddingBottom)).toBeGreaterThan(0)
+  })
+
+  it("reserves final Elements padding while computed padding is still animating from zero", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "elements"
+    drawer.collapsed = true
+    document.body.append(drawer)
+    await drawer.updateComplete
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const shell = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const computedStyle = window.getComputedStyle.bind(window)
+    const spy = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const style = computedStyle(element, pseudo)
+      if(element !== controls) return style
+      return new Proxy(style, {get: (target, key) => key === "paddingTop" || key === "paddingBottom" ? "0px" : Reflect.get(target, key)})
+    })
+    try {
+      drawer.openDrawer()
+      await drawer.updateComplete
+      expect(shell.style.getPropertyValue("--layout-expanded-height")).toBe("108px")
+    }
+    finally {spy.mockRestore()}
+  })
+
+  it.each([false, true])("fits a collapsed Elements pullout to its controls when the gallery is empty or absent (empty gallery: %s)", async emptyGallery => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "elements"
+    drawer.collapsed = true
+    for(const label of ["Paragraph", "Heading", "List", "Details", "Table", "Image", "Graphic", "Audio", "Website", "Video"]) {
+      const button = new RibbonButton()
+      button.label = label
+      drawer.append(button)
+    }
+    if(emptyGallery) {
+      const gallery = document.createElement("div")
+      gallery.slot = "more"
+      gallery.className = "layout-gallery"
+      drawer.append(gallery)
+    }
+    document.body.append(drawer)
+    await drawer.updateComplete
+    const shell = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const primary = drawer.shadowRoot!.querySelector<HTMLElement>(".elements-primary-controls")!
+    vi.spyOn(drawer, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 84, 90))
+    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 84, 90))
+    vi.spyOn(controls, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 190, 300, 0))
+    vi.spyOn(primary, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 190, 284, 90))
+    drawer.openDrawer()
+    await drawer.updateComplete
+    const style = getComputedStyle(controls)
+    const chromeHeight = [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth]
+      .reduce((total, value) => total + (Number.parseFloat(value) || 0), 0)
+    const expectedHeight = `${Math.ceil(90 + chromeHeight)}px`
+    expect(shell.style.getPropertyValue("--layout-expanded-height")).toBe(expectedHeight)
+    expect(getComputedStyle(controls).height).toBe(expectedHeight)
+    expect(primary.querySelector("slot")!.hasAttribute("hidden")).toBe(false)
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    drawer.openDrawer()
+    await drawer.updateComplete
+    expect(shell.style.getPropertyValue("--layout-expanded-height")).toBe(expectedHeight)
+  })
+
   it("sizes a collapsed Elements pullout to the viewport before scrolling its gallery", async () => {
     const drawer = new RibbonDrawer()
     drawer.layout = "elements"

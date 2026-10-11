@@ -1,3 +1,4 @@
+import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
 import type {GitPackageSource} from "../git-package"
@@ -1765,6 +1766,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     iframe.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe.removeEventListener("blur", this.handleEditorFrameBlur)
     this.clearMotionStylesheet()
@@ -1868,6 +1870,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.addEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.addEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.addEventListener("wheel", this.dismissFloatInfo, {capture: true, passive: true})
     if(!this.editorOpaque) this.editorWindow?.addEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     if(!this.editorOpaque) this.editorWindow?.addEventListener("focus", this.handleHostWindowFocus)
     if(!this.editorOpaque) this.editorWindow?.addEventListener("blur", this.handleHostWindowBlur)
@@ -2184,7 +2187,14 @@ export class DomEditor extends LitElement {
     ))
   }
 
+  private dismissFloatInfo = () => {
+    for(const host of this.renderRoot.querySelectorAll("dom-editor-toolbox, dom-editor-breadcrumb")) {
+      host.shadowRoot?.querySelectorAll<FloatInfo>("float-info").forEach(info => info.hide())
+    }
+  }
+
   private handleEditorPointerDown = (event: PointerEvent) => {
+    this.dismissFloatInfo()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     const appendix = this.editorDocument?.body.shadowRoot
     if(isWidgetShadowInteraction(event) || appendix && event.composedPath().includes(appendix)) return
@@ -2794,6 +2804,7 @@ export class DomEditor extends LitElement {
   }
 
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
+    this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
     if(event.composedPath().some(target => target instanceof HTMLElement
       && target.classList.contains("html-source-input"))) return
@@ -4628,6 +4639,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     this.clearMotionStylesheet()
     this.editorDocument = null
     this.editorWindow = null
@@ -5870,6 +5882,8 @@ export class DomEditor extends LitElement {
         display: value.context.display,
         parentDisplay: value.context.parentDisplay,
         ...(typeof value.context.positioning === "boolean" ? {positioning: value.context.positioning} : {}),
+        ...(typeof value.context.floatLeftForcedRight === "boolean" ? {floatLeftForcedRight: value.context.floatLeftForcedRight} : {}),
+        ...(typeof value.context.floatRightInFlow === "boolean" ? {floatRightInFlow: value.context.floatRightInFlow} : {}),
       },
     }
   }
@@ -6128,8 +6142,13 @@ export class DomEditor extends LitElement {
       pending.resolve(event.data)
       return
     }
+    if(event.data?.type === "editor-frame-interaction") {
+      if(this.editorOpaque && this.isEditorMessage(event)) this.dismissFloatInfo()
+      return
+    }
     if(event.data?.type === "editor-frame-pointerdown") {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
+      this.dismissFloatInfo()
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
       if(event.data.widgetShadow === true || event.data.appendix === true) return
       this.focusEditor()
@@ -6608,6 +6627,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     const iframe = this.editorIframe()
     iframe?.classList.remove("window-inactive")
     iframe?.removeEventListener("focus", this.handleEditorFrameFocus)

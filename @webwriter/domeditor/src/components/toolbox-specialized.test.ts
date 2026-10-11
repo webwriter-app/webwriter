@@ -432,3 +432,47 @@ describe("specialized element toolbox", () => {
     expect(changes.mock.calls[0][0].detail).toEqual({name: "density", value: null})
   })
 })
+
+
+it("shows the single-lane explanation when clicking left placement and only badges a selected left float", async () => {
+  const toolbox = await mountElement("img", {}, {float: "right"})
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatLeftForcedRight: true}}
+  await toolbox.updateComplete
+  const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.float-button-group [aria-label="Float left"]')!
+  const info = button.querySelector<import("./float-info").FloatInfo>("float-info")!
+  await info.updateComplete
+  expect(info.badge).toBe(false)
+  button.click()
+  await info.updateComplete
+  expect(info.open).toBe(true)
+  expect(info.shadowRoot!.querySelector('[role="tooltip"]')!.textContent).toBe("Element will be placed left on wider screens.")
+  document.dispatchEvent(new Event("pointerdown"))
+  expect(info.open).toBe(false)
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "far-left"}}
+  await toolbox.updateComplete
+  expect(info.badge).toBe(true)
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatLeftForcedRight: false}}
+  await toolbox.updateComplete
+  expect(button.querySelector("float-info")).toBeNull()
+})
+
+
+it("explains right placement without side lanes and shows it briefly on click", async () => {
+  const toolbox = await mountElement("custom-widget", {}, {float: "right"})
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatRightInFlow: true}}
+  await toolbox.updateComplete
+  const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.float-button-group [aria-label="Float right"]')!
+  const info = button.querySelector<import("./float-info").FloatInfo>("float-info")!
+  await info.updateComplete
+  expect(info.badge).toBe(true)
+  expect(info.side).toBe("right")
+  expect(info.shadowRoot!.querySelector('[role="tooltip"]')!.textContent).toBe("Element will be placed right on wider screens.")
+  button.click()
+  await info.updateComplete
+  expect(info.open).toBe(true)
+  document.dispatchEvent(new Event("keydown"))
+  expect(info.open).toBe(false)
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatRightInFlow: false}}
+  await toolbox.updateComplete
+  expect(button.querySelector("float-info")).toBeNull()
+})

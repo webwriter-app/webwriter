@@ -848,6 +848,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"][collapsed][drawer-open]) .controls {
       max-height: var(--layout-expanded-height, var(--ribbon-drawer-height));
+      padding-block: var(--ribbon-drawer-panel-padding-block);
     }
 
     :host([layout="settings"][collapsed]) .controls,
@@ -1317,10 +1318,6 @@ export class RibbonDrawer extends LitElement {
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
     if(this.layout === "elements") {
-      const moreHeight = this.lengthInPixels(
-        getComputedStyle(this).getPropertyValue("--ribbon-drawer-more-height").trim(),
-        448,
-      )
       const viewportBottomMargin = this.lengthInPixels(
         getComputedStyle(this).getPropertyValue("--ribbon-drawer-viewport-bottom-margin").trim(),
         8,
@@ -1335,13 +1332,18 @@ export class RibbonDrawer extends LitElement {
       const collapsedHeight = Number.parseFloat(drawer.style.getPropertyValue("--drawer-collapsed-height"))
         || this.lengthInPixels("5.625rem", 90)
       const gallery = this.querySelector<HTMLElement>(".layout-gallery")
-      const galleryHeight = gallery?.scrollHeight || gallery?.getBoundingClientRect().height || moreHeight
+      const galleryHeight = gallery?.scrollHeight || gallery?.getBoundingClientRect().height || 0
       const primary = this.renderRoot.querySelector<HTMLElement>(".elements-primary-controls")
       const headerHeight = primary?.getBoundingClientRect().height || this.lengthInPixels("5.625rem", 90)
       const panelStyle = getComputedStyle(this.collapsed ? controls : drawer)
+      // Read the final padding token: computed padding is still interpolating
+      // from zero when the pullout's opening animation begins.
+      const blockPadding = this.collapsed
+        ? 2 * this.lengthInPixels(getComputedStyle(this).getPropertyValue("--ribbon-drawer-panel-padding-block").trim(), 8)
+        : paddingTop + paddingBottom
       const chromeHeight = (Number.parseFloat(panelStyle.borderTopWidth) || 0)
         + (Number.parseFloat(panelStyle.borderBottomWidth) || 0)
-        + paddingTop + paddingBottom
+        + blockPadding
       const naturalHeight = Math.ceil(headerHeight + galleryHeight + chromeHeight)
       const preferredHeight = Math.max(collapsedHeight, Math.min(naturalHeight, available))
       const currentTarget = Number.parseFloat(drawer.style.getPropertyValue("--layout-expanded-height")) || 0

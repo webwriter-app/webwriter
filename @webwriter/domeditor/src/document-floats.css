@@ -105,6 +105,7 @@
   @container (width < 600px) {
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
       --ww-float-width: 100%;
+      --ww-responsive-float: none;
     }
 
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) :is(

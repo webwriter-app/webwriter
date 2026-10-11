@@ -91,3 +91,40 @@ describe("breadcrumb resize lifecycle", () => {
     breadcrumb.remove()
   })
 })
+
+
+it("updates the left-float information bubble as responsive placement changes", async () => {
+  const breadcrumb = document.createElement("dom-editor-breadcrumb")
+  document.body.append(breadcrumb)
+  for(const forced of [false, true, false]) {
+    breadcrumb.path = [{path: [0], name: "Image", float: "far-left", floatForcedRight: forced}]
+    await breadcrumb.updateComplete
+    await breadcrumb.updateComplete
+    expect(!!breadcrumb.shadowRoot!.querySelector("float-info")).toBe(forced)
+    if(forced) expect(breadcrumb.shadowRoot!.querySelector("float-info")!.getAttribute("placement")).toBe("right")
+  }
+  breadcrumb.path = [{path: [0], name: "Image", float: "far-right", floatForcedRight: true}]
+  await breadcrumb.updateComplete
+  expect(breadcrumb.shadowRoot!.querySelector("float-info")).toBeNull()
+})
+
+
+it("shows a right-float explanation only when responsive layout has no side lanes", async () => {
+  const breadcrumb = document.createElement("dom-editor-breadcrumb")
+  document.body.append(breadcrumb)
+  for(const inFlow of [false, true, false]) {
+    breadcrumb.path = [{path: [0], name: "Widget", float: "far-right", floatRightInFlow: inFlow}]
+    await breadcrumb.updateComplete
+    await breadcrumb.updateComplete
+    const info = breadcrumb.shadowRoot!.querySelector<import("./float-info").FloatInfo>("float-info")
+    expect(!!info).toBe(inFlow)
+    if(info) {
+      await info.updateComplete
+      expect(info.placement).toBe("right")
+      info.shadowRoot!.querySelector(".info")!.dispatchEvent(new MouseEvent("mouseenter"))
+      await info.updateComplete
+      expect(info.open).toBe(true)
+      expect(info.shadowRoot!.querySelector('[role="tooltip"]')!.textContent).toBe("Element will be placed right on wider screens.")
+    }
+  }
+})
