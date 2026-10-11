@@ -47,6 +47,22 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it("gives native details a white background in editing and saved canvas layouts", () => {
+    document.body.innerHTML = '<details><summary>Closed</summary></details><article><details open><summary>Nested</summary><p>Content</p></details></article><details style="background-color: pink"><summary>Authored</summary></details><details is="custom-details"><summary>Widget</summary></details>'
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    const [closed, nested, authored, widget] = document.querySelectorAll("details")
+    const check = () => {
+      for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).toBe("white")
+      expect(getComputedStyle(authored).backgroundColor).toBe("pink")
+      expect(getComputedStyle(widget).backgroundColor).not.toBe("white")
+    }
+    check()
+    editor.features.canvas.disable()
+    check()
+    expect(editor.setDocumentLayout("document", "canvas")).toBe(true)
+    for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).not.toBe("white")
+  })
+
   it.each(["text", "root"])("keeps the canvas camera still when Backspace deletes %s", async kind => {
     document.body.innerHTML = "<p>Text</p><p>Neighbor</p>"
     expect(editor.setDocumentLayout("canvas", "document")).toBe(true)

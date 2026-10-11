@@ -31,6 +31,22 @@ afterEach(() => {
 })
 
 describe("CSS-only Slides layout", () => {
+  it("gives native details a white background in editing and saved slides layouts", () => {
+    document.body.innerHTML = '<details><summary>Closed</summary></details><article><details open><summary>Nested</summary><p>Content</p></details></article><details style="background-color: pink"><summary>Authored</summary></details><details is="custom-details"><summary>Widget</summary></details>'
+    expect(convert("slides")).toBe(true)
+    const [closed, nested, authored, widget] = document.querySelectorAll("details")
+    const check = () => {
+      for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).toBe("white")
+      expect(getComputedStyle(authored).backgroundColor).toBe("pink")
+      expect(getComputedStyle(widget).backgroundColor).not.toBe("white")
+    }
+    check()
+    editor.features.slides.disable()
+    check()
+    expect(convert("document")).toBe(true)
+    for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).not.toBe("white")
+  })
+
   it("keeps outer body, carousel and navigation gaps inside a slide", () => {
     const [one, two] = seed(), viewport = one.parentElement!, navigation = document.querySelector("nav.ww-slides-navigation")!
     for(const container of [document.body, viewport, navigation, ...links()]) {

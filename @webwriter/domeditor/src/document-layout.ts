@@ -95,6 +95,7 @@ body.ww-canvas {
 }
 body.ww-canvas > :not(style, script, link, meta, template) { position: absolute; }
 body.ww-canvas > p:not([is]) { inline-size: max-content; min-inline-size: 25px; max-inline-size: none; }
+body.ww-canvas details:not([is]) { background-color: white; }
 `
 
 export const slidesClass = "ww-slides"
@@ -116,6 +117,7 @@ body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > :not(style, 
   position: absolute; box-sizing: border-box; margin: 0; max-width: none; max-inline-size: none;
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > p:not([is]) { inline-size: max-content; min-inline-size: 25px; }
+body.ww-slides details:not([is]) { background-color: white; }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):focus { outline: none; }
 body.ww-slides > nav.ww-slides-navigation {
   box-sizing: border-box; position: absolute; bottom: 1rem; left: 1rem;
