@@ -320,27 +320,36 @@ describe("layout host and toolbox integration", () => {
     expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"])
   })
 
-  it("exposes narrow preview in the document layout drawer", async () => {
+  it("offers layout choices in the Document drawer and reflects the current layout", async () => {
     const {editor} = await mountEditor()
     const toolbox = await settle(editor)
     toolbox.activeTool = "Edit"
     toolbox.documentSelected = true
     await toolbox.updateComplete
 
-    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layouts"]')!
-    const button = drawer.querySelector<HTMLButtonElement>('button[aria-label="Narrow preview (360 px)"]')!
-    expect(button.title).toBe("Narrow preview (360 px)")
-    expect(button.getAttribute("aria-pressed")).toBe("false")
+    toolbox.documentLayout = {mode: "document", canConvert: true, zoom: 100}
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Document"]')!
+    expect(drawer).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layouts"]')).toBeNull()
+    const choices = drawer.querySelector('[role="group"][aria-label="Layouts"]')!
+    const buttons = Array.from(choices.querySelectorAll<HTMLButtonElement>("button[data-mode]"))
+    expect(buttons.map(button => button.dataset.mode)).toEqual(["document", "canvas", "slides", "board"])
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false"])
+    expect(buttons.map(button => button.disabled)).toEqual([true, false, false, false])
 
     const changes: unknown[] = []
-    toolbox.addEventListener("document-width-preview-change", (event: Event) => changes.push((event as CustomEvent).detail))
-    button.click()
-    expect(changes).toEqual([{narrow: true}])
+    toolbox.addEventListener("document-layout-change", (event: Event) => changes.push((event as CustomEvent).detail))
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(false)
+    buttons[1].click()
+    expect(changes).toEqual([{mode: "canvas"}])
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"})
+    await settle(editor)
 
-    toolbox.narrowLayoutPreview = true
+    toolbox.documentLayout = {...toolbox.documentLayout, mode: "canvas"}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layouts"] button[aria-label="Narrow preview (360 px)"]')!
-      .getAttribute("aria-pressed")).toBe("true")
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "true", "false", "false"])
+    expect(buttons.map(button => button.disabled)).toEqual([false, true, false, false])
   })
 
   it.each(["canvas", "slides"] as const)("withholds float and former block controls in %s", async mode => {

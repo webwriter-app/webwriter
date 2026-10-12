@@ -75,7 +75,6 @@ export class DomEditorToolbox extends EditingControls {
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
-    narrowLayoutPreview: {type: Boolean, attribute: false},
     proofreadingState: {attribute: false},
     disableSpellChecking: {type: Boolean},
   }
@@ -96,7 +95,6 @@ export class DomEditorToolbox extends EditingControls {
 
   disableAI = false
   aiSidebar = false
-  narrowLayoutPreview = false
 
   static styles = css`
     ${aiChatStyles}

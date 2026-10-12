@@ -3292,9 +3292,9 @@ describe("DomEditor file actions", () => {
     configureCloudStorage(host)
     await editor.updateComplete
     await ribbon.updateComplete
-    expect(menu.groups[0].buttons.slice(-2)).toEqual([{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: [
+    expect(menu.groups[0].buttons.slice(-3)).toEqual([{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: [
       {label: "HTML (.html)", action: "download:html", icon: "HTML"}, {label: "Offline HTML (.offline.html)", action: "download:offline", icon: "OfflineHTML"},
-    ]}])
+    ]}, "Print"])
     const labels = menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.label)
     expect(labels.indexOf("Save as")).toBe(labels.indexOf("Save") + 1)
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)

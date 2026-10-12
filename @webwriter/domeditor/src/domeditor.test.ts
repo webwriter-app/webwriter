@@ -188,7 +188,10 @@ describe("DOMEditor stylesheets", () => {
     }
     const body = rules.find(rule => rule.selectorText === "body")!
     expect(body.style.minHeight).toBe("calc(100% - 2.5rem)")
-    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)\s*\{[^}]*left:\s*anchor\(left\);/)
+    // Happy DOM omits ::part rules from CSSOM, so inspect this rule's source.
+    const caret = editorStyleString.match(/body::part\(empty-document-caret\)\s*\{([^}]*)\}/)?.[1]
+    expect(caret).toMatch(/left:\s*var\(--empty-caret-left,\s*anchor\(left\)\);/)
+    expect(caret).toMatch(/top:\s*var\(--empty-caret-top,\s*anchor\(top\)\);/)
   })
 
   it.each([
@@ -238,7 +241,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editor.features.selection.emptyDocumentCaret).toBeNull()
     expect(editor.features.selection.hoverCaret?.getRootNode()).toBe(editor.appendix)
     expect(editorStyleString).toContain("body::part(empty-document-caret)")
-    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)[\s\S]*?left:\s*anchor\(left\);/)
+    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)\s*\{[^}]*left:\s*var\(--empty-caret-left,\s*anchor\(left\)\);/)
     expect(editorStyleString).toContain("body::part(presence-caret)")
     expect(editorStyleString).toContain("body::part(presence-element-selection)")
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
@@ -293,7 +296,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toContain("body.◆element-selected::after")
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
-    expect(editorStyleString).toMatch(/summary\s*\{\s*cursor:\s*text;/)
+    expect(editorStyleString).toMatch(/summary,\s*figcaption\s*\{\s*cursor:\s*text;/)
     expect(editorStyleString).toMatch(/body:has\(:is\(summary, figcaption\):is\(:hover, \.◆pointer-hovered, \.◆element-hovered, \.◆style-target-hovered\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
