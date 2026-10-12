@@ -88,7 +88,8 @@ export class SelectionFeature extends EditorFeature {
         overlays.delete(element)
         return
       }
-      const rect = element.getBoundingClientRect()
+      const rect = this.editor.features.media.cropTargetFor(element) && element instanceof HTMLElement
+        ? this.editor.features.transformation.boxGeometry(element).rect : element.getBoundingClientRect()
       overlay.style.left = `${rect.left}px`
       overlay.style.top = `${rect.top}px`
       overlay.style.width = `${rect.width}px`

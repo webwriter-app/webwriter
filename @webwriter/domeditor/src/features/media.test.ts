@@ -24,6 +24,249 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  const mockImageGeometry = (image: HTMLImageElement, width: number, height: number, naturalWidth: number, naturalHeight: number) => {
+    image.style.width = `${width}px`
+    image.style.height = `${height}px`
+    Object.defineProperties(image, {
+      naturalWidth: {configurable: true, value: naturalWidth},
+      naturalHeight: {configurable: true, value: naturalHeight},
+    })
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, width, height))
+  }
+
+  it("applies a default aspect ratio only to empty media placeholders", () => {
+    document.body.innerHTML = '<picture><source srcset="photo.webp"><img srcset="photo.png"></picture><video><source src="movie.mp4"></video><picture></picture><video></video>'
+    editor.features.media.refresh()
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(editorStyleString)
+    const aspectRules = Array.from(sheet.cssRules).filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && !!rule.style.getPropertyValue("aspect-ratio"))
+    const [image, video, emptyImage, emptyVideo] = document.body.querySelectorAll("picture, video")
+    for(const actual of [image, video]) {
+      expect(actual).not.toHaveClass("◆media-empty")
+      expect(aspectRules.filter(rule => actual.matches(rule.selectorText))).toHaveLength(0)
+    }
+    for(const placeholder of [emptyImage, emptyVideo]) {
+      expect(placeholder).toHaveClass("◆media-empty")
+      expect(aspectRules.some(rule => placeholder.matches(rule.selectorText) && rule.style.getPropertyValue("aspect-ratio") === "16 / 9")).toBe(true)
+    }
+  })
+
+  it("sizes the source and figure together and restores the full viewport on clear", () => {
+    document.body.innerHTML = '<figure style="width: 360px"><picture style="width: 360px; height: 200px"><img style="width: 360px; height: 200px"></picture><figcaption>Caption</figcaption></figure>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const figure = document.querySelector("figure")!
+    const image = document.querySelector("img")!
+    const picture = document.querySelector("picture")!
+    $.selectElement(figure)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    expect(parseFloat(figure.style.maxWidth)).toBeCloseTo(252)
+    expect(figure.style.maxHeight).toBe("120px")
+    expect(figure.style.width).toBe("360px")
+    expect(figure.style.height).toBe("")
+    expect(picture.style.width).toBe("360px")
+    expect(picture.style.height).toBe("200px")
+    expect(image.style.width).toBe("252px")
+    expect(image.style.height).toBe("120px")
+    expect(image.style.maxWidth).toBe("252px")
+    expect(image.style.maxHeight).toBe("120px")
+    expect(image.style.objectFit).toBe("fill")
+    expect(image.style.getPropertyValue("object-view-box")).toBe("inset(15% 20% 25% 10%)")
+    expect(picture.style.maxWidth).toBe("252px")
+    expect(picture.style.maxHeight).toBe("120px")
+    expect(figure.outerHTML).not.toContain("--ww-crop")
+    // Reapplying the same crop must not shrink the frame again.
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    expect(parseFloat(figure.style.maxWidth)).toBeCloseTo(252)
+    const cropped = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: null})
+    expect(image.style.getPropertyValue("object-view-box")).toBe("")
+    expect(image.style.width).toBe("360px")
+    expect(image.style.height).toBe("200px")
+    expect(image.style.maxWidth).toBe("360px")
+    expect(image.style.maxHeight).toBe("200px")
+    expect(image.style.objectFit).toBe("fill")
+    expect(picture.style.maxWidth).toBe("360px")
+    expect(picture.style.maxHeight).toBe("200px")
+    expect(figure.style.maxWidth).toBe("360px")
+    expect(figure.style.maxHeight).toBe("200px")
+    const cleared = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(cropped)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(cleared)
+  })
+
+  it("sizes a standalone media crop without changing authored margins", () => {
+    document.body.innerHTML = '<video style="width: 360px; height: 200px; margin-top: 12px !important; margin-left: 8px"></video>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    expect(parseFloat(video.style.maxWidth)).toBeCloseTo(252)
+    expect(video.style.maxHeight).toBe("120px")
+    expect(video.style.width).toBe("252px")
+    expect(video.style.height).toBe("120px")
+    expect(video.style.objectFit).toBe("fill")
+    expect(video.style.getPropertyValue("object-view-box")).toBe("inset(15% 20% 25% 10%)")
+    expect(video.style.getPropertyValue("margin-top")).toBe("12px")
+    expect(video.style.getPropertyPriority("margin-top")).toBe("important")
+    expect(video.style.marginLeft).toBe("8px")
+    expect(video.getAttribute("style")).not.toContain("--ww-crop")
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: null})
+    expect(video.style.getPropertyValue("object-view-box")).toBe("")
+    expect(video.style.maxWidth).toBe("360px")
+    expect(video.style.maxHeight).toBe("200px")
+    expect(video.style.width).toBe("360px")
+    expect(video.style.height).toBe("200px")
+    expect(video.style.getPropertyValue("margin-top")).toBe("12px")
+    expect(video.style.getPropertyPriority("margin-top")).toBe("important")
+    expect(video.style.marginLeft).toBe("8px")
+    expect(video.getAttribute("style")).not.toContain("--ww-crop")
+  })
+
+  it("maps a local crop to the natural image viewport and resizes the displayed source", () => {
+    const image = document.createElement("img")
+    document.body.append(image)
+    mockImageGeometry(image, 500, 200, 1000, 400)
+
+    expect(editor.features.media.cropValueFor(image, [10, 25, 20, 15])).toBe("inset(10% 25% 20% 15%)")
+    const styles = editor.features.media.cropLayoutStyles(image, "inset(10% 25% 20% 15%)").get(image)!
+    expect(styles["width"]).toBe("300px")
+    expect(styles["height"]).toBe("140px")
+    expect(styles["max-width"]).toBe("300px")
+    expect(styles["max-height"]).toBe("140px")
+    expect(styles["object-fit"]).toBe("fill")
+  })
+
+  it.each([
+    ["cover", [10, 25, 20, 15], "inset(10% 33.333333% 20% 26.666667%)", "300px", "210px"],
+    ["contain", [25, 10, 25, 10], "inset(12.5% 10% 12.5% 10%)", "400px", "150px"],
+    ["contain", [10, 10, 10, 10], "xywh(100px -40px 800px 480px)", "400px", "240px"],
+  ] as const)("maps local crop edges through object-fit %s", (fit, edges, expectedCrop, expectedWidth, expectedHeight) => {
+    const image = document.createElement("img")
+    image.style.objectFit = fit
+    document.body.append(image)
+    mockImageGeometry(image, 500, 300, 1000, 400)
+
+    const crop = editor.features.media.cropValueFor(image, [...edges])
+    expect(crop).toBe(expectedCrop)
+    const styles = editor.features.media.cropLayoutStyles(image, crop).get(image)!
+    expect(styles.width).toBe(expectedWidth)
+    expect(styles.height).toBe(expectedHeight)
+    expect(styles["object-fit"]).toBe("fill")
+  })
+
+  it("preserves an explicit object position when mapping a crop and aligns the new viewport", () => {
+    const image = document.createElement("img")
+    document.body.append(image)
+    mockImageGeometry(image, 500, 200, 1000, 400)
+    image.style.objectPosition = "10px 20px"
+    const value = editor.features.media.cropValueFor(image, [10, 25, 20, 15])!
+    expect(value).toBe("inset(0% 27% 30% 13%)")
+    const styles = editor.features.media.cropLayoutStyles(image, value).get(image)!
+    expect(styles.width).toBe("300px")
+    expect(styles.height).toBe("140px")
+    expect(styles["object-position"]).toBe("0% 0%")
+  })
+
+  it("allows a crop smaller than the editor's default media minimum", () => {
+    document.body.innerHTML = '<video style="width:500px;height:200px"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(0% 0% 0% 80%)"})
+    expect(video.style.width).toBe("100px")
+    expect(video.style.maxWidth).toBe("100px")
+    expect(video.style.minWidth).toBe("0px")
+    expect(video.style.minHeight).toBe("0px")
+  })
+
+  it("replaces the previous percentage clip crop with a source viewport", () => {
+    document.body.innerHTML = '<video style="width: 360px; height: 200px; clip-path: inset(10%)"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(10%)"})
+    expect(video.style.clipPath).toBe("")
+    expect(video.style.getPropertyValue("object-view-box")).toBe("inset(10%)")
+  })
+
+  it("crops nested picture and video surfaces without disturbing their surrounding markup", async () => {
+    document.body.innerHTML = `
+      <p class="lead"><picture><source media="(max-width: 20rem)" srcset="small.png"><img src="large.png" alt="Photo"></picture> after</p>
+      <figure><video controls><source src="movie.mp4" type="video/mp4"></video><figcaption>Caption</figcaption></figure>
+    `
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const picture = document.querySelector("picture")!
+    const figure = document.querySelector("figure")!
+    const crop = {value: "inset(10% 20% 30% 40%)", priority: ""} as const
+
+    $.selectElement(picture)
+    expect(editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop})).toBe(true)
+    await Promise.resolve()
+    const croppedImage = picture.querySelector("img")!
+    expect(croppedImage.style.getPropertyValue("object-view-box")).toBe(crop.value)
+    expect(picture.querySelector("source")?.getAttribute("srcset")).toBe("small.png")
+    expect(picture.parentElement?.outerHTML).toContain("class=\"lead\"")
+
+    $.selectElement(figure)
+    expect(editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop})).toBe(true)
+    await Promise.resolve()
+    expect(figure.querySelector("video")?.style.getPropertyValue("object-view-box")).toBe(crop.value)
+    expect(figure.querySelector("source")?.getAttribute("src")).toBe("movie.mp4")
+    expect(figure.querySelector("figcaption")?.textContent).toBe("Caption")
+
+    const after = editor.toHTML(true)
+    const serialized = new DOMParser().parseFromString(after, "text/html")
+    expect(serialized.querySelector("picture img")?.getAttribute("style")).toContain("object-view-box: inset(10% 20% 30% 40%);")
+    expect(serialized.querySelector("picture source")?.getAttribute("srcset")).toBe("small.png")
+    expect(serialized.querySelector("video")?.getAttribute("style")).toContain("object-view-box: inset(10% 20% 30% 40%);")
+    expect(serialized.querySelector("figure figcaption")?.textContent).toBe("Caption")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("resolves the current image after a selected picture's image is replaced", () => {
+    document.body.innerHTML = "<picture><img src=\"old.png\"></picture>"
+    const picture = document.querySelector("picture")!
+    const oldImage = picture.querySelector("img")!
+    $.selectElement(picture)
+    oldImage.remove()
+    picture.innerHTML = '<img src="new.png">'
+
+    expect(editor.features.media.actions.setMediaCrop({
+      type: "setMediaCrop", crop: {value: "inset(10%)", priority: ""},
+    })).toBe(true)
+    expect(oldImage.style.getPropertyValue("object-view-box")).toBe("")
+    expect(picture.querySelector("img")?.style.getPropertyValue("object-view-box")).toBe("inset(10%)")
+
+    picture.remove()
+    expect(editor.features.media.actions.setMediaCrop({
+      type: "setMediaCrop", crop: {value: "inset(20%)", priority: ""},
+    })).toBe(false)
+  })
+
+  it("does not crop media owned by an atomic widget", () => {
+    document.body.innerHTML = '<media-widget><img src="widget.png"></media-widget>'
+    const widget = document.querySelector("media-widget")!
+    const image = widget.querySelector("img")!
+    $.selectElement(image)
+
+    expect(editor.features.media.actions.setMediaCrop({
+      type: "setMediaCrop", crop: {value: "inset(10%)", priority: ""},
+    })).toBe(false)
+    expect(image.style.getPropertyValue("object-view-box")).toBe("")
+  })
+
   it("does not construct widgets while serializing timed-media fallback HTML", () => {
     let constructions = 0
     const tag = "media-serialization-probe"

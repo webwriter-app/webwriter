@@ -3442,6 +3442,36 @@ describe("setBlockType()", () => {
   })
 })
 describe("setStyle()", () => {
+  it.each(["picture", "video"])("crops selected %s figure content without changing its caption, sources or siblings", media => {
+    document.body.innerHTML = `<figure data-keep="yes"><!--keep--><${media}><!--source--><source src="movie.mp4" srcset="large.png 2x">${media === "picture" ? '<img src="small.png">' : 'Fallback'}</${media}><figcaption>Caption</figcaption></figure><p>Other</p>`
+    const figure = document.querySelector("figure")!
+    const target = document.querySelector<HTMLImageElement | HTMLVideoElement>(media === "picture" ? "img" : "video")!
+    const caption = figure.querySelector("figcaption")!
+    const source = figure.querySelector("source")!
+    $.selectElement(figure)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    expect(editor.features.manipulation.setElementStyles(figure, {"clip-path": "inset(10% 20% 5% 0%)"})).toBe(true)
+    expect(target.style.clipPath).toBe("inset(10% 20% 5% 0%)")
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(figure.querySelector("figcaption")).toBe(caption)
+    expect(figure.querySelector("source")).toBe(source)
+    expect(editor.features.manipulation.getStyleState(["clip-path"]).inline["clip-path"]?.value).toBe(target.style.clipPath)
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).toContain("clip-path")
+    expect(changed).not.toContain("◆")
+    expect(editor.doc.body.toString()).toContain("clip-path")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+    $.selectElement(document.querySelector("figure")!)
+    editor.features.manipulation.setStyle({"clip-path": null})
+    expect(document.querySelector(media === "picture" ? "img" : "video")!.hasAttribute("style")).toBe(false)
+  })
+
   it("styles the rendered image inside a picture while preserving responsive sources and undo", () => {
     document.body.innerHTML = '<picture data-keep="yes"><!--keep--><source srcset="large.png 2x"><img src="small.png" style="object-fit:contain !important"></picture><p>Other</p>'
     const picture = document.querySelector("picture")!
@@ -3475,12 +3505,13 @@ describe("setStyle()", () => {
     const old = picture.querySelector("img")!
     const replacement = document.createElement("img")
     old.replaceWith(replacement)
-    editor.features.manipulation.setStyle({"object-fit": "cover"})
+    editor.features.manipulation.setStyle({"object-fit": "cover", "clip-path": "inset(10%)"})
     expect(replacement.style.objectFit).toBe("cover")
+    expect(replacement.style.clipPath).toBe("inset(10%)")
     expect(old.style.objectFit).toBe("")
     replacement.remove()
     $.selectElement(picture)
-    expect(editor.features.manipulation.setStyle({"object-fit": "contain"})).toBe(false)
+    expect(editor.features.manipulation.setStyle({"object-fit": "contain", "clip-path": "inset(10%)"})).toBe(false)
     expect(picture.style.objectFit).toBe("")
     expect(editor.features.manipulation.getStyleState(["object-fit"]).inline["object-fit"]).toBeUndefined()
   })

@@ -2,6 +2,17 @@ export const mediaTypes = ["picture", "img", "audio", "video", "iframe", "embed"
 
 export type MediaType = typeof mediaTypes[number]
 
+/** Percentage insets editable by both crop fields and transform handles. */
+export function mediaCropInsets(value: string): number[] | null {
+  if(!value || value.trim() === "none") return [0, 0, 0, 0]
+  const match = value.trim().match(/^inset\(\s*([^()]+?)\s*\)$/)
+  const parts = match?.[1].split(/\s+/)
+  if(!parts || parts.length > 4 || !parts.every(part => /^(?:\d+(?:\.\d+)?|\.\d+)%$/.test(part) || part === "0")) return null
+  const values = parts.map(part => parseFloat(part))
+  const edges = [values[0], values[1] ?? values[0], values[2] ?? values[0], values[3] ?? values[1] ?? values[0]]
+  return edges.every(value => value >= 0 && value < 100) && edges[0] + edges[2] < 100 && edges[1] + edges[3] < 100 ? edges : null
+}
+
 export const mediaCaptureModes = {
   "screen-image": {media: "picture", label: "Capture screenshot"},
   "camera-image": {media: "picture", label: "Take photo"},

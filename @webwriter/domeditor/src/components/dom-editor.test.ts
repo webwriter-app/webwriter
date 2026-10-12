@@ -4506,6 +4506,22 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "getStyleState", topLevel: true}))
   })
 
+  it("routes media crop fields to the selected media instead of its top-level container", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    toolbox.media = {type: "picture", attributes: {style: "object-view-box: inset(10%)"}}
+    toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    await toolbox.updateComplete
+    const field = toolbox.shadowRoot!.querySelector('[data-specialized="picture"] element-style-editor')!
+    field.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {property: "object-view-box", mutation: {value: "inset(20%)", priority: ""}}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setMediaCrop", crop: {value: "inset(20%)", priority: ""}})
+    expect(execute.mock.calls.some(([action]) => action.type === "setStyle")).toBe(false)
+  })
+
   it("loads Style-pane state lazily and routes inline style changes", async () => {
     const {editor} = await mountEditor()
     let display = "block"

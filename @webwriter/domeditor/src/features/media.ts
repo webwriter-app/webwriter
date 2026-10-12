@@ -22,6 +22,7 @@ import {
   isWebsiteType,
   mediaAttributeOptions,
   mediaContainerForNode,
+  mediaCropInsets,
   mediaDefaultHTML,
   mediaElementSelector,
   imageMapAreaAttributeOptions,
@@ -1333,6 +1334,15 @@ export class MediaFeature extends EditorFeature {
   }
 
   actions = {
+    setMediaCrop: ({crop}: {type: "setMediaCrop", crop: import("../editor-bridge").ElementStyleMutation}) => {
+      if(!this.isEnabled) return false
+      const media = this.selectedMedia()
+      const target = media ? this.cropTargetFor(media) : null
+      if(!target || typeof CSS.supports === "function" && !CSS.supports("object-view-box", "inset(0%)")) return false
+      const changed = this.editor.features.manipulation.setElementStyles(target, {"object-view-box": crop})
+      this.refresh()
+      return changed
+    },
     selectMediaFile: ({}: {type: "selectMediaFile"}) => {
       const element = this.selectedMedia()
       if(!this.isEnabled || !element || sourceEditingBlocked(element, this.editor.schema)) return false
@@ -1653,6 +1663,100 @@ export class MediaFeature extends EditorFeature {
     }
     const container = $.anchorContainer
     return isElement(container) ? mediaContainerForNode(container) : null
+  }
+
+  /** Resolve the currently rendered native media without creating content. */
+  cropTargetFor(element: Element): HTMLImageElement | HTMLVideoElement | null {
+    if(element.localName === "figure") {
+      const media = Array.from(element.children).filter(child => child.matches("picture, img, video"))
+      if(media.length !== 1) return null
+      element = media[0]
+    }
+    if(!this.isEnabled || !element.matches("picture, img, video") || !element.isConnected || !document.body.contains(element) || element.hasAttribute("is")) return null
+    element = mediaContainerForNode(element) ?? element
+    if(sourceEditingBlocked(element, this.editor.schema)) return null
+    const target = mediaSourceTarget(element, false)
+    return target.matches("img, video") && !target.hasAttribute("is") && target.namespaceURI === htmlNamespace ? target as HTMLImageElement | HTMLVideoElement : null
+  }
+
+  private cropViewport(target: HTMLImageElement | HTMLVideoElement) {
+    const style = getComputedStyle(target)
+    const box = this.editor.features.transformation.boxGeometry(target, false)
+    const value = style.getPropertyValue("object-view-box") || "none"
+    const insets = mediaCropInsets(value)
+    const width = (target instanceof HTMLImageElement ? target.naturalWidth : target.videoWidth)
+      || box.width / (insets ? 1 - (insets[1] + insets[3]) / 100 : 1)
+    const height = (target instanceof HTMLImageElement ? target.naturalHeight : target.videoHeight)
+      || box.height / (insets ? 1 - (insets[0] + insets[2]) / 100 : 1)
+    const viewport = this.parseCropViewport(value, width, height)
+    if(!viewport || width <= 0 || height <= 0 || box.width <= 0 || box.height <= 0) return null
+    const [left, top, w, h] = viewport
+    let sx = box.width / w, sy = box.height / h
+    if(style.objectFit === "cover") sx = sy = Math.max(sx, sy)
+    else if(style.objectFit === "contain") sx = sy = Math.min(sx, sy)
+    else if(style.objectFit === "none") sx = sy = 1
+    else if(style.objectFit === "scale-down") sx = sy = Math.min(1, sx, sy)
+    const position = (style.objectPosition || "50% 50%").split(/\s+/)
+    const offset = (value: string, space: number) => value.endsWith("%") ? parseFloat(value) / 100 * space : parseFloat(value)
+    if(position.length !== 2 || !position.every(value => /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:%|px)$/.test(value))) return null
+    return {width, height, left, top, w, h, sx, sy,
+      x: offset(position[0], box.width - w * sx), y: offset(position[1], box.height - h * sy), box}
+  }
+
+  private parseCropViewport(value: string, width: number, height: number) {
+    const insets = mediaCropInsets(value)
+    if(insets) return [width * insets[3] / 100, height * insets[0] / 100,
+      width * (1 - (insets[1] + insets[3]) / 100), height * (1 - (insets[0] + insets[2]) / 100)]
+    const match = value.match(/^xywh\(\s*(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+([\d.]+)px\s*\)$/)
+    const rect = match?.slice(1).map(Number)
+    return rect?.every(Number.isFinite) && rect[2] > 0 && rect[3] > 0 ? rect : null
+  }
+
+  /** Map a visual crop through the current fit and position into source pixels. */
+  cropValueFor(target: HTMLImageElement | HTMLVideoElement, edges: number[]) {
+    const viewport = this.cropViewport(target)
+    if(!viewport) return null
+    const {width, height, left, top, sx, sy, x, y, box} = viewport
+    const l = left + (box.width * edges[3] / 100 - x) / sx
+    const t = top + (box.height * edges[0] / 100 - y) / sy
+    const w = box.width * (1 - (edges[1] + edges[3]) / 100) / sx
+    const h = box.height * (1 - (edges[0] + edges[2]) / 100) / sy
+    const percent = [t / height * 100, (width - l - w) / width * 100, (height - t - h) / height * 100, l / width * 100]
+    const round = (value: number) => Math.round(value * 1e6) / 1e6
+    return percent.every(value => value >= -1e-6)
+      ? `inset(${percent.map(value => `${Math.max(0, round(value))}%`).join(" ")})`
+      : `xywh(${[l, t, w, h].map(value => `${round(value)}px`).join(" ")})`
+  }
+
+  canCrop(target: HTMLImageElement | HTMLVideoElement) {
+    return (typeof CSS.supports !== "function" || CSS.supports("object-view-box", "inset(0%)")) && this.cropViewport(target) !== null
+  }
+
+  /** Crop the source viewport and its layout box together, preserving scale. */
+  cropLayoutStyles(target: HTMLImageElement | HTMLVideoElement, value: string | null) {
+    const media = target.parentElement?.localName === "picture" ? target.parentElement as HTMLElement : target
+    const layout = media.parentElement?.localName === "figure" ? media.parentElement as HTMLElement : media
+    const changes = new Map<HTMLElement, Record<string, import("../editor-bridge").ElementStyleMutation>>()
+    const viewport = this.cropViewport(target)
+    if(!viewport) return changes
+    const next = this.parseCropViewport(value || "none", viewport.width, viewport.height)
+    if(!next) return changes
+    const box = viewport.box
+    const width = Math.round(next[2] * viewport.sx * 1e6) / 1e6
+    const height = Math.round(next[3] * viewport.sy * 1e6) / 1e6
+    const size = {"max-width": `${width}px`, "max-height": `${height}px`, "min-width": "0px", "min-height": "0px"}
+    // Explicit content dimensions avoid the uncropped intrinsic aspect ratio
+    // shrinking an auto-sized image inside its new source viewport.
+    const styles: Record<string, import("../editor-bridge").ElementStyleMutation> = {...size, width: `${width}px`, height: `${height}px`, "object-fit": "fill", "object-position": "0% 0%"}
+    // An explicit source crop replaces the earlier percentage clip crop.
+    if(target.style.clipPath && mediaCropInsets(target.style.clipPath)) styles["clip-path"] = null
+    changes.set(target, styles)
+    if(media !== target) changes.set(media, size)
+    if(layout !== media) {
+      const frame = this.editor.features.transformation.boxGeometry(layout, false)
+      changes.set(layout, {"max-width": `${width}px`, "max-height": `${Math.max(height, frame.height - box.height + height)}px`})
+    }
+    return changes
   }
 
   private imageForMedia(media: Element, create: boolean) {

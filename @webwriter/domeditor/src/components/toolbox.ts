@@ -1003,7 +1003,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderSpecializedDrawer(group?: SelectedElementTypeState, listGroups?: SelectedElementTypeState[]) {
     const attributes = group?.element ?? this.elementAttributes
-    const style = this.elementStyle
+    let style = this.elementStyle
     const widgetOptions = group ? group.widget : this.widgetOptions
     const singleTarget = Boolean(group?.count === 1 && this.elementAttributes && attributes
       && (attributes.localName === this.elementAttributes.localName && attributes.namespaceURI === this.elementAttributes.namespaceURI
@@ -1034,6 +1034,15 @@ export class DomEditorToolbox extends EditingControls {
     }
     const localName = group?.element.localName ?? widgetOptions?.localName ?? (this.graphic?.active ? "svg" : this.math?.active ? "math" : this.table?.active ? (style.target?.localName ?? "table")
       : this.media?.type ?? attributes?.localName ?? style.target?.localName)
+    if(this.media && (!group || singleTarget) && ["picture", "img", "video"].includes(localName ?? "")) {
+      const probe = document.createElement("span")
+      probe.style.cssText = this.media.attributes.style ?? ""
+      const inline = {...style.inline}
+      delete inline["object-view-box"]
+      const value = probe.style.getPropertyValue("object-view-box")
+      if(value) inline["object-view-box"] = {value, priority: probe.style.getPropertyPriority("object-view-box") === "important" ? "important" : ""}
+      style = {...style, inline, computed: {...style.computed, "object-view-box": "none"}}
+    }
     if(!localName || localName === "body" || style.target?.documentRoot) return nothing
     const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
     if(!this.isElementDrawerVisible(localName, namespaceURI)) return nothing

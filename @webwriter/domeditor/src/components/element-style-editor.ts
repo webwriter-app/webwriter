@@ -3,6 +3,7 @@ import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {colorHex} from "../css-color"
 import {mediaSourceButtonStyles} from "./media-source.styles"
+import {mediaCropInsets} from "../media"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {anchorColorSubmenu} from "./popup-position"
 import {ref} from "lit/directives/ref.js"
@@ -183,6 +184,11 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .specialized-input .length-control select {width: 2.8rem; border: 0; border-left: 1px solid #c5ccd5; border-radius: 0; background: transparent;}
     .specialized-input > input, .specialized-input > select {width: 100%; min-width: 0; border-radius: 4px;}
     .specialized-input style-combobox {flex: 1; min-width: 0;}
+    .crop-edges {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; width: 100%; min-width: 0;}
+    .crop-edge {display: grid; gap: .15rem; min-width: 0;}
+    .crop-edge .specialized-input {min-width: 0;}
+    .crop-edge .crop-unit {align-self: center; padding-right: .3rem; color: #666;}
+    :host([mode="compact"]) .specialized-input:has(> .crop-edges) {border: 0;}
     :host([mode="compact"]) .specialized-input:has(style-combobox) {border: 0; box-shadow: none;}
     style-combobox {flex: 1; min-width: 0;}
     :host([mode="compact"]) .specialized-input:has(.specialized-choice-group) {border: 0; align-items: center;}
@@ -1703,11 +1709,37 @@ export class ElementStyleEditor extends LitElement {
     </span>`
   }
 
+  private renderMediaCrop(definition: ElementStylePropertyDefinition) {
+    const value = this.declaration("object-view-box")?.value ?? this.state.computed["object-view-box"] ?? "none"
+    const edges = mediaCropInsets(value)
+    // Leave other authored shapes, units and rounded insets editable as CSS.
+    if(!edges) return this.renderInput(definition, this.declaration("object-view-box"))
+    return html`<div class="crop-edges" role="group" aria-label="Crop edges in percent">
+      ${["Top", "Right", "Bottom", "Left"].map((edge, index) => html`<label class="crop-edge">
+        <span>${edge}</span><span class="specialized-input">
+          <input type="number" min="0" max="100" step="any" aria-label=${`Crop ${edge.toLowerCase()} (%)`}
+            .value=${String(edges[index])}
+            @change=${(event: Event) => {
+              const input = event.currentTarget as HTMLInputElement
+              const next = [...edges]
+              next[index] = input.valueAsNumber
+              if(!input.validity.valid || !Number.isFinite(next[index]) || next[0] + next[2] >= 100 || next[1] + next[3] >= 100) {
+                input.value = String(edges[index])
+                return
+              }
+              this.commitValue("object-view-box", next.every(value => value === 0) ? "" : `inset(${next.map(value => `${value}%`).join(" ")})`)
+            }}><span class="crop-unit" aria-hidden="true">%</span>
+        </span>
+      </label>`)}
+    </div>`
+  }
+
   private renderCompactProperty(definition: ElementStylePropertyDefinition) {
+    const mediaCrop = definition.name === "object-view-box" && definition.label === "Crop"
     return html`<div class="compact-row" data-property=${definition.name}>
-      ${this.renderCompactLabel(definition.name, definition.label)}
+      ${this.renderCompactLabel(definition.name, mediaCrop ? "Crop" : definition.label)}
       <div class="compact-controls specialized-input">
-        ${definition.name === "list-style-type" && definition.control === "select" && definition.values?.length
+        ${mediaCrop ? this.renderMediaCrop(definition) : definition.name === "list-style-type" && definition.control === "select" && definition.values?.length
           ? this.renderMarkerChoices(definition) : definition.control === "number" || definition.control === "length" || ["line-height", "border-spacing", "math-depth"].includes(definition.name)
           ? this.renderSpecializedNumber(definition) : definition.control === "select" && definition.values?.length && definition.values.length <= 8
           && definition.values.every(value => value.length <= 14)

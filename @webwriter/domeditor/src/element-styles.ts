@@ -369,6 +369,7 @@ export const enumerationMarkerTypes = ["decimal", "decimal-leading-zero", "lower
 
 /** Properties absent from the universal Style drawer, reusing CSS controls. */
 export const specializedStyleDefinitions: readonly ElementStylePropertyDefinition[] = [
+  text("object-view-box", "Crop", "Media"),
   text("line-height", "Line height", "Paragraph"),
   select("list-style-type", "Marker", "Lists", values(...listMarkerTypes, ...enumerationMarkerTypes, "none")),
   select("vertical-align", "Vertical alignment", "Text", values("baseline", "middle", "top", "bottom", "sub", "super", "text-top", "text-bottom")),
@@ -402,7 +403,7 @@ const listStyles: SpecializedElementStyle = {
   advanced: ["list-style-position", "break-inside"],
 }
 const imageStyles: SpecializedElementStyle = {
-  primary: ["object-fit", "object-position"],
+  primary: ["object-fit", "object-position", "object-view-box"],
   advanced: ["image-rendering"],
 }
 export function specializedElementStyle(localName: string): SpecializedElementStyle | undefined {

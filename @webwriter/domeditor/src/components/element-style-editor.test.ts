@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from "vitest"
 import type {ElementStyleState} from "../editor-bridge"
-import {elementStyleCategories} from "../element-styles"
+import {elementStyleCategories, specializedStyleDefinitions} from "../element-styles"
 import {ElementStyleEditor, type ElementStyleChangeDetail} from "./element-style-editor"
 
 const state = (inline: ElementStyleState["inline"] = {}): ElementStyleState => ({
@@ -17,6 +17,53 @@ const state = (inline: ElementStyleState["inline"] = {}): ElementStyleState => (
 })
 
 afterEach(() => document.body.replaceChildren())
+
+describe("media cropping", () => {
+  const definitions = specializedStyleDefinitions.filter(definition => definition.name === "object-view-box")
+  async function mountCrop(style: ElementStyleState) {
+    const editor = await mount(definitions, style, "compact")
+    editor.propertyNames = ["object-view-box"]
+    await editor.updateComplete
+    return editor
+  }
+  it.each([
+    ["inset(10%)", [10, 10, 10, 10]],
+    ["inset(10% 20%)", [10, 20, 10, 20]],
+    ["inset(10% 20% 30%)", [10, 20, 30, 20]],
+    ["inset(0 20% 30% 5.5%)", [0, 20, 30, 5.5]],
+  ] as const)("edits %s as four percentage edges and preserves priority", async (value, edges) => {
+    const editor = await mountCrop(state({"object-view-box": {value, priority: "important"}}))
+    const inputs = Array.from(editor.shadowRoot!.querySelectorAll<HTMLInputElement>('.crop-edges input'))
+    expect(inputs.map(input => input.valueAsNumber)).toEqual(edges)
+    let change: ElementStyleChangeDetail | undefined
+    editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
+    inputs[0].value = "12.5"
+    inputs[0].dispatchEvent(new Event("change"))
+    expect(change).toEqual({property: "object-view-box", mutation: {value: `inset(12.5% ${edges[1]}% ${edges[2]}% ${edges[3]}%)`, priority: "important"}})
+    editor.state = state({"object-view-box": {value: "inset(5%)", priority: ""}})
+    await editor.updateComplete
+    expect(inputs.map(input => input.valueAsNumber)).toEqual([5, 5, 5, 5])
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Crop"]')!.click()
+    expect(change).toEqual({property: "object-view-box", mutation: null})
+  })
+
+  it.each(["", "-1", "100", "101"])("rejects an empty or invisible crop edge: %s", async value => {
+    const editor = await mountCrop(state())
+    let change: unknown
+    editor.addEventListener("element-style-change", event => {change = (event as CustomEvent).detail})
+    const input = editor.shadowRoot!.querySelector<HTMLInputElement>('.crop-edges input')!
+    input.value = value
+    input.dispatchEvent(new Event("change"))
+    expect(change).toBeUndefined()
+    expect(input.value).toBe("0")
+  })
+
+  it.each(["circle(40%)", "inset(10px)", "inset(10% round 5px)", "inherit"])("preserves other authored clipping: %s", async value => {
+    const editor = await mountCrop(state({"object-view-box": {value, priority: ""}}))
+    expect(editor.shadowRoot!.querySelector('.crop-edges')).toBeNull()
+    expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input')!.value).toBe(value === "inherit" ? "" : value)
+  })
+})
 
 it.each(["border-width", "border-style", "border-color", "border-top-color"])("shows Border clear for an authored %s and clears all three parts", async property => {
   const editor = await mount([], state({[property]: {value: property === "border-width" ? "2px" : property === "border-style" ? "dashed" : "#123456", priority: ""}}), "compact")

@@ -2154,9 +2154,12 @@ export class ManipulationFeature extends EditorFeature {
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
   private stylePropertyTarget(target: Element, name: string) {
-    return target.localName === "picture" && ["object-fit", "object-position", "image-rendering"].includes(name)
-      ? target.querySelector(":scope > img")
-      : target
+    if(!["object-fit", "object-position", "image-rendering", "clip-path", "object-view-box"].includes(name)) return target
+    if(target.localName === "figure") {
+      const media = Array.from(target.children).filter(child => child.matches("picture, img, video"))
+      if(media.length === 1) target = media[0]
+    }
+    return target.localName === "picture" ? target.querySelector(":scope > img") : target
   }
 
   getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true): ElementStyleState {
@@ -3662,7 +3665,16 @@ export class ManipulationFeature extends EditorFeature {
     }
     let changed = false
     for(const [target, declarations] of targets) {
+      const crop = declarations.find(entry => entry.name === "object-view-box")
+      const layout = crop && (target instanceof HTMLImageElement || target instanceof HTMLVideoElement)
+        && this.inlineStyleOf(target)?.getPropertyValue("object-view-box") !== (crop.value ?? "")
+        ? this.editor.features.media.cropLayoutStyles(target, crop.value) : null
       changed = this.applyStyleEntries(target, declarations) || changed
+      for(const [element, styles] of layout ?? []) {
+        const entries = this.validateElementStyles(styles)
+        if(entries.length) changed = this.applyStyleEntries(element, entries) || changed
+        if(!element.style.length) element.removeAttribute("style")
+      }
       if(!this.inlineStyleOf(target)?.length) target.removeAttribute("style")
     }
     return changed
@@ -3693,11 +3705,7 @@ export class ManipulationFeature extends EditorFeature {
 
   setElementStyles(target: Element, styles: Record<string, ElementStyleMutation>) {
     if(!target.isConnected || !getDocumentRoot().contains(target) || this.editor.isEditingLocked) return false
-    const entries = this.allowedElementStyles(target, this.validateElementStyles(styles))
-    if(!entries.length) return false
-    const changed = this.applyStyleEntries(target, entries)
-    if(!this.inlineStyleOf(target)?.length) target.removeAttribute("style")
-    return changed
+    return this.applyElementStyleEntries(target, this.validateElementStyles(styles))
   }
 
   /** Applies paragraph declarations independently to every selected text

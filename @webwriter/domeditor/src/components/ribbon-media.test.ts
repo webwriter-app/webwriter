@@ -7,6 +7,19 @@ import {DomEditorToolbox} from "./toolbox"
 beforeEach(() => document.body.replaceChildren())
 
 describe("media ribbon drawer", () => {
+  it.each(["picture", "img", "video", "audio"] as const)("offers cropping only for visual media: %s", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type, attributes: {}}
+    toolbox.elementStyle = {target: {localName: "figure", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const editor = toolbox.shadowRoot!.querySelector("[data-specialized] element-style-editor")!
+    await (editor as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    expect(editor.shadowRoot!.querySelectorAll('.crop-edges input').length).toBe(type === "audio" ? 0 : 4)
+  })
+
   it("dispatches the Image insertion command from a Start media button", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"

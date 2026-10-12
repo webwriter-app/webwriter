@@ -1219,6 +1219,23 @@ describe("processSelection()", () => {
     expect(atomicOverlays()).toHaveLength(0)
   })
 
+  it("positions the native media selection overlay on cropped visible bounds", () => {
+    const image = el("img") as HTMLImageElement
+    image.style.setProperty("object-view-box", "inset(10% 20% 30% 40%)")
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(90, 30, 80, 60))
+    $.selectElement(image)
+    feature.processSelection()
+
+    const overlay = atomicOverlays()[0]
+    expect(overlay).toBeDefined()
+    expect(overlay.getRootNode()).toBe(editor.appendix)
+    expect(overlay.style.left).toBe("90px")
+    expect(overlay.style.top).toBe("30px")
+    expect(overlay.style.width).toBe("80px")
+    expect(overlay.style.height).toBe("60px")
+    expect(editor.toHTML(true)).not.toMatch(/atomic-selection-overlay|◆/)
+  })
+
   it.each([false, true])("overlays an element-selected details and clears it on collapse (open: %s)", open => {
     document.body.innerHTML = `<details${open ? " open" : ""}><summary>Title</summary><p>Body<test-widget></test-widget></p></details>`
     const details = document.querySelector("details")!

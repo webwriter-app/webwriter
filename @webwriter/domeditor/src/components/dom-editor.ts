@@ -6103,6 +6103,17 @@ export class DomEditor extends LitElement {
         || mutation !== null && typeof mutation !== "string" && !validDeclaration
     })) return
     const styles = Object.fromEntries(entries) as Record<string, ElementStyleMutation>
+    const mediaDrawer = event.composedPath().find(node => node instanceof Element && node.matches('ribbon-drawer[data-specialized="picture"], ribbon-drawer[data-specialized="img"], ribbon-drawer[data-specialized="video"]'))
+    if(mediaDrawer && Object.hasOwn(styles, "object-view-box")) {
+      const crop = styles["object-view-box"]
+      if((mediaDrawer as HTMLElement & {elementCount: number}).elementCount > 1) {
+        if(!isElementSelectionType(detail.selectionType)) return
+        void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles: {"object-view-box": crop}})
+      }
+      else void this.execute({type: "setMediaCrop", crop}).then(() => this.refreshElementStyleState()).catch(() => this.refreshElementStyleState())
+      delete styles["object-view-box"]
+      if(!Object.keys(styles).length) return
+    }
     const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
       && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
     if(detail.selectionType !== undefined && !topLevel) {
