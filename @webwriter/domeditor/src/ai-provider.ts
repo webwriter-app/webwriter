@@ -425,7 +425,7 @@ export class AIProviderStore extends EventTarget {
     return this.providerList.find(provider => provider.id === providerId)
   }
 
-  upsert(provider: AIProviderConfig) {
+  upsert(provider: AIProviderConfig, activate = true) {
     const normalized = normalizeAIProvider(provider)
     const previousList = this.providerList
     const previousSelected = this.selectedProviderId
@@ -433,7 +433,7 @@ export class AIProviderStore extends EventTarget {
     this.providerList = index < 0
       ? [...this.providerList, normalized]
       : this.providerList.map(candidate => candidate.id === normalized.id ? normalized : candidate)
-    this.selectedProviderId = normalized.id
+    if(activate || !this.selectedProviderId) this.selectedProviderId = normalized.id
     try {
       this.persist()
     }
@@ -446,8 +446,8 @@ export class AIProviderStore extends EventTarget {
     return normalized
   }
 
-  async save(provider: AIProviderConfig, apiKey?: string) {
-    if(!this.backend) return this.upsert(provider)
+  async save(provider: AIProviderConfig, apiKey?: string, activate = true) {
+    if(!this.backend) return this.upsert(provider, activate)
     const backend = this.backend
     const sequence = this.backendSequence
     const normalized = normalizeAIProvider({...provider, managed: "backend"})
@@ -460,7 +460,7 @@ export class AIProviderStore extends EventTarget {
     this.providerList = index < 0
       ? [...this.providerList, saved]
       : this.providerList.map(candidate => candidate.id === saved.id ? saved : candidate)
-    this.selectedProviderId = result.activeProviderId ?? saved.id
+    if(activate || !this.selectedProviderId) this.selectedProviderId = result.activeProviderId ?? saved.id
     this.notify()
     return saved
   }

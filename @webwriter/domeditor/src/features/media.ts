@@ -2,6 +2,7 @@ import {EditorFeature} from "."
 import {SVG_NAMESPACE, graphicShapeGeometry} from "../graphic"
 import type {Schema} from "../schema"
 import {MediaCapture} from "../components/media-capture"
+import {mediaSourceButtonStyles} from "../components/media-source.styles"
 import {stripActiveContent} from "../active-content"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
@@ -136,33 +137,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   }
   button, input { box-sizing: border-box; font: inherit; pointer-events: auto; }
   [hidden] { display: none !important; }
-  .file-options {
-    display: flex;
-    flex: 0 0 auto;
-    pointer-events: auto;
-    overflow: hidden;
-    border: 1px solid #c7c9ce;
-    border-radius: .35rem;
-    background: white;
-  }
-  .file-options button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    gap: .4rem;
-    height: calc(var(--control-height) - 2px);
-    min-width: calc(1.125rem + .375rem + 1px);
-    padding: 0 .65rem;
-    border: 0;
-    color: #343740;
-    background: white;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .file-options button + button { border-inline-start: 1px solid #c7c9ce; }
-  .file-options button:hover { background: #eef4fb; }
-  .file-options button:active { color: #1e4f87; background: #c4dcf4; }
+  ${mediaSourceButtonStyles.cssText}
   .label { white-space: nowrap; }
   .icon { display: flex; flex: 0 0 auto; }
   .icon svg { display: block; width: 1.125rem; height: 1.125rem; }

@@ -4,6 +4,25 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {AppRibbon} from "./ribbon"
 import {DocumentHeadEditor, DocumentHeadCombobox, officialLanguageOptions, orderedLanguageOptions} from "./document-head-editor"
+
+it("omits theme, generator and add-element affordances from compact document options", async () => {
+  const editor = await mount("advanced", state({theme: "base", generator: WEBWRITER_GENERATOR,
+    elements: [element({id: "theme", preset: "theme", label: "Theme"}), element({id: "generator", preset: "generator", label: "Generator"})]}))
+  editor.compact = true
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector('.generator-entry, .add-toolbar, [aria-label="Add another head element"]')).toBeNull()
+  expect(editor.shadowRoot!.textContent).not.toContain("Theme")
+  expect(editor.shadowRoot!.textContent).not.toContain("Generator")
+  expect(editor.shadowRoot!.querySelector('textarea[name="description"]')).not.toBeNull()
+  const description = editor.shadowRoot!.querySelector<HTMLTextAreaElement>('textarea[name="description"]')!
+  expect(description.getAttribute("rows")).toBe("3")
+  const actions = vi.fn()
+  editor.addEventListener("document-head-action", actions)
+  description.value = "First line\nSecond line\nThird line"
+  description.dispatchEvent(new Event("change", {bubbles: true}))
+  expect(actions.mock.calls[0][0].detail).toEqual({type: "setDocumentHeadField", field: "description", value: description.value})
+  expect(editor.state.elements).toHaveLength(2)
+})
 import {DomEditorToolbox} from "./toolbox"
 import type {RibbonMenu} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -125,7 +144,7 @@ describe("document head form", () => {
     const actions: DocumentHeadAction[] = []
     editor.addEventListener("document-head-action", event => actions.push((event as CustomEvent<DocumentHeadAction>).detail))
 
-    const description = editor.shadowRoot!.querySelector<HTMLInputElement>('input[name="description"]')!
+    const description = editor.shadowRoot!.querySelector<HTMLTextAreaElement>('textarea[name="description"]')!
     const keywords = editor.shadowRoot!.querySelector<HTMLInputElement>('input[name="keywords"]')!
     const generator = editor.shadowRoot!.querySelector<HTMLElement>(".generator-entry")!
     description.value = "Updated lesson"
@@ -347,7 +366,7 @@ describe("document head form", () => {
     })
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Metadata"]')!
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="document"]')!
     expect(drawer).not.toBeNull()
     await drawer.updateComplete
     expect(drawer.pane).toBe(true)
@@ -364,7 +383,7 @@ describe("document head form", () => {
 
     toolbox.documentSelected = false
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="document"]')).toBeNull()
 
     toolbox.documentSelected = true
     await toolbox.updateComplete

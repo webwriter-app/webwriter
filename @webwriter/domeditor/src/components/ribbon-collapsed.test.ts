@@ -28,6 +28,30 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("collapsed ribbon file menu", () => {
+  it("uses direct cloud save actions and restores local format submenus", async () => {
+    const {ribbon, menu} = await mount()
+    const commands = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", commands)
+    ribbon.settings = {...ribbon.settings, activeCloudServiceId: "cloud"}
+    ribbon.backendState = "connected"
+    await ribbon.updateComplete
+    await menu.updateComplete
+    for(const label of ["Save", "Save as"]) {
+      const button = menu.shadowRoot!.querySelector<HTMLButtonElement>(`button[title="${label}"]`)!
+      expect(button.parentElement!.querySelector(".submenu-toggle")).toBeNull()
+      button.click()
+    }
+    expect(commands.mock.calls.map(([event]) => event.detail.label)).toEqual(["Save", "Save as"])
+    ribbon.settings = {...ribbon.settings, activeCloudServiceId: null}
+    await ribbon.updateComplete
+    await menu.updateComplete
+    for(const label of ["Save", "Save as"]) {
+      const button = menu.groups[0].buttons.find(item => typeof item !== "string" && item.label === label)
+      expect(typeof button !== "string" && button?.submenu?.map(item => typeof item === "string" ? item : item.label))
+        .toEqual(["HTML (.html)", "Offline HTML (.offline.html)"])
+    }
+  })
+
   it("shows a grey empty hint and updates the Open submenu with up to ten recent documents", async () => {
     const {ribbon, menu} = await mount()
     const commands = vi.fn()
@@ -50,14 +74,14 @@ describe("collapsed ribbon file menu", () => {
     expect(menu.shadowRoot!.querySelector(".submenu")).toBeNull()
   })
 
-  it.each(["Document", "Canvas", "Slides"])("dispatches New %s from the submenu", async label => {
+  it.each(["Document", "Canvas", "Slides", "Board"])("dispatches New %s from the submenu", async label => {
     const {ribbon, menu} = await mount()
     const commands = vi.fn()
     ribbon.addEventListener("ribbon-button-click", commands)
     menu.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more New options"]')!.click()
     await menu.updateComplete
     const options = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('.submenu button'))
-    expect(options.map(button => button.textContent!.trim())).toEqual(["Document", "Canvas", "Slides"])
+    expect(options.map(button => button.textContent!.trim())).toEqual(["Document", "Canvas", "Slides", "Board"])
     options.find(button => button.title === label)!.click()
     expect(commands).toHaveBeenCalledOnce()
     expect(commands.mock.calls[0][0].detail.label).toBe(`new:${label.toLowerCase()}`)

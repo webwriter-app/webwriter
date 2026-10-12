@@ -6,6 +6,59 @@ import type {RibbonButton} from "./ribbon-button"
 import {RibbonDrawer} from "./ribbon-drawer"
 import {AIProviderStore} from "../ai-provider"
 import {emptyProofreadingState, emptyVersionHistoryState} from "../editor-bridge"
+import {emptyDocumentHeadState} from "../document-head"
+
+it("combines document options without exposing a root widget or separate language attribute", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.documentSelected = true
+  toolbox.elementAttributes = {path: [0], localName: "my-document", namespaceURI: "http://www.w3.org/1999/xhtml", name: "My document", attributes: {lang: "de"}}
+  toolbox.widgetOptions = {path: [0], localName: "my-document", options: [{name: "layout", label: "Widget layout", type: "string", attribute: "layout", value: "custom"}], actions: []}
+  toolbox.selectTool("Edit")
+  await toolbox.updateComplete
+  const drawers = [...toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer")]
+  expect(drawers.map(drawer => drawer.label)).toEqual(["Style", "Document"])
+  const drawer = drawers[1]
+  await drawer.updateComplete
+  expect(drawer.icon).toBe("Document")
+  expect(drawer.showPaneIcon).toBe(true)
+  expect(drawer.expandable).toBe(true)
+  expect(drawer.querySelector('button[slot="heading-action"]')?.getAttribute("aria-label")).toBe("Reset document options")
+  expect(drawer.querySelector("element-attribute-editor, .specialized-widget-primary, .widget-sharing")).toBeNull()
+  expect(drawer.querySelector('[action^="set-document-template:"]')).toBeNull()
+  expect(drawer.querySelector('.document-primary document-head-editor[mode="common"]')).not.toBeNull()
+  expect(drawer.querySelector('[slot="more"] document-head-editor[mode="advanced"]')).not.toBeNull()
+  expect(drawer.querySelector('.layout-preview-toggle, .document-layout-zoom')).toBeNull()
+  expect(drawer.querySelectorAll('.document-primary .document-layout-change')).toHaveLength(4)
+})
+
+it("resets configured document metadata and layout through the existing commands", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.documentSelected = true
+  toolbox.selectTool("Edit")
+  await toolbox.updateComplete
+  const reset = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".document-reset")!
+  expect(reset().disabled).toBe(true)
+  toolbox.documentHead = {...emptyDocumentHeadState(), title: "Lesson", language: "de", description: "A lesson",
+    elements: [{id: "unknown", tagName: "meta", label: "Custom", attributes: [{name: "name", value: "custom"}], canMoveUp: false, canMoveDown: false}]}
+  toolbox.documentLayout = {mode: "board", canConvert: true, zoom: 125}
+  await toolbox.updateComplete
+  const metadata = vi.fn()
+  const layout = vi.fn()
+  toolbox.addEventListener("document-head-action", metadata)
+  toolbox.addEventListener("document-layout-change", layout)
+  reset().click()
+  expect(metadata.mock.calls.map(([event]) => event.detail)).toEqual([
+    {type: "setDocumentHeadField", field: "title", value: ""},
+    {type: "setDocumentHeadField", field: "language", value: ""},
+    {type: "setDocumentHeadField", field: "description", value: ""},
+  ])
+  expect(layout.mock.calls[0][0].detail).toEqual({mode: "document"})
+  expect(toolbox.documentHead.elements[0].id).toBe("unknown")
+  toolbox.documentHead = emptyDocumentHeadState()
+  toolbox.documentLayout = {...toolbox.documentLayout, canConvert: false}
+  await toolbox.updateComplete
+  expect(reset().disabled).toBe(true)
+})
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -685,44 +738,35 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Document"]')!
     const buttons = Array.from(drawer.querySelectorAll<RibbonButton>("ribbon-button"))
-    expect(buttons.map(button => button.label)).toEqual(["Default"])
-    expect(buttons.map(button => button.action)).toEqual(["set-document-template:body"])
+    expect(buttons).toHaveLength(0)
+    expect(drawer.querySelector('document-head-editor[mode="common"]')).not.toBeNull()
   })
 
-  it("shows the active layout as a dropdown card and emits conversion requests", async () => {
+  it("shows four layout cards with the active layout selected and emits conversion requests", async () => {
     const toolbox = await mountToolbox()
     toolbox.documentSelected = true
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
 
-    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[layout="document-layout"]')!
-    const picker = drawer.querySelector<HTMLDetailsElement>("details")!
-    const summary = picker.querySelector("summary")!
-    expect(drawer.label).toBe("Layouts")
-    expect(picker.open).toBe(false)
-    expect(summary.textContent).toContain("Document")
-    expect(summary.querySelector(".document-layout-preview.document")).not.toBeNull()
-    expect(drawer.textContent).toContain("Zoom: 100%")
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="document"]')!
+    expect(drawer.label).toBe("Document")
+    expect(drawer.querySelector("details")).toBeNull()
+    expect(drawer.querySelector(".layout-preview-toggle, .document-layout-zoom")).toBeNull()
     const choices = Array.from(drawer.querySelectorAll<HTMLButtonElement>(".document-layout-change"))
-    expect(choices.map(button => button.dataset.mode)).toEqual(["canvas", "slides", "board"])
+    expect(choices.map(button => button.dataset.mode)).toEqual(["document", "canvas", "slides", "board"])
+    expect(choices.filter(button => button.getAttribute("aria-pressed") === "true").map(button => button.dataset.mode)).toEqual(["document"])
+    expect(choices[0].disabled).toBe(true)
     expect(choices.every(button => button.querySelector('.document-layout-preview[aria-hidden="true"]'))).toBe(true)
-    summary.click()
-    expect(picker.open).toBe(true)
     const request = vi.fn()
     toolbox.addEventListener("document-layout-change", request)
-    choices[0].click()
+    choices[1].click()
     expect(request).toHaveBeenCalledWith(expect.objectContaining({detail: {mode: "canvas"}}))
-    expect(picker.open).toBe(false)
 
     toolbox.documentLayout = {mode: "canvas", canConvert: true, zoom: 125}
     await toolbox.updateComplete
-    expect(summary.textContent).toContain("Canvas")
-    expect(drawer.textContent).toContain("Zoom: 125%")
-    expect(drawer.querySelector('[data-mode="canvas"]')).toBeNull()
+    expect(drawer.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("true")
+    expect(drawer.querySelector<HTMLButtonElement>('[data-mode="canvas"]')!.disabled).toBe(true)
     expect(drawer.querySelector<HTMLButtonElement>('[data-mode="slides"]')!.disabled).toBe(false)
-    summary.click()
-    summary.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
-    expect(picker.open).toBe(false)
 
     toolbox.documentLayout = {mode: "canvas", canConvert: false, zoom: 125}
     await toolbox.updateComplete

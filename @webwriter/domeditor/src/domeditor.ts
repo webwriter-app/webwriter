@@ -58,6 +58,7 @@ import {
 import { getElementPresentation, isLineBreakElement } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
+import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
 import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype} from "./serialization"
 import type {DocumentHeadState} from "./document-head"
@@ -69,7 +70,7 @@ import {parse as parseModule} from "es-module-lexer/js"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./package-dependencies"
 
-const editorStylesheet = createStylesheet(editorStyleString)
+const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
 const appendixStylesheet = createStylesheet(`
   @keyframes blink {
     50% { opacity: 0; }

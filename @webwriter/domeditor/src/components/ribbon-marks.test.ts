@@ -348,6 +348,7 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(actions).flexShrink).toBe("1")
     expect(getComputedStyle(actions).minWidth).toBe("48px")
     expect(getComputedStyle(actions).justifyContent).toBe("space-between")
+    expect(getComputedStyle(actions).gap).toBe(".2rem")
     for(const button of buttons) {
       expect(getComputedStyle(button).flexShrink).toBe("1")
       expect(getComputedStyle(button).minWidth).toBe("24px")
@@ -565,15 +566,10 @@ describe("mark ribbon controls", () => {
       {label: "Document", action: "new:document", icon: "Document"},
       {label: "Canvas", action: "new:canvas", icon: "Canvas"},
       {label: "Slides", action: "new:slides", icon: "KeywordPresentation"},
+      {label: "Board", action: "new:board", icon: "BoardColumn"},
     ])
-    expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([
-      {label: "HTML (.html)", action: "save:html", icon: "HTML"},
-      {label: "Offline HTML (.offline.html)", action: "save:offline", icon: "OfflineHTML"},
-    ])
-    expect(fileButtons.find(button => button.label === "Save as")?.submenu).toEqual([
-      {label: "HTML (.html)", action: "save-as:html", icon: "HTML"},
-      {label: "Offline HTML (.offline.html)", action: "save-as:offline", icon: "OfflineHTML"},
-    ])
+    expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([])
+    expect(fileButtons.find(button => button.label === "Save as")?.submenu).toEqual([])
     expect(fileDrawer.querySelector('input[type="checkbox"]')).toBeNull()
     expect(getComputedStyle(fileDrawer).getPropertyValue("--ribbon-drawer-expanded-width").trim())
       .toBe("17.5rem")
@@ -757,11 +753,10 @@ describe("mark ribbon controls", () => {
         "Subscript",
         "Code",
         "Keyboard Shortcut",
-        "Quotation",
       ])
     expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-icon svg')).not.toBeNull()
     expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-name')?.textContent).toBe("Superscript")
-    expect(dropdown.querySelector('input[aria-label="Quotation: Source"]')).not.toBeNull()
+    expect(dropdown.querySelector('input[aria-label="Select Quotation"]')).toBeNull()
 
     dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Code"]')!.click()
     expect(changed).toHaveBeenCalledWith(expect.objectContaining({
@@ -792,8 +787,8 @@ describe("mark ribbon controls", () => {
     const more = drawer.querySelector<RibbonButton>(".mark-span")!
     await more.updateComplete
     const options = [...more.shadowRoot!.querySelectorAll<HTMLElement>(".mark-dropdown-option")]
-    expect(options).toHaveLength(5)
-    for(const [index, name] of ["sup", "sub", "code", "kbd", "q"].entries()) {
+    expect(options).toHaveLength(4)
+    for(const [index, name] of ["sup", "sub", "code", "kbd"].entries()) {
       const shortcut = options[index].querySelector<HTMLElement>(".mark-dropdown-shortcut")
       const configured = ribbon.settings.shortcuts[`text.${name}`]
       expect(shortcut?.textContent ?? "").toBe(formatShortcut(configured))
@@ -855,7 +850,7 @@ describe("mark ribbon controls", () => {
     button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await button.updateComplete
     const dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(5)
+    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(4)
     expect(dropdown.querySelector(".ruby-dropdown")).toBeNull()
     expect(dropdown.textContent).not.toContain("Annotation")
 
@@ -865,33 +860,21 @@ describe("mark ribbon controls", () => {
     }))
   })
 
-  it("shows secondary mark attributes inside the span dropdown", async () => {
+  it("omits Quotation controls even when authored quotations are selected", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
-    ribbon.marks = []
+    ribbon.marks = ["q"]
     ribbon.markAttributes = {q: {cite: "https://example.com/source"}}
     await ribbon.updateComplete
     await drawer.updateComplete
-
     const span = drawer.querySelector<RibbonButton>(".mark-span")!
+    await span.updateComplete
     span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await span.updateComplete
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    const quotation = dropdown.querySelector<HTMLInputElement>('input[aria-label="Quotation: Source"]')!
-    expect(quotation.disabled).toBe(true)
-    expect(quotation.parentElement!.getAttribute("aria-hidden")).toBe("true")
-    expect(getComputedStyle(quotation.parentElement!).visibility).toBe("hidden")
-
-    dropdown.querySelector<HTMLInputElement>('input[aria-label="Select Quotation"]')!.click()
-    await ribbon.updateComplete
-    await span.updateComplete
-    const openDropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    const activeQuotation = openDropdown.querySelector<HTMLInputElement>('input[aria-label="Quotation: Source"]')!
-    expect(openDropdown.hidden).toBe(false)
-    expect(activeQuotation.value).toBe("https://example.com/source")
-    expect(activeQuotation.disabled).toBe(false)
-    expect(activeQuotation.parentElement!.getAttribute("aria-hidden")).toBe("false")
-    expect(getComputedStyle(activeQuotation.parentElement!).visibility).not.toBe("hidden")
+    expect(dropdown.querySelector('input[aria-label="Select Quotation"]')).toBeNull()
+    expect(dropdown.querySelector('input[aria-label="Quotation: Source"]')).toBeNull()
+    expect(ribbon.marks).toEqual(["q"])
   })
 
   it("keeps Link as the primary toggle for More without link inputs", async () => {
@@ -921,7 +904,7 @@ describe("mark ribbon controls", () => {
     more.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await more.updateComplete
     const dropdown = more.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(5)
+    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(4)
     expect(dropdown.querySelector("input[aria-label=\"Select Link\"]")).toBeNull()
     expect(dropdown.querySelector("input, select")).not.toBeNull()
   })
@@ -980,6 +963,21 @@ describe("mark ribbon controls", () => {
 })
 
 describe("mark ribbon bridge", () => {
+  it.each(["color", "background-color"])("routes custom %s through the style mark command", async property => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    dispatchEditorMessage(editor, editorWindow, {type: markStateChangeEvent, detail: {canMark: true, marks: []}})
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const combo = ribbon.shadowRoot!.querySelector<RibbonCombobox>(`ribbon-combobox[name="${property}"]`)!
+    await combo.updateComplete
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
+    input.value = "#12ab34"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(execute).toHaveBeenCalledWith({type: "setStyleMark", property, value: "#12ab34"})
+  })
+
   it("updates controls from selection messages and routes style, toggle, size, and clear commands", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -1072,7 +1070,7 @@ describe("mark ribbon bridge", () => {
     expect(execute).toHaveBeenNthCalledWith(8, {type: "removeRuby"})
   })
 
-  it("routes span dropdown selections and detail-attribute changes", async () => {
+  it("routes span dropdown selections while preserving authored quotations", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     dispatchEditorMessage(editor, editorWindow, {
@@ -1099,31 +1097,18 @@ describe("mark ribbon bridge", () => {
     await span.updateComplete
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
     dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Code"]')!.click()
-    const source = dropdown.querySelector<HTMLInputElement>(
-      'input[aria-label="Quotation: Source"]',
-    )!
-    source.value = "https://example.com/updated"
-    source.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-
     expect(execute).toHaveBeenNthCalledWith(1, {type: "toggleMark", mark: "a"})
     expect(execute).toHaveBeenNthCalledWith(2, {
       type: "setMarkGroup",
       primary: "span",
       marks: ["q", "code"],
     })
-    expect(execute).toHaveBeenNthCalledWith(3, {
-      type: "setMarkAttribute",
-      mark: "q",
-      attribute: "cite",
-      value: "https://example.com/updated",
-    })
-
     ribbon.dispatchEvent(new CustomEvent("ribbon-combobox-change", {
       detail: {name: "mark-types", value: "", values: []},
       bubbles: true,
       composed: true,
     }))
-    expect(execute).toHaveBeenNthCalledWith(4, {
+    expect(execute).toHaveBeenNthCalledWith(3, {
       type: "setMarkGroup",
       primary: "span",
       marks: [],

@@ -977,6 +977,29 @@ describe("DomEditor iframe setup", () => {
     expect(detached.defaultPrevented).toBe(false)
   })
 
+  it("warns before unloading while AI is thinking or has queued messages, and releases the guard after cancellation", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const host = ribbon as any
+    const unloadPrevented = () => {
+      const event = new Event("beforeunload", {cancelable: true})
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    expect(unloadPrevented()).toBe(false)
+    host.aiBusy = true
+    expect(unloadPrevented()).toBe(true)
+    host.aiBusy = false
+    expect(unloadPrevented()).toBe(false)
+    host.queuedAIPrompts = [{prompt: "Next", chatId: "chat-1", messageId: "queued", attachments: []}]
+    expect(unloadPrevented()).toBe(true)
+    await ribbon.cancelAIWork()
+    expect(unloadPrevented()).toBe(false)
+    host.aiBusy = true
+    editor.remove()
+    expect(unloadPrevented()).toBe(false)
+  })
+
   it("rebootstraps a new same-revision shell from the latest authored snapshot and rejects replays", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -1255,7 +1278,7 @@ describe("DomEditor iframe setup", () => {
     expect(host.confirmDiscardChanges()).toBe(false)
   })
 
-  it.each(["document", "canvas", "slides"] as const)("creates an explicit %s layout from the New submenu without changing the default", async mode => {
+  it.each(["document", "canvas", "slides", "board"] as const)("creates an explicit %s layout from the New submenu without changing the default", async mode => {
     const {editor} = await mountEditor()
     const host = editor as any
     host.settings = {...host.settings, defaultLayout: "slides"}
@@ -6269,7 +6292,7 @@ describe("DomEditor.execute()", () => {
 
       expect(execute).toHaveBeenCalledWith({type: "selectNode", path: rootPath})
       expect(toolbox.documentSelected).toBe(true)
-      expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).not.toBeNull()
+      expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="document"]')).not.toBeNull()
     }
   })
 
@@ -8195,6 +8218,25 @@ it("updates the dev-server username without reconnecting or losing the saved doc
   expect(post).toHaveBeenCalledWith("username", {username: "Dev Ada"})
 })
 
+
+describe("list toolbox type changes", () => {
+  it("forwards scoped list commands and rejects invalid types and scopes", async () => {
+    const editor = new DomEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const selectionTypes = [{localName: "ul", namespaceURI: "http://www.w3.org/1999/xhtml"}]
+    const listener = (editor as any).editingUIListeners["list-type-change"]
+    listener(new CustomEvent("list-type-change", {detail: {listType: "ol", selectionTypes}}))
+    expect(execute).toHaveBeenCalledWith({type: "setListType", listType: "ol", selectionTypes})
+    for(const detail of [{listType: "dl", selectionTypes}, {listType: "ol"}, {listType: "ul", selectionTypes: []},
+      {listType: "ol", selectionTypes: [{localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}]},
+      {listType: "ol", selectionTypes: [{localName: "ul", namespaceURI: "http://www.w3.org/2000/svg"}]}]) {
+      listener(new CustomEvent("list-type-change", {detail}))
+    }
+    expect(execute).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+  })
+})
 
 describe("heading toolbox level changes", () => {
   it("forwards a scoped heading command and rejects invalid levels and scopes", async () => {

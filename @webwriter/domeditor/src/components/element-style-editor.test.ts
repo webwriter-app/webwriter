@@ -18,6 +18,43 @@ const state = (inline: ElementStyleState["inline"] = {}): ElementStyleState => (
 
 afterEach(() => document.body.replaceChildren())
 
+it.each(["border-width", "border-style", "border-color", "border-top-color"])("shows Border clear for an authored %s and clears all three parts", async property => {
+  const editor = await mount([], state({[property]: {value: property === "border-width" ? "2px" : property === "border-style" ? "dashed" : "#123456", priority: ""}}), "compact")
+  let change: ElementStyleChangeDetail | undefined
+  editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
+  const clear = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Border"]')!
+  expect(clear.style.visibility).not.toBe("hidden")
+  clear.click()
+  expect(change).toEqual({styles: {"border-width": null, "border-style": null, "border-color": null}})
+  editor.state = state()
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Border"]')!.style.visibility).toBe("hidden")
+})
+
+it("distinguishes computed defaults from explicit choices of the same value", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const initial = state()
+  initial.computed["text-align"] = "start"
+  const editor = await mount(definitions, initial, "compact")
+  editor.propertyNames = ["text-align"]
+  await editor.updateComplete
+  const group = () => editor.shadowRoot!.querySelector<HTMLElement>(".specialized-choice-group")!
+  expect(group().hasAttribute("data-default")).toBe(true)
+  const left = group().querySelector<HTMLButtonElement>('button[aria-label="Left"]')!
+  expect(left.getAttribute("aria-pressed")).toBe("true")
+  let change: ElementStyleChangeDetail | undefined
+  editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
+  left.click()
+  expect(change).toEqual({property: "text-align", mutation: {value: "left", priority: ""}})
+  editor.state = {...initial, inline: {"text-align": {value: "left", priority: ""}}}
+  await editor.updateComplete
+  expect(group().hasAttribute("data-default")).toBe(false)
+  expect(group().querySelector('button[aria-label="Left"]')!.getAttribute("aria-pressed")).toBe("true")
+  editor.state = initial
+  await editor.updateComplete
+  expect(group().hasAttribute("data-default")).toBe(true)
+})
+
 async function mount(
   definitions = elementStyleCategories[0].basic,
   elementState = state(),
@@ -599,7 +636,12 @@ it("offers fixed border colors, Automatic, and the custom picker", async () => {
   picker.open = true
   expect(custom.hidden).toBe(false)
   expect(custom.parentElement!.classList.contains("palette-custom")).toBe(true)
-  picker.querySelector<HTMLButtonElement>(".palette-custom button")!.click()
+  const customButton = picker.querySelector<HTMLButtonElement>(".palette-custom button")!
+  Object.defineProperty(picker.querySelector(".border-color-palette"), "getBoundingClientRect", {value: () => new DOMRect(20, 30, 160, 100)})
+  Object.defineProperty(customButton, "getBoundingClientRect", {value: () => new DOMRect(24, 100, 152, 26)})
+  customButton.click()
+  expect(custom.style.left).toBe("184px")
+  expect(custom.style.top).toBe("99px")
   expect(picker.open).toBe(true)
   expect(opened).toBe(1)
   custom.value = "#123456"

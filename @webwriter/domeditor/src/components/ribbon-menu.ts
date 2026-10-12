@@ -290,6 +290,9 @@ export class RibbonMenu extends LitElement {
       position: absolute;
       top: calc(100% + 0.25rem);
       left: 0;
+      right: auto;
+      bottom: auto;
+      margin: 0;
       z-index: 1;
       box-sizing: border-box;
       width: 200px;
@@ -728,20 +731,30 @@ export class RibbonMenu extends LitElement {
   }
 
   private showSubmenu(label: string, toggle: HTMLButtonElement, focusFirst = true) {
+    this.closeSubmenus()
     this.openSubmenu = label
     this.openSubmenuToggle = toggle
     this.dispatchEvent(new CustomEvent("ribbon-submenu-open", {detail: {label}, bubbles: true, composed: true}))
-    if(focusFirst) {
-      void this.updateComplete.then(() => {
-        const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
-          .find(candidate => candidate.getAttribute("aria-label") === `${label} options`)
-        if(submenu) {
-          const nested = submenu.querySelector<RibbonMenu>("ribbon-menu")
-          if(nested) void nested.updateComplete.then(() => nested.renderRoot.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus())
-          else this.menuItems(submenu)[0]?.focus()
-        }
-      })
-    }
+    void this.updateComplete.then(() => {
+      if(!this.isConnected || this.openSubmenu !== label || !toggle.isConnected) return
+      const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
+        .find(candidate => candidate.getAttribute("aria-label") === `${label} options`)
+      if(!submenu) return
+      if(typeof submenu.showPopover === "function") submenu.showPopover()
+      if(!CSS.supports("top", "anchor(top)") || !CSS.supports("left", "anchor(right)")) {
+        const anchor = (toggle.closest(".item-row") ?? toggle).getBoundingClientRect()
+        const bounds = submenu.getBoundingClientRect()
+        const right = anchor.right + 4
+        const left = right + bounds.width <= window.innerWidth - 8 ? right : anchor.left - bounds.width - 4
+        submenu.style.position = "fixed"
+        submenu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - bounds.width - 8))}px`
+        submenu.style.top = `${Math.max(8, Math.min(anchor.top, window.innerHeight - bounds.height - 8))}px`
+      }
+      if(!focusFirst) return
+      const nested = submenu.querySelector<RibbonMenu>("ribbon-menu")
+      if(nested) void nested.updateComplete.then(() => nested.renderRoot.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus())
+      else this.menuItems(submenu)[0]?.focus()
+    })
   }
 
   private menuItems(menu: HTMLElement) {
@@ -826,10 +839,15 @@ export class RibbonMenu extends LitElement {
     this.openSubmenu = null
     this.openSubmenuToggle = null
     this.renderRoot?.querySelectorAll<RibbonMenu>("ribbon-menu").forEach(menu => menu.closeSubmenus())
+    this.renderRoot?.querySelectorAll<HTMLElement>(".submenu").forEach(submenu => {
+      if(typeof submenu.hidePopover !== "function") return
+      try { submenu.hidePopover() }
+      catch { /* Native removal may already have closed and detached the popover. */ }
+    })
   }
 
   disconnectedCallback() {
-    this.clearInsertionHover()
+    this.closeSubmenus()
     super.disconnectedCallback()
   }
 
@@ -940,6 +958,7 @@ export class RibbonMenu extends LitElement {
                   </div>
                   ${hasSubmenu && isOpen ? html`
                     <div
+                      popover="manual"
                       class=${`submenu${item.submenuGroups?.some(group => group.content && !group.buttons.length) ? " form-submenu" : ""}${submenu.some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate))) ? " shape-gallery" : ""}`}
                       role="menu"
                       aria-label=${`${label} options`}

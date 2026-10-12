@@ -2,7 +2,7 @@ import {LitElement, css, html, nothing} from "lit"
 import "./style-combobox"
 import {isMediaType, mediaAttributeOptions} from "../media"
 import {groupedLanguageOptions} from "../language-suggestions"
-import {ribbonOptionIcon} from "../ribbon-icons"
+import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {
   elementAttributeEditability,
@@ -173,7 +173,9 @@ export class ElementAttributeEditor extends LitElement {
     .dialog-heading {display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem;}
     h2, h3 {margin: 0; font-size: 1em;}
     h3 {margin-top: .75rem;}
-    .dialog-heading button {padding: .2rem .5rem; cursor: pointer;}
+    .dialog-heading button {display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: .35rem; color: inherit; background: transparent; cursor: pointer;}
+    .dialog-heading button svg {display: block; width: 1.1rem; height: 1.1rem;}
+    .dialog-heading button:hover {background: #f1f5f9;}
 
     .attribute-list {
       margin-top: 0.45rem;
@@ -351,7 +353,7 @@ export class ElementAttributeEditor extends LitElement {
       const columns = Math.min(4, Math.ceil(option.options.length / (option.options.length > 4 ? 2 : 1)))
       return html`<div class="field">
         ${this.renderFieldLabel(option, state)}
-        <div class="choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`attribute-label-${option.name}`}>
+        <div class="choice-group" ?data-default=${!Object.hasOwn(state.attributes, option.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`attribute-label-${option.name}`}>
           ${option.options.map((item, index) => html`<button type="button"
             ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.options!.length - 1) / columns) * columns}
             aria-label=${item.label} title=${item.label} aria-pressed=${value === item.value}
@@ -427,8 +429,8 @@ export class ElementAttributeEditor extends LitElement {
       <dialog id="attributes-dialog" aria-labelledby="attributes-heading">
         <div class="dialog-heading">
           <h2 id="attributes-heading">${state.name} attributes</h2>
-          <button type="button" aria-label="Close attributes" ?disabled=${this.disabled}
-            @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.close()}>Close</button>
+          <button type="button" aria-label="Close attributes" title="Close attributes" ?disabled=${this.disabled}
+            @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.close()}>${ribbonIcon("Reject")}</button>
         </div>
         ${limitation ? html`
           <aside class="limitation" aria-label=${`${state.name} editing limitation`}>

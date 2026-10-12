@@ -759,6 +759,15 @@ body::part(virtual-list-item-custom-marker)::marker {
   font-style: var(--virtual-list-marker-font-style, inherit);
   font-weight: var(--virtual-list-marker-font-weight, inherit);
 }
+body::part(virtual-list-item-image-marker)::before {
+  content: "";
+  position: absolute;
+  inset-inline-end: calc(100% + .4em);
+  inset-block-start: calc((1lh - 1em) / 2);
+  inline-size: 1em;
+  block-size: 1em;
+  background: var(--ww-list-marker-image) center / contain no-repeat;
+}
 
 body::part(virtual-list-item-dl) {
   font-size: 0.8em;

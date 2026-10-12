@@ -1,5 +1,11 @@
 export type FixedPopupPosition = {left: number, top: number}
 
+/** Native color popups open below a one-pixel anchor beside their palette. */
+export function anchorColorSubmenu(input: HTMLInputElement, popup: HTMLElement, option: HTMLElement) {
+  input.style.left = `${popup.getBoundingClientRect().right + 4}px`
+  input.style.top = `${option.getBoundingClientRect().top - 1}px`
+}
+
 /** Place a fixed popup beside its trigger, keeping its origin inside the viewport. */
 export function fixedPopupPosition(
   trigger: Pick<DOMRectReadOnly, "left" | "top" | "bottom">,

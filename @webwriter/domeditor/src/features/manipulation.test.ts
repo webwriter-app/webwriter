@@ -3519,6 +3519,18 @@ describe("setStyle()", () => {
     expect(paragraph.style.borderTopWidth).toBe("")
   })
 
+  it("clears every border part together without disturbing other formatting", () => {
+    document.body.innerHTML = '<p style="border-top: 3px dotted green !important; border-bottom-width: 7px; color: blue">Text</p>'
+    const paragraph = document.body.firstElementChild as HTMLElement
+    $.selectElement(paragraph)
+    editor.features.manipulation.setStyle({"border-width": null, "border-style": null, "border-color": null})
+    for(const side of ["top", "right", "bottom", "left"]) {
+      for(const part of ["width", "style", "color"]) expect(paragraph.style.getPropertyValue(`border-${side}-${part}`)).toBe("")
+    }
+    expect(paragraph.style.color).toBe("blue")
+    expect(paragraph.textContent).toBe("Text")
+  })
+
   it("allows only background changes on a document-template root", () => {
     document.body.innerHTML = '<my-document role="document" style="width: 500px"><p>Text</p></my-document>'
     const root = document.body.firstElementChild as HTMLElement

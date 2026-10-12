@@ -5,8 +5,9 @@ import {css, html, svg, nothing, type TemplateResult} from "lit"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
 import {proofreadingCardStyles, renderProofreadingCard} from "./proofreading-card"
-import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
+import {emptyDocumentHeadState, type DocumentHeadField, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
+import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
@@ -14,10 +15,10 @@ import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
-import {documentLayoutPreviewStyles, renderDocumentLayoutCard, renderDocumentLayoutPreview, documentLayoutLabel, documentLayoutModes} from "./layout-preview"
+import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
-import {floatSideFromStyles, elementStyleCategories, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
+import {floatSideFromStyles, elementStyleCategories, listMarkerImageProperty, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
 import {mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {canonicalMarkName} from "../marks"
@@ -248,6 +249,8 @@ export class DomEditorToolbox extends EditingControls {
     .ai-toolbox-content .ai-chat-panel[data-open] .ai-chat-composer {
       position: static; flex: 0 0 auto; height: 7rem; padding: 0;
     }
+    .ai-toolbox-content .ai-chat-panel[data-open] form.ai-chat-composer[data-review] {height: auto; padding: .5rem;}
+    .ai-toolbox-content .ai-toolbox-review {justify-content: center; margin: 0;}
     .ai-toolbox-content .ai-chat-panel[data-open] .ai-composer-surface {
       border: 0; border-radius: 0;
     }
@@ -597,6 +600,7 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
     .media-toolbox-controls .media-attribute style-combobox {width: 100%;}
     .specialized-options {display: flex; flex-direction: column; gap: .4rem; min-width: 0;}
+    .document-primary, .document-options {grid-column: 1 / -1; width: 100%;}
     .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
     .field-label .field-clear {flex: 0 0 .9rem; width: .9rem; height: .9rem; margin-left: auto; padding: 0; border: 0; background: transparent; color: #666; font: inherit; cursor: pointer;}
     .field-clear:focus-visible {outline: 2px solid #b9d7f5;}
@@ -633,28 +637,11 @@ export class DomEditorToolbox extends EditingControls {
     ${documentLayoutPreviewStyles}
     ${choiceGroupStyles}
 
-    .document-layout-zoom { margin: 0; }
-    .document-layout-picker { position: relative; }
-    .document-layout-picker summary { position: relative; list-style: none; }
-    .document-layout-picker summary::-webkit-details-marker { display: none; }
-    .document-layout-picker summary::after {
-      content: "⌄";
-      position: absolute;
-      right: 0.5rem;
-      bottom: 0.3rem;
-      font-size: 1rem;
-    }
-    .document-layout-picker[open] summary::after { content: "⌃"; }
-    .document-layout-choices {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.35rem;
-      margin-top: 0.35rem;
-      padding: 0.35rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.35rem;
-      background: #f8fafc;
-    }
+    .document-layout-choices {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem;}
+    .document-layout-choices .layout-preset {position: relative; aspect-ratio: 2 / 1; min-height: 0; padding: 0; gap: 0; overflow: hidden;}
+    .document-layout-choices .document-layout-preview {position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; border: 0; border-radius: inherit;}
+    .document-layout-choices .layout-preset-name {position: absolute; z-index: 1; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: calc(100% - .5rem); box-sizing: border-box; padding: .2rem .35rem; border-radius: .25rem; background: rgb(255 255 255 / 85%); text-align: center;}
+    .document-layout-choices [aria-pressed="true"] .layout-preset-name {background: rgb(226 237 248 / 95%); color: #375d84;}
 
     .document-layout-error {
       margin: 0;
@@ -927,7 +914,7 @@ export class DomEditorToolbox extends EditingControls {
     const columns = Math.min(4, Math.ceil(option.options.length / (option.options.length > 4 ? 2 : 1)))
     return html`<div class="media-attribute">
       ${fieldLabel}
-      <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`media-label-${option.name}`}>
+      <div class="specialized-choice-group" ?data-default=${!Object.hasOwn(this.media?.attributes ?? {}, option.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`media-label-${option.name}`}>
         ${option.options.map((item, index) => html`<button type="button"
           ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.options!.length - 1) / columns) * columns}
           aria-pressed=${value === item.value} title=${item.label} aria-label=${item.label} ?disabled=${!active}
@@ -980,13 +967,13 @@ export class DomEditorToolbox extends EditingControls {
     const columns = Math.min(4, Math.ceil(option.choices.length / (option.choices.length > 4 ? 2 : 1)))
     return html`<div class="develop-field" title=${option.description ?? ""}>
       ${fieldLabel}
-      <div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${fieldScope}${option.name}`}>
+      <div class="specialized-choice-group" ?data-default=${option.value === null} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${fieldScope}${option.name}`}>
         ${option.choices.map((choice, index) => html`<button type="button"
           ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.choices!.length - 1) / columns) * columns}
           title=${choice.description ?? choice.label} aria-label=${choice.label}
           aria-pressed=${option.value === choice.value}
           @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-          @click=${() => dispatch(option.name, option.value === choice.value ? null : choice.value)}><span aria-hidden="true">${ribbonOptionIcon(option.name, choice.value)}</span>${choice.label}</button>`)}
+          @click=${() => dispatch(option.name, choice.value)}><span aria-hidden="true">${ribbonOptionIcon(option.name, choice.value)}</span>${choice.label}</button>`)}
       </div>
     </div>`
   }
@@ -1004,7 +991,7 @@ export class DomEditorToolbox extends EditingControls {
     return super.renderElementAttributesDrawer()
   }
 
-  private renderSpecializedDrawer(group?: SelectedElementTypeState) {
+  private renderSpecializedDrawer(group?: SelectedElementTypeState, listGroups?: SelectedElementTypeState[]) {
     const attributes = group?.element ?? this.elementAttributes
     const style = this.elementStyle
     const widgetOptions = group ? group.widget : this.widgetOptions
@@ -1020,6 +1007,14 @@ export class DomEditorToolbox extends EditingControls {
         ? {id: group.element.attributes.id} : group.element.path ? {path: group.element.path} : {}) : {}),
     } : undefined
     const scopeChange = (event: CustomEvent) => {
+      if(listGroups && listGroups.length > 1) {
+        event.stopPropagation()
+        listGroups.forEach(list => this.dispatchEvent(new CustomEvent(event.type, {
+          detail: {...event.detail, selectionType: {localName: list.element.localName, namespaceURI: list.element.namespaceURI}},
+          bubbles: true, composed: true,
+        })))
+        return
+      }
       if(selectionType) event.detail.selectionType = selectionType
     }
     const dispatchOption = (name: string, value: WidgetOptionValue) => {
@@ -1033,25 +1028,28 @@ export class DomEditorToolbox extends EditingControls {
     const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
     if(!this.isElementDrawerVisible(localName, namespaceURI)) return nothing
     const heading = namespaceURI === "http://www.w3.org/1999/xhtml" && /^h[1-6]$/.test(localName)
+    const list = namespaceURI === "http://www.w3.org/1999/xhtml" && (localName === "ul" || localName === "ol")
+    const listScopes = listGroups?.map(list => ({localName: list.element.localName, namespaceURI: list.element.namespaceURI}))
+      ?? [selectionType ?? {localName, namespaceURI}]
     const profile = specializedElementStyle(localName)
     const widget = Boolean(widgetOptions || localName.includes("-"))
     if(!profile && !widget && !group) return nothing
     const primary = profile?.primary ?? []
     const advanced = profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
-    const properties = [...new Set([...primary, ...advanced])]
+    const properties = [...new Set([...primary, ...advanced, ...(list ? [listMarkerImageProperty] : [])])]
     const resetStyles = Object.fromEntries(properties.filter(name => Object.hasOwn(style.inline, name)).map(name => [name, null]))
     const configuredWidgetOptions = widgetOptions?.options.filter(option => group ? group.configuredWidgetOptions.includes(option.name) : option.value !== null && option.value !== "") ?? []
     const count = advanced.filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
-    const label = heading ? "Heading" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
+    const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const commands = group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
     const hasOptions = advanced.length > 0 || commands !== nothing
-    return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : attributes?.icon ?? label} .iconUrl=${heading ? "" : attributes?.iconUrl ?? ""} layout="element-style"
+    return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
       <button type="button" class="style-reset" slot="heading-action" title="Reset element styles" aria-label="Reset element styles"
@@ -1075,8 +1073,24 @@ export class DomEditorToolbox extends EditingControls {
             }))}><span aria-hidden="true">${ribbonIcon(`Heading ${level}`)}</span></button>`)}
         </div>
       </div></div>` : nothing}
+      ${list ? html`<div class="specialized-widget-primary list-type"><div class="develop-field">
+        <span class="field-label" id=${`list-type-${localName}`}>Type</span>
+        <div class="specialized-choice-group" style="--choice-columns: 2" role="group" aria-labelledby=${`list-type-${localName}`}>
+          ${(["ul", "ol"] as const).map(type => html`<button type="button"
+            ?data-top-right=${type === "ol"} ?data-bottom-left=${type === "ul"}
+            aria-label=${type === "ul" ? "List" : "Enumeration"} title=${type === "ul" ? "List" : "Enumeration"}
+            aria-pressed=${listScopes.every(scope => scope.localName === type)}
+            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+            @click=${() => this.dispatchEvent(new CustomEvent("list-type-change", {
+              detail: {listType: type, selectionTypes: listScopes}, bubbles: true, composed: true,
+            }))}><span aria-hidden="true">${ribbonIcon(type === "ul" ? "List" : "Enumeration")}</span></button>`)}
+        </div>
+      </div></div>` : nothing}
       ${widgetOptions ? html`<div class="widget-options specialized-widget-primary">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>` : nothing}
-      <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary} .state=${style}></element-style-editor>
+      <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary}
+        .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
+          : [[namespaceURI, localName, attributes?.path, 1]])}
+        .state=${list ? {...style, target: {...style.target, localName, namespaceURI}} : style}></element-style-editor>
       ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       ${hasOptions ? html`<div slot="more" class="specialized-options">
         ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
@@ -1178,9 +1192,73 @@ export class DomEditorToolbox extends EditingControls {
     </ribbon-drawer>`
   }
 
+  private renderDocumentDrawer() {
+    const fields = ["title", "author", "license", "language", "description", "keywords"] as const satisfies readonly DocumentHeadField[]
+    const configured = fields.filter(field => this.documentHead[field])
+    const captions = this.documentHead.captionEnumeration
+    const hasCaptions = Boolean(captions && (captions.figure.enabled || captions.table.enabled))
+    const resettableLayout = this.documentLayout.mode !== "document" && this.documentLayout.canConvert
+    const advancedCount = ["description", "keywords"].filter(field => this.documentHead[field as "description" | "keywords"]).length
+      + this.documentHead.elements.filter(element => !["title", "author", "license", "description", "keywords", "generator", "theme", "caption-enumeration"].includes(element.preset ?? "")).length
+      + Number(hasCaptions)
+    return html`<ribbon-drawer label="Document" icon="Document" layout="element-style" show-pane-icon expandable
+      data-specialized="document" .advancedCount=${advancedCount}
+      @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
+        this.documentHeadAttributeEditorId = event.detail.id
+        const drawer = event.currentTarget as RibbonDrawer
+        if(event.detail.id) drawer.openDrawer()
+      }}>
+      <button type="button" class="style-reset document-reset" slot="heading-action" title="Reset document options" aria-label="Reset document options"
+        ?disabled=${!configured.length && !hasCaptions && !resettableLayout}
+        @click=${() => {
+          configured.forEach(field => this.dispatchEvent(new CustomEvent("document-head-action", {
+            detail: {type: "setDocumentHeadField", field, value: ""}, bubbles: true, composed: true,
+          })))
+          if(hasCaptions) {
+            const value = defaultCaptionEnumeration()
+            value.figure.enabled = value.table.enabled = false
+            this.dispatchEvent(new CustomEvent("document-head-action", {
+              detail: {type: "setCaptionEnumeration", value}, bubbles: true, composed: true,
+            }))
+          }
+          if(resettableLayout) this.selectDocumentLayout("document")
+        }}>${ribbonIcon("Restore")}Reset</button>
+      <div class="specialized-options document-primary">
+      <document-head-editor mode="common" expanded compact .state=${this.documentHead}
+        .attributeEditorId=${this.documentHeadAttributeEditorId}></document-head-editor>
+          <div class="document-layout-controls">
+            <div class="document-layout-choices" role="group" aria-label="Layouts">
+              ${documentLayoutModes.map(mode => renderDocumentLayoutCard(
+                mode, this.documentLayout, this.historyState.preview !== null || this.htmlPending,
+                selected => this.selectDocumentLayout(selected),
+              ))}
+            </div>
+            ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : nothing}
+          </div>
+      </div>
+      <div slot="more" class="specialized-options document-options">
+        <document-head-editor mode="advanced" compact .state=${this.documentHead}
+          .attributeEditorId=${this.documentHeadAttributeEditorId}></document-head-editor>
+      </div>
+    </ribbon-drawer>`
+  }
+
   protected renderDrawers(): TemplateResult<1>[] {
+    if(this.activeTool === "Edit" && this.documentSelected) return [this.renderDocumentDrawer()]
     if(this.activeTool === "Edit" && this.selectedElementTypes.length) {
-      return this.selectedElementTypes.map(group => this.renderSpecializedDrawer(group))
+      const lists = this.selectedElementTypes.filter(group => group.element.namespaceURI === "http://www.w3.org/1999/xhtml"
+        && (group.element.localName === "ul" || group.element.localName === "ol"))
+      return this.selectedElementTypes.map(group => {
+        if(!lists.includes(group)) return this.renderSpecializedDrawer(group)
+        if(group !== lists[0]) return nothing
+        const attributes = Object.fromEntries(Object.entries(group.element.attributes)
+          .filter(([name, value]) => lists.every(list => list.element.attributes[name] === value)))
+        return this.renderSpecializedDrawer({...group,
+          count: lists.reduce((count, list) => count + list.count, 0),
+          element: {...group.element, attributes},
+          styleProperties: [...new Set(lists.flatMap(list => list.styleProperties))],
+        }, lists)
+      })
         .filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
     }
     if(this.activeTool === "Edit" && !this.elementAttributes && !this.math?.active
@@ -1196,57 +1274,6 @@ export class DomEditorToolbox extends EditingControls {
     const drawers: TemplateResult<1>[] = specialized !== nothing
       ? [specialized]
       : super.renderDrawers().filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
-    if(this.activeTool === "Edit" && this.documentSelected) {
-      drawers.push(html`
-        <ribbon-drawer label="Layouts" icon="Layout" layout="document-layout">
-          <div class="document-layout-controls">
-            <details class="document-layout-picker" @keydown=${(event: KeyboardEvent) => {
-              if(event.key !== "Escape") return
-              const picker = event.currentTarget as HTMLDetailsElement
-              picker.open = false
-              picker.querySelector("summary")?.focus()
-            }}>
-              <summary class="layout-preset" aria-label=${`Current layout: ${documentLayoutLabel(this.documentLayout.mode)}. Choose layout`}>
-                ${renderDocumentLayoutPreview(this.documentLayout.mode)}
-              </summary>
-              <div class="document-layout-choices" role="group" aria-label="Layouts">
-                ${documentLayoutModes.filter(mode => mode !== this.documentLayout.mode).map(mode => renderDocumentLayoutCard(
-                  mode, this.documentLayout, this.historyState.preview !== null || this.htmlPending,
-                  selected => this.selectDocumentLayout(selected),
-                ))}
-              </div>
-            </details>
-            <button type="button" class="layout-preview-toggle" title="Narrow preview (360 px)"
-              aria-label="Narrow preview (360 px)" aria-pressed=${this.narrowLayoutPreview}
-              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-              @click=${() => this.dispatchEvent(new CustomEvent("document-width-preview-change", {
-                detail: {narrow: !this.narrowLayoutPreview}, bubbles: true, composed: true,
-              }))}>Narrow preview</button>
-            <p class="document-layout-zoom">Zoom: <strong>${this.documentLayout.zoom}%</strong></p>
-            ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
-          </div>
-        </ribbon-drawer>
-      `)
-      drawers.push(html`
-        <ribbon-drawer label="Metadata" icon="Properties" layout="document-head"
-          @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
-            this.documentHeadAttributeEditorId = event.detail.id
-          }}
-        >
-          <document-head-editor
-            mode="common"
-            expanded
-            .state=${this.documentHead}
-            .attributeEditorId=${this.documentHeadAttributeEditorId}
-          ></document-head-editor>
-          <document-head-editor
-            mode="advanced"
-            .state=${this.documentHead}
-            .attributeEditorId=${this.documentHeadAttributeEditorId}
-          ></document-head-editor>
-        </ribbon-drawer>
-      `)
-    }
     return drawers
   }
 
@@ -1321,11 +1348,6 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private selectDocumentLayout(mode: DocumentLayoutMode) {
-    const picker = this.renderRoot.querySelector<HTMLDetailsElement>(".document-layout-picker")
-    if(picker) {
-      picker.open = false
-      picker.querySelector("summary")?.focus()
-    }
     this.dispatchEvent(new CustomEvent("document-layout-change", {detail: {mode}, bubbles: true, composed: true}))
   }
 
@@ -1539,9 +1561,9 @@ export class DomEditorToolbox extends EditingControls {
             ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}
             ${this.activeTool === "Review" ? this.renderProofreadingSection() : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
-            ${this.activeTool === "Edit" ? this.renderWidgetSharing() : ""}
+            ${this.activeTool === "Edit" && !this.documentSelected ? this.renderWidgetSharing() : ""}
             ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}
-            ${this.activeTool === "Edit" ? this.renderShapeDrawer() : ""}
+            ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
           ${(this.activeTool === "Edit" || this.consoleOpen && this.activeTool !== "Feedback") ? this.renderEditModeFooter() : ""}

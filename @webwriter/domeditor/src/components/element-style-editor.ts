@@ -1,11 +1,19 @@
 import {LitElement, css, html, nothing} from "lit"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {choiceGroupStyles} from "./choice-group.styles"
+import {colorHex} from "../css-color"
+import {mediaSourceButtonStyles} from "./media-source.styles"
+import {dropdownChevronStyles} from "./dropdown-chevron.styles"
+import {anchorColorSubmenu} from "./popup-position"
 import {ref} from "lit/directives/ref.js"
 import "./style-combobox"
 import type {StyleCombobox} from "./style-combobox"
 import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
 import {
   cssWideKeywords,
+  listMarkerTypes,
+  listMarkerImageProperty,
+  enumerationMarkerTypes,
   elementStylePropertyNameSet,
   type ElementStylePropertyDefinition,
 } from "../element-styles"
@@ -30,16 +38,6 @@ const simpleDimension = (value: string, units: readonly string[]) => {
   return {number: match[1], unit: match[2]}
 }
 
-const colorHex = (value: string) => {
-  const normalized = value.trim().toLowerCase()
-  if(/^#[0-9a-f]{6}$/.test(normalized)) return normalized
-  if(/^#[0-9a-f]{3}$/.test(normalized)) {
-    return `#${normalized.slice(1).split("").map(character => character.repeat(2)).join("")}`
-  }
-  const rgb = normalized.match(/^rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/)
-  if(!rgb) return "#000000"
-  return `#${rgb.slice(1, 4).map(channel => Math.min(255, Number(channel)).toString(16).padStart(2, "0")).join("")}`
-}
 
 // Fixed theme columns: base color followed by five shades, like a desktop color palette.
 const borderColorColumns = [
@@ -83,6 +81,7 @@ export class ElementStyleEditor extends LitElement {
     /** Optional narrow view over the supplied definitions for composed editors. */
     propertyNames: {attribute: false},
     state: {attribute: false},
+    selectionKey: {attribute: false},
     mode: {type: String, reflect: true},
     orientation: {type: String, reflect: true},
     allowCustom: {type: Boolean, attribute: "allow-custom"},
@@ -93,6 +92,10 @@ export class ElementStyleEditor extends LitElement {
     customProperty: {type: String, state: true},
     customValue: {type: String, state: true},
     customImportant: {type: Boolean, state: true},
+    markerImageBusy: {state: true},
+    markerImageError: {state: true},
+    markerImageFilename: {state: true},
+    markerImagePreview: {state: true},
   }
 
   static styles = css`
@@ -147,12 +150,11 @@ export class ElementStyleEditor extends LitElement {
     .effect-control .compact-input { height: 1.7rem; }
     .effect-control [hidden] { display: none !important; }
     .effect-control .effect-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .effect-trigger { display: grid; place-items: center; width: 100%; min-width: 0; padding: 0.2rem 1.3rem 0.2rem 0.55rem; border: 0; background: transparent; cursor: pointer; overflow: hidden; }
+    .effect-trigger { display: grid; place-items: center; width: 100%; min-width: 0; padding: .2rem; border: 0; background: transparent; cursor: pointer; overflow: hidden; }
     .effect-trigger .shadow-preview { width: 1rem; }
     .effect-trigger .filter-preview svg { width: 1.4rem; margin-inline: auto; }
     .effect-trigger .filter-preview { width: 2rem; }
-    .effect-control .compact-toggle { right: 0; }
-    .effect-control .compact-input input { padding-right: 1.3rem; }
+    .effect-control .compact-input input { padding-right: .2rem; }
     .effect-popup { padding: 0.35rem; }
     .effect-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.35rem; padding: 0.3rem 0; min-width: 0; }
     .effect-popup .effect-presets button { display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; justify-content: normal; min-width: 0; gap: 0; padding: 0.35rem; height: 2.7rem; overflow: hidden; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; cursor: pointer; }
@@ -181,22 +183,44 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .specialized-input .length-control select {width: 2.8rem; border: 0; border-left: 1px solid #c5ccd5; border-radius: 0; background: transparent;}
     .specialized-input > input, .specialized-input > select {width: 100%; min-width: 0; border-radius: 4px;}
     .specialized-input style-combobox {flex: 1; min-width: 0;}
-    .specialized-input:has(style-combobox) {border: 0;}
+    :host([mode="compact"]) .specialized-input:has(style-combobox) {border: 0; box-shadow: none;}
     style-combobox {flex: 1; min-width: 0;}
-    .specialized-input:has(.specialized-choice-group) {border: 0; align-items: center;}
+    :host([mode="compact"]) .specialized-input:has(.specialized-choice-group) {border: 0; align-items: center;}
     .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
     .field-label .property-action {flex: 0 0 .9rem; width: .9rem; height: .9rem; margin-left: auto; padding: 0; border: 0; background: transparent; color: #666; font: inherit; cursor: pointer;}
     .compact-row > .field-label {flex: 0 0 4.4rem;}
     .effect-control.compact-row > .field-label {flex: none;}
-    .specialized-choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; flex: 1; min-width: 0; overflow: visible; border: 0; border-radius: 0;}
-    .specialized-choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; min-height: 1.6rem; min-width: 0; padding: .15rem .2rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-radius: 0; background: #f2f2f2; color: inherit; font: inherit; font-size: .6rem; cursor: pointer;}
-    .specialized-choice-group button:first-child {border-top-left-radius: 4px;}
-    .specialized-choice-group button:last-child {border-bottom-right-radius: 4px;}
-    .specialized-choice-group button[data-top-right] {border-top-right-radius: 4px;}
-    .specialized-choice-group button[data-bottom-left] {border-bottom-left-radius: 4px;}
-    .specialized-choice-group button[aria-pressed="true"] {background: #e2edf8; color: #375d84;}
+    ${choiceGroupStyles}
+    .specialized-choice-group {flex: 1;}
+    .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: inherit; font-size: .6rem;}
     .specialized-choice-group button span {display: flex; justify-content: center;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    .marker-control {width: 100%;}
+    .marker-control [hidden] {display: none !important;}
+    .marker-control .marker-popup {padding: .35rem; border-top: 1px solid #c5ccd5; border-radius: 4px;}
+    .marker-control .specialized-choice-group button {display: grid; place-items: center; padding: .15rem .2rem;}
+    .marker-more svg {transform: rotate(90deg);}
+    .marker-preview {width: max-content; margin: 0; padding: 0; list-style-position: inside; font: .75rem/1.1rem system-ui, sans-serif;}
+    .marker-preview li {display: list-item; padding: 0;}
+    /* Align the native symbol rather than its trailing marker space. */
+    .marker-preview[data-symbolic] {font-size: 1.25rem; line-height: 1; transform: translateX(calc(.5em - 3px));}
+    .marker-image-dialog {--control-height: 2rem; box-sizing: border-box; width: min(24rem, calc(100vw - 2rem)); padding: 1rem; border: 1px solid #a8a8a8; border-radius: .4rem; color: inherit; background: white; font: .85rem/1.4 system-ui, sans-serif;}
+    .marker-image-dialog::backdrop {background: #0004;}
+    .marker-image-dialog h2 {margin: 0 0 .75rem; font-size: 1rem;}
+    .marker-image-dialog form {display: block;}
+    .marker-image-dialog label {display: grid; gap: .5rem; clear: both; margin-top: .75rem;}
+    .marker-image-dialog input {box-sizing: border-box; width: 100%; min-width: 0; padding: .4rem; font: inherit;}
+    .marker-image-dialog .marker-image-error {color: #b42318; margin: 0;}
+    .marker-image-dialog .marker-image-actions {display: flex; justify-content: flex-end; gap: .5rem; margin-top: .5rem;}
+    .marker-image-dialog button {padding: .4rem .7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: #f2f2f2; font: inherit; cursor: pointer;}
+    ${mediaSourceButtonStyles}
+    .marker-image-upload {display: grid; gap: .5rem;}
+    .marker-image-upload .file-options {width: fit-content;}
+    .marker-image-filename {overflow-wrap: anywhere;}
+    .marker-image-preview {float: right; box-sizing: border-box; width: 30%; aspect-ratio: 1; display: grid; grid-template-rows: minmax(0, 1fr) auto; place-items: center; gap: .25rem; margin: 0 0 .75rem 1rem; padding: .5rem; border: 1px solid #c5ccd5; border-radius: 4px; background: #f2f2f2;}
+    .marker-image-preview[hidden] {display: none;}
+    .marker-image-preview img {display: block; max-width: 100%; max-height: 100%; object-fit: contain;}
+    .marker-image-preview figcaption {font-size: .75rem; color: #667085;}
     .specialized-choice-group button:hover {background: #edf3f9;}
     :host([mode="compact"]) .specialized-choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
     .compact-row {
@@ -243,16 +267,13 @@ export class ElementStyleEditor extends LitElement {
     .compact-value.open .compact-input { border-radius: 4px 4px 0 0; }
     .compact-input input {
       width: 0; min-width: 0; flex: 1; border: 0; background: transparent;
-      padding: 0.2rem 0.35rem;
+      padding: .2rem;
     }
     .compact-input input::placeholder { font-size: 0.5rem; }
     .compact-unit { display: flex; align-items: center; justify-content: center; width: 1.1rem; box-sizing: border-box; font-size: 0.55rem; flex: 0 0 auto; border-left: 1px solid #c5ccd5; }
     [data-property="rotate"] .compact-unit { font-size: 0.85rem; }
     .compact-toggle {
-      position: absolute; inset-block: 0; right: 1.1rem; width: 1.7rem;
-      display: flex; align-items: center; justify-content: flex-end;
-      border: 0; background: transparent;
-      padding: 0 0.2rem; cursor: pointer;
+      cursor: pointer;
     }
     .compact-toggle svg { width: 14px; height: 14px; display: block; transform: rotate(90deg); transition: transform 120ms ease; }
     .open .compact-toggle svg { transform: rotate(270deg); }
@@ -261,7 +282,7 @@ export class ElementStyleEditor extends LitElement {
       border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: white;
       box-shadow: 0 3px 6px #0002;
     }
-    .compact-options button { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; width: 100%; text-align: left; padding: 0.35rem; border: 0; background: transparent; cursor: pointer; }
+    .compact-options:not(.marker-popup) button { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; width: 100%; text-align: left; padding: 0.35rem; border: 0; background: transparent; cursor: pointer; }
     .compact-option-value { color: #6b7787; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .compact-options button:hover, .compact-options button:focus { background: #e8eef5; }
     .border-group { display: flex; flex: 0 0 auto; align-items: stretch; height: 1.7rem; border: 1px solid #c5ccd5; border-right: 0; border-radius: 4px 0 0 4px; background: transparent; box-sizing: border-box; }
@@ -270,8 +291,8 @@ export class ElementStyleEditor extends LitElement {
     .border-group + .compact-value .compact-input { border-radius: 0 4px 4px 0; }
     .border-group + .compact-value.open .compact-input { border-radius: 0 4px 0 0; }
     .border-picker { position: relative; }
-    .border-picker summary .border-sample { width: 0.85rem; }
-    .border-picker summary { list-style: none; cursor: pointer; width: 1.3rem; height: 100%; display: grid; place-items: center; }
+    .border-picker summary .border-sample { width: 0; height: .85rem; border-top: 0; border-left-width: 3px; margin: 0; }
+    .border-picker summary { list-style: none; cursor: pointer; width: 1rem; height: 100%; display: grid; place-items: center; }
     .border-picker summary::-webkit-details-marker { display: none; }
     .border-sample { display: block; width: 1.2rem; border-top-width: 3px; margin: 0.45rem 0; }
     .border-options {
@@ -283,9 +304,11 @@ export class ElementStyleEditor extends LitElement {
     .background-control .border-color-picker { width: 100%; border-left: 0; }
     .background-control .border-color-picker > summary { width: 100%; }
     .border-color-picker { position: static; border-left: 1px solid #c5ccd5; }
+    .border-group .border-color-picker {box-sizing: border-box; width: 1rem;}
+    .border-group .border-color-picker > summary {width: 100%;}
     .border-color-picker > summary {
       display: grid; place-items: center; box-sizing: border-box;
-      width: 1.25rem; height: 100%; padding: 3px; list-style: none; cursor: pointer;
+      width: 1rem; height: 100%; padding: 3px; list-style: none; cursor: pointer;
     }
     .border-color-picker > summary::-webkit-details-marker { display: none; }
     .border-color-chip { width: 100%; height: 100%; box-shadow: inset 0 0 0 1px #0002; }
@@ -318,9 +341,11 @@ export class ElementStyleEditor extends LitElement {
     .palette-automatic { border-bottom: 1px solid #d8dee6; margin-bottom: 0.4rem; }
     .palette-custom { position: relative; border-top: 1px solid #d8dee6; margin-top: 0.4rem; }
     .palette-custom input[type="color"] {
-      position: absolute; inset: 0; width: 100%; height: 100%;
+      position: fixed; box-sizing: border-box; width: 1px; height: 1px; padding: 0; border: 0;
       opacity: 0; pointer-events: none;
     }
+
+    ${dropdownChevronStyles}
 
 
     .basic-grid {
@@ -802,6 +827,7 @@ export class ElementStyleEditor extends LitElement {
   definitions: readonly ElementStylePropertyDefinition[] = []
   propertyNames: readonly string[] | null = null
   state: ElementStyleState = emptyStyleState()
+  selectionKey = ""
   mode: "basic" | "advanced" | "compact" = "basic"
   orientation: "horizontal" | "vertical" = "horizontal"
   allowCustom = false
@@ -809,6 +835,16 @@ export class ElementStyleEditor extends LitElement {
   private galleryPage = 0
   private customEffect: string | null = null
   private compactMenu: string | null = null
+  private markerImageBusy = false
+  private markerImageError = ""
+  private markerImageFilename = ""
+  private markerImagePreview = ""
+  private markerImageSource: File | string | null = null
+  private markerImagePreviewTimer: number | null = null
+  private markerImageRequest: AbortController | null = null
+  private markerImageReader: FileReader | null = null
+  private markerImageState: ElementStyleState | null = null
+  private markerImageSelectionKey = ""
   readonly dismissMenus = (event?: Event) => {
     const path = event?.composedPath() ?? []
     const focused = event?.type === "pointerdown" && this.mode === "compact" ? this.shadowRoot?.activeElement : null
@@ -839,7 +875,11 @@ export class ElementStyleEditor extends LitElement {
       || this.renderRoot.querySelector(".border-picker[open], .border-color-picker[open]")))
   }
 
-  protected updated() {
+  protected updated(changed: Map<PropertyKey, unknown>) {
+    if((changed.has("state") || changed.has("selectionKey")) && this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")?.open && !this.markerImageSelectionUnchanged) {
+      this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")?.close()
+      this.cancelMarkerImageRead()
+    }
     this.syncCompactPopupState()
   }
 
@@ -853,6 +893,9 @@ export class ElementStyleEditor extends LitElement {
     this.ownerDocument.removeEventListener("pointerdown", this.dismissMenus, true)
     this.ownerDocument.removeEventListener("focusin", this.dismissMenus, true)
     this.compactMenu = null
+    this.cancelMarkerImageRead()
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")
+    if(dialog?.open) dialog.close()
     super.disconnectedCallback()
   }
 
@@ -1286,6 +1329,7 @@ export class ElementStyleEditor extends LitElement {
           <button type="button" class="palette-action" @click=${(event: Event) => {
             const control = (event.currentTarget as HTMLElement).parentElement!
             const input = control.querySelector<HTMLInputElement>('input[type="color"]')!
+            anchorColorSubmenu(input, control.closest<HTMLElement>(".border-color-palette")!, event.currentTarget as HTMLElement)
             this.dispatchEvent(new CustomEvent("ribbon-input-pointerdown", {
               detail: {input}, bubbles: true, composed: true,
             }))
@@ -1348,7 +1392,7 @@ export class ElementStyleEditor extends LitElement {
               input.setCustomValidity("")
               this.commitValue(name, next)
             }}>
-          <button type="button" class="compact-toggle" aria-label=${`${label} presets`} aria-expanded=${open}
+          <button type="button" class="compact-toggle dropdown-chevron" aria-label=${`${label} presets`} aria-expanded=${open}
             @click=${() => this.compactMenu = open ? null : name}>${ribbonIcon("ChevronRight")}</button>
         </div>
         <div class="compact-options effect-popup" id=${`presets-${name}`} role="group" aria-label=${`${label} presets`} ?hidden=${!open}
@@ -1385,7 +1429,7 @@ export class ElementStyleEditor extends LitElement {
     const current = ["text-align", "text-align-last"].includes(definition.name)
       ? value === "start" ? rtl ? "right" : "left" : value === "end" ? rtl ? "left" : "right" : value : value
     const columns = Math.min(4, Math.ceil(definition.values!.length / (definition.values!.length > 4 ? 2 : 1)))
-    return html`<div class="specialized-choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${definition.name}`}>
+    return html`<div class="specialized-choice-group" ?data-default=${!this.declaration(definition.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${definition.name}`}>
       ${definition.values!.map((value, index) => html`<button type="button"
         ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((definition.values!.length - 1) / columns) * columns}
         aria-pressed=${current === value}
@@ -1394,6 +1438,228 @@ export class ElementStyleEditor extends LitElement {
         @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
         @click=${() => this.commitValue(definition.name, value)}><span aria-hidden="true">${ribbonOptionIcon(definition.name, value)}</span></button>`)}
     </div>`
+  }
+
+  private renderMarkerChoices(definition: ElementStylePropertyDefinition) {
+    const name = definition.name
+    const current = this.editableValue(name) || this.state.computed[name]?.trim()
+    const open = this.compactMenu === name
+    const ordered = this.state.target?.localName === "ol"
+    const primary = (ordered ? ["decimal", "lower-alpha", "upper-alpha", "lower-roman"] : ["disc", "circle", "square"])
+      .filter(value => definition.values!.includes(value))
+    const remaining = definition.values!.filter(value => !primary.includes(value)
+      && (value === "none" || (ordered ? enumerationMarkerTypes : listMarkerTypes).some(type => type === value)))
+    const image = this.editableValue("list-style-image") || this.state.computed["list-style-image"]
+    const hasImage = Boolean(image && image !== "none")
+    const isDefault = !this.declaration(hasImage ? "list-style-image" : name)
+    const columns = primary.length + 1
+    const choice = (value: string, index: number, columns: number, count: number) => {
+      const label = ({'"–"': "Dash", '"◆"': "Diamond", '"✓"': "Checkmark", '"→"': "Arrow", '"★"': "Star"} as Record<string, string>)[value]
+        ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")
+      return html`<button type="button" title=${label} aria-label=${label} aria-pressed=${!hasImage && current === value}
+        ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((count - 1) / columns) * columns}
+        @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+        @click=${(event: MouseEvent) => {
+          if(hasImage) this.dispatchEvent(new CustomEvent("element-style-change", {
+            detail: {styles: {
+              [name]: {value, priority: this.declaration(name)?.priority ?? ""},
+              "list-style-image": {value: "none", priority: this.declaration("list-style-image")?.priority ?? ""},
+              [listMarkerImageProperty]: null,
+            }}, bubbles: true, composed: true,
+          }))
+          else this.commitValue(name, value)
+          this.compactMenu = null
+          if(remaining.includes(value) && this.shadowRoot?.activeElement === event.currentTarget) {
+            this.renderRoot.querySelector<HTMLButtonElement>(`#compact-${name}`)?.focus()
+          }
+        }}>${value === "none" ? html`<span aria-hidden="true">${ribbonOptionIcon(name, value)}</span>`
+          : html`<ol class="marker-preview" ?data-symbolic=${["disc", "circle", "square"].includes(value)} style=${`list-style-type: ${value}`} aria-hidden="true"><li></li></ol>`}</button>`
+    }
+    return html`<div class="compact-value marker-control" @keydown=${(event: KeyboardEvent) => {
+      if(event.key !== "Escape" || !open) return
+      event.preventDefault()
+      event.stopPropagation()
+      this.compactMenu = null
+      this.renderRoot.querySelector<HTMLButtonElement>(`#compact-${name}`)?.focus()
+    }}>
+      <div class="specialized-choice-group" ?data-default=${isDefault} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${name}`}>
+        ${primary.map((value, index) => choice(value, index, columns, columns))}
+        <button type="button" class="marker-more" id=${`compact-${name}`} title="More markers" aria-label="More markers"
+          aria-expanded=${open} aria-controls="marker-options" aria-pressed=${hasImage || remaining.includes(current ?? "")}
+          @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+          @click=${() => this.compactMenu = open ? null : name}><span aria-hidden="true">${ribbonIcon("ChevronRight")}</span></button>
+      </div>
+      <div class="compact-options marker-popup" id="marker-options" ?hidden=${!open}>
+        <div class="specialized-choice-group" ?data-default=${isDefault} style="--choice-columns: 3" role="group" aria-label="More markers">
+          ${remaining.map((value, index) => choice(value, index, 3, remaining.length + 1))}
+          <button type="button" class="marker-image-option" title="Image marker" aria-label="Image marker" aria-pressed=${hasImage}
+            style=${`grid-column: span ${3 - remaining.length % 3}`}
+            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+            @click=${() => this.openMarkerImageDialog()}><span aria-hidden="true">${ribbonIcon("Image")}</span></button>
+        </div>
+      </div>
+    </div>`
+  }
+
+  private cancelMarkerImageRead() {
+    if(this.markerImagePreviewTimer !== null) window.clearTimeout(this.markerImagePreviewTimer)
+    this.markerImagePreviewTimer = null
+    this.markerImageRequest?.abort()
+    this.markerImageRequest = null
+    this.markerImageReader?.abort()
+    this.markerImageReader = null
+    this.markerImageBusy = false
+    this.markerImagePreview = ""
+    this.markerImageSource = null
+  }
+
+  private async openMarkerImageDialog() {
+    this.compactMenu = null
+    this.markerImageError = ""
+    this.markerImageFilename = ""
+    this.cancelMarkerImageRead()
+    this.markerImageState = this.state
+    this.markerImageSelectionKey = this.selectionKey
+    await this.updateComplete
+    if(!this.isConnected) return
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")!
+    dialog.querySelector("form")!.reset()
+    if(!dialog.open) dialog.showModal()
+    const current = this.declaration(listMarkerImageProperty)?.value ?? this.editableValue("list-style-image")
+    const embedded = /^url\(["']?(data:[^"')]+)["']?\)$/.exec(current)
+    if(embedded) {
+      dialog.querySelector<HTMLInputElement>('[name="url"]')!.value = embedded[1]
+      void this.loadMarkerImage()
+    }
+  }
+
+  private get markerImageSelectionUnchanged() {
+    return this.selectionKey === this.markerImageSelectionKey
+      && this.state.target?.localName === this.markerImageState?.target?.localName
+      && this.state.target?.namespaceURI === this.markerImageState?.target?.namespaceURI
+  }
+
+  private applyMarkerImage(event: SubmitEvent) {
+    event.preventDefault()
+    if(this.markerImageBusy || !this.markerImagePreview) return
+    const form = event.currentTarget as HTMLFormElement
+    const source = form.querySelector<HTMLInputElement>('[name="file"]')!.files?.[0]
+      ?? form.querySelector<HTMLInputElement>('[name="url"]')!.value.trim()
+    if(source !== this.markerImageSource) return
+    const dialog = form.closest("dialog")!
+    if(!this.isConnected || !dialog.open || !this.markerImageSelectionUnchanged) return
+    this.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {styles: {
+        "list-style-image": {value: `var(${listMarkerImageProperty})`, priority: this.declaration("list-style-image")?.priority ?? ""},
+        [listMarkerImageProperty]: {value: `url(${JSON.stringify(this.markerImagePreview)})`, priority: this.declaration(listMarkerImageProperty)?.priority ?? ""},
+      }}, bubbles: true, composed: true,
+    }))
+    dialog.close()
+  }
+
+  private async loadMarkerImage() {
+    const form = this.renderRoot.querySelector<HTMLFormElement>(".marker-image-dialog form")!
+    const dialog = form.closest("dialog")!
+    const file = form.querySelector<HTMLInputElement>('[name="file"]')!.files?.[0]
+    const link = form.querySelector<HTMLInputElement>('[name="url"]')!.value.trim()
+    if(!file && !link) {this.markerImageError = "Upload an image or enter an image URL."; return}
+    this.cancelMarkerImageRead()
+    const request = new AbortController()
+    this.markerImageRequest = request
+    this.markerImageBusy = true
+    this.markerImageError = ""
+    try {
+      let blob: Blob
+      if(file) blob = file
+      else {
+        const url = new URL(link, this.ownerDocument.baseURI)
+        if(!["http:", "https:", "data:"].includes(url.protocol)) throw new Error("Enter an HTTP, HTTPS, or data image URL.")
+        const response = await fetch(url.href, {signal: request.signal, credentials: "omit"})
+        if(!response.ok) throw new Error(`Could not load the image (${response.status}).`)
+        blob = await response.blob()
+      }
+      if(request.signal.aborted) return
+      if(!blob.type.startsWith("image/")) throw new Error("Choose an image file or a URL that returns an image.")
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        this.markerImageReader = reader
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read the image."))
+        reader.onerror = () => reject(new Error("Could not read the image."))
+        reader.onabort = () => reject(new DOMException("Image loading cancelled", "AbortError"))
+        reader.readAsDataURL(blob)
+      })
+      if(request.signal.aborted || this.markerImageRequest !== request || !this.isConnected || !dialog.open
+        || !this.markerImageSelectionUnchanged) return
+      this.markerImagePreview = data
+      this.markerImageSource = file ?? link
+    }
+    catch(error) {
+      if(!request.signal.aborted && this.markerImageRequest === request) {
+        this.markerImageError = error instanceof TypeError ? "Could not load the image. Try uploading it instead."
+          : error instanceof Error ? error.message : "Could not load the image."
+      }
+    }
+    finally {
+      if(this.markerImageRequest === request) {
+        this.markerImageRequest = null
+        this.markerImageReader = null
+        this.markerImageBusy = false
+      }
+    }
+  }
+
+  private renderMarkerImageDialog() {
+    const nativeEvent = (event: Event) => event.stopPropagation()
+    return html`<dialog class="marker-image-dialog" aria-labelledby="marker-image-title"
+      @pointerdown=${nativeEvent} @mousedown=${nativeEvent} @focusin=${nativeEvent} @focusout=${nativeEvent}
+      @change=${nativeEvent} @keydown=${nativeEvent} @close=${() => {
+        this.cancelMarkerImageRead()
+        if(this.isConnected) this.renderRoot.querySelector<HTMLButtonElement>(".marker-more")?.focus()
+      }}>
+      <figure class="marker-image-preview" ?hidden=${!this.markerImagePreview}>
+        <img src=${this.markerImagePreview || nothing} alt="Marker image preview" @error=${() => {
+          this.cancelMarkerImageRead()
+          this.markerImageError = "This image could not be displayed. Choose another image."
+        }}><figcaption>Preview</figcaption>
+      </figure>
+      <h2 id="marker-image-title">Image marker</h2>
+      <form @submit=${this.applyMarkerImage}>
+        <div class="marker-image-upload"><span id="marker-image-upload-label">Upload image</span>
+          <div class="file-options" role="group" aria-labelledby="marker-image-upload-label">
+            <button class="file" type="button" aria-label="Select file" title="Select file" ?disabled=${this.markerImageBusy}
+              @click=${() => this.renderRoot.querySelector<HTMLInputElement>('.marker-image-dialog [name="file"]')!.click()}>
+              <span class="icon" aria-hidden="true">${ribbonIcon("Select file")}</span><span class="label">Select file</span>
+            </button>
+          </div>
+          <span class="marker-image-filename" aria-live="polite" ?hidden=${!this.markerImageFilename}>${this.markerImageFilename}</span>
+        </div>
+        <input type="file" name="file" accept="image/*" hidden ?disabled=${this.markerImageBusy}
+          @change=${(event: Event) => {
+            const file = (event.currentTarget as HTMLInputElement).files?.[0]
+            this.markerImageFilename = file?.name ?? ""
+            if(file) {
+              this.renderRoot.querySelector<HTMLInputElement>('.marker-image-dialog [name="url"]')!.value = ""
+              void this.loadMarkerImage()
+            }
+          }}>
+        <label>Or link to an image<input type="url" name="url" placeholder="https://example.com/marker.svg"
+          @input=${(event: Event) => {
+            this.renderRoot.querySelector<HTMLInputElement>('.marker-image-dialog [name="file"]')!.value = ""
+            this.markerImageFilename = ""
+            this.cancelMarkerImageRead()
+            this.markerImageError = ""
+            const input = event.currentTarget as HTMLInputElement
+            if(input.value.trim() && input.validity.valid) this.markerImagePreviewTimer = window.setTimeout(() => {
+              this.markerImagePreviewTimer = null
+              void this.loadMarkerImage()
+            }, 250)
+          }}></label>
+        <p role="status" ?hidden=${!this.markerImageBusy}>Loading preview…</p>
+        <p class="marker-image-error" role="alert" ?hidden=${!this.markerImageError}>${this.markerImageError}</p>
+        <div class="marker-image-actions"><button type="button" @click=${() => this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")!.close()}>Cancel</button>
+          <button type="submit" ?disabled=${this.markerImageBusy || !this.markerImagePreview}>Use marker</button></div>
+      </form>
+    </dialog>`
   }
 
   private renderSpecializedNumber(definition: ElementStylePropertyDefinition) {
@@ -1422,10 +1688,18 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private renderCompactLabel(name: string, label: string, id = `style-label-${name}`) {
+    const imageMarker = name === "list-style-type" && this.declaration("list-style-image")
+    const borderParts = ["border-width", "border-style", "border-color"]
+    const hasBorder = name === "border-width" && Object.keys(this.state.inline)
+      .some(property => /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(property))
     return html`<span class="field-label"><span id=${id}>${label}</span>
-      <button type="button" class="property-action" style=${this.declaration(name) ? "" : "visibility: hidden"}
+      <button type="button" class="property-action" style=${this.declaration(name) || imageMarker || hasBorder ? "" : "visibility: hidden"}
         title=${`Clear ${label}`} aria-label=${`Clear ${label}`}
-        @click=${() => this.dispatchChange(name, null)}>×</button>
+        @click=${() => name === "border-width" ? this.dispatchEvent(new CustomEvent("element-style-change", {
+          detail: {styles: Object.fromEntries(borderParts.map(property => [property, null]))}, bubbles: true, composed: true,
+        })) : imageMarker ? this.dispatchEvent(new CustomEvent("element-style-change", {
+          detail: {styles: {"list-style-type": null, "list-style-image": null, [listMarkerImageProperty]: null}}, bubbles: true, composed: true,
+        })) : this.dispatchChange(name, null)}>×</button>
     </span>`
   }
 
@@ -1433,7 +1707,8 @@ export class ElementStyleEditor extends LitElement {
     return html`<div class="compact-row" data-property=${definition.name}>
       ${this.renderCompactLabel(definition.name, definition.label)}
       <div class="compact-controls specialized-input">
-        ${definition.control === "number" || definition.control === "length" || ["line-height", "border-spacing", "math-depth"].includes(definition.name)
+        ${definition.name === "list-style-type" && definition.control === "select" && definition.values?.length
+          ? this.renderMarkerChoices(definition) : definition.control === "number" || definition.control === "length" || ["line-height", "border-spacing", "math-depth"].includes(definition.name)
           ? this.renderSpecializedNumber(definition) : definition.control === "select" && definition.values?.length && definition.values.length <= 8
           && definition.values.every(value => value.length <= 14)
           ? this.renderCompactChoices(definition) : this.renderInput(definition, this.declaration(definition.name))}
@@ -1485,6 +1760,7 @@ export class ElementStyleEditor extends LitElement {
       ${this.showPresets ? this.renderStyleGallery() : nothing}
       ${(this.propertyNames ?? ["width", "height", "margin", "border-width", "padding", "background-color"])
         .filter(name => !this.documentRootTarget || name === "background-color").map(name => {
+        if(name === "list-style-image" && this.propertyNames?.includes("list-style-type")) return nothing
         const definition = this.definitions.find(definition => definition.name === name)
         if(definition) return this.renderCompactProperty(definition)
         if(name === "box-shadow" || name === "filter") {
@@ -1502,7 +1778,7 @@ export class ElementStyleEditor extends LitElement {
           ${name === "border-width" ? html`<div class="border-group">
             <details class="border-picker" @toggle=${this.syncCompactPopupState}>
               <summary aria-label="Border line style" title="Border line style">
-                <span class="border-sample" style=${`border-top-style:${borderStyle}`} aria-hidden="true"></span>
+                <span class="border-sample" style=${`border-left-style:${borderStyle}`} aria-hidden="true"></span>
               </summary>
               <div class="border-options">
                 ${["solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"].map(style => html`
@@ -1521,6 +1797,7 @@ export class ElementStyleEditor extends LitElement {
           </div>
         </div>`
       })}
+      ${this.propertyNames?.includes("list-style-type") ? this.renderMarkerImageDialog() : nothing}
     </div>`
   }
 

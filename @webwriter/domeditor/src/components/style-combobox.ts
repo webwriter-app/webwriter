@@ -17,10 +17,10 @@ export class StyleCombobox extends EditorCombobox {
     :host([open]) .control {border-radius: 4px 4px 0 0;}
     :host([joined]) .control {border-top-left-radius: 0; border-bottom-left-radius: 0;}
     .control:focus-within {border-color: #c5ccd5; outline: 2px solid #b9d7f5; outline-offset: 0;}
-    input {padding: .2rem .35rem;}
+    input {padding: .2rem;}
     input::placeholder {font-size: .5rem;}
     input[readonly] {cursor: pointer;}
-    .toggle {flex: 0 0 1.7rem; width: 1.7rem; justify-content: end; padding: 0 .2rem;}
+    .control:has(.unit) .toggle {inset-inline-end: 1.25rem;}
     .toggle svg {display: block; width: 14px; height: 14px; transform: rotate(90deg);}
     :host([open]) .toggle svg {transform: rotate(270deg);}
     .unit {display: flex; flex: 0 0 1.1rem; align-items: center; justify-content: center; box-sizing: border-box; border-left: var(--editor-control-border-width, .5px) solid #c5ccd5; font-size: .55rem;}

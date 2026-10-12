@@ -109,6 +109,37 @@ export const aiChatStyles = css`
       display: none;
     }
 
+    .ai-chat-panel:not([data-open]) {anchor-name: --ai-reply-bar;}
+    .ai-bar-status {position: absolute; left: 1.7rem; right: 23px; top: 50%; transform: translateY(-50%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: .75rem; pointer-events: none;}
+    .ai-composer-surface[data-thinking] .ai-prompt-input::placeholder {color: transparent;}
+
+    .ai-bar-reply {
+      box-sizing: border-box;
+      position: fixed;
+      inset: auto;
+      top: 44px;
+      right: 7rem;
+      width: min(600px, calc(100vw - 1rem));
+      margin: 0;
+      padding: 0;
+      border: 1px solid #c8d2df;
+      border-radius: .65rem;
+      background: white;
+      color: #2f3742;
+      box-shadow: 0 .45rem 1rem rgb(0 0 0 / 18%);
+      overflow: visible;
+      font: .76rem/1.35 system-ui, sans-serif;
+    }
+    .ai-bar-reply::before, .ai-bar-reply::after {content: ""; position: absolute; width: 0; height: 0; pointer-events: none;}
+    .ai-bar-reply::before {top: -14px; left: 4px; border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 14px solid #c8d2df;}
+    .ai-bar-reply::after {top: -12px; left: 5px; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 13px solid white;}
+    .ai-bar-reply-content {box-sizing: border-box; max-height: min(24rem, calc(100dvh - 60px)); padding: .65rem 2rem .65rem .75rem; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto;}
+    .ai-bar-reply-close {position: absolute; z-index: 1; top: .3rem; right: .3rem; display: grid; place-items: center; width: 1.3rem; height: 1.3rem; padding: 0; border: 0; border-radius: 50%; background: rgb(242 242 242 / 80%); color: #526b86; font: inherit; cursor: pointer;}
+    .ai-bar-reply-close:focus-visible {outline: 2px solid #3977c7;}
+    @supports (top: anchor(bottom)) {
+      .ai-bar-reply {position-anchor: --ai-reply-bar; left: anchor(left); right: auto; top: calc(anchor(bottom) + 12px); width: anchor-size(width);}
+    }
+
     @container (max-width: 124px) {
       .ai-chat-panel:not([data-open]) .ai-chat-composer {
         visibility: hidden;
@@ -315,9 +346,11 @@ export const aiChatStyles = css`
       background: #f5f7fa;
       font-size: 0.76rem;
       line-height: 1.35;
-      white-space: pre-wrap;
+      white-space: normal;
       overflow-wrap: anywhere;
     }
+
+    .ai-chat-message-content {white-space: pre-wrap;}
 
     .ai-chat-message[data-role="user"] {
       align-self: flex-end;
@@ -415,24 +448,28 @@ export const aiChatStyles = css`
 
     .ai-edit-actions {
       display: flex;
+      flex-wrap: wrap;
       justify-content: flex-end;
-      gap: 0.4rem;
-      margin-top: 0.55rem;
+      gap: .25rem;
+      margin-top: .4rem;
     }
 
     .ai-edit-action {
       display: inline-flex;
+      flex: 0 0 auto;
       align-items: center;
       justify-content: center;
-      gap: 0.3rem;
-      min-height: 1.8rem;
-      padding: 0.25rem 0.55rem;
+      gap: .2rem;
+      min-height: 1.4rem;
+      padding: .15rem .3rem;
       border: 1px solid #d6a80d;
       border-radius: 0.35rem;
       color: #713f12;
       background: #ffffff;
       font: inherit;
-      font-size: 0.68rem;
+      font-size: .65rem;
+      line-height: 1.2;
+      white-space: nowrap;
       font-weight: 600;
       cursor: pointer;
     }
@@ -450,8 +487,9 @@ export const aiChatStyles = css`
     }
 
     .ai-edit-action svg {
-      width: 0.85rem;
-      height: 0.85rem;
+      flex: 0 0 .75rem;
+      width: .75rem;
+      height: .75rem;
     }
 
     .ai-edit-action:disabled {
@@ -464,6 +502,7 @@ export const aiChatStyles = css`
       color: #64748b;
       font-size: 0.68rem;
     }
+    .ai-chat-working [title] {cursor: help;}
 
     .ai-prompt-review-actions {
       box-sizing: border-box;

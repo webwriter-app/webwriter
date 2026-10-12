@@ -188,6 +188,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
             {label: "Document", action: "new:document", icon: "Document"},
             {label: "Canvas", action: "new:canvas", icon: "Canvas"},
             {label: "Slides", action: "new:slides", icon: "KeywordPresentation"},
+            {label: "Board", action: "new:board", icon: "BoardColumn"},
           ],
         },
         "Open",
@@ -205,9 +206,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Marks", buttons: []},
     {
       label: "Document",
-      buttons: [
-        {label: "Default", action: "set-document-template:body", icon: "Document"},
-      ],
+      buttons: [],
     },
     {label: "Section", buttons: []},
     {label: "Heading group", buttons: []},

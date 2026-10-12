@@ -104,7 +104,6 @@ const commonAttributeOptions: readonly ElementAttributeOption[] = [
 
 const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[]>> = {
   html: [
-    {name: "lang", label: "Document language", placeholder: "English"},
     {name: "dir", label: "Text direction", kind: "select", options: commonAttributeOptions[4].options},
   ],
   bdo: [

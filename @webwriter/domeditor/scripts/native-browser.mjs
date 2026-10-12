@@ -7,6 +7,16 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "Settings tabs share the heading and embed AI provider cards in Cloud",
+  "AI messages use normal padding without template whitespace",
+  "Closed AI bar shows status and anchored reply speech bubbles",
+  "Document toolbox combines metadata and layouts with primary and detailed options",
+  "Border controls are narrow and dropdown chevrons overlay field values",
+  "Ribbon custom colors show rainbow swatches and commit chosen colors",
+  "File actions align with the font size controls",
+  "Toolbox choices distinguish defaults from explicit matching values",
+  "Style dropdowns draw a single border and focus ring",
+  "marker image uploads preview before applying",
   "character deletion preserves adjacent spaces",
   "Elements pullout reserves matching padding after its opening animation",
   "Board columns and cards retain native editing and standalone layout",

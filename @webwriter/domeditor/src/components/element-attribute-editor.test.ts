@@ -37,6 +37,9 @@ describe("element attribute editor", () => {
 
     trigger.click()
     expect(dialog.open).toBe(true)
+    const close = dialog.querySelector<HTMLButtonElement>('[aria-label="Close attributes"]')!
+    expect(close.textContent?.trim()).toBe("")
+    expect(close.querySelector("svg")).not.toBeNull()
     expect(dialog.getAttribute("aria-labelledby")).toBe("attributes-heading")
     const listener = vi.fn()
     editor.addEventListener("element-attribute-change", listener)
@@ -181,6 +184,16 @@ describe("element attribute editor", () => {
     ])
     expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
     expect(buttons.find(button => button.getAttribute("aria-pressed") === "true")?.getAttribute("aria-label")).toBe("a, b, c")
+    expect(group.hasAttribute("data-default")).toBe(false)
+  })
+
+  it("marks an absent enumeration type as the default choice", async () => {
+    const editor = await mount("ol")
+    editor.expanded = true
+    await editor.updateComplete
+    const group = editor.shadowRoot!.querySelector<HTMLElement>('[aria-labelledby="attribute-label-type"]')!
+    expect(group.hasAttribute("data-default")).toBe(true)
+    expect(group.querySelector('[aria-label="Default"]')!.getAttribute("aria-pressed")).toBe("true")
   })
 
   it("shows disabled global attributes without a selected element", async () => {

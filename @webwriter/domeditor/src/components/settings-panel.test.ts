@@ -48,18 +48,17 @@ afterEach(() => {
 })
 
 describe("settings panel", () => {
-  it("opens all direct component licenses as plain text from a small link at the bottom", async () => {
+  it("opens all direct component licenses as plain text", async () => {
     const panel = await mountPanel()
     const root = panel.shadowRoot!
-    const link = root.querySelector<HTMLButtonElement>(".licenses-link")!
     const dialog = root.querySelector<HTMLDialogElement>("#licenses-dialog")!
-    expect(root.querySelector(".settings-panel")!.lastElementChild).toBe(link)
-    expect(link.textContent?.trim()).toBe("View licenses of components")
-    expect(getComputedStyle(link).fontSize).toBe("10.56px")
-    expect(getComputedStyle(link).textDecoration).toBe("underline")
+    expect(root.querySelector(".licenses-link")).toBeNull()
     expect(dialog.open).toBe(false)
-    link.click()
+    panel.showLicenses()
     expect(dialog.open).toBe(true)
+    const close = dialog.querySelector<HTMLButtonElement>('[aria-label="Close licenses"]')!
+    expect(close.textContent?.trim()).toBe("")
+    expect(close.querySelector("svg")).not.toBeNull()
     expect(dialog.getAttribute("aria-labelledby")).toBe("licenses-title")
     const text = dialog.querySelector("pre")!
     expect(text.textContent).toBe(componentLicenses)
@@ -70,7 +69,7 @@ describe("settings panel", () => {
     expect(text.textContent).toContain("Permission is hereby granted")
     dialog.querySelector<HTMLButtonElement>("button")!.click()
     expect(dialog.open).toBe(false)
-    link.click()
+    panel.showLicenses()
     expect(dialog.open).toBe(true)
     panel.remove()
     expect(dialog.open).toBe(false)
@@ -190,13 +189,10 @@ describe("settings panel", () => {
   it("introduces commands, explains the Style tab, and spaces adjacent command sections", async () => {
     const panel = await mountPanel()
     const root = panel.shadowRoot!
-    const editorHeading = root.querySelector(".settings-panel")!.firstElementChild!
-    expect(editorHeading.localName).toBe("h2")
-    expect(editorHeading.textContent).toBe("Editor")
-    expect(root.querySelector(".cloud-heading")!.localName).toBe(editorHeading.localName)
+    expect(root.querySelector("#settings-editor")!.getAttribute("role")).toBe("tabpanel")
+    expect(root.querySelector(".cloud-heading")!.localName).toBe("h2")
     expect(root.textContent).not.toContain("Name shown in")
-    expect(root.querySelector("h3")!.textContent).toBe("Commands")
-    expect(root.querySelector("h3")!.nextElementSibling!.className).toBe("shortcut-help")
+    expect(root.querySelector("#settings-commands")!.firstElementChild!.className).toBe("shortcut-help")
     expect(root.querySelector('[aria-label="Toolbox"] .checkbox-description')!.textContent).toContain("CSS properties")
     const sections = [...root.querySelectorAll<HTMLElement>(".command-section")]
     const gap = parseFloat(getComputedStyle(sections[0].querySelector(".command-list")!).gap)
@@ -287,7 +283,7 @@ describe("settings panel", () => {
 
     expect(categories.map(category => category.querySelector("summary")!.textContent))
       .toEqual(["Table commands", "Graphic commands"])
-    expect([...root.querySelector(".settings-panel")!.children].slice(-3, -1)).toEqual(categories)
+    expect([...root.querySelector("#settings-commands")!.children].slice(-2)).toEqual(categories)
     for(const [index, section] of ["Table", "Graphic"].entries()) {
       expect(categories[index].open).toBe(false)
       expect([...categories[index].querySelectorAll(".command-label")].map(label => label.textContent))
@@ -316,8 +312,8 @@ describe("settings panel", () => {
     const root = panel.shadowRoot!
     const category = root.querySelector<HTMLDetailsElement>(".developer-settings")!
     const cloudSettings = root.querySelector('[aria-label="Identity and cloud services"]')!
-    expect(root.querySelector(".commands-heading")!.previousElementSibling).toBe(cloudSettings)
-    expect(cloudSettings.previousElementSibling).toBe(category)
+    expect(category.closest("#settings-editor")).not.toBeNull()
+    expect(cloudSettings.closest("#settings-cloud")).not.toBeNull()
     expect(category.querySelector("summary")!.textContent).toBe("Developer settings")
     expect(category.open).toBe(false)
     expect([...category.querySelectorAll(".checkbox-label")].map(label => label.textContent)).toEqual(["Pin developer console", "Auto-reload packages", "Autosave cloud on bundle change"])
@@ -419,6 +415,46 @@ describe("settings panel", () => {
 })
 
 describe("settings dialog", () => {
+  it("switches Editor, Cloud and Commands beside the heading, supports keyboard navigation, and preserves provider drafts", async () => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    await (ribbon as any).showRibbonDialog("settings")
+    const root = ribbon.shadowRoot!
+    const panel = root.querySelector<SettingsPanel>("settings-panel")!
+    await panel.updateComplete
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    expect(tabs.map(tab => tab.textContent)).toEqual(["Editor", "Cloud", "Commands"])
+    expect(root.querySelector("h2")!.nextElementSibling?.getAttribute("role")).toBe("tablist")
+    expect(root.querySelector(".reset-settings-button")!.textContent).toBe("Reset")
+    expect(panel.shadowRoot!.querySelectorAll('[role="tabpanel"]:not([hidden])')).toHaveLength(1)
+    expect(panel.shadowRoot!.querySelector<HTMLElement>("#settings-editor")!.hidden).toBe(false)
+    tabs[0].dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true}))
+    await ribbon.updateComplete
+    await panel.updateComplete
+    expect(tabs[1].getAttribute("aria-selected")).toBe("true")
+    expect(root.activeElement).toBe(tabs[1])
+    expect(panel.shadowRoot!.querySelector<HTMLElement>("#settings-cloud")!.hidden).toBe(false)
+    const ai = panel.querySelector("ai-settings-dialog")!
+    await ai.updateComplete
+    expect(ai.embedded).toBe(true)
+    expect(ai.shadowRoot!.querySelector("dialog")).toBeNull()
+    expect(panel.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="ai"]')!.assignedElements()).toEqual([ai])
+    const name = ai.shadowRoot!.querySelector<HTMLInputElement>('input:not([inputmode="url"])')!
+    name.value = "Unsaved provider"
+    name.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    tabs[2].click()
+    await ribbon.updateComplete
+    await panel.updateComplete
+    expect(panel.shadowRoot!.querySelector<HTMLElement>("#settings-commands")!.hidden).toBe(false)
+    expect(panel.shadowRoot!.querySelector<HTMLElement>("#settings-cloud")!.hidden).toBe(true)
+    expect(panel.shadowRoot!.querySelectorAll('[role="tabpanel"]:not([hidden])')).toHaveLength(1)
+    tabs[1].click()
+    await ribbon.updateComplete
+    await ai.updateComplete
+    expect(ai.shadowRoot!.querySelector<HTMLInputElement>('input:not([inputmode="url"])')!.value).toBe("Unsaved provider")
+  })
+
   it("opens from the last option in the file menu below a separator", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
@@ -444,8 +480,8 @@ describe("settings dialog", () => {
     const main = dialog.querySelector<HTMLElement>("main")!
     const close = nav.querySelector<HTMLButtonElement>(".settings-close-button")!
     expect(nav.querySelector("h2")?.textContent).toBe("Settings")
-    expect(close.previousElementSibling?.textContent?.trim()).toBe("Reset settings")
-    const versionLabel = close.previousElementSibling?.previousElementSibling!
+    expect(close.previousElementSibling?.textContent?.trim()).toBe("Reset")
+    const versionLabel = nav.querySelector<HTMLElement>(".settings-version")!
     expect(versionLabel.textContent?.trim()).toBe(`WebWriter ${version}`)
     expect(getComputedStyle(versionLabel).color).toBe("#687383")
     expect(close.textContent?.trim()).toBe("")
@@ -458,7 +494,11 @@ describe("settings dialog", () => {
     expect(panel.shadowRoot!.querySelector(".settings-header")).toBeNull()
     expect(panel.shadowRoot!.querySelector(".reset-button")).toBeNull()
     const licenses = panel.shadowRoot!.querySelector<HTMLDialogElement>("#licenses-dialog")!
-    panel.shadowRoot!.querySelector<HTMLButtonElement>(".licenses-link")!.click()
+    const licensesLink = nav.querySelector<HTMLButtonElement>(".licenses-link")!
+    expect(licensesLink.textContent).toBe("View licenses")
+    expect(licensesLink.parentElement).toBe(versionLabel.parentElement)
+    expect(parseFloat(getComputedStyle(licensesLink).fontSize)).toBeLessThan(parseFloat(getComputedStyle(versionLabel).fontSize))
+    licensesLink.click()
     expect(licenses.open).toBe(true)
     licenses.querySelector<HTMLButtonElement>("button")!.click()
     await ribbon.updateComplete
@@ -731,14 +771,16 @@ it("keeps the local username beside Local and disables it while a cloud service 
   expect(local.closest("label")!.textContent?.trim()).toBe("Local")
   expect(username.getAttribute("aria-label")).toBe("Local username")
   expect(local.closest(".local-settings")!.contains(username)).toBe(true)
+  expect(local.closest(".cloud-service")!.hasAttribute("data-active")).toBe(false)
   expect(username.value).toBe("Local Ada")
   expect(username.disabled).toBe(true)
   local.click()
   await panel.updateComplete
   expect(username.disabled).toBe(false)
+  expect(local.closest(".cloud-service")!.hasAttribute("data-active")).toBe(true)
   username.value = "Another name"
   username.dispatchEvent(new Event("input"))
-  root.querySelector<HTMLInputElement>('.cloud-service input[type="radio"]')!.click()
+  root.querySelector<HTMLInputElement>('.cloud-service:not(.local-settings) input[type="radio"]')!.click()
   await panel.updateComplete
   expect(username.disabled).toBe(true)
   expect(username.value).toBe("Another name")
@@ -748,7 +790,7 @@ it("allows a dev-server display name without exposing password or sign-in contro
   const service = {...configuredService, url: "http://localhost:1234/api", username: "Local developer", authentication: "none" as const}
   const panel = await mountPanel({...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id})
   panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
-  const card = panel.shadowRoot!.querySelector(".cloud-service")!
+  const card = panel.shadowRoot!.querySelector(".cloud-service:not(.local-settings)")!
   const username = card.querySelector<HTMLInputElement>('[name="username"]')!
   expect(username.value).toBe("Local developer")
   expect(card.querySelector('input[type="password"]')).toBeNull()

@@ -1,4 +1,5 @@
 import {LitElement, css, html, nothing} from "lit"
+import {ribbonIcon} from "../ribbon-icons"
 import {defaultGroupingRules, formWidgetGroups, validateGroupingRules} from "../widget-grouping.js"
 import type {WidgetGroupingContext, WidgetGroupingRules} from "../widget-grouping"
 
@@ -35,6 +36,10 @@ export class WidgetGroupingDialog extends LitElement {
     .manual-group select { min-height: 5rem; }
     button { min-height: 2rem; padding: .4rem .7rem; border: 1px solid #cbd5e1; border-radius: .35rem; color: #25344a; background: #fff; font: inherit; cursor: pointer; }
     button.primary { border-color: #2563eb; color: #fff; background: #2563eb; } button:disabled { cursor: default; opacity: .55; }
+    .dialog-close { display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; background: transparent; }
+    .dialog-close svg { display: block; width: 1.1rem; height: 1.1rem; }
+    .dialog-close:hover { background: #f1f5f9; }
+    .dialog-close:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
     .preview { display: grid; gap: .3rem; margin-top: .65rem; padding: .65rem; border-radius: .4rem; background: #f8fafc; font-size: .75rem; }
     @media (max-width: 38rem) { .grid, .manual-group { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
   `
@@ -120,7 +125,7 @@ export class WidgetGroupingDialog extends LitElement {
     const r = this.rules, c = this.context, canEdit = this.canEdit(), canSave = this.canSave()
     const participants = c?.participants ?? [], groupings = c?.groupings ?? []
     return html`<dialog aria-labelledby="grouping-heading" @cancel=${(event: Event) => { event.preventDefault(); this.close(undefined) }} @close=${() => { if(this.resolveShow) this.close(undefined) }}>
-      <div class="shell"><header><h2 id="grouping-heading">Participant groups</h2><button type="button" aria-label="Close" @click=${() => this.close(undefined)}>×</button></header>
+      <div class="shell"><header><h2 id="grouping-heading">Participant groups</h2><button class="dialog-close" type="button" aria-label="Close" title="Close" @click=${() => this.close(undefined)}>${ribbonIcon("Reject")}</button></header>
       <div class="content">
         ${this.loading ? html`<p class="status" role="status">Loading participants…</p>` : nothing}
         ${this.error ? html`<p class="status ${canSave ? "" : "error"}" role="status">${this.error}</p>` : nothing}

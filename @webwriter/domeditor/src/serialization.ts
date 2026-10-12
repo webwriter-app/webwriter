@@ -1,6 +1,7 @@
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
+import listMarkerStyleSource from "./document-list-markers.css?raw"
 import referenceFormatterSource from "virtual:reference-formatter-source"
 import {collectReferences} from "./document-viewer.js"
 import {documentLayoutMode} from "./document-layout"
@@ -77,6 +78,13 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     catch { return url }
   }
   const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
+  root.querySelectorAll('style[id="webwriter-list-marker-styles"]').forEach(style => style.remove())
+  if(root.body.querySelector(':is(ul, ol, menu)[style*="--ww-list-marker-image:"]')) {
+    const style = root.createElement("style")
+    style.id = "webwriter-list-marker-styles"
+    style.textContent = listMarkerStyleSource
+    head.append(style)
+  }
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.
   root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())

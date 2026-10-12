@@ -1,6 +1,19 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
+import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
+
+it("includes aligned marker styling in standalone exports without changing the body", () => {
+  const root = new DOMParser().parseFromString('<ul style="--ww-list-marker-image: url(data:image/png;base64,AQID); list-style-image: var(--ww-list-marker-image)"><li>Item</li></ul>', "text/html")
+  const body = root.body.innerHTML
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-list-marker-styles")!.textContent).toContain("inset-block-start: calc((1lh - 1em) / 2)")
+  expect(root.body.innerHTML).toBe(body)
+  appendSerializedAssets(root, [])
+  expect(root.querySelectorAll("#webwriter-list-marker-styles")).toHaveLength(1)
+  root.querySelector("ul")!.removeAttribute("style")
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-list-marker-styles")).toBeNull()
+})
 
 describe("serializeDoctype()", () => {
   it("omits a missing doctype", () => {

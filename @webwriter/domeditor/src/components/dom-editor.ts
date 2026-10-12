@@ -2908,7 +2908,8 @@ export class DomEditor extends LitElement {
   }
 
   private readonly handleBeforeUnload = (event: BeforeUnloadEvent) => {
-    if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft) return
+    const aiWorkActive = this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.aiWorkActive
+    if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft && !aiWorkActive) return
     event.preventDefault()
     event.returnValue = ""
   }
@@ -3726,7 +3727,7 @@ export class DomEditor extends LitElement {
       void this.newDocument()
       return
     }
-    if(label === "new:document" || label === "new:canvas" || label === "new:slides") {
+    if(label === "new:document" || label === "new:canvas" || label === "new:slides" || label === "new:board") {
       void this.newDocument(label.slice("new:".length) as DocumentLayoutMode)
       return
     }
@@ -5038,6 +5039,15 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+
+  private handleListTypeChange = (event: Event) => {
+    const detail = (event as CustomEvent<{listType?: unknown, selectionTypes?: unknown}>).detail
+    if((detail?.listType !== "ul" && detail?.listType !== "ol") || !Array.isArray(detail.selectionTypes)
+      || !detail.selectionTypes.length || !detail.selectionTypes.every(scope => isElementSelectionType(scope)
+        && scope.namespaceURI === "http://www.w3.org/1999/xhtml" && (scope.localName === "ul" || scope.localName === "ol"))) return
+    void this.execute({type: "setListType", listType: detail.listType, selectionTypes: detail.selectionTypes})
+      .finally(() => this.focusEditor())
+  }
 
   private handleHeadingLevelChange = (event: Event) => {
     const detail = (event as CustomEvent<{level?: unknown, selectionType?: unknown}>).detail
@@ -6936,6 +6946,7 @@ export class DomEditor extends LitElement {
       "mark-attribute-change": this.handleMarkAttributeChange.bind(this),
       "ruby-action": this.handleRubyAction.bind(this),
       "list-attribute-change": this.handleListAttributeChange.bind(this),
+      "list-type-change": this.handleListTypeChange.bind(this),
       "heading-level-change": this.handleHeadingLevelChange.bind(this),
       "heading-group-level-change": this.handleHeadingGroupLevelChange.bind(this),
       "comment-action": this.handleCommentAction.bind(this),

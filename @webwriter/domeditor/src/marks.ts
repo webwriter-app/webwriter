@@ -305,7 +305,6 @@ export const primaryMarkOptions: readonly MarkOption[] = [
   {name: "sub", label: "Subscript", icon: "MarkSubscript", shortcutKey: "l"},
   {name: "small", label: "Side Comment", icon: "MarkSmall", shortcutKey: "m"},
   {name: "code", label: "Code", icon: "MarkCode", shortcutKey: "c"},
-  {name: "q", label: "Quotation", icon: "MarkQuotation", shortcutKey: "q"},
   {name: "kbd", label: "Keyboard Shortcut", icon: "MarkKeyboard", shortcutKey: "p"},
   {name: "abbr", label: "Abbreviation", icon: "MarkAbbreviation", shortcutKey: "a"},
 ] as const

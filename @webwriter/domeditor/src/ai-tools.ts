@@ -31,7 +31,7 @@ const operationSignatures = Object.entries(operationFields).map(([name, fields])
 // visible, and enforce each operation's required fields at execution time.
 const operations = {type: "array", minItems: 1, maxItems: 50, items: object({
   type: {type: "string", enum: Object.keys(operationFields), description: "Exact operation name; use only a listed value."},
-  target: {...string, description: "Copy a target ID from a complete document read or element inspection. A document read without arguments returns the BODY target."},
+  target: {...string, description: "Copy the exact target ID returned by a complete read or element inspection in THIS turn. Every read creates a NEW target ID; use that returned ID, not the read's input ID, a selector, or an ID from earlier turns. A document read without arguments returns the BODY target."},
   position,
   html: {...string, description: "HTML markup for insert_html, replace_html, replace_document, or replace_selection; optional documented light DOM for insert_widget. The field is named html, not content."},
   text: {...string, description: "Replacement plain text for set_text."},
@@ -68,7 +68,7 @@ export const aiToolDefinitions = {
     parameters: object({topic: {type: "string", enum: ["overview", "elements", "styles"]}}),
   },
   read_current_document: {
-    kind: "read", description: "Read authored DOM, an outline, or a target region. With no target, returns BODY contents and a BODY target ID, not an ID for the first child. To add content to that body, use insert_html with its target ID, position append/prepend, and html. Follow pagination; truncated HTML is not a complete document.",
+    kind: "read", description: "Read authored DOM, an outline, or a target region. Every read returns a NEW target ID: copy that returned ID into the proposed operation. With no target, returns BODY contents and a BODY target ID, not an ID for the first child. To add content to that body, use insert_html with its target ID, position append/prepend, and html. Outline IDs must be read in html mode before editing. Follow pagination; truncated HTML is not a complete document. If too large, inspect and edit smaller elements instead.",
     parameters: object({target: string, mode: {type: "string", enum: ["html", "outline"]}, includeHead: {type: "boolean"}, ...pagination, limit: {type: "integer", minimum: 1, maximum: 200000, description: "Characters for HTML (default 200000); nodes for outline (maximum 50)."}}),
   },
   read_current_selection: {

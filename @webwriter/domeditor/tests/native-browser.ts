@@ -1,4 +1,5 @@
 import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
+import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
@@ -21,6 +22,548 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("Settings tabs share the heading and embed AI provider cards in Cloud", async () => {
+  const {AppRibbon} = await import("../src/components/ribbon")
+  const ribbon = new AppRibbon()
+  fixture.append(ribbon)
+  try {
+    await ribbon.updateComplete
+    await (ribbon as any).showRibbonDialog("settings")
+    const root = ribbon.shadowRoot!
+    const dialog = root.querySelector<HTMLDialogElement>("#settings-dialog")!
+    const panel = root.querySelector<import("../src/components/settings-panel").SettingsPanel>("settings-panel")!
+    await panel.updateComplete
+    await layoutFrame()
+    const heading = root.querySelector<HTMLElement>("#settings-dialog-title")!.getBoundingClientRect()
+    const tabs = root.querySelector<HTMLElement>('[role="tablist"]')!.getBoundingClientRect()
+    assert(tabs.left > heading.right && Math.abs((tabs.top + tabs.bottom) / 2 - (heading.top + heading.bottom) / 2) < 1,
+      "Settings tabs are not beside the heading")
+    assert(root.querySelector(".reset-settings-button")!.textContent === "Reset", "Reset settings was not renamed")
+    const version = root.querySelector<HTMLElement>(".settings-version")!
+    const licensesLink = root.querySelector<HTMLButtonElement>(".licenses-link")!
+    const versionRect = version.getBoundingClientRect(), licensesRect = licensesLink.getBoundingClientRect()
+    assert(licensesLink.textContent === "View licenses" && licensesRect.top >= versionRect.bottom
+      && Math.abs((versionRect.left + versionRect.right) / 2 - (licensesRect.left + licensesRect.right) / 2) < 1
+      && parseFloat(getComputedStyle(licensesLink).fontSize) < parseFloat(getComputedStyle(version).fontSize),
+      "View licenses is not smaller and centered beneath the WebWriter version")
+    licensesLink.click()
+    const licenses = panel.shadowRoot!.querySelector<HTMLDialogElement>("#licenses-dialog")!
+    assert(licenses.open, "the header licenses link does not open licenses")
+    const licensesClose = licenses.querySelector<HTMLButtonElement>('[aria-label="Close licenses"]')!
+    assert(licensesClose.querySelector("svg") && !licensesClose.textContent!.trim(), "licenses Close is not an X icon")
+    licensesClose.click()
+    assert(!licenses.open && dialog.open, "licenses X does not close only the licenses dialog")
+    assert(panel.shadowRoot!.querySelectorAll('[role="tabpanel"]:not([hidden])').length === 1, "multiple settings tabs are visible")
+    root.querySelector<HTMLButtonElement>("#settings-tab-cloud")!.click()
+    await ribbon.updateComplete
+    await panel.updateComplete
+    const ai = panel.querySelector("ai-settings-dialog")!
+    await ai.updateComplete
+    await layoutFrame()
+    assert(dialog.open && !ai.shadowRoot!.querySelector("dialog"), "AI settings opened a second modal")
+    assert(panel.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="ai"]')!.assignedElements().includes(ai), "AI settings are outside Cloud")
+    const cloudSection = panel.shadowRoot!.querySelector<HTMLElement>('[aria-label="Identity and cloud services"]')!
+    const aiHeading = ai.shadowRoot!.querySelector<HTMLElement>("#ai-settings-title")!
+    assert(aiHeading.getBoundingClientRect().top - cloudSection.getBoundingClientRect().bottom >= 23,
+      "AI providers heading lacks vertical whitespace above it")
+    const cloudField = panel.shadowRoot!.querySelector<HTMLElement>("#local-username")!
+    const localCard = cloudField.closest<HTMLElement>(".cloud-service")!
+    const localLabel = localCard.querySelector<HTMLElement>("label")!
+    const localName = cloudField.getBoundingClientRect()
+    const localText = localLabel.getBoundingClientRect()
+    assert(getComputedStyle(localCard).paddingTop === "12px" && getComputedStyle(localCard).borderTopWidth === "1px",
+      "Local does not share cloud-card padding and border")
+    assert(localName.left > localText.right && Math.abs((localName.top + localName.bottom) / 2 - (localText.top + localText.bottom) / 2) < 1,
+      "Local and username are not centered on one line")
+    const addLabel = panel.shadowRoot!.querySelector<HTMLElement>(".add-provider-label")!.getBoundingClientRect()
+    const addButtons = panel.shadowRoot!.querySelector<HTMLElement>(".provider-types")!.getBoundingClientRect()
+    assert(addButtons.left > addLabel.right && Math.abs((addButtons.top + addButtons.bottom) / 2 - (addLabel.top + addLabel.bottom) / 2) < 1,
+      "Add a cloud service is not centered beside its button group")
+    const aiField = ai.shadowRoot!.querySelector<HTMLElement>("input")!
+    assert(getComputedStyle(aiField).fontSize === getComputedStyle(cloudField).fontSize
+      && getComputedStyle(aiField).borderTopColor === getComputedStyle(cloudField).borderTopColor,
+      "AI and cloud fields use different form styles")
+    const card = ai.shadowRoot!.querySelector<HTMLElement>(".content")!
+    const content = root.querySelector<HTMLElement>(".settings-dialog-main")!
+    assert(card.getBoundingClientRect().width <= content.clientWidth && getComputedStyle(card).overflow === "visible",
+      "AI provider card has a nested scroller or overflows Settings")
+    dialog.style.width = "min(24rem, calc(100vw - 2rem))"
+    await layoutFrame()
+    assert(dialog.scrollWidth <= dialog.clientWidth, "Settings controls overflow at narrow widths")
+    const {createAIProvider} = await import("../src/ai-provider")
+    const longName = "VeryLongProviderName".repeat(12)
+    const first = ai.store!.upsert({...createAIProvider("custom"), name: longName, baseUrl: `https://example.org/${"long-path".repeat(30)}`, models: ["very-long-model-name".repeat(30)]})
+    ai.store!.upsert({...createAIProvider("custom"), name: "Other provider"})
+    await ai.store!.activate(first.id)
+    await ai.updateComplete
+    await layoutFrame()
+    const cards = [...ai.shadowRoot!.querySelectorAll<HTMLDetailsElement>(".provider-card")]
+    assert(cards.length === 2 && cards.every(card => !card.open), "provider cards are not collapsed by default")
+    cards[0].querySelector<HTMLElement>("summary")!.click()
+    await layoutFrame()
+    await ai.updateComplete
+    const editor = cards[0].querySelector("ai-settings-dialog")!
+    await editor.updateComplete
+    await layoutFrame()
+    assert(editor.shadowRoot!.querySelector("form"), "provider settings are not inside their expandable card")
+    assert(cards[0].scrollWidth <= cards[0].clientWidth && dialog.scrollWidth <= dialog.clientWidth,
+      "expanded provider card overflows with long names, URLs or model IDs")
+    cards[1].querySelector<HTMLInputElement>('input[type="radio"]')!.click()
+    await layoutFrame()
+    assert(ai.store!.activeProvider?.name === "Other provider" && !cards[1].open, "radio selection toggles the card or does not activate the provider")
+    assert(cards[0].open && editor.shadowRoot!.querySelector("form"), "activating another provider discards an expanded card")
+    root.querySelector<HTMLButtonElement>("#settings-tab-commands")!.click()
+    await ribbon.updateComplete
+    await panel.updateComplete
+    assert(!panel.shadowRoot!.querySelector<HTMLElement>("#settings-commands")!.hidden
+      && panel.shadowRoot!.querySelector<HTMLElement>("#settings-cloud")!.hidden, "Commands tab does not hide Cloud")
+    const closed = new Promise<void>(resolve => dialog.addEventListener("close", () => resolve(), {once: true}))
+    dialog.close()
+    await closed
+    await ribbon.updateComplete
+    assert(!ai.isConnected && !ai.open, "closing Settings leaves AI configuration active")
+  }
+  finally {ribbon.remove()}
+})
+
+await check("AI messages use normal padding without template whitespace", async () => {
+  const {AppRibbon} = await import("../src/components/ribbon")
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const ribbon = new AppRibbon()
+  const toolbox = new DomEditorToolbox()
+  toolbox.activeTool = "AI"
+  fixture.append(ribbon, toolbox)
+  try {
+    await Promise.all([ribbon.updateComplete, toolbox.updateComplete])
+    ribbon.aiToolboxTarget = toolbox.shadowRoot!.querySelector<HTMLElement>(".ai-toolbox-content")!
+    ribbon.aiChatOpen = true
+    ribbon.appendAIResponse("A short reply.")
+    await ribbon.updateComplete
+    await layoutFrame()
+    const message = ribbon.aiToolboxTarget.querySelector<HTMLElement>(".ai-chat-message")!
+    const role = message.querySelector<HTMLElement>(".ai-chat-message-role")!
+    const content = message.querySelector<HTMLElement>(".ai-chat-message-content")!
+    const css = getComputedStyle(message)
+    assert(css.whiteSpace === "normal", "message template whitespace is preserved")
+    assert(getComputedStyle(content).whiteSpace === "pre-wrap", "intentional reply line breaks are not preserved")
+    assert(Math.abs(role.getBoundingClientRect().top - message.getBoundingClientRect().top - parseFloat(css.paddingTop) - 1) < 1,
+      "role label has extra space above its normal padding")
+    assert(content.getBoundingClientRect().top - role.getBoundingClientRect().bottom <= 5,
+      "reply has extra whitespace below its role label")
+    const expectedHeight = role.getBoundingClientRect().height + content.getBoundingClientRect().height
+      + parseFloat(getComputedStyle(role).marginBottom) + parseFloat(css.paddingTop) + parseFloat(css.paddingBottom)
+      + parseFloat(css.borderTopWidth) + parseFloat(css.borderBottomWidth)
+    assert(Math.abs(message.getBoundingClientRect().height - expectedHeight) < 1,
+      "AI reply has spacing beyond its text, label and normal padding")
+    const host = ribbon as unknown as {handleAIDocumentTool: (call: unknown, chatId: string) => Promise<unknown>}
+    let finishPreview!: (result: {status: string}) => void
+    ribbon.aiEditReviewHandler = async action => action === "preview"
+      ? new Promise(resolve => {finishPreview = resolve})
+      : {status: action === "accept" ? "applied" : "rejected"}
+    const call = {id: "test-edit", name: "replace_current_document", arguments: {summary: "Add a heading", html: "<h1>Heading</h1>"}}
+    const queued = host.handleAIDocumentTool(call, "chat-1")
+    await ribbon.updateComplete
+    const editMessage = ribbon.aiToolboxTarget!.querySelector<HTMLElement>('[data-edit-phase="queued"]')!
+    assert(editMessage && editMessage.textContent!.includes("Queued:"), "queued message is missing")
+    finishPreview({status: "previewing"})
+    await queued
+    await ribbon.updateComplete
+    await layoutFrame()
+    assert(ribbon.aiToolboxTarget!.querySelector('[data-edit-phase="review"]') === editMessage,
+      "review was appended instead of replacing the queued message")
+    assert(!ribbon.aiToolboxTarget!.querySelector(".ai-prompt-input"), "review buttons do not replace the toolbox input")
+    const checkActions = (expected: string[]) => {
+      const buttons = Array.from(ribbon.aiToolboxTarget!.querySelectorAll<HTMLButtonElement>(".ai-edit-action"))
+      assert(JSON.stringify(buttons.map(button => button.querySelector("span")!.textContent)) === JSON.stringify(expected), "AI action buttons are missing")
+      for(const button of buttons) {
+        const css = getComputedStyle(button)
+        const label = button.querySelector<HTMLElement>("span")!
+        assert(css.whiteSpace === "nowrap" && label.getBoundingClientRect().height <= parseFloat(css.lineHeight) + 1,
+          "AI action label wraps onto multiple lines")
+        assert(button.getBoundingClientRect().height <= 25, "AI action button is not compact")
+      }
+    }
+    checkActions(["Accept", "Go to", "Reject"])
+    ribbon.aiToolboxTarget!.querySelector<HTMLButtonElement>('.ai-toolbox-review [data-kind="approve"]')!.click()
+    await layoutFrame()
+    await ribbon.updateComplete
+    assert(ribbon.aiToolboxTarget!.querySelector('[data-edit-phase="accepted"]') === editMessage,
+      "acceptance was appended instead of replacing the review message")
+    assert(ribbon.aiToolboxTarget!.querySelector(".ai-prompt-input"), "composer was not restored after acceptance")
+    checkActions(["Go to", "Undo change"])
+  }
+  finally {ribbon.remove(); toolbox.remove()}
+})
+
+await check("Closed AI bar shows status and anchored reply speech bubbles", async () => {
+  const {AppRibbon} = await import("../src/components/ribbon")
+  const ribbon = new AppRibbon()
+  fixture.append(ribbon)
+  try {
+    await ribbon.updateComplete
+    const host = ribbon as unknown as {aiBusy: boolean, aiProgress: string}
+    host.aiBusy = true
+    host.aiProgress = "Detailed progress for hovering"
+    await ribbon.updateComplete
+    const status = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-bar-status")!
+    assert(status.textContent === "Thinking..." && status.title === host.aiProgress, "closed AI bar does not show compact progress")
+    const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    assert(!input.readOnly && !input.disabled, "Thinking prevents typing a subsequent message")
+    input.value = "A subsequent message"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await ribbon.updateComplete
+    assert(!ribbon.shadowRoot!.querySelector(".ai-bar-status"), "Thinking obscures the queued draft")
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Queue chat message"]')!.click()
+    await ribbon.updateComplete
+    assert(input.value === "" && ribbon.shadowRoot!.querySelector(".ai-bar-status"), "queueing does not restore the Thinking bar")
+    assert((ribbon as any).queuedAIPrompts.length === 1, "message was not queued")
+    const newChat = ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="New chat"]')!
+    assert(!newChat.disabled, "New chat is disabled while Thinking")
+    newChat.click()
+    await ribbon.updateComplete
+    assert(!ribbon.shadowRoot!.querySelector(".ai-bar-status"), "another chat's Thinking status appears in the new chat")
+    const busySwitcher = ribbon.shadowRoot!.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
+    assert(!busySwitcher.disabled, "chat switching is disabled while Thinking")
+    busySwitcher.value = "chat-1"
+    busySwitcher.dispatchEvent(new Event("change", {bubbles: true}))
+    await ribbon.updateComplete
+    assert(ribbon.shadowRoot!.querySelector(".ai-bar-status"), "originating chat lost its Thinking status after switching")
+    ;(ribbon as any).clearQueuedAIPrompts()
+    host.aiBusy = false
+    ribbon.appendAIResponse("Here is the reply.\nIt stays available while you edit.")
+    await ribbon.updateComplete
+    await layoutFrame()
+    const bubble = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-bar-reply")!
+    const bar = ribbon.shadowRoot!.querySelector<HTMLElement>("#ai-chat-panel")!
+    const icon = bar.querySelector<HTMLElement>(".ai-chat-brand-button")!
+    assert(bubble.matches(":popover-open"), "reply bubble is clipped inside the ribbon instead of using the top layer")
+    const checkGeometry = () => {
+      const reply = bubble.getBoundingClientRect()
+      const input = bar.getBoundingClientRect()
+      const origin = icon.getBoundingClientRect()
+      assert(Math.abs(reply.left - input.left) < 1 && Math.abs(reply.width - input.width) < 1,
+        `reply does not share the AI bar's position and width: ${JSON.stringify({reply: reply.toJSON(), input: input.toJSON()})}`)
+      const spike = getComputedStyle(bubble, "::before")
+      const spikeX = reply.left + parseFloat(getComputedStyle(bubble).borderLeftWidth) + parseFloat(spike.left) + parseFloat(spike.borderLeftWidth)
+      assert(Math.abs(spikeX - (origin.left + origin.width / 2)) <= 1.5, "speech-bubble spike does not point to the AI icon")
+      assert(reply.top > input.bottom, "speech bubble overlaps the AI bar")
+    }
+    checkGeometry()
+    ribbon.style.width = "calc(100% - 100px)"
+    await layoutFrame()
+    checkGeometry()
+    bubble.querySelector<HTMLButtonElement>(".ai-bar-reply-close")!.click()
+    await ribbon.updateComplete
+    assert(!ribbon.shadowRoot!.querySelector(".ai-bar-reply"), "dismissed reply remains visible")
+    ;(ribbon as any).startNewAIChat()
+    ribbon.appendAIResponse("Reply for the second chat")
+    await ribbon.updateComplete
+    assert(ribbon.shadowRoot!.querySelector(".ai-bar-reply-content")!.textContent === "Reply for the second chat", "new chat displays another chat's reply")
+    const switcher = ribbon.shadowRoot!.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
+    switcher.value = "chat-1"
+    switcher.dispatchEvent(new Event("change", {bubbles: true}))
+    await ribbon.updateComplete
+    assert(!ribbon.shadowRoot!.querySelector(".ai-bar-reply"), "switching chats resurrects a dismissed reply")
+    assert(!ribbon.shadowRoot!.querySelector(".ai-chat-messages")!.textContent!.includes("Reply for the second chat"), "chat history includes another chat's messages")
+  }
+  finally {ribbon.remove()}
+})
+
+await check("Document toolbox combines metadata and layouts with primary and detailed options", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const toolbox = new DomEditorToolbox()
+  toolbox.activeTool = "Edit"
+  toolbox.documentSelected = true
+  toolbox.elementAttributes = {path: [], localName: "body", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Document", attributes: {}}
+  fixture.append(toolbox)
+  try {
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<import("../src/components/ribbon-drawer").RibbonDrawer>('ribbon-drawer[data-specialized="document"]')!
+    await drawer.updateComplete
+    await layoutFrame()
+    const common = drawer.querySelector<import("../src/components/document-head-editor").DocumentHeadEditor>('document-head-editor[mode="common"]')!
+    await common.updateComplete
+    assert(drawer.shadowRoot!.querySelector(".pane-icon svg"), "Document toolbox lacks its heading icon")
+    assert(drawer.querySelector(".document-reset"), "Document toolbox lacks Reset")
+    assert(!toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"], ribbon-drawer[label="Layouts"], [action^="set-document-template:"]'), "legacy document drawers remain")
+    assert(!drawer.querySelector("element-attribute-editor"), "separate document language controls remain")
+    const primary = drawer.querySelector<HTMLElement>(".document-primary")!.getBoundingClientRect()
+    assert(Math.abs(common.getBoundingClientRect().width - primary.width) < 1, "metadata fields do not fill the toolbox")
+    const language = common.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[label="Language"]')!
+    assert(language.getBoundingClientRect().width > 80, "metadata Language field is clipped")
+    const more = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!
+    assert(more.hidden, "detailed document options start expanded")
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+    await drawer.updateComplete
+    await layoutFrame()
+    assert(!more.hidden, "Options does not reveal detailed document controls")
+    const advanced = drawer.querySelector<import("../src/components/document-head-editor").DocumentHeadEditor>('document-head-editor[mode="advanced"]')!
+    await advanced.updateComplete
+    assert(advanced.getBoundingClientRect().height > 50, "advanced metadata is not visible")
+    const description = advanced.shadowRoot!.querySelector<HTMLTextAreaElement>('textarea[name="description"]')!
+    assert(description.rows === 3, "Description is not a three-line textarea")
+    assert(Math.abs(description.getBoundingClientRect().width - advanced.getBoundingClientRect().width) < 1,
+      "Description does not span the toolbox width")
+    assert(description.clientHeight >= parseFloat(getComputedStyle(description).lineHeight) * 3,
+      "Description cannot display three lines")
+    assert(!drawer.querySelector(".layout-preview-toggle, .document-layout-zoom, .document-layout-picker"), "removed document controls remain")
+    assert(!advanced.shadowRoot!.querySelector(".generator-entry, .add-toolbar"), "removed metadata controls remain")
+    const cards = Array.from(drawer.querySelectorAll<HTMLButtonElement>(".document-layout-change"))
+    assert(cards.length === 4, "layout switch does not show four cards")
+    assert(cards.filter(card => card.getAttribute("aria-pressed") === "true").length === 1, "active layout is not highlighted")
+    for(const card of cards) {
+      const box = card.getBoundingClientRect()
+      const label = card.querySelector<HTMLElement>(".layout-preset-name")!
+      const text = label.getBoundingClientRect()
+      assert(Math.abs((box.left + box.right) / 2 - (text.left + text.right) / 2) < 1
+        && Math.abs((box.top + box.bottom) / 2 - (text.top + text.bottom) / 2) < 1, "layout label is not centered in its card")
+      assert(label.scrollWidth <= label.clientWidth, "layout label is clipped")
+    }
+  }
+  finally {toolbox.remove()}
+})
+
+await check("Border controls are narrow and dropdown chevrons overlay field values", async () => {
+  const {ElementStyleEditor} = await import("../src/components/element-style-editor")
+  const {StyleCombobox} = await import("../src/components/style-combobox")
+  const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
+  const editor = new ElementStyleEditor()
+  editor.mode = "compact"
+  editor.propertyNames = ["border-width"]
+  editor.style.width = "220px"
+  const style = new StyleCombobox()
+  style.unit = "px"
+  style.placeholder = "Default"
+  const ribbon = new RibbonCombobox()
+  ribbon.options = [{label: "A long font name", value: "long"}]
+  fixture.append(editor, style, ribbon)
+  try {
+    await Promise.all([editor.updateComplete, style.updateComplete, ribbon.updateComplete])
+    await layoutFrame()
+    const root = editor.shadowRoot!
+    const line = root.querySelector<HTMLElement>(".border-picker")!
+    const color = root.querySelector<HTMLElement>(".border-color-picker")!
+    assert(Math.abs(line.getBoundingClientRect().width - color.getBoundingClientRect().width) < .1, "line and color controls differ in width")
+    assert(line.getBoundingClientRect().width <= 16, "border controls are not narrower")
+    const sample = line.querySelector<HTMLElement>(".border-sample")!
+    assert(sample.getBoundingClientRect().height > sample.getBoundingClientRect().width, "border line sample is not vertical")
+    const input = style.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    const unit = style.shadowRoot!.querySelector<HTMLElement>(".unit")!
+    assert(Math.abs(input.getBoundingClientRect().right - unit.getBoundingClientRect().left) < .1, "chevron reserves a column beside the value")
+    for(const combo of [style, ribbon]) {
+      const overlay = combo.shadowRoot!.querySelector<HTMLElement>(".dropdown-chevron")!
+      const css = getComputedStyle(overlay)
+      assert(css.position === "absolute" && css.borderRadius === "50%", "chevron is not a round overlay")
+      assert(css.backgroundColor.includes("0.8"), "chevron background is not translucent")
+      assert(getComputedStyle(combo.shadowRoot!.querySelector(combo === style ? "input" : ".combobox")!).paddingRight === "3.2px", "field padding was not reduced")
+    }
+  }
+  finally {editor.remove(); style.remove(); ribbon.remove()}
+})
+
+await check("Ribbon custom colors show rainbow swatches and commit chosen colors", async () => {
+  const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
+  for(const name of ["color", "background-color"]) {
+    const combo = new RibbonCombobox()
+    combo.name = name
+    combo.variant = "color"
+    combo.options = [{label: "Black", value: "#000000"}]
+    fixture.append(combo)
+    try {
+      await combo.updateComplete
+      combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+      await combo.updateComplete
+      await layoutFrame()
+      const custom = combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Custom"]')!
+      const swatch = custom.querySelector<HTMLElement>(".custom-color-preview")!
+      assert(getComputedStyle(swatch).backgroundImage.includes("linear-gradient"), "Custom lacks a rainbow gradient")
+      assert(swatch.getBoundingClientRect().width > 20 && swatch.getBoundingClientRect().height > 10, "rainbow swatch is not visible")
+      const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
+      let opened = false
+      Object.defineProperty(input, "showPicker", {value: () => {opened = true}})
+      custom.click()
+      assert(opened, "Custom did not open the native picker")
+      const anchor = input.getBoundingClientRect()
+      const popup = combo.shadowRoot!.querySelector<HTMLElement>(".listbox")!.getBoundingClientRect()
+      assert(Math.abs(anchor.left - popup.right - 4) < .1, "custom picker does not anchor to the right of its palette")
+      assert(Math.abs(anchor.bottom - custom.getBoundingClientRect().top) < .1, "custom picker is not aligned with the Custom row")
+      let detail: unknown
+      combo.addEventListener("ribbon-combobox-change", event => {detail = (event as CustomEvent).detail})
+      input.value = "#12ab34"
+      input.dispatchEvent(new Event("change", {bubbles: true}))
+      await combo.updateComplete
+      assert(JSON.stringify(detail) === JSON.stringify({name, value: "#12ab34"}), "custom color was not committed")
+      assert(combo.shadowRoot!.querySelector(".listbox") === null, "palette remained open after committing")
+    }
+    finally {combo.remove()}
+  }
+})
+
+await check("File actions align with the font size controls", async () => {
+  const heightDescriptor = Object.getOwnPropertyDescriptor(window, "innerHeight")
+  Object.defineProperty(window, "innerHeight", {configurable: true, value: 900})
+  const {AppRibbon} = await import("../src/components/ribbon")
+  const ribbon = new AppRibbon()
+  ribbon.fileName = "Unnamed File"
+  ribbon.settings = {...ribbon.settings, disableAI: true}
+  ribbon.expanded = true
+  ribbon.activeMenu = "Start"
+  fixture.append(ribbon)
+  try {
+    await ribbon.updateComplete
+    ribbon.expanded = true
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<import("../src/components/ribbon-drawer").RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+    await drawer.updateComplete
+    await layoutFrame()
+    const centers = [ribbon.shadowRoot!.querySelector(".file-save-action")!, ribbon.shadowRoot!.querySelector(".file-share-action")!, drawer.querySelector('[action="increaseFontSize"]')!, drawer.querySelector('[action="decreaseFontSize"]')!]
+      .map(element => {const rect = element.getBoundingClientRect(); return rect.left + rect.width / 2})
+    assert(Math.abs(centers[0] - centers[2]) < .5 && Math.abs(centers[1] - centers[3]) < .5,
+      `file actions do not align with font controls: ${JSON.stringify(centers)}`)
+  }
+  finally {
+    ribbon.remove()
+    if(heightDescriptor) Object.defineProperty(window, "innerHeight", heightDescriptor)
+    else Reflect.deleteProperty(window, "innerHeight")
+  }
+})
+
+await check("Toolbox choices distinguish defaults from explicit matching values", async () => {
+  const {ElementStyleEditor} = await import("../src/components/element-style-editor")
+  const {elementStyleCategories} = await import("../src/element-styles")
+  const controls = new ElementStyleEditor()
+  controls.mode = "compact"
+  controls.definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  controls.propertyNames = ["text-align"]
+  const initial = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {"text-align": "start"}, context: {display: "block", parentDisplay: "block"}}
+  controls.state = initial
+  fixture.append(controls)
+  try {
+    await controls.updateComplete
+    const active = () => controls.shadowRoot!.querySelector<HTMLButtonElement>('.specialized-choice-group button[aria-pressed="true"]')!
+    assert(getComputedStyle(active()).backgroundColor === "rgb(229, 229, 229)", "default choice is not light grey")
+    controls.addEventListener("element-style-change", event => {
+      const {property, mutation} = (event as CustomEvent<import("../src/components/element-style-editor").ElementStyleChangeDetail>).detail
+      if(property && mutation && typeof mutation !== "string") controls.state = {...initial, inline: {[property]: mutation}}
+    })
+    active().click()
+    await controls.updateComplete
+    assert(getComputedStyle(active()).backgroundColor === "rgb(226, 237, 248)", "explicit matching choice is not light blue")
+    controls.state = initial
+    await controls.updateComplete
+    assert(getComputedStyle(active()).backgroundColor === "rgb(229, 229, 229)", "clearing the choice did not restore grey")
+  }
+  finally {controls.remove()}
+})
+
+await check("Style dropdowns draw a single border and focus ring", async () => {
+  const {ElementStyleEditor} = await import("../src/components/element-style-editor")
+  const {elementStyleCategories} = await import("../src/element-styles")
+  const controls = new ElementStyleEditor()
+  controls.definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  controls.mode = "compact"
+  controls.propertyNames = ["line-height"]
+  controls.state = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  fixture.append(controls)
+  try {
+    await controls.updateComplete
+    const wrapper = controls.shadowRoot!.querySelector<HTMLElement>(".specialized-input")!
+    const combo = wrapper.querySelector<import("../src/components/style-combobox").StyleCombobox>("style-combobox")!
+    await combo.updateComplete
+    const control = combo.shadowRoot!.querySelector<HTMLElement>(".control")!
+    for(const side of ["Top", "Right", "Bottom", "Left"]) {
+      assert(getComputedStyle(wrapper).getPropertyValue(`border-${side.toLowerCase()}-width`) === "0px", "dropdown wrapper draws a second border")
+    }
+    assert(parseFloat(getComputedStyle(control).borderTopWidth) > 0, "dropdown lost its own border")
+    combo.shadowRoot!.querySelector<HTMLInputElement>("input")!.focus()
+    await combo.updateComplete
+    assert(getComputedStyle(wrapper).boxShadow === "none", "dropdown wrapper draws a second focus ring")
+    assert(getComputedStyle(control).outlineWidth === "2px", "dropdown lost its keyboard focus ring")
+    combo.close()
+  }
+  finally { controls.remove() }
+})
+
+await check("marker image uploads preview before applying", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const toolbox = new DomEditorToolbox()
+  toolbox.activeTool = "Edit"
+  toolbox.activeMenu = "Edit"
+  toolbox.elementAttributes = {path: [0], localName: "ul", namespaceURI: "http://www.w3.org/1999/xhtml", name: "List", attributes: {}}
+  toolbox.elementStyle = {target: {localName: "ul", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  fixture.append(toolbox)
+  try {
+    await toolbox.updateComplete
+    const controls = toolbox.shadowRoot!.querySelector<import("../src/components/element-style-editor").ElementStyleEditor>('ribbon-drawer[data-specialized="ul"] element-style-editor')!
+    await controls.updateComplete
+    controls.shadowRoot!.querySelector<HTMLButtonElement>(".marker-more")!.click()
+    await controls.updateComplete
+    controls.shadowRoot!.querySelector<HTMLButtonElement>(".marker-image-option")!.click()
+    await controls.updateComplete
+    const dialog = controls.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!
+    assert(dialog.open, "image marker dialog did not open")
+    const source = await (await fetch("/tests/fixtures/circle-check.svg")).text()
+    const picker = dialog.querySelector<HTMLInputElement>('[name="file"]')!
+    const transfer = new DataTransfer()
+    transfer.items.add(new File([source], "circle-check.svg", {type: "image/svg+xml"}))
+    picker.files = transfer.files
+    picker.dispatchEvent(new Event("change", {bubbles: true}))
+    // Returning from the native file chooser can refresh the bridge's style projection.
+    toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "none"},
+      computed: {"list-style-type": "disc", "list-style-image": "none", "font-size": "16px"}}
+    await toolbox.updateComplete
+    await controls.updateComplete
+    assert(dialog.open, "style refresh closed the upload dialog")
+    const preview = dialog.querySelector<HTMLImageElement>(".marker-image-preview img")!
+    for(let attempt = 0; attempt < 100 && !preview.getAttribute("src"); attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(preview.src.startsWith("data:image/svg+xml;base64,"), "uploaded SVG did not become a data URL preview")
+    await preview.decode()
+    assert(preview.naturalWidth === 24 && preview.naturalHeight === 24, "circle-check SVG did not render")
+    assert(dialog.open, "upload closed the dialog before confirmation")
+    let applied: any
+    toolbox.addEventListener("element-style-change", event => {applied = (event as CustomEvent).detail})
+    await layoutFrame()
+    const previewBox = preview.closest("figure")!.getBoundingClientRect()
+    const dialogBox = dialog.getBoundingClientRect(), dialogStyle = getComputedStyle(dialog)
+    const contentWidth = dialogBox.width - parseFloat(dialogStyle.paddingLeft) - parseFloat(dialogStyle.paddingRight)
+      - parseFloat(dialogStyle.borderLeftWidth) - parseFloat(dialogStyle.borderRightWidth)
+    assert(Math.abs(previewBox.width - previewBox.height) < 1, "preview is not square")
+    assert(Math.abs(previewBox.width - contentWidth * .3) < 1, "preview is not 30% of the dialog content width")
+    assert(Math.abs(previewBox.top - dialogBox.top - parseFloat(dialogStyle.paddingTop) - parseFloat(dialogStyle.borderTopWidth)) < 1,
+      "preview is not at the dialog's top edge")
+    assert(Math.abs(dialogBox.right - previewBox.right - parseFloat(dialogStyle.paddingRight) - parseFloat(dialogStyle.borderRightWidth)) < 1,
+      "preview is not at the dialog's right edge")
+    assert(!applied, "preview applied the marker without confirmation")
+    dialog.querySelector<HTMLButtonElement>('[type="submit"]')!.click()
+    assert(applied?.styles?.["--ww-list-marker-image"].value === `url(${JSON.stringify(preview.src)})`, "Use marker did not apply the previewed SVG")
+    const style = document.createElement("style")
+    style.textContent = defaultDocumentTheme.source + "\n" + listMarkerStyleSource
+    const list = document.createElement("ul")
+    for(const [name, declaration] of Object.entries(applied.styles) as [string, {value: string, priority: string}][]) list.style.setProperty(name, declaration.value, declaration.priority)
+    list.innerHTML = '<li><span>fghf</span><br>second line</li>'
+    fixture.append(style, list)
+    try {
+      for(const size of [16, 24, 32]) {
+        list.style.fontSize = `${size}px`
+        list.style.lineHeight = "1.5"
+        for(const direction of ["ltr", "rtl"]) {
+          list.dir = direction
+          await layoutFrame()
+          const item = list.firstElementChild!
+          const marker = getComputedStyle(item, "::before")
+          const markerCenter = parseFloat(marker.top) + parseFloat(marker.height) / 2
+          assert(Math.abs(markerCenter - size * 1.5 / 2) < 1, `image marker missed the first line's center at ${size}px/${direction}`)
+          assert(parseFloat(marker.width) === size && parseFloat(marker.height) === size, "marker did not scale with the text")
+          assert(item.childNodes.length === 3 && item.firstElementChild?.localName === "span", "marker styling changed item contents")
+        }
+      }
+    }
+    finally {list.remove(); style.remove()}
+    assert(!dialog.open, "confirmation did not close the dialog")
+  }
+  finally {toolbox.remove()}
+})
 
 await check("details remain intact after applying style presets", async () => {
   const {ElementStyleEditor} = await import("../src/components/element-style-editor")

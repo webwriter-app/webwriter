@@ -434,7 +434,8 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected spanGroupMembers() {
-    return (mergedMarkGroupFor("span")?.members ?? []).filter(mark => !excludedMarkNames.includes(mark))
+    return (mergedMarkGroupFor("span")?.members ?? []).filter(mark => !excludedMarkNames.includes(mark)
+      && [...primaryMarkOptions, ...secondaryMarkOptions].some(option => option.name === mark))
   }
 
   protected activeSpanMarks() {
