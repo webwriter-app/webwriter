@@ -132,6 +132,15 @@ describe("DOMEditor stylesheets", () => {
     expect(fixture.querySelectorAll(rule.selectorText.replace(/::after$/, ""))).toHaveLength(count)
   })
 
+  it("uses a text cursor for figure labels", () => {
+    const stylesheet = new CSSStyleSheet()
+    stylesheet.replaceSync(editorStyleString)
+    const rule = Array.from(stylesheet.cssRules).find(rule =>
+      (rule as CSSStyleRule).selectorText === "summary, figcaption"
+    ) as CSSStyleRule
+    expect(rule.style.cursor).toBe("text")
+  })
+
   it("uses the main-DOM stylesheet to style exposed shadow parts", () => {
     const appendix = editor.appendix
     const overlay = editor.features.transformation.overlay

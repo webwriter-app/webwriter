@@ -1276,7 +1276,7 @@ dialog.◆dialog-editing::backdrop {
   display: none !important;
 }
 
-summary {
+summary, figcaption {
   cursor: text;
 }
 
