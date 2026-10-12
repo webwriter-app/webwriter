@@ -320,6 +320,10 @@ export class TransformationFeature extends EditorFeature {
     const cropFrame = document.createElement("div")
     cropFrame.setAttribute("part", "transform-overlay-crop-frame")
     cropFrame.classList.add("◆transform-overlay-crop-frame")
+    const preview = document.createElement("canvas")
+    preview.setAttribute("part", "transform-overlay-crop-preview")
+    preview.hidden = true
+    cropFrame.append(preview)
     for(const side of ["top", "right", "bottom", "left"]) {
       const mask = document.createElement("div")
       mask.setAttribute("part", "transform-overlay-crop-mask")
@@ -619,7 +623,11 @@ export class TransformationFeature extends EditorFeature {
 
   #positionCropControls(target: TransformElement, width: number, height: number, rect: DOMRect, matrix: DOMMatrix) {
     const frame = this.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!
+    const preview = frame.querySelector("canvas")!
     const media = this.editor.features.media.cropTargetFor(target)
+    const cropping = this.#gesture?.crop?.target === media
+    preview.hidden = !cropping
+    if(!cropping && preview.width) { preview.width = 0; preview.height = 0 }
     const insets = media && (this.#mediaCropInsets(media) ?? [0, 0, 0, 0])
     frame.hidden = !media || !insets || !this.editor.features.media.canCrop(media)
     if(!media || !insets || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) return
@@ -633,11 +641,34 @@ export class TransformationFeature extends EditorFeature {
       left: `${width / 2 + center.x - box.width / 2}px`, top: `${height / 2 + center.y - box.height / 2}px`,
       transform: `matrix(${relative.a}, ${relative.b}, ${relative.c}, ${relative.d}, 0, 0)`})
     const [top, right, bottom, left] = insets
+    const viewport = cropping && media ? this.editor.features.media.cropViewport(media) : null
+    const sourceLeft = viewport ? (viewport.x - viewport.left * viewport.sx) / box.width * 100 : 0
+    const sourceTop = viewport ? (viewport.y - viewport.top * viewport.sy) / box.height * 100 : 0
+    const sourceWidth = viewport ? viewport.width * viewport.sx / box.width * 100 : 100
+    const sourceHeight = viewport ? viewport.height * viewport.sy / box.height * 100 : 100
+    const minLeft = Math.min(0, sourceLeft), minTop = Math.min(0, sourceTop)
+    const maxRight = Math.max(100, sourceLeft + sourceWidth), maxBottom = Math.max(100, sourceTop + sourceHeight)
+    if(viewport && media) {
+      Object.assign(preview.style, {left: `${sourceLeft}%`, top: `${sourceTop}%`, width: `${sourceWidth}%`, height: `${sourceHeight}%`})
+      const pixelWidth = Math.max(1, Math.ceil(viewport.width * viewport.sx * devicePixelRatio))
+      const pixelHeight = Math.max(1, Math.ceil(viewport.height * viewport.sy * devicePixelRatio))
+      if(preview.width !== pixelWidth || preview.height !== pixelHeight) { preview.width = pixelWidth; preview.height = pixelHeight }
+      const context = preview.getContext("2d")
+      if(context) {
+        context.clearRect(0, 0, preview.width, preview.height)
+        // A video may not have a decoded frame yet. Keep the live authored
+        // surface visible until drawing the full source becomes possible.
+        if(media instanceof HTMLImageElement ? media.complete && media.naturalWidth > 0
+          : media.readyState >= 2 && media.videoWidth > 0 && media.videoHeight > 0) {
+          context.drawImage(media, 0, 0, preview.width, preview.height)
+        }
+      }
+    }
     const masks = {
-      top: {left: "0%", top: "0%", width: "100%", height: `${top}%`},
-      bottom: {left: "0%", top: `${100 - bottom}%`, width: "100%", height: `${bottom}%`},
-      left: {left: "0%", top: `${top}%`, width: `${left}%`, height: `${100 - top - bottom}%`},
-      right: {left: `${100 - right}%`, top: `${top}%`, width: `${right}%`, height: `${100 - top - bottom}%`},
+      top: {left: `${minLeft}%`, top: `${minTop}%`, width: `${maxRight - minLeft}%`, height: `${top - minTop}%`},
+      bottom: {left: `${minLeft}%`, top: `${100 - bottom}%`, width: `${maxRight - minLeft}%`, height: `${maxBottom - 100 + bottom}%`},
+      left: {left: `${minLeft}%`, top: `${top}%`, width: `${left - minLeft}%`, height: `${100 - top - bottom}%`},
+      right: {left: `${100 - right}%`, top: `${top}%`, width: `${maxRight - 100 + right}%`, height: `${100 - top - bottom}%`},
     }
     for(const mask of frame.querySelectorAll<HTMLElement>("[data-crop-mask]")) {
       mask.hidden = this.#gesture?.crop?.target !== media
@@ -1010,8 +1041,17 @@ export class TransformationFeature extends EditorFeature {
     gesture.moved = true
     const direction = gesture.handle.dataset.cropDirection!
     const edges = [...crop.insets]
+    const viewport = this.editor.features.media.cropViewport(crop.target)
+    if(!viewport) { this.#finish(true); return }
+    const limits = [
+      (viewport.y - viewport.top * viewport.sy) / crop.height * 100,
+      (crop.width - viewport.x - (viewport.width - viewport.left) * viewport.sx) / crop.width * 100,
+      (crop.height - viewport.y - (viewport.height - viewport.top) * viewport.sy) / crop.height * 100,
+      (viewport.x - viewport.left * viewport.sx) / crop.width * 100,
+    ]
     const change = (index: number, delta: number) => {
-      edges[index] = Math.round(Math.max(0, Math.min(99.9 - edges[(index + 2) % 4], crop.insets[index] + delta)) * 100) / 100
+      const value = Math.round((crop.insets[index] + delta) * 100) / 100
+      edges[index] = Math.max(Math.min(0, limits[index]), Math.min(99.9 - edges[(index + 2) % 4], value))
     }
     if(direction.includes("up")) change(0, delta.y / crop.height * 100)
     if(direction.includes("right")) change(1, -delta.x / crop.width * 100)
@@ -1141,6 +1181,12 @@ export class TransformationFeature extends EditorFeature {
       if(gesture.mode !== "move") this.editor.features.manipulation.clearDropFloat(target)
     }
     this.#gesture = null
+    if(gesture.crop) {
+      const preview = this.overlay.querySelector<HTMLCanvasElement>("[part='transform-overlay-crop-preview']")!
+      preview.hidden = true
+      preview.width = 0
+      preview.height = 0
+    }
     this.#suppressClick = gesture.moved
     if(!target.style.length) target.removeAttribute("style")
     if(gesture.crop && !gesture.crop.target.style.length) gesture.crop.target.removeAttribute("style")

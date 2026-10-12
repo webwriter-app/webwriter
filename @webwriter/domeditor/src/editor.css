@@ -330,6 +330,12 @@ body {
   --editor-selection-background: rgb(0 120 215 / 30%);
 }
 
+/* Media capture keeps the native controls available without tinting the
+ * media or its enclosing figure through the document's node range. */
+body:has(:is(picture, img, audio, video, iframe, embed, object).◆element-capture-selected) {
+  --editor-selection-background: transparent;
+}
+
 ::selection {
   background-color: var(--editor-selection-background, rgb(0 120 215 / 30%));
 }
@@ -1799,6 +1805,10 @@ body:is(.◆transform-cropping-up-left, .◆transform-cropping-down-right) {
 body::part(transform-overlay-crop-mask) {
   position: absolute;
   background: rgb(128 128 128 / 55%);
+  pointer-events: none;
+}
+body::part(transform-overlay-crop-preview) {
+  position: absolute;
   pointer-events: none;
 }
 body::part(transform-overlay-crop-frame) {

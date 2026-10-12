@@ -1137,8 +1137,7 @@ export class MediaFeature extends EditorFeature {
     }
     this.shieldReleasePending.clear()
     this.shieldReleasePending.add(target)
-    const path = pathFromNode(document.body, target)
-    if(path) this.editor.features.selection.actions.selectNode({type: "selectNode", path})
+    this.editor.features.selection.captureElement(target)
     this.editor.postSelectionPath()
     this.refresh()
   }
@@ -1326,8 +1325,7 @@ export class MediaFeature extends EditorFeature {
       if(!target || !isEmptyMedia(target)) return
       event.preventDefault()
       event.stopImmediatePropagation()
-      const path = pathFromNode(document.body, target)
-      if(path) this.editor.features.selection.actions.selectNode({type: "selectNode", path})
+      this.editor.features.selection.captureElement(target)
       this.editor.postSelectionPath()
       this.refresh()
     },
@@ -1412,8 +1410,7 @@ export class MediaFeature extends EditorFeature {
       const element = template.content.firstElementChild!
       this.editor.features.manipulation.insert(template.content, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
       if(element.isConnected) {
-        $.selectElement(element)
-        this.editor.features.selection.processSelection()
+        this.editor.features.selection.captureElement(element)
       }
       this.refresh()
       if(selectFile && this.placeholder.target === element) this.placeholder.selectFile()
@@ -1676,10 +1673,11 @@ export class MediaFeature extends EditorFeature {
     element = mediaContainerForNode(element) ?? element
     if(sourceEditingBlocked(element, this.editor.schema)) return null
     const target = mediaSourceTarget(element, false)
+    if(target.localName === "video" && isEmptyMedia(target)) return null
     return target.matches("img, video") && !target.hasAttribute("is") && target.namespaceURI === htmlNamespace ? target as HTMLImageElement | HTMLVideoElement : null
   }
 
-  private cropViewport(target: HTMLImageElement | HTMLVideoElement) {
+  cropViewport(target: HTMLImageElement | HTMLVideoElement) {
     const style = getComputedStyle(target)
     const box = this.editor.features.transformation.boxGeometry(target, false)
     const value = style.getPropertyValue("object-view-box") || "none"
@@ -1709,7 +1707,24 @@ export class MediaFeature extends EditorFeature {
       width * (1 - (insets[1] + insets[3]) / 100), height * (1 - (insets[0] + insets[2]) / 100)]
     const match = value.match(/^xywh\(\s*(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+([\d.]+)px\s*\)$/)
     const rect = match?.slice(1).map(Number)
-    return rect?.every(Number.isFinite) && rect[2] > 0 && rect[3] > 0 ? rect : null
+    if(rect?.every(Number.isFinite) && rect[2] > 0 && rect[3] > 0) return rect
+    // Browsers compute xywh() as inset() with pixel and percentage lengths,
+    // including calc(100% - …px) for the right and bottom edges.
+    const inset = value.match(/^inset\((.*)\)$/)?.[1]
+    const parts = inset?.trim().match(/calc\([^()]*\)|[^\s]+/g)
+    if(!parts?.length || parts.length > 4) return null
+    const edges = [parts[0], parts[1] ?? parts[0], parts[2] ?? parts[0], parts[3] ?? parts[1] ?? parts[0]]
+    const lengths = edges.map((edge, index) => {
+      const size = index % 2 ? width : height
+      const length = edge.match(/^(-?[\d.]+)(px|%)$/)
+      if(length) return Number(length[1]) * (length[2] === "%" ? size / 100 : 1)
+      if(edge === "0") return 0
+      const calc = edge.match(/^calc\(\s*(-?[\d.]+)%\s+([+-])\s+([\d.]+)px\s*\)$/)
+      return calc ? Number(calc[1]) * size / 100 + (calc[2] === "+" ? 1 : -1) * Number(calc[3]) : NaN
+    })
+    const [top, right, bottom, left] = lengths
+    const viewport = [left, top, width - left - right, height - top - bottom]
+    return viewport.every(Number.isFinite) && viewport[2] > 0 && viewport[3] > 0 ? viewport : null
   }
 
   /** Map a visual crop through the current fit and position into source pixels. */
@@ -1729,6 +1744,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   canCrop(target: HTMLImageElement | HTMLVideoElement) {
+    if(target.localName === "video" && isEmptyMedia(target)) return false
     return (typeof CSS.supports !== "function" || CSS.supports("object-view-box", "inset(0%)")) && this.cropViewport(target) !== null
   }
 
@@ -1894,8 +1910,7 @@ export class MediaFeature extends EditorFeature {
     target.setAttribute(mediaSourceAttribute(target), source)
     if(element.matches("audio, video")) element.setAttribute("controls", "")
     if(!isGraphicImage(element)) {
-      $.selectElement(element)
-      this.editor.features.selection.processSelection()
+      this.editor.features.selection.captureElement(element)
     }
     this.editor.postSelectionPath()
     this.refresh()

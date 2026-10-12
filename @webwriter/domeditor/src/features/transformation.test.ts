@@ -93,6 +93,52 @@ async function mutationsDelivered() {
 }
 
 describe("selection-owned transformation", () => {
+  it.each(["img", "video"])("reveals and restores previously cropped %s content outside its frame", tag => {
+    const media = targetElement(tag) as HTMLImageElement | HTMLVideoElement
+    media.setAttribute("src", "media.mp4")
+    Object.defineProperties(media, tag === "img"
+      ? {naturalWidth: {value: 200}, naturalHeight: {value: 100}, complete: {value: true}}
+      : {videoWidth: {value: 200}, videoHeight: {value: 100}, readyState: {value: 2}})
+    media.style.cssText = "width:160px;height:80px;object-fit:fill;object-position:0% 0%;object-view-box:inset(10%)"
+    mockRect(media, {width: 160, height: 80})
+    captureNode(media)
+    const preview = feature.overlay.querySelector<HTMLCanvasElement>("canvas")!
+    const context = {clearRect: vi.fn(), drawImage: vi.fn()}
+    vi.spyOn(preview, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    for(const [direction, dx, dy] of [["up-left", -100, -100], ["down-right", 100, 100]] as const) {
+      const before = editor.toHTML(true)
+      feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-crop-${direction}`)!
+        .dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
+      expect(preview.hidden).toBe(false)
+      if(direction === "up-left") {
+        expect(preview.style.left).toBe("-12.5%")
+        expect(preview.style.width).toBe("125%")
+      }
+      document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 100 + dx, clientY: 100 + dy}))
+      expect(editor.toHTML(true)).toBe(before)
+      expect(preview.getRootNode()).toBe(editor.appendix)
+      document.dispatchEvent(pointer("pointerup", {pointerId: 42}))
+      expect(preview.hidden).toBe(true)
+      expect(preview.width).toBe(0)
+      expect(editor.features.selection.captureSelectedElement).toBe(media)
+    }
+    expect(media.style.getPropertyValue("object-view-box")).toBe("inset(0% 0% 0% 0%)")
+    expect(media.style.width).toBe("200px")
+    expect(media.style.height).toBe("100px")
+    expect(editor.toHTML(true)).not.toContain("crop-preview")
+    editor.doc.syncFromDOM()
+    const restored = editor.toHTML(true)
+    editor.doc.undo()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(restored)
+  })
+
   it("restores the figure frame, source dimensions and margins when a crop drag is cancelled", () => {
     const figure = targetElement("figure")
     figure.style.width = "360px"
@@ -117,6 +163,7 @@ describe("selection-owned transformation", () => {
 
   it("fits selection and transform geometry to the visible crop without scaling the source", () => {
     const video = targetElement("video")
+    video.setAttribute("src", "movie.mp4")
     video.style.cssText = "width: 360px; height: 200px; object-view-box: inset(15% 20% 25% 10%)"
     mockRect(video, {left: 10, top: 20, width: 360, height: 200})
     selectNode(video)
@@ -136,6 +183,7 @@ describe("selection-owned transformation", () => {
     ["down-right", "10% 18% 18% 10%"],
   ])("drags the %s media crop handle using ordinary max-size constraints", (direction, expected) => {
     const video = targetElement("video")
+    video.setAttribute("src", "movie.mp4")
     video.style.width = "200px"
     video.style.height = "100px"
     video.style.setProperty("object-view-box", "inset(10%)", "important")
@@ -164,8 +212,8 @@ describe("selection-owned transformation", () => {
     expect(Array.from(masks).every(mask => !mask.hidden)).toBe(true)
     const topMask = feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!
     const leftMask = feature.overlay.querySelector<HTMLElement>('[data-crop-mask="left"]')!
-    expect(topMask.style.height).toBe(direction === "up-left" ? "10%" : "0%")
-    expect(leftMask.style.top).toBe(topMask.style.height)
+    expect(topMask.style.height).toBe(direction === "up-left" ? "22.5%" : "12.5%")
+    expect(leftMask.style.top).toBe(direction === "up-left" ? "10%" : "0%")
     expect(leftMask.style.height).toBe("90%")
     expect(editor.toHTML(true)).not.toContain("◆transform-crop-preview")
     expect(document.body.querySelector("[data-crop-mask]")).toBeNull()
@@ -196,12 +244,13 @@ describe("selection-owned transformation", () => {
     document.head.append(sheet)
     try {
       const video = targetElement("video")
+      video.setAttribute("src", "movie.mp4")
       mockRect(video, {width: 200, height: 100})
       selectNode(video)
       feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
         .dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
       const topMask = feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!
-      expect(topMask.style.height).toBe("0%")
+      expect(parseFloat(topMask.style.height)).toBeCloseTo(12 / 76 * 100)
       document.dispatchEvent(pointer("pointerup", {pointerId: 42}))
       expect(video).not.toHaveClass("◆transform-crop-preview")
       expect(video.style.getPropertyValue("object-view-box")).toBe("")
@@ -213,6 +262,7 @@ describe("selection-owned transformation", () => {
 
   it("preserves size constraints changed concurrently during a crop", () => {
     const video = targetElement("video")
+    video.setAttribute("src", "movie.mp4")
     video.style.cssText = "width: 200px; height: 100px; max-width: 200px; max-height: 100px"
     mockRect(video, {width: 200, height: 100})
     selectNode(video)
@@ -256,6 +306,7 @@ describe("selection-owned transformation", () => {
     mockRect(image, {width: 200, height: 100})
     selectNode(picture)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
+    const preview = feature.overlay.querySelector<HTMLCanvasElement>("canvas")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 120, clientY: 110}))
     expect(image.style.getPropertyValue("object-view-box")).toBe("inset(5%)")
@@ -273,6 +324,8 @@ describe("selection-owned transformation", () => {
     expect(image).not.toHaveClass("◆transform-crop-preview")
     expect(image.style.getPropertyPriority("object-view-box")).toBe(outcome === "concurrent" ? "" : "important")
     expect(document.body.className).not.toContain("◆transform-cropping-")
+    expect(preview.hidden).toBe(true)
+    expect(preview.width).toBe(0)
     expect(document.querySelector('[class*="◆transform-scaling"]')).toBeNull()
     if(outcome === "replace") expect(picture.querySelector("img")!.hasAttribute("style")).toBe(false)
     if(outcome === "disable") expect(editor.appendix.querySelector("#◆transform-overlay")).toBeNull()
@@ -287,15 +340,16 @@ describe("selection-owned transformation", () => {
 
   it("maps crop movement through rotation and scale, and clamps edges before they cross", () => {
     const video = targetElement("video")
+    video.setAttribute("src", "movie.mp4")
     video.style.cssText = "width: 200px; height: 100px; rotate: 90deg; scale: 2; object-view-box: inset(10%)"
     mockRect(video, {width: 200, height: 100})
     selectNode(video)
     feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
       .dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 80, clientY: 140}))
-    expect(feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!.style.height).toBe("10%")
+    expect(feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!.style.height).toBe("22.5%")
     document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: -1000, clientY: 2000}))
-    expect(feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!.style.height).toBe("99.9%")
+    expect(feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!.style.height).toBe("112.4%")
     document.dispatchEvent(pointer("pointerup", {pointerId: 42}))
     expect(video.style.getPropertyValue("rotate")).toBe("90deg")
     expect(video.style.getPropertyValue("scale")).toBe("2")

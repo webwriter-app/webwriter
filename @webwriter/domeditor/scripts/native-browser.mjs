@@ -7,6 +7,9 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "crop preview reveals the source and restores content outside the frame",
+  "video crop controls remain available after repeated crops",
+  "media interiors capture while outline edges element-select",
   "Settings tabs share the heading and embed AI provider cards in Cloud",
   "AI messages use normal padding without template whitespace",
   "Closed AI bar shows status and anchored reply speech bubbles",

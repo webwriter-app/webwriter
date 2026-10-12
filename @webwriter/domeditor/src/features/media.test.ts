@@ -24,6 +24,26 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each(['<video></video>', '<video src=" "></video>', '<video><source src=" "></video>'])("does not crop an empty video: %s", html => {
+    document.body.innerHTML = html
+    const video = document.querySelector("video")!
+    video.style.cssText = "width:320px;height:180px"
+    editor.features.selection.captureElement(video)
+    const authored = editor.toHTML(true)
+    expect(editor.features.media.cropTargetFor(video)).toBeNull()
+    expect(editor.features.media.canCrop(video)).toBe(false)
+    expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(true)
+    expect(editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(10%)"})).toBe(false)
+    expect(editor.toHTML(true)).toBe(authored)
+    video.innerHTML = '<source src="movie.mp4">'
+    editor.features.selection.processSelection()
+    expect(editor.features.media.canCrop(video)).toBe(true)
+    expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(false)
+    video.querySelector("source")!.remove()
+    editor.features.selection.processSelection()
+    expect(editor.features.media.canCrop(video)).toBe(false)
+  })
+
   const mockImageGeometry = (image: HTMLImageElement, width: number, height: number, naturalWidth: number, naturalHeight: number) => {
     image.style.width = `${width}px`
     image.style.height = `${height}px`
@@ -101,7 +121,7 @@ describe("media editing", () => {
   })
 
   it("sizes a standalone media crop without changing authored margins", () => {
-    document.body.innerHTML = '<video style="width: 360px; height: 200px; margin-top: 12px !important; margin-left: 8px"></video>'
+    document.body.innerHTML = '<video src="movie.mp4" style="width: 360px; height: 200px; margin-top: 12px !important; margin-left: 8px"></video>'
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const video = document.querySelector("video")!
@@ -175,7 +195,7 @@ describe("media editing", () => {
   })
 
   it("allows a crop smaller than the editor's default media minimum", () => {
-    document.body.innerHTML = '<video style="width:500px;height:200px"></video>'
+    document.body.innerHTML = '<video src="movie.mp4" style="width:500px;height:200px"></video>'
     const video = document.querySelector("video")!
     $.selectElement(video)
     editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(0% 0% 0% 80%)"})
@@ -186,7 +206,7 @@ describe("media editing", () => {
   })
 
   it("replaces the previous percentage clip crop with a source viewport", () => {
-    document.body.innerHTML = '<video style="width: 360px; height: 200px; clip-path: inset(10%)"></video>'
+    document.body.innerHTML = '<video src="movie.mp4" style="width: 360px; height: 200px; clip-path: inset(10%)"></video>'
     const video = document.querySelector("video")!
     $.selectElement(video)
     editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(10%)"})
@@ -255,6 +275,32 @@ describe("media editing", () => {
     })).toBe(false)
   })
 
+  it.each([
+    "inset(20px calc(100% - 700px) calc(100% - 440px) -100px)",
+    "inset(20px -60px 40px -100px)",
+  ])("keeps a video crop editable when its computed viewport is %s", computed => {
+    document.body.innerHTML = '<video src="movie.mp4" style="width: 300px; height: 180px; object-fit: fill; object-position: 0% 0%; object-view-box: xywh(-100px 20px 800px 420px)"></video>'
+    const video = document.querySelector("video")!
+    Object.defineProperties(video, {videoWidth: {value: 640}, videoHeight: {value: 480}})
+    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 180))
+    const nativeStyle = getComputedStyle
+    vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const style = nativeStyle(element, pseudo)
+      return element !== video ? style : new Proxy(style, {get(style, property) {
+        if(property === "getPropertyValue") return (name: string) => name === "object-view-box" ? computed : style.getPropertyValue(name)
+        const value = Reflect.get(style, property, style)
+        return typeof value === "function" ? value.bind(style) : value
+      }})
+    })
+    try {
+      editor.features.selection.captureElement(video)
+      expect(editor.features.media.canCrop(video)).toBe(true)
+      expect(editor.features.transformation.overlay.querySelector<HTMLElement>('.◆transform-overlay-crop-frame')!.hidden).toBe(false)
+      expect(editor.features.media.cropValueFor(video, [10, 0, 0, 10])).toBe("xywh(-20px 62px 720px 378px)")
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
   it("does not crop media owned by an atomic widget", () => {
     document.body.innerHTML = '<media-widget><img src="widget.png"></media-widget>'
     const widget = document.querySelector("media-widget")!
@@ -299,7 +345,7 @@ describe("media editing", () => {
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
-    "node-selects the %s surface and capture-selects its placeholder controls", async media => {
+    "capture-selects the %s surface and its placeholder controls", async media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})
       const target = document.querySelector(media === "img" ? "picture" : ["embed", "object"].includes(media) ? "iframe" : media)!
       const placeholder = editor.features.media.placeholder
@@ -307,9 +353,9 @@ describe("media editing", () => {
       for(const selector of [".file", ".file svg", ".url", ".apply"]) {
         target.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
         expect($.selectedElement).toBe(target)
-        expect(editor.features.selection.captureSelectedElement).toBeNull()
+        expect(editor.features.selection.captureSelectedElement).toBe(target)
         expect(target).toHaveClass("◆element-selected")
-        expect(target).not.toHaveClass("◆element-capture-selected")
+        expect(target).toHaveClass("◆element-capture-selected")
 
         placeholder.root.querySelector(selector)!.dispatchEvent(new PointerEvent("pointerdown", {
           bubbles: true, composed: true, cancelable: true, button: 0,
@@ -325,15 +371,15 @@ describe("media editing", () => {
     '<audio src="audio.mp3"></audio>', '<video src="video.mp4"></video>',
     '<iframe src="about:blank"></iframe>', '<embed src="about:blank">',
     '<object data="about:blank"></object>',
-  ])("node-selects populated media on repeated surface clicks: %s", html => {
+  ])("capture-selects populated media on repeated surface clicks: %s", html => {
     document.body.innerHTML = html
     const target = document.body.firstElementChild!
     for(let click = 0; click < 2; click++) {
       const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
       target.dispatchEvent(down)
-      expect(down.defaultPrevented).toBe(true)
+      expect(down.defaultPrevented).toBe(false)
       expect($.selectedElement).toBe(target)
-      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(editor.features.selection.captureSelectedElement).toBe(target)
     }
   })
 
@@ -350,6 +396,41 @@ describe("media editing", () => {
     populated.removeAttribute("controls")
     await vi.waitFor(() => expect(populated).toHaveAttribute("controls"))
     expect(editor.toHTML(true)).toContain('<audio src="sound.mp3" controls=""></audio>')
+  })
+
+  it.each(["picture", "audio", "video", "iframe"] as const)("initially captures inserted %s", media => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media})
+    expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector(media))
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["audio", "video"])("switches %s between its outline and native controls", tag => {
+    document.body.innerHTML = `<figure><!--keep--><${tag} src="movie.mp4" controls></${tag}><figcaption>Caption</figcaption></figure><p>After</p>`
+    const media = document.querySelector(tag)!
+    const selection = editor.features.selection
+    const authored = editor.toHTML(true)
+    for(let attempt = 0; attempt < 2; attempt++) {
+      const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
+      media.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(false)
+      expect(selection.captureSelectedElement).toBe(media)
+      expect(selection.isInDragSelection).toBe(false)
+      const key = new KeyboardEvent("keydown", {key: " ", bubbles: true, cancelable: true})
+      media.dispatchEvent(key)
+      expect(key.defaultPrevented).toBe(false)
+      const click = new MouseEvent("click", {bubbles: true, cancelable: true, detail: 2})
+      media.dispatchEvent(click)
+      expect(click.defaultPrevented).toBe(false)
+      expect(selection.captureSelectedElement).toBe(media)
+      selection.selectionCaret!.querySelector(".◆capture-edge")!.dispatchEvent(new PointerEvent("pointerdown", {
+        bubbles: true, composed: true, cancelable: true, button: 0,
+      }))
+      expect(selection.captureSelectedElement).toBeNull()
+      expect($.selectedElement).toBe(media.closest("figure"))
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+    selection.selectElement(document.querySelector("p")!)
+    expect(media).not.toHaveClass("◆element-capture-selected", "◆element-selected")
   })
 
   it("promotes clicks and interior selections to the outer media node", () => {
@@ -1237,7 +1318,7 @@ describe("media editing", () => {
     }
   })
 
-  it("node-selects interactive media through an appendix shield and blocks same-click activation", async () => {
+  it("capture-selects interactive media through an appendix shield and blocks same-click activation", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
     const [iframe, audio] = Array.from(document.body.children)
     const rect = {x: 0, y: 0, left: 0, top: 0, right: 160, bottom: 80, width: 160, height: 80, toJSON: () => ({})}
@@ -1252,12 +1333,12 @@ describe("media editing", () => {
     shield.dispatchEvent(pointerdown)
     shield.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, cancelable: true, button: 0}))
     shield.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true}))
-    await vi.waitFor(() => expect(shield.isConnected).toBe(true))
+    await vi.waitFor(() => expect(shield.isConnected).toBe(false))
 
     expect(pointerdown.defaultPrevented).toBe(true)
     expect(nativeActivation).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(iframe)
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
     expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3" controls=""></audio>')
   })
 
@@ -1297,11 +1378,11 @@ describe("media editing", () => {
     const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
     shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(contentFrame)
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
   })
 
   it.each(['<iframe></iframe>', '<iframe srcdoc=""></iframe>', '<audio controls=""></audio>', '<video controls=""></video>'])(
-    "node-selects empty native media through its surface and opens the source controls: %s", async html => {
+    "capture-selects empty native media through its surface and opens the source controls: %s", async html => {
       document.body.innerHTML = `<p>text</p>${html}`
       const frame = document.querySelector("iframe, audio, video")!
       vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
@@ -1316,9 +1397,9 @@ describe("media editing", () => {
 
       expect(down.defaultPrevented).toBe(true)
       expect($.selectedElement).toBe(frame)
-      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(editor.features.selection.captureSelectedElement).toBe(frame)
       expect(frame).toHaveClass("◆element-selected", "◆media-empty")
-      expect(frame).not.toHaveClass("◆element-capture-selected")
+      expect(frame).toHaveClass("◆element-capture-selected")
       const placeholder = editor.features.media.placeholder
       expect(placeholder.target).toBe(frame)
       expect(placeholder.element).toHaveAttribute("data-open")
@@ -1369,7 +1450,7 @@ describe("media editing", () => {
     expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(0)
   })
 
-  it("repositions shields on layout refresh and keeps surfaces shielded after node selection", async () => {
+  it("repositions shields and restores them when another media owns capture", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
     const [iframe, audio] = Array.from(document.body.children)
     let width = 100
@@ -1394,7 +1475,7 @@ describe("media editing", () => {
       .find(shield => shield !== iframeShield)!
     audioShield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(audio)
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.captureSelectedElement).toBe(audio)
     await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
   })
 })

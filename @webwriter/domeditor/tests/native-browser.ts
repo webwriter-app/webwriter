@@ -734,6 +734,121 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 
 const editor = new DOMEditor()
 
+await check("crop preview reveals the source and restores content outside the frame", async () => {
+  // Let the separate lifecycle fixture finish taking its initial focus before
+  // starting a gesture that correctly cancels on external selection changes.
+  const lifecycle = document.querySelector<HTMLIFrameElement>("#lifecycle")!
+  for(let attempt = 0; attempt < 100 && !lifecycle.contentWindow?.editor; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  document.body.focus({preventScroll: true})
+  const image = document.createElement("img")
+  image.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="red"/><rect x="100" y="50" width="200" height="100" fill="blue"/></svg>')}`
+  await image.decode()
+  image.style.cssText = "width:200px;height:100px;object-fit:fill;object-position:0% 0%;object-view-box:inset(25%)"
+  const picture = document.createElement("picture")
+  picture.append(image)
+  fixture.append(picture)
+  try {
+    editor.features.selection.captureElement(picture)
+    await layoutFrame()
+    const handle = editor.features.transformation.overlay.querySelector<HTMLElement>('[data-crop-direction="up-left"]')!
+    const box = handle.getBoundingClientRect()
+    const before = editor.toHTML(true)
+    handle.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, clientX: box.left, clientY: box.top}))
+    assert(document.body.classList.contains("◆transform-cropping-up-left"), "crop gesture did not start")
+    await layoutFrame()
+    const preview = editor.features.transformation.overlay.querySelector("canvas")!
+    assert(!preview.hidden && preview.getBoundingClientRect().left < image.getBoundingClientRect().left,
+      "original source is not revealed outside the cropped element")
+    const pixel = preview.getContext("2d")!.getImageData(1, 1, 1, 1).data
+    assert(pixel[0] === 255 && pixel[2] === 0, "preview does not show the previously cropped red source")
+    document.dispatchEvent(new MouseEvent("pointermove", {bubbles: true, clientX: box.left - 100, clientY: box.top - 50}))
+    assert(editor.toHTML(true) === before, "preview changed authored content before commit")
+    document.dispatchEvent(new MouseEvent("pointerup", {bubbles: true}))
+    await layoutFrame()
+    assert(image.style.getPropertyValue("object-view-box") === "inset(0% 25% 25% 0%)", "outward drag did not restore source content")
+    assert(preview.hidden && preview.width === 0, "crop preview was not cleared after commit")
+  }
+  finally { picture.remove(); editor.features.selection.processSelection() }
+})
+
+await check("video crop controls remain available after repeated crops", async () => {
+  const video = document.createElement("video")
+  video.controls = true
+  video.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
+  video.style.cssText = "width:320px;height:180px;object-fit:contain"
+  Object.defineProperties(video, {videoWidth: {value: 640}, videoHeight: {value: 480}})
+  fixture.append(video)
+  try {
+    editor.features.selection.captureElement(video)
+    await layoutFrame()
+    for(let attempt = 0; attempt < 2; attempt++) {
+      const previous = video.style.getPropertyValue("object-view-box")
+      const handle = editor.features.transformation.overlay.querySelector<HTMLElement>('[data-crop-direction="up-left"]')!
+      const frame = handle.parentElement!
+      assert(!frame.hidden, `crop controls hidden at attempt ${attempt}: ${video.style.cssText}; computed crop=${getComputedStyle(video).getPropertyValue("object-view-box")}; position=${getComputedStyle(video).objectPosition}`)
+      const box = handle.getBoundingClientRect()
+      assert(editor.appendix.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === handle,
+        `crop handle cannot receive pointer input at attempt ${attempt}`)
+      // Synthetic mouse events exercise native layout without requiring an
+      // active browser pointer for setPointerCapture.
+      handle.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, clientX: box.left, clientY: box.top}))
+      document.dispatchEvent(new MouseEvent("pointermove", {bubbles: true, clientX: box.left + 20, clientY: box.top + 10}))
+      document.dispatchEvent(new MouseEvent("pointerup", {bubbles: true}))
+      await layoutFrame()
+      assert(video.style.getPropertyValue("object-view-box") !== previous, "crop was not applied")
+    }
+    video.removeAttribute("src")
+    await layoutFrame()
+    assert(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden,
+      "empty video still exposes crop controls")
+    assert(!editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(10%)"}),
+      "empty video still accepts crop commands")
+  }
+  finally { video.remove(); editor.features.selection.processSelection() }
+})
+
+await check("media interiors capture while outline edges element-select", async () => {
+  const audio = document.createElement("audio")
+  audio.controls = true
+  audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
+  fixture.append(audio)
+  try {
+    editor.features.selection.captureElement(audio)
+    document.dispatchEvent(new Event("selectionchange"))
+    await layoutFrame()
+    const selection = editor.features.selection
+    assert(getComputedStyle(audio, "::selection").backgroundColor === "rgba(0, 0, 0, 0)",
+      "captured media still has a blue selection fill")
+    const box = audio.getBoundingClientRect()
+    assert(box.width > 0 && box.height > 0, "native audio controls are invisible")
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+    assert(hit === audio, `capture blocks native controls with ${hit?.localName}`)
+    const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
+    audio.dispatchEvent(down)
+    assert(!down.defaultPrevented && selection.captureSelectedElement === audio, "native pointer action lost capture")
+    const edge = selection.selectionCaret!.querySelector('[part~="selection-capture-edge-top"]')!
+    edge.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    assert(!selection.isCaptureSelection && $.selectedElement === audio, "outline did not element-select")
+    const nodeOverlay = editor.appendix.querySelector('[part="atomic-selection-overlay"]')!
+    assert(nodeOverlay && getComputedStyle(nodeOverlay).backgroundColor !== "rgba(0, 0, 0, 0)",
+      "element selection did not restore its blue selection fill")
+    document.dispatchEvent(new Event("selectionchange"))
+    await layoutFrame()
+    const shield = Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆media-interaction-shield"))
+      .find(surface => Math.abs(surface.getBoundingClientRect().top - box.top) < 1)!
+    assert(shield, "element selection did not shield native controls")
+    shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    shield.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+    document.dispatchEvent(new Event("selectionchange"))
+    await layoutFrame()
+    assert(selection.captureSelectedElement === audio && !shield.isConnected, "interior did not restore native interaction")
+    assert(!editor.toHTML(true).includes("◆"), "selection artifacts leaked into serialization")
+  }
+  finally { audio.remove(); editor.features.selection.processSelection() }
+})
+
 await check("figure permalinks align with padded caption numbering", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:600px;height:500px;max-width:none"

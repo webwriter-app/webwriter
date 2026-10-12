@@ -911,10 +911,15 @@ export class SelectionFeature extends EditorFeature {
     if(graphic && $.selectedElement === graphic && !modifierKeyDown(ev)) return
     const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
     const divider = ev.target instanceof Element && ev.target.localName === "hr" ? ev.target : null
-    if(media || divider) {
+    if(media) {
+      if(this.captureSelectedElement !== media) this.captureElement(media)
+      this.editor.postSelectionPath()
+      return
+    }
+    if(divider) {
       ev.preventDefault()
       this.#releaseCaptureSelection()
-      const target = figureSelectionTarget((media ?? divider)!)
+      const target = figureSelectionTarget(divider)
       const rect = target.getBoundingClientRect()
       if(target.localName === "figure" && !isOutOfFlow(target) && rect.height > 0 && (ev.clientY < rect.top || ev.clientY > rect.bottom)) {
         $.selectGap(target, ev.clientY < rect.top ? "before" : "after")
@@ -2113,6 +2118,7 @@ export class SelectionFeature extends EditorFeature {
     "beforeinput": event => this.#scheduleSelectionReveal(event),
     "input": event => this.#scheduleSelectionReveal(event),
     "mousedown": ev => {
+      if(this.captureSelectedElement && ev.target instanceof Node && this.captureSelectedElement.contains(ev.target)) return
       if(ev.detail >= 2 && !this.#hitsText(ev)) ev.preventDefault()
     },
     "keydown": ev => {
@@ -2194,6 +2200,7 @@ export class SelectionFeature extends EditorFeature {
     "pointerdown": ev => this.#handlePointerDown(ev),
     "click": ev => {
       this.hasDoubleClicked = false
+      if(this.captureSelectedElement && ev.target instanceof Node && this.captureSelectedElement.contains(ev.target)) return
       if(ev.detail >= 2 && !this.#hitsText(ev)) return
       if(this.editor.features.list.isDetailsToggleInteraction(ev) || ev.button === 2 || $.isElementSelection || $.isMultiElementSelection) {
         return
