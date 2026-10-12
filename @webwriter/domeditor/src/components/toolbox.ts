@@ -19,7 +19,7 @@ import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutMod
 import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, listMarkerImageProperty, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
-import {mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
+import {mediaCaptureOptions, mediaSourceAttribute, mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {canonicalMarkName} from "../marks"
 import "./style-combobox"
@@ -102,6 +102,18 @@ export class DomEditorToolbox extends EditingControls {
     ${aiChatStyles}
     ${proofreadingCardStyles}
     ${EditingControls.styles}
+    .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
+    .media-source .media-source-buttons {border-radius: 4px 4px 0 0;}
+    .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
+    .media-source-controls {min-width: 0; border-radius: 4px;}
+    .media-source-controls:focus-within {outline: 2px solid #b9d7f5; outline-offset: 0;}
+    .media-source-field input {box-sizing: border-box; flex: 1; width: 0; min-width: 0; height: 100%; border: 0; padding: .3rem .4rem; background: transparent; color: inherit; font: inherit; outline: none; box-shadow: none;}
+    .media-source-field > svg {width: 1rem; height: 1rem; flex: none; margin-left: .35rem;}
+    .media-source-field button {display: flex; align-items: center; justify-content: center; flex: none; width: 1.4rem; height: 100%; padding: 0; border: 0; border-radius: 0 0 4px 0; background: transparent; color: inherit; font: inherit; cursor: pointer;}
+    .media-source-field button:hover {background: #edf3f9;}
+    .media-source-field button:focus-visible {outline: 2px solid #b9d7f5; outline-offset: -2px;}
+
+
 
   .developer-console-controls {display: flex; align-items: center; gap: 0; background: #e9e9e9}
   .developer-console-controls button {box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 32px; padding: .3rem .5rem; border: 0; border-radius: 0; background: transparent; color: #46576a; font: 600 .72rem/1 system-ui, sans-serif; cursor: pointer}
@@ -1086,6 +1098,7 @@ export class DomEditorToolbox extends EditingControls {
             }))}><span aria-hidden="true">${ribbonIcon(type === "ul" ? "List" : "Enumeration")}</span></button>`)}
         </div>
       </div></div>` : nothing}
+      ${this.media && (!group || singleTarget) ? this.renderMediaSource() : nothing}
       ${widgetOptions ? html`<div class="widget-options specialized-widget-primary">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>` : nothing}
       <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary}
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
@@ -1097,6 +1110,43 @@ export class DomEditorToolbox extends EditingControls {
         ${commands}
       </div>` : nothing}
     </ribbon-drawer>`
+  }
+
+  private renderMediaSource() {
+    const media = this.media!
+    const type = media.type
+    const attribute = mediaSourceAttribute(type)
+    const source = media.attributes[attribute] || media.sources?.find(row => row.attributes.src)?.attributes.src || media.attributes.srcset || media.attributes.srcdoc || ""
+    const current = media.sourceLabel ?? (source.startsWith("data:") || source.startsWith("blob:") ? `${this.mediaLabel(type)} file` : media.attributes.srcdoc ? "HTML document" : source)
+    const sourceIcon = media.sourceKind === "capture" ? "Capture screen" : media.sourceKind === "recording" ? "Record"
+      : media.sourceKind === "file" || source.startsWith("data:") || source.startsWith("blob:") ? "Select file" : "Link"
+    const action = (label: string) => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label}, bubbles: true, composed: true,
+    }))
+    return html`<div class="media-source">
+      <label for="media-source-url">Source</label>
+      <div class="media-source-controls">
+        <div class="specialized-choice-group media-source-buttons" style=${`--choice-columns: ${1 + mediaCaptureOptions(type).length}`} role="group" aria-label="Source input">
+          <button type="button" aria-label="Select file" title="Open file" @click=${() => action("selected-media-file")}>
+            <span class="icon">${ribbonIcon("Select file")}</span><span class="label">File</span>
+          </button>
+          ${mediaCaptureOptions(type).map(option => html`<button type="button" aria-label=${option.label} title=${option.label}
+            @click=${() => action(`selected-media-capture:${option.mode}`)}>
+            <span class="icon">${ribbonIcon(option.label)}</span><span class="label">${option.label === "Record" ? "Record" : "Capture"}</span>
+          </button>`)}
+        </div>
+        <div class="media-source-field">
+          ${source ? ribbonIcon(sourceIcon) : nothing}
+          <input id="media-source-url" type=${media.sourceKind || source.startsWith("data:") || source.startsWith("blob:") || media.attributes.srcdoc ? "text" : "url"}
+            inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${this.mediaLabel(type)}: Source`}
+            placeholder="https://…" .value=${current} title=${current}
+            @change=${(event: Event) => {
+              if((event.currentTarget as HTMLInputElement).value !== current) this.dispatchMediaAttribute(type, {name: attribute, label: "Source"}, event)
+            }}>
+          ${source ? html`<button type="button" aria-label="Remove source" title="Remove source" @click=${() => action("remove-media-source")}>×</button>` : nothing}
+        </div>
+      </div>
+    </div>`
   }
 
   private renderSpecializedCommands(dispatchOption?: (name: string, value: WidgetOptionValue) => void) {
@@ -1121,7 +1171,7 @@ export class DomEditorToolbox extends EditingControls {
     if(this.media) {
       const type = this.media.type
       return html`<div class="specialized-commands media-toolbox-controls">
-        ${isMediaType(type) ? mediaAttributeOptions[type].filter(option => !["width", "height"].includes(option.name))
+        ${isMediaType(type) ? mediaAttributeOptions[type].filter(option => !["width", "height", "src", "data"].includes(option.name))
           .map(option => this.renderMediaAttribute(type, option)) : nothing}
         ${this.renderTimedMediaResources()}
         ${this.renderImageMapControls()}

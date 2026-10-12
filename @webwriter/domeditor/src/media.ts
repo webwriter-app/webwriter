@@ -59,6 +59,8 @@ export type ImageMapSelectionState = {
 export type MediaSelectionState = {
   type: MediaType
   attributes: Record<string, string>
+  sourceLabel?: string
+  sourceKind?: "file" | "capture" | "recording"
   /** Direct child resources, present only for AUDIO and VIDEO. */
   sources?: TimedMediaResourceState[]
   tracks?: TimedMediaResourceState[]

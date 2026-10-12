@@ -55,6 +55,7 @@ export class ElementAttributeEditor extends LitElement {
     disabled: {type: Boolean, reflect: true},
     expanded: {type: Boolean, reflect: true},
     mediaOwned: {type: Boolean, attribute: false},
+    showOtherAttributes: {type: Boolean, attribute: false},
   }
 
   static styles = css`
@@ -233,9 +234,10 @@ export class ElementAttributeEditor extends LitElement {
   disabled = false
   expanded = false
   mediaOwned = true
+  showOtherAttributes = false
 
   protected updated() {
-    if(this.disabled || !this.state) this.closeDialog()
+    if(this.disabled || !this.state || !this.showOtherAttributes) this.closeDialog()
   }
 
   disconnectedCallback() {
@@ -420,13 +422,13 @@ export class ElementAttributeEditor extends LitElement {
     return html`
       <div class="language-row">
         ${options.filter(option => option.name === "lang").map(option => this.renderPrimary(option, state))}
-        <button type="button" class="more-attributes" aria-label="Other attributes" title="Other attributes"
+        ${this.showOtherAttributes ? html`<button type="button" class="more-attributes" aria-label="Other attributes" title="Other attributes"
           aria-haspopup="dialog" aria-controls="attributes-dialog" ?disabled=${this.disabled}
           @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.showModal()}>
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-        </button>
+        </button>` : nothing}
       </div>
-      <dialog id="attributes-dialog" aria-labelledby="attributes-heading">
+      ${this.showOtherAttributes ? html`<dialog id="attributes-dialog" aria-labelledby="attributes-heading">
         <div class="dialog-heading">
           <h2 id="attributes-heading">${state.name} attributes</h2>
           <button type="button" aria-label="Close attributes" title="Close attributes" ?disabled=${this.disabled}
@@ -481,7 +483,7 @@ export class ElementAttributeEditor extends LitElement {
             <button type="submit" ?disabled=${this.disabled}>Add</button>
           </form>
         `}
-      </dialog>
+      </dialog>` : nothing}
     `
   }
 }

@@ -154,7 +154,7 @@ describe("media ribbon drawer", () => {
     toolbox.addEventListener("media-attribute-change", attributeListener)
     const alt = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
     expect(alt.value).toBe("A diagram")
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Source URL"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Source"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Width"]')).toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Height"]')).toBeNull()
     const loading = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
@@ -352,7 +352,68 @@ describe("media ribbon drawer", () => {
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
       .some(combo => (combo as HTMLElement & {label: string}).label === "Website: Element")).toBe(false)
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Source URL"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Source"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
+  })
+})
+
+
+describe("primary media Source control", () => {
+  it.each(["picture", "img", "audio", "video"] as const)("joins the %s input buttons and URL above Options", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {src: "https://example.com/media"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const source = toolbox.shadowRoot!.querySelector(".media-source")!
+    expect(source.closest('[slot="more"]')).toBeNull()
+    expect(source.querySelector("label")?.textContent).toBe("Source")
+    expect(source.querySelectorAll('.media-source-buttons button')).toHaveLength(3)
+    expect(source.querySelector('input')?.value).toBe("https://example.com/media")
+    expect(source.querySelector('.media-source-field button[aria-label="Remove source"]')).not.toBeNull()
+    const listener = vi.fn()
+    toolbox.addEventListener("ribbon-button-click", listener)
+    for(const button of source.querySelectorAll<HTMLButtonElement>('button')) button.click()
+    expect(listener.mock.calls.map(([event]) => event.detail.label)).toEqual([
+      "selected-media-file", `selected-media-capture:screen-${type === "picture" || type === "img" ? "image" : type}`,
+      `selected-media-capture:${type === "audio" ? "microphone-audio" : type === "video" ? "camera-video" : "camera-image"}`, "remove-media-source",
+    ])
+    expect(toolbox.shadowRoot!.querySelector('[slot="more"] input[type="url"][aria-label$=": Source URL"]')).toBeNull()
+  })
+
+  it.each([
+    ["file", "photo.png", "folder-open"],
+    ["capture", "Capture 2", "screen-share"],
+    ["recording", "Recording 3", "player-record"],
+  ] as const)("shows the active %s label and clear button inside the URL field", async (kind, label, icon) => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "data:image/png;base64,YQ=="}, sourceLabel: label, sourceKind: kind}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const field = toolbox.shadowRoot!.querySelector('.media-source-field')!
+    const input = field.querySelector<HTMLInputElement>('input')!
+    expect(input.value).toBe(label)
+    expect(field.querySelector('svg')?.classList.toString()).toContain(icon)
+    expect(field.querySelector('button[aria-label="Remove source"]')).not.toBeNull()
+    const listener = vi.fn()
+    toolbox.addEventListener("media-attribute-change", listener)
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).not.toHaveBeenCalled()
+    input.value = "https://example.com/replacement.png"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", attribute: "src", value: input.value}}))
+  })
+
+  it("hides the source icon and clear button when empty", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const field = toolbox.shadowRoot!.querySelector('.media-source-field')!
+    expect(field.querySelector<HTMLInputElement>('input')?.value).toBe("")
+    expect(field.querySelector('svg')).toBeNull()
+    expect(field.querySelector('button')).toBeNull()
   })
 })

@@ -98,6 +98,8 @@ Keep responsibilities in these existing layers. Do not create a new abstraction 
 
 Add or update the nearest `*.test.ts` file for behavior changes.
 
+For visual changes, visually confirm the rendered result in a real browser before handoff. Inspect the affected UI at its actual container size and check for overflow, spacing, background colors, typography, and icon sizes against nearby controls. Automated tests alone do not confirm visual quality.
+
 Tests should cover the DOM shapes the command claims to support, including irregular but valid structures. When relevant, also cover:
 
 - custom elements or widgets;

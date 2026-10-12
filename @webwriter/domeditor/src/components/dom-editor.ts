@@ -3849,6 +3849,19 @@ export class DomEditor extends LitElement {
       void this.execute({type: "redo"}).finally(() => this.focusEditor())
       return
     }
+    if(label === "selected-media-file") {
+      void this.execute({type: "selectMediaFile"})
+      return
+    }
+    if(label === "remove-media-source") {
+      void this.execute({type: "removeMediaSource"})
+      return
+    }
+    if(label?.startsWith("selected-media-capture:")) {
+      const mode = label.slice("selected-media-capture:".length)
+      if(isMediaCaptureMode(mode)) void this.execute({type: "captureSelectedMedia", mode})
+      return
+    }
     if(label?.startsWith("media-file:")) {
       const media = label.slice("media-file:".length)
       if(isMediaType(media)) void this.execute({type: "insertMedia", media, selectFile: true})
@@ -6474,7 +6487,7 @@ export class DomEditor extends LitElement {
       this.captionPosition = event.data.detail.captionPosition ?? null
       this.captionAlignment = event.data.detail.captionAlignment ?? null
       this.mediaSelection = event.data.detail.media
-        ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
+        ? {...event.data.detail.media, attributes: {...event.data.detail.media.attributes}}
         : null
       this.dialogSelection = event.data.detail.dialog ? {
         ...event.data.detail.dialog,

@@ -5116,6 +5116,9 @@ describe("DomEditor.execute()", () => {
   it.each([
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
+    ["selected-media-file", {type: "selectMediaFile"}],
+    ["selected-media-capture:screen-image", {type: "captureSelectedMedia", mode: "screen-image"}],
+    ["remove-media-source", {type: "removeMediaSource"}],
   ])("routes %s without reclaiming focus", async (label, action) => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

@@ -1177,3 +1177,72 @@ describe("canonical media", () => {
     expect(editor.toHTML(true)).not.toContain('◆')
   })
 })
+
+
+describe("selected media source", () => {
+  it("removes timed sources without rebuilding fallback, tracks, or resource elements", () => {
+    document.body.innerHTML = '<video src="old.mp4"><!--keep--><source src="alternative.mp4" type="video/mp4"><track src="captions.vtt"><span>Fallback</span></video>'
+    const video = document.querySelector("video")!
+    const children = Array.from(video.childNodes)
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.removeMediaSource({type: "removeMediaSource"})).toBe(true)
+    expect(video.hasAttribute("src")).toBe(false)
+    expect(video.querySelector("source")!.hasAttribute("src")).toBe(false)
+    expect(Array.from(video.childNodes)).toEqual(children)
+    expect(video.querySelector("track")!.getAttribute("src")).toBe("captions.vtt")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("removes picture sources while preserving unfamiliar siblings", () => {
+    document.body.innerHTML = '<picture><source srcset="wide.png"><!--keep--><img src="image.png" srcset="large.png 2x" alt="Description"></picture>'
+    const picture = document.querySelector("picture")!
+    const children = Array.from(picture.childNodes)
+    $.selectElement(picture)
+    editor.features.selection.processSelection()
+    editor.features.media.actions.removeMediaSource({type: "removeMediaSource"})
+    expect(Array.from(picture.childNodes)).toEqual(children)
+    expect(picture.querySelector("img")!.getAttribute("alt")).toBe("Description")
+    expect(picture.querySelectorAll('[src], [srcset]')).toHaveLength(0)
+  })
+
+  it("opens a replacement picker in the appendix and cleans it up on cancellation", () => {
+    document.body.innerHTML = '<audio src="existing.mp3"></audio>'
+    const audio = document.querySelector("audio")!
+    $.selectElement(audio)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile"})).toBe(true)
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker).not.toBeNull()
+    expect(document.body.querySelector('input[type="file"]')).toBeNull()
+    picker.dispatchEvent(new Event("cancel"))
+    expect(picker.isConnected).toBe(false)
+    expect(audio.getAttribute("src")).toBe("existing.mp3")
+  })
+})
+
+
+it.each(["unchanged", "remote change", "disconnected", "disabled"])("guards replacement file reads when %s", async condition => {
+  document.body.innerHTML = '<audio src="existing.mp3"></audio>'
+  const audio = document.querySelector("audio")!
+  $.selectElement(audio)
+  editor.features.selection.processSelection()
+  let reader: FileReader | undefined
+  const read = vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) { reader = this })
+  editor.features.media.actions.selectMediaFile({type: "selectMediaFile"})
+  const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+  Object.defineProperty(picker, "files", {value: [new File(["audio"], "song.mp3", {type: "audio/mpeg"})]})
+  picker.dispatchEvent(new Event("change"))
+  if(condition === "remote change") audio.setAttribute("src", "remote.mp3")
+  if(condition === "disconnected") audio.remove()
+  if(condition === "disabled") editor.features.media.disable()
+  Object.defineProperty(reader!, "result", {value: "data:audio/mpeg;base64,YQ=="})
+  reader!.dispatchEvent(new Event("load"))
+  read.mockRestore()
+  expect(audio.getAttribute("src")).toBe(condition === "unchanged" ? "data:audio/mpeg;base64,YQ==" : condition === "remote change" ? "remote.mp3" : "existing.mp3")
+  expect(picker.isConnected).toBe(false)
+  if(condition === "unchanged") {
+    expect(editor.features.media.getState()).toMatchObject({sourceLabel: "song.mp3", sourceKind: "file"})
+    expect(editor.toHTML(true)).not.toContain("song.mp3")
+  }
+})

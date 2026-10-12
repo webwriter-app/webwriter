@@ -260,11 +260,19 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   :host([data-compact]) .or { display: none; }
 `)
 
+function readMediaFile(file: File, onLoad: (reader: FileReader) => void, onError: () => void) {
+  const reader = new FileReader()
+  reader.addEventListener("load", () => onLoad(reader), {once: true})
+  reader.addEventListener("error", onError, {once: true})
+  reader.readAsDataURL(file)
+  return reader
+}
+
 class MediaPlaceholder {
   readonly element = document.createElement("div")
   readonly root: ShadowRoot
   target: Element | null = null
-  onSource: ((target: Element, source: string) => void) | null = null
+  onSource: ((target: Element, source: string, fileName?: string) => void) | null = null
   onCapture: ((target: Element, mode: MediaCaptureMode) => void) | null = null
   onFocus: ((target: Element) => void) | null = null
   onInteractionChange: (() => void) | null = null
@@ -379,19 +387,16 @@ class MediaPlaceholder {
       this.cancelFileRead()
       const target = this.target
       const generation = this.fileReadGeneration
-      const reader = new FileReader()
-      this.fileReader = reader
-      reader.addEventListener("load", () => {
+      const reader = readMediaFile(file, reader => {
         if(this.fileReader !== reader || generation !== this.fileReadGeneration) return
         this.fileReader = null
         if(this.target !== target || !document.body.contains(target) || !isEmptyMedia(target)
           || sourceEditingBlocked(target, this.schema)) return
-        if(typeof reader.result === "string") this.onSource?.(target, reader.result)
-      }, {once: true})
-      reader.addEventListener("error", () => {
+        if(typeof reader.result === "string") this.onSource?.(target, reader.result, file.name)
+      }, () => {
         if(this.fileReader === reader) this.fileReader = null
-      }, {once: true})
-      reader.readAsDataURL(file)
+      })
+      this.fileReader = reader
       picker.value = ""
     })
     picker.addEventListener("cancel", () => {
@@ -1037,6 +1042,26 @@ export class MediaFeature extends EditorFeature {
   private refreshQueued = false
   private mediaPlaceholder: MediaPlaceholder | null = null
   private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
+  private readonly sourceLabels = new WeakMap<Element, Map<string, {label: string, kind: "file" | "capture" | "recording"}>>()
+  private pendingFile: {picker: HTMLInputElement, reader?: FileReader} | null = null
+  private cancelSourceFile() {
+    const pending = this.pendingFile
+    this.pendingFile = null
+    pending?.picker.remove()
+    if(pending?.reader?.readyState === 1) pending.reader.abort()
+  }
+
+  private rememberSource(element: Element, source: string, label: string, kind: "file" | "capture" | "recording") {
+    let labels = this.sourceLabels.get(element)
+    if(!labels) this.sourceLabels.set(element, labels = new Map())
+    labels.set(source, {label, kind})
+  }
+
+  private sourceSnapshot(element: Element) {
+    return JSON.stringify([stateAttributes(mediaSourceTarget(element, false)),
+      Array.from(element.querySelectorAll("source")).map(source => stateAttributes(source))])
+  }
+
   private imageMapOverlayController: ImageMapOverlay | null = null
   private readonly interactionShields = new Map<Element, MediaInteractionShield>()
   private readonly graphicImagePlaceholders = new Map<SVGGraphicsElement, HTMLDivElement>()
@@ -1052,7 +1077,10 @@ export class MediaFeature extends EditorFeature {
   get placeholder() {
     if(!this.mediaPlaceholder) {
       this.mediaPlaceholder = new MediaPlaceholder(this.editor.schema)
-      this.mediaPlaceholder.onSource = (target, source) => this.setSource(target, source)
+      this.mediaPlaceholder.onSource = (target, source, fileName) => {
+        if(fileName) this.rememberSource(target, source, fileName, "file")
+        this.setSource(target, source)
+      }
       this.mediaPlaceholder.onCapture = (target, mode) => this.openCapture(target, mode)
       this.mediaPlaceholder.onFocus = target => {
         if(!document.body.contains(target) || !isEmptyMedia(target)) return
@@ -1273,6 +1301,7 @@ export class MediaFeature extends EditorFeature {
     window.removeEventListener("resize", this.scheduleRefresh)
     window.removeEventListener("blur", this.cancelPendingShield)
     document.removeEventListener("scroll", this.scheduleRefresh, true)
+    this.cancelSourceFile()
     this.mediaPlaceholder?.dispose()
     this.mediaPlaceholder = null
     this.imageMapOverlayController?.element.remove()
@@ -1304,6 +1333,58 @@ export class MediaFeature extends EditorFeature {
   }
 
   actions = {
+    selectMediaFile: ({}: {type: "selectMediaFile"}) => {
+      const element = this.selectedMedia()
+      if(!this.isEnabled || !element || sourceEditingBlocked(element, this.editor.schema)) return false
+      this.cancelSourceFile()
+      const snapshot = this.sourceSnapshot(element)
+      const sourceTarget = mediaSourceTarget(element, false)
+      const picker = document.createElement("input")
+      picker.type = "file"
+      picker.hidden = true
+      picker.accept = element.matches("picture, img") ? "image/*" : element.matches("audio") ? "audio/*"
+        : element.matches("video") ? "video/*" : ".html,.htm,text/html"
+      const pending = {picker, reader: undefined as FileReader | undefined}
+      this.pendingFile = pending
+      const valid = () => this.pendingFile === pending && this.isEnabled && document.body.contains(element)
+        && !sourceEditingBlocked(element, this.editor.schema) && snapshot === this.sourceSnapshot(element)
+        && sourceTarget === mediaSourceTarget(element, false)
+      picker.addEventListener("cancel", () => { if(this.pendingFile === pending) this.cancelSourceFile() }, {once: true})
+      picker.addEventListener("change", () => {
+        const file = picker.files?.[0]
+        if(!valid() || !file) { if(this.pendingFile === pending) this.cancelSourceFile(); return }
+        pending.reader = readMediaFile(file, reader => {
+          if(valid() && typeof reader.result === "string") {
+            this.rememberSource(element, reader.result, file.name, "file")
+            this.setSource(element, reader.result, true)
+          }
+          if(this.pendingFile === pending) this.cancelSourceFile()
+        }, () => { if(this.pendingFile === pending) this.cancelSourceFile() })
+      }, {once: true})
+      this.editor.addAppendix(picker)
+      picker.click()
+      return true
+    },
+    captureSelectedMedia: ({mode}: {type: "captureSelectedMedia", mode: MediaCaptureMode}) => {
+      const element = this.selectedMedia()
+      return this.isEnabled && element && isMediaCaptureMode(mode) ? this.openCapture(element, mode, true) : false
+    },
+    removeMediaSource: ({}: {type: "removeMediaSource"}) => {
+      const element = this.selectedMedia()
+      if(!element || sourceEditingBlocked(element, this.editor.schema)) return false
+      const target = mediaSourceTarget(element, false)
+      target.removeAttribute(mediaSourceAttribute(target))
+      target.removeAttribute("srcset")
+      if(element.matches("iframe")) element.removeAttribute("srcdoc")
+      if(element.matches("picture, audio, video")) {
+        Array.from(element.children).filter(child => child.localName === "source").forEach(source => {
+          source.removeAttribute(element.localName === "picture" ? "srcset" : "src")
+        })
+      }
+      this.refresh()
+      this.editor.postSelectionPath()
+      return true
+    },
     captureMedia: ({mode}: {type: "captureMedia", mode: MediaCaptureMode}) => {
       if(!this.isEnabled || !isMediaCaptureMode(mode)) return false
       this.actions.insertMedia({type: "insertMedia", media: mediaCaptureModes[mode].media})
@@ -1538,6 +1619,14 @@ export class MediaFeature extends EditorFeature {
       type: element.localName as MediaType,
       attributes: stateAttributes(target),
     }
+    const source = target.getAttribute(mediaSourceAttribute(target)) ?? ""
+    const provenance = this.sourceLabels.get(element)?.get(source)
+    if(provenance) {
+      state.sourceKind = provenance.kind
+      const peers = Array.from(document.body.querySelectorAll(element.matches("picture, img") ? "picture, img:not(picture > img)" : element.localName))
+      state.sourceLabel = provenance.kind === "file" ? provenance.label
+        : `${provenance.kind === "capture" ? "Capture" : "Recording"} ${peers.indexOf(element) + 1}`
+    }
     if(element.matches("audio, video")) {
       state.sources = this.resourceState(element, "source")
       state.tracks = this.resourceState(element, "track")
@@ -1693,9 +1782,9 @@ export class MediaFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
-  private setSource(element: Element, source: string) {
+  private setSource(element: Element, source: string, replace = false) {
     if(!element.isConnected || !document.body.contains(element) || !(element.matches(mediaSelector) || isGraphicImage(element))
-      || !isEmptyMedia(element) || sourceEditingBlocked(element, this.editor.schema)) return false
+      || (!replace && !isEmptyMedia(element)) || sourceEditingBlocked(element, this.editor.schema)) return false
     const target = mediaSourceTarget(element)
     if(isGraphicImage(element)) this.editor.doc.stopCapturing()
     target.setAttribute(mediaSourceAttribute(target), source)
@@ -1710,17 +1799,19 @@ export class MediaFeature extends EditorFeature {
     return true
   }
 
-  private openCapture(target: Element, mode: MediaCaptureMode) {
+  private openCapture(target: Element, mode: MediaCaptureMode, replace = false) {
     const sourceTarget = mediaSourceTarget(target, false)
+    const snapshot = this.sourceSnapshot(target)
     const valid = () => this.isEnabled && document.body.contains(target)
       && !sourceEditingBlocked(target, this.editor.schema)
       && mediaCaptureOptions(placeholderMediaType(target)).some(option => option.mode === mode)
-      && isEmptyMedia(target) && mediaSourceTarget(target, false) === sourceTarget
+      && (replace || isEmptyMedia(target)) && this.sourceSnapshot(target) === snapshot && mediaSourceTarget(target, false) === sourceTarget
     if(!valid()) return false
     this.mediaCapture?.controller.close()
     const controller = new MediaCapture(mode, source => {
       if(!valid()) return false
-      return this.setSource(target, source)
+      this.rememberSource(target, source, "", mode.endsWith("image") ? "capture" : "recording")
+      return this.setSource(target, source, replace)
     }, () => {
       if(this.mediaCapture?.controller !== controller) return
       this.mediaCapture = null

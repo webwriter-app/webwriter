@@ -8,6 +8,7 @@ beforeEach(() => document.body.replaceChildren())
 
 async function mount(localName = "details", attributes: Record<string, string> = {}) {
   const editor = new ElementAttributeEditor()
+  editor.showOtherAttributes = true
   editor.state = {
     path: [0],
     localName,
@@ -198,6 +199,7 @@ describe("element attribute editor", () => {
 
   it("shows disabled global attributes without a selected element", async () => {
     const editor = new ElementAttributeEditor()
+    editor.showOtherAttributes = true
     editor.disabled = true
     document.body.append(editor)
     await editor.updateComplete
@@ -409,3 +411,15 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector('[aria-label="Rename controls"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector('[aria-label="Rename data-credit"]')).not.toBeNull()
   })
+
+
+it("omits the other-attributes dialog and trigger by default while keeping Language", async () => {
+  const editor = new ElementAttributeEditor()
+  editor.state = {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", attributes: {lang: "en", id: "intro"}}
+  document.body.append(editor)
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector("dialog")).toBeNull()
+  expect(editor.shadowRoot!.querySelector('[aria-label="Other attributes"]')).toBeNull()
+  expect(editor.shadowRoot!.querySelector('[aria-label="Paragraph: Language"]')).not.toBeNull()
+  expect(editor.state.attributes).toEqual({lang: "en", id: "intro"})
+})

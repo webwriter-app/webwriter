@@ -390,6 +390,22 @@ describe("media capture in the DOM editor", () => {
     expect(document.querySelector("audio")!.getAttribute("src")).toMatch(/^data:audio\/mp4;base64,/)
   })
 
+  it("replaces a selected recording and numbers it by its current media position", async () => {
+    const editor = createEditor('<audio src="first.mp3"></audio><audio src="old.mp3"><track label="keep"></audio>')
+    const target = document.querySelectorAll("audio")[1]
+    $.selectElement(target)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.captureSelectedMedia({type: "captureSelectedMedia", mode: "microphone-audio"})).toBe(true)
+    clickCapture(".connect")
+    await vi.waitFor(() => expect(captureRoot().querySelector(".capture")).not.toHaveAttribute("hidden"))
+    clickCapture(".capture")
+    clickCapture(".stop")
+    await vi.waitFor(() => expect(target.getAttribute("src")).toMatch(/^data:audio\/mp4;base64,/))
+    expect(document.querySelectorAll("audio")).toHaveLength(2)
+    expect(target.querySelector("track")).toHaveAttribute("label", "keep")
+    expect(editor.features.media.getState()).toMatchObject({sourceLabel: "Recording 2", sourceKind: "recording"})
+  })
+
   it("closes capture when collaboration fills its placeholder", async () => {
     const editor = createEditor()
     const audio = new Track("audio")
