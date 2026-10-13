@@ -578,6 +578,165 @@ it.each([false, true])("keeps graphic selection visible during passive geometry 
   expect(graphic).not.toHaveClass("◆element-capture-selected")
 })
 
+describe.each(["Backward", "Forward"] as const)("captured element deletion (%s)", direction => {
+  const key = direction === "Backward" ? "Backspace" : "Delete"
+  it.each(["img", "picture", "audio", "video", "iframe", "embed", "object", "interactive-widget", "p", "svg"])("blocks deletion of captured %s until node-selected", tag => {
+    const section = el("section")
+    section.innerHTML = `<!--keep--><p>Before</p><${tag}></${tag}><p>After</p>`
+    const media = section.children[1]
+    if(tag === "picture") media.append(document.createElement("img"))
+    const authored = editor.toHTML(true)
+    feature.captureElement(media)
+    const events = [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      ...["deleteContent", "deleteWord", "deleteSoftLine", "deleteHardLine"].map(inputType =>
+        new InputEvent("beforeinput", {inputType: `${inputType}${direction}`, bubbles: true, cancelable: true})),
+      new InputEvent("beforeinput", {inputType: "deleteByCut", bubbles: true, cancelable: true}),
+    ]
+    for(const event of events) {
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(feature.captureSelectedElement).toBe(media)
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+    feature.selectElement(media)
+    document.body.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+    expect(media.isConnected).toBe(false)
+    expect(section.querySelectorAll("p")).toHaveLength(2)
+    expect(section.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("preserves native deletion in media form controls", () => {
+    const media = el("object")
+    const input = document.createElement("input")
+    media.append(input)
+    feature.captureElement(media)
+    for(const event of [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true}),
+    ]) {
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(media)
+    }
+  })
+
+  it("does not block deletion input after the captured media is replaced", () => {
+    const media = el("img")
+    feature.captureElement(media)
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "text"
+    media.replaceWith(paragraph)
+    $.move(paragraph.firstChild!, 4)
+    const event = new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.captureSelectedElement).toBeNull()
+  })
+
+  it.each(["object", "interactive-widget"])("allows deletion inside captured %s content", tag => {
+    const captured = el(tag)
+    captured.textContent = "editable"
+    feature.captureElement(captured)
+    $.selectRange(captured.firstChild!, 1, captured.firstChild!, 3)
+    for(const event of [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true}),
+    ]) {
+      captured.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it.each(["object", "interactive-widget"])("protects the document when a %s selection extends outside capture", tag => {
+    const captured = el(tag, "inside")
+    const paragraph = el("p", "outside")
+    feature.captureElement(captured)
+    $.selectRange(captured.firstChild!, 1, paragraph.firstChild!, 3)
+    const authored = editor.toHTML(true)
+    for(const event of [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true}),
+    ]) {
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+  })
+})
+
+describe("captured element insertion", () => {
+  const insertionEvents = () => [
+    new KeyboardEvent("keydown", {key: "x", bubbles: true, composed: true, cancelable: true}),
+    new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true}),
+    new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, composed: true, cancelable: true}),
+    ...["insertText", "insertReplacementText", "insertCompositionText", "insertParagraph", "insertLineBreak"].map(inputType =>
+      new InputEvent("beforeinput", {inputType, data: "x", bubbles: true, composed: true, cancelable: true})),
+  ]
+
+  it.each(["img", "picture", "audio", "video", "iframe", "embed", "object", "interactive-widget", "p", "svg"])("protects captured %s from typing and Enter", tag => {
+    const section = el("section")
+    section.innerHTML = `<!--keep--><p>Before</p><${tag}></${tag}><p>After</p>`
+    const captured = section.children[1]
+    if(tag === "picture") captured.append(document.createElement("img"))
+    feature.captureElement(captured)
+    const authored = editor.toHTML(true)
+    for(const event of insertionEvents()) {
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(feature.captureSelectedElement).toBe(captured)
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+  })
+
+  it.each(["object", "interactive-widget"])("preserves typing and Enter inside captured %s content", tag => {
+    const captured = el(tag, "inside")
+    feature.captureElement(captured)
+    $.move(captured.firstChild!, 3)
+    for(const event of insertionEvents()) {
+      captured.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it.each(["object", "interactive-widget"])("preserves typing and Enter in a captured %s form control", tag => {
+    const captured = el(tag)
+    const input = document.createElement("textarea")
+    captured.append(input)
+    feature.captureElement(captured)
+    input.focus()
+    for(const event of insertionEvents()) {
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it.each(["open", "closed"] as const)("preserves typing and Enter in captured %s widget shadow controls", mode => {
+    const captured = el("interactive-widget")
+    const input = document.createElement("textarea")
+    captured.attachShadow({mode}).append(input)
+    feature.captureElement(captured)
+    input.focus()
+    for(const event of insertionEvents()) {
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it("preserves modified keyboard shortcuts during capture", () => {
+    feature.captureElement(el("img"))
+    for(const modifiers of [{ctrlKey: true}, {metaKey: true}]) {
+      const event = new KeyboardEvent("keydown", {key: "a", ...modifiers, bubbles: true, cancelable: true})
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+  })
+})
+
 describe("capture outline selection", () => {
   it.each(["top", "right", "bottom", "left"])("selects the captured element through its %s edge", side => {
     const widget = el("interactive-widget")

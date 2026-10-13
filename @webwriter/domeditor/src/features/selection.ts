@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -1042,6 +1042,8 @@ export class SelectionFeature extends EditorFeature {
     },
     keydown: event => {
       this.#handleKeyState(event)
+      const isPrintable = event.key?.length === 1 && !event.metaKey && (!event.ctrlKey || event.getModifierState("AltGraph"))
+      if(isPrintable || ["Enter", "Backspace", "Delete"].includes(event.key)) this.#preventCapturedDocumentInput(event)
       if(event.key === "Escape" && this.#boxDrag) {
         event.preventDefault()
         this.#endDrag()
@@ -1050,11 +1052,26 @@ export class SelectionFeature extends EditorFeature {
       this.#handleWidgetShadowInteraction(event)
     },
     keyup: event => this.#handleKeyState(event),
-    beforeinput: event => this.#handleWidgetShadowInteraction(event),
+    beforeinput: event => {
+      if(event.inputType.startsWith("insert") || event.inputType.startsWith("delete")) this.#preventCapturedDocumentInput(event)
+      this.#handleWidgetShadowInteraction(event)
+    },
     input: event => this.#handleWidgetShadowInteraction(event),
     change: event => this.#handleWidgetShadowInteraction(event),
     wheel: event => this.#handleWidgetWheel(event),
     scroll: event => this.#handleWidgetScroll(event),
+  }
+
+  /** Capture owns editing input, including native editing defaults. Only an
+   * internal selection or a control may edit while the outer document is captured. */
+  #preventCapturedDocumentInput(event: Event) {
+    const captured = this.captureSelectedElement
+    if(!captured || isAppendixInteraction(event) || isFormControlInteraction(event)
+      || isWidgetShadowInteraction(event, this.editor.schema)) return
+    const selection = document.getSelection()
+    if(selection?.anchorNode && selection.focusNode
+      && captured.contains(selection.anchorNode) && captured.contains(selection.focusNode)) return
+    event.preventDefault()
   }
 
   /** Mirrors the physical modifier state onto BODY without depending on the
