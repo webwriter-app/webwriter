@@ -1114,6 +1114,8 @@ export class MediaFeature extends EditorFeature {
       || style.display === "none"
       || style.visibility === "hidden"
       || style.visibility === "collapse"
+      // Hidden disclosure content can retain a box without being rendered.
+      || element.checkVisibility?.() === false
       || atomicEditingContainer(element.parentElement, this.editor.schema)
       || element.parentElement?.closest(mediaSelector)) return false
     return true
@@ -1131,7 +1133,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   private activateShield = (target: Element) => {
-    if(!target.isConnected) {
+    if(!this.isShieldEligible(target)) {
       this.releaseShield(target)
       return
     }

@@ -461,6 +461,28 @@ describe("selectCoords()", () => {
     expect($.pointFromCoords(50, 120)).toEqual({node: summary.firstChild, offset: 7})
   })
 
+  it.each([
+    '<video controls></video>',
+    '<video controls style="position:absolute"></video>',
+    '<figure><video controls></video><figcaption>Caption</figcaption></figure>',
+    '<math><mi>x</mi></math>',
+    '<test-widget><p>Owned</p></test-widget>',
+  ])("ignores measurable hidden content below a closed summary: %s", content => {
+    setBody(`<section><p>Before</p><!--keep--><details><summary>Heading</summary>${content}</details>After</section>`)
+    const section = document.querySelector("section")!
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    const hidden = details.lastElementChild!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 60)
+    summary.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    hidden.getBoundingClientRect = () => new DOMRect(30, 130, 180, 200)
+    for(const node of [summary.firstChild as Text, hidden]) {
+      mockHitTest(node, 0)
+      expect($.pointFromCoords(50, 145, details)).toEqual({node: section, offset: 3})
+      expect($.pointFromCoords(50, 170, section)).toEqual({node: section, offset: 3})
+    }
+  })
+
   it("keeps gaps between open disclosure body blocks inside the disclosure", () => {
     setBody('<details open><summary>Heading</summary><p>A</p><p>B</p></details>')
     const details = document.querySelector("details")!

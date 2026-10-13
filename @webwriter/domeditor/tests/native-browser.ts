@@ -2026,6 +2026,49 @@ await check("layout based hit testing returns the rendered target", async () => 
   assert(point?.node, "editor hit testing returned no point")
 })
 
+await check("clicks below closed details keep hidden media collapsed", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:700px;height:600px;max-width:none"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><details style="padding:16px 24px 32px"><summary>Heading</summary><!--keep--><video controls width="320" height="180"></video></details></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `disclosure editor did not initialize: ${view.editorError}`)
+    const frameEditor = view.editor!, doc = frame.contentDocument!
+    const details = doc.querySelector("details")!, video = details.querySelector("video")!
+    await layoutFrame()
+    for(const source of [null, "data:video/mp4;base64,"]) {
+      if(source) video.setAttribute("src", source)
+      else video.removeAttribute("src")
+      await layoutFrame()
+      const authored = frameEditor.toHTML(true)
+      const rect = video.getBoundingClientRect()
+      assert(rect.height > 0, "hidden media fixture has no retained layout box")
+      for(const x of [rect.left + 4, rect.left + rect.width / 2, rect.right - 4]) for(const y of [rect.top + 8, rect.top + rect.height / 2, rect.bottom - 4]) {
+        const target = frameEditor.appendix.elementFromPoint(x, y) ?? doc.elementFromPoint(x, y)!
+        assert(!target.closest(".◆media-interaction-shield"), "hidden video retained an interactive appendix shield")
+        const down = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 84, clientX: x, clientY: y})
+        target.dispatchEvent(down)
+        target.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, button: 0, pointerId: 84, clientX: x, clientY: y}))
+        await layoutFrame()
+        const selection = doc.getSelection()!
+        assert(down.defaultPrevented && selection.isCollapsed && selection.anchorNode === doc.body && selection.anchorOffset === 1,
+          `click did not retain the outer details gap: ${selection.anchorNode?.nodeName} ${selection.anchorOffset}`)
+        assert(!details.open && !frameEditor.features.selection.captureSelectedElement, "click opened details or captured hidden media")
+        assert(frameEditor.toHTML(true) === authored, "click changed authored HTML")
+      }
+    }
+    details.open = true
+    await layoutFrame()
+    assert(frameEditor.appendix.querySelector(".◆media-interaction-shield"), "expanded media did not regain its interaction shield")
+    details.open = false
+    await layoutFrame()
+    assert(!frameEditor.appendix.querySelector(".◆media-interaction-shield"), "closing details retained its media shield")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("focused AI previews preserve widgets, contextual HTML, and rendered styles", async () => {
   const paragraph = document.createElement("p")
   paragraph.id = "ai-native-paragraph"

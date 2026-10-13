@@ -1434,6 +1434,34 @@ describe("media editing", () => {
     expect(document.querySelector("audio")?.classList.contains("◆media-empty")).toBe(false)
   })
 
+  it.each(["", 'src="data:video/mp4;base64,"'])("removes hidden disclosure media shields and restores them on expansion: %s", async source => {
+    document.body.innerHTML = `<details><summary>Heading</summary><!--keep--><div><video controls ${source}></video></div></details>`
+    const details = document.querySelector("details")!, video = document.querySelector("video")!
+    // Happy DOM has no rendering or checkVisibility; model the browser's
+    // retained hidden box separately from its native visibility result.
+    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
+    const visibility = vi.fn(() => details.open)
+    Object.defineProperty(video, "checkVisibility", {configurable: true, value: visibility})
+    await vi.waitFor(() => expect(visibility).toHaveBeenCalled())
+    expect(editor.appendix.querySelector(".◆media-interaction-shield")).toBeNull()
+    const authored = editor.toHTML(true)
+    details.open = true
+    await vi.waitFor(() => expect(editor.appendix.querySelector(".◆media-interaction-shield")).not.toBeNull())
+    const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    details.open = false
+    // Revalidate immediately: the observer may not have removed the shield
+    // when authored or remote code closes the disclosure before a click.
+    shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    expect(details.open).toBe(false)
+    expect(editor.features.selection.captureSelectedElement).not.toBe(video)
+    await vi.waitFor(() => expect(shield.isConnected).toBe(false))
+    expect(editor.toHTML(true)).toBe(authored)
+    details.open = true
+    await vi.waitFor(() => expect(editor.appendix.querySelector(".◆media-interaction-shield")).not.toBeNull())
+    editor.features.media.disable()
+    expect(editor.appendix.querySelector(".◆media-interaction-shield")).toBeNull()
+  })
+
   it("removes shields when media is removed or the feature is disabled", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe>'
     const iframe = document.querySelector("iframe")!

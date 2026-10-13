@@ -67,6 +67,7 @@ const expectedChecks = [
   "selection feature treats custom element as atomic",
   "touch caret and ranges use shared pointer selection",
   "layout based hit testing returns the rendered target",
+  "clicks below closed details keep hidden media collapsed",
   "focused AI previews preserve widgets, contextual HTML, and rendered styles",
   "standalone SVG affordances refit rotated elements and resize beyond their original size",
   "ribbon shapes retain their aspect ratio under the document theme",

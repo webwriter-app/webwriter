@@ -458,6 +458,8 @@ export class EditingSelection {
     const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
       && element !== document.documentElement && root.contains(element))
     const layoutChildren = (element: Element) => Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
+      // Closed disclosures can retain measurable boxes for hidden body content.
+      if(element.matches("details:not([open])") && node !== element.querySelector(":scope > summary")) return []
       if(node instanceof Element && (!isOutOfFlow(node) || selectionRoot?.contains(node)) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
       if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
         const range = document.createRange()
@@ -482,6 +484,24 @@ export class EditingSelection {
         : !(node instanceof Text) || !node.textContent?.trim())) {
       return {node: root, offset: 0, overrideNative: true}
     }
+    let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
+    const insideDisclosure = disclosure?.open && root.contains(disclosure)
+      && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
+      && y >= disclosure.getBoundingClientRect().top && y <= disclosure.getBoundingClientRect().bottom ? disclosure : null
+    let disclosureGap: ReturnType<typeof gap> | null = null
+    while(disclosure && root.contains(disclosure)) {
+      const rect = disclosure.getBoundingClientRect()
+      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+        disclosureGap = gap(disclosure, y < rect.top ? "before" : "after")
+      }
+      else if(!disclosureGap && !disclosure.open) {
+        const boxes = layoutChildren(disclosure)
+        if(boxes.length && y < boxes[0].rect.top) disclosureGap = gap(disclosure, "before")
+        else if(boxes.length && y > boxes.at(-1)!.rect.bottom) disclosureGap = gap(disclosure, "after")
+      }
+      disclosure = disclosure.parentElement?.closest("details") ?? null
+    }
+    if(disclosureGap) return disclosureGap
     const captioned = pointerElement?.closest("figure, table:has(> caption)") ?? caretElement?.closest("figure, table:has(> caption)")
     if(captioned && root.contains(captioned) && !isOutOfFlow(captioned)) {
       const rect = captioned.getBoundingClientRect()
@@ -544,24 +564,6 @@ export class EditingSelection {
         return point(node, y > rect.bottom || y >= rect.top && x > rect.left + rect.width / 2 ? node.length : 0)
       }
     }
-    let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
-    const insideDisclosure = disclosure?.open && root.contains(disclosure)
-      && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
-      && y >= disclosure.getBoundingClientRect().top && y <= disclosure.getBoundingClientRect().bottom ? disclosure : null
-    let disclosureGap: ReturnType<typeof gap> | null = null
-    while(disclosure && root.contains(disclosure)) {
-      const rect = disclosure.getBoundingClientRect()
-      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
-        disclosureGap = gap(disclosure, y < rect.top ? "before" : "after")
-      }
-      else if(!disclosureGap && !disclosure.open) {
-        const boxes = layoutChildren(disclosure)
-        if(boxes.length && y < boxes[0].rect.top) disclosureGap = gap(disclosure, "before")
-        else if(boxes.length && y > boxes.at(-1)!.rect.bottom) disclosureGap = gap(disclosure, "after")
-      }
-      disclosure = disclosure.parentElement?.closest("details") ?? null
-    }
-    if(disclosureGap) return disclosureGap
     if(insideDisclosure) {
       // Chromium can report BODY even for a click inside an open DETAILS.
       // Recover from live child geometry rather than treating that parent

@@ -4278,6 +4278,33 @@ describe("selection invariants", () => {
     expect($.anchor).toBe(details.children[1])
   })
 
+  it.each(['<video controls></video>', '<figure><video controls></video></figure>', '<test-widget></test-widget>'])("clicks below a closed summary without revealing hidden content: %s", content => {
+    document.body.innerHTML = `<section><p>Before</p><!--keep--><details><summary>Summary</summary>${content}</details></section>`
+    const section = document.querySelector("section")!
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    const hidden = details.lastElementChild!
+    const authored = editor.toHTML(true)
+    vi.spyOn(details, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 200, 60))
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 110, 180, 20))
+    vi.spyOn(hidden, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 130, 180, 200))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: hidden, offset: 0} as unknown as CaretPosition)
+    expect(pointer(details, "pointerdown", 80, 145).defaultPrevented).toBe(true)
+    // A native focus action must not replace the corrected outer gap.
+    $.move(summary.firstChild!, 0)
+    pointer(details, "pointerup", 80, 145)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect($.anchor).toBe(section)
+    expect($.anchorOffset).toBe(3)
+    expect($.detailsGap).toEqual({element: details, placement: "after"})
+    expect(details.open).toBe(false)
+    expect($.selectedElement).toBeUndefined()
+    expect(details).toHaveClass("◆gap-after-selected")
+    expect(editor.toHTML(true)).toBe(authored)
+    feature.disable()
+    expect(details).not.toHaveClass("◆gap-after-selected")
+  })
+
   it("keeps the corrected empty paragraph position when clicking the details indentation", () => {
     document.body.innerHTML = '<details open><summary>Summary</summary><p></p></details>'
     const details = document.querySelector("details")!
