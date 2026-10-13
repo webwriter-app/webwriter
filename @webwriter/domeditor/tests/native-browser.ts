@@ -4573,7 +4573,7 @@ await check("iframe reactivation restores hit testing without changing the docum
   document.body.append(frame)
   try {
     let app: DomEditor | null = null
-    for(let attempt = 0; attempt < 200; attempt++) {
+    for(let attempt = 0; attempt < 600; attempt++) {
       app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
       if((app as any)?.editorWindow) break
       await new Promise(resolve => setTimeout(resolve, 25))
@@ -4612,6 +4612,12 @@ await check("iframe reactivation restores hit testing without changing the docum
     await Promise.resolve()
     assert(view.getComputedStyle(iframe).pointerEvents === "none", "inactive iframe kept its pointer target")
     assert(root.elementFromPoint(x, y) !== iframe, "inactive iframe remained in native hit testing")
+    await new Promise<void>(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(() => resolve())))
+    assert(!doc.hasFocus(), "test unexpectedly restored window focus")
+    assert(view.getComputedStyle(iframe).pointerEvents !== "none", "DevTools focus left the iframe disabled after the cursor refresh")
+    assert(root.elementFromPoint(x, y) === iframe, "cursor refresh did not restore native iframe hit testing while inactive")
+    view.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
     Reflect.deleteProperty(doc, "hasFocus")
     view.dispatchEvent(new Event("focus"))
     assert(view.getComputedStyle(iframe).pointerEvents !== "none", "reactivated iframe remained disabled")

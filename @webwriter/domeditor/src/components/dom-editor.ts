@@ -1769,6 +1769,7 @@ export class DomEditor extends LitElement {
   }
 
   private initializeEditorFrame(iframe: HTMLIFrameElement) {
+    this.handleHostWindowFocus()
     for(const pending of this.frameRequests.values()) {
       clearTimeout(pending.timer)
       pending.reject(new Error("The editor iframe was reloaded"))
@@ -2310,18 +2311,39 @@ export class DomEditor extends LitElement {
     this.saveEditorSelection()
   }
 
+  private restoreFrameHitTesting?: () => void
+
   private handleHostWindowBlur = () => {
     // Entering a child frame also blurs the host Window. Check the completed
     // focus change before treating it as a switch to another app/window.
     queueMicrotask(() => {
       if(!this.isConnected || this.ownerDocument.hasFocus() || matchMedia("(pointer: coarse)").matches) return
-      // Retire Chrome's iframe hit-test target while inactive, so returning
-      // directly to the frame refreshes native cursors without a ribbon detour.
-      this.editorIframe()?.classList.add("window-inactive")
+      this.handleHostWindowFocus()
+      const frame = this.editorIframe()
+      if(!frame) return
+      // Retire Chrome's iframe hit-test target for one paint to refresh native
+      // cursors, then restore it even while DevTools still owns focus. Leaving
+      // it disabled until focus returns prevents the element picker entering it.
+      frame.classList.add("window-inactive")
+      let animation: number
+      let timer: ReturnType<typeof setTimeout>
+      const restore = () => {
+        cancelAnimationFrame(animation)
+        clearTimeout(timer)
+        frame.classList.remove("window-inactive")
+        this.restoreFrameHitTesting = undefined
+      }
+      this.restoreFrameHitTesting = restore
+      animation = requestAnimationFrame(() => {
+        animation = requestAnimationFrame(restore)
+      })
+      // Animation frames can be suspended in background windows.
+      timer = setTimeout(restore, 100)
     })
   }
 
   private handleHostWindowFocus = () => {
+    this.restoreFrameHitTesting?.()
     this.editorIframe()?.classList.remove("window-inactive")
   }
 
@@ -6813,7 +6835,7 @@ export class DomEditor extends LitElement {
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     const iframe = this.editorIframe()
-    iframe?.classList.remove("window-inactive")
+    this.handleHostWindowFocus()
     iframe?.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe?.removeEventListener("blur", this.handleEditorFrameBlur)
     this.editorDocument = null

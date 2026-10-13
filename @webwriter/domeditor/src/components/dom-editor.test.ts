@@ -509,6 +509,52 @@ describe("DomEditor document loading", () => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("restores iframe hit testing after one paint while DevTools retains focus", async () => {
+    const {iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    const callbacks: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => callbacks.push(callback))
+    const cancel = vi.spyOn(window, "cancelAnimationFrame")
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    callbacks.shift()!(0)
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    callbacks.shift()!(16)
+    expect(document.hasFocus()).toBe(false)
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it("restores iframe hit testing if background animation frames are suspended", async () => {
+    const {iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1)
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    await new Promise(resolve => setTimeout(resolve, 120))
+    expect(document.hasFocus()).toBe(false)
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+  })
+
+  it("cancels the pending cursor refresh when focus returns or the editor disconnects", async () => {
+    const {editor, iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(42)
+    const cancel = vi.spyOn(window, "cancelAnimationFrame")
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    window.dispatchEvent(new Event("focus"))
+    expect(cancel).toHaveBeenCalledWith(42)
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    editor.remove()
+    expect(cancel).toHaveBeenCalledTimes(2)
+    expect(iframe.classList.contains("window-inactive")).toBe(false)
+  })
+
   it.each(["host", "frame", "bridge"])("refreshes iframe hit testing on %s window reactivation without changing its selection", async source => {
     const {editor, iframe} = await mountEditor()
     const doc = iframe.contentDocument!
