@@ -766,6 +766,27 @@ export class DOMEditor {
 
   private handleLayoutResize = () => this.postSelectionPath()
 
+  // Retain sources for undo, clipboard copies and previews until teardown.
+  private readonly mediaBlobs = new Map<string, Blob>()
+
+  createMediaURL(blob: Blob) {
+    const url = URL.createObjectURL(blob)
+    this.mediaBlobs.set(url, blob)
+    return url
+  }
+
+  mediaSourceSize(source: string) {
+    const blob = this.mediaBlobs.get(source)
+    if(blob) return blob.size
+    if(source.startsWith("data:")) {
+      const comma = source.indexOf(",")
+      if(comma < 0) return
+      const data = source.slice(comma + 1)
+      if(source.slice(0, comma).endsWith(";base64")) return Math.floor(data.length * 3 / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0)
+      try { return new TextEncoder().encode(decodeURIComponent(data)).length } catch { return }
+    }
+  }
+
   destroy() {
     if(this.#destroyed) return
     this.#destroyed = true
@@ -780,6 +801,8 @@ export class DOMEditor {
     }
     for(const owner of Array.from(this.#editingLocks)) attempt(() => this.unlockEditing(owner))
     Object.values(this.features).forEach(feature => attempt(() => feature.disable()))
+    this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
+    this.mediaBlobs.clear()
     document.removeEventListener("input", this.#handleInput)
     document.removeEventListener("selectionchange", this.handleSelectionChange)
     document.removeEventListener("copy", this.#onCopy)
@@ -1313,12 +1336,40 @@ export class DOMEditor {
   async serializeHTML(offline=false, data: "defaults" | "current" = "defaults") {
     const root = this.cleanDocumentClone(data)
     this.features.dependency.appendSerializedAssets(root)
+    await this.inlineBlobSources(root)
     if(offline) {
       await this.bundleOfflinePackageModules(root)
       await this.inlineExternalResources(root)
     }
     const serialize = prepareWidgetGroupingsForSerialization(root)
     return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
+  }
+
+  /** Embed transient media in a detached save/export copy. */
+  async inlineBlobSources(root: Document | DocumentFragment | Element) {
+    const elements = root.nodeType === Node.ELEMENT_NODE
+      ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
+      : Array.from(root.querySelectorAll("*"))
+    const sources = new Map<string, Promise<string>>()
+    for(const element of elements) {
+      if(element instanceof HTMLTemplateElement) await this.inlineBlobSources(element.content)
+      for(const attribute of Array.from(element.attributes)) {
+        if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
+        const urls = attribute.value.match(/blob:[^\s,"'<>\)]+/g)
+        if(!urls) continue
+        let value = attribute.value
+        for(const url of urls) {
+          let source = sources.get(url)
+          if(!source) {
+            const blob = this.mediaBlobs.get(url)
+            source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
+            sources.set(url, source)
+          }
+          value = value.replaceAll(url, await source)
+        }
+        element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
+      }
+    }
   }
 
   private async bundleOfflinePackageModules(root: Document) {

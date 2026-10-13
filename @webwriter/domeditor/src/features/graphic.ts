@@ -550,7 +550,6 @@ export class GraphicFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
 
   protected handlesCapturedElementInteractions = true
-  #imageReaders = new Set<FileReader>()
   #cancelImport: (() => void) | null = null
   #selectedShapes = new Set<SVGGraphicsElement>()
   #primaryShape: SVGGraphicsElement | null = null
@@ -580,8 +579,6 @@ export class GraphicFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.#cancelImport?.()
-    this.#imageReaders.forEach(reader => { if(reader.readyState === 1) reader.abort() })
-    this.#imageReaders.clear()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
     document.removeEventListener("scroll", this.#scheduleRefresh, true)
@@ -664,10 +661,12 @@ export class GraphicFeature extends EditorFeature {
         input.click()
       })
     },
-    serializeGraphic: (_: {type: "serializeGraphic"}) => {
+    serializeGraphic: async (_: {type: "serializeGraphic"}) => {
       const graphic = this.#activeGraphic()
       if(!graphic?.isConnected) return null
-      return new XMLSerializer().serializeToString(clearEditorMarkerClasses(graphic.cloneNode(true)))
+      const clone = clearEditorMarkerClasses(graphic.cloneNode(true)) as Element
+      await this.editor.inlineBlobSources(clone)
+      return new XMLSerializer().serializeToString(clone)
     },
     insertGraphic: ({shape}: {type: "insertGraphic", shape?: GraphicShapeType}) => {
       if(shape !== undefined && !isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
@@ -879,15 +878,7 @@ export class GraphicFeature extends EditorFeature {
       this.editor.postSelectionPath()
       this.editor.doc.stopCapturing()
     }
-    if(files.length) files.forEach((file, index) => {
-      const reader = new FileReader()
-      this.#imageReaders.add(reader)
-      reader.addEventListener("load", () => {
-        if(this.#imageReaders.delete(reader) && typeof reader.result === "string") commit(reader.result, index)
-      }, {once: true})
-      reader.addEventListener("error", () => this.#imageReaders.delete(reader), {once: true})
-      reader.readAsDataURL(file)
-    })
+    if(files.length) files.forEach((file, index) => commit(this.editor.createMediaURL(file), index))
     else if(safeSource) commit(safeSource, 0)
   }
 

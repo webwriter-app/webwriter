@@ -110,6 +110,12 @@ export class DomEditorToolbox extends EditingControls {
     .media-source-field button {display: flex; align-items: center; justify-content: center; flex: none; width: 1.4rem; height: 100%; padding: 0; border: 0; border-radius: 0 0 4px 0; background: transparent; color: inherit; font: inherit; cursor: pointer;}
     .media-source-field button:hover {background: #edf3f9;}
     .media-source-field button:focus-visible {outline: 2px solid #b9d7f5; outline-offset: -2px;}
+    .media-source-label {position: relative; display: flex; align-items: center; gap: .3rem;}
+    .large-source-warning { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border: 0; border-radius: 50%; padding: 0; background: #f5c84c; color: #493900; font: 700 .7rem/1 system-ui, sans-serif; cursor: help;}
+    .large-source-warning:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px;}
+    .large-source-warning-bubble {position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(100% + .45rem); display: none; padding: .45rem .6rem; border: 1px solid #d6b44a; border-radius: .35rem; background: #fff3bf; color: #493900; box-shadow: 0 3px 10px #0002; font: .72rem/1.35 system-ui, sans-serif; text-align: left;}
+    .large-source-warning-bubble::after {position: absolute; top: 100%; left: 2.7rem; width: .5rem; height: .5rem; border-right: 1px solid #d6b44a; border-bottom: 1px solid #d6b44a; background: #fff3bf; content: ""; transform: translateY(-50%) rotate(45deg);}
+    .large-source-warning:hover .large-source-warning-bubble, .large-source-warning:focus .large-source-warning-bubble, .large-source-warning:focus-visible .large-source-warning-bubble {display: block;}
 
 
 
@@ -1131,7 +1137,11 @@ export class DomEditorToolbox extends EditingControls {
       detail: {label}, bubbles: true, composed: true,
     }))
     return html`<div class="media-source">
-      <label for="media-source-url">Source</label>
+      <div class="media-source-label"><label for="media-source-url">Source</label>
+        ${media.sourceSize !== undefined && media.sourceSize > 50 * 1024 * 1024 ? html`<button type="button" class="large-source-warning" aria-label="Large source file warning" aria-describedby="large-source-warning-message">!
+          <span id="large-source-warning-message" class="large-source-warning-bubble" role="tooltip">Large source files can lead to performance issues for readers</span>
+        </button>` : nothing}
+      </div>
       <div class="media-source-controls">
         <div class="specialized-choice-group media-source-buttons" style=${`--choice-columns: ${1 + mediaCaptureOptions(type).length}`} role="group" aria-label="Source input">
           <button type="button" aria-label="Select file" title="Open file" @click=${() => action("selected-media-file")}>

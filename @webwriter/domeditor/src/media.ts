@@ -70,6 +70,7 @@ export type ImageMapSelectionState = {
 export type MediaSelectionState = {
   type: MediaType
   attributes: Record<string, string>
+  sourceSize?: number
   sourceLabel?: string
   sourceKind?: "file" | "capture" | "recording"
   /** Direct child resources, present only for AUDIO and VIDEO. */

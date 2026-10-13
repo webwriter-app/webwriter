@@ -953,30 +953,45 @@ describe("media editing", () => {
     expect(audio).toHaveClass("◆element-selected", "◆element-capture-selected")
   })
 
-  it("reads uploaded files as data URLs", async () => {
+  it("keeps uploaded files as object URLs and embeds them only on saving", async () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "img"})
     const image = document.querySelector("img")!
     const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
     Object.defineProperty(picker, "files", {configurable: true, value: [new File(["image"], "photo.png", {type: "image/png"})]})
     picker.dispatchEvent(new Event("change"))
     await vi.waitFor(() => {
-      expect(image.getAttribute("src")).toMatch(/^data:image\/png;base64,/)
+      expect(image.getAttribute("src")).toMatch(/^blob:/)
     }, {timeout: 5_000})
+    const source = image.getAttribute("src")!
+    expect(editor.toHTML(true)).toContain(source)
+    expect(editor.features.media.getState()).toMatchObject({sourceSize: 5, sourceLabel: "photo.png"})
+    expect(await editor.serializeHTML()).toContain(`data:image/png;base64,${btoa("image")}`)
+    expect(image.getAttribute("src")).toBe(source)
+  })
+
+  it("retains object URLs while disabled and revokes them at destruction", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL")
+    const source = editor.createMediaURL(new Blob(["audio"], {type: "audio/mpeg"}))
+    document.body.innerHTML = `<audio src="${source}"></audio><template><object data="${source}"></object></template><svg><image href="${source}"></image></svg><picture><source srcset="${source} 2x"><img src="${source}" alt="${source}"></picture>`
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    const data = `data:audio/mpeg;base64,${btoa("audio")}`
+    expect(saved.querySelector("audio")!.getAttribute("src")).toBe(data)
+    expect(saved.querySelector("template")!.content.querySelector("object")!.getAttribute("data")).toBe(data)
+    expect(saved.querySelector("svg image")!.getAttribute("href")).toBe(data)
+    expect(saved.querySelector("source")!.getAttribute("srcset")).toBe(`${data} 2x`)
+    expect(saved.querySelector("img")!.getAttribute("alt")).toBe(source)
+    editor.features.media.disable()
+    expect(revoke).not.toHaveBeenCalledWith(source)
+    editor.destroy()
+    expect(revoke).toHaveBeenCalledWith(source)
   })
 
   it.each(["populated", "moved into a widget", "feature disabled", "editor destroyed"])(
-    "ignores a delayed file read after its target is %s", state => {
-      let reader: FileReader | undefined
-      vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) {
-        reader = this
-      })
+    "ignores a file selection after its target is %s", state => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media: "img"})
       const image = document.querySelector("img")!
       const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
       Object.defineProperty(picker, "files", {configurable: true, value: [new File(["image"], "photo.png", {type: "image/png"})]})
-      picker.dispatchEvent(new Event("change"))
-      expect(reader).toBeDefined()
-
       if(state === "populated") image.setAttribute("src", "remote.png")
       else if(state === "moved into a widget") {
         const widget = document.createElement("media-widget")
@@ -985,10 +1000,7 @@ describe("media editing", () => {
       }
       else if(state === "feature disabled") editor.features.media.disable()
       else editor.destroy()
-
-      Object.defineProperty(reader!, "result", {configurable: true, value: "data:image/png;base64,bG9jYWw="})
-      reader!.dispatchEvent(new Event("load"))
-
+      picker.dispatchEvent(new Event("change"))
       expect(image.getAttribute("src")).toBe(state === "populated" ? "remote.png" : null)
     },
   )
@@ -1574,24 +1586,20 @@ describe("selected media source", () => {
 })
 
 
-it.each(["unchanged", "remote change", "disconnected", "disabled"])("guards replacement file reads when %s", async condition => {
+it.each(["unchanged", "remote change", "disconnected", "disabled"])("guards replacement file selections when %s", async condition => {
   document.body.innerHTML = '<audio src="existing.mp3"></audio>'
   const audio = document.querySelector("audio")!
   $.selectElement(audio)
   editor.features.selection.processSelection()
-  let reader: FileReader | undefined
-  const read = vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) { reader = this })
   editor.features.media.actions.selectMediaFile({type: "selectMediaFile"})
   const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
   Object.defineProperty(picker, "files", {value: [new File(["audio"], "song.mp3", {type: "audio/mpeg"})]})
-  picker.dispatchEvent(new Event("change"))
   if(condition === "remote change") audio.setAttribute("src", "remote.mp3")
   if(condition === "disconnected") audio.remove()
   if(condition === "disabled") editor.features.media.disable()
-  Object.defineProperty(reader!, "result", {value: "data:audio/mpeg;base64,YQ=="})
-  reader!.dispatchEvent(new Event("load"))
-  read.mockRestore()
-  expect(audio.getAttribute("src")).toBe(condition === "unchanged" ? "data:audio/mpeg;base64,YQ==" : condition === "remote change" ? "remote.mp3" : "existing.mp3")
+  picker.dispatchEvent(new Event("change"))
+  if(condition === "unchanged") expect(audio.getAttribute("src")).toMatch(/^blob:/)
+  else expect(audio.getAttribute("src")).toBe(condition === "remote change" ? "remote.mp3" : "existing.mp3")
   expect(picker.isConnected).toBe(false)
   if(condition === "unchanged") {
     expect(editor.features.media.getState()).toMatchObject({sourceLabel: "song.mp3", sourceKind: "file"})

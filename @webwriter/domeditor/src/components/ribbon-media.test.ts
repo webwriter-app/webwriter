@@ -7,6 +7,32 @@ import {DomEditorToolbox} from "./toolbox"
 beforeEach(() => document.body.replaceChildren())
 
 describe("media ribbon drawer", () => {
+  it("warns about source files larger than 50 MiB with a focusable tooltip", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}, sourceSize: 50 * 1024 * 1024 + 1}
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const warning = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".large-source-warning")!
+    expect(warning).not.toBeNull()
+    expect(warning.getAttribute("aria-describedby")).toBe("large-source-warning-message")
+    expect(warning.querySelector('[role="tooltip"]')?.textContent?.trim())
+      .toBe("Large source files can lead to performance issues for readers")
+    expect(getComputedStyle(warning.querySelector<HTMLElement>(".large-source-warning-bubble")!).position).toBe("absolute")
+  })
+
+  it.each([undefined, 50 * 1024 * 1024])("does not warn for source size %s", async sourceSize => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}, ...(sourceSize === undefined ? {} : {sourceSize})}
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".large-source-warning")).toBeNull()
+  })
+
   it.each(["picture", "img", "video", "audio"] as const)("offers cropping only for visual media: %s", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

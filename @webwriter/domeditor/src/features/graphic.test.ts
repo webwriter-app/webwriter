@@ -65,7 +65,7 @@ describe("graphic editing", () => {
     expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
     expect(graphic.children[0]).toBe(sibling)
     await mutationsDelivered()
-    expect(editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
     editor.features.history.actions.undo({type: "undo"})
     expect(graphic.children).toHaveLength(1)
     expect(graphic.children[0]).toBe(sibling)
@@ -133,7 +133,9 @@ describe("graphic editing", () => {
     const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
     Object.defineProperty(picker, "files", {value: [new File(["image"], "photo.png", {type: "image/png"})]})
     picker.dispatchEvent(new Event("change"))
-    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^data:image\/png;base64,/))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^blob:/))
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).toContain(`data:image/png;base64,${btoa("image")}`)
+    expect(image.getAttribute("href")).toMatch(/^blob:/)
   })
 
   it("drops image URLs at SVG coordinates without changing unfamiliar siblings, with undo and redo", async () => {
@@ -165,30 +167,26 @@ describe("graphic editing", () => {
     expect(graphic.querySelector("image")).toHaveAttribute("href", "https://example.com/photo.png")
   })
 
-  it.each(["filled", "removed", "disabled", "moved into widget"])("ignores a delayed image drop after the target is %s", state => {
-    let reader: FileReader | undefined
-    const readFile = vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) { reader = this })
+  it.each(["removed", "disabled", "locked", "moved into widget"])("ignores an image file drop when the target is %s", state => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
     const graphic = document.querySelector("svg")!
     const image = graphic.querySelector("image")!
     const data = new DataTransfer()
     data.items.add(new File(["image"], "photo.png", {type: "image/png"}))
-    image.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
-    expect(reader).toBeDefined()
-    if(state === "filled") image.setAttribute("href", "remote.png")
-    else if(state === "removed") image.remove()
+    if(state === "removed") graphic.remove()
     else if(state === "disabled") editor.features.graphic.disable()
+    else if(state === "locked") vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
     else {
       const widget = document.createElement("image-widget")
       graphic.replaceWith(widget)
       widget.append(graphic)
     }
-    Object.defineProperty(reader!, "result", {value: "data:image/png;base64,bG9jYWw="})
-    reader!.dispatchEvent(new Event("load"))
-    expect(image.getAttribute("href")).toBe(state === "filled" ? "remote.png" : null)
-    expect(graphic.querySelectorAll("image")).toHaveLength(state === "removed" ? 0 : 1)
-    readFile.mockRestore()
+    const createURL = vi.spyOn(editor, "createMediaURL")
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    expect(createURL).not.toHaveBeenCalled()
+    expect(image.getAttribute("href")).toBeNull()
+    expect(graphic.querySelectorAll("image")).toHaveLength(1)
   })
 
   it("fills an empty image on file drop and removes source controls after external changes", async () => {
@@ -200,7 +198,7 @@ describe("graphic editing", () => {
     const drop = imageDragEvent("drop", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
     editor.features.media.placeholder.element.dispatchEvent(drop)
     expect(drop.defaultPrevented).toBe(true)
-    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^data:image\/png;base64,/))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^blob:/))
     expect(document.querySelectorAll("svg image")).toHaveLength(1)
     image.removeAttribute("href")
     await mutationsDelivered()
@@ -223,7 +221,7 @@ describe("graphic editing", () => {
     input.dispatchEvent(new Event("change"))
     await pending
     expect(old.isConnected).toBe(false)
-    const source = editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})!
+    const source = (await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"}))!
     expect(source).toContain('viewBox="0 0 42 24"')
     expect(source).toContain("<!--keep-->")
     expect(source).toContain("linearGradient")
@@ -241,7 +239,7 @@ describe("graphic editing", () => {
     input.dispatchEvent(new Event("change"))
     await pending
 
-    const source = editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})!
+    const source = (await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"}))!
     const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
     const root = parsed.documentElement
     expect(root).toHaveAttribute("viewBox", "0 0 42 24")

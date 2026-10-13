@@ -53,6 +53,16 @@ describe("isolated frame documents", () => {
     expect(image.hasAttribute(originalURLAttribute("src"))).toBe(false)
   })
 
+  it("retains object URLs in preview media and permits them in its policy", () => {
+    const url = "blob:https://editor.example/media-id"
+    const source = parse(`<html><head></head><body><img src="${url}"><audio src="${url}"></audio><video><source src="${url}"></video></body></html>`)
+    const root = parse(previewFrameHTML(source, previewOptions()))
+    for(const element of root.querySelectorAll("img, audio, source")) expect(element.getAttribute("src")).toBe(url)
+    const policy = root.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content
+    expect(policy).toContain("img-src * data: blob:")
+    expect(policy).toContain("media-src * data: blob:")
+  })
+
   it("cleans a preview copy and installs only the trusted runtime with a separate script nonce", () => {
     const source = parse('<html><head><script>authored()</script><style>.authored {color: red}</style></head><body><p class="authored ◆selected" contenteditable="">text</p><demo-widget class="◆widget-editable" contenteditable=""></demo-widget><aside class="◆editor-only">UI</aside><template><i data-webwriter-editor-only>UI</i><b class="◆caret authored">nested</b></template></body></html>')
     const root = parse(previewFrameHTML(source, previewOptions()))
