@@ -1463,6 +1463,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("top")
     caret.style.removeProperty("height")
     caret.style.removeProperty("font-size")
+    caret.style.removeProperty("--gap-caret-block-offset")
     caret.style.removeProperty("--math-caret-top")
     caret.style.removeProperty("--math-caret-height")
     for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
@@ -1994,7 +1995,11 @@ export class SelectionFeature extends EditorFeature {
           return
         }
         const gapCaret = this.#showSelectionCaret("gap")
-        if(element) this.#markSelection(element, `◆gap-${placement}-selected`)
+        this.#markSelection(element, `◆gap-${placement}-selected`)
+        // Include the trailing margin in the insertion position. The gap
+        // marker previews the theme's spacing even on its current last block.
+        gapCaret.style.setProperty("--gap-caret-block-offset", placement === "after"
+          ? `${parseFloat(getComputedStyle(element).marginBottom) || 0}px` : "0px")
         gapCaret.classList.add(`◆gap-${placement}-selected`)
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
         document.body.classList.add("◆gap-caret-visible")

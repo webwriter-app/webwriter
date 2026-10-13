@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "gap carets track their authored boundary",
   "insertion and saved-reader controls align inside symmetric scrollbar gutters",
   "SVG shape outlines and handles align inside symmetric scrollbar gutters",
   "editing affordances align with media inside symmetric scrollbar gutters",

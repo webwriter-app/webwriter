@@ -953,6 +953,45 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 
 const editor = new DOMEditor()
 
+await check("gap carets track their authored boundary", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:400px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {InputEvent: typeof InputEvent}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "gap fixture did not initialize")
+    const doc = frame.contentDocument!, selection = doc.getSelection()!, feature = view.editor!.features.selection
+    for(const html of ["<p></p>", "<p>Populated</p>", "<p>Before</p><p>After</p>",
+      '<p style="margin-bottom:0px"></p>', '<p style="margin-bottom:47px"></p>',
+      '<p style="--ww-block-spacing:3em;font-size:24px"></p>', "<h2>Heading</h2>", "<hr>",
+      '<!--keep--><p></p>\n<!--keep too-->']) {
+      doc.body.innerHTML = html
+      for(const offset of html.includes("<h2") || html === "<hr>" ? [1] : Array.from({length: doc.body.childNodes.length + 1}, (_, index) => index)) {
+        selection.setPosition(doc.body, offset)
+        feature.processSelection(undefined, {scrollIntoView: false})
+        await layoutFrame()
+        const anchor = doc.querySelector<HTMLElement>(".◆gap-before-selected, .◆gap-after-selected")!
+        const box = anchor.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
+        const expected = anchor.classList.contains("◆gap-before-selected") ? box.top
+          : box.bottom + (parseFloat(view.getComputedStyle(feature.gapCaret!).marginTop) || 0)
+        assert(Math.abs(caret.top - expected) < 1 && Math.abs(caret.left - box.left) < 1,
+          `gap caret is detached from its insertion boundary: offset=${offset}, caret=${caret.left},${caret.top}, anchor=${box.left},${expected}`)
+        doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Inserted"}))
+        const inserted = Array.from(doc.body.children).find(element => element.textContent === "Inserted")!
+        assert(inserted && Math.abs(inserted.getBoundingClientRect().top - caret.top) < 1,
+          `insertion misses the gap caret: html=${html}, offset=${offset}, caret=${caret.top}, inserted=${inserted?.getBoundingClientRect().top}`)
+        feature.processSelection(undefined, {scrollIntoView: false})
+        assert(!doc.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap markers survived typing")
+        assert(!view.editor!.toHTML(true).includes("◆"), "gap presentation leaked into serialized HTML")
+        doc.body.innerHTML = html
+      }
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("crop preview reveals the source and restores content outside the frame", async () => {
   // Let the separate lifecycle fixture finish taking its initial focus before
   // starting a gesture that correctly cancels on external selection changes.

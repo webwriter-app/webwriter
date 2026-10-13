@@ -1483,6 +1483,28 @@ describe("processSelection()", () => {
     expect(feature.gapCaret!.getAttribute("part")).toContain("gap-caret")
     expect(feature.gapCaret!.hasAttribute("visibility")).toBe(false)
   })
+  it("includes live trailing margins in gap positions and clears their geometry", () => {
+    const paragraph = el("p")
+    paragraph.style.marginBottom = "36px"
+    $.selectGap(paragraph)
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("36px")
+    expect(editor.toHTML(true)).not.toContain("◆")
+
+    paragraph.style.marginBottom = "72px"
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("72px")
+
+    $.selectGap(paragraph, "before")
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("0px")
+    expect(paragraph).not.toHaveClass("◆gap-after-selected")
+
+    $.move(paragraph)
+    feature.processSelection()
+    expect(feature.selectionCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("")
+    expect(paragraph).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+  })
   it("skips positioned siblings when presenting a gap", () => {
     document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute">overlay</interactive-widget><hr style="position: fixed"><p>after</p>'
     const before = document.querySelector("p")!

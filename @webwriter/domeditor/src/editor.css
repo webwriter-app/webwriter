@@ -60,7 +60,7 @@ html:has(> body.◆key-mod-down) *::after {
   cursor: pointer !important;
 }
 
-body > :last-child {
+body > :last-child:not(:where(.◆gap-after-selected)) {
   margin-block-end: 0;
 }
 
@@ -1159,6 +1159,14 @@ body:has(.◆transform-target):has(:is(.◆drop-caret-before, .◆drop-caret-aft
   anchor-name: --gap-anchor;
 }
 
+/* Preview the base theme's inter-block spacing before a gap becomes a real
+ * sibling. Keep its layer and specificity so authored margins still win. */
+@layer webwriter-theme {
+  :is(body, body > main, body > article, body > section) > :where(.◆gap-after-selected):last-child {
+    margin-block-end: var(--ww-block-spacing);
+  }
+}
+
 .◆transform-containing-block {
   anchor-name: --transform-containing-block;
   outline: 1px dashed var(--sl-color-primary-300);
@@ -1494,6 +1502,12 @@ body::part(gap-caret-gap-before-selected), body::part(gap-caret-drop-caret-befor
 body::part(gap-caret-gap-after-selected), body::part(gap-caret-drop-caret-after) {
     position-area: bottom center;
     justify-self: start;
+}
+body::part(gap-caret-gap-after-selected) {
+    margin-top: var(--gap-caret-block-offset, 0px);
+}
+body::part(gap-caret-drop-caret-before), body::part(gap-caret-drop-caret-after) {
+    margin-top: 0;
 }
 body::part(gap-caret)::after {
     content: "";
