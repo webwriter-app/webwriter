@@ -52,6 +52,130 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it.each(["captured", "selected"])("pastes plain text into a %s graphic without replacing content, with undo and redo", async selection => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const sibling = graphic.lastElementChild!
+    if(selection === "selected") editor.features.selection.selectElement(graphic)
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    data.setData("text/plain", "Hello <world>\r\nSecond line")
+    data.setData("text/html", "<p>Hello <b>world</b></p><p>Second line</p>")
+    const paste = new ClipboardEvent("paste", {bubbles: true, cancelable: true})
+    Object.defineProperty(paste, "clipboardData", {value: data})
+    document.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    expect(graphic.querySelectorAll("text tspan")).toHaveLength(2)
+    expect(graphic.querySelector("text tspan")).toHaveTextContent("Hello <world>")
+    expect(graphic.querySelector("text tspan:last-child")).toHaveTextContent("Second line")
+    expect(graphic.children[0]).toBe(sibling)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(editor.features.graphic.getState()?.shape).toBe("text-box")
+    await mutationsDelivered()
+    expect(editor.doc.body.toString()).toContain("Hello <world>")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.querySelector("text")).toBeNull()
+    expect(graphic.children[0]).toBe(sibling)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("text")).not.toBeNull()
+  })
+
+  it("drops plain text at SVG coordinates and preserves the existing shape", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const rectangle = graphic.firstElementChild!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    const data = new DataTransfer()
+    data.setData("text/plain", "Dropped text")
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
+    rectangle.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    const drop = imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 500, clientY: 350})
+    rectangle.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(graphic.children[0]).toBe(rectangle)
+    const text = graphic.querySelector("text")!
+    expect(text).toHaveTextContent("Dropped text")
+    expect(text).toHaveAttribute("x", "200")
+    expect(text).toHaveAttribute("y", "150")
+    expect(document.body.querySelectorAll("svg")).toHaveLength(1)
+  })
+
+  it.each(["removed", "disabled", "locked", "moved into widget"])("ignores text paste and drop when the graphic is %s", state => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    if(state === "removed") graphic.remove()
+    else if(state === "disabled") {
+      editor.features.graphic.disable()
+      editor.features.manipulation.disable()
+    }
+    else if(state === "locked") editor.lockEditing("text-test")
+    else {
+      const widget = document.createElement("test-widget")
+      graphic.replaceWith(widget)
+      widget.append(graphic)
+    }
+    const data = new DataTransfer()
+    data.setData("text/plain", "No insertion")
+    const paste = new ClipboardEvent("paste", {bubbles: true, cancelable: true})
+    Object.defineProperty(paste, "clipboardData", {value: data})
+    graphic.dispatchEvent(paste)
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    expect(graphic.querySelector("text")).toBeNull()
+  })
+
+  it("routes the toolbar paste command into the graphic using plain text", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+      {types: ["text/html", "text/plain"], getType: async (type: string) => new Blob([type === "text/plain" ? "Clipboard text" : "<b>HTML</b>"])} as ClipboardItem,
+    ])
+    expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
+    expect(graphic.querySelector("text")).toHaveTextContent("Clipboard text")
+  })
+
+  it("does not insert delayed toolbar paste into a replaced graphic", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    let resolve!: (items: ClipboardItem[]) => void
+    vi.spyOn(navigator.clipboard, "read").mockImplementation(() => new Promise(done => { resolve = done }))
+    const pending = editor.features.manipulation.actions.paste({type: "paste"})
+    const replacement = graphic.cloneNode(true) as SVGSVGElement
+    graphic.replaceWith(replacement)
+    editor.features.selection.captureElement(replacement)
+    resolve([{types: ["text/plain"], getType: async () => new Blob(["Late text"])} as ClipboardItem])
+    expect(await pending).toBe(false)
+    expect(replacement.querySelector("text")).toBeNull()
+  })
+
+  it("pastes into an open shape label instead of adding another text box", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    graphic.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+    const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+    const data = new DataTransfer()
+    data.setData("text/plain", "Pasted label")
+    const paste = new ClipboardEvent("paste", {bubbles: true, composed: true, cancelable: true})
+    Object.defineProperty(paste, "clipboardData", {value: data})
+    proxy.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    expect(graphic.querySelectorAll("text")).toHaveLength(1)
+    expect(graphic.querySelector("text")).toHaveTextContent("Pasted label")
+    vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+      {types: ["text/plain"], getType: async () => new Blob(["!"])} as ClipboardItem,
+    ])
+    expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
+    expect(graphic.querySelector("text")).toHaveTextContent("Pasted label!")
+    expect(graphic.querySelectorAll("text")).toHaveLength(1)
+    proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    expect(graphic.querySelector('[class*="◆graphic-text-editing"]')).toBeNull()
+    expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
+  })
+
   it("inserts painted shapes in one undo step while preserving unfamiliar content", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
@@ -228,6 +352,7 @@ describe("graphic editing", () => {
     await mutationsDelivered()
     const data = new DataTransfer()
     data.setData("text/html", '<img src="https://example.com/photo.png">')
+    data.setData("text/plain", "Image fallback text")
     const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
     graphic.dispatchEvent(over)
     expect(over.defaultPrevented).toBe(true)

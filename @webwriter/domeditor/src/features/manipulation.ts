@@ -3535,6 +3535,7 @@ export class ManipulationFeature extends EditorFeature {
    * Missing capabilities return false; supported API failures reject. */
   async paste() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.paste()
+    if(this.editor.features.graphic.textInsertionGraphic) return this.editor.features.graphic.paste()
     if(!navigator.clipboard?.read) return false
     const fragment = await this.#clipboardToFragment()
     this.insertClipboardFragment(fragment)

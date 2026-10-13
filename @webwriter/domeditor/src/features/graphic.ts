@@ -1,7 +1,7 @@
 import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {getDocumentRoot} from "../document-template"
@@ -805,7 +805,7 @@ export class GraphicFeature extends EditorFeature {
     this.#refresh()
   }
 
-  #insertShape(graphic: SVGSVGElement, shape: GraphicShapeType, paint?: GraphicShapePaint, point?: Point) {
+  #insertShape(graphic: SVGSVGElement, shape: GraphicShapeType, paint?: GraphicShapePaint, point?: Point, label = "Text") {
     let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
     for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
       const value = paint?.[name]
@@ -814,7 +814,7 @@ export class GraphicFeature extends EditorFeature {
       }
     }
     graphic.append(element)
-    if(shape === "text-box") element = this.#setLabel(element, "Text")
+    if(shape === "text-box") element = this.#setLabel(element, label)
     if(point) {
       const bounds = shapeBounds(element)
       this.#moveShape(element, point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2)
@@ -823,6 +823,45 @@ export class GraphicFeature extends EditorFeature {
     this.#selectShape(element)
     this.#refresh()
     this.editor.postSelectionPath()
+  }
+
+  get textInsertionGraphic() {
+    const selected = $.selectedElement
+    const graphic = this.#activeGraphic() ?? (selected?.localName === "svg" && selected.namespaceURI === SVG_NAMESPACE ? selected as SVGSVGElement : null)
+    return graphic && this.#canInsertText(graphic) ? graphic : null
+  }
+
+  #canInsertText(graphic: SVGSVGElement) {
+    return this.isEnabled && !this.editor.isEditingLocked && graphic.isConnected
+      && getDocumentRoot().contains(graphic) && !atomicEditingContainer(graphic.parentElement, this.editor.schema)
+  }
+
+  #insertText(graphic: SVGSVGElement, value: string, point?: Point) {
+    if(!value || !this.#canInsertText(graphic)) return false
+    this.#closeLabelEditor(true, false)
+    this.editor.doc.stopCapturing()
+    this.editor.features.selection.captureElement(graphic)
+    this.#insertShape(graphic, "text-box", undefined, point, value)
+    this.editor.doc.stopCapturing()
+    return true
+  }
+
+  /** Routes the toolbar clipboard command to the live graphic or label. */
+  async paste() {
+    const graphic = this.textInsertionGraphic
+    const label = this.#labelEditor
+    if(!graphic || !navigator.clipboard?.read) return false
+    const items = await navigator.clipboard.read()
+    const item = items.find(item => item.types.includes("text/plain"))
+    const value = item ? await (await item.getType("text/plain")).text() : ""
+    if(graphic !== this.textInsertionGraphic || label !== this.#labelEditor || !value) return false
+    if(label) {
+      if(!this.textEditingRange) return false
+      this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {inputType: "insertFromPaste", data: value, cancelable: true}))
+      this.#positionLabelEditor()
+      return true
+    }
+    return this.#insertText(graphic, value)
   }
 
   #dropShape(event: DragEvent) {
@@ -855,12 +894,31 @@ export class GraphicFeature extends EditorFeature {
       if(!this.#imageDropGraphic(event) || !event.dataTransfer) return
       const data = event.dataTransfer
       if(!Array.from(data.items).some(item => item.kind === "file" && (!item.type || /^(image|audio|video)\//.test(item.type)))
-        && !Array.from(data.types).some(type => type === "text/html" || type === "text/uri-list")) return
+        && !Array.from(data.types).some(type => type === "text/plain" || type === "text/html" || type === "text/uri-list")) return
       event.preventDefault()
       event.stopImmediatePropagation()
       data.dropEffect = "copy"
     },
-    drop: event => { if(!this.#dropShape(event)) this.#dropImage(event) },
+    drop: event => {
+      if(this.#dropShape(event)) return
+      this.#dropImage(event)
+      if(event.defaultPrevented) return
+      const graphic = this.#imageDropGraphic(event)
+      const value = event.dataTransfer?.getData("text/plain")
+      if(!graphic || !value) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#insertText(graphic, value, applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY}))
+    },
+    paste: event => {
+      if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || this.textEditingRange) return
+      const graphic = this.textInsertionGraphic
+      const value = event.clipboardData?.getData("text/plain")
+      if(!graphic || !value) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#insertText(graphic, value)
+    },
   }
 
   #imageDropGraphic(event: DragEvent) {
