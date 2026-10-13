@@ -5173,8 +5173,8 @@ describe("DomEditor.execute()", () => {
       type: "setImageMapAreaAttribute",
       path: [1, 0],
       expected: {shape: "rect", coords: "1,2,3,4"},
-      name: "alt",
-      value: "Library",
+      name: "href",
+      value: "library.html",
     })
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()

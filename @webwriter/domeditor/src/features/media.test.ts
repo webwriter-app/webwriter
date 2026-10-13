@@ -72,7 +72,7 @@ describe("media editing", () => {
 
   it("applies a default aspect ratio only to empty media placeholders", () => {
     document.body.innerHTML = '<picture><source srcset="photo.webp"><img srcset="photo.png"></picture><video><source src="movie.mp4"></video><picture></picture><video></video>'
-    editor.features.media.refresh()
+    editor.features.media["refresh"]()
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(editorStyleString)
     const aspectRules = Array.from(sheet.cssRules).filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && !!rule.style.getPropertyValue("aspect-ratio"))
@@ -1953,7 +1953,7 @@ describe("media file drag and drop", () => {
     const file = new File(["poster"], "poster.png", {type: "image/png"})
     const transfer = fileTransfer(file)
     vi.spyOn(editor, "createMediaURL").mockReturnValue("blob:poster-drop")
-    editor.features.media.refresh()
+    editor.features.media["refresh"]()
     $.selectElement(video)
     editor.features.selection.processSelection()
     const placeholder = editor.features.media.placeholder.element
