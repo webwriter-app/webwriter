@@ -105,7 +105,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   :host {
     --control-height: 2rem;
     position: fixed;
-    z-index: 2147483647;
+    z-index: 2147483646;
     display: none;
     box-sizing: border-box;
     place-items: center;

@@ -95,7 +95,7 @@ describe("caption affordance", () => {
     expect(button().getAttribute("part")).toContain("transform-overlay-button")
     expect(button().getAttribute("aria-label")).toBe("Add caption")
     const addIcon = decodeURIComponent(button().style.getPropertyValue("--icon"))
-    expect(addIcon).toContain('<path d="M9 14.286h6M12 11.286v6M6 21h12"/>')
+    expect(addIcon).toContain('<path d="M9 10.143h6M12 7.143v6M6 16.857h12"/>')
     expect(addIcon).not.toContain("<rect")
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()

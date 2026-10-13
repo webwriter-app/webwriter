@@ -501,7 +501,12 @@ describe("media editing", () => {
     expect(placeholder).toHaveAttribute("data-media", "audio")
     expect(getComputedStyle(placeholder).backgroundColor).toBe("rgba(31, 41, 55, 0.5)")
     const selectionZIndex = editorStyleString.match(/body::part\(selection-caret\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
-    expect(Number(getComputedStyle(placeholder).zIndex)).toBeGreaterThan(Number(selectionZIndex))
+    const dragZIndex = editorStyleString.match(/body::part\(node-drag-surface\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
+    const transformZIndex = editorStyleString.match(/body::part\(transform-overlay\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
+    const placeholderZIndex = Number(getComputedStyle(placeholder).zIndex)
+    expect(placeholderZIndex).toBeGreaterThanOrEqual(Number(selectionZIndex))
+    expect(placeholderZIndex).toBeGreaterThan(Number(dragZIndex))
+    expect(placeholderZIndex).toBeLessThan(Number(transformZIndex))
     expect(placeholderController.root.querySelector(".hint")).toBeNull()
     expect(Array.from(placeholderController.root.querySelector(".content")!.children)).toContain(
       placeholderController.root.querySelector(".url-row"),

@@ -380,7 +380,7 @@ body::part(node-drag-surface) {
   position: fixed;
   cursor: grab;
   user-select: none;
-  z-index: 2147483646;
+  z-index: 2147483645;
 }
 
 body::part(float-drop-preview),
@@ -2115,13 +2115,14 @@ body::part(transform-overlay-mover),
 body::part(transform-overlay-caption),
 body::part(transform-overlay-delete) {
   position: absolute;
+  z-index: 2;
   top: -13px;
   width: 20px;
   height: 20px;
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  background: white;
+  background: rgb(255 255 255 / 90%);
   border: 2px solid var(--ww-transform-color);
   border-radius: 50%;
 }
