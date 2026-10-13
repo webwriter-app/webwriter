@@ -740,11 +740,22 @@ export class TableFeature extends EditorFeature {
     const last = selectedIndexes.at(-1)!
     const nextCell = placements.slice(last + 1).find(({cell}) => !selectedSet.has(cell))?.cell
       ?? placements.slice(0, first).reverse().find(({cell}) => !selectedSet.has(cell))?.cell
+    const rows = new Set(selected.map(cell => cell.parentElement).filter(row => row?.matches("tr")))
 
     this.clearCellSelection(false)
     selected.forEach(cell => cell.remove())
+    rows.forEach(row => {
+      if(row && !Array.from(row.children).some(child => child.matches(tableCellSelector))) row.remove()
+    })
 
-    if(nextCell?.isConnected) this.selectCells(nextCell)
+    const hasCells = Array.from(table.querySelectorAll(tableCellSelector)).some(cell => tableForNode(cell) === table)
+    if(!hasCells && table.isConnected) {
+      $.selectGap(table, "before")
+      table.remove()
+      this.editor.features.selection.processSelection()
+      this.editor.postSelectionPath()
+    }
+    else if(nextCell?.isConnected) this.selectCells(nextCell)
     else if(table.isConnected) {
       $.selectElement(table)
       this.editor.features.selection.processSelection()

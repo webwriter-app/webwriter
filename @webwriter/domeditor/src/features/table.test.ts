@@ -462,17 +462,116 @@ describe("table cell selection", () => {
     expect(editor.features.table.selectedCells).toEqual(cells())
   })
 
-  it("selects an emptied table after deleting all of its cells", () => {
-    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+  it.each(["Backspace", "Delete"])("removes the table after deleting its last cell with %s", key => {
+    document.body.innerHTML = "<p>Before</p><table><tbody><tr><td>A</td></tr></tbody></table><p>After</p>"
     const table = document.querySelector("table")!
-    editor.features.table.selectCells(cells()[0])
+    const cell = cells()[0]
+    editor.features.table.selectCells(cell)
 
-    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, cancelable: true}))
+    document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
 
     expect(cells()).toHaveLength(0)
+    expect(table.isConnected).toBe(false)
     expect(editor.features.table.hasCellSelection).toBe(false)
-    expect($.selectedElement).toBe(table)
-    expect(table).toHaveClass("◆element-selected")
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+    expect(editor.toHTML(true)).toBe("<p>Before</p><p>After</p>")
+    expect(cell.className).not.toContain("◆")
+    expect(document.body.className).not.toContain("◆table-cell-selection")
+  })
+
+  it.each(["Backspace", "Delete"])("removes a row after deleting its last cell with %s", key => {
+    document.body.innerHTML = '<table><tbody><tr id="remove"><td>A</td></tr><tr id="keep"><td>B</td></tr></tbody></table>'
+    const [first, second] = cells()
+    editor.features.table.selectCells(first)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+
+    expect(document.querySelector("#remove")).toBeNull()
+    expect(document.querySelectorAll("tr")).toHaveLength(1)
+    expect(editor.features.table.selectedCells).toEqual([second])
+    expect(first.className).not.toContain("◆")
+  })
+
+  it("removes emptied selected rows without changing other rows or their content", () => {
+    document.body.innerHTML = '<table><thead><tr><th colspan="2">A</th></tr></thead><tbody><tr id="empty"><!--Preserve--></tr><tr><td>B</td><td>C</td></tr><tr id="keep"><td><table><tbody><tr><td>Nested</td></tr></tbody></table></td><td>D</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const emptyRow = document.querySelector("#empty")!
+    const remainingRow = document.querySelector("#keep")!
+    const remainingNodes = Array.from(remainingRow.querySelectorAll("*"))
+    editor.features.table.selectCells(cells()[0], cells()[2])
+
+    expect(editor.features.table.deleteSelection()).toBe(true)
+
+    expect(buildTableMap(table).rows).toEqual([emptyRow, remainingRow])
+    expect(emptyRow.innerHTML).toBe("<!--Preserve-->")
+    expect(Array.from(remainingRow.querySelectorAll("*"))).toEqual(remainingNodes)
+    expect(remainingRow.textContent).toBe("NestedD")
+  })
+
+  it("cuts a row's last cell and restores the row with undo and redo", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td></tr><tr><td>B</td></tr></tbody></table>'
+    editor.doc.syncFromDOM()
+    const markup = editor.toHTML(true)
+    editor.doc.stopCapturing()
+    editor.features.table.selectCells(cells()[1])
+    const data = new DataTransfer()
+
+    document.dispatchEvent(new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true}))
+    editor.doc.syncFromDOM()
+
+    expect(data.getData("text/plain")).toBe("B")
+    expect(document.querySelectorAll("tr")).toHaveLength(1)
+    expect(editor.features.table.selectedCells).toEqual(cells())
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(markup)
+    editor.doc.redo()
+    expect(document.querySelectorAll("tr")).toHaveLength(1)
+    expect(cells()[0].textContent).toBe("A")
+  })
+
+  it("removes a table with captions, empty rows, and merged header cells when all cells are deleted", () => {
+    document.body.innerHTML = '<table><caption>Caption</caption><colgroup><col span="2"></colgroup><thead><tr><th colspan="2">A</th></tr></thead><tbody><tr></tr><tr><td>B</td><td>C</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[0], cells()[2])
+
+    expect(editor.features.table.deleteSelection()).toBe(true)
+
+    expect(document.querySelector("table")).toBeNull()
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("removes only the nested table when its last cell is deleted", () => {
+    document.body.innerHTML = '<table id="outer"><tbody><tr><td><table id="inner"><tbody><tr><td>A</td></tr></tbody></table></td></tr></tbody></table>'
+    const outerCell = cells()[0]
+    editor.features.table.selectCells(cells()[1])
+
+    expect(editor.features.table.deleteSelection()).toBe(true)
+
+    expect(document.querySelector("#inner")).toBeNull()
+    expect(document.querySelector("#outer")).not.toBeNull()
+    expect(cells()).toEqual([outerCell])
+    expect($.anchor).toBe(outerCell)
+  })
+
+  it("cuts the last cell and restores the whole table with undo and redo", () => {
+    document.body.innerHTML = '<p>Before</p><table><caption>Caption</caption><tbody><tr><td><strong>A</strong></td></tr></tbody></table><p>After</p>'
+    editor.doc.syncFromDOM()
+    const markup = editor.toHTML(true)
+    editor.doc.stopCapturing()
+    editor.features.table.selectCells(cells()[0])
+    const data = new DataTransfer()
+
+    document.dispatchEvent(new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true}))
+    editor.doc.syncFromDOM()
+
+    expect(data.getData("text/plain")).toBe("A")
+    expect(data.getData("text/html")).not.toContain("◆")
+    expect(document.querySelector("table")).toBeNull()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(markup)
+    editor.doc.redo()
+    expect(document.querySelector("table")).toBeNull()
   })
 
   it("copies a rectangular segment as table HTML and TSV text", () => {
