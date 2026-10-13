@@ -73,6 +73,7 @@ export type MediaSelectionState = {
   sourceSize?: number
   sourceLabel?: string
   sourceKind?: "file" | "capture" | "recording"
+  cover?: {label?: string, kind?: "file" | "capture" | "recording", size?: number}
   /** Direct child resources, present only for AUDIO and VIDEO. */
   sources?: TimedMediaResourceState[]
   tracks?: TimedMediaResourceState[]
@@ -169,15 +170,17 @@ const timedMediaAttributes: MediaAttributeOption[] = [
 export const mediaAttributeOptions: Record<MediaType, MediaAttributeOption[]> = {
   picture: imageAttributes,
   img: imageAttributes,
-  audio: timedMediaAttributes,
+  audio: [...timedMediaAttributes, {name: "aria-label", label: "Alternative text"}],
   video: [
     ...timedMediaAttributes,
-    {name: "poster", label: "Poster", kind: "url", placeholder: "https://…"},
+    {name: "aria-label", label: "Alternative text"},
+    {name: "poster", label: "Cover image", kind: "url", placeholder: "https://…"},
     {name: "width", label: "Width", kind: "number", placeholder: "Auto"},
     {name: "height", label: "Height", kind: "number", placeholder: "Auto"},
     {name: "playsinline", label: "Play inline", kind: "boolean"},
   ],
   iframe: [
+    {name: "aria-label", label: "Alternative text"},
     {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
     {name: "name", label: "Name", placeholder: "Embedded website"},
     {name: "width", label: "Width", kind: "number", placeholder: "Auto"},
@@ -193,12 +196,16 @@ export const mediaAttributeOptions: Record<MediaType, MediaAttributeOption[]> = 
     {name: "allowfullscreen", label: "Allow fullscreen", kind: "boolean"},
   ],
   embed: [
+    {name: "aria-label", label: "Alternative text"},
+    {name: "allowfullscreen", label: "Allow fullscreen", kind: "boolean"},
     {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
     {name: "type", label: "MIME type", placeholder: "text/html"},
     {name: "width", label: "Width", kind: "number", placeholder: "Auto"},
     {name: "height", label: "Height", kind: "number", placeholder: "Auto"},
   ],
   object: [
+    {name: "aria-label", label: "Alternative text"},
+    {name: "allowfullscreen", label: "Allow fullscreen", kind: "boolean"},
     {name: "data", label: "Data URL", kind: "url", placeholder: "https://…"},
     {name: "type", label: "MIME type", placeholder: "text/html"},
     {name: "name", label: "Name", placeholder: "Embedded website"},

@@ -1816,6 +1816,72 @@ describe("selected media source", () => {
     expect(picker.isConnected).toBe(false)
     expect(audio.getAttribute("src")).toBe("existing.mp3")
   })
+
+  it("replaces a video poster from an image picker without changing its source or children", () => {
+    document.body.innerHTML = '<video src="movie.mp4" poster="old.jpg"><source src="alternate.mp4"><track src="captions.vtt"></video>'
+    const video = document.querySelector("video")!
+    const children = Array.from(video.childNodes)
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", attribute: "poster"})).toBe(true)
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker.accept).toBe("image/*")
+    Object.defineProperty(picker, "files", {value: [new File(["poster"], "cover.png", {type: "image/png"})]})
+    picker.dispatchEvent(new Event("change"))
+
+    expect(video.getAttribute("poster")).toMatch(/^blob:/)
+    expect(editor.features.media.getState()?.cover).toMatchObject({label: "cover.png", kind: "file"})
+    expect(video.getAttribute("src")).toBe("movie.mp4")
+    expect(Array.from(video.childNodes)).toEqual(children)
+    expect(video.querySelector("source")?.getAttribute("src")).toBe("alternate.mp4")
+    expect(video.querySelector("track")?.getAttribute("src")).toBe("captions.vtt")
+    expect(picker.isConnected).toBe(false)
+  })
+
+  it.each(["poster changed", "disconnected"])("cleans up a poster picker after a concurrent %s", condition => {
+    document.body.innerHTML = '<video src="movie.mp4" poster="old.jpg"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    editor.features.media.actions.selectMediaFile({type: "selectMediaFile", attribute: "poster"})
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(picker, "files", {value: [new File(["poster"], "cover.png", {type: "image/png"})]})
+    if(condition === "poster changed") video.setAttribute("poster", "remote.jpg")
+    else video.remove()
+    picker.dispatchEvent(new Event("change"))
+
+    expect(picker.isConnected).toBe(false)
+    expect(video.getAttribute("poster")).toBe(condition === "poster changed" ? "remote.jpg" : "old.jpg")
+    expect(video.getAttribute("src")).toBe("movie.mp4")
+  })
+
+  it("rejects a poster picker for non-video media", () => {
+    document.body.innerHTML = '<audio src="sound.mp3"></audio>'
+    $.selectElement(document.querySelector("audio")!)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", attribute: "poster"})).toBe(false)
+    expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it.each([
+    ["screen-image", "Capture screenshot"],
+    ["camera-image", "Take photo"],
+  ] as const)("opens %s capture for the selected video's poster", (mode, label) => {
+    document.body.innerHTML = '<video src="movie.mp4" poster="old.jpg"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.actions.captureSelectedMedia({type: "captureSelectedMedia", mode, attribute: "poster"})).toBe(true)
+    const capture = editor.appendix.querySelector<HTMLElement>(".◆media-capture")!
+    expect(capture.getRootNode()).toBe(editor.appendix)
+    expect(capture.shadowRoot?.querySelector("h2")?.textContent).toBe(label)
+    editor.features.media.actions.cancelMediaCapture({type: "cancelMediaCapture"})
+    expect(capture.isConnected).toBe(false)
+    expect(video.getAttribute("src")).toBe("movie.mp4")
+    expect(video.getAttribute("poster")).toBe("old.jpg")
+  })
 })
 
 

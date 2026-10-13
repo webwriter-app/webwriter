@@ -1603,16 +1603,16 @@ export class MediaFeature extends EditorFeature {
       this.refresh()
       return changed
     },
-    selectMediaFile: ({}: {type: "selectMediaFile"}) => {
+    selectMediaFile: ({attribute}: {type: "selectMediaFile", attribute?: "poster"}) => {
       const element = this.selectedMedia()
-      if(!this.isEnabled || !element || sourceEditingBlocked(element, this.editor.schema)) return false
+      if(!this.isEnabled || !element || attribute && !element.matches("video") || sourceEditingBlocked(element, this.editor.schema)) return false
       this.cancelSourceFile()
       const snapshot = this.sourceSnapshot(element)
       const sourceTarget = mediaSourceTarget(element, false)
       const picker = document.createElement("input")
       picker.type = "file"
       picker.hidden = true
-      picker.accept = element.matches("picture, img") ? "image/*" : element.matches("audio") ? "audio/*"
+      picker.accept = attribute === "poster" || element.matches("picture, img") ? "image/*" : element.matches("audio") ? "audio/*"
         : element.matches("video") ? "video/*" : ".html,.htm,text/html"
       const pending = {picker}
       this.pendingFile = pending
@@ -1623,18 +1623,16 @@ export class MediaFeature extends EditorFeature {
       picker.addEventListener("change", () => {
         const file = picker.files?.[0]
         if(!valid() || !file) { if(this.pendingFile === pending) this.cancelSourceFile(); return }
-        const source = this.editor.createMediaURL(file)
-        this.rememberSource(element, source, file.name, "file")
-        this.setSource(element, source, true)
+        this.setFile(element, file, attribute)
         this.cancelSourceFile()
       }, {once: true})
       this.editor.addAppendix(picker)
       picker.click()
       return true
     },
-    captureSelectedMedia: ({mode}: {type: "captureSelectedMedia", mode: MediaCaptureMode}) => {
+    captureSelectedMedia: ({mode, attribute}: {type: "captureSelectedMedia", mode: MediaCaptureMode, attribute?: "poster"}) => {
       const element = this.selectedMedia()
-      return this.isEnabled && element && isMediaCaptureMode(mode) ? this.openCapture(element, mode, true) : false
+      return this.isEnabled && element && isMediaCaptureMode(mode) ? this.openCapture(element, mode, true, attribute) : false
     },
     removeMediaSource: ({}: {type: "removeMediaSource"}) => {
       const element = this.selectedMedia()
@@ -1768,7 +1766,8 @@ export class MediaFeature extends EditorFeature {
       this.finishTimedMediaChange()
       return {changed: true, removedUnsafeItems}
     },
-    addImageMap: ({}: {type: "addImageMap"}) => {
+    addImageMap: ({shape}: {type: "addImageMap", shape?: ImageMapHotspotShape}) => {
+      if(shape && !isImageMapHotspotShape(shape)) return false
       const image = this.selectedImage(true)
       if(!image || this.associatedImageMap(image)) return false
       const authoredName = image.getAttribute("usemap")?.trim()
@@ -1783,6 +1782,10 @@ export class MediaFeature extends EditorFeature {
       anchor.after(map)
       image.setAttribute("usemap", `#${name}`)
       this.finishImageMapChange()
+      if(shape) {
+        this.imageMapOverlay.showFor(image, map)
+        this.imageMapOverlay.startDrawing(shape)
+      }
       return true
     },
     removeImageMap: ({}: {type: "removeImageMap"}) => {
@@ -1951,6 +1954,12 @@ export class MediaFeature extends EditorFeature {
       const peers = Array.from(document.body.querySelectorAll(element.matches("picture, img") ? "picture, img:not(picture > img)" : element.localName))
       state.sourceLabel = provenance.kind === "file" ? provenance.label
         : `${provenance.kind === "capture" ? "Capture" : "Recording"} ${peers.indexOf(element) + 1}`
+    }
+    if(element.matches("video")) {
+      const poster = element.getAttribute("poster") ?? ""
+      const cover = this.sourceLabels.get(element)?.get(poster)
+      state.cover = {size: this.editor.mediaSourceSize(poster), ...cover,
+        ...(cover ? {label: cover.label || (cover.kind === "capture" ? "Capture" : "Recording")} : {})}
     }
     if(element.matches("audio, video")) {
       state.sources = this.resourceState(element, "source")
@@ -2276,12 +2285,13 @@ export class MediaFeature extends EditorFeature {
     return true
   }
 
-  private openCapture(target: Element, mode: MediaCaptureMode, replace = false) {
+  private openCapture(target: Element, mode: MediaCaptureMode, replace = false, attribute?: "poster") {
     const sourceTarget = mediaSourceTarget(target, false)
     const snapshot = this.sourceSnapshot(target)
     const valid = () => this.isEnabled && document.body.contains(target)
       && !sourceEditingBlocked(target, this.editor.schema)
-      && mediaCaptureOptions(placeholderMediaType(target)).some(option => option.mode === mode)
+      && (!attribute || target.matches("video"))
+      && mediaCaptureOptions(attribute === "poster" ? "picture" : placeholderMediaType(target)).some(option => option.mode === mode)
       && (replace || isEmptyMedia(target)) && this.sourceSnapshot(target) === snapshot && mediaSourceTarget(target, false) === sourceTarget
     if(!valid()) return false
     this.mediaCapture?.controller.close()
@@ -2289,7 +2299,7 @@ export class MediaFeature extends EditorFeature {
       if(!valid()) return false
       const source = this.editor.createMediaURL(blob)
       this.rememberSource(target, source, "", mode.endsWith("image") ? "capture" : "recording")
-      return this.setSource(target, source, replace)
+      return this.setSource(target, source, replace, attribute)
     }, () => {
       if(this.mediaCapture?.controller !== controller) return
       this.mediaCapture = null

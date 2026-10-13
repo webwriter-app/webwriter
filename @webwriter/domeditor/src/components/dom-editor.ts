@@ -3869,6 +3869,15 @@ export class DomEditor extends LitElement {
       void this.execute({type: "redo"}).finally(() => this.focusEditor())
       return
     }
+    if(label === "selected-media-cover-file") {
+      void this.execute({type: "selectMediaFile", attribute: "poster"})
+      return
+    }
+    if(label?.startsWith("selected-media-cover-capture:")) {
+      const mode = label.slice("selected-media-cover-capture:".length)
+      if(isMediaCaptureMode(mode)) void this.execute({type: "captureSelectedMedia", mode, attribute: "poster"})
+      return
+    }
     if(label === "selected-media-file") {
       void this.execute({type: "selectMediaFile"})
       return
@@ -5275,7 +5284,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(detail.action === "add-map") {
-      void this.execute({type: "addImageMap"})
+      void this.execute({type: "addImageMap", ...(isImageMapHotspotShape(detail.shape) ? {shape: detail.shape} : {})})
       return
     }
     if(detail.action === "remove-map") {

@@ -1440,23 +1440,13 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderMediaAttributeOptions(type: MediaType, options: MediaAttributeOption[]) {
-    const advancedNames = type === "picture" || type === "img"
-      ? new Set(["loading", "decoding", "crossorigin", "referrerpolicy", "sizes", "srcset"])
-      : type === "audio" || type === "video"
-        ? new Set(["preload", "crossorigin", "playsinline"])
-        : new Set(["loading", "sandbox", "allow", "referrerpolicy"])
-    const primary = options.filter(option => !advancedNames.has(option.name))
-    const advanced = options.filter(option => advancedNames.has(option.name))
+    const primary = options.filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))
+    const advanced = options.filter(option => ["alt", "aria-label"].includes(option.name))
     return html`
-      ${primary.map(option => this.renderMediaAttribute(type, option))}
-      ${advanced.length ? html`
-        <details class="media-advanced-options">
-          <summary>More options</summary>
-          <div class="media-advanced-options-content">
-            ${advanced.map(option => this.renderMediaAttribute(type, option))}
-          </div>
-        </details>
-      ` : nothing}
+      ${primary.length ? html`<div class="media-primary-options">${primary.map(option => this.renderMediaAttribute(type, option))}</div>` : nothing}
+      ${advanced.length ? html`<details class="media-advanced-options"><summary>More options</summary>
+        <div class="media-advanced-options-content">${advanced.map(option => this.renderMediaAttribute(type, option))}</div>
+      </details>` : nothing}
     `
   }
 
@@ -1504,16 +1494,17 @@ export abstract class EditingControls extends LitElement {
 
   protected renderMediaResourceList(resource: TimedMediaResourceType, rows: TimedMediaResourceState[]) {
     const singular = resource === "source" ? "source" : "track"
-    const heading = resource === "source" ? "Sources" : "Text tracks"
+    const heading = resource === "source" ? "Fallback sources" : "Text tracks"
     return html`
       <section class="media-resource-editor" aria-label=${heading}>
         <div class="media-resource-heading">
           <span>${heading}</span>
           <button
-            class="media-resource-add"
+            class="media-resource-add media-resource-plus"
             type="button"
+            aria-label=${`Add ${singular}`} title=${`Add ${singular}`}
             @click=${() => this.dispatchMediaResourceAction({action: "add", resource})}
-          >Add ${singular}</button>
+          ><span aria-hidden="true">${ribbonIcon("Plus")}</span></button>
         </div>
         ${rows.map((row, position) => html`
           <div class="media-resource-card" data-resource=${resource}>
@@ -1558,28 +1549,11 @@ export abstract class EditingControls extends LitElement {
 
   protected renderTimedMediaResources() {
     if(!this.media || this.media.type !== "audio" && this.media.type !== "video") return nothing
-    const fallbackHTML = this.media.fallbackHTML ?? ""
+    const sources = this.media.sources ?? []
+    const primary = this.media.attributes.src ? undefined : sources.find(row => row.attributes.src)
     return html`
-      ${this.renderMediaResourceList("source", this.media.sources ?? [])}
+      ${this.renderMediaResourceList("source", sources.filter(row => row !== primary))}
       ${this.renderMediaResourceList("track", this.media.tracks ?? [])}
-      <section class="media-resource-editor" aria-label="Fallback content">
-        <label class="media-attribute">
-          <span>Fallback content</span>
-          <textarea
-            class="media-fallback-input"
-            data-ribbon-input-persistent
-            aria-label="Fallback content"
-            placeholder="Content shown when this media cannot be played"
-            .value=${fallbackHTML}
-            @change=${(event: Event) => this.dispatchMediaResourceAction({
-              action: "set-fallback",
-              html: (event.currentTarget as HTMLTextAreaElement).value,
-              expectedHTML: fallbackHTML,
-            })}
-          ></textarea>
-        </label>
-        <p class="media-fallback-help">Shown when the browser cannot play this media. Basic HTML is supported.</p>
-      </section>
     `
   }
 

@@ -987,6 +987,15 @@ export const editingControlStyles = css`
       min-width: 0;
     }
 
+    .media-primary-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .4rem .75rem;
+      width: 100%;
+    }
+
+    .media-toolbox-controls.media-primary-options {display: grid;}
+
     .media-toolbox-controls .media-attribute {
       box-sizing: border-box;
       display: flex;
@@ -997,6 +1006,12 @@ export const editingControlStyles = css`
       font-size: 0.56rem;
       line-height: 0.7rem;
     }
+
+    .media-primary-options .media-attribute {
+      color: #2f3742;
+      font: .68rem/1.2 system-ui, sans-serif;
+    }
+    .media-primary-options > .media-attribute:only-child {grid-column: 1 / -1;}
 
     .media-toolbox-controls .media-attribute input,
     .media-toolbox-controls .media-attribute select {
@@ -1058,6 +1073,9 @@ export const editingControlStyles = css`
     }
 
     .media-resource-editor {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 0.35rem;
@@ -1109,6 +1127,18 @@ export const editingControlStyles = css`
       font-size: 0.6rem;
       cursor: pointer;
     }
+
+    .media-resource-heading {width: 100%; text-align: left;}
+    .media-resource-plus {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.55rem;
+      height: 1.55rem;
+      padding: 0;
+      flex: none;
+    }
+    .media-resource-plus svg {display: block; width: 1rem; height: 1rem;}
 
     .media-resource-action {
       min-width: 1.35rem;

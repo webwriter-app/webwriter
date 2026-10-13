@@ -5208,6 +5208,8 @@ describe("DomEditor.execute()", () => {
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
     ["selected-media-file", {type: "selectMediaFile"}],
+    ["selected-media-cover-file", {type: "selectMediaFile", attribute: "poster"}],
+    ["selected-media-cover-capture:camera-image", {type: "captureSelectedMedia", mode: "camera-image", attribute: "poster"}],
     ["selected-media-capture:screen-image", {type: "captureSelectedMedia", mode: "screen-image"}],
     ["remove-media-source", {type: "removeMediaSource"}],
   ])("routes %s without reclaiming focus", async (label, action) => {
