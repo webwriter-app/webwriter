@@ -5,6 +5,7 @@ import {standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
 import {floatSideFromStyles, type FloatSide} from "../element-styles"
 import {mediaCropInsets} from "../media"
+import {captionIconSource} from "../ribbon-icons"
 
 type TransformElement = HTMLElement | SVGSVGElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
@@ -292,6 +293,13 @@ export class TransformationFeature extends EditorFeature {
     overlay.contentEditable = "false"
     const control = (name: string, title: string, mode?: Mode) => this.#createControl(name, title, mode)
     const mover = control("mover", "Move", "move")
+    const caption = control("caption", "Add caption or cycle caption position")
+    caption.addEventListener("click", event => {
+      event.stopPropagation()
+      const target = this.target
+      if(!target || this.editor.isEditingLocked || caption.hidden) return
+      this.editor.features.manipulation.cycleCaption()
+    })
     const deleter = control("delete", "Delete")
     const rotator = control("rotator", "Rotate", "rotate")
     const anchor = control("anchor", "Position anchor: drag to relocate; Ctrl/Cmd-click to cycle position; Shift-click for fixed", "anchor")
@@ -315,7 +323,7 @@ export class TransformationFeature extends EditorFeature {
         point.title = `Resize ${dir}`
         return point
       }),
-      mover, deleter, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
+      mover, caption, deleter, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
     )
     const cropFrame = document.createElement("div")
     cropFrame.setAttribute("part", "transform-overlay-crop-frame")
@@ -433,6 +441,13 @@ export class TransformationFeature extends EditorFeature {
     hidden("rotator", !freeform || position !== "absolute")
     hidden("orderer", true)
     hidden("mover", freeform)
+    const captionPosition = this.editor.features.manipulation.getCaptionPosition()
+    const captionAlignment = this.editor.features.manipulation.getCaptionAlignment() ?? "left"
+    const caption = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
+    hidden("caption", freeform || !this.target || captionPosition === null)
+    caption.style.setProperty("--icon", `url("data:image/svg+xml,${encodeURIComponent(captionIconSource(captionPosition ?? "none", captionAlignment, true))}")`)
+    caption.title = captionPosition === "none" ? "Add caption" : `Caption ${captionPosition}, align ${captionAlignment}: cycle position`
+    caption.setAttribute("aria-label", caption.title)
     overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
       !this.editor.features.canvas.active && !this.editor.features.slides.active
     hidden("delete", freeform)

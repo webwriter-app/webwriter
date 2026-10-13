@@ -83,6 +83,92 @@ function captureNode(target: Element) {
   editor.features.selection.captureElement(target)
 }
 
+describe("caption affordance", () => {
+  const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
+
+  it.each(["p", "caption-widget", "table"].flatMap(tag => [false, true].map(captured => ({tag, captured}))))("adds a bottom-left caption to $tag and preserves capture=$captured selection", ({tag, captured}) => {
+    const target = targetElement(tag)
+    if(tag === "table") target.innerHTML = '<tbody><tr><td>Content</td></tr></tbody>'
+    mockRect(target)
+    captured ? captureNode(target) : selectNode(target)
+    expect(button().hidden).toBe(false)
+    expect(button().getAttribute("part")).toContain("transform-overlay-button")
+    expect(button().getAttribute("aria-label")).toBe("Add caption")
+    const addIcon = decodeURIComponent(button().style.getPropertyValue("--icon"))
+    expect(addIcon).toContain('<path d="M9 14.286h6M12 11.286v6M6 21h12"/>')
+    expect(addIcon).not.toContain("<rect")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    button().click()
+    const caption = document.querySelector<HTMLElement>("figcaption, caption")!
+    expect(caption.style.textAlign).toBe("left")
+    expect(editor.features.manipulation.getCaptionPosition()).toBe("below")
+    expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
+    if(!captured) expect($.selectedElement).toBe(tag === "table" ? target : target.parentElement)
+    expect(document.getSelection()!.anchorNode).not.toBe(caption)
+    expect(button().hidden).toBe(false)
+    button().click()
+    expect(caption.style.textAlign).toBe("center")
+    expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
+    expect(document.body.querySelector("#◆transform-overlay-caption")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    const changed = editor.toHTML(true)
+    editor.doc.undo()
+    expect(document.querySelector<HTMLElement>("figcaption, caption")!.style.textAlign).toBe("left")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it.each(["figure", "table"])("cycles bottom right, left and center from the current %s caption, preserving content and undo", tag => {
+    document.body.innerHTML = tag === "figure"
+      ? '<figure><!--keep--><figcaption style="text-align: center"><b>Label</b></figcaption><p>Content</p><custom-element></custom-element></figure>'
+      : '<table><caption style="text-align: center"><b>Label</b></caption><tbody><tr><td>Content</td></tr></tbody></table>'
+    const target = document.body.firstElementChild as HTMLElement
+    const caption = target.querySelector<HTMLElement>("caption, figcaption")!
+    const content = target.querySelector("p, tbody")
+    mockRect(target)
+    selectNode(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    for(const [position, alignment] of [["below", "right"], ["below", "left"], ["below", "center"]]) {
+      button().click()
+      expect(editor.features.manipulation.getCaptionPosition()).toBe(position)
+      expect(editor.features.manipulation.getCaptionAlignment()).toBe(alignment)
+      expect(button().getAttribute("aria-label")).toBe(`Caption ${position}, align ${alignment}: cycle position`)
+      const icon = decodeURIComponent(button().style.getPropertyValue("--icon"))
+      const x = alignment === "left" ? 6 : alignment === "center" ? 9 : 12
+      const y = position === "above" ? 3 : 21
+      expect(icon).toContain(`<line x1="${x}" x2="${x + 6}" y1="${y}" y2="${y}"/>`)
+      expect(target.querySelector("caption, figcaption")).toBe(caption)
+      expect(caption.innerHTML).toBe("<b>Label</b>")
+      expect(target.querySelector("p, tbody")).toBe(content)
+      expect(button().hidden).toBe(false)
+      expect($.selectedElement).toBe(target)
+    }
+    const changed = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.features.manipulation.getCaptionAlignment()).toBe("left")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it("ignores a disconnected target and removes the control on disable", () => {
+    const target = targetElement()
+    mockRect(target)
+    selectNode(target)
+    const control = button()
+    target.remove()
+    control.click()
+    expect(document.querySelector("figure")).toBeNull()
+    feature.disable()
+    expect(control.isConnected).toBe(false)
+  })
+})
+
 function pointer(type: string, options: PointerEventInit = {}) {
   return new PointerEvent(type, {bubbles: true, composed: true, button: 0, ...options})
 }

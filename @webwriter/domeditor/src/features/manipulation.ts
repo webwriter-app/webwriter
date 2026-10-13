@@ -1525,10 +1525,21 @@ export class ManipulationFeature extends EditorFeature {
     return (style.textAlign === "end") !== (style.direction === "rtl") ? "right" : "left"
   }
 
-  setCaption(position: "none" | "above" | "below", alignment?: "left" | "center" | "right") {
+  cycleCaption() {
+    const position = this.getCaptionPosition()
+    if(position === null || this.editor.isEditingLocked) return false
+    if(position === "none") return this.setCaption("below", "left", {preserveSelection: true})
+    const alignments = ["left", "center", "right"] as const
+    const next = (alignments.indexOf(this.getCaptionAlignment() ?? "left") + 1) % 3
+    return this.setCaption("below", alignments[next], {preserveSelection: true})
+  }
+
+  setCaption(position: "none" | "above" | "below", alignment?: "left" | "center" | "right", {preserveSelection = false} = {}) {
     if(this.editor.isEditingLocked) return false
     let target = this.captionTarget()
     if(!target || !target.parentNode) return false
+    const captured = this.editor.features.selection.captureSelectedElement
+    const selected = captured ?? $.selectedElement ?? target
     const end = this.editor.doc.beginUndoGroup()
     let focusCaption: HTMLElement | null = null
     try {
@@ -1578,7 +1589,11 @@ export class ManipulationFeature extends EditorFeature {
         this.editor.features.head.ensureCaptionEnumeration()
       }
       this.editor.features.selection.clearSelectedSection()
-      if(focusCaption?.isConnected) this.editor.features.selection.selectElement(focusCaption)
+      if(preserveSelection && selected.isConnected) {
+        if(captured) this.editor.features.selection.captureElement(selected)
+        else this.editor.features.selection.selectElement(selected)
+      }
+      else if(focusCaption?.isConnected) this.editor.features.selection.selectElement(focusCaption)
       else if(target?.isConnected) this.editor.features.selection.selectElement(target)
       else this.editor.features.selection.processSelection()
       this.editor.postSelectionPath()
@@ -2881,6 +2896,7 @@ export class ManipulationFeature extends EditorFeature {
       if(position !== "before" && position !== "after") throw new TypeError("Unsupported heading-group text position")
       this.addHeadingGroupText(position)
     },
+    cycleCaption: ({}: {type: "cycleCaption"}) => this.cycleCaption(),
     setCaption: ({position, alignment}: {type: "setCaption", position: "none" | "above" | "below", alignment?: "left" | "center" | "right"}) => {
       if(!["none", "above", "below"].includes(position)) throw new TypeError("Unsupported caption position")
       if(alignment !== undefined && !["left", "center", "right"].includes(alignment)) throw new TypeError("Unsupported caption alignment")

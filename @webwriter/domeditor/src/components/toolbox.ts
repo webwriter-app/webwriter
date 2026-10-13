@@ -1,7 +1,8 @@
 import type {LiveSessionFeedback, LiveSessionLearner} from "../live-session"
 import "./float-info"
 import type {FloatInfo} from "./float-info"
-import {css, html, svg, nothing, type TemplateResult} from "lit"
+import {css, html, nothing, type TemplateResult} from "lit"
+import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
 import {proofreadingCardStyles, renderProofreadingCard} from "./proofreading-card"
@@ -10,7 +11,7 @@ import "./document-head-editor"
 import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
-import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {captionIconSource, ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -1439,11 +1440,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private captionIcon(position: "none" | "above" | "below", alignment: "left" | "center" | "right" = "left") {
-    const x = alignment === "left" ? 6 : alignment === "center" ? 9 : 12
-    return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-      <rect x="6" y="6" width="12" height="12" rx="1"></rect>
-      ${position === "none" ? nothing : svg`<line x1=${x} x2=${x + 6} y1=${position === "above" ? 3 : 21} y2=${position === "above" ? 3 : 21}></line>`}
-    </svg>`
+    return unsafeSVG(captionIconSource(position, alignment))
   }
 
   private selectDocumentLayout(mode: DocumentLayoutMode) {

@@ -2112,6 +2112,7 @@ body::part(transform-overlay-z-front)::before {
     background-color: white;
 }
 body::part(transform-overlay-mover),
+body::part(transform-overlay-caption),
 body::part(transform-overlay-delete) {
   position: absolute;
   top: -13px;
@@ -2130,6 +2131,7 @@ body::part(transform-overlay-mover) {
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9l3 3l-3 3M15 12h6M6 9l-3 3l3 3M3 12h6M9 18l3 3l3 -3M12 15v6M15 6l-3 -3l-3 3M12 3v6"/></svg>');
 }
 body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-mover),
+body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-caption),
 body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-delete) {
   border-style: dotted;
 }
@@ -2139,6 +2141,15 @@ body::part(transform-overlay-board-control) {
 body::part(transform-overlay-mover)::before {
   width: 16px;
   height: 16px;
+}
+body::part(transform-overlay-caption) {
+  top: auto;
+  bottom: -10px;
+  left: calc((var(--selection-flow-bottom-left, 0px) + var(--selection-flow-bottom-right, 100%)) / 2 - 10px);
+}
+body::part(transform-overlay-caption)::before {
+  width: 14px;
+  height: 14px;
 }
 body::part(transform-overlay-delete)::before {
   width: 14px;
@@ -2163,6 +2174,7 @@ body::part(transform-overlay-at-top) {
 body::part(transform-overlay-rotator-hidden),
 body::part(transform-overlay-scale-hidden),
 body::part(transform-overlay-mover-hidden),
+body::part(transform-overlay-caption-hidden),
 body::part(transform-overlay-delete-hidden),
 body::part(transform-overlay-orderer-hidden),
 body::part(transform-overlay-anchor-sticky-hidden),

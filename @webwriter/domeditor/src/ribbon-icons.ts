@@ -512,6 +512,16 @@ export const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparen
 
 export const ribbonIcon = (label: string) => unsafeSVG(icons[label] ?? fallbackIcon)
 
+export function captionIconSource(position: "none" | "above" | "below", alignment: "left" | "center" | "right" = "left", add = false) {
+  const x = alignment === "left" ? 6 : alignment === "center" ? 9 : 12
+  const y = position === "above" ? 3 : 21
+  const annotation = position === "none"
+    ? add ? '<path d="M9 14.286h6M12 11.286v6M6 21h12"/>' : ""
+    : `<line x1="${x}" x2="${x + 6}" y1="${y}" y2="${y}"/>`
+  const content = position === "none" && add ? annotation : `<rect x="6" y="6" width="12" height="12" rx="1"/>${annotation}`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">${content}</svg>`
+}
+
 /** Tabler glyphs for compact option groups; labels remain on each button. */
 const optionIcons: Record<string, Record<string, string>> = {
   "text-align": {left: alignLeft, center: alignCenter, right: alignRight, justify: alignJustified},
