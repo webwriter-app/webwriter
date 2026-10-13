@@ -836,11 +836,6 @@ export class DomEditor extends LitElement {
       grid-row: 2;
     }
 
-    .app-bar:has(dom-editor-breadcrumb[tree-open]) ~ dom-editor-toolbox:not([active-tool]),
-    .app-bar:has(dom-editor-breadcrumb[tree-animating]) ~ dom-editor-toolbox:not([active-tool]) {
-      --toolbox-tabs-border-color: transparent;
-    }
-
     .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {
       grid-column: 1;
     }
@@ -1847,6 +1842,7 @@ export class DomEditor extends LitElement {
         const hasAuthoredMutation = mutations.some(mutation => isCurrentTarget(mutation.target) && this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
           this.documentChangeSequence++
+          this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
@@ -2260,6 +2256,7 @@ export class DomEditor extends LitElement {
   }
 
   private dismissEditorMenus() {
+    this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
     ribbon?.dismissMenus()
@@ -5882,7 +5879,10 @@ export class DomEditor extends LitElement {
   private handleRibbonBreadcrumbVisibilityChange = async (event: Event) => {
     const visible = (event as CustomEvent<{visible?: unknown}>).detail?.visible
     if(visible === false && !this.settings.pinDeveloperConsole && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
-    if(typeof visible === "boolean") this.breadcrumbVisible = visible
+    if(typeof visible === "boolean") {
+      this.breadcrumbVisible = visible
+      if(!visible) this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
+    }
   }
 
   private handleBreadcrumbItemSelect = (event: Event) => {
@@ -6329,6 +6329,7 @@ export class DomEditor extends LitElement {
       this.documentTree = this.buildDocumentTree()
       if(before !== null && before !== this.authoredDocumentSnapshot()) {
         this.documentChangeSequence++
+        this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
         if(this.historyDocumentTransitionCount === 0) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true

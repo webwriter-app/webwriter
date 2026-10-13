@@ -1,6 +1,7 @@
 import "./float-info"
 import { LitElement, css, html } from "lit"
-import {uiMotionDisabled} from "../utility"
+import "./ribbon-menu"
+import type {RibbonMenu, RibbonMenuButton} from "./ribbon-menu"
 import { repeat } from "lit/directives/repeat.js"
 import { ribbonIcon } from "../ribbon-icons"
 import type { SelectionGap, SelectionPathItem, SelectionPathSection } from "../editor-bridge"
@@ -30,8 +31,6 @@ export class DomEditorBreadcrumb extends LitElement {
     breadcrumbCollapseCount: {attribute: false, state: true},
     treeOpen: {attribute: "tree-open", type: Boolean, reflect: true},
     treeRootPath: {attribute: false, state: true},
-    expandedPaths: {attribute: false, state: true},
-    treeAnimating: {attribute: "tree-animating", type: Boolean, reflect: true},
   }
 
   static styles = css`
@@ -50,39 +49,11 @@ export class DomEditorBreadcrumb extends LitElement {
       overflow: hidden;
     }
 
-    :host([tree-open]),
-    :host([tree-animating]) {
-      flex: 0 0 auto;
-      height: auto;
-      min-height: 30px;
-      max-height: none;
-      overflow: visible;
-    }
-
     nav {
       box-sizing: border-box;
       width: 100%;
-      height: auto;
-      overflow-x: hidden;
-      overflow-y: visible;
-    }
-
-    nav.tree-nav {
-      height: auto;
-      max-height: none;
-      overflow: visible;
-    }
-
-    .tree-panel {
-      max-height: 0;
+      height: 30px;
       overflow: hidden;
-      pointer-events: none;
-      transition: var(--ww-ui-transition, max-height 180ms ease);
-    }
-
-    .tree-panel[aria-hidden="false"] {
-      padding-bottom: 4px;
-      pointer-events: auto;
     }
 
     ol {
@@ -263,8 +234,7 @@ export class DomEditorBreadcrumb extends LitElement {
       text-underline-offset: 2px;
     }
 
-    .item.node-selected .item-label,
-    .tree-item.node-selected .item-label {
+    .item.node-selected .item-label {
       text-decoration: underline;
       text-decoration-color: var(--sl-color-primary-400, #38bdf8);
       text-decoration-style: dotted;
@@ -272,8 +242,7 @@ export class DomEditorBreadcrumb extends LitElement {
       text-underline-offset: 3px;
     }
 
-    .item.capture-selected .item-label,
-    .tree-item.capture-selected .item-label {
+    .item.capture-selected .item-label {
       text-decoration: underline;
       text-decoration-color: var(--sl-color-primary-400, #38bdf8);
       text-decoration-style: solid;
@@ -327,151 +296,6 @@ export class DomEditorBreadcrumb extends LitElement {
       object-fit: contain;
     }
 
-    .tree-list,
-    .tree-children {
-      box-sizing: border-box;
-      width: 100%;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .tree-node {
-      position: relative;
-      margin: 0;
-      padding: 0;
-    }
-
-    .tree-gap-indicator {
-      position: absolute;
-      right: 0.35rem;
-      left: calc(var(--tree-depth) * 1rem + 24px);
-      z-index: 1;
-      height: 2px;
-      border-radius: 999px;
-      background: #bdd3e9;
-      pointer-events: none;
-    }
-
-    .tree-gap-indicator::before {
-      position: absolute;
-      top: 50%;
-      left: -3px;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: inherit;
-      content: "";
-      transform: translateY(-50%);
-    }
-
-    .tree-gap-indicator-before {
-      top: 0;
-      transform: translateY(-50%);
-    }
-
-    .tree-gap-indicator-after {
-      bottom: 0;
-      transform: translateY(50%);
-    }
-
-    .tree-gap-indicator-start {
-      top: 3px;
-      transform: none;
-    }
-
-    .tree-row {
-      display: flex;
-      align-items: center;
-      min-height: 30px;
-      padding-left: calc(var(--tree-depth) * 1rem);
-    }
-
-    .tree-expander,
-    .tree-expander-spacer {
-      display: inline-flex;
-      flex: 0 0 24px;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 28px;
-    }
-
-    .tree-expander {
-      margin: 0;
-      padding: 0;
-      border: 0;
-      border-radius: 0.2rem;
-      color: #8a96a5;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .tree-expander:hover {
-      color: #243447;
-      background: #e8eef5;
-    }
-
-    .tree-expander:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: -1px;
-    }
-
-    .tree-expander-icon {
-      display: inline-flex;
-      width: 13px;
-      height: 13px;
-      transition: var(--ww-ui-transition, transform 120ms ease);
-    }
-
-    .tree-expander[aria-expanded="true"] .tree-expander-icon {
-      transform: rotate(90deg);
-    }
-
-    .tree-expander-icon svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    .tree-item {
-      display: inline-flex;
-      flex: 1 1 auto;
-      align-items: center;
-      gap: 0.2rem;
-      min-width: 0;
-      height: 28px;
-      margin: 0;
-      padding: 0 0.25rem;
-      border: 0;
-      border-radius: 0.2rem;
-      color: inherit;
-      font: 11px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      text-align: left;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .tree-item:hover {
-      color: #243447;
-      background: #e8eef5;
-    }
-
-    .tree-item[aria-current="true"] {
-      color: #243447;
-      background: #dbe7f2;
-    }
-
-    .tree-item:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: -1px;
-    }
-
-    .tree-item > .item-label {
-      overflow: clip visible;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
   `
 
   path: SelectionPathItem[] = []
@@ -484,16 +308,17 @@ export class DomEditorBreadcrumb extends LitElement {
   private breadcrumbEntries: BreadcrumbEntry[] = []
   treeOpen = false
   private treeRootPath: number[] = []
-  private expandedPaths = new Set<string>()
-  private treeHeight = 0
-  private treeAnimating = false
-  private treeCollapseTimer: ReturnType<typeof setTimeout> | null = null
+  private menuAnchor: HTMLButtonElement | null = null
   private hoveredPath: number[] | null = null
+  private hoveredSectionPath: number[] | null = null
   private breadcrumbCollapseCount = 0
   private breadcrumbResizeObserver: ResizeObserver | undefined
   private responsiveLayoutQueued = false
 
-  private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
+  private readonly handleWindowResize = () => {
+    this.collapseTree()
+    this.scheduleResponsiveLayout()
+  }
 
   private get displayPath() {
     const path = this.path.length
@@ -512,7 +337,7 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   private desiredBreadcrumbEntries() {
-    const path = this.visibleBreadcrumbPath(!this.treeOpen)
+    const path = this.displayPath
     const entries: BreadcrumbEntry[] = []
     for(const item of path) {
       entries.push({
@@ -632,59 +457,10 @@ export class DomEditorBreadcrumb extends LitElement {
     return this.capture && selected !== null && this.pathsEqual(selected, path)
   }
 
-  private setTreeRoot(path: number[]) {
-    this.treeRootPath = [...path]
-    this.expandedPaths = new Set([
-      this.pathKey(path),
-      ...this.displayPath.map(pathItem => this.pathKey(pathItem.path)),
-    ])
-  }
-
-  private pathIsPrefix(prefix: number[], path: number[]) {
-    return prefix.length <= path.length
-      && prefix.every((index, position) => index === path[position])
-  }
-
-  private commonPath(first: number[], second: number[]) {
-    const length = Math.min(first.length, second.length)
-    let shared = 0
-    while(shared < length && first[shared] === second[shared]) shared++
-    return first.slice(0, shared)
-  }
-
   protected willUpdate(changedProperties: Map<PropertyKey, unknown>) {
-    if(this.treeOpen && changedProperties.has("path")) {
-      const selected = this.selectedPath()
-      if(selected !== null) {
-        const expandedPaths = new Set(this.expandedPaths)
-        for(const pathItem of this.displayPath) expandedPaths.add(this.pathKey(pathItem.path))
-
-        if(this.pathIsPrefix(this.treeRootPath, selected)) {
-          this.expandedPaths = expandedPaths
-        }
-        else {
-          const higherRoot = this.commonPath(this.treeRootPath, selected)
-          if(this.treeItemAtPath(higherRoot)) {
-            this.treeRootPath = [...higherRoot]
-            this.expandedPaths = expandedPaths
-          }
-        }
-      }
-    }
-
-    if(changedProperties.has("path")
-      || changedProperties.has("tree")
-      || changedProperties.has("treeOpen")) {
+    if(changedProperties.has("path") || changedProperties.has("tree") || changedProperties.has("treeOpen")) {
       this.syncBreadcrumbEntries()
     }
-  }
-
-  private scheduleTreeCollapse() {
-    if(this.treeCollapseTimer !== null) clearTimeout(this.treeCollapseTimer)
-    this.treeCollapseTimer = setTimeout(() => {
-      this.treeCollapseTimer = null
-      if(!this.treeOpen) this.treeAnimating = false
-    }, uiMotionDisabled(this) ? 0 : 180)
   }
 
   protected updated(changedProperties: Map<PropertyKey, unknown>) {
@@ -697,18 +473,6 @@ export class DomEditorBreadcrumb extends LitElement {
       || changedProperties.has("treeOpen")
       || changedProperties.has("breadcrumbEntries")) {
       this.scheduleResponsiveLayout()
-    }
-
-    if(!changedProperties.has("treeOpen")
-      && !changedProperties.has("tree")
-      && !changedProperties.has("expandedPaths")) return
-
-    const panel = this.renderRoot.querySelector<HTMLElement>(".tree-panel")
-    if(!panel) return
-    const height = panel.scrollHeight
-    if(height !== this.treeHeight) {
-      this.treeHeight = height
-      panel.style.maxHeight = this.treeOpen ? `${height}px` : "0px"
     }
   }
 
@@ -799,6 +563,7 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   private hasRenderedItem(path: number[]) {
+    if(this.treeOpen && this.treeItemAtPath(path)) return true
     const key = path.join(",")
     return Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-path]"))
       .some(item => item.dataset.path === key)
@@ -833,53 +598,99 @@ export class DomEditorBreadcrumb extends LitElement {
 
   collapseTree() {
     this.clearHover()
+    this.dispatchSectionHover(null)
     if(!this.treeOpen) return
     const path = [...this.treeRootPath]
+    const menu = this.renderRoot.querySelector<RibbonMenu>("#document-tree")
+    menu?.closeSubmenus()
+    if(menu?.matches(":popover-open")) menu.hidePopover()
     this.treeOpen = false
     this.treeRootPath = []
-    this.treeAnimating = true
-    this.scheduleTreeCollapse()
-    this.dispatchEvent(new CustomEvent<{open: boolean, path: number[]}>("breadcrumb-tree-toggle", {
-      detail: {open: false, path},
-      bubbles: true,
-      composed: true,
+    this.menuAnchor = null
+    this.dispatchTreeToggle(false, path)
+  }
+
+  private dispatchTreeToggle(open: boolean, path: number[]) {
+    this.dispatchEvent(new CustomEvent("breadcrumb-tree-toggle", {
+      detail: {open, path: [...path]}, bubbles: true, composed: true,
     }))
   }
 
-  private toggleTree(item: SelectionPathItem) {
-    const isSameTree = this.treeOpen && this.pathsEqual(this.treeRootPath, item.path)
-    this.treeOpen = !isSameTree
-    if(this.treeOpen) {
-      if(this.treeCollapseTimer !== null) clearTimeout(this.treeCollapseTimer)
-      this.treeCollapseTimer = null
-      this.treeAnimating = false
-      this.setTreeRoot(item.path)
+  private toggleTree(item: SelectionPathItem, anchor: HTMLButtonElement) {
+    if(this.treeOpen && this.pathsEqual(this.treeRootPath, item.path)) {
+      this.collapseTree()
+      return
     }
-    else {
-      this.clearHover()
-      this.treeRootPath = []
-      this.treeAnimating = true
-      this.scheduleTreeCollapse()
-    }
-    this.dispatchEvent(new CustomEvent<{open: boolean, path: number[]}>("breadcrumb-tree-toggle", {
-      detail: {open: this.treeOpen, path: [...item.path]},
-      bubbles: true,
-      composed: true,
+    this.collapseTree()
+    this.treeRootPath = [...item.path]
+    this.menuAnchor = anchor
+    this.treeOpen = true
+    this.dispatchTreeToggle(true, item.path)
+    void this.updateComplete.then(async () => {
+      const menu = this.renderRoot.querySelector<RibbonMenu>("#document-tree")
+      if(!this.treeOpen || this.menuAnchor !== anchor || !menu || !anchor.isConnected) return
+      await menu.updateComplete
+      if(!this.treeOpen || this.menuAnchor !== anchor || !menu.isConnected) return
+      if(typeof menu.showPopover === "function") menu.showPopover()
+      const rect = anchor.getBoundingClientRect()
+      const bounds = menu.getBoundingClientRect()
+      menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - bounds.width - 8))}px`
+      const top = rect.bottom + 4 + bounds.height <= window.innerHeight - 8
+        ? rect.bottom + 4 : rect.top - bounds.height - 4
+      menu.style.top = `${Math.max(8, Math.min(top, window.innerHeight - bounds.height - 8))}px`
+      menu.shadowRoot?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+    })
+  }
+
+  private outlineButtons(items: DocumentTreeItem[]): RibbonMenuButton[] {
+    return items.map(item => ({
+      label: item.name,
+      action: `outline:${item.path.join(",")}`,
+      icon: item.icon ?? item.name,
+      iconUrl: item.iconUrl,
+      selected: this.isSelected(item) || this.isCaptured(item.path),
+      submenu: [
+        ...(item.sections ?? []).map(section => ({
+          label: section.name, icon: section.icon,
+          action: `outline-section:${section.path.join(",")}`,
+          selected: this.isSectionSelected(section),
+        })),
+        ...this.outlineButtons(item.children),
+      ],
     }))
   }
 
-  private toggleTreeItem(item: DocumentTreeItem, event: Event) {
+  private outlineTarget(action: string) {
+    const section = action.startsWith("outline-section:")
+    if(!section && !action.startsWith("outline:")) return null
+    const value = action.slice(action.indexOf(":") + 1)
+    if(value && !/^\d+(,\d+)*$/.test(value)) return null
+    const path = value ? value.split(",").map(Number) : []
+    if(!section) return {item: this.treeItemAtPath(path)}
+    const findSection = (item: DocumentTreeItem): SelectionPathSection | undefined =>
+      item.sections?.find(candidate => this.pathsEqual(candidate.path, path))
+      ?? item.children.map(findSection).find(Boolean)
+    return {section: this.tree ? findSection(this.tree) : undefined}
+  }
+
+  private handleOutlineSelect = (event: CustomEvent<{label: string}>) => {
     event.stopPropagation()
-    const key = this.pathKey(item.path)
-    const expandedPaths = new Set(this.expandedPaths)
-    if(expandedPaths.has(key)) expandedPaths.delete(key)
-    else expandedPaths.add(key)
-    this.expandedPaths = expandedPaths
+    const target = this.outlineTarget(event.detail.label)
+    this.collapseTree()
+    if(target && "item" in target && target.item) this.select(target.item)
+    if(target && "section" in target && target.section) this.selectSection(target.section)
+  }
+
+  private handleOutlineHover = (event: MouseEvent) => {
+    const button = event.composedPath().find(node => node instanceof HTMLElement && node.hasAttribute("data-action")) as HTMLElement | undefined
+    const target = this.outlineTarget(button?.getAttribute("data-action") ?? "")
+    if(target && "item" in target && target.item) this.hover(target.item)
+    if(target && "section" in target && target.section) this.dispatchSectionHover(target.section)
   }
 
   private renderTreeToggle(item: SelectionPathItem) {
     const isSameTree = this.treeOpen && this.pathsEqual(this.treeRootPath, item.path)
-    const label = isSameTree ? "Show breadcrumb path" : `Show ${item.name} tree`
+    const label = isSameTree ? `Close ${item.name} tree` : `Show ${item.name} tree`
     return html`
       <button
         class="separator-trigger"
@@ -888,7 +699,8 @@ export class DomEditorBreadcrumb extends LitElement {
         aria-label=${label}
         aria-expanded=${isSameTree ? "true" : "false"}
         aria-controls="document-tree"
-        @click=${() => this.toggleTree(item)}
+        aria-haspopup="menu"
+        @click=${(event: Event) => this.toggleTree(item, event.currentTarget as HTMLButtonElement)}
       >
         <span class="separator-icon" aria-hidden="true">${ribbonIcon("ChevronRight")}</span>
       </button>
@@ -936,6 +748,10 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   private dispatchSectionHover(section: SelectionPathSection | null) {
+    const path = section?.path ?? null
+    if(path === null && this.hoveredSectionPath === null
+      || path !== null && this.hoveredSectionPath !== null && this.pathsEqual(path, this.hoveredSectionPath)) return
+    this.hoveredSectionPath = path ? [...path] : null
     this.dispatchEvent(new CustomEvent<SelectionPathSection | null>("breadcrumb-section-hover", {
       detail: section ? {...section, path: [...section.path]} : null,
       bubbles: true,
@@ -972,82 +788,6 @@ export class DomEditorBreadcrumb extends LitElement {
     `
   }
 
-  private gapMarkerFor(items: DocumentTreeItem[], parentPath: number[]) {
-    const gap = this.gap
-    if(!gap || !items.length || !this.pathsEqual(gap.parentPath, parentPath)) return null
-
-    const nextIndex = items.findIndex(item => item.path[item.path.length - 1] >= gap.offset)
-    return nextIndex >= 0
-      ? {index: nextIndex, position: "before" as const}
-      : {index: items.length - 1, position: "after" as const}
-  }
-
-  private renderGapIndicator(position: "before" | "after", depth: number, atTreeStart = false) {
-    return html`
-      <span
-        class=${`tree-gap-indicator tree-gap-indicator-${position}${atTreeStart ? " tree-gap-indicator-start" : ""}`}
-        style=${`--tree-depth: ${depth}`}
-        aria-hidden="true"
-      ></span>
-    `
-  }
-
-  private renderTreeChildren(items: DocumentTreeItem[], parentPath: number[], depth: number): unknown {
-    const marker = this.gapMarkerFor(items, parentPath)
-    return items.map((child, index) => this.renderTreeItem(
-      child,
-      depth,
-      marker?.index === index ? marker.position : null,
-      marker?.index === index && marker.position === "before" && depth === 0,
-    ))
-  }
-
-  private renderTreeItem(item: DocumentTreeItem, depth: number, gapPosition: "before" | "after" | null = null, gapAtTreeStart = false): unknown {
-    const expandable = item.children.length > 0
-    const expanded = this.expandedPaths.has(this.pathKey(item.path))
-    return html`
-      <li
-        class="tree-node"
-      >
-        <div class="tree-row" style=${`--tree-depth: ${depth}`}>
-          ${expandable ? html`
-            <button
-              class="tree-expander"
-              type="button"
-              aria-label=${`${expanded ? "Collapse" : "Expand"} ${item.name}`}
-              aria-expanded=${expanded ? "true" : "false"}
-              @click=${(event: Event) => this.toggleTreeItem(item, event)}
-            >
-              <span class="tree-expander-icon" aria-hidden="true">${ribbonIcon("ChevronRight")}</span>
-            </button>
-          ` : html`<span class="tree-expander-spacer" aria-hidden="true"></span>`}
-          <button
-            class=${`tree-item${this.isNodeSelected(item) ? " node-selected" : ""}${this.isCaptured(item.path) ? " capture-selected" : ""}`}
-            type="button"
-            data-path=${item.path.join(",")}
-            title=${`Select ${item.name}`}
-            aria-label=${`Select ${item.name}`}
-            aria-current=${this.isSelected(item) ? "true" : "false"}
-            @mouseenter=${() => this.hover(item)}
-            @mouseleave=${() => this.clearHover(item)}
-            @click=${() => this.select(item)}
-          >
-            ${this.renderItemIcon(item)}
-            <span class="item-label">${item.name}</span>
-            ${this.renderPositionIcons(item)}
-          </button>
-          ${this.renderSections(item)}
-        </div>
-        ${gapPosition ? this.renderGapIndicator(gapPosition, depth, gapAtTreeStart) : ""}
-        ${expandable && expanded ? html`
-          <ul class="tree-children">
-            ${this.renderTreeChildren(item.children, item.path, depth + 1)}
-          </ul>
-        ` : ""}
-      </li>
-    `
-  }
-
   private select(item: SelectionPathItem) {
     this.dispatchEvent(new CustomEvent<SelectionPathItem>("breadcrumb-item-select", {
       detail: {
@@ -1059,13 +799,6 @@ export class DomEditorBreadcrumb extends LitElement {
       bubbles: true,
       composed: true,
     }))
-  }
-
-  private visibleBreadcrumbPath(showPath: boolean) {
-    if(showPath) return this.displayPath
-
-    const rootIndex = this.displayPath.findIndex(item => this.pathsEqual(item.path, this.treeRootPath))
-    return this.displayPath.slice(0, rootIndex >= 0 ? rootIndex + 1 : 1)
   }
 
   private isCollapsedBreadcrumbItem(entry: BreadcrumbEntry) {
@@ -1116,37 +849,33 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   render() {
+    const root = this.treeItemAtPath(this.treeRootPath) ?? this.tree
     return html`
-      <nav
-        class=${this.treeOpen || this.treeAnimating ? "tree-nav" : "breadcrumb-nav"}
-        aria-label=${this.treeOpen ? "Document tree" : "Current selection path"}
-        @pointerdown=${this.handlePointerDown}
-      >
+      <nav aria-label="Current selection path" @pointerdown=${this.handlePointerDown}>
         ${this.renderBreadcrumbList()}
-        ${this.tree ? html`
-          <div
-            class="tree-panel"
-            style=${`max-height: ${this.treeOpen ? `${this.treeHeight}px` : "0px"}`}
-            aria-hidden=${this.treeOpen ? "false" : "true"}
-            ?inert=${!this.treeOpen}
-          >
-            <ul id="document-tree" class="tree-list" aria-label="Document tree">
-              ${(() => {
-                const root = this.treeItemAtPath(this.treeRootPath)
-                const treeRoot = root ?? this.tree
-                return this.renderTreeChildren(treeRoot.children, treeRoot.path, 0)
-              })()}
-            </ul>
-          </div>
-        ` : ""}
       </nav>
+      ${this.treeOpen && root ? html`
+        <ribbon-menu id="document-tree" variant="button" popover="auto" label="Document outline"
+          .groups=${[{label: root.name, buttons: this.outlineButtons(root.children)}]}
+          @pointerdown=${this.handlePointerDown}
+          @ribbon-button-click=${this.handleOutlineSelect}
+          @mouseover=${this.handleOutlineHover}
+          @mouseout=${() => { this.clearHover(); this.dispatchSectionHover(null) }}
+          @toggle=${(event: ToggleEvent) => { if(event.newState === "closed") this.collapseTree() }}
+          @keydown=${(event: KeyboardEvent) => {
+            if(event.key !== "Escape" || event.defaultPrevented) return
+            event.preventDefault()
+            const anchor = this.menuAnchor
+            this.collapseTree()
+            anchor?.focus()
+          }}
+        ></ribbon-menu>
+      ` : ""}
     `
   }
 
   disconnectedCallback() {
-    this.clearHover()
-    if(this.treeCollapseTimer !== null) clearTimeout(this.treeCollapseTimer)
-    this.treeCollapseTimer = null
+    this.collapseTree()
     this.breadcrumbResizeObserver?.disconnect()
     this.breadcrumbResizeObserver = undefined
     this.responsiveLayoutQueued = false

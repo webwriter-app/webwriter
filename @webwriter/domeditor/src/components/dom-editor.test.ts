@@ -6247,7 +6247,7 @@ describe("DomEditor.execute()", () => {
 
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
-    expect(breadcrumb.shadowRoot!.querySelector('.tree-item[data-path="0,0"] sup .icons-tabler-filled')).not.toBeNull()
+    expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
     for(const mode of ["slides", "canvas"] as const) {
       await sendPosition("absolute", mode)
       expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
@@ -6812,148 +6812,59 @@ describe("DomEditor.execute()", () => {
     }))
   })
 
-  it("omits summary and its subtree from the expanded outline while keeping body paths", async () => {
+  it("omits summary and formula descendants from outline data while preserving authored paths", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body</p></details>'
+    iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body</p></details><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math>'
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
-
-    expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([
-      {path: [0, 2], name: "Paragraph"},
-    ])
-    expect(breadcrumb.shadowRoot!.textContent).not.toContain("Summary")
-  })
-
-  it("omits inline and block formula subtrees from the expanded outline", async () => {
-    const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = '<p>Before <math><mrow><mi>x</mi></mrow></math> after</p><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math><p>End</p>'
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
     expect(breadcrumb.treeOpen).toBe(true)
-    expect(breadcrumb.tree!.children.map(item => ({path: item.path, name: item.name, children: item.children}))).toEqual([
-      {path: [0], name: "Paragraph", children: []},
-      {path: [2], name: "Paragraph", children: []},
-    ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph", "Paragraph",
-    ])
+    expect(breadcrumb.tree!.children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0], name: "Details"}])
+    expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0, 2], name: "Paragraph"}])
+    expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
   })
 
-  it("flattens sections in the document tree and shows their types beside structural items", async () => {
+  it("preserves section, figure, and mark semantics in outline tree data", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<div><p>hello</p><section></section></div>"
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    expect(breadcrumb.treeOpen).toBe(true)
-    expect(breadcrumb.shadowRoot!.querySelector("nav")?.classList.contains("tree-nav")).toBe(true)
-    expect(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item")).toHaveLength(1)
-    expect(breadcrumb.shadowRoot!.querySelector(".breadcrumb-list .item")?.textContent?.trim()).toBe("Document")
-    expect(breadcrumb.shadowRoot!.querySelector(".breadcrumb-list .tree-toggle-separator")
-      ?.previousElementSibling?.querySelector(".item-label")?.textContent?.trim()).toBe("Document")
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph",
+    iframe.contentDocument!.body.innerHTML = "<div><p><b>hello</b><img></p><section></section><figure><img><figcaption>Caption</figcaption></figure></div>"
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children.map(item => ({path: item.path, name: item.name}))).toEqual([
+      {path: [0, 0], name: "Paragraph"}, {path: [0, 2], name: "Image"},
     ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".section-item"))
-      .map(item => item.textContent).sort()).toEqual(["Division", "Section"])
-    const paragraph = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0"]')!
-    expect(paragraph.closest(".tree-row")?.getAttribute("style")).toContain("--tree-depth: 0")
-    paragraph.click()
-
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
   })
 
-  it("omits figure wrappers from the outline while retaining descendants and authored paths", async () => {
-    const {editor, iframe} = await mountEditor()
-    const source = iframe.contentDocument!
-    source.body.innerHTML = '<section><figure><img><figcaption>Caption</figcaption></figure><figure></figure></section>'
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item"), item => item.textContent?.trim())).toEqual(["Image"])
-    expect([...new Set(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".section-item"), item => item.textContent))]).toEqual(["Section"])
-    const image = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0"]')!
-    image.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
-    expect(source.querySelectorAll("figure")).toHaveLength(2)
-  })
-
-  it("shows Canvas with an artboard icon in the breadcrumb and document tree", async () => {
+  it("keeps canvas and slide layout entries in outline menu data", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body
     body.className = "ww-canvas"
     body.innerHTML = "<p>Canvas content</p>"
-    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(tree).toMatchObject({path: [], name: "Canvas", icon: "Canvas"})
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[0]]}},
-      source: iframe.contentWindow!,
-    }))
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    await vi.waitFor(() => expect(breadcrumb.shadowRoot!.querySelector('.item[data-path=""] .item-label')?.textContent).toBe("Canvas"))
-    const root = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path=""]')!
-    expect(root.getAttribute("aria-label")).toBe("Select Canvas")
-    expect(root.querySelector("svg.icon-tabler-artboard")).not.toBeNull()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    root.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: []})
-  })
+    const canvasTree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(canvasTree).toMatchObject({path: [], name: "Canvas", icon: "Canvas", children: [
+      {path: [0], name: "Paragraph", children: []},
+    ]})
 
-  it("shows slides as numbered tree items without merging carousel sections into the breadcrumb", async () => {
-    const {editor, iframe} = await mountEditor()
-    const body = iframe.contentDocument!.body
     body.className = "ww-slides"
-    body.innerHTML = '<div class="ww-slides-viewport"><!--keep--><section class="ww-slide"><p>One</p><nav class="ww-slide-directions"><a>Next</a></nav></section><section class="ww-slide"><article><p>Two</p></article><nav class="ww-slide-directions"><a>Previous</a></nav></section><section class="ww-slide"></section></div><nav class="ww-slides-navigation"><a>1</a><a>2</a><a>3</a></nav>'
-    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(tree).toEqual({path: [], name: "Slides", icon: "KeywordPresentation", children: [
-      {path: [0, 1], name: "Slide 1", icon: "Rectangle", children: [
-        {path: [0, 1, 0], name: "Paragraph", icon: "Paragraph", children: []},
-      ]},
-      {path: [0, 2], name: "Slide 2", icon: "Rectangle", children: [
-        {path: [0, 2, 0, 0], name: "Paragraph", icon: "Paragraph", children: [], sections: [
-          {path: [0, 2, 0], type: "article", name: "Article", icon: "Article"},
-        ]},
-      ]},
+    body.innerHTML = '<div class="ww-slides-viewport"><!--keep--><section class="ww-slide"><p>One</p></section><section class="ww-slide"><article><p>Two</p></article></section><section class="ww-slide"></section></div><nav class="ww-slides-navigation"><a>1</a><a>2</a><a>3</a></nav>'
+    const slidesTree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(slidesTree).toEqual({path: [], name: "Slides", icon: "KeywordPresentation", children: [
+      {path: [0, 1], name: "Slide 1", icon: "Rectangle", children: [{path: [0, 1, 0], name: "Paragraph", icon: "Paragraph", children: []}]},
+      {path: [0, 2], name: "Slide 2", icon: "Rectangle", children: [{path: [0, 2, 0, 0], name: "Paragraph", icon: "Paragraph", children: [], sections: [
+        {path: [0, 2, 0], type: "article", name: "Article", icon: "Article"},
+      ]}]},
       {path: [0, 3], name: "Slide 3", icon: "Rectangle", children: []},
     ]})
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[1], tree.children[1].children[0]]}},
-      source: iframe.contentWindow!,
-    }))
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    await vi.waitFor(() => expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Slides", "Slide 2", "Paragraph"]))
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .section-item"), item => item.textContent)).toEqual(["Article"])
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0,2"]')!.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2]})
   })
 
-  it("shows board columns and cards as nested document tree and breadcrumb items", async () => {
+  it("keeps board columns, cards, and widget sections in outline menu data", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body
     body.className = "ww-board"
     body.innerHTML = '<section class="ww-board-column"><h2>Backlog</h2><!--keep--><article class="ww-board-card"><p>First</p><section><custom-widget>Widget</custom-widget></section></article><article class="ww-board-card"><p>Second</p></article></section><section class="ww-board-column"><h2>Done</h2><article class="ww-board-card"><p>Third</p></article></section>'
     const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(tree).toMatchObject({path: [], name: "Board", icon: "Columns", children: [
+    expect(tree).toEqual({path: [], name: "Board", icon: "Columns", children: [
       {path: [0], name: "Column 1", icon: "BoardColumn", children: [
         {path: [0, 0], name: "Column Heading", icon: "Heading", children: []},
         {path: [0, 2], name: "Card 1", icon: "BoardCard", children: [
@@ -6973,209 +6884,96 @@ describe("DomEditor.execute()", () => {
         ]},
       ]},
     ]})
-
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[0], tree.children[0].children[1], tree.children[0].children[1].children[1]]}},
-      source: iframe.contentWindow!,
-    }))
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    await vi.waitFor(() => expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual([
-      "Board", "Column 1", "Card 1", "custom-widget",
-    ]))
-    expect(breadcrumb.shadowRoot!.querySelector('.item[data-path=""] svg.icon-tabler-columns-3')).not.toBeNull()
-    expect(breadcrumb.shadowRoot!.querySelector('.item[data-path="0"] svg.icon-tabler-columns-1')).not.toBeNull()
-    expect(breadcrumb.shadowRoot!.querySelector('.item[data-path="0,2"] svg.icon-tabler-id')).not.toBeNull()
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .section-item"), item => item.textContent)).toEqual(["Section"])
-
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0,2"]')!.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2]})
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0"]')!.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0]})
   })
 
-  it("omits mark wrappers from the document tree while retaining real descendants", async () => {
+  it("hides picture implementation images and media sources from outline data", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<p><b>bold</b><span><img></span></p>"
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-expander")!.click()
-    await breadcrumb.updateComplete
-
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph",
-      "Image",
-    ])
-    expect(breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,1,0"]')).not.toBeNull()
-  })
-
-  it("hides picture implementation images and media sources from the document tree", async () => {
-    const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = `
-      <picture><source srcset="small.png"><img src="large.png"></picture>
-      <video><source src="movie.mp4"></video>
-    `
-
+    iframe.contentDocument!.body.innerHTML = '<picture><source srcset="small.png"><img src="large.png"></picture><video><source src="movie.mp4"></video>'
     const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
     expect(tree.children.map(child => child.name)).toEqual(["Image", "Video"])
-    expect(tree.children[0].children).toEqual([])
-    expect(tree.children[1].children).toEqual([])
+    expect(tree.children.map(child => child.children)).toEqual([[], []])
   })
 
-  it("opens the subtree represented by another breadcrumb separator", async () => {
+  it("opens the outline from a breadcrumb separator and preserves the full path", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><ul><li><p></p></li></ul><aside></aside></section>"
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {
-              path: [0, 0],
-              name: "List",
-              icon: "List",
-              sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
-            },
-            {path: [0, 0, 0], name: "List Item", icon: "Lists"},
-            {path: [0, 0, 0, 0], name: "Paragraph", icon: "Paragraph"},
-          ],
-        },
-      },
-      source: editorWindow,
-    }))
+    window.dispatchEvent(new MessageEvent("message", {data: {type: selectionChangeEvent, detail: {path: [
+      {path: [], name: "Document", icon: "Document"},
+      {path: [0, 0], name: "List", icon: "List", sections: [{path: [0], type: "section", name: "Section", icon: "Section"}]},
+      {path: [0, 0, 0], name: "List Item", icon: "Lists"},
+      {path: [0, 0, 0, 0], name: "Paragraph", icon: "Paragraph"},
+    ]}}, source: editorWindow}))
     await editor.updateComplete
-
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    const separators = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")
-    expect(separators).toHaveLength(3)
-
-    separators[1].click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    expect(breadcrumb.treeOpen).toBe(true)
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item")).map(item => item.textContent?.trim())).toEqual([
-      "Document",
-      "List",
-    ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "List Item",
-      "Paragraph",
-    ])
-    expect(breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0,0"]')?.closest(".tree-row")?.getAttribute("style")).toContain("--tree-depth: 0")
-  })
-
-  it("shows a gap selection between tree items without adding a row", async () => {
-    const {editor, iframe, editorWindow} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<ul><li></li><li></li></ul>"
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {path: [0], name: "List", icon: "List"},
-          ],
-          gap: {parentPath: [0], offset: 1},
-        },
-      },
-      source: editorWindow,
-    }))
-    await editor.updateComplete
-
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    const marker = breadcrumb.shadowRoot!.querySelector<HTMLElement>(".tree-gap-indicator")!
-    expect(marker.classList.contains("tree-gap-indicator-before")).toBe(true)
-    expect(marker.closest(".tree-node")?.querySelector<HTMLButtonElement>('.tree-item[data-path="0,1"]')).not.toBeNull()
-    expect(breadcrumb.shadowRoot!.querySelectorAll(".tree-node")).toHaveLength(3)
-    expect(breadcrumb.shadowRoot!.querySelectorAll(".tree-gap-indicator")).toHaveLength(1)
-  })
-
-  it("moves the open subtree to a higher selected element", async () => {
-    const {editor, iframe, editorWindow} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<section><ul><li><article><p></p></article></li></ul></section>"
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {
-              path: [0, 0], name: "List", icon: "List",
-              sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
-            },
-            {path: [0, 0, 0], name: "List Item", icon: "Lists"},
-          ],
-        },
-      },
-      source: editorWindow,
-    }))
-    await editor.updateComplete
-
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")[2].click()
+    breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".separator-trigger")[1].click()
     await editor.updateComplete
     await breadcrumb.updateComplete
     expect(breadcrumb.treeOpen).toBe(true)
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {
-              path: [0, 0], name: "List", icon: "List",
-              sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
-            },
-            {path: [0, 0, 0], name: "List Item", icon: "Lists"},
-            {
-              path: [0, 0, 0, 0, 0], name: "Paragraph", icon: "Paragraph",
-              sections: [{path: [0, 0, 0, 0], type: "article", name: "Article", icon: "Article"}],
-            },
-          ],
-        },
-      },
-      source: editorWindow,
-    }))
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    expect(breadcrumb.treeOpen).toBe(true)
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item")).map(item => item.textContent?.trim())).toEqual([
-      "Document",
-      "List",
-      "List Item",
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual([
+      "Document", "List", "List Item", "Paragraph",
     ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph",
-    ])
+    expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
   })
 
-  it("keeps the open tree on editor pointer interaction", async () => {
+  it.each([false, true])("collapses the breadcrumb tree only for authored document changes (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = "<section><custom-widget><p>Original</p></custom-widget><!--comment--></section>"
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+    if(isolated) {
+      host.documentTreeObserver.disconnect()
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    }
+    const flush = async () => {
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
+        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+    }
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    const openTree = async () => {
+      breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+      expect(breadcrumb.treeOpen).toBe(true)
+    }
+    await openTree()
+    await flush()
+    expect(breadcrumb.treeOpen).toBe(true)
+    doc.body.classList.add("◆test-marker")
+    await flush()
+    expect(breadcrumb.treeOpen).toBe(true)
+    doc.body.classList.remove("◆test-marker")
+    await flush()
+    expect(breadcrumb.treeOpen).toBe(true)
+
+    for(const change of [
+      () => { doc.querySelector("p")!.firstChild!.textContent = "Edited" },
+      () => { doc.querySelector("custom-widget")!.setAttribute("option", "changed") },
+      () => { doc.querySelector("section")!.append(doc.createElement("aside")) },
+      () => { doc.head.append(doc.createElement("meta")) },
+    ]) {
+      change()
+      await flush()
+      expect(breadcrumb.treeOpen).toBe(false)
+      expect(host.breadcrumbVisible).toBe(true)
+      await openTree()
+    }
+  })
+
+  it("closes the outline popup on editor pointer interaction", async () => {
     const {editor, iframe} = await mountEditor()
     const focus = vi.spyOn(iframe, "focus")
     iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
     expect(breadcrumb.treeOpen).toBe(true)
@@ -7184,7 +6982,8 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await breadcrumb.updateComplete
 
-    expect(breadcrumb.treeOpen).toBe(true)
+    expect(breadcrumb.treeOpen).toBe(false)
+    expect(breadcrumb.shadowRoot!.querySelector("#document-tree")).toBeNull()
     expect(focus).toHaveBeenCalledWith({preventScroll: true})
   })
 
@@ -7203,7 +7002,7 @@ describe("DomEditor.execute()", () => {
     Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"))
       .forEach(expectPointerDownToBePrevented)
 
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
 
     Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"))
@@ -7259,14 +7058,10 @@ describe("DomEditor.execute()", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!
       .querySelector(".toolbox-tab-label")?.textContent).toBe("Widget")
 
-    const treeToggle = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")
-    treeToggle?.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
-    const treeItem = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0"]')!
-    expect(treeItem.classList.contains("node-selected")).toBe(true)
-    expect(treeItem.classList.contains("capture-selected")).toBe(true)
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await breadcrumb.updateComplete
+    const outline = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    expect(outline.groups[0].buttons[0]).toMatchObject({label: "Paragraph", action: "outline:0", selected: true})
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {...detail, capture: false}},
@@ -7277,8 +7072,7 @@ describe("DomEditor.execute()", () => {
     const updatedItems = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
     expect(updatedItems[1].classList.contains("capture-selected")).toBe(false)
     expect(updatedItems[1].classList.contains("node-selected")).toBe(true)
-    expect(treeItem.classList.contains("node-selected")).toBe(true)
-    expect(treeItem.classList.contains("capture-selected")).toBe(false)
+    expect(breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!.groups[0].buttons[0]).toMatchObject({selected: true})
 
     for(const selection of [
       {nodeSelected: false},
@@ -7291,11 +7085,9 @@ describe("DomEditor.execute()", () => {
       await editor.updateComplete
       await breadcrumb.updateComplete
       const unmarkedItems = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
-      const unmarkedTreeItem = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0"]')!
       expect(unmarkedItems[1].classList.contains("node-selected")).toBe(false)
       expect(unmarkedItems[1].classList.contains("capture-selected")).toBe(false)
-      expect(unmarkedTreeItem.classList.contains("node-selected")).toBe(false)
-      expect(unmarkedTreeItem.classList.contains("capture-selected")).toBe(false)
+      expect(breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!.groups[0].buttons[0]).toMatchObject({selected: true})
     }
   })
 
@@ -7453,66 +7245,24 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(breadcrumb).display).toBe("none")
   })
 
-  it("expands the closed toolbox background with the breadcrumb and keeps open panes attached to their tabs", async () => {
+  it("keeps the breadcrumb and toolbox bars at 30px while the outline popup is open", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
-
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
-    const tabsArea = tabs.parentElement!
-    const stage = editor.shadowRoot!.querySelector<HTMLElement>(".document-stage")!
-    expect(getComputedStyle(breadcrumb).gridColumn).toBe("1")
-    expect(getComputedStyle(toolbox).gridColumn).toBe("2")
-    expect(getComputedStyle(toolbox).gridRow).toBe("2")
-    expect(getComputedStyle(stage).gridColumn).toBe("1 / -1")
-    expect(tabsArea.className).toBe("toolbox-tabs-area")
-    expect(getComputedStyle(tabsArea).gridRow).toBe("1 / -1")
-    expect(getComputedStyle(tabsArea).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
-    expect(getComputedStyle(tabs).alignItems).toBe("flex-end")
-    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
-    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
-    expect(getComputedStyle(toolbox).gridTemplateRows).toBe("30px minmax(0, 1fr)")
-    expect(getComputedStyle(tabs).borderBottomColor).toBe("#a8a8a8")
-    expect(getComputedStyle(tabs).height).toBe("30px")
-
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    expect(getComputedStyle(breadcrumb).height).toBe("30px")
+    expect(getComputedStyle(tabs).height).toBe("30px")
+    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
-
     expect(breadcrumb.treeOpen).toBe(true)
-    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
+    expect(getComputedStyle(breadcrumb).height).toBe("30px")
     expect(getComputedStyle(tabs).height).toBe("30px")
-
-    toolbox.selectTool("Edit")
-    await toolbox.updateComplete
-    expect(getComputedStyle(toolbox).gridRow).toBe("2 / 4")
-    expect(getComputedStyle(toolbox).gridTemplateRows).toBe("30px minmax(0, 1fr)")
-    expect(getComputedStyle(tabsArea).gridRow).toBe("1")
-    expect(getComputedStyle(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!).gridRow).toBe("2")
-    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
-
-    toolbox.selectTool(null)
-    await toolbox.updateComplete
-    expect(getComputedStyle(tabsArea).gridRow).toBe("1 / -1")
-    expect(getComputedStyle(tabs).height).toBe("30px")
-
-    vi.useFakeTimers()
-    try {
-      breadcrumb.collapseTree()
-      await breadcrumb.updateComplete
-      expect(breadcrumb.hasAttribute("tree-open")).toBe(false)
-      expect(breadcrumb.hasAttribute("tree-animating")).toBe(true)
-
-      await vi.advanceTimersByTimeAsync(179)
-      expect(breadcrumb.hasAttribute("tree-animating")).toBe(true)
-      await vi.advanceTimersByTimeAsync(1)
-      await breadcrumb.updateComplete
-      expect(breadcrumb.hasAttribute("tree-animating")).toBe(false)
-    }
-    finally { vi.useRealTimers() }
-    expect(getComputedStyle(tabs).borderBottomColor).toBe("#a8a8a8")
+    expect(breadcrumb.shadowRoot!.querySelector("#document-tree")).not.toBeNull()
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
   })
 
   it("collapses the breadcrumb tree when the ribbon is collapsed", async () => {
@@ -7521,7 +7271,7 @@ describe("DomEditor.execute()", () => {
 
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
     expect(breadcrumb.treeOpen).toBe(true)

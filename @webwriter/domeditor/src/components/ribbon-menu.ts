@@ -662,9 +662,9 @@ export class RibbonMenu extends LitElement {
   private handleIconAction(button: RibbonMenuButton, event: Event) {
     if(typeof button === "string" || !button.iconAction) return
     this.handleClick({label: button.iconActionLabel ?? button.iconAction, action: button.iconAction}, true)
-    if(this.openSubmenu !== button.label) {
+    if(this.openSubmenu !== this.buttonAction(button)) {
       const trigger = (event.currentTarget as HTMLElement).closest(".item-row")?.querySelector<HTMLButtonElement>(".submenu-toggle")
-      if(trigger) this.showSubmenu(button.label, trigger, false)
+      if(trigger) this.showSubmenu(this.buttonAction(button), trigger, false, button.label)
     }
   }
 
@@ -720,25 +720,25 @@ export class RibbonMenu extends LitElement {
     }))
   }
 
-  private toggleSubmenu(label: string, event: Event) {
+  private toggleSubmenu(key: string, label: string, event: Event) {
     event.stopPropagation()
     const toggle = event.currentTarget as HTMLButtonElement
-    if(this.openSubmenu === label) {
+    if(this.openSubmenu === key) {
       this.closeSubmenus()
       return
     }
-    this.showSubmenu(label, toggle)
+    this.showSubmenu(key, toggle, true, label)
   }
 
-  private showSubmenu(label: string, toggle: HTMLButtonElement, focusFirst = true) {
+  private showSubmenu(key: string, toggle: HTMLButtonElement, focusFirst = true, label = key) {
     this.closeSubmenus()
-    this.openSubmenu = label
+    this.openSubmenu = key
     this.openSubmenuToggle = toggle
     this.dispatchEvent(new CustomEvent("ribbon-submenu-open", {detail: {label}, bubbles: true, composed: true}))
     void this.updateComplete.then(() => {
-      if(!this.isConnected || this.openSubmenu !== label || !toggle.isConnected) return
+      if(!this.isConnected || this.openSubmenu !== key || !toggle.isConnected) return
       const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
-        .find(candidate => candidate.getAttribute("aria-label") === `${label} options`)
+        .find(candidate => candidate.dataset.submenuKey === key)
       if(!submenu) return
       if(typeof submenu.showPopover === "function") submenu.showPopover()
       if(!CSS.supports("top", "anchor(top)") || !CSS.supports("left", "anchor(right)")) {
@@ -871,7 +871,7 @@ export class RibbonMenu extends LitElement {
               const submenu = this.buttonSubmenu(button)
               const item = typeof button === "string" ? {label: button} : button
               const hasSubmenu = submenu.length > 0 || Boolean(item.submenuGroups || item.submenuHeader)
-              const isOpen = this.openSubmenu === label
+              const isOpen = this.openSubmenu === this.buttonAction(button)
               const anchorName = `--ribbon-submenu-${groupIndex}-${buttonIndex}`
               return html`
                 <div class="item-container">
@@ -923,7 +923,7 @@ export class RibbonMenu extends LitElement {
                       @mouseleave=${(event: Event) => { this.dispatchIconHover(false, button); this.dispatchInsertionHover(false, button, "pointer", event.currentTarget as Element) }}
                       @focus=${(event: Event) => { this.dispatchIconHover(true, button); this.dispatchInsertionHover(true, button, "focus", event.currentTarget as Element) }}
                       @blur=${(event: Event) => { this.dispatchIconHover(false, button); this.dispatchInsertionHover(false, button, "focus", event.currentTarget as Element) }}
-                      @click=${(event: Event) => item.menuOnly ? this.toggleSubmenu(label, event) : this.handleClick(button)}
+                      @click=${(event: Event) => item.menuOnly ? this.toggleSubmenu(this.buttonAction(button), label, event) : this.handleClick(button)}
                       @dragstart=${(event: DragEvent) => this.startDrag(event, button)}
                     >
                       ${item.iconAction ? nothing : this.buttonHoverIcon(button) ? html`
@@ -950,7 +950,7 @@ export class RibbonMenu extends LitElement {
                         ?disabled=${item.disabled}
                         aria-haspopup="menu"
                         aria-expanded=${isOpen}
-                        @click=${(event: Event) => this.toggleSubmenu(label, event)}
+                        @click=${(event: Event) => this.toggleSubmenu(this.buttonAction(button), label, event)}
                       >
                         <span class="submenu-toggle-chevron" aria-hidden="true"></span>
                       </button>
@@ -962,6 +962,7 @@ export class RibbonMenu extends LitElement {
                       class=${`submenu${item.submenuGroups?.some(group => group.content && !group.buttons.length) ? " form-submenu" : ""}${submenu.some(candidate => Boolean(this.buttonPath(candidate) || this.buttonCategory(candidate))) ? " shape-gallery" : ""}`}
                       role="menu"
                       aria-label=${`${label} options`}
+                      data-submenu-key=${this.buttonAction(button)}
                       style=${`position-anchor: ${anchorName}`}
                       @keydown=${this.handleMenuKeydown}
                     >

@@ -90,4 +90,21 @@ describe("nested ribbon menus", () => {
     await pending.updateComplete
     expect(opened.size).toBe(0)
   })
+
+  it("opens the submenu belonging to the clicked action when labels repeat", async () => {
+    const menu = new RibbonMenu()
+    menu.groups = [{label: "Outline", buttons: [
+      {label: "Repeated", action: "outline:0", submenu: [{label: "First child", action: "outline:0,0"}]},
+      {label: "Repeated", action: "outline:1", submenu: [{label: "Second child", action: "outline:1,0"}]},
+    ]}]
+    document.body.append(menu)
+    await menu.updateComplete
+    const expanders = menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".submenu-toggle")
+    expanders[1].click()
+    await menu.updateComplete
+    const submenu = menu.shadowRoot!.querySelector<HTMLElement>('.submenu[data-submenu-key="outline:1"]')!
+    expect(submenu.querySelector<HTMLButtonElement>('[aria-label="Second child"]')?.textContent?.trim()).toBe("Second child")
+    expect(submenu.querySelector('[aria-label="First child"]')).toBeNull()
+  })
+
 })
