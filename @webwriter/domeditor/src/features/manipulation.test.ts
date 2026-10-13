@@ -13,7 +13,7 @@ import {sectionNames} from "../sections"
 import {mathElement} from "../math"
 import {floatSideFromStyles} from "../element-styles"
 import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
-import {replayHostDrag, type RibbonDropPosition} from "../editor-bridge"
+import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type SelectionChangeDetail} from "../editor-bridge"
 
 let editor: DOMEditor
 
@@ -4356,6 +4356,46 @@ describe("unified content transfer", () => {
     document.body.dispatchEvent(event)
     return event
   }
+
+  it.each(["move", "copy", "cancel"])("keeps the dragged widget in the breadcrumb until %s ends", ending => {
+    document.body.innerHTML = '<section><demo-widget>source<!--keep--></demo-widget></section><article><p>target</p></article>'
+    const source = document.querySelector("demo-widget")!, target = document.querySelector("article")!
+    const {data, surface} = beginDrag(source)
+    const post = vi.spyOn(editor, "postHostMessage")
+    const latest = () => post.mock.calls.filter(([message]) => (message as {type: string}).type === selectionChangeEvent)
+      .at(-1)![0] as {detail: SelectionChangeDetail}
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target, offset: 1})
+    target.dispatchEvent(transferEvent("dragover", data))
+    editor.postSelectionPath()
+    expect(latest().detail.path.at(-1)?.path).toEqual([0, 0])
+    expect(latest().detail.gap).toBeUndefined()
+    if(ending === "cancel") surface.dispatchEvent(transferEvent("dragend", data))
+    else dropAt(data, target, 1, {ctrlKey: ending === "copy"})
+    expect(editor.features.manipulation.draggedElement).toBeNull()
+    expect(latest().detail.path.at(-1)?.path).toEqual(ending === "cancel" ? [0, 0] : [1, 1])
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("derives the dragged breadcrumb from the current DOM and releases disconnected sources", () => {
+    document.body.innerHTML = '<section><demo-widget>source</demo-widget></section><article><p>target</p></article>'
+    const source = document.querySelector("demo-widget")!, target = document.querySelector("article")!
+    beginDrag(source)
+    const post = vi.spyOn(editor, "postHostMessage")
+    const latest = () => post.mock.calls.filter(([message]) => (message as {type: string}).type === selectionChangeEvent)
+      .at(-1)![0] as {detail: SelectionChangeDetail}
+    target.append(source)
+    $.move(target, 0)
+    editor.postSelectionPath()
+    expect(latest().detail.path.at(-1)?.path).toEqual([1, 1])
+    source.remove()
+    editor.postSelectionPath()
+    expect(editor.features.manipulation.draggedElement).toBeNull()
+    expect(latest().detail.path.at(-1)?.path).toEqual([])
+    expect(latest().detail.path.at(-1)?.sections?.at(-1)?.path).toEqual([1])
+    $.move(document.body, 2)
+    editor.postSelectionPath()
+    expect(latest().detail.gap).toEqual({parentPath: [], offset: 2})
+  })
 
   it.each(["mover", "scale-up", "scale-right", "scale-down", "scale-left"].flatMap(handle =>
     [false, true].map(copy => ({handle, copy}))))("uses native element drag semantics from $handle (copy: $copy)", ({handle, copy}) => {

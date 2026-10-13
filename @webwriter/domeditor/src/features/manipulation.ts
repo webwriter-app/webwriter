@@ -67,6 +67,12 @@ export class ManipulationFeature extends EditorFeature {
   private dragMutationObserver: MutationObserver | null = null
   private readonly dragGeometryCleanup: (() => void)[] = []
   private nodeDrag: {element: Element, token: string} | null = null
+
+  /** The live authored source remains the breadcrumb target during drop previews. */
+  get draggedElement() {
+    const element = this.nodeDrag?.element
+    return element && getDocumentRoot().contains(element) ? element : null
+  }
   private originalDropSelection: Range | null = null
   private floatDropPreviewOwner: "transfer" | "transformation" | "insertion" | null = null
   private floatDropPreview: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
@@ -211,11 +217,13 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   endNodeDrag(refresh=true) {
+    const hadDrag = Boolean(this.nodeDrag)
     this.clearDropSelection(refresh)
     this.nodeDrag = null
     this.clearFloatDropTargets()
     this.clearNodeDragSurface()
     if(refresh && this.isEnabled && !this.editor.features.selection.isCaptureSelection) this.refreshNodeDragTarget($.selectedElement ?? null)
+    if(hadDrag) this.editor.postSelectionPath()
   }
 
   private insertionGeneration = 0

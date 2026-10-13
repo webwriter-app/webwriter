@@ -943,6 +943,8 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
+    const dragged = this.features.manipulation.draggedElement
+    if(dragged) return dragged
     const root = getDocumentRoot()
     const target = this.features.manipulation.styleTarget
     const selectedSection = this.features.selection.selectedSectionElement
@@ -1065,7 +1067,7 @@ export class DOMEditor {
       const owner = path.at(-1)
       if(owner) owner.sections = [...(owner.sections ?? []), ...pendingSections]
     }
-    const gap: SelectionGap | undefined = !this.features.selection.isCaptureSelection
+    const gap: SelectionGap | undefined = !this.features.manipulation.draggedElement && !this.features.selection.isCaptureSelection
       && !focusedWidget && $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined
