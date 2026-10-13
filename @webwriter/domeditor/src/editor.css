@@ -1048,7 +1048,7 @@ body::part(graphic-preview) {
 }
 
 body::part(graphic-outline) {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100vw;
   height: 100vh;

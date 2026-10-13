@@ -78,6 +78,14 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   catch { return null }
   let slot = Array.from(appendix.children).find(element => element.matches("slot:not([name])"))
   if(!slot) { slot = document.createElement("slot"); appendix.prepend(slot) }
+  // This runtime is embedded in saved HTML without editor-module imports.
+  // Fixed insets exclude the root's symmetric scrollbar gutters; client
+  // rectangles include them. Measure once per update for all reader controls.
+  const fixedGutterOffset = () => {
+    const root = document.documentElement
+    return root.clientWidth && getComputedStyle(root).scrollbarGutter?.includes("both-edges")
+      ? Math.max(0, window.innerWidth - root.clientWidth) : 0
+  }
   const style = document.createElement("style")
   style.textContent = `
     .◆document-reader-control { display: contents; }
@@ -354,7 +362,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   }
   body.addEventListener("click", onReferenceClick)
   let metadataKey = ""
-  const updatePane = () => {
+  const updatePane = offset => {
     const author = document.head.querySelector('meta[name="author" i]')?.getAttribute("content")?.trim() ?? ""
     const license = document.head.querySelector('link[rel~="license" i]')
     const href = license?.getAttribute("href")?.trim() ?? ""
@@ -425,7 +433,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     const pageRight = page.width > 0 ? page.right - (parseFloat(pageStyle.paddingRight) || 0) - (parseFloat(pageStyle.borderRightWidth) || 0) : window.innerWidth - 20
     const edge = Math.min(window.innerWidth - 20, pageRight)
     const width = Math.min(360, edge - right - 20)
-    pane.style.right = `${window.innerWidth - edge}px`
+    pane.style.right = `${window.innerWidth - edge - offset}px`
     pane.style.width = `${Math.max(0, width)}px`
     pane.hidden = width < 116 || Boolean(document.fullscreenElement)
     if(pane.hidden) closeReuse()
@@ -451,7 +459,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     feedback.hidden = true
     feedback.textContent = ""
   }
-  const positionFeedback = () => {
+  const positionFeedback = (offset = fixedGutterOffset()) => {
     if(!feedbackAnchor) return
     if(!feedbackAnchor.isConnected) { hideFeedback(); return }
     const rect = feedbackAnchor.getBoundingClientRect()
@@ -460,7 +468,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     const left = Math.max(8, Math.min(center - 14, window.innerWidth - bubble.width - 8))
     const below = rect.top - bubble.height - 8 < 8
     feedback.toggleAttribute("data-below", below)
-    feedback.style.left = `${left}px`
+    feedback.style.left = `${left - offset}px`
     feedback.style.top = `${below ? rect.bottom + 8 : rect.top - bubble.height - 8}px`
     feedback.style.setProperty("--arrow-position", `${Math.max(6, Math.min(bubble.width - 6, center - left))}px`)
   }
@@ -530,6 +538,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   const update = () => {
     frame = 0
     if(destroyed) return
+    const offset = fixedGutterOffset()
     updateReferences()
     const current = targets(body)
     const gutterTarget = current.find(target => target.kind === "heading" && target.element.getBoundingClientRect().width > 0)
@@ -570,7 +579,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
         const captionInset = target.caption ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0) : 0
         const captionBottomInset = target.caption ? (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) : 0
         const firstLineHeight = Math.min(Math.max(0, rect.height - captionInset - captionBottomInset), lineHeight)
-        control.permalink.style.left = `${left}px`
+        control.permalink.style.left = `${left - offset}px`
         control.permalink.style.top = `${target.kind === "figure" && !target.caption ? targetRect.top : rect.top + captionInset + firstLineHeight / 2 - 14}px`
       }
       if(control.fullscreen) {
@@ -583,13 +592,16 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
         control.fullscreen.hidden = !canFullscreen(target.element) || mediaRect.width <= 0 || mediaRect.height <= 0
           || mediaStyle.display === "none" || mediaStyle.visibility === "hidden"
         control.group.toggleAttribute("data-fullscreen-visible", Boolean(inside(mediaRect)))
-        control.fullscreen.style.left = `${mediaRect.right - 40}px`
+        control.fullscreen.style.left = `${mediaRect.right - 40 - offset}px`
         control.fullscreen.style.top = `${mediaRect.top + 8}px`
       }
       if(!control.permalink && control.fullscreen?.hidden) control.group.hidden = true
     }
-    positionFeedback()
-    updatePane()
+    positionFeedback(offset)
+    // The trailing scrollbar reduces the fixed containing block even when
+    // no matching leading gutter is reserved.
+    const rootWidth = document.documentElement.clientWidth
+    updatePane(rootWidth ? Math.max(0, window.innerWidth - rootWidth) : 0)
   }
   const schedule = () => { if(!frame && !destroyed) frame = requestAnimationFrame(update) }
   const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule)

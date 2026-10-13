@@ -41,6 +41,20 @@ afterEach(() => {
 describe("document pane", () => {
   const pane = () => document.body.shadowRoot!.querySelector<HTMLElement>(".◆document-pane")!
 
+  it.each(["auto", "stable both-edges"])("aligns the action pane with the page edge with %s scrollbar gutters", gutter => {
+    const root = document.documentElement, original = root.style.scrollbarGutter
+    root.style.scrollbarGutter = gutter
+    const width = vi.spyOn(root, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    document.body.style.paddingRight = "24px"
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue({left: 100, top: 0, right: 900, bottom: 400, width: 800, height: 400} as DOMRect)
+    try {
+      reader = mountDocumentReader()
+      expect(pane().style.right).toBe(`${window.innerWidth - 876 - 15}px`)
+      expect(pane().style.width).toBe("360px")
+    }
+    finally { root.style.scrollbarGutter = original; width.mockRestore() }
+  })
+
   it("keeps the icon group at the page's right edge when metadata is absent", () => {
     document.body.replaceChildren()
     reader = mountDocumentReader()
@@ -433,6 +447,39 @@ describe("document reader controls", () => {
     expect(style).not.toContain("box-shadow")
   })
 
+  it("subtracts symmetric root scrollbar gutters from control coordinates", () => {
+    const gutter = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    const heading = document.querySelector("h1")!
+    vi.spyOn(heading, "getBoundingClientRect").mockReturnValue({left: 120, top: 100, right: 600, bottom: 140, width: 480, height: 40} as DOMRect)
+    const figure = document.querySelector("figure#photo")!
+    const media = figure.querySelector("img")!
+    const caption = figure.querySelector("figcaption")!
+    caption.style.lineHeight = "20px"
+    Object.assign(figure, {requestFullscreen: vi.fn(() => Promise.resolve())})
+    vi.spyOn(figure, "getBoundingClientRect").mockReturnValue({left: 140, top: 180, right: 540, bottom: 410, width: 400, height: 230} as DOMRect)
+    vi.spyOn(media, "getBoundingClientRect").mockReturnValue({left: 140, top: 180, right: 540, bottom: 380, width: 400, height: 200} as DOMRect)
+    vi.spyOn(caption, "getBoundingClientRect").mockReturnValue({left: 140, top: 390, right: 540, bottom: 410, width: 400, height: 20} as DOMRect)
+    try {
+      reader = mountDocumentReader()!
+      const groups = controls()
+      expect(groups[0].querySelector("a")!.style.left).toBe("75px")
+      expect(groups[1].querySelector("a")!.style.left).toBe("75px")
+      expect(groups[1].querySelector("button")!.style.left).toBe("485px")
+    } finally { gutter.mockRestore(); width.mockRestore() }
+  })
+
+  it.each([["auto", "auto", window.innerWidth - 15], ["overlay", "stable both-edges", window.innerWidth]])("leaves reader coordinates unchanged with %s scrollbars", (_mode, gutter, clientWidth) => {
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: gutter} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(clientWidth)
+    const heading = document.querySelector("h1")!
+    vi.spyOn(heading, "getBoundingClientRect").mockReturnValue({left: 120, top: 100, right: 600, bottom: 140, width: 480, height: 40} as DOMRect)
+    try {
+      reader = mountDocumentReader()!
+      expect(controls()[0].querySelector("a")!.style.left).toBe("90px")
+    } finally { style.mockRestore(); width.mockRestore() }
+  })
+
   it("shows figure permalinks on caption hover and fullscreen only over the media", async () => {
     const figure = document.querySelector("figure#photo")!
     const media = figure.querySelector("img")!
@@ -557,6 +604,23 @@ describe("document reader controls", () => {
     await vi.advanceTimersByTimeAsync(1800)
     expect(bubble.hidden).toBe(true)
     expect(document.body.innerHTML).toBe(authored)
+  })
+
+  it("subtracts the root gutter from feedback placement while keeping its arrow link-relative", async () => {
+    vi.useFakeTimers()
+    const gutter = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue()
+    reader = mountDocumentReader()!
+    const link = controls()[0].querySelector("a")!
+    const bubble = document.body.shadowRoot!.querySelector<HTMLElement>(".◆document-reader-feedback")!
+    vi.spyOn(link, "getBoundingClientRect").mockReturnValue({left: 70, top: 110, right: 94, bottom: 138, width: 24, height: 28} as DOMRect)
+    vi.spyOn(bubble, "getBoundingClientRect").mockReturnValue({left: 0, top: 0, right: 100, bottom: 28, width: 100, height: 28} as DOMRect)
+    try {
+      link.click(); await Promise.resolve()
+      expect(bubble.style.left).toBe("53px")
+      expect(bubble.style.getPropertyValue("--arrow-position")).toBe("14px")
+    } finally { gutter.mockRestore(); width.mockRestore() }
   })
 
   it("reports failed clipboard writes without claiming success", async () => {

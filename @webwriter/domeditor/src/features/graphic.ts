@@ -1945,7 +1945,7 @@ export class GraphicFeature extends EditorFeature {
 
   #setMarquee(bounds: Bounds, graphic: SVGSVGElement) {
     const overlay = this.#overlay ?? this.#createOverlay()
-    overlay.style.left = `${fixedClientX(0)}px`
+    overlay.style.setProperty("left", `${fixedClientX(0)}px`, "important")
     const marquee = overlay.querySelector<SVGRectElement>(".◆graphic-marquee")!
     const matrix = this.#screenMatrix(graphic)
     const screenBounds = boundsForPoints([
@@ -3214,7 +3214,7 @@ export class GraphicFeature extends EditorFeature {
 
   #updateOverlaySelection(shapes: Element[], graphic: SVGSVGElement, matrix: Matrix, interaction?: Interaction) {
     const overlay = this.#overlay ?? this.#createOverlay()
-    overlay.style.left = `${fixedClientX(0)}px`
+    overlay.style.setProperty("left", `${fixedClientX(0)}px`, "important")
     const outline = overlay.querySelector<SVGPolygonElement>(".◆graphic-selection-outline")!
     const stem = overlay.querySelector<SVGLineElement>(".◆graphic-rotation-stem")!
     const individualOutlines = overlay.querySelector<SVGGElement>(".◆graphic-individual-outlines")!

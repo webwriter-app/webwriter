@@ -172,6 +172,20 @@ describe("insertion menu", () => {
     expect(menu.style.top).toBe("126px")
   })
 
+  it.each(["auto", "stable both-edges"])("anchors the command menu with %s scrollbar gutters", async gutter => {
+    const root = document.documentElement, original = root.style.scrollbarGutter
+    root.style.scrollbarGutter = gutter
+    const width = vi.spyOn(root, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    try {
+      await Promise.resolve()
+      const menu = editor.features.insertion.menu
+      menu.setPosition(40, 126)
+      expect(menu.style.left).toBe(gutter === "auto" ? "40px" : "25px")
+      expect(menu.style.top).toBe("126px")
+    }
+    finally { root.style.scrollbarGutter = original; width.mockRestore() }
+  })
+
   it("opens when the second plus key is typed and keeps both pluses", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)

@@ -565,6 +565,113 @@ await check("marker image uploads preview before applying", async () => {
   finally {toolbox.remove()}
 })
 
+await check("insertion and saved-reader controls align inside symmetric scrollbar gutters", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:450px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  let saved: HTMLIFrameElement | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "reader gutter fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, theme = doc.createElement("style")
+    theme.setAttribute("data-ww-theme", "base"); theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    doc.body.innerHTML = '<h1 id="heading">Reader controls</h1><figure id="photo"><img alt="Photo" width="400" height="160" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'160\'%3E%3Crect width=\'400\' height=\'160\' fill=\'skyblue\'/%3E%3C/svg%3E"></figure><p style="width:400px;height:1200px">Scrollable document</p>'
+    await layoutFrame()
+    for(const gutter of ["stable both-edges", "auto"]) {
+      doc.documentElement.style.scrollbarGutter = gutter
+      await layoutFrame()
+      const anchor = doc.querySelector("h1")!.getBoundingClientRect()
+      editor.features.insertion.menu.setPosition(anchor.left, anchor.bottom + 6)
+      const menu = editor.features.insertion.menu.getBoundingClientRect()
+      assert(Math.abs(menu.left - anchor.left) < 1, "insertion menu drifted from its command anchor")
+    }
+    doc.documentElement.style.removeProperty("scrollbar-gutter")
+    saved = document.createElement("iframe"); saved.style.cssText = frame.style.cssText
+    saved.setAttribute("sandbox", "allow-scripts allow-same-origin")
+    const loaded = new Promise<void>(resolve => saved!.addEventListener("load", () => resolve(), {once:true}))
+    saved.srcdoc = await editor.serializeHTML(); fixture.append(saved); await loaded
+    const savedDoc = saved.contentDocument!, savedView = saved.contentWindow! as Window & {PointerEvent: typeof PointerEvent}
+    for(let attempt = 0; !savedDoc.body.shadowRoot?.querySelector(".◆document-pane") && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const appendix = savedDoc.body.shadowRoot!
+    assert(appendix?.querySelector(".◆document-pane"), "saved reader did not initialize")
+    Object.defineProperty(savedView.navigator, "clipboard", {configurable:true, value:{writeText: async () => {}}})
+    for(const gutter of ["stable both-edges", "auto"]) {
+      savedDoc.documentElement.style.scrollbarGutter = gutter
+      for(const scroll of [0, 40]) {
+        savedView.scrollTo(0, scroll); await layoutFrame()
+        const media = savedDoc.querySelector("img")!.getBoundingClientRect()
+        savedDoc.dispatchEvent(new savedView.PointerEvent("pointermove", {bubbles:true, clientX:media.right - 60, clientY:media.top + 20}))
+        await layoutFrame()
+        const heading = savedDoc.querySelector("h1")!.getBoundingClientRect()
+        const link = appendix.querySelector<HTMLAnchorElement>('.◆document-reader-control a')!
+        assert(Math.abs(link.getBoundingClientRect().left - Math.max(0, heading.left - 30)) < 1, "saved permalink drifted from the reading column")
+        const fullscreen = appendix.querySelector<HTMLButtonElement>('.◆document-reader-control button')!.getBoundingClientRect()
+        assert(Math.abs(fullscreen.left - (media.right - 40)) < 1, "saved fullscreen button drifted from its media")
+        const body = savedDoc.body.getBoundingClientRect(), bodyStyle = savedView.getComputedStyle(savedDoc.body)
+        const edge = Math.min(savedView.innerWidth - 20, body.right - parseFloat(bodyStyle.paddingRight) - parseFloat(bodyStyle.borderRightWidth))
+        const paneElement = appendix.querySelector<HTMLElement>(".◆document-pane")!, pane = paneElement.getBoundingClientRect()
+        assert(Math.abs(pane.right - edge) < 1, `saved action pane drifted from the page edge: ${pane.right} vs ${edge}; ${paneElement.getAttribute("style")}; hidden=${paneElement.hidden}; gutter=${gutter}`)
+        link.click(); await Promise.resolve(); await layoutFrame()
+        const feedback = appendix.querySelector<HTMLElement>(".◆document-reader-feedback")!
+        assert(!feedback.hidden, "copy feedback was not shown")
+        const bubble = feedback.getBoundingClientRect(), anchor = link.getBoundingClientRect()
+        const arrow = parseFloat(feedback.style.getPropertyValue("--arrow-position"))
+        assert(Math.abs(bubble.left + arrow - anchor.left - anchor.width / 2) < 1, "saved feedback arrow drifted from its link")
+      }
+    }
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    saved?.remove(); frame.remove()
+  }
+})
+
+await check("SVG shape outlines and handles align inside symmetric scrollbar gutters", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:600px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string, PointerEvent: typeof PointerEvent}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "SVG gutter fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    doc.body.innerHTML = '<p style="height:80px">Before graphic</p><svg viewBox="0 0 600 400" style="width:600px;height:400px"><rect x="100" y="80" width="160" height="120" fill="skyblue"></rect><ellipse cx="400" cy="240" rx="60" ry="40"></ellipse></svg><p style="height:1200px">After graphic</p>'
+    const graphic = doc.querySelector("svg")!, shape = graphic.querySelector("rect")!
+    shape.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:1}))
+    doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles:true, pointerId:1}))
+    assert(editor.features.graphic.selectedShape === shape, "SVG shape was not selected")
+    for(const gutter of ["stable both-edges", "auto", "stable both-edges"]) {
+      doc.documentElement.style.scrollbarGutter = gutter
+      for(const scroll of [0, 80]) {
+        graphic.style.rotate = scroll ? "12deg" : "0deg"
+        view.scrollTo(0, scroll)
+        await layoutFrame()
+        const overlay = editor.appendix.querySelector<HTMLElement>(".◆graphic-overlay")!
+        const polygon = overlay.querySelector<SVGPolygonElement>(".◆graphic-selection-outline")!
+        const matrix = shape.getScreenCTM()!, outlineMatrix = polygon.getScreenCTM()!
+        const expected = {x: matrix.a * 100 + matrix.c * 80 + matrix.e, y: matrix.b * 100 + matrix.d * 80 + matrix.f}
+        const point = polygon.points.getItem(0)
+        const actual = {x: outlineMatrix.a * point.x + outlineMatrix.c * point.y + outlineMatrix.e, y: outlineMatrix.b * point.x + outlineMatrix.d * point.y + outlineMatrix.f}
+        assert(Math.abs(actual.x - expected.x) < 1 && Math.abs(actual.y - expected.y) < 1, `SVG outline drifted with ${gutter}: ${actual.x},${actual.y} vs ${expected.x},${expected.y}`)
+        const handle = overlay.querySelector<HTMLElement>('[data-graphic-handle="resize-nw"]')!.getBoundingClientRect()
+        assert(Math.abs(handle.left + handle.width / 2 - expected.x) < 1 && Math.abs(handle.top + handle.height / 2 - expected.y) < 1, "SVG resize handle drifted from the shape")
+        const port = overlay.querySelector<HTMLElement>('[data-graphic-port="e"]')!.getBoundingClientRect()
+        const length = Math.hypot(matrix.a, matrix.b)
+        const portX = matrix.a * 260 + matrix.c * 140 + matrix.e + matrix.a / length * 14
+        const portY = matrix.b * 260 + matrix.d * 140 + matrix.f + matrix.b / length * 14
+        assert(Math.abs(port.left + port.width / 2 - portX) < 1 && Math.abs(port.top + port.height / 2 - portY) < 1, "SVG connection port drifted from the shape")
+      }
+    }
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
+})
+
 await check("editing affordances align with media inside symmetric scrollbar gutters", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:450px;border:0;max-width:none"
