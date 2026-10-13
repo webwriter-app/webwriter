@@ -8,7 +8,17 @@ import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {boardLayoutRole, documentLayoutMode, slideLayoutRole} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
-import {inlineMathRoot, mathBoundaryPoint, mathRoot} from "./math"
+import {inlineMathRoot, mathBoundaryPoint, mathRoot, MATH_NAMESPACE} from "./math"
+
+/** Prose, its formatting, and inline formulas; comments and line breaks
+ * remain part of the text flow. Widgets are always separate content. */
+export function isParagraphContent(node: Node): boolean {
+  if(node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) return true
+  if(!isElement(node) || node.hasAttribute("is")) return false
+  if(node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
+  if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return true
+  return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
+}
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()

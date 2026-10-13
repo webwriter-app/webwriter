@@ -6,6 +6,7 @@ import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../documen
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
+import {isParagraphContent} from "../utility"
 import {
   isBlockFormatTag,
   type BlockFormatTag,
@@ -753,6 +754,7 @@ export class ManipulationFeature extends EditorFeature {
 
   private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false, anyBlock = false) {
     if(this.ribbonDropInsertion) return false
+    if(getContainer($.range.startContainer).closest("p:not([is])")) return false
     const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : null
     const element = node instanceof DocumentFragment && (node.childNodes.length === 1 || anyBlock && node.children.length === 1
       && Array.from(node.childNodes).every(child => isElement(child) || child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim()))
@@ -840,7 +842,8 @@ export class ManipulationFeature extends EditorFeature {
     const target = this.insertionReplacement()
     const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
     const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
-    if(target !== (selected ? figureSelectionTarget(selected) : null) && !nodes.some(isElement)) return false
+    if(target !== (selected ? figureSelectionTarget(selected) : null)
+      && (!nodes.some(isElement) || nodes.every(isParagraphContent))) return false
     if(!target || !nodes.length || !target.parentElement
       || nodes.some(child => target.contains(child) || child.contains(target))) return false
     if(target.matches("figure:has(> figcaption), table:has(> caption)")) {
@@ -956,7 +959,8 @@ export class ManipulationFeature extends EditorFeature {
     if(source?.contains(point.node)) return null
     range.setStart(point.node, point.offset)
     range.collapse(true)
-    if(source && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
+    if(source && !getContainer(point.node).closest("p:not([is])")
+      && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
       while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
       if(this.isTextBlock(block) && !this.editor.schema.canInsert(block, source, block.childNodes.length)) {
@@ -1414,7 +1418,7 @@ export class ManipulationFeature extends EditorFeature {
       if(!range) return
       if(source) {
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
-        if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
+        if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math" && inserted.getAttribute("display") !== "block") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
         const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
         const container = this.floatDropHit?.container
         if(slide) this.placeRibbonElements([inserted], slide, this.editor.features.slides.clientPoint(slide, event.clientX, event.clientY))
@@ -1423,7 +1427,11 @@ export class ManipulationFeature extends EditorFeature {
           this.placeFloat(inserted, container, side)
         }
         else {
-          range.insertNode(inserted)
+          if(getContainer(range.startContainer).closest("p:not([is])") && !isParagraphContent(inserted)) {
+            $.move(range.startContainer, range.startOffset)
+            this.insertBlocks([inserted])
+          }
+          else range.insertNode(inserted)
           this.clearDropFloat(inserted)
         }
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
@@ -2450,9 +2458,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private isInlineClipboardNode(node: Node) {
-    if(node instanceof Element && node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
-    return node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE
-      || isElement(node) && this.editor.schema.isPhrasing(node)
+    return isParagraphContent(node)
   }
 
   /** Groups top-level inline runs beside block clipboard content into normal
@@ -2541,6 +2547,7 @@ export class ManipulationFeature extends EditorFeature {
       if(ancestor) continue
       let top: Element = math
       while(top.parentElement) top = top.parentElement
+      if(math.getAttribute("display") === "block") continue
       if(top !== math && this.isInlineClipboardNode(top)) {
         // An inline clipboard run will be inserted into a text block below.
         math.setAttribute("display", "inline")
@@ -2557,7 +2564,7 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     const widget = nodes.length === 1 ? this.insertedWidget(nodes[0]) : null
-    if(widget && !this.editor.schema.isPhrasing(widget)) {
+    if(widget && !this.isInlineClipboardNode(widget)) {
       this.withNormalization(() => this.insertBlockWidget(widget))
       return
     }
@@ -2712,8 +2719,10 @@ export class ManipulationFeature extends EditorFeature {
       simulation.range.deleteContents()
       const inserted = cloneWithoutEditorMarkers(node, true, {inert: true})
       simulation.range.insertNode(inserted)
+      const paragraph = inserted.parentElement?.closest("p:not([is])")
       return Boolean(inserted.parentElement)
         && this.editor.schema.isContentValid(inserted.parentElement!)
+        && (!paragraph || Array.from(paragraph.childNodes).every(isParagraphContent))
     }
     catch {
       return false
@@ -3156,6 +3165,15 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
+    if(isElement(node) && !node.parentNode && getContainer($.range.startContainer).closest("p:not([is])")) {
+      const entry = this.editor.schema.get(node)
+      if(entry.wrapper || entry.replacement || entry.requiredAttributes) {
+        const fragment = document.createDocumentFragment()
+        fragment.append(node)
+        this.editor.schema.enforceMedia(fragment)
+        node = fragment.childNodes.length === 1 ? fragment.firstChild! : fragment
+      }
+    }
     if(node && commandInsertion && !this.ribbonDropInsertion && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
       return this.editor.features.canvas.insertCentered(() => this.insert(node, splitDepth, strict, false))
     }
@@ -3180,6 +3198,7 @@ export class ManipulationFeature extends EditorFeature {
         this.splitAtSelection(allowedDepth, strict)
       })
     }
+    if(node instanceof DocumentFragment) return this.insertClipboardFragment(node)
     if(node instanceof Element && node.namespaceURI === MATH_NAMESPACE && node.localName === "math") {
       const fragment = document.createDocumentFragment()
       fragment.append(node)
@@ -3193,6 +3212,7 @@ export class ManipulationFeature extends EditorFeature {
         : null
     const emptyDefaultBlock = $.anchorContainer
     if(insertedElement && document.getSelection()?.isCollapsed
+      && !isParagraphContent(insertedElement)
       && emptyDefaultBlock?.localName === this.editor.schema.defaultNodeKey
       && !emptyDefaultBlock.childNodes.length
       && this.editor.schema.get(insertedElement).group?.includes("flow")) {
@@ -3205,14 +3225,15 @@ export class ManipulationFeature extends EditorFeature {
         else this.moveAfterInsertedNode(insertedElement)
       })
     }
-    if(insertedWidget && !this.editor.schema.isPhrasing(insertedWidget)
+    if(insertedWidget && !this.isInlineClipboardNode(insertedWidget)
       && !this.canInsertAtSelection(insertedWidget)) {
       return this.withNormalization(() => this.insertBlockWidget(insertedWidget))
     }
-    if(insertedElement && !this.editor.schema.isPhrasing(insertedElement)
+    if(insertedElement && !this.isInlineClipboardNode(insertedElement)
       && !this.canInsertAtSelection(insertedElement)) {
       return this.insertBlocks([insertedElement])
     }
+    if(this.isInlineClipboardNode(node)) return this.insertAtSelection(node)
     return this.withNormalization(() => {
       $.replace(node)
       let locus = $.commonAncestor
@@ -3853,7 +3874,7 @@ export class ManipulationFeature extends EditorFeature {
   private insertBlockWidget(widget: Element) {
     $.delete()
     const block = getContainer($.range.startContainer)
-    if(isDocumentRoot(block) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block) || this.editor.schema.isPhrasing(widget)
+    if(isDocumentRoot(block) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)
       || this.canInsertAtSelection(widget)) {
       $.replace(widget)
     }

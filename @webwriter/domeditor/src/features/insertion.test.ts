@@ -313,10 +313,10 @@ describe("insertion menu", () => {
     menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {kind: "element", tag: "picture"}}))
     const picture = document.querySelector("picture")!
     expect(picture).not.toBeNull()
-    expect(picture.classList.contains("ww-float-right")).toBe(Boolean(text))
+    expect(picture.classList.contains("ww-float-right")).toBe(false)
     expect(picture.parentElement).toBe(document.body)
     if(text) {
-      expect(picture.nextElementSibling).toBe(paragraph)
+      expect(picture.previousElementSibling).toBe(paragraph)
       expect(paragraph.textContent).toBe(text)
     }
   })
@@ -339,9 +339,9 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe('<webwriter-demo class="ww-float-right"></webwriter-demo><p>before</p>')
+    expect(editorHTML()).toBe('<p>before</p><webwriter-demo></webwriter-demo>')
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.nextElementSibling).toBe(document.querySelector("p"))
+    expect(widget.previousElementSibling).toBe(document.querySelector("p"))
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
     expect(document.getSelection()!.isCollapsed).toBe(true)

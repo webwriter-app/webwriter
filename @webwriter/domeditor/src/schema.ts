@@ -1,5 +1,5 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
-import { $, cloneInert, getContainer, getIndexBefore, getInertDocument } from "./utility"
+import { $, cloneInert, getContainer, getIndexBefore, getInertDocument, isParagraphContent } from "./utility"
 import {isWidgetDataContainer} from "./active-content"
 import {normalizeTableStructure} from "./table"
 
@@ -683,6 +683,8 @@ export class Schema {
     let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
     
     if(!(nodeToCheck instanceof Element)) return true;
+    if(!this.#repairingContent && nodeToCheck.matches("p:not([is])")
+      && !(content ?? Array.from(nodeToCheck.childNodes)).every(isParagraphContent)) return false
     // A widget's data containers are valid under any content model.
     const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => child.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(child))
     if(!rule && contentToCheck.length) return false

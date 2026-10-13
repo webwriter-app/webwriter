@@ -17,6 +17,71 @@ import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type Sele
 
 let editor: DOMEditor
 
+describe("paragraph insertion content", () => {
+  it("retains an empty paragraph when inserting a mark", () => {
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+    const mark = document.createElement("b")
+    mark.textContent = "text"
+    editor.features.manipulation.insert(mark)
+    expect(mark.parentElement).toBe(paragraph)
+    expectBodyToBe('<p><b>text</b></p>')
+  })
+  it.each(["svg", "iframe", "hr", "inline-widget"])("splits nested marks around inserted %s", tag => {
+    editor.schema.extendWidgets([{tagName: "inline-widget", editingConfig: {inline: true, group: "phrasing"}}])
+    document.body.innerHTML = '<section><!--keep--><p class="authored">one <b><i>abcd</i></b> end</p><p>Other</p></section>'
+    const section = document.querySelector("section")!, other = section.lastChild
+    const text = document.querySelector("i")!.firstChild!
+    $.move(text, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const node = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag)
+    editor.features.manipulation.insert(node)
+    expect(node.parentElement).toBe(section)
+    expect(section.querySelectorAll("p")[0].innerHTML).toBe('one <b><i>ab</i></b>')
+    expect(section.querySelectorAll("p")[1].innerHTML).toBe('<b><i>cd</i></b> end')
+    expect(section.querySelectorAll("p")[1].classList.contains("authored")).toBe(true)
+    expect(section.lastChild).toBe(other)
+    expect(section.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe('<section><!--keep--><p class="authored">one <b><i>abcd</i></b> end</p><p>Other</p></section>')
+    editor.doc.redo()
+    expect(document.querySelector(`p ${tag}`)).toBeNull()
+    expect(document.querySelector(tag)?.parentElement?.localName).toBe("section")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("splits around non-text runs in an HTML fragment", () => {
+    document.body.innerHTML = '<p>abcd</p>'
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    editor.features.manipulation.insertHTML('<b>left</b><hr><em>right</em>')
+    expectBodyToBe('<p>ab</p><p><b>left</b></p><hr><p><em>right</em></p><p>cd</p>')
+  })
+
+  it("keeps text, marks, line breaks and inline formulas inside a paragraph", () => {
+    document.body.innerHTML = '<p>abcd</p>'
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const fragment = fragmentFromHTML('<b><em>text</em></b><br>')
+    const formula = mathElement("math", mathElement("mi", "x"))
+    formula.setAttribute("display", "inline")
+    fragment.append(formula)
+    editor.features.manipulation.insert(fragment)
+    expect(editor.toHTML(true)).toBe('<p>ab<b><em>text</em></b><br><math display="inline"><mi>x</mi></math>cd</p>')
+    expect(document.querySelector("p math")?.getAttribute("display")).toBe("inline")
+    expect(document.querySelector("p")?.textContent).toBe("abtextxcd")
+  })
+
+  it("splits around an explicitly displayed formula", () => {
+    document.body.innerHTML = '<p>abcd</p>'
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const formula = mathElement("math", mathElement("mi", "x"))
+    formula.setAttribute("display", "block")
+    editor.features.manipulation.insert(formula)
+    expectBodyToBe('<p>ab</p><math display="block"><mi>x</mi></math><p>cd</p>')
+  })
+})
+
 const fragmentFromHTML = (html: string) => {
   const template = document.createElement("template")
   template.innerHTML = html
@@ -1066,7 +1131,7 @@ describe("legacy column groups are preserved as authored DOM", () => {
 })
 
 describe("column insertion", () => {
-  it.each(["p", "h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
+  it.each(["h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
     document.body.innerHTML = `<${tag}>before<b>after</b><!--keep--></${tag}>`
     const block = document.body.firstElementChild!
     const bold = block.querySelector("b")!
@@ -1091,9 +1156,9 @@ describe("column insertion", () => {
     $.move(block.firstChild!, 2)
     const widget = document.createElement("float-widget")
     editor.features.manipulation.insert(widget)
-    if(content) expectNoFloat(widget)
-    else expectClassFloat(widget, "right")
-    if(!content) expect(widget.nextElementSibling).toBe(block)
+    expectNoFloat(widget)
+    expect(block.textContent).toBe("te")
+    expect(widget.nextElementSibling?.textContent).toBe("xt")
   })
 
   it.each(["", " ", "<br>", "<b></b>"])("does not float insertion at a caret in an empty paragraph: %s", html => {
@@ -1135,7 +1200,7 @@ describe("column insertion", () => {
     expect(paragraph.textContent).toBe("detached")
   })
 
-  it("undoes and redoes a floated insertion", () => {
+  it("undoes and redoes media insertion splitting a paragraph", () => {
     document.querySelector("p")!.textContent = "text"
     $.move(document.querySelector("p")!.firstChild!, 2)
     editor.doc.syncFromDOM()
@@ -1143,7 +1208,7 @@ describe("column insertion", () => {
     editor.features.manipulation.insert(document.createElement("img"))
     editor.doc.syncFromDOM()
     const inserted = editor.toHTML(true)
-    expect(document.querySelector("p")!.previousElementSibling).toBe(document.querySelector("img"))
+    expect(document.querySelector("p")!.nextElementSibling).toBe(document.querySelector("picture"))
     editor.doc.undo()
     expect(document.querySelector("img")).toBeNull()
     editor.doc.redo()
@@ -2898,7 +2963,7 @@ describe("paste()", () => {
 
     expectBodyToBe('<p>he</p><h1 id="title">Title</h1><p>llo</p>')
   })
-  it("preserves a pasted custom element as an atomic native float", async () => {
+  it("preserves a pasted custom element between paragraph halves", async () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "Widget",
       "text/html": "<demo-widget>Widget</demo-widget>",
@@ -2908,7 +2973,8 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expect(document.querySelector("demo-widget")).toHaveClass("ww-float-right")
+    expectNoFloat(document.querySelector("demo-widget") as HTMLElement)
+    expectBodyToBe('<p>he</p><demo-widget>Widget</demo-widget><p>llo</p>')
     expect(document.querySelector("demo-widget")).not.toHaveAttribute("contenteditable")
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector("demo-widget"))
@@ -4967,8 +5033,9 @@ describe("unified content transfer", () => {
       else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
       parser.mockRestore()
       const math = document.querySelector("math")!
-      expect(math.getAttribute("display")).toBe(inline ? "inline" : "block")
-      expect(math.parentElement).toBe(inline ? document.querySelector("p") : document.body)
+      const remainsInline = inline && display !== "block"
+      expect(math.getAttribute("display")).toBe(remainsInline ? "inline" : "block")
+      expect(math.parentElement).toBe(remainsInline ? document.querySelector("p") : document.body)
     }
   })
 
@@ -4982,13 +5049,14 @@ describe("unified content transfer", () => {
     document.body.append(math)
     const {data} = beginDrag(math)
     dropAt(data, document.querySelector("p")!.firstChild!, 3, {ctrlKey: copy})
-    const inline = document.querySelector("p math")!
-    expect(inline.getAttribute("display")).toBe("inline")
-    expect(inline === math).toBe(!copy)
-    const next = beginDrag(inline)
+    const displayed = document.querySelector("p")!.nextElementSibling!
+    expect(displayed.localName).toBe("math")
+    expect(displayed.getAttribute("display")).toBe("block")
+    expect(displayed === math).toBe(!copy)
+    const next = beginDrag(displayed)
     dropAt(next.data, document.body, 0)
-    expect(document.body.firstElementChild).toBe(inline)
-    expect(inline.getAttribute("display")).toBe("block")
+    expect(document.body.firstElementChild).toBe(displayed)
+    expect(displayed.getAttribute("display")).toBe("block")
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 

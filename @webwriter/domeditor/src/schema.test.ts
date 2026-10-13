@@ -29,6 +29,26 @@ describe("create()", () => {
   })
 })
 
+describe("paragraph content", () => {
+  it.each(["svg", "area", "geolocation"])("rejects %s directly and inside marks", tag => {
+    const node = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag)
+    const paragraph = document.querySelector("p")!
+    expect(editor.schema.canInsert(paragraph, node, 0)).toBe(false)
+    const mark = document.createElement("strong")
+    mark.append(node)
+    expect(editor.schema.canInsert(paragraph, mark, 0)).toBe(false)
+  })
+
+  it("allows inline formulas and rejects display formulas", () => {
+    const math = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+    const paragraph = document.querySelector("p")!
+    math.setAttribute("display", "inline")
+    expect(editor.schema.canInsert(paragraph, math, 0)).toBe(true)
+    math.setAttribute("display", "block")
+    expect(editor.schema.canInsert(paragraph, math, 0)).toBe(false)
+  })
+})
+
 describe("widget marks", () => {
   it("parses explicit mark lists and treats underscore as allow-all", () => {
     expect(parseWidgetMarks(" bold  italic ")).toEqual(["bold", "italic"])

@@ -1,3 +1,5 @@
+import {primaryMarkNames, secondaryMarkNames} from "./marks"
+
 // TODO: Attributes?
 
 function hasNot(...selectors: string[]) {
@@ -450,7 +452,11 @@ export const baseSchema = {
   "p": {
     defaultNode: true,
     group: ["flow", "palpable"],
-    content: {options: [{group: "phrasing"}, {selector: {type: "text"}}], min: 0, max: Infinity},
+    content: {options: [
+      {group: "phrasing", selector: `:is(${[...primaryMarkNames, ...secondaryMarkNames, "strong", "em", "br", "wbr"].join(",")}):not([is])`},
+      {selector: "math|math"},
+      {selector: {type: "text"}},
+    ], min: 0, max: Infinity},
   },
   "pre": {
     directlyInsertable: false,
