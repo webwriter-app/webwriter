@@ -22,6 +22,29 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+const fixedGutterOffsets = new WeakMap<Document, {key: string, offset: number}>()
+
+/** Client rects include the root's leading gutter; fixed CSS insets start
+ * inside it. Keep hit-test geometry in client coordinates and convert only
+ * when positioning fixed editor UI. */
+export function fixedClientX(x: number, doc = document) {
+  const view = doc.defaultView
+  if(!view) return x
+  const root = doc.documentElement
+  const key = `${view.innerWidth}:${root.style.cssText}:${root.className}:${documentLayoutMode(doc.body)}`
+  const cached = fixedGutterOffsets.get(doc)
+  if(cached?.key === key) return x - cached.offset
+  const width = root.clientWidth
+  const offset = width && view.getComputedStyle(root).scrollbarGutter?.includes("both-edges")
+    ? Math.max(0, view.innerWidth - width) : 0
+  const entry = {key, offset}
+  fixedGutterOffsets.set(doc, entry)
+  // A refresh can position hundreds of affordances. Avoid flushing styles
+  // after every UI write, while rereading geometry on the next task.
+  queueMicrotask(() => { if(fixedGutterOffsets.get(doc) === entry) fixedGutterOffsets.delete(doc) })
+  return x - offset
+}
+
 /** Inherited across editor UI shadow roots; authored styles do not use this token. */
 export function uiMotionDisabled(element: Element) {
   return element.ownerDocument.defaultView?.getComputedStyle(element)

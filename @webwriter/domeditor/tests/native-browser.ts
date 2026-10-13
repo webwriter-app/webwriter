@@ -565,6 +565,40 @@ await check("marker image uploads preview before applying", async () => {
   finally {toolbox.remove()}
 })
 
+await check("editing affordances align with media inside symmetric scrollbar gutters", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:450px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "gutter affordance fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    doc.body.innerHTML = '<p style="height:100px">Before media</p><picture style="width:400px;height:220px"><img></picture><p style="height:1200px">After media</p>'
+    const picture = doc.querySelector("picture")!
+    editor.features.selection.captureElement(picture)
+    for(const gutter of ["stable both-edges", "auto", "stable both-edges"]) {
+      doc.documentElement.style.scrollbarGutter = gutter
+      for(const scroll of [0, 80]) {
+        view.scrollTo(0, scroll)
+        await layoutFrame()
+        editor.features.transformation.updateInfo()
+        editor.features.media.refreshPlaceholder()
+        const target = picture.getBoundingClientRect()
+        for(const element of [editor.features.transformation.overlay, editor.features.selection.selectionCaret!, editor.features.media.placeholder.element]) {
+          const box = element.getBoundingClientRect()
+          for(const key of ["left", "top", "width", "height"] as const) assert(Math.abs(box[key] - target[key]) < 1, `${element.className} ${key} drifted with ${gutter}: ${box[key]} vs ${target[key]}`)
+        }
+      }
+    }
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
+})
+
 await check("document scrollbar gutters stay symmetric as content grows", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:400px;border:0;max-width:none"
@@ -1053,7 +1087,7 @@ await check("media and graphics enforce minimum editing dimensions", async () =>
       for(const empty of [false, true]) {
         target.classList.toggle("◆media-empty", empty)
         const style = getComputedStyle(target), rect = target.getBoundingClientRect()
-        assert(style.minWidth === `${width}px` && style.minHeight === `${height}px`, `${tag} minimum differs (${empty})`)
+        assert(style.minHeight === `${height}px`, `${tag} minimum height differs (${empty})`)
         assert(rect.width >= width && rect.height >= height, `${tag} rendered below its minimum (${rect.width}x${rect.height})`)
       }
     }

@@ -1,7 +1,7 @@
 import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, atomicEditingContainer, isAppendixInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {getDocumentRoot} from "../document-template"
@@ -1551,7 +1551,7 @@ export class GraphicFeature extends EditorFeature {
       editor.caret.style.cssText = "position:fixed;pointer-events:none;left:0;top:0;width:0;height:0"
       editor.caret.replaceChildren(...Array.from(range.getClientRects(), rect => {
         const highlight = document.createElement("div")
-        highlight.style.cssText = `position:fixed;pointer-events:none;background:var(--editor-selection-background,rgba(37,99,235,.25));left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+        highlight.style.cssText = `position:fixed;pointer-events:none;background:var(--editor-selection-background,rgba(37,99,235,.25));left:${fixedClientX(rect.left)}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
         return highlight
       }))
       return
@@ -1567,8 +1567,8 @@ export class GraphicFeature extends EditorFeature {
     const x = rect.height ? rect.left : fallback.left
     const y = rect.height ? rect.top : fallback.top
     const height = rect.height || fallback.height || 16
-    Object.assign(editor.caret.style, {left: `${x}px`, top: `${y}px`, height: `${height}px`})
-    Object.assign(editor.element.style, {left: `${x}px`, top: `${y}px`})
+    Object.assign(editor.caret.style, {left: `${fixedClientX(x)}px`, top: `${y}px`, height: `${height}px`})
+    Object.assign(editor.element.style, {left: `${fixedClientX(x)}px`, top: `${y}px`})
   }
 
   #emptyTextCaretRect(text: SVGTextElement): DOMRect | null {
@@ -1945,6 +1945,7 @@ export class GraphicFeature extends EditorFeature {
 
   #setMarquee(bounds: Bounds, graphic: SVGSVGElement) {
     const overlay = this.#overlay ?? this.#createOverlay()
+    overlay.style.left = `${fixedClientX(0)}px`
     const marquee = overlay.querySelector<SVGRectElement>(".◆graphic-marquee")!
     const matrix = this.#screenMatrix(graphic)
     const screenBounds = boundsForPoints([
@@ -2175,7 +2176,7 @@ export class GraphicFeature extends EditorFeature {
       const matrix = this.#screenMatrix(graphic)
       const origin = applyMatrix(matrix, {x: box.x, y: box.y})
       Object.assign(preview.style, {
-        left: "0", top: "0", width: `${box.width}px`, height: `${box.height}px`,
+        left: `${fixedClientX(0)}px`, top: "0", width: `${box.width}px`, height: `${box.height}px`,
         overflow: "visible", transformOrigin: "0 0",
         transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${origin.x}, ${origin.y})`,
       })
@@ -2183,7 +2184,7 @@ export class GraphicFeature extends EditorFeature {
     }
     const rect = graphic.getBoundingClientRect()
     Object.assign(preview.style, {
-      left: `${rect.left}px`,
+      left: `${fixedClientX(rect.left)}px`,
       top: `${rect.top}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
@@ -3213,6 +3214,7 @@ export class GraphicFeature extends EditorFeature {
 
   #updateOverlaySelection(shapes: Element[], graphic: SVGSVGElement, matrix: Matrix, interaction?: Interaction) {
     const overlay = this.#overlay ?? this.#createOverlay()
+    overlay.style.left = `${fixedClientX(0)}px`
     const outline = overlay.querySelector<SVGPolygonElement>(".◆graphic-selection-outline")!
     const stem = overlay.querySelector<SVGLineElement>(".◆graphic-rotation-stem")!
     const individualOutlines = overlay.querySelector<SVGGElement>(".◆graphic-individual-outlines")!

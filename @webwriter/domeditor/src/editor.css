@@ -188,7 +188,7 @@ svg:not(svg *) {
 }
 
 :is(iframe, embed, object) {
-  min-width: 320px;
+  min-width: min(320px, 100%);
   min-height: 70px;
 }
 

@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
+import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
   normalizeTableStructure,
@@ -284,7 +284,7 @@ export class TableFeature extends EditorFeature {
         Object.assign(control, {axis, index, map})
         control.button.dataset.axis = axis
         control.button.setAttribute("aria-label", `Insert ${axis} ${index + 1}`)
-        control.button.style.left = `${axis === "column" ? position : rect.left - tableGapOffset}px`
+        control.button.style.left = `${fixedClientX(axis === "column" ? position : rect.left - tableGapOffset)}px`
         control.button.style.top = `${axis === "row" ? position : top - tableGapOffset}px`
         control.button.style.setProperty("--gap-length", `${axis === "column" ? bottom - top + tableGapOffset : rect.width + tableGapOffset}px`)
       }

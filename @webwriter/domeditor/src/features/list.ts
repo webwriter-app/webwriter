@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ElementSelectionType, ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
 import {listMarkerImageProperty} from "../element-styles"
 
@@ -358,7 +358,7 @@ export class ListFeature extends EditorFeature {
     const contentLeft = list.matches("dl")
       ? listRect.left + (nextType === "dd" ? 40 : 0)
       : laidOutPrevious ? anchorRect.left : listRect.left + listPadding
-    marker.style.left = `${Math.max(0, contentLeft)}px`
+    marker.style.left = `${fixedClientX(Math.max(0, contentLeft))}px`
     marker.style.top = `${Math.max(0, previous ? anchorRect.bottom : listRect.top)}px`
     marker.style.minHeight = `${lineHeight}px`
     marker.style.setProperty("--virtual-list-line-height", `${lineHeight}px`)

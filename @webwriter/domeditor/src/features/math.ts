@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, fixedClientX, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, type MathSelectionState} from "../math"
 
 import {styleMarkNames, type MarkName} from "../marks"
@@ -1464,6 +1464,7 @@ export class MathFeature extends EditorFeature {
       this.overlay.setAttribute("aria-hidden", "true")
       this.editor.addAppendix(this.overlay)
     }
+    this.overlay.style.left = `${fixedClientX(0)}px`
     // Keep the caret connected so refreshing guides cannot restart its blink.
     Array.from(this.overlay.children).forEach(child => { if(child !== this.caret) child.remove() })
     const caretPoint: Point | null = this.deadPowerTarget ?? (selection?.isCollapsed && selection.focusNode ? [selection.focusNode, selection.focusOffset] : null)

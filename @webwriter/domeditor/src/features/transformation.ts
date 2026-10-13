@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
@@ -586,7 +586,7 @@ export class TransformationFeature extends EditorFeature {
     if(!target) { if(this.#target) this.clearTransform(); return }
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
-    Object.assign(overlay.style, styles)
+    Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
     this.#positionCropControls(target, width, height, rect, matrix)
     const floats = this.editor.features.selection.floatExclusions(target, rect, styles)
     this.#positionFlowControls(width, height, floats)

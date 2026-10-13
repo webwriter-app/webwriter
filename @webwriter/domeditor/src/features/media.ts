@@ -10,7 +10,7 @@ import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
-import {$, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
+import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -417,7 +417,7 @@ class MediaPlaceholder {
     const above = rect.bottom + height + 16 > window.innerHeight && rect.top > height + 16
     const top = above ? rect.top - height - 8 : Math.min(rect.bottom + 8, window.innerHeight - height - 8)
     this.element.toggleAttribute("data-popup-above", above)
-    Object.assign(content.style, {left: `${left}px`, top: `${Math.max(8, top)}px`})
+    Object.assign(content.style, {left: `${fixedClientX(left)}px`, top: `${Math.max(8, top)}px`})
     content.style.setProperty("--bubble-arrow", `${Math.max(12, Math.min(width - 20, rect.left + rect.width / 2 - left - 4))}px`)
   }
 
@@ -502,7 +502,7 @@ class MediaPlaceholder {
     }
     this.root.querySelector(".expand")!.setAttribute("aria-label", `Add ${noun}`)
     Object.assign(this.element.style, {
-      left: `${rect.left}px`,
+      left: `${fixedClientX(rect.left)}px`,
       top: `${rect.top}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
@@ -691,7 +691,7 @@ class ImageMapOverlay {
       return
     }
     Object.assign(this.element.style, {
-      left: `${geometry.left}px`,
+      left: `${fixedClientX(geometry.left)}px`,
       top: `${geometry.top}px`,
       width: `${geometry.width}px`,
       height: `${geometry.height}px`,
@@ -943,7 +943,7 @@ class MediaInteractionShield {
     this.element.toggleAttribute("data-empty-website", isWebsiteType(target.localName) && isEmptyMedia(target))
     const rect = target.getBoundingClientRect()
     Object.assign(this.element.style, {
-      left: `${rect.left}px`,
+      left: `${fixedClientX(rect.left)}px`,
       top: `${rect.top}px`,
       width: `${Math.max(0, rect.width)}px`,
       height: `${Math.max(0, rect.height)}px`,
@@ -1188,7 +1188,7 @@ export class MediaFeature extends EditorFeature {
         || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
       if(placeholder.hidden) return
       Object.assign(placeholder.style, {
-        left: `${rect.left}px`, top: `${rect.top}px`,
+        left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
         width: `${rect.width}px`, height: `${rect.height}px`, transform: "none",
       })
       // Preserve native SVG transforms, including those on unfamiliar groups.
@@ -1204,7 +1204,7 @@ export class MediaFeature extends EditorFeature {
         // Keep the caption and dashed border the same size as HTML images,
         // while following SVG rotation, skew and editor zoom.
         Object.assign(placeholder.style, {
-          left: "0", top: "0", width: `${box.width * widthScale}px`, height: `${box.height * heightScale}px`,
+          left: `${fixedClientX(0)}px`, top: "0", width: `${box.width * widthScale}px`, height: `${box.height * heightScale}px`,
           transform: `matrix(${matrix.a / widthScale}, ${matrix.b / widthScale}, ${matrix.c / heightScale}, ${matrix.d / heightScale}, ${x}, ${y})`,
         })
       }

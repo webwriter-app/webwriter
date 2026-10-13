@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "editing affordances align with media inside symmetric scrollbar gutters",
   "document scrollbar gutters stay symmetric as content grows",
   "empty Details retains summary height and padding in standalone documents",
   "media stays centered in editing and standalone documents",

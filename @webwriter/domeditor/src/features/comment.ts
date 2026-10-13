@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {isAtomicEditingElement} from "../utility"
+import {fixedClientX, isAtomicEditingElement} from "../utility"
 import type {CommentState} from "../editor-bridge"
 
 const markerPrefix = "webwriter:comment:"
@@ -504,7 +504,7 @@ export class CommentFeature extends EditorFeature {
     if(!rect) return
     const width = button.getBoundingClientRect().width || 32
     const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left + rect.width / 2 - width / 2))
-    button.style.left = `${left}px`
+    button.style.left = `${fixedClientX(left)}px`
     button.style.top = `${Math.max(8, rect.top - 34)}px`
   }
 

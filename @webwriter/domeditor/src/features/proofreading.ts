@@ -1,6 +1,6 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {createProofreader, normalizeProofreadingDictionary, type Proofreader, type ProofreadingIssue} from "../proofreading"
-import {$, authoredClassValue, createStylesheet, adoptStylesheet, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
+import {$, authoredClassValue, createStylesheet, adoptStylesheet, fixedClientX, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 import {render} from "lit"
 import {proofreadingCardStyles, proofreadingKindLabels, renderProofreadingCard} from "../components/proofreading-card"
 import {getDocumentRoot} from "../document-template"
@@ -405,7 +405,7 @@ export class ProofreadingFeature extends EditorFeature {
     adoptStylesheet(this.editor.appendix, this.popupStylesheet)
     popup.showPopover?.()
     const rect = popup.getBoundingClientRect()
-    popup.style.left = `${Math.max(6, Math.min(anchor.left, innerWidth - rect.width - 6))}px`
+    popup.style.left = `${fixedClientX(Math.max(6, Math.min(anchor.left, innerWidth - rect.width - 6)))}px`
     const below = anchor.bottom + 6
     popup.style.top = `${below + rect.height <= innerHeight - 6 ? below : Math.max(6, anchor.top - rect.height - 6)}px`
     popup.querySelector<HTMLButtonElement>("button")?.focus()

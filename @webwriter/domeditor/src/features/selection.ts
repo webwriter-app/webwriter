@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -90,7 +90,7 @@ export class SelectionFeature extends EditorFeature {
       }
       const rect = this.editor.features.media.cropTargetFor(element) && element instanceof HTMLElement
         ? this.editor.features.transformation.boxGeometry(element).rect : element.getBoundingClientRect()
-      overlay.style.left = `${rect.left}px`
+      overlay.style.left = `${fixedClientX(rect.left)}px`
       overlay.style.top = `${rect.top}px`
       overlay.style.width = `${rect.width}px`
       overlay.style.height = `${rect.height}px`
@@ -1345,14 +1345,14 @@ export class SelectionFeature extends EditorFeature {
         this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
         return
       }
-      for(const [property, value] of Object.entries({left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transform: "none"})) caret.style.setProperty(property, value, "important")
+      for(const [property, value] of Object.entries({left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transform: "none"})) caret.style.setProperty(property, value, "important")
       this.#floatOutline(caret, rect, floats, "hover")
     }
     else {
       caret.replaceChildren()
       setPart(caret, "hover-caret-floats", false)
       const {styles} = this.editor.features.transformation.boxGeometry(target)
-      for(const [property, value] of Object.entries(styles)) caret.style.setProperty(property, value, "important")
+      for(const [property, value] of Object.entries({...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})) caret.style.setProperty(property, value, "important")
     }
     caret.style.setProperty("position-anchor", "auto", "important")
     caret.style.setProperty("position-area", "none", "important")
@@ -2058,7 +2058,7 @@ export class SelectionFeature extends EditorFeature {
       if(touchCaret) this.#markSelection(document.body, "◆touch-caret-visible")
       const rect = caretRect(sel.focusNode, sel.focusOffset)
       const caret = this.#showSelectionCaret("text")
-      caret.style.left = `${rect.left}px`
+      caret.style.left = `${fixedClientX(rect.left)}px`
       caret.style.top = `${rect.top}px`
       caret.style.height = `${rect.height}px`
     }

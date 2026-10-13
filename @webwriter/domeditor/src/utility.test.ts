@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import {
-  $, getContainer, getSidesOfPoint, getSelectionAnchorBlock, getSelectionFocusBlock,
+  $, fixedClientX, getContainer, getSidesOfPoint, getSelectionAnchorBlock, getSelectionFocusBlock,
   getIndexBefore, isElement, isComment, isText, isDocument, isOnApple, modifierKeyDown,
   cloneInert, cloneRangeIn, cloneRangeContents, cloneWithoutEditorMarkers, roundByDPR, roundTo, midpoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
@@ -27,6 +27,37 @@ beforeEach(() => {
 function setBody(html: string) {
   document.body.innerHTML = html
 }
+
+describe("fixed editor coordinates", () => {
+  it.each(["auto", "stable", "stable both-edges"])("accounts for %s root gutters", gutter => {
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: gutter} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    try { expect(fixedClientX(120)).toBe(gutter.includes("both-edges") ? 105 : 120) }
+    finally { style.mockRestore(); width.mockRestore() }
+  })
+
+  it("keeps overlay-scrollbar coordinates unchanged", () => {
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth)
+    try { expect(fixedClientX(120)).toBe(120) }
+    finally { style.mockRestore(); width.mockRestore() }
+  })
+
+  it("shares gutter measurements during a refresh and rereads them on the next task", async () => {
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    try {
+      expect(fixedClientX(120)).toBe(105)
+      expect(fixedClientX(140)).toBe(125)
+      expect(style).toHaveBeenCalledTimes(1)
+      await Promise.resolve()
+      width.mockReturnValue(window.innerWidth)
+      expect(fixedClientX(120)).toBe(120)
+      expect(style).toHaveBeenCalledTimes(2)
+    }
+    finally { style.mockRestore(); width.mockRestore() }
+  })
+})
 
 function firstText(parent: Element | null = document.body.firstElementChild) {
   return parent!.firstChild as Text

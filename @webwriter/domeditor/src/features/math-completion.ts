@@ -1,4 +1,5 @@
 import {MATH_NAMESPACE, mathRowNames} from "../math"
+import {fixedClientX} from "../utility"
 import {continuesMathCompletion, exactMathCompletion, mathCompletions, type MathCompletion} from "../math-input"
 
 type Pending = {text: string, range: Range, command: boolean}
@@ -191,7 +192,7 @@ export class MathCompletionInput {
     const available = Math.max(0, useAbove ? above : below)
     this.menu.style.width = `${width}px`
     this.menu.style.maxHeight = `${Math.min(height, available)}px`
-    this.menu.style.left = `${Math.max(6, Math.min(rect.left, innerWidth - width - 6))}px`
+    this.menu.style.left = `${fixedClientX(Math.max(6, Math.min(rect.left, innerWidth - width - 6)))}px`
     this.menu.style.top = `${Math.max(6, useAbove ? rect.top - Math.min(height, available, this.entries.length * 36) - 6 : rect.bottom + 6)}px`
     this.menu.hidden = available < 32
     this.updateSelection()

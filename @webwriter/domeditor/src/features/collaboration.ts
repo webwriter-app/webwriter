@@ -1,6 +1,6 @@
 import type {CollaborationUser} from "../domdoc"
 import type {PresenceUser} from "../editor-bridge"
-import {caretRect, isElement, nodeEdgeRect} from "../utility"
+import {caretRect, fixedClientX, isElement, nodeEdgeRect} from "../utility"
 import {userInitials} from "../user-identity"
 import {EditorFeature} from "."
 import {isMarkElement} from "../marks"
@@ -150,7 +150,7 @@ export class CollaborationFeature extends EditorFeature {
       // Range rectangles are viewport coordinates, so fixed positioning keeps
       // the virtual caret exactly over the browser's native caret even when
       // the editor body has a margin, is scrolled, or is transformed.
-      element.style.left = `${caret.rect.left}px`
+      element.style.left = `${fixedClientX(caret.rect.left)}px`
       element.style.top = `${caret.rect.top}px`
 
       const label = element.querySelector("span") ?? document.createElement("span")

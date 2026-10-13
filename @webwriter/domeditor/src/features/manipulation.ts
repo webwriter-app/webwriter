@@ -4,7 +4,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
+import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -189,7 +189,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       const rect = element.getBoundingClientRect()
       Object.assign(surface.style, {
-        left: `${rect.left}px`, top: `${rect.top}px`,
+        left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
         width: `${rect.width}px`, height: `${rect.height}px`,
       })
       if(this.hasActiveNodeDragAnimation(element)) this.scheduleNodeDragPosition()
@@ -608,7 +608,7 @@ export class ManipulationFeature extends EditorFeature {
     const rect = this.floatDropHit?.container === container && this.floatDropHit.side === side
       ? this.floatDropHit.rect : this.floatPreviewRect(container, side, overlay, source)
     this.floatDropPreview = {container, side, rect}
-    Object.assign(overlay.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+    Object.assign(overlay.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
   }
 
   private floatPreviewRect(container: Element, side: "left" | "right", overlay: HTMLElement, source?: Element,
@@ -827,7 +827,7 @@ export class ManipulationFeature extends EditorFeature {
         this.editor.addAppendix(overlay)
       }
       const rect = target.getBoundingClientRect()
-      Object.assign(overlay.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      Object.assign(overlay.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
     }
     else {
       overlay?.remove()
