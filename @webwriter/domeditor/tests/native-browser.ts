@@ -2297,7 +2297,7 @@ await check("editing frame blocks meta refresh and retains same-document navigat
       reject(new Error(`timed out waiting for ${type}`))
     }, timeoutMs)
     const receive = (event: MessageEvent) => {
-      if(event.source !== frame.contentWindow || event.origin !== frameOrigin || event.data?.type !== type) return
+      if(event.source !== frame.contentWindow || event.origin !== (frame.srcdoc ? location.origin : frameOrigin) || event.data?.type !== type) return
       clearTimeout(timer)
       window.removeEventListener("message", receive)
       resolve(event.data as T)
@@ -2338,9 +2338,15 @@ await check("editing frame blocks meta refresh and retains same-document navigat
     assert(frame.contentDocument?.URL === "about:blank", "trusted parent replacement did not load")
     frame.remove()
 
-    for(const kind of ["editor", "preview"] as const) {
-      const links = makeFrame(kind)
-      await install(links, `<!doctype html><body><script>
+    for(const kind of ["editor", "preview", "srcdoc"] as const) {
+      const links = kind === "srcdoc" ? document.createElement("iframe") : makeFrame(kind)
+      if(kind === "srcdoc") {
+        frames.add(links)
+        links.setAttribute("sandbox", "allow-scripts allow-same-origin")
+        fixture.append(links)
+      }
+      const source = `<!doctype html><body><script type="module">
+        ${kind === "srcdoc" ? `const {openFrameLinksInNewTabs} = await import('${location.origin}/src/frame-links.ts'); openFrameLinksInNewTabs(window);` : ""}
         const opened = [];
         window.open = (...args) => { opened.push(args); return null };
         setTimeout(() => {
@@ -2354,14 +2360,19 @@ await check("editing frame blocks meta refresh and retains same-document navigat
           const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
           svg.innerHTML = '<a href="https://svg.test"><text>SVG</text></a>'; document.body.append(svg);
           svg.querySelector('text').dispatchEvent(new MouseEvent('auxclick', {button:1, bubbles:true, cancelable:true}));
-          const fragment = document.createElement('a'); fragment.href = '#chapter'; document.body.append(fragment); fragment.click();
-          parent.postMessage({type:'frame-link-state', opened, href:location.href, targets:[...document.querySelectorAll('a[target]')].map(a => a.target)}, '*');
+          const chapter = document.createElement('p'); chapter.id = 'chapter'; chapter.style.marginTop = '2000px'; chapter.textContent = 'Chapter'; document.body.append(chapter);
+          const fragment = document.createElement('a'); fragment.href = '#chapter'; fragment.target = '_blank'; document.body.append(fragment); fragment.click();
+          setTimeout(() => parent.postMessage({type:'frame-link-state', opened, href:location.href, scrollY, targets:[...document.querySelectorAll('a[target]')].map(a => a.target)}, '*'), 50);
         }, 50);
-      </script></body>`)
-      const state = await waitForMessage<{opened: string[][], href: string, targets: string[]}>(links, "frame-link-state")
-      assert(state.opened.length === 8 && state.opened.every(args => args[1] === "_blank" && args[2] === "noopener,noreferrer"), `${kind} did not redirect every link to a new tab`)
-      assert(new URL(state.href).pathname === "/frame-shell.html" && !state.href.endsWith("#chapter"), `${kind} link navigated the frame`)
-      assert(state.targets.join(",") === "_self,_top,_parent,named,_blank", `${kind} changed authored link targets`)
+      </script></body>`
+      const result = waitForMessage<{opened: string[][], href: string, scrollY: number, targets: string[]}>(links, "frame-link-state")
+      if(kind === "srcdoc") links.srcdoc = source
+      else await install(links, source)
+      const state = await result
+      assert(state.opened.length === 7 && state.opened.every(args => args[1] === "_blank" && args[2] === "noopener,noreferrer"), `${kind} did not redirect external links to a new tab`)
+      assert(new URL(state.href).pathname === (kind === "srcdoc" ? "srcdoc" : "/frame-shell.html") && state.href.endsWith("#chapter"), `${kind} fragment did not stay in the frame`)
+      assert(state.scrollY > 1000, `${kind} fragment did not scroll to its target`)
+      assert(state.targets.join(",") === "_self,_top,_parent,named,_blank,_blank", `${kind} changed authored link targets`)
       links.remove()
     }
   }

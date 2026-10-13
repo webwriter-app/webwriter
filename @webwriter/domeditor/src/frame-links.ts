@@ -1,6 +1,6 @@
 const frameLinkListeners = new WeakMap<Window, () => void>()
 
-/** Keep activated links out of the editor/preview browsing context. */
+/** Keep external links out of the frame while navigating local fragments in it. */
 export function openFrameLinksInNewTabs(win: Window & typeof globalThis) {
   const existing = frameLinkListeners.get(win)
   if(existing) return existing
@@ -13,7 +13,14 @@ export function openFrameLinksInNewTabs(win: Window & typeof globalThis) {
     if(href === null) return
     event.preventDefault()
     let url: URL
-    try { url = new URL(href, link.baseURI) } catch { return }
+    // srcdoc inherits the parent's base URL, but fragment-only links belong
+    // to this frame. Assigning its URL also ignores authored link targets.
+    const fragmentOnly = href.trim().startsWith("#")
+    try { url = new URL(href, fragmentOnly ? win.location.href : link.baseURI) } catch { return }
+    if(fragmentOnly || href.includes("#") && url.href.split("#")[0] === win.location.href.split("#")[0]) {
+      win.location.assign(url.href)
+      return
+    }
     if(["javascript:", "data:"].includes(url.protocol)) return
     win.open(url.href, "_blank", "noopener,noreferrer")
   }

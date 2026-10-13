@@ -10,7 +10,7 @@ beforeEach(() => Object.assign(navigation, {disableMainFrameNavigation: true, di
 afterEach(() => { disconnect?.(); document.body.replaceChildren(); Object.assign(navigation, originalNavigation); vi.restoreAllMocks() })
 
 describe("frame links", () => {
-  it("opens authored targets and fragment links in new tabs without changing the document", () => {
+  it("opens external links in new tabs without changing the document", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null)
     disconnect = openFrameLinksInNewTabs(window)
     for(const target of ["", "_self", "_top", "_parent", "existing", "_blank"]) {
@@ -22,9 +22,30 @@ describe("frame links", () => {
       expect(open).toHaveBeenLastCalledWith("https://example.test/page", "_blank", "noopener,noreferrer")
       expect(document.body.innerHTML).toBe(before)
     }
-    document.querySelector("a")!.setAttribute("href", "#chapter")
-    document.querySelector("a")!.click()
-    expect(open).toHaveBeenLastCalledWith(new URL("#chapter", document.baseURI).href, "_blank", "noopener,noreferrer")
+  })
+
+  it("navigates fragments in the frame despite authored targets and a different base URL", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null)
+    const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {})
+    disconnect = openFrameLinksInNewTabs(window)
+    const base = document.createElement("base")
+    base.href = "https://parent.test/page"
+    document.head.append(base)
+    try {
+      for(const href of ["#chapter", "#chapter%20two", "#", " #chapter ", `${window.location.href.split("#")[0]}#chapter`]) {
+        for(const target of ["", "_self", "_top", "_parent", "existing", "_blank"]) {
+          document.body.innerHTML = `<a href="${href}" target="${target}"><b>Link</b></a><p id="chapter">Chapter</p>`
+          const before = document.body.innerHTML
+          const event = new MouseEvent("click", {bubbles: true, cancelable: true})
+          document.querySelector("b")!.dispatchEvent(event)
+          expect(event.defaultPrevented).toBe(true)
+          expect(assign).toHaveBeenLastCalledWith(new URL(href, window.location.href).href)
+          expect(document.body.innerHTML).toBe(before)
+        }
+      }
+      expect(open).not.toHaveBeenCalled()
+    }
+    finally { base.remove() }
   })
 
   it("handles middle clicks, SVG and widget shadow links added later, and cleans up", () => {
