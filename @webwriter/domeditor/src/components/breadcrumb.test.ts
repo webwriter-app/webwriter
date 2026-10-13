@@ -22,6 +22,24 @@ describe("breadcrumb float indicators", () => {
   })
 })
 
+describe("image hotspot breadcrumb indicator", () => {
+  it("places a hand click indicator beside the Image label", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [{path: [0], name: "Image", imageMap: true}]
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    const label = breadcrumb.shadowRoot!.querySelector(".item-label")!
+    const indicator = breadcrumb.shadowRoot!.querySelector(".image-hotspot-indicator")!
+    expect(label.textContent).toBe("Image")
+    expect(indicator.getAttribute("aria-label")).toBe("Interactive image hotspots")
+    expect(indicator.querySelector("svg")).not.toBeNull()
+    breadcrumb.path = [{path: [0], name: "Image"}]
+    await breadcrumb.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector(".image-hotspot-indicator")).toBeNull()
+    breadcrumb.remove()
+  })
+})
+
 describe("breadcrumb resize lifecycle", () => {
   it("observes the navigation again when the same element reconnects", async () => {
     const observers: Array<{

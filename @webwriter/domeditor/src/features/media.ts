@@ -9,6 +9,8 @@ import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
+import linkIcon from "@tabler/icons/outline/link.svg?raw"
+import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
 import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction} from "../utility"
 import {
@@ -17,6 +19,8 @@ import {
   mediaCaptureModes,
   mediaCaptureOptions,
   isImageMapHotspotShape,
+  createImageMapPopoverController,
+  imageMapHotspotBounds,
   isMediaType,
   isTimedMediaResourceType,
   isWebsiteType,
@@ -531,6 +535,9 @@ const imageMapOverlayStylesheet = createStylesheet(`
   }
   :host([data-open]) { display: block; }
   :host([data-drawing]) { pointer-events: auto; cursor: crosshair; }
+  :host([data-editing]) .hotspot { pointer-events: auto; cursor: move; }
+  .handle { fill: white; stroke: #2563eb; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: auto; cursor: crosshair; }
+  svg { touch-action: none; }
   svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .hotspot {
     fill: rgb(37 99 235 / 16%);
@@ -587,6 +594,15 @@ const imageMapOverlayStylesheet = createStylesheet(`
   button:hover:not(:disabled) { background: #eef4fb; }
   button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 1px; }
   button:disabled { opacity: .5; cursor: default; }
+  .actions { position:absolute; transform:translate(-50%,-50%); pointer-events:auto; display:none; }
+  :host([data-editing]:not([data-drawing])) .actions { display:block; }
+  .action-buttons { box-sizing:border-box; display:flex; gap:2px; padding:2px; border-radius:5px; background:rgb(255 255 255 / 94%); box-shadow:0 1px 5px rgb(0 0 0 / 20%); }
+  .action-buttons button { flex:1; min-width:0; min-height:0; padding:2px; display:grid; place-items:center; color:#526b86; }
+  .action-buttons button[aria-pressed="true"] { background:#e4effb; color:#2563eb; }
+  .action-buttons svg { display:block; width:100%; height:100%; max-width:20px; max-height:20px; }
+  .url-editor { box-sizing:border-box; position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%); width:clamp(120px,28vw,240px); padding:4px; border:1px solid #c8d2df; border-radius:4px; background:white; box-shadow:0 2px 8px rgb(0 0 0 / 18%); }
+  .url-editor[hidden] { display:none; }
+  .url-editor input { box-sizing:border-box; width:100%; min-width:0; padding:5px; border:1px solid #c8d2df; border-radius:3px; font:12px system-ui; }
 `)
 
 type ImageMapGeometry = {
@@ -603,6 +619,8 @@ type ImageMapDrawingSession = {
   map: HTMLMapElement
   shape: ImageMapHotspotShape
   geometry: ImageMapGeometry
+  newMap?: boolean
+  usemap?: string | null
 }
 
 const imageMapGeometry = (image: HTMLImageElement): ImageMapGeometry | null => {
@@ -629,6 +647,15 @@ class ImageMapOverlay {
   image: HTMLImageElement | null = null
   map: HTMLMapElement | null = null
   onCommit: ((session: ImageMapDrawingSession, coords: string) => boolean) | null = null
+  onEdit: ((area: HTMLAreaElement, expected: Record<string, string>, coords: string) => boolean) | null = null
+  onRemove: ((area: HTMLAreaElement, expected: Record<string, string>) => boolean) | null = null
+  onAction: ((area: HTMLAreaElement, expected: Record<string, string>, kind: "link" | "popover", value?: string) => boolean) | null = null
+  private readonly areaControls = new Map<HTMLAreaElement, HTMLDivElement>()
+  private selectedArea: HTMLAreaElement | null = null
+  private drag: {image: HTMLImageElement, map: HTMLMapElement, area: HTMLAreaElement, expected: Record<string, string>, geometry: ImageMapGeometry,
+    start: [number, number], coords: number[], next: number[], vertex: number | null} | null = null
+  private readonly shapeAreas = new WeakMap<Element, HTMLAreaElement>()
+  private readonly handleVertices = new WeakMap<Element, number>()
   private session: ImageMapDrawingSession | null = null
   private startPoint: [number, number] | null = null
   private currentPoint: [number, number] | null = null
@@ -658,6 +685,7 @@ class ImageMapOverlay {
     svg.addEventListener("pointermove", this.handlePointerMove)
     svg.addEventListener("pointerup", this.handlePointerUp)
     svg.addEventListener("click", this.handleClick)
+    svg.addEventListener("pointercancel", () => this.cancelDrawing())
     svg.addEventListener("dblclick", event => {
       if(this.session?.shape !== "poly") return
       event.preventDefault()
@@ -666,7 +694,15 @@ class ImageMapOverlay {
     this.root.querySelector<HTMLButtonElement>(".finish")!.addEventListener("click", () => this.finishPolygon())
     this.root.querySelector<HTMLButtonElement>(".cancel")!.addEventListener("click", () => this.cancelDrawing())
     this.element.addEventListener("keydown", event => {
-      if(event.key === "Escape") {
+      if(event.composedPath().some(node => node instanceof Element && node.matches("input, textarea, select, [contenteditable='true']"))) return
+      if((event.key === "Backspace" || event.key === "Delete") && this.selectedArea?.isConnected && this.map?.contains(this.selectedArea)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        this.onRemove?.(this.selectedArea, stateAttributes(this.selectedArea))
+        this.selectedArea = null
+        if(this.image && this.map) this.showFor(this.image, this.map)
+      }
+      else if(event.key === "Escape") {
         event.preventDefault()
         this.cancelDrawing()
       }
@@ -681,7 +717,9 @@ class ImageMapOverlay {
     return this.session !== null
   }
 
-  showFor(image: HTMLImageElement, map: HTMLMapElement) {
+  showFor(image: HTMLImageElement, map: HTMLMapElement, editing = this.element.hasAttribute("data-editing")) {
+    this.element.toggleAttribute("data-editing", editing)
+    if(this.image !== image || this.map !== map) this.selectedArea = null
     this.image = image
     this.map = map
     const geometry = imageMapGeometry(image)
@@ -697,6 +735,7 @@ class ImageMapOverlay {
       height: `${geometry.height}px`,
     })
     const svg = this.root.querySelector<SVGSVGElement>("svg")!
+    svg.setAttribute("preserveAspectRatio", "none")
     svg.setAttribute("viewBox", `0 0 ${geometry.coordinateWidth} ${geometry.coordinateHeight}`)
     this.element.setAttribute("data-open", "")
     this.element.removeAttribute("aria-hidden")
@@ -704,18 +743,21 @@ class ImageMapOverlay {
   }
 
   hide() {
-    this.cancelDrawing()
+    this.clearDrawing()
+    this.selectedArea = null
+    this.areaControls.forEach(control => control.remove())
+    this.areaControls.clear()
     this.image = null
     this.map = null
     this.element.removeAttribute("data-open")
     this.element.setAttribute("aria-hidden", "true")
   }
 
-  startDrawing(shape: ImageMapHotspotShape) {
+  startDrawing(shape: ImageMapHotspotShape, newMap = false) {
     if(!isImageMapHotspotShape(shape) || !this.image || !this.map) return false
     const geometry = imageMapGeometry(this.image)
-    if(!geometry || !this.image.isConnected || !this.map.isConnected) return false
-    this.session = {image: this.image, map: this.map, shape, geometry}
+    if(!geometry || !this.image.isConnected || !newMap && !this.map.isConnected) return false
+    this.session = {image: this.image, map: this.map, shape, geometry, newMap, usemap: this.image.getAttribute("usemap")}
     this.startPoint = null
     this.currentPoint = null
     this.polygonPoints = []
@@ -734,7 +776,7 @@ class ImageMapOverlay {
   }
 
   private pointForEvent(event: PointerEvent): [number, number] | null {
-    const geometry = this.session?.geometry
+    const geometry = this.session?.geometry ?? this.drag?.geometry
     if(!geometry) return null
     const x = Math.max(0, Math.min(geometry.coordinateWidth,
       (event.clientX - geometry.left) * geometry.coordinateWidth / geometry.width))
@@ -744,7 +786,26 @@ class ImageMapOverlay {
   }
 
   private handlePointerDown = (event: PointerEvent) => {
-    if(!this.session || this.session.shape === "poly" || event.button !== 0) return
+    if(event.button !== 0) return
+    if(!this.session && this.element.hasAttribute("data-editing")) {
+      const target = event.target instanceof Element ? event.target : null
+      const area = target ? this.shapeAreas.get(target) : null
+      const geometry = this.image ? imageMapGeometry(this.image) : null
+      if(!area || !geometry || !area.isConnected) return
+      const coords = (area.getAttribute("coords") ?? "").split(",").map(Number)
+      if(!isImageMapHotspotShape(area.getAttribute("shape")?.toLowerCase() || "rect")) return
+      event.preventDefault()
+      event.stopPropagation()
+      this.selectedArea = area
+      this.element.focus({preventScroll: true})
+      this.drag = {image: this.image!, map: this.map!, area, expected: stateAttributes(area), geometry,
+        start: [0, 0], coords, next: coords, vertex: this.handleVertices.get(target!) ?? null}
+      this.drag.start = this.pointForEvent(event)!
+      ;(event.currentTarget as SVGSVGElement).setPointerCapture?.(event.pointerId)
+      this.renderAreas(geometry)
+      return
+    }
+    if(!this.session || this.session.shape === "poly") return
     const point = this.pointForEvent(event)
     if(!point) return
     event.preventDefault()
@@ -755,6 +816,28 @@ class ImageMapOverlay {
   }
 
   private handlePointerMove = (event: PointerEvent) => {
+    if(this.drag) {
+      const point = this.pointForEvent(event)
+      if(!point) return
+      const {coords, start, vertex, area} = this.drag
+      const dx = point[0] - start[0], dy = point[1] - start[1]
+      const next = [...coords]
+      const circle = area.getAttribute("shape")?.toLowerCase() === "circle"
+      if(vertex !== null) {
+        if(circle) next[2] = Math.max(1, Math.round(Math.hypot(point[0] - coords[0], point[1] - coords[1])))
+        else if(area.getAttribute("shape")?.toLowerCase() === "rect" || !area.hasAttribute("shape")) {
+          next[vertex === 0 || vertex === 6 ? 0 : 2] = point[0]
+          next[vertex === 0 || vertex === 4 ? 1 : 3] = point[1]
+        }
+        else { next[vertex] = point[0]; next[vertex + 1] = point[1] }
+      }
+      else for(let index = 0; index < (circle ? 2 : next.length); index += 2) {
+        next[index] += dx; next[index + 1] += dy
+      }
+      this.drag.next = next
+      this.renderAreas(this.drag.geometry)
+      return
+    }
     if(!this.session || this.session.shape === "poly" || !this.startPoint) return
     const point = this.pointForEvent(event)
     if(!point) return
@@ -763,6 +846,24 @@ class ImageMapOverlay {
   }
 
   private handlePointerUp = (event: PointerEvent) => {
+    if(this.drag) {
+      this.handlePointerMove(event)
+      const drag = this.drag
+      this.drag = null
+      if(this.image === drag.image && this.map === drag.map && drag.image.isConnected
+        && equalImageMapGeometry(imageMapGeometry(drag.image), drag.geometry)
+        && drag.area.isConnected && this.map?.contains(drag.area) && equalAttributes(drag.area, drag.expected)) {
+        if(drag.next.some((value, index) => value !== drag.coords[index])) {
+          const coords = drag.area.getAttribute("shape")?.toLowerCase() === "rect" || !drag.area.hasAttribute("shape")
+            ? [Math.min(drag.next[0], drag.next[2]), Math.min(drag.next[1], drag.next[3]),
+              Math.max(drag.next[0], drag.next[2]), Math.max(drag.next[1], drag.next[3])]
+            : drag.next
+          this.onEdit?.(drag.area, drag.expected, coords.join(","))
+        }
+      }
+      if(this.image && this.map) this.showFor(this.image, this.map)
+      return
+    }
     if(!this.session || this.session.shape === "poly" || !this.startPoint) return
     const point = this.pointForEvent(event)
     if(point) this.currentPoint = point
@@ -811,12 +912,15 @@ class ImageMapOverlay {
   }
 
   private cancelDrawing() {
+    const pending = this.session?.newMap
     this.clearDrawing()
-    if(this.image && this.map) this.showFor(this.image, this.map)
+    if(pending) this.hide()
+    else if(this.image && this.map) this.showFor(this.image, this.map)
   }
 
   private clearDrawing() {
     this.session = null
+    this.drag = null
     this.startPoint = null
     this.currentPoint = null
     this.polygonPoints = []
@@ -828,7 +932,8 @@ class ImageMapOverlay {
     const group = this.root.querySelector<SVGElement>(".areas")!
     const shapes = Array.from(this.map?.querySelectorAll("area") ?? []).flatMap(area => {
       const shape = area.getAttribute("shape")?.toLowerCase() || "rect"
-      const coords = (area.getAttribute("coords") ?? "").split(",").map(value => Number(value.trim()))
+      const coords = this.drag?.area === area ? this.drag.next
+        : (area.getAttribute("coords") ?? "").split(",").map(value => Number(value.trim()))
       if(coords.some(value => !Number.isFinite(value))) return []
       let element: SVGElement | null = null
       if(shape === "rect" && coords.length === 4) {
@@ -859,9 +964,102 @@ class ImageMapOverlay {
       }
       if(!element) return []
       element.classList.add("hotspot")
-      return [element]
+      this.shapeAreas.set(element, area)
+      const handles: SVGElement[] = []
+      if(area === this.selectedArea && this.element.hasAttribute("data-editing") && isImageMapHotspotShape(shape)) {
+        const points = shape === "circle" ? [[coords[0] + coords[2], coords[1], 2]]
+          : shape === "rect" ? [[coords[0], coords[1], 0], [coords[2], coords[3], 2], [coords[2], coords[1], 4], [coords[0], coords[3], 6]]
+          : Array.from({length: coords.length / 2}, (_, index) => [coords[index * 2], coords[index * 2 + 1], index * 2])
+        for(const [x, y, vertex] of points) {
+          const handle = document.createElementNS("http://www.w3.org/2000/svg", "ellipse")
+          handle.setAttribute("cx", String(x)); handle.setAttribute("cy", String(y))
+          handle.setAttribute("rx", String(4.5 * geometry.coordinateWidth / geometry.width))
+          handle.setAttribute("ry", String(4.5 * geometry.coordinateHeight / geometry.height))
+          handle.classList.add("handle")
+          this.shapeAreas.set(handle, area); this.handleVertices.set(handle, vertex)
+          handles.push(handle)
+        }
+      }
+      return [element, ...handles]
     })
     group.replaceChildren(...shapes)
+    this.renderControls(geometry)
+  }
+
+  private renderControls(geometry: ImageMapGeometry) {
+    const areas = new Set(Array.from(this.map?.querySelectorAll("area") ?? []))
+    for(const [area, control] of this.areaControls) {
+      if(!areas.has(area)) { control.remove(); this.areaControls.delete(area) }
+    }
+    for(const [index, area] of Array.from(areas).entries()) {
+      const bounds = this.image ? imageMapHotspotBounds(area, this.image) : null
+      if(!bounds) continue
+      let control = this.areaControls.get(area)
+      if(!control) {
+        control = document.createElement("div")
+        control.className = "actions"
+        control.innerHTML = `<div class="action-buttons"><button class="link" type="button" aria-label="Edit hotspot link" title="Link">${linkIcon}</button><button class="popover" type="button" aria-label="Edit hotspot popover" title="Popover">${messageCircle}</button></div><form class="url-editor" novalidate hidden><input type="url" aria-label="Hotspot URL" placeholder="https://…"></form>`
+        const input = control.querySelector<HTMLInputElement>("input")!
+        const form = control.querySelector<HTMLFormElement>("form")!
+        let expected: Record<string, string> | null = null
+        const select = () => {
+          this.selectedArea = area
+          const current = this.image ? imageMapGeometry(this.image) : null
+          if(current) this.renderAreas(current)
+        }
+        control.addEventListener("pointerdown", event => { event.stopPropagation(); select() })
+        control.addEventListener("focusin", select)
+        control.querySelector<HTMLButtonElement>(".link")!.addEventListener("click", event => {
+          event.preventDefault()
+          if(!area.isConnected || !this.onAction?.(area, stateAttributes(area), "link")) return
+          form.hidden = !form.hidden
+          expected = stateAttributes(area)
+          input.value = area.getAttribute("href") ?? ""
+          if(!form.hidden) input.focus({preventScroll:true})
+        })
+        control.querySelector<HTMLButtonElement>(".popover")!.addEventListener("click", event => {
+          event.preventDefault()
+          form.hidden = true
+          if(area.isConnected) this.onAction?.(area, stateAttributes(area), "popover")
+        })
+        const commit = () => {
+          if(expected && area.isConnected && this.onAction?.(area, expected, "link", input.value)) expected = stateAttributes(area)
+        }
+        input.addEventListener("change", commit)
+        form.addEventListener("submit", event => { event.preventDefault(); commit(); form.hidden = true; this.element.focus({preventScroll:true}) })
+        input.addEventListener("keydown", event => {
+          event.stopPropagation()
+          if(event.key === "Enter") {
+            event.preventDefault()
+            commit()
+            form.hidden = true
+            this.element.focus({preventScroll:true})
+          }
+          else if(event.key === "Escape") { form.hidden = true; this.element.focus({preventScroll:true}) }
+        })
+        this.root.append(control)
+        this.areaControls.set(area, control)
+      }
+      control.setAttribute("role", "group")
+      control.setAttribute("aria-label", `Hotspot ${index + 1}`)
+      const size = Math.max(44, Math.min(64, bounds.width - 8, bounds.height * 2 - 8))
+      Object.assign(control.style, {left:`${(bounds.left + bounds.right) / 2 - geometry.left}px`, top:`${(bounds.top + bounds.bottom) / 2 - geometry.top}px`, width:`${size}px`})
+      const viewportWidth = document.defaultView!.innerWidth
+      const panelWidth = Math.max(0, Math.min(240, Math.max(120, viewportWidth * .28), viewportWidth - 16))
+      const center = (bounds.left + bounds.right) / 2
+      const panelLeft = Math.max(8, Math.min(center - panelWidth / 2, viewportWidth - panelWidth - 8))
+      Object.assign(control.querySelector<HTMLElement>(".url-editor")!.style,
+        {width:`${panelWidth}px`, left:`${panelLeft - center + size / 2}px`, transform:"none",
+          top:(bounds.top + bounds.bottom) / 2 + 60 > document.defaultView!.innerHeight ? "-44px" : "calc(100% + 4px)"})
+      control.querySelector<HTMLElement>(".action-buttons")!.style.height = `${Math.max(24, Math.min(28, bounds.height - 4))}px`
+      const popover = Boolean(area.getAttribute("popovertarget") || area.getAttribute("interestfor"))
+      control.querySelector(".link")!.setAttribute("aria-pressed", String(!popover))
+      const button = control.querySelector<HTMLButtonElement>(".popover")!
+      button.setAttribute("aria-pressed", String(popover))
+      const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor") ?? area.getAttribute("aria-details")?.split(/\s+/).find(id => document.getElementById(id)?.hasAttribute("popover"))
+      button.popoverTargetElement = id ? document.getElementById(id) : null
+      button.setAttribute("aria-expanded", String(Boolean(button.popoverTargetElement?.matches(":popover-open"))))
+    }
   }
 
   private renderPreview() {
@@ -1033,6 +1231,10 @@ export class MediaFeature extends EditorFeature {
   }
 
   private imageMapOverlayController: ImageMapOverlay | null = null
+  private popoverController: ReturnType<typeof createImageMapPopoverController> | null = null
+  private get popovers() {
+    return this.popoverController ??= createImageMapPopoverController(document)
+  }
   private readonly interactionShields = new Map<Element, MediaInteractionShield>()
   private readonly graphicImagePlaceholders = new Map<SVGGraphicsElement, HTMLDivElement>()
   private readonly observedGraphicImageTargets = new Set<Element>()
@@ -1068,6 +1270,43 @@ export class MediaFeature extends EditorFeature {
     if(!this.imageMapOverlayController) {
       this.imageMapOverlayController = new ImageMapOverlay()
       this.imageMapOverlayController.onCommit = (session, coords) => this.commitImageMapArea(session, coords)
+      this.imageMapOverlayController.onEdit = (area, expected, coords) => {
+        if(!this.isEnabled || this.editor.isEditingLocked || !area.isConnected || !equalAttributes(area, expected)) return false
+        this.editor.doc.stopCapturing()
+        area.setAttribute("coords", coords)
+        this.finishImageMapChange()
+        return true
+      }
+      const prepare = (area: HTMLAreaElement, expected: Record<string, string>) => {
+        const image = this.imageMapOverlayController?.image
+        const map = this.imageMapOverlayController?.map
+        if(!this.isEnabled || this.editor.isEditingLocked || !image?.isConnected || !map?.contains(area)
+          || this.associatedImageMap(image) !== map || !equalAttributes(area, expected)) return null
+        this.editor.features.selection.captureElement(mediaContainerForNode(image) ?? image)
+        return pathFromNode(map, area)
+      }
+      this.imageMapOverlayController.onRemove = (area, expected) => {
+        const path = prepare(area, expected)
+        return path ? this.actions.removeImageMapArea({type: "removeImageMapArea", path, expected}) : false
+      }
+      this.imageMapOverlayController.onAction = (area, expected, kind, value) => {
+        const path = prepare(area, expected)
+        if(!path) return false
+        if(kind === "popover") return this.actions.addImageMapPopover({type:"addImageMapPopover", path, expected})
+        const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
+        if(id) {
+          const content = document.getElementById(id)
+          try { content?.hidePopover?.() } catch {}
+          const details = area.getAttribute("aria-details")?.split(/\s+/).filter(Boolean) ?? []
+          if(!details.includes(id)) area.setAttribute("aria-details", [...details, id].join(" "))
+          area.removeAttribute("popovertarget")
+          area.removeAttribute("interestfor")
+          if(area.getAttribute("href") === `#${id}`) area.removeAttribute("href")
+        }
+        if(value !== undefined) value ? area.setAttribute("href", value) : area.removeAttribute("href")
+        this.finishImageMapChange()
+        return true
+      }
       this.editor.addAppendix(this.imageMapOverlayController.element)
     }
     return this.imageMapOverlayController
@@ -1276,6 +1515,8 @@ export class MediaFeature extends EditorFeature {
     this.cancelSourceFile()
     this.mediaPlaceholder?.dispose()
     this.mediaPlaceholder = null
+    this.popoverController?.dispose()
+    this.popoverController = null
     this.imageMapOverlayController?.element.remove()
     this.imageMapOverlayController = null
     this.interactionShields.forEach(shield => shield.remove())
@@ -1289,9 +1530,11 @@ export class MediaFeature extends EditorFeature {
 
   passiveListeners = {
     selectionchange: () => this.scheduleRefresh(),
+    pointerover: (event: PointerEvent) => this.popovers.handleEvent(event),
   }
 
   activeListeners = {
+    click: (event: MouseEvent) => this.popovers.handleEvent(event),
     pointerdown: (event: PointerEvent) => {
       const target = event.target instanceof Node ? mediaContainerForNode(event.target) : null
       if(!target || !isEmptyMedia(target)) return
@@ -1556,7 +1799,13 @@ export class MediaFeature extends EditorFeature {
       if(!isImageMapHotspotShape(shape)) throw new TypeError(`Unsupported hotspot shape '${String(shape)}'`)
       const image = this.selectedImage(false)
       const map = image ? this.associatedImageMap(image) : null
-      if(!image || !map) return false
+      if(!image) return false
+      if(!map) {
+        const pending = document.createElement("map")
+        pending.setAttribute("name", this.uniqueImageMapName())
+        this.imageMapOverlay.showFor(image, pending)
+        return this.imageMapOverlay.startDrawing(shape, true)
+      }
       this.imageMapOverlay.showFor(image, map)
       return this.imageMapOverlay.startDrawing(shape)
     },
@@ -1580,7 +1829,59 @@ export class MediaFeature extends EditorFeature {
     }) => {
       const area = this.selectedImageMapArea(path, expected)
       if(!area) return false
+      const image = this.selectedImage(false)
+      const map = image ? this.associatedImageMap(image) : null
+      const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
+      try { if(id) document.getElementById(id)?.hidePopover?.() } catch {}
       area.remove()
+      if(map && !map.querySelector("area")) {
+        this.imagesUsingMap(map).forEach(image => image.removeAttribute("usemap"))
+        // Removing the map must not discard unrelated authored children.
+        map.replaceWith(...map.childNodes)
+      }
+      this.finishImageMapChange()
+      return true
+    },
+    addImageMapPopover: ({path, expected}: {type: "addImageMapPopover", path: number[], expected: Record<string, string>}) => {
+      const area = this.selectedImageMapArea(path, expected)
+      if(!area) return false
+      if(area.hasAttribute("popovertarget") || area.hasAttribute("interestfor")) return this.openAreaPopover(area)
+      const retained = area.getAttribute("aria-details")?.split(/\s+/).find(id => document.getElementById(id)?.hasAttribute("popover"))
+      if(retained) {
+        area.setAttribute("popovertarget", retained)
+        if(!area.hasAttribute("href")) area.setAttribute("href", `#${retained}`)
+        this.finishImageMapChange()
+        return this.openAreaPopover(area)
+      }
+      let id = "hotspot-popover", suffix = 2
+      while(document.getElementById(id)) id = `hotspot-popover-${suffix++}`
+      const content = document.createElement("div")
+      content.id = id
+      content.setAttribute("popover", "auto")
+      const paragraph = document.createElement("p")
+      paragraph.textContent = "Popover content"
+      content.append(paragraph)
+      area.closest("map")!.after(content)
+      area.setAttribute("popovertarget", id)
+      area.setAttribute("aria-details", [area.getAttribute("aria-details"), id].filter(Boolean).join(" "))
+      // An AREA without href is inert in native image-map hit testing.
+      if(!area.hasAttribute("href")) area.setAttribute("href", `#${id}`)
+      this.finishImageMapChange()
+      return this.openAreaPopover(area)
+    },
+    openImageMapPopover: ({path, expected}: {type: "openImageMapPopover", path: number[], expected: Record<string, string>}) => {
+      const area = this.selectedImageMapArea(path, expected)
+      return area ? this.openAreaPopover(area) : false
+    },
+    setImageMapPopoverTrigger: ({path, expected, value}: {
+      type: "setImageMapPopoverTrigger", path: number[], expected: Record<string, string>, value: "click" | "hover"
+    }) => {
+      if(value !== "click" && value !== "hover") return false
+      const area = this.selectedImageMapArea(path, expected)
+      const id = area?.getAttribute("popovertarget") ?? area?.getAttribute("interestfor")
+      if(!area || !id) return false
+      area.removeAttribute(value === "hover" ? "popovertarget" : "interestfor")
+      area.setAttribute(value === "hover" ? "interestfor" : "popovertarget", id)
       this.finishImageMapChange()
       return true
     },
@@ -1804,6 +2105,12 @@ export class MediaFeature extends EditorFeature {
     return media?.matches("picture, img") ? this.imageForMedia(media, create) : null
   }
 
+  hasImageMap(element: Element) {
+    const media = element.matches("figure") ? Array.from(element.children).find(child => child.matches("img, picture")) : element
+    const image = media?.matches("img, picture") ? this.imageForMedia(media, false) : null
+    return Boolean(image && this.associatedImageMap(image))
+  }
+
   private associatedImageMap(image: HTMLImageElement) {
     const usemap = image.getAttribute("usemap")?.trim()
     if(!usemap?.startsWith("#") || usemap.length < 2) return null
@@ -1851,9 +2158,18 @@ export class MediaFeature extends EditorFeature {
   }
 
   private commitImageMapArea(session: ImageMapDrawingSession, coords: string) {
-    if(!session.image.isConnected || !session.map.isConnected
-      || this.associatedImageMap(session.image) !== session.map
+    if(!this.isEnabled || this.editor.isEditingLocked || !session.image.isConnected || (!session.newMap && (!session.map.isConnected
+      || this.associatedImageMap(session.image) !== session.map))
+      || session.newMap && (session.image.getAttribute("usemap") !== session.usemap || this.associatedImageMap(session.image))
       || !isImageMapHotspotShape(session.shape)) return false
+    if(session.newMap) {
+      let anchor = mediaContainerForNode(session.image) ?? session.image
+      if(anchor.parentElement?.matches("a")) anchor = anchor.parentElement
+      if(!anchor.parentNode) return false
+      session.map.setAttribute("name", this.uniqueImageMapName())
+      anchor.after(session.map)
+      session.image.setAttribute("usemap", `#${session.map.getAttribute("name")}`)
+    }
     const area = document.createElement("area")
     area.setAttribute("shape", session.shape)
     area.setAttribute("coords", coords)
@@ -1865,6 +2181,22 @@ export class MediaFeature extends EditorFeature {
       this.editor.features.selection.processSelection()
     }
     this.finishImageMapChange()
+    return true
+  }
+
+  private openAreaPopover(area: HTMLAreaElement) {
+    const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
+    const content = id ? document.getElementById(id) : null
+    if(!(content instanceof HTMLElement) || !content.hasAttribute("popover")) return false
+    const image = this.selectedImage(false)
+    const wasOpen = content.matches(":popover-open")
+    if(!image || !this.popovers.open(area, image, true)) return false
+    if(wasOpen) return true
+    // Release image capture so normal native content editing applies inside the popover.
+    this.editor.features.selection.selectElement(content)
+    $.move(content, 0)
+    this.editor.features.selection.processSelection()
+    this.editor.postSelectionPath()
     return true
   }
 
@@ -2018,10 +2350,15 @@ export class MediaFeature extends EditorFeature {
     })
     const selected = this.refreshPlaceholder()
 
-    const image = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null
+    this.popoverController?.refresh()
+    const selectedImage = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null
+    const previous = this.imageMapOverlayController?.image
+    const image = selectedImage ?? (previous && this.popoverController?.hasOpenFor(previous) ? previous : null)
     const map = image ? this.associatedImageMap(image) : null
-    if(image?.isConnected && map?.isConnected) this.imageMapOverlay.showFor(image, map)
-    else this.imageMapOverlayController?.hide()
+    const pendingDrawing = this.imageMapOverlayController?.isDrawing && image === this.imageMapOverlayController.image && !map
+    if(image?.isConnected && map?.isConnected) this.imageMapOverlay.showFor(image, map,
+      Boolean(this.editor.features.selection.captureSelectedElement) || Boolean(this.popoverController?.hasOpenFor(image)))
+    else if(!pendingDrawing) this.imageMapOverlayController?.hide()
     this.syncInteractionShields()
   }
 }

@@ -44,3 +44,17 @@ describe("restoreOriginalResourceURLs()", () => {
     expect(image.hasAttribute("data-webwriter-original-src")).toBe(false)
   })
 })
+
+
+it("includes one hotspot popover runtime in standalone exports", () => {
+  const root = new DOMParser().parseFromString('<img usemap="#plan"><map name="plan"><area href="#details" popovertarget="details"></map><div id="details" popover="auto"><strong>Content</strong></div>', "text/html")
+  const body = root.body.innerHTML
+  appendSerializedAssets(root, [])
+  appendSerializedAssets(root, [])
+  expect(root.querySelectorAll("#webwriter-image-map-popovers")).toHaveLength(1)
+  expect(root.querySelector("#webwriter-image-map-popovers")!.textContent).toContain('document.addEventListener("pointerover", handle)')
+  expect(root.body.innerHTML).toBe(body)
+  root.querySelector("area")!.removeAttribute("popovertarget")
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-image-map-popovers")).toBeNull()
+})

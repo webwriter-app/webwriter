@@ -1034,6 +1034,7 @@ export class DOMEditor {
       }
     }
     const positioning = (element: Element) => ({
+      ...(this.features.media.hasImageMap(element) ? {imageMap: true} : {}),
       ...(positions.has(element) ? {position: positions.get(element)!} : {}),
       ...(anchors.has(element) ? {positionAnchor: true} : {}),
       ...(() => {

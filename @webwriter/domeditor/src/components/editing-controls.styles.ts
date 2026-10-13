@@ -1178,6 +1178,27 @@ export const editingControlStyles = css`
       gap: 0.2rem;
     }
 
+    .image-map-coordinates {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.2rem;
+      min-width: 0;
+    }
+
+    .image-map-coordinates-circle {
+      grid-template-columns: repeat(auto-fit, minmax(3.4rem, 1fr));
+    }
+
+    .image-map-coordinate {
+      min-width: 0;
+    }
+
+    .image-map-coordinate input {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+    }
+
     .image-map-draw {
       box-sizing: border-box;
       min-width: 0;

@@ -324,7 +324,7 @@ describe("media ribbon drawer", () => {
     }}))
   })
 
-  it("offers image-map lifecycle, drawing, and hotspot attribute controls", async () => {
+  it("draws hotspots without map lifecycle controls and edits popover behavior", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -334,8 +334,11 @@ describe("media ribbon drawer", () => {
     const listener = vi.fn()
     toolbox.addEventListener("image-map-action", listener)
 
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".media-resource-editor .media-type-switch")!.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "add-map"}}))
+    expect(toolbox.shadowRoot!.querySelector('button[aria-label="Add hotspot"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('button[aria-label="Remove map"]')).toBeNull()
+    Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".image-map-draw"))
+      .find(button => button.textContent === "Rectangle")!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "draw", shape: "rect"}}))
 
     toolbox.media = {
       type: "img",
@@ -345,11 +348,15 @@ describe("media ribbon drawer", () => {
         shared: false,
         areas: [{
           path: [0],
-          attributes: {shape: "rect", coords: "1,2,30,40", href: "old.html", alt: "Library"},
+          attributes: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"},
         }],
       },
     }
     await toolbox.updateComplete
+
+    for(const label of ["Alternative text", "Open in", "Link relationship", "Referrer policy"]) {
+      expect(toolbox.shadowRoot!.querySelector(`[aria-label="Hotspot: ${label}"]`)).toBeNull()
+    }
 
     const rectangle = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".image-map-draw"))
       .find(button => button.textContent === "Rectangle")!
@@ -366,19 +373,95 @@ describe("media ribbon drawer", () => {
       type: "img",
       action: "set-area-attribute",
       path: [0],
-      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", alt: "Library"},
+      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"},
       attribute: "href",
       value: "library.html",
     }}))
+
+    const trigger = toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Hotspot: Popover trigger"]')!
+    expect(trigger.value).toBe("click")
+    trigger.value = "hover"
+    trigger.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
+      type: "img", action: "set-popover-trigger", path: [0],
+      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"}, value: "hover",
+    }}))
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Open hotspot 1 popover"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({action: "open-popover", path: [0]})}))
 
     toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove hotspot 1"]')!.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
       type: "img", action: "remove-area", path: [0],
     })}))
-    const removeMap = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-resource-add"))
-      .find(button => button.textContent === "Remove map")!
-    removeMap.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "remove-map"}}))
+    expect(toolbox.shadowRoot!.querySelector("button[aria-label='Remove map']")).toBeNull()
+  })
+
+  it("edits hotspot coordinates one numeric field at a time for each shape", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "plan.png"}, imageMap: {
+      name: "plan", shared: false, areas: [
+        {path: [0], attributes: {shape: "rect", coords: "1,2,30,40"}},
+        {path: [1], attributes: {shape: "circle", coords: "5,6,7"}},
+        {path: [2], attributes: {shape: "poly", coords: "1,2,3,4,odd"}},
+      ],
+    }}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const listener = vi.fn()
+    toolbox.addEventListener("image-map-action", listener)
+
+    for(const label of ["X1", "Y1", "X2", "Y2"]) {
+      expect(toolbox.shadowRoot!.querySelector(`input[aria-label="Hotspot: ${label}"]`)).not.toBeNull()
+    }
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Hotspot: Coordinates"]')).toBeNull()
+    const rectX2 = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: X2"]')!
+    rectX2.value = "31"
+    rectX2.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener.mock.lastCall?.[0].detail).toEqual({
+      type: "img", action: "set-area-attribute", path: [0],
+      expected: {shape: "rect", coords: "1,2,30,40"}, attribute: "coords", value: "1,2,31,40",
+    })
+    listener.mockClear()
+    rectX2.value = "invalid"
+    rectX2.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener).not.toHaveBeenCalled()
+
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Hotspot: Center X"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Hotspot: Radius"]')).not.toBeNull()
+    const radius = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Radius"]')!
+    radius.value = "9"
+    radius.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener.mock.lastCall?.[0].detail).toEqual({
+      type: "img", action: "set-area-attribute", path: [1],
+      expected: {shape: "circle", coords: "5,6,7"}, attribute: "coords", value: "5,6,9",
+    })
+
+    const polygon = toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".image-map-area")[2]
+    expect(polygon.querySelector<HTMLInputElement>('input[aria-label="Hotspot: X3"]')!.value).toBe("odd")
+    const poly = polygon.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Y2"]')!
+    poly.value = "8"
+    poly.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener.mock.lastCall?.[0].detail).toEqual({
+      type: "img", action: "set-area-attribute", path: [2],
+      expected: {shape: "poly", coords: "1,2,3,4,odd"}, attribute: "coords", value: "1,2,3,8,odd",
+    })
+  })
+
+  it("adds a popover to an existing hotspot", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "plan.png"}, imageMap: {
+      name: "plan", shared: false, areas: [{path: [0], attributes: {shape: "rect", coords: "0,0,10,10"}}],
+    }}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const listener = vi.fn()
+    toolbox.addEventListener("image-map-action", listener)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Add hotspot 1 popover"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
+      type: "img", action: "add-popover", path: [0], expected: {shape: "rect", coords: "0,0,10,10"},
+    }}))
   })
 
   it("uses iframe website controls without exposing an element switch", async () => {

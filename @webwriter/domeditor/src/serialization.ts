@@ -1,3 +1,4 @@
+import {createImageMapPopoverController, imageMapHotspotBounds} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
@@ -84,6 +85,14 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     style.id = "webwriter-list-marker-styles"
     style.textContent = listMarkerStyleSource
     head.append(style)
+  }
+  root.querySelectorAll('script[id="webwriter-image-map-popovers"]').forEach(script => script.remove())
+  if(root.querySelector("map area[popovertarget], map area[interestfor]")) {
+    const script = root.createElement("script")
+    script.id = "webwriter-image-map-popovers"
+    script.type = "module"
+    script.textContent = `(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("resize", controller.refresh); document.addEventListener("scroll", controller.refresh, true); window.addEventListener("pagehide", () => controller.dispose(), {once:true}); })();`
+    head.append(script)
   }
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.

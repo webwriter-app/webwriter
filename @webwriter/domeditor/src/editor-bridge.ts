@@ -255,6 +255,8 @@ export type SelectionPathItem = {
   icon?: string
   /** An optional package-provided icon displayed instead of the shared icon. */
   iconUrl?: string
+  /** Whether this image currently resolves to an authored image map. */
+  imageMap?: boolean
   /** The element's computed non-static positioning mode, omitting relative positioning without an offset. */
   position?: "absolute" | "fixed" | "relative" | "sticky"
   /** The element's authored left or right float, including floats hidden by responsive styles. */
@@ -719,6 +721,7 @@ const isSelectionPathItem = (value: unknown) => {
     && isString(value.name)
     && isOptional(value.icon, isString)
     && isOptional(value.iconUrl, isString)
+    && isOptional(value.imageMap, isBoolean)
     && isSelectionPosition(value)
     && isOptional(value.sections, sections => Array.isArray(sections) && sections.every(isSection))
 }

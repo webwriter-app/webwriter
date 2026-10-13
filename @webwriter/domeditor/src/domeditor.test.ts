@@ -778,6 +778,15 @@ describe("breadcrumb positioning", () => {
       $.selectElement(document.querySelector("img")!)
       const image = readPath()
       expect(image.map(item => item.name)).toContain("Image")
+      expect(image.at(-1)?.imageMap).toBeUndefined()
+      const authoredImage = document.querySelector("img")!
+      authoredImage.setAttribute("usemap", "#plan")
+      const map = document.createElement("map")
+      map.name = "plan"
+      document.body.append(map)
+      expect(readPath().at(-1)?.imageMap).toBe(true)
+      map.remove()
+      expect(readPath().at(-1)?.imageMap).toBeUndefined()
       expect(image.flatMap(item => [item.name, ...(item.sections ?? []).map(section => section.name)])).not.toContain("Figure")
       $.selectElement(document.querySelectorAll("figure")[1])
       const empty = readPath()

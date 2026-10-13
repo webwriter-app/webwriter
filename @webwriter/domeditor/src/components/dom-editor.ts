@@ -5298,6 +5298,18 @@ export class DomEditor extends LitElement {
     }
     const path = detail.path as number[]
     const expected = detail.expected as Record<string, string>
+    if(detail.action === "add-popover") {
+      void this.execute({type: "addImageMapPopover", path, expected})
+      return
+    }
+    if(detail.action === "open-popover") {
+      void this.execute({type: "openImageMapPopover", path, expected})
+      return
+    }
+    if(detail.action === "set-popover-trigger" && (detail.value === "click" || detail.value === "hover")) {
+      void this.execute({type: "setImageMapPopoverTrigger", path, expected, value: detail.value})
+      return
+    }
     if(detail.action === "remove-area") {
       void this.execute({type: "removeImageMapArea", path, expected})
       return

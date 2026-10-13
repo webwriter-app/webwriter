@@ -105,3 +105,15 @@ describe("isolated frame documents", () => {
     expect(Array.from(editor.querySelectorAll("script[src]")).every(script => script.getAttribute("type") === "application/json")).toBe(true)
   })
 })
+
+
+it("installs the hotspot popover runtime under the preview script nonce", () => {
+  const source = parse('<img usemap="#plan"><map name="plan"><area href="#details" interestfor="details"></map><div id="details" popover="auto"><p>Content</p></div>')
+  const root = parse(previewFrameHTML(source, previewOptions()))
+  const script = root.querySelector<HTMLScriptElement>("#webwriter-image-map-popovers")!
+  expect(script).not.toBeNull()
+  expect(script.getAttribute("nonce")).toBeTruthy()
+  expect(root.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")).toContain(`'nonce-${script.getAttribute("nonce")}'`)
+  expect(root.querySelector("area")!.getAttribute("interestfor")).toBe("details")
+  expect(root.querySelector("#details p")!.textContent).toBe("Content")
+})

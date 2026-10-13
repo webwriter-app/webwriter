@@ -189,6 +189,20 @@ export class DomEditorBreadcrumb extends LitElement {
       height: 16px;
     }
 
+    .image-hotspot-indicator,
+    .image-hotspot-indicator svg {
+      display: block;
+      width: 16px;
+      height: 16px;
+    }
+
+    .image-hotspot-indicator {
+      flex: 0 0 16px;
+      margin-left: 0.05rem;
+      color: #526b86;
+      transform: translateY(2px);
+    }
+
     .item-sections {
       display: inline-flex;
       align-items: flex-start;
@@ -367,6 +381,7 @@ export class DomEditorBreadcrumb extends LitElement {
         && entry.item.name === other.item.name
         && entry.item.icon === other.item.icon
         && entry.item.iconUrl === other.item.iconUrl
+        && entry.item.imageMap === other.item.imageMap
         && entry.item.position === other.item.position
         && entry.item.positionAnchor === other.item.positionAnchor
         && entry.item.float === other.item.float
@@ -833,6 +848,7 @@ export class DomEditorBreadcrumb extends LitElement {
         >
           ${this.renderItemIcon(entry.item)}
           <span class="item-label">${entry.item.name}</span>
+          ${entry.item.imageMap ? html`<span class="image-hotspot-indicator" role="img" aria-label="Interactive image hotspots" title="Interactive image hotspots">${ribbonIcon("Image hotspot")}</span>` : ""}
           ${this.renderPositionIcons(entry.item)}
         </button>
         ${this.renderSections(entry.item)}

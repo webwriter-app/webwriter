@@ -5,6 +5,7 @@ import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
+import {createImageMapPopoverController, imageMapHotspotBounds} from "../media"
 
 let editor: DOMEditor
 const fetchSettings = (window as unknown as TestWindow).happyDOM.settings.fetch
@@ -1241,8 +1242,10 @@ describe("media editing", () => {
       path: areaState.path,
       expected: areaState.attributes,
     })).toBe(true)
-    expect(map.querySelector("area")).toBeNull()
-    expect(map.querySelector("span")).toBe(wrapper)
+    expect(map.isConnected).toBe(false)
+    expect(wrapper.isConnected).toBe(true)
+    expect(wrapper.firstChild).toBeInstanceOf(Comment)
+    expect(image).not.toHaveAttribute("usemap")
   })
 
   it("unlinks a shared image map without deleting it for other images", () => {
@@ -1297,6 +1300,221 @@ describe("media editing", () => {
       {shape: "poly", coords: "20,20,100,20,60,80", alt: ""},
     ])
     expect(editor.toHTML(true)).not.toContain("image-map-overlay")
+  })
+
+  it("moves captured hotspots, resizes their vertices, and ignores concurrent replacements", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay
+    const svg = overlay.root.querySelector("svg")!
+    const area = document.querySelector("area")!
+    const down = (element: Element, x: number, y: number) => element.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: x, clientY: y}))
+    const up = (x: number, y: number) => svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: x, clientY: y}))
+    down(overlay.root.querySelector(".hotspot")!, 20, 20)
+    up(30, 25)
+    expect(area.getAttribute("coords")).toBe("20,15,50,45")
+    expect(overlay.root.querySelectorAll(".handle")).toHaveLength(4)
+    down(overlay.root.querySelectorAll(".handle")[1], 50, 45)
+    up(70, 60)
+    expect(area.getAttribute("coords")).toBe("20,15,70,60")
+    down(overlay.root.querySelector(".hotspot")!, 30, 30)
+    area.setAttribute("coords", "1,2,3,4")
+    up(40, 40)
+    expect(area.getAttribute("coords")).toBe("1,2,3,4")
+    expect(editor.toHTML(true)).not.toContain("image-map-overlay")
+  })
+
+  it("creates editable authored popovers and switches their trigger without rebuilding content", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="circle" coords="20,20,10"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    const state = () => editor.features.media.getState()!.imageMap!.areas[0]
+    let area = state()
+    expect(editor.features.media.actions.addImageMapPopover({type: "addImageMapPopover", path: area.path, expected: area.attributes})).toBe(true)
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    const paragraph = content.querySelector("p")!
+    paragraph.innerHTML = '<strong>Arbitrary</strong> content'
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    area = state()
+    expect(editor.features.media.actions.setImageMapPopoverTrigger({type: "setImageMapPopoverTrigger", path: area.path, expected: area.attributes, value: "hover"})).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("interestfor", content.id)
+    expect(document.querySelector("area")).not.toHaveAttribute("popovertarget")
+    expect(content.querySelector("p")).toBe(paragraph)
+    const show = vi.fn()
+    content.showPopover = show
+    document.querySelector("area")!.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(show).toHaveBeenCalled()
+    expect(editor.toHTML(true)).toContain('<strong>Arbitrary</strong> content')
+    expect(editor.toHTML()).toContain('document.addEventListener("pointerover", handle)')
+    expect(editor.toHTML(false, false)).not.toContain('document.addEventListener("pointerover", handle)')
+  })
+
+  it("undoes and redoes hotspot popover creation as authored DOM", async () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.addImageMapPopover({type: "addImageMapPopover", path: area.path, expected: area.attributes})).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.querySelector("[popover]")).toBeNull()
+    expect(document.querySelector("area")).not.toHaveAttribute("popovertarget")
+    editor.doc.redo()
+    await Promise.resolve()
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    expect(content.querySelector("p")!.textContent).toBe("Popover content")
+    expect(document.querySelector("area")).toHaveAttribute("popovertarget", content.id)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["Backspace", "Delete"])("removes the selected hotspot with %s without removing the image", key => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay
+    overlay.root.querySelector(".hotspot")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 20, clientY: 20}))
+    overlay.root.querySelector("svg")!.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 20, clientY: 20}))
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true})
+    overlay.element.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(image.isConnected).toBe(true)
+    expect(document.querySelector("area, map")).toBeNull()
+    expect(image).not.toHaveAttribute("usemap")
+  })
+
+  it("edits hotspot URLs in the appendix and switches back to the same popover content", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,80,80"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay
+    const control = overlay.root.querySelector<HTMLDivElement>(".actions")!
+    expect(control.getRootNode()).toBe(overlay.root)
+    const input = control.querySelector<HTMLInputElement>("input")!
+    control.querySelector<HTMLButtonElement>(".link")!.click()
+    expect(control.querySelector("form")).not.toHaveAttribute("hidden")
+    input.value = "https://example.org/library"
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(control.querySelector("form")).toHaveAttribute("hidden")
+    const area = document.querySelector("area")!
+    expect(area).toHaveAttribute("href", "https://example.org/library")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true}))
+    expect(area.isConnected).toBe(true)
+    control.querySelector<HTMLButtonElement>(".popover")!.click()
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    content.querySelector("p")!.innerHTML = '<em>Keep this content</em>'
+    const id = content.id
+    control.querySelector<HTMLButtonElement>(".link")!.click()
+    expect(area).not.toHaveAttribute("popovertarget")
+    expect(area).toHaveAttribute("href", "https://example.org/library")
+    expect(area).toHaveAttribute("aria-details", id)
+    control.querySelector<HTMLButtonElement>(".popover")!.click()
+    expect(document.querySelectorAll("[popover]")).toHaveLength(1)
+    expect(area).toHaveAttribute("popovertarget", id)
+    expect(content.querySelector("em")!.textContent).toBe("Keep this content")
+    expect(editor.toHTML(true)).not.toMatch(/url-editor|action-buttons|Hotspot URL/)
+  })
+
+  it("positions popovers beside hotspots, flips at viewport edges, and cleans up presentation styles", () => {
+    document.body.innerHTML = '<img src="plan.png" width="100" height="100" usemap="#plan"><map name="plan"><area shape="rect" coords="60,20,80,40" popovertarget="details"></map><div id="details" popover="auto"><p>Content</p></div>'
+    const image = document.querySelector<HTMLImageElement>("img")!, area = document.querySelector("area")!, content = document.querySelector<HTMLElement>("#details")!
+    let imageLeft = 10
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(imageLeft, 10, 100, 100))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 120, 80))
+    let opened = false
+    content.showPopover = () => { opened = true }
+    content.hidePopover = () => { opened = false }
+    const matches = content.matches.bind(content)
+    vi.spyOn(content, "matches").mockImplementation(selector => selector === ":popover-open" ? opened : matches(selector))
+    const original = document.adoptedStyleSheets
+    const authored = content.outerHTML
+    const controller = createImageMapPopoverController(document)
+    expect(imageMapHotspotBounds(area, image)).toMatchObject({left:70, right:90, top:30, bottom:50})
+    expect(controller.open(area, image)).toBe(true)
+    const sheet = document.adoptedStyleSheets.at(-1)!
+    const style = () => (sheet.cssRules[0] as CSSStyleRule).style
+    expect(style().left).toBe("98px")
+    expect(style().top).toBe("8px")
+    expect(style().borderRadius).toBe("0.5rem")
+    imageLeft = window.innerWidth - 100
+    controller.refresh()
+    expect(parseFloat(style().left)).toBe(window.innerWidth - 100 + 60 - 8 - 120)
+    expect(content.outerHTML).toBe(authored)
+    expect(controller.open(area, image, true)).toBe(true)
+    expect(opened).toBe(false)
+    controller.dispose()
+    expect(document.adoptedStyleSheets).toEqual(original)
+  })
+
+  it("cancels a first hotspot without leaving an empty map or editor markers", () => {
+    document.body.innerHTML = '<img src="plan.png">'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    const authored = editor.toHTML(true)
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
+    expect(document.querySelector("map")).toBeNull()
+    const overlay = editor.features.media.imageMapOverlay
+    overlay.root.querySelector<HTMLButtonElement>(".cancel")!.click()
+    expect(overlay.isDrawing).toBe(false)
+    expect(overlay.element).not.toHaveAttribute("data-open")
+    expect(image).not.toHaveAttribute("usemap")
+    expect(editor.toHTML(true)).toBe(authored)
+  })
+
+  it.each([
+    ["circle", "20,20,10", "25,25,10", "25,25,20"],
+    ["poly", "10,10,40,10,20,40", "15,15,45,15,25,45", "15,15,45,15,55,55"],
+  ])("moves and resizes a %s hotspot", (shape, initial, moved, resized) => {
+    document.body.innerHTML = `<img src="plan.png" usemap="#plan"><map name="plan"><area shape="${shape}" coords="${initial}"></map>`
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay, svg = overlay.root.querySelector("svg")!
+    const down = (element: Element, x: number, y: number) => element.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: x, clientY: y}))
+    const up = (x: number, y: number) => svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: x, clientY: y}))
+    down(overlay.root.querySelector(".hotspot")!, 20, 20)
+    up(25, 25)
+    expect(document.querySelector("area")!.getAttribute("coords")).toBe(moved)
+    down(overlay.root.querySelectorAll(".handle")[shape === "circle" ? 0 : 2], 35, 25)
+    up(shape === "circle" ? 45 : 55, shape === "circle" ? 25 : 55)
+    expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
+    down(overlay.root.querySelector(".hotspot")!, 20, 20)
+    svg.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 35, clientY: 35}))
+    svg.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+    expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
+  })
+
+  it("drawing adds a map and deleting the last hotspot unlinks all its images", () => {
+    document.body.innerHTML = '<img src="plan.png">'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
+    const svg = editor.features.media.imageMapOverlay.root.querySelector("svg")!
+    svg.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 10, clientY: 10}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 40, clientY: 40}))
+    const second = image.cloneNode() as HTMLImageElement
+    image.after(second)
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.removeImageMapArea({type: "removeImageMapArea", path: area.path, expected: area.attributes})).toBe(true)
+    expect(document.querySelector("map")).toBeNull()
+    expect(image).not.toHaveAttribute("usemap")
+    expect(second).not.toHaveAttribute("usemap")
   })
 
   it("cancels hotspot drawing when the image geometry changes", () => {

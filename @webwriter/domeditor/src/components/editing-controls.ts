@@ -1603,6 +1603,7 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderImageMapAreaAttribute(area: ImageMapAreaState, option: MediaAttributeOption) {
+    if(option.name === "coords") return this.renderImageMapCoordinates(area)
     const label = `Hotspot: ${option.label}`
     return this.renderMediaAttributeField(option, {
       attributes: area.attributes,
@@ -1612,33 +1613,47 @@ export abstract class EditingControls extends LitElement {
     })
   }
 
+  protected renderImageMapCoordinates(area: ImageMapAreaState) {
+    const shape = area.attributes.shape?.toLowerCase() || "rect"
+    const values = (area.attributes.coords ?? "").split(",")
+    const minimum = shape === "circle" ? 3 : shape === "poly" ? 2 : shape === "rect" ? 4 : 0
+    while(values.length < minimum) values.push("")
+    const labels = shape === "circle"
+      ? ["Center X", "Center Y", "Radius"]
+      : values.map((_, index) => `${index % 2 === 0 ? "X" : "Y"}${Math.floor(index / 2) + 1}`)
+    return html`<div class=${`image-map-coordinates${shape === "circle" ? " image-map-coordinates-circle" : ""}`} role="group" aria-label="Hotspot: Coordinates">
+      ${values.map((value, index) => html`
+        <label class="media-attribute image-map-coordinate">
+          <span>${labels[index] ?? `${index + 1}`}</span>
+          <input aria-label=${`Hotspot: ${labels[index] ?? `Coordinate ${index + 1}`}`}
+            type="text" inputmode="decimal" .value=${value.trim()}
+            @change=${(event: Event) => {
+              const input = event.currentTarget as HTMLInputElement
+              const number = input.value.trim()
+              if(!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(number) || !Number.isFinite(Number(number))) {
+                input.value = value.trim()
+                return
+              }
+              const updated = [...values]
+              updated[index] = number
+              this.dispatchImageMapAction({
+                action: "set-area-attribute", path: area.path, expected: area.attributes,
+                attribute: "coords", value: updated.join(","),
+              })
+            }}
+          />
+        </label>
+      `)}
+    </div>`
+  }
+
   protected renderImageMapControls() {
     if(!this.media || this.media.type !== "picture" && this.media.type !== "img") return nothing
     const map = this.media.imageMap
-    if(!map) return html`
-      <section class="media-resource-editor" aria-label="Image map">
-        <div class="media-resource-heading"><span>Interactive hotspots</span></div>
-        <button
-          class="media-type-switch"
-          type="button"
-          @click=${() => this.dispatchImageMapAction({action: "add-map"})}
-        >Add image map</button>
-        <p class="image-map-note">Create linked regions over this image.</p>
-      </section>
-    `
+    const areas = map?.areas ?? []
     return html`
-      <section class="media-resource-editor" aria-label="Image map">
-        <div class="media-resource-heading">
-          <span>Hotspots · ${map.name}</span>
-          <button
-            class="media-resource-add"
-            type="button"
-            @click=${() => this.dispatchImageMapAction({action: "remove-map"})}
-          >${map.shared ? "Unlink" : "Remove map"}</button>
-        </div>
-        ${map.shared ? html`
-          <p class="image-map-note">This map is shared. Unlinking keeps it available to the other images.</p>
-        ` : ""}
+      <section class="media-resource-editor" aria-label="Interactive hotspots">
+        <div class="media-resource-heading"><span>Interactive hotspots</span></div>
         <div class="image-map-draw-grid" role="group" aria-label="Draw hotspot">
           ${([
             ["rect", "Rectangle"],
@@ -1652,7 +1667,7 @@ export abstract class EditingControls extends LitElement {
             >${label}</button>
           `)}
         </div>
-        ${map.areas.length ? map.areas.map((area, position) => html`
+        ${areas.length ? areas.map((area, position) => html`
           <div class="media-resource-card image-map-area">
             <div class="media-resource-card-heading">
               <span>Hotspot ${position + 1}</span>
@@ -1666,6 +1681,26 @@ export abstract class EditingControls extends LitElement {
               >×</button>
             </div>
             ${imageMapAreaAttributeOptions.map(option => this.renderImageMapAreaAttribute(area, option))}
+            ${area.attributes.popovertarget || area.attributes.interestfor ? html`
+              <div>
+                ${this.renderMediaAttributeField({
+                  name: "popover-trigger", label: "Popover trigger", kind: "select",
+                  options: [{label: "Click", value: "click"}, {label: "Hover", value: "hover"}],
+                }, {
+                  attributes: {"popover-trigger": area.attributes.interestfor ? "hover" : "click"},
+                  label: "Hotspot: Popover trigger",
+                  onChange: event => this.dispatchImageMapAction({
+                    action: "set-popover-trigger", path: area.path, expected: area.attributes,
+                    value: (event.currentTarget as HTMLSelectElement).value,
+                  }),
+                })}
+                <button class="media-resource-action" type="button" aria-label=${`Open hotspot ${position + 1} popover`}
+                  @click=${() => this.dispatchImageMapAction({action: "open-popover", path: area.path, expected: area.attributes})}>Open popover</button>
+              </div>
+            ` : html`
+              <button class="media-resource-add" type="button" aria-label=${`Add hotspot ${position + 1} popover`}
+                @click=${() => this.dispatchImageMapAction({action: "add-popover", path: area.path, expected: area.attributes})}>Add popover</button>
+            `}
           </div>
         `) : html`<p class="image-map-note">Draw a shape to add the first hotspot.</p>`}
       </section>
