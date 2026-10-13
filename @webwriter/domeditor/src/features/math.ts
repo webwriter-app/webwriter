@@ -4,6 +4,7 @@ import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathEl
 
 import {styleMarkNames, type MarkName} from "../marks"
 import {MathCompletionInput} from "./math-completion"
+import formulaIcon from "@tabler/icons/outline/math.svg?raw"
 
 const formulaMarks = {b: ["font-weight", "bold"], i: ["font-style", "italic"], u: ["text-decoration-line", "underline"], s: ["text-decoration-line", "line-through"]} as const
 const formulaStyleNames = [...styleMarkNames, "font-weight", "font-style", "text-decoration-line"]
@@ -11,6 +12,9 @@ const formulaStyleNames = [...styleMarkNames, "font-weight", "font-style", "text
 type Point = [Node, number]
 const indexOf = (node: Node) => Array.from(node.parentNode!.childNodes).indexOf(node as ChildNode)
 const isMath = (node: Node): node is Element => node instanceof Element && node.namespaceURI === MATH_NAMESPACE
+const emptyMath = (node: Node): boolean => node instanceof Text ? !node.data.trim()
+  : isMath(node) && (node.localName === "math" || node.localName === "mrow" || node.localName === "mstyle" || mathTokenNames.has(node.localName))
+    && Array.from(node.childNodes).every(emptyMath)
 const isRow = (node: Node): node is Element => isMath(node) && mathRowNames.has(node.localName)
 const isToken = (node: Node): node is Element => isMath(node) && mathTokenNames.has(node.localName)
 const plainToken = (node: Node): node is Element => isToken(node) && Array.from(node.childNodes).every(child => child.nodeType === Node.TEXT_NODE)
@@ -22,6 +26,8 @@ const after = (node: Node): Point => [node.parentNode!, indexOf(node) + 1]
 export class MathFeature extends EditorFeature {
   private overlay: HTMLDivElement | null = null
   private caret: HTMLSpanElement | null = null
+  private placeholders = new Map<Element, HTMLDivElement>()
+  private placeholderResizeObserver: ResizeObserver | null = null
   private observer: MutationObserver | null = null
   private resizeObserver: ResizeObserver | null = null
   private observedRoot: Element | null = null
@@ -221,6 +227,8 @@ export class MathFeature extends EditorFeature {
     this.observer = new MutationObserver(() => this.scheduleRefresh())
     this.observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true})
     this.resizeObserver = new ResizeObserver(this.handleResize)
+    this.placeholderResizeObserver = new ResizeObserver(this.handleResize)
+    this.refreshPlaceholders()
     window.addEventListener("resize", this.handleResize)
     window.addEventListener("blur", this.handleBlur)
   }
@@ -234,6 +242,13 @@ export class MathFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.resizeObserver?.disconnect()
+    this.placeholderResizeObserver?.disconnect()
+    this.placeholderResizeObserver = null
+    this.placeholders.forEach((placeholder, root) => {
+      placeholder.remove()
+      removeEditorMarker(root, "◆math-empty")
+    })
+    this.placeholders.clear()
     this.resizeObserver = null
     this.observedRoot = null
     window.removeEventListener("resize", this.handleResize)
@@ -253,6 +268,7 @@ export class MathFeature extends EditorFeature {
 
   private accepts(event: Event) {
     return !event.defaultPrevented && !isAppendixInteraction(event) && !isFormControlInteraction(event)
+      && !(this.selectedMath?.getAttribute("display") === "block" && !this.editor.features.selection.isCaptureSelection)
       && !isWidgetShadowInteraction(event, this.editor.schema)
       && (!this.editor.features.selection.isCaptureSelection || this.editor.features.selection.captureSelectedElement === this.activeMath)
   }
@@ -450,6 +466,20 @@ export class MathFeature extends EditorFeature {
 
   insert(structure?: string) {
     if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return false
+    const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    if(selected && selected !== document.body && document.body.contains(selected)) {
+      document.body.focus({preventScroll: true})
+      if(!document.body.contains(selected)) return false
+      this.editor.features.selection.selectElement(selected)
+      const math = mathElement("math", mathElement("mrow"))
+      math.setAttribute("display", "block")
+      this.editor.features.manipulation.insert(math)
+      if(!math.isConnected) return false
+      $.move(math.firstChild!, 0)
+      if(structure) this.insertStructure(document.getSelection()!.getRangeAt(0).cloneRange(), structure)
+      this.changed(true)
+      return true
+    }
     if(this.activeMath) return false
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.isCollapsed || !selection.anchorNode
@@ -1253,7 +1283,7 @@ export class MathFeature extends EditorFeature {
 
   private changed(inserted = false) {
     const root = this.activeMath
-    if(root?.getAttribute("display") === "block" && this.editor.features.selection.captureSelectedElement !== root) {
+    if(root?.getAttribute("display") === "block" && this.selectedMath !== root && this.editor.features.selection.captureSelectedElement !== root) {
       this.editor.features.selection.captureElement(root, {preserveNativeSelection: true})
     }
     else this.editor.features.selection.processSelection()
@@ -1407,7 +1437,42 @@ export class MathFeature extends EditorFeature {
     return element.matches("math mrow:has(> mo:first-child):has(> mo:last-child) > mrow:empty, math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty")
   }
 
+  private refreshPlaceholders() {
+    const roots = new Set(Array.from(document.body.querySelectorAll('math[display="block"]'))
+      .filter(root => mathRoot(root) === root && emptyMath(root)))
+    this.placeholders.forEach((placeholder, root) => {
+      if(roots.has(root)) return
+      placeholder.remove()
+      removeEditorMarker(root, "◆math-empty")
+      this.placeholderResizeObserver?.unobserve(root)
+      this.placeholders.delete(root)
+    })
+    roots.forEach(root => {
+      let placeholder = this.placeholders.get(root)
+      if(!placeholder) {
+        root.classList.add("◆math-empty")
+        placeholder = document.createElement("div")
+        placeholder.setAttribute("part", "math-placeholder")
+        placeholder.setAttribute("aria-hidden", "true")
+        placeholder.innerHTML = formulaIcon
+        placeholder.querySelector("svg")!.setAttribute("part", "math-placeholder-icon")
+        this.editor.addAppendix(placeholder)
+        this.placeholders.set(root, placeholder)
+        this.placeholderResizeObserver?.observe(root)
+      }
+      const rect = root.getBoundingClientRect()
+      const selection = document.getSelection()
+      const focused = this.editor.features.selection.captureSelectedElement === root
+        || root.contains(selection?.anchorNode ?? null) && root.contains(selection?.focusNode ?? null)
+      placeholder.hidden = focused || rect.width <= 0 || rect.height <= 0
+      if(placeholder.hidden) placeholder.style.setProperty("display", "none", "important")
+      else placeholder.style.removeProperty("display")
+      Object.assign(placeholder.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+    })
+  }
+
   refresh() {
+    this.refreshPlaceholders()
     this.validateCommand()
     if(this.deadPowerInput && (!this.isComposingPower || !this.deadPowerTarget?.[0].isConnected)) this.cancelDeadPowerComposition()
     if(this.hovered && !mathRoot(this.hovered)) this.setHovered(null)
@@ -1417,13 +1482,10 @@ export class MathFeature extends EditorFeature {
     // Only discard a formula that was being edited. Transparent empty rows
     // and tokens are empty; fractions, radicals, spaces, and unknown content
     // retain their authored meaning even before their arguments are filled.
-    const empty = (node: Node): boolean => node instanceof Text ? !node.data.trim()
-      : isMath(node) && (node.localName === "math" || node.localName === "mrow" || node.localName === "mstyle" || isToken(node))
-        && Array.from(node.childNodes).every(empty)
     for(const previous of this.marked) {
       if(previous === root || mathRoot(previous) !== previous || previous.getAttribute("display") === "block"
         || !selection?.rangeCount || previous.contains(selection.anchorNode) || previous.contains(selection.focusNode)
-        || selection.getRangeAt(0).intersectsNode(previous) || !empty(previous)) continue
+        || selection.getRangeAt(0).intersectsNode(previous) || !emptyMath(previous)) continue
       const parent = previous.parentNode!
       const index = indexOf(previous)
       const anchor = selection.anchorNode!, focus = selection.focusNode!
@@ -1434,11 +1496,14 @@ export class MathFeature extends EditorFeature {
       removed = true
     }
     if(removed) this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
-    if(root ? this.editor.features.selection.captureSelectedElement !== (root.getAttribute("display") === "block" ? root : null)
+    if(root ? this.editor.features.selection.captureSelectedElement !== (root.getAttribute("display") === "block"
+      && (this.selectedMath !== root || this.editor.features.selection.captureSelectedElement === root) ? root : null)
       : Array.from(this.marked).some(element => element.classList.contains("◆element-capture-selected"))) {
       this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     }
-    if(!root) { this.clearPresentation(); this.dismissCommand(); this.input?.refresh(); return }
+    if(!root || root.getAttribute("display") === "block" && this.selectedMath === root && !this.editor.features.selection.isCaptureSelection) {
+      this.clearPresentation(); this.dismissCommand(); this.input?.refresh(); return
+    }
     if(root !== this.observedRoot) {
       this.resizeObserver?.disconnect()
       this.resizeObserver?.observe(root)

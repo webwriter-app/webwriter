@@ -903,8 +903,8 @@ math {
   }
 }
 
-math:empty,
-math:has(> mtext:only-child br:only-child) {
+math:not([display="block"]):empty,
+math:not([display="block"]):has(> mtext:only-child br:only-child) {
   display: inline-block;
   background: lightgray;
   cursor: pointer;
@@ -920,8 +920,8 @@ math:has(> mtext:only-child br:only-child) {
   }
 }
 
-math:empty::after,
-math:has(> mtext:only-child br:only-child)::after {
+math:not([display="block"]):empty::after,
+math:not([display="block"]):has(> mtext:only-child br:only-child)::after {
   position: absolute;
   top: 0;
   left: 0;
@@ -2338,7 +2338,31 @@ math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty {
   min-height: 1ex;
 }
 .◆math-editing[display="block"]:empty {
-  display: block;
+  display: block math;
+}
+
+math[display="block"].◆math-empty {
+  display: block math;
+  box-sizing: border-box;
+  min-height: 1lh;
+  height: calc(1lh + 4px);
+  width: 100%;
+  margin-inline: auto;
+  aspect-ratio: auto;
+  background: #eeeeee;
+}
+
+body::part(math-placeholder) {
+  position: fixed;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: #6b7280;
+}
+
+body::part(math-placeholder-icon) {
+  width: 1em;
+  height: 1em;
 }
 
 /* Large operators can pull a lower script into their italic overhang. Keep

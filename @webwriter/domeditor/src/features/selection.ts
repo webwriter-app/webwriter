@@ -345,7 +345,7 @@ export class SelectionFeature extends EditorFeature {
    * or collapses a node selection into the requested boundary. */
   #navigateAtomicSelection(direction: "backward" | "forward", vertical = false, extend = false) {
     const navigable = (element: Node | null): element is Element => element instanceof Element
-      && (Boolean(isAtomicEditingElement(element, this.editor.schema)) || element.matches("figure, table:has(> caption)"))
+      && (Boolean(isAtomicEditingElement(element, this.editor.schema)) || element.matches('figure, table:has(> caption), math[display="block"]'))
     const container = $.anchor ? getContainer($.anchor) : null
     const owner = container?.closest("figure, table:has(> caption)")
     const caption = container?.closest("figcaption, caption")
@@ -406,7 +406,7 @@ export class SelectionFeature extends EditorFeature {
   #navigateMathBoundary(direction: "backward" | "forward") {
     if(!$.isEmpty || mathRoot($.anchor)) return false
     const adjacent = this.#adjacentNavigationElement(direction)
-    if(!adjacent || mathRoot(adjacent) !== adjacent) return false
+    if(!adjacent || mathRoot(adjacent) !== adjacent || adjacent.getAttribute("display") === "block") return false
     const point = mathOutsidePoint(adjacent, direction === "backward")!
     const index = Array.from(adjacent.parentNode!.childNodes).indexOf(adjacent)
     if($.anchor === point.node && $.anchorOffset === point.offset
@@ -423,7 +423,7 @@ export class SelectionFeature extends EditorFeature {
   #disclosureEdge(node: Node, direction: "backward" | "forward"): Node | null {
     if(node instanceof Text) return node.textContent?.trim() ? node : null
     if(!isElement(node) || isOutOfFlow(node) || node.matches("br, [hidden], .◆editor-only") || getComputedStyle(node).display === "none") return null
-    if(Boolean(isAtomicEditingElement(node, this.editor.schema))) return node
+    if(Boolean(isAtomicEditingElement(node, this.editor.schema)) || node.matches('math[display="block"]')) return node
     if(node.matches("details:not([open])")) {
       const summary = node.querySelector(":scope > summary")
       return summary ? this.#disclosureEdge(summary, direction) : node

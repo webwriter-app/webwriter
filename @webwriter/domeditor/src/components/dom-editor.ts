@@ -5774,8 +5774,12 @@ export class DomEditor extends LitElement {
       .finally(() => this.focusEditor())
   }
 
+  private get isMathEditing() {
+    return this.mathSelection?.active && (this.mathSelection.display === "inline" || this.captureSelection)
+  }
+
   private handleMathKeyboardCommand = (event: CustomEvent<{command: string}>) => {
-    if(!this.mathSelection?.active || this.previewActive || this.liveSessionActive || typeof event.detail?.command !== "string") return
+    if(!this.isMathEditing || this.previewActive || this.liveSessionActive || typeof event.detail?.command !== "string") return
     void this.execute({type: "editMath", command: `keyboard:${event.detail.command}`})
       .catch(() => { /* A removed/replaced document no longer has a formula caret. */ })
       .finally(() => this.focusEditor())
@@ -5978,7 +5982,7 @@ export class DomEditor extends LitElement {
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
-      if(element.matches("table")) return item
+      if(element.matches("table, math")) return item
 
       const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[]) => {
         Array.from(container.childNodes).forEach((child, index) => {
@@ -5986,7 +5990,8 @@ export class DomEditor extends LitElement {
           const childElement = child as Element
           const slideRole = slideLayoutRole(childElement)
           if(slideRole === "navigation") return
-          if(childElement.matches("source, math, caption, figcaption, details > summary")
+          if(childElement.matches("source, caption, figcaption, details > summary")
+            || childElement.localName === "math" && childElement.getAttribute("display") !== "block"
             || childElement.matches("img") && childElement.closest("picture")
             || isLineBreakElement(childElement)) return
           const childPath = [...containerPath, index]
@@ -7237,16 +7242,16 @@ export class DomEditor extends LitElement {
             ></dom-editor-link-keyboard>
           </section>
         ` : nothing}
-        ${this.mathSelection?.active && this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
+        ${this.isMathEditing && this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
           <button class="math-keyboard-open" type="button" title="Show formula keyboard" aria-label="Show formula keyboard"
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
             @click=${() => { this.mathKeyboardHidden = false; this.focusEditor() }}
           >${ribbonIcon("Shortcuts")}</button>
         ` : ""}
-        ${this.mathSelection?.active && !this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
+        ${this.isMathEditing && !this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
           <section class="math-keyboard-area" aria-label="Formula input">
             <dom-editor-math-keyboard
-              .display=${this.mathSelection.display}
+              .display=${this.mathSelection!.display}
               @math-keyboard-command=${this.handleMathKeyboardCommand}
               @math-keyboard-close=${() => { this.mathKeyboardHidden = true; this.focusEditor() }}
             ></dom-editor-math-keyboard>

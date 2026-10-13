@@ -1062,7 +1062,9 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
-      if(mathRoot(currentElement) || currentElement.matches("caption, figcaption, details > summary")) return
+      const formula = mathRoot(currentElement)
+      if(formula && (formula !== currentElement || formula.getAttribute("display") !== "block")
+        || currentElement.matches("caption, figcaption, details > summary")) return
       if(currentElement.localName === "figure") {
         if(currentElement !== element) return
         const content = Array.from(currentElement.children).find(child => child.localName !== "figcaption")

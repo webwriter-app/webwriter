@@ -1592,21 +1592,45 @@ await check("empty formula carets fit their space and blink across presentation 
   const paragraph = document.createElement("p")
   fixture.append(paragraph)
   try {
-    for(const content of ["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mfrac><mrow></mrow><mi>a</mi></mfrac>"]) {
-      paragraph.innerHTML = `a<math>${content}</math>a`
+    for(const display of ["inline", "block"]) for(const content of ["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mfrac><mrow></mrow><mi>a</mi></mfrac>"]) {
+      paragraph.innerHTML = `a<math display="${display}"${display === "block" ? ' style="max-width:240px"' : ""}>${content}</math>a`
       const math = paragraph.querySelector("math")!
       const position = math.querySelector("mrow:empty") ?? math
       $.move(position, 0)
       editor.features.selection.processSelection(undefined, {scrollIntoView: false})
       editor.features.math.refresh()
       await layoutFrame()
-      const caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+      let caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
       assert(caret, "empty formula has no measured caret")
+      if(display === "block" && !content.includes("mfrac")) {
+        const bounds = math.getBoundingClientRect(), rect = caret.getBoundingClientRect()
+        const container = paragraph.getBoundingClientRect()
+        assert(Math.abs((bounds.left + bounds.right) / 2 - (container.left + container.right) / 2) < 1,
+          "empty block formula box is not centered in its container")
+        assert(Math.abs(rect.left - (bounds.left + bounds.right) / 2) < 8,
+          "empty block formula caret is not centered")
+        const height = bounds.height
+        $.move(paragraph.lastChild!, 1)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        editor.features.math.refresh()
+        const placeholder = editor.appendix.querySelector<HTMLElement>('[part="math-placeholder"]')!
+        const symbol = placeholder.querySelector("svg")!.getBoundingClientRect()
+        assert(!placeholder.hidden && Math.abs((symbol.left + symbol.right) / 2 - (bounds.left + bounds.right) / 2) < 1,
+          "empty block formula symbol is not centered")
+        assert(Math.abs(math.getBoundingClientRect().height - height) < 1,
+          "empty block formula changes height when focus leaves")
+        $.move(position, 0)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        editor.features.math.refresh()
+        await layoutFrame()
+        caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+      }
       if(!content.includes("mfrac")) {
         const bounds = position.getBoundingClientRect(), rect = caret.getBoundingClientRect(), style = getComputedStyle(position)
         const top = bounds.top + (position === math ? parseFloat(style.paddingTop) : 0)
         const bottom = bounds.bottom - (position === math ? parseFloat(style.paddingBottom) : 0)
-        assert(rect.top >= top - 0.5 && rect.bottom <= bottom + 0.5, "empty formula caret hangs below its space")
+        assert(rect.top >= top - 0.5 && rect.bottom <= bottom + 0.5,
+          `empty ${display} formula caret hangs below its space (${content}): ${rect.top}–${rect.bottom}, space ${top}–${bottom}`)
       }
       const animation = caret.getAnimations()[0]
       assert(animation, "caret animation cannot resolve its shadow-root keyframes")

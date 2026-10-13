@@ -6874,14 +6874,15 @@ describe("DomEditor.execute()", () => {
 
   it("omits summary and formula descendants from outline data while preserving authored paths", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body</p></details><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math>'
+    iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body<math><mi>x</mi></math></p></details><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math>'
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
     expect(breadcrumb.treeOpen).toBe(true)
-    expect(breadcrumb.tree!.children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0], name: "Details"}])
+    expect(breadcrumb.tree!.children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0], name: "Details"}, {path: [1], name: "Formula"}])
+    expect(breadcrumb.tree!.children[1]).toMatchObject({icon: "Formula", children: []})
     expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0, 2], name: "Paragraph"}])
     expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
     expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
@@ -7644,6 +7645,41 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).not.toBeNull()
     expect(focusEditor).toHaveBeenCalled()
+  })
+
+  it("shows the block formula keyboard only during capture selection", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const select = async (capture: boolean) => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {
+          path: [{path: [], name: "Document"}, {path: [0], name: "Formula"}],
+          math: {active: true, display: "block"}, nodeSelected: true, capture,
+        }}, source: editorWindow,
+      }))
+      await editor.updateComplete
+    }
+    await select(false)
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Show formula keyboard"]')).toBeNull()
+    await select(true)
+    const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-math-keyboard")!
+    expect(keyboard).not.toBeNull()
+    keyboard.dispatchEvent(new CustomEvent("math-keyboard-close", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector('[aria-label="Show formula keyboard"]')).not.toBeNull()
+    await select(false)
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Show formula keyboard"]')).toBeNull()
+    keyboard.dispatchEvent(new CustomEvent("math-keyboard-command", {
+      detail: {command: "text:x"}, bubbles: true, composed: true,
+    }))
+    expect(execute).not.toHaveBeenCalled()
+    await select(true)
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show formula keyboard"]')!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).not.toBeNull()
   })
 
   it("allows ribbon inputs to receive pointer focus", async () => {
