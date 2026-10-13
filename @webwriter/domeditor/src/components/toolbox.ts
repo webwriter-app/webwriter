@@ -41,6 +41,8 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * commands, selection preservation, and specialized editors keep one event
  * contract. */
 export class DomEditorToolbox extends EditingControls {
+  protected get commentReviewMode() { return this.activeTool === "Review" }
+
   protected usesNativePointerInteraction(event: MouseEvent) {
     return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content")))
   }
@@ -354,6 +356,10 @@ export class DomEditorToolbox extends EditingControls {
     .toolbox-tab[data-active]:has([data-tool="Review"]) {
       margin-right: 4px;
     }
+
+    .toolbox-tab[data-comments] .toolbox-tab-icon,
+    .toolbox-tab[data-comments] .toolbox-tab-label {color: #9a6700;}
+    .toolbox-tab-comment-count {position: absolute; top: -.3rem; right: -.38rem; z-index: 1; min-width: .8rem; height: .8rem; padding: 0 .12rem; border: 1px solid #fff; border-radius: 999px; color: #fff; background: #b7791f; font: 700 .48rem/ .75rem system-ui, sans-serif; text-align: center;}
 
     :host([active-tool]) .toolbox-tabs {
       padding-left: 0;
@@ -1597,9 +1603,11 @@ export class DomEditorToolbox extends EditingControls {
               const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
               const toolLabel = tool.label === "AI" ? "Ask AI" : tool.label
               const label = contextualLabel ?? toolLabel
+              const commentCount = tool.label === "Review" ? this.commentState.count : 0
               return html`
                 <div
                   class="toolbox-tab"
+                  ?data-comments=${commentCount > 0 && tool.label === "Review"}
                   ?data-active=${active}
                   ?data-contextual=${contextualLabel !== null}
                   ?data-available=${(contextualLabel !== null || tool.label === "Feedback") && this.activeTool === null}
@@ -1617,6 +1625,7 @@ export class DomEditorToolbox extends EditingControls {
                     title=${tool.label === "Review" && this.proofreadingState.error
                       ? "Spell and grammar checking unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
+                    aria-description=${commentCount > 0 ? `${commentCount} comments` : nothing}
                     aria-controls="toolbox-pane"
                     aria-selected=${active}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
@@ -1624,6 +1633,7 @@ export class DomEditorToolbox extends EditingControls {
                   >
                     <span class="toolbox-tab-icon" aria-hidden="true">
                       ${ribbonIcon(tool.icon)}
+                      ${tool.label === "Review" && commentCount > 0 ? html`<sup class="toolbox-tab-comment-count">${commentCount}</sup>` : ""}
                       ${tool.label === "Review" && this.proofreadingState.error ? html`<span class="proofreading-error-badge">!</span>` : ""}
                     </span>
                     <span

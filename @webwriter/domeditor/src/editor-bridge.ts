@@ -498,7 +498,16 @@ export type ProofreadingStateChangeMessage = {
   detail: ProofreadingState
 }
 
+export type CommentThreadState = {
+  id: string
+  target: "element" | "text"
+  active: boolean
+  comments: {id: string, text: string, author: {id: string, name: string}, createdAt: number, editedAt: number}[]
+}
+
 export type CommentState = {
+  threads?: CommentThreadState[]
+  activeThreadId?: string | null
   /** Whether the current DOM selection can be annotated. */
   canComment: boolean
   /** Whether one or more comments apply to the current selection. */
@@ -917,6 +926,14 @@ export function isCommentStateChangeMessage(value: unknown): value is CommentSta
     && Number.isInteger(detail.count)
     && detail.count >= detail.activeCount
     && typeof detail.highlighting === "boolean"
+    && (detail.activeThreadId === undefined || detail.activeThreadId === null || typeof detail.activeThreadId === "string")
+    && (detail.threads === undefined || Array.isArray(detail.threads) && detail.threads.every(thread =>
+      !!thread && typeof thread.id === "string" && ["element", "text"].includes(thread.target)
+      && typeof thread.active === "boolean" && Array.isArray(thread.comments) && thread.comments.length > 0
+      && thread.comments.every(comment => !!comment && typeof comment.id === "string" && typeof comment.text === "string"
+        && !!comment.author && typeof comment.author.id === "string" && typeof comment.author.name === "string"
+        && Number.isSafeInteger(comment.createdAt) && comment.createdAt >= 0
+        && Number.isSafeInteger(comment.editedAt) && comment.editedAt >= comment.createdAt)))
 }
 
 export function isProofreadingStateChangeMessage(value: unknown): value is ProofreadingStateChangeMessage {

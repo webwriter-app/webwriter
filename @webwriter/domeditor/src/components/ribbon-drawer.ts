@@ -1025,10 +1025,15 @@ export class RibbonDrawer extends LitElement {
       grid-column: span 2 !important;
     }
 
+    :host([pane][layout="comments"]) ::slotted(.comment-threads) {
+      grid-column: 1 / -1;
+      grid-row: auto;
+    }
+
     :host([pane][layout="comments"]) ::slotted(.comment-editor) {
       grid-column: 1 / -1;
       grid-row: auto;
-      min-height: 5rem;
+      min-height: 0;
     }
 
     :host([pane][layout="media"]) .controls {

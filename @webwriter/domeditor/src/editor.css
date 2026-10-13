@@ -1600,6 +1600,9 @@ body::part(presence-gap-caret-label) {
 ::highlight(webwriter-comments) {
   background-color: #fff3a3;
 }
+::highlight(webwriter-active-comment) {
+  background-color: #ffd45b;
+}
 /* Harper supplies the underlines; hide the browser's overlapping decorations. */
 ::spelling-error,
 ::grammar-error {

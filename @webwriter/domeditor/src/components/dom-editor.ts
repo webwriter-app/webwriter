@@ -5154,9 +5154,17 @@ export class DomEditor extends LitElement {
   }
 
   private handleCommentAction = (event: Event) => {
-    const detail = (event as CustomEvent<{action?: unknown, text?: unknown, enabled?: unknown}>).detail
+    const detail = (event as CustomEvent<{action?: unknown, id?: unknown, text?: unknown, enabled?: unknown}>).detail
     if(!detail || typeof detail.action !== "string") return
-    const action = detail.action === "toggle" && typeof detail.text === "string"
+    const action = detail.action === "select" && typeof detail.id === "string"
+      ? {type: "selectComment", id: detail.id} as const
+      : detail.action === "reply" && typeof detail.id === "string" && typeof detail.text === "string"
+        ? {type: "addCommentReply", id: detail.id, text: detail.text} as const
+        : detail.action === "edit" && typeof detail.id === "string" && typeof detail.text === "string"
+          ? {type: "updateComment", id: detail.id, text: detail.text} as const
+          : detail.action === "remove" && typeof detail.id === "string"
+            ? {type: "removeComment", id: detail.id} as const
+            : detail.action === "toggle" && typeof detail.text === "string"
       ? {type: "toggleComment", text: detail.text} as const
       : detail.action === "set-text" && typeof detail.text === "string"
         ? {type: "setCommentText", text: detail.text} as const
@@ -5171,7 +5179,7 @@ export class DomEditor extends LitElement {
               : null
     if(!action) return
     void this.execute(action).finally(() => {
-      if(detail.action !== "set-text" && detail.action !== "highlight") this.focusEditor()
+      if(["toggle", "remove-all", "previous", "next"].includes(detail.action as string)) this.focusEditor()
     })
   }
 

@@ -214,6 +214,11 @@ export abstract class EditingControls extends LitElement {
 
   protected commentDraft = ""
 
+  protected get commentReviewMode() { return false }
+
+  private commentReplyDrafts = new Map<string, string>()
+  private commentEditDrafts = new Map<string, string>()
+
   localPackages: WebWriterPackage[] = []
 
   localPackagesLoading = false
@@ -798,19 +803,6 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected updateCommentDraft(event: Event) {
-    this.commentDraft = (event.currentTarget as HTMLTextAreaElement).value
-  }
-
-  protected commitCommentText() {
-    if(!this.commentState.active || this.commentDraft === this.commentState.text) return
-    this.dispatchEvent(new CustomEvent("comment-action", {
-      detail: {action: "set-text", text: this.commentDraft},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
   protected handleCommentButton(event: Event) {
     event.stopPropagation()
     const action = (event as CustomEvent<{label?: string}>).detail?.label
@@ -833,6 +825,60 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
+  private commentThreads() {
+    return this.commentState.threads ?? []
+  }
+
+  private dispatchThreadAction(action: string, id: string, text?: string) {
+    this.dispatchEvent(new CustomEvent("comment-action", {
+      detail: {action, id, ...(text === undefined ? {} : {text})}, bubbles: true, composed: true,
+    }))
+  }
+
+  protected renderCommentThreads() {
+    const state = this.commentState
+    const threads = this.commentThreads()
+    return html`<section class="comment-threads" aria-label="Document comment threads">
+      <h3>Threads <span>${threads.length}</span></h3>
+      ${threads.length ? threads.map(thread => html`
+        <article class="comment-thread" data-thread-id=${thread.id} ?data-active=${(thread.comments[0]?.id ?? thread.id) === state.activeThreadId}>
+          <button class="comment-thread-target" type="button" @click=${() => this.dispatchThreadAction("select", thread.comments[0]?.id ?? thread.id)}>
+            ${thread.target === "text" ? "Text comment" : "Element comment"}${thread.active ? " · selected" : ""}
+          </button>
+          ${thread.comments.map(comment => html`
+            <div class="comment-message" data-comment-id=${comment.id}>
+              <div class="comment-message-meta"><strong>${comment.author.name || "Anonymous"}</strong><time>${comment.editedAt > comment.createdAt
+                ? `Edited ${new Date(comment.editedAt).toLocaleString()}`
+                : comment.createdAt ? new Date(comment.createdAt).toLocaleString() : "Creation time unavailable"}</time></div>
+              ${this.commentEditDrafts.has(comment.id) ? html`
+                <textarea data-ribbon-input-persistent aria-label="Edit comment" .value=${this.commentEditDrafts.get(comment.id)!}
+                  @input=${(event: Event) => this.commentEditDrafts.set(comment.id, (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
+                <button type="button" @click=${() => { this.dispatchThreadAction("edit", comment.id, this.commentEditDrafts.get(comment.id) ?? ""); this.commentEditDrafts.delete(comment.id); this.requestUpdate() }}>Save</button>
+                <button type="button" @click=${() => { this.commentEditDrafts.delete(comment.id); this.requestUpdate() }}>Cancel</button>
+              ` : html`<p>${comment.text}</p>`}
+              <div class="comment-message-actions">
+                <button type="button" @click=${() => { this.commentEditDrafts.set(comment.id, comment.text); this.requestUpdate() }}>Edit</button>
+                <button type="button" @click=${() => this.dispatchThreadAction("remove", comment.id)}>Delete</button>
+              </div>
+            </div>
+          `)}
+          <form class="comment-reply" @submit=${(event: Event) => {
+            event.preventDefault()
+            const text = this.commentReplyDrafts.get(thread.id)?.trim() ?? ""
+            if(!text) return
+            this.dispatchThreadAction("reply", thread.comments[0]?.id ?? thread.id, text)
+            this.commentReplyDrafts.delete(thread.id)
+            this.requestUpdate()
+          }}>
+            <textarea data-ribbon-input-persistent aria-label="Reply to comment" placeholder="Write a reply…" .value=${this.commentReplyDrafts.get(thread.id) ?? ""}
+              @input=${(event: Event) => { this.commentReplyDrafts.set(thread.id, (event.currentTarget as HTMLTextAreaElement).value); this.requestUpdate() }}></textarea>
+            <button type="submit" ?disabled=${!this.commentReplyDrafts.get(thread.id)?.trim()}>Reply</button>
+          </form>
+        </article>
+      `) : html`<p class="comment-threads-empty">No comments yet.</p>`}
+    </section>`
+  }
+
   protected renderCommentDrawer() {
     const {active, activeCount, canComment, count, highlighting} = this.commentState
     return html`
@@ -850,16 +896,9 @@ export abstract class EditingControls extends LitElement {
               Highlight
             </label>
           </span>
-          <textarea
-            aria-label="Comment text"
-            data-ribbon-input-persistent
-            rows="2"
-            placeholder=${active ? "Comment text" : "Add a comment…"}
-            .value=${this.commentDraft}
-            ?disabled=${!canComment}
-            @input=${this.updateCommentDraft}
-            @change=${this.commitCommentText}
-          ></textarea>
+          ${!active ? html`<textarea aria-label="New comment" data-ribbon-input-persistent rows="2"
+            placeholder="Add a comment…" .value=${this.commentDraft} ?disabled=${!canComment}
+            @input=${(event: Event) => { this.commentDraft = (event.currentTarget as HTMLTextAreaElement).value }}></textarea>` : nothing}
         </div>
         <ribbon-button
           compact
@@ -873,6 +912,7 @@ export abstract class EditingControls extends LitElement {
         <ribbon-button compact label="Remove all" action="remove-all" icon="RemoveMarks" ?disabled=${count === 0}></ribbon-button>
         <ribbon-button compact label="Previous comment" action="previous" icon="Previous" ?disabled=${count === 0}></ribbon-button>
         <ribbon-button compact label="Next comment" action="next" icon="Next" ?disabled=${count === 0}></ribbon-button>
+        ${this.commentReviewMode ? this.renderCommentThreads() : nothing}
       </ribbon-drawer>
     `
   }

@@ -88,6 +88,16 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isCommentStateChangeMessage(message)).toBe(true)
+    const thread = {id: "thread", target: "text", active: true, comments: [{
+      id: "thread", text: "Review", author: {id: "user", name: "Ada"}, createdAt: 1, editedAt: 1,
+    }]}
+    expect(isCommentStateChangeMessage({...message, detail: {...message.detail, threads: [thread], activeThreadId: "thread"}})).toBe(true)
+    expectAllRejected(isCommentStateChangeMessage, [
+      {...message, detail: {...message.detail, threads: [{...thread, target: "point"}]}},
+      {...message, detail: {...message.detail, threads: [{...thread, comments: []}]}},
+      {...message, detail: {...message.detail, threads: [{...thread, comments: [{...thread.comments[0], text: 5}]}]}},
+      {...message, detail: {...message.detail, activeThreadId: 5}},
+    ])
     expectAllRejected(isCommentStateChangeMessage, [
       {...message, detail: {...message.detail, canComment: "yes"}},
       {...message, detail: {...message.detail, activeCount: -1}},
