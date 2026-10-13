@@ -7,6 +7,9 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "document scrollbar gutters stay symmetric as content grows",
+  "empty Details retains summary height and padding in standalone documents",
+  "media stays centered in editing and standalone documents",
   "crop preview reveals the source and restores content outside the frame",
   "video crop controls remain available after repeated crops",
   "media interiors capture while outline edges element-select",

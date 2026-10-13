@@ -565,6 +565,84 @@ await check("marker image uploads preview before applying", async () => {
   finally {toolbox.remove()}
 })
 
+await check("document scrollbar gutters stay symmetric as content grows", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:400px;border:0;max-width:none"
+  const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><p>Centered reading column</p></body>`
+  fixture.append(frame)
+  try {
+    await loaded
+    const doc = frame.contentDocument!, view = frame.contentWindow!, paragraph = doc.querySelector("p")!
+    assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "stable both-edges", "document did not reserve both scrollbar gutters")
+    const before = paragraph.getBoundingClientRect()
+    const content = doc.createElement("div")
+    content.style.height = "2000px"
+    doc.body.append(content)
+    await layoutFrame()
+    const after = paragraph.getBoundingClientRect()
+    assert(Math.abs((after.left + after.right) / 2 - view.innerWidth / 2) < 1, "scrolling document column is not centered in its viewport")
+    assert(Math.abs(before.left - after.left) < 1 && Math.abs(before.width - after.width) < 1, "scrollbar appearance shifted the reading column")
+    for(const mode of ["ww-canvas", "ww-slides", "ww-board"]) {
+      doc.body.className = mode
+      assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "auto", `${mode} inherited document scrollbar gutters`)
+    }
+  }
+  finally { frame.remove() }
+})
+
+await check("empty Details retains summary height and padding in standalone documents", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:720px;height:600px;max-width:none;border:0"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "empty Details fixture did not initialize")
+    const doc = frame.contentDocument!, theme = doc.createElement("style")
+    theme.setAttribute("data-ww-theme", "base")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    doc.body.innerHTML = '<details><summary></summary></details><details><summary><br></summary></details><details><summary>Heading</summary></details><details style="padding:16px 24px 32px"><summary></summary></details>'
+    await layoutFrame()
+    const saved = document.createElement("iframe")
+    saved.style.cssText = frame.style.cssText
+    saved.setAttribute("sandbox", "allow-same-origin")
+    const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
+    saved.srcdoc = await view.editor!.serializeHTML()
+    fixture.append(saved)
+    try {
+      await loaded
+      for(const width of [720, 360]) {
+        saved.style.width = `${width}px`
+        await layoutFrame()
+        const savedDoc = saved.contentDocument!, savedView = saved.contentWindow!
+        const details = Array.from(savedDoc.querySelectorAll("details"))
+        const filled = details[2].getBoundingClientRect()
+        for(const element of details) {
+          const summary = element.querySelector("summary")!
+          const style = savedView.getComputedStyle(element), summaryStyle = savedView.getComputedStyle(summary)
+          const box = element.getBoundingClientRect(), heading = summary.getBoundingClientRect()
+          const lineHeight = parseFloat(summaryStyle.lineHeight)
+          assert(heading.height >= lineHeight - 1, "empty summary collapsed around its floated disclosure icon")
+          assert(heading.top >= box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop) - 1, "summary lost top padding")
+          assert(heading.bottom <= box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom) + 1, "summary lost bottom padding")
+          if(!element.hasAttribute("style")) assert(Math.abs(box.height - filled.height) < 1, "empty Details height differs from a one-line heading")
+          summary.click()
+          assert(element.open, "empty summary no longer toggles native disclosure")
+          element.open = false
+        }
+      }
+    }
+    finally { saved.remove() }
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
+})
+
 await check("details remain intact after applying style presets", async () => {
   const {ElementStyleEditor} = await import("../src/components/element-style-editor")
   const controls = new ElementStyleEditor()
@@ -3638,6 +3716,66 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
   finally { frame.remove(); URL.revokeObjectURL(url) }
 })
 
+await check("media stays centered in editing and standalone documents", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1000px;height:700px;border:0;max-width:none"
+  const media = '<picture style="width:160px"><img alt="Picture" width="160" height="60"></picture><img alt="Image" style="width:160px;height:60px"><audio controls style="width:240px"></audio><video controls style="width:240px;height:90px"></video><iframe title="Website" style="width:240px;height:90px"></iframe><embed style="width:240px;height:90px"><object style="width:240px;height:90px"></object>'
+  const content = `${media}<main>${media}<p>Reading column</p></main><article>${media}<p>Reading column</p></article><section>${media}<p>Reading column</p></section><p>Inline <img id="inline" alt="inline" width="20" height="20"> image</p>`
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "media centering fixture did not initialize")
+    const doc = frame.contentDocument!, theme = doc.createElement("style")
+    // Exercise live DOM edits, including unwrapped images, rather than import aliases.
+    doc.body.innerHTML = content
+    doc.head.append(theme)
+    const centered = (document: Document, context: string) => {
+      for(const element of document.querySelectorAll<HTMLElement>("body > :is(picture,img,audio,video,iframe,embed,object), :is(main,article,section) > :is(picture,img,audio,video,iframe,embed,object)")) {
+        const box = element.getBoundingClientRect(), parent = element.parentElement!
+        const parentBox = parent.getBoundingClientRect(), style = document.defaultView!.getComputedStyle(parent)
+        const left = parentBox.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft)
+        const right = parentBox.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight)
+        const prose = parent.querySelector(":scope > p")!.getBoundingClientRect()
+        const mediaStyle = document.defaultView!.getComputedStyle(element)
+        // Holiday deliberately offsets pictures after normal-flow placement.
+        const offset = mediaStyle.position === "relative" ? parseFloat(mediaStyle.left) || 0 : 0
+        assert(Math.abs((box.left + box.right) / 2 - offset - (prose.left + prose.right) / 2) < 1, `${context}: ${element.localName} was not centered in ${parent.localName}`)
+        assert(box.left - offset >= left - 1 && box.right - offset <= right + 1, `${context}: ${element.localName} overflowed its column`)
+      }
+    }
+    for(const bundledTheme of documentThemes) {
+      theme.setAttribute("data-ww-theme", bundledTheme.value)
+      theme.textContent = bundledTheme.source
+      frame.style.width = "1000px"
+      await layoutFrame()
+      centered(doc, `${bundledTheme.value} editing`)
+      const saved = document.createElement("iframe")
+      saved.style.cssText = frame.style.cssText
+      saved.setAttribute("sandbox", "allow-same-origin")
+      const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
+      saved.srcdoc = await view.editor!.serializeHTML()
+      document.body.append(saved)
+      try {
+        await loaded
+        for(const width of [1000, 590, 360]) {
+          saved.style.width = `${width}px`
+          await layoutFrame()
+          centered(saved.contentDocument!, `${bundledTheme.value} saved ${width}`)
+        }
+        assert(saved.contentDocument!.querySelector("#inline")!.closest("p"), "export moved inline media out of prose")
+        if(bundledTheme.value === "base") assert(saved.contentWindow!.getComputedStyle(saved.contentDocument!.querySelector("#inline")!).display === "inline", "inline prose image was blockified")
+      }
+      finally { saved.remove() }
+    }
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
+})
+
 await check("far floats adapt to column margins and survive standalone export", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;border:0;max-width:none"
@@ -3669,7 +3807,8 @@ await check("far floats adapt to column margins and survive standalone export", 
         await layoutFrame()
         const column = contentBox(doc), box = target.getBoundingClientRect()
         const style = view.getComputedStyle(target)
-        const viewportWidth = doc.documentElement.clientWidth
+        // Container queries and cqw use the root content box, excluding both gutters.
+        const viewportWidth = parseFloat(view.getComputedStyle(doc.documentElement).width)
         const stacked = viewportWidth < 600, singleLane = viewportWidth >= 600 && viewportWidth < 1200
         const effectiveSide = singleLane ? "right" : physical
         const gap = parseFloat(effectiveSide === "left" ? style.marginRight : style.marginLeft)
