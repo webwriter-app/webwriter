@@ -5210,6 +5210,32 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type})
   })
 
+  it.each(["nodeSelected", "capture"] as const)("advertises paragraph toolbox availability for %s bridge selections", async kind => {
+    const {editor, editorWindow} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const detail = {
+      path: [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}],
+      element: {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", attributes: {}},
+    }
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {...detail, [kind]: true}},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    const edit = toolbox.shadowRoot!.querySelector('[data-tool="Edit"]')!
+    expect(toolbox.elementSelected).toBe(true)
+    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph")
+    expect(edit.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(true)
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.elementSelected).toBe(false)
+    expect(edit.getAttribute("aria-label")).toBe("Edit")
+    expect(edit.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(false)
+  })
+
   it("binds multi-selection drawers and routes their changes by type through the bridge", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

@@ -7241,6 +7241,7 @@ export class DomEditor extends LitElement {
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
+        .elementSelected=${this.nodeSelection}
         .documentSelected=${this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1}
         .documentLayout=${this.documentLayout}
         .documentLayoutError=${this.documentLayoutError}

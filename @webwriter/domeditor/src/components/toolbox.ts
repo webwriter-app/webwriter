@@ -69,6 +69,7 @@ export class DomEditorToolbox extends EditingControls {
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
+    elementSelected: {type: Boolean, attribute: false},
     documentHead: {attribute: false},
     documentHeadAttributeEditorId: {state: true},
     consoleOpen: {type: Boolean, attribute: "console-open", reflect: true},
@@ -709,6 +710,7 @@ export class DomEditorToolbox extends EditingControls {
   activeTool: ToolboxTool | null = null
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
+  elementSelected = false
   documentHead: DocumentHeadState = emptyDocumentHeadState()
   private documentHeadAttributeEditorId = ""
   consoleOpen = false
@@ -779,6 +781,8 @@ export class DomEditorToolbox extends EditingControls {
           : "Website"
     if(this.dialog) return "Dialog"
     if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
+    if(this.elementSelected) return this.elementAttributes?.name
+      ?? this.selectionPath.at(-1)?.name ?? this.selectedElementTypes.at(-1)?.element.name ?? "Selection"
     if(this.paragraphSelected) return null
     if(this.elementAttributes && this.isElementDrawerVisible(this.elementAttributes.localName, this.elementAttributes.namespaceURI)) return this.elementAttributes.name
     return null

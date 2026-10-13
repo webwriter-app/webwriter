@@ -838,6 +838,27 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector('input[role="switch"]')).toBeNull()
   })
 
+  it.each(["p", "pre", "figure", "span", "demo-widget", "unfamiliar-element"])("advertises explicitly selected %s and clears the indication when selection ends", async localName => {
+    const toolbox = await mountToolbox()
+    toolbox.elementAttributes = {path: [0], localName, namespaceURI: "http://www.w3.org/1999/xhtml", name: localName, attributes: {}}
+    toolbox.elementSelected = true
+    await toolbox.updateComplete
+    const edit = toolButton(toolbox, "Edit")
+    const tab = edit.closest(".toolbox-tab")!
+    expect(edit.getAttribute("aria-label")).toBe(`Edit ${localName}`)
+    expect(tab.hasAttribute("data-contextual")).toBe(true)
+    expect(tab.hasAttribute("data-available")).toBe(true)
+    edit.click()
+    await toolbox.updateComplete
+    expect(edit.getAttribute("aria-selected")).toBe("true")
+    toolbox.elementSelected = false
+    toolbox.elementAttributes = null
+    toolbox.selectTool(null)
+    await toolbox.updateComplete
+    expect(edit.getAttribute("aria-label")).toBe("Edit")
+    expect(tab.hasAttribute("data-available")).toBe(false)
+  })
+
   it("offers understandable disclosure and heading-group tools alongside universal attributes", async () => {
     const toolbox = await mountToolbox()
     toolbox.activeTool = "Edit"
