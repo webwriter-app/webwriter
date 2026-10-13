@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
-import {graphicShapeOptions} from "../graphic"
+import {afterEach, describe, expect, it, vi} from "vitest"
+import {graphicShapeDragType, graphicShapeOptions} from "../graphic"
 import {ShapeKeyboard} from "./shape-keyboard"
 
 async function mountKeyboard() {
@@ -84,6 +84,25 @@ describe("shape keyboard", () => {
     await keyboard.updateComplete
     expect(keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.grid button[title="Line"] svg g')!.getAttribute("fill"))
       .toBe("none")
+  })
+
+  it("drags the painted shape with its SVG as the drag image", async () => {
+    const keyboard = await mountKeyboard()
+    keyboard.paint = {fill: "red", stroke: "blue", "stroke-width": "6", opacity: "0.5"}
+    await keyboard.updateComplete
+    const key = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.key[title="Ellipse"]')!
+    expect(key.getAttribute("draggable")).toBe("true")
+    const pointer = new PointerEvent("pointerdown", {cancelable: true, pointerType: "mouse"})
+    key.dispatchEvent(pointer)
+    expect(pointer.defaultPrevented).toBe(false)
+    const data = new DataTransfer()
+    const setDragImage = vi.spyOn(data, "setDragImage").mockImplementation(() => undefined)
+    const event = new Event("dragstart", {bubbles: true, composed: true})
+    Object.assign(event, {dataTransfer: data})
+    key.dispatchEvent(event)
+    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "ellipse", paint: keyboard.paint})
+    expect(data.effectAllowed).toBe("copy")
+    expect(setDragImage).toHaveBeenCalledWith(key.querySelector("svg"), 0, 0)
   })
 
   it("centers each preview on its measured geometry bounds", async () => {

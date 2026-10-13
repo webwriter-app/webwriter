@@ -163,6 +163,7 @@ import {
   isGraphicViewportOperation,
   type GraphicSelectionState,
   type GraphicShapeType,
+  graphicShapeDragType,
   type GraphicShapePaint,
 } from "../graphic"
 import {
@@ -6196,7 +6197,7 @@ export class DomEditor extends LitElement {
   private handleRibbonDragStart = (event: DragEvent) => {
     const data = event.dataTransfer
     if(event.defaultPrevented || !data
-      || !Array.from(data.types).some(type => type === elementDragType || type === ribbonInsertionDragType)) return
+      || !Array.from(data.types).some(type => type === elementDragType || type === ribbonInsertionDragType || type === graphicShapeDragType)) return
     this.ribbonDrag = Object.fromEntries(Array.from(data.types).map(type => [type, data.getData(type)]))
   }
 

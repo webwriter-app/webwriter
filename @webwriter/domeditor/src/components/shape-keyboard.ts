@@ -1,5 +1,5 @@
 import {LitElement, css, html, svg} from "lit"
-import {defaultGraphicShapePaint, graphicShapeIsOpen, graphicShapeOptions, type GraphicShapePaint} from "../graphic"
+import {graphicShapeDragType, defaultGraphicShapePaint, graphicShapeIsOpen, graphicShapeOptions, type GraphicShapePaint} from "../graphic"
 import {ribbonIcon} from "../ribbon-icons"
 
 const shapePages = ["Basic", "Advanced", "Flowchart"] as const
@@ -72,8 +72,10 @@ export class ShapeKeyboard extends LitElement {
           @pointerdown=${this.keepSelection} @click=${() => this.dispatchEvent(new CustomEvent("shape-keyboard-close", {bubbles: true, composed: true}))}>${ribbonIcon("Reject")}</button>
       </div>
       <div class="grid" role="group" aria-label=${this.activePage}>
-        ${options.map(option => html`<button class="key" type="button" title=${option.label} aria-label=${option.label}
-          @pointerdown=${this.keepSelection} @click=${() => this.dispatchEvent(new CustomEvent("shape-keyboard-command", {
+        ${options.map(option => html`<button class="key" type="button" draggable="true" title=${option.label} aria-label=${option.label}
+          @pointerdown=${(event: PointerEvent) => { if(event.pointerType !== "mouse") this.keepSelection(event) }}
+          @dragstart=${(event: DragEvent) => this.startDrag(event, option.type)}
+          @click=${() => this.dispatchEvent(new CustomEvent("shape-keyboard-command", {
             detail: {shape: option.type, paint: {...this.paint}}, bubbles: true, composed: true,
           }))}>
           <svg viewBox="-10 -10 120 120" aria-hidden="true" focusable="false">
@@ -85,6 +87,16 @@ export class ShapeKeyboard extends LitElement {
         </button>`)}
       </div>
     </section>`
+  }
+
+  private startDrag(event: DragEvent, shape: typeof graphicShapeOptions[number]["type"]) {
+    const data = event.dataTransfer
+    if(!data) return
+    data.setData(graphicShapeDragType, JSON.stringify({shape, paint: {...this.paint}}))
+    data.effectAllowed = "copy"
+    const preview = (event.currentTarget as HTMLElement).querySelector("svg")!
+    const bounds = preview.getBoundingClientRect()
+    data.setDragImage(preview, bounds.width / 2, bounds.height / 2)
   }
 
   private preview(option: typeof graphicShapeOptions[number]) {

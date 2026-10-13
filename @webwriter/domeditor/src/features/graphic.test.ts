@@ -5,6 +5,7 @@ import {isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 import {
+  graphicShapeDragType,
   SVG_NAMESPACE,
   graphicShapeForNode,
   graphicShapeOptions,
@@ -87,6 +88,58 @@ describe("graphic editing", () => {
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "heart", paint: {fill: "red"}})
     expect(graphic.children).toHaveLength(0)
     expect(document.querySelector("svg")).toBeNull()
+  })
+
+  it("drops keyboard shapes at SVG coordinates with paint and one undo step", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.insertAdjacentHTML("beforeend", '<!--keep--><g><path d="M0 0L5 5"/></g>')
+    const sibling = graphic.lastElementChild!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    data.setData(graphicShapeDragType, JSON.stringify({shape: "ellipse", paint: {fill: "red", stroke: "blue"}}))
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
+    graphic.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    const drop = imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 500, clientY: 350})
+    graphic.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    const shape = graphic.querySelector("ellipse")!
+    expect(shape).toHaveAttribute("cx", "200")
+    expect(shape).toHaveAttribute("cy", "150")
+    expect(shape).toHaveAttribute("fill", "red")
+    expect(shape).toHaveAttribute("stroke", "blue")
+    expect(graphic.children[0]).toBe(sibling)
+    await mutationsDelivered()
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.querySelector("ellipse")).toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
+  })
+
+  it("rejects invalid, locked, widget and disconnected shape drops", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const data = new DataTransfer()
+    for(const payload of ["{", JSON.stringify({shape: "unknown"}), "null"]) {
+      data.setData(graphicShapeDragType, payload)
+      graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+      expect(graphic.children).toHaveLength(0)
+    }
+    data.setData(graphicShapeDragType, JSON.stringify({shape: "rectangle"}))
+    editor.lockEditing("shape-test")
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    editor.unlockEditing("shape-test")
+    const widget = document.createElement("test-widget")
+    document.body.append(widget)
+    widget.append(graphic)
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    graphic.remove()
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    expect(graphic.children).toHaveLength(0)
   })
 
   it("reuses image source controls for a native SVG image and preserves canvas capture", async () => {

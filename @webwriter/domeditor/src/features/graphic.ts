@@ -6,6 +6,7 @@ import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {getDocumentRoot} from "../document-template"
 import {
+  graphicShapeDragType,
   SVG_NAMESPACE,
   graphicContainerForNode,
   graphicShapeForNode,
@@ -689,18 +690,7 @@ export class GraphicFeature extends EditorFeature {
       if(!isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#capturedGraphic()
       if(!graphic) return
-      let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
-      for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
-        const value = paint?.[name]
-        if(typeof value === "string" && !(name === "fill" && graphicShapeIsOpen(shape))) {
-          this.#setParameter(element, name, value)
-        }
-      }
-      graphic.append(element)
-      if(shape === "text-box") element = this.#setLabel(element, "Text")
-      this.#selectShape(element)
-      this.#refresh()
-      this.editor.postSelectionPath()
+      this.#insertShape(graphic, shape, paint)
     },
     setGraphicParameter: ({name, value}: {type: "setGraphicParameter", name: string, value: string}) => {
       const shapes = this.selectedShapes
@@ -815,9 +805,53 @@ export class GraphicFeature extends EditorFeature {
     this.#refresh()
   }
 
-  // Claim graphic image drops before document insertion resolves a text caret.
+  #insertShape(graphic: SVGSVGElement, shape: GraphicShapeType, paint?: GraphicShapePaint, point?: Point) {
+    let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
+    for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
+      const value = paint?.[name]
+      if(typeof value === "string" && !(name === "fill" && graphicShapeIsOpen(shape))) {
+        this.#setParameter(element, name, value)
+      }
+    }
+    graphic.append(element)
+    if(shape === "text-box") element = this.#setLabel(element, "Text")
+    if(point) {
+      const bounds = shapeBounds(element)
+      this.#moveShape(element, point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2)
+    }
+    if(point) this.editor.features.selection.captureElement(graphic)
+    this.#selectShape(element)
+    this.#refresh()
+    this.editor.postSelectionPath()
+  }
+
+  #dropShape(event: DragEvent) {
+    const data = event.dataTransfer
+    if(!data?.types.includes(graphicShapeDragType)) return false
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const graphic = this.#imageDropGraphic(event)
+    if(!graphic) return true
+    let detail
+    try { detail = JSON.parse(data.getData(graphicShapeDragType)) }
+    catch { return true }
+    if(!detail || !isGraphicShapeType(detail.shape)) return true
+    const point = applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})
+    this.editor.doc.stopCapturing()
+    this.#insertShape(graphic, detail.shape, detail.paint, point)
+    this.editor.doc.stopCapturing()
+    return true
+  }
+
+  // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
     dragover: event => {
+      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        event.dataTransfer.dropEffect = this.#imageDropGraphic(event) ? "copy" : "none"
+        return
+      }
       if(!this.#imageDropGraphic(event) || !event.dataTransfer) return
       const data = event.dataTransfer
       if(!Array.from(data.items).some(item => item.kind === "file" && item.type.startsWith("image/"))
@@ -826,7 +860,7 @@ export class GraphicFeature extends EditorFeature {
       event.stopImmediatePropagation()
       data.dropEffect = "copy"
     },
-    drop: event => this.#dropImage(event),
+    drop: event => { if(!this.#dropShape(event)) this.#dropImage(event) },
   }
 
   #imageDropGraphic(event: DragEvent) {

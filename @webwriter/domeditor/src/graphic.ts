@@ -1,6 +1,8 @@
 import {graphicPresetOptions, isGraphicPresetType, readGraphicPreset} from "./graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "./graphic-shape-presets"
 
+export const graphicShapeDragType = "application/x-webwriter-graphic-shape"
+
 export const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 
 const basicGraphicShapeOptions = [

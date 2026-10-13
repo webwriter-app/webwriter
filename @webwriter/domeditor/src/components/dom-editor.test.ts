@@ -1869,6 +1869,24 @@ describe("DomEditor ribbon drag relay", () => {
     return data
   }
 
+  it("relays shape keyboard payloads into the graphic frame", async () => {
+    const {graphicShapeDragType} = await import("../graphic")
+    const {editor, iframe} = await mountEditor()
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
+    const payload = JSON.stringify({shape: "ellipse", paint: {fill: "red"}})
+    const data = await startDrag(editor, {[graphicShapeDragType]: payload})
+    const shield = editor.shadowRoot!.querySelector(".ribbon-drag-shield")!
+    expect(shield).toBeTruthy()
+    shield.dispatchEvent(dragEvent("drop", data, {clientX: 60, clientY: 70}))
+    expect(post.mock.calls.map(([message]) => message)).toContainEqual(expect.objectContaining({
+      type: editorFrameControlMessage, command: "drag", event: "drop", x: 50, y: 50,
+      data: {[graphicShapeDragType]: payload},
+    }))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeNull()
+  })
+
   it("relays ribbon drags over the cross-site editor frame and removes the shield afterwards", async () => {
     const {editor, iframe} = await mountEditor()
     vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
