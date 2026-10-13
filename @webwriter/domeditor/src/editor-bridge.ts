@@ -330,6 +330,8 @@ export type ElementStyleState = {
     namespaceURI: string | null
   } | null
   inline: Record<string, ElementStyleDeclaration>
+  /** CSS declarations explicitly present in the authored style attribute. */
+  authoredProperties?: string[]
   computed: Record<string, string>
   context: {
     display: string

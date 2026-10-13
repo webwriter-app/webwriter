@@ -953,6 +953,41 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 
 const editor = new DOMEditor()
 
+await check("global directional shorthands preserve authored overrides in native CSSOM", () => {
+  const target = document.createElement("aside")
+  document.body.append(target)
+  try {
+    target.setAttribute("style", "margin: 2px; margin-top: 3px")
+    editor.features.manipulation.setElementStyles(target, {margin: "8px"})
+    assert(target.style.getPropertyValue("margin-top") === "3px", "global margin replaced the authored top override")
+    assert(target.style.getPropertyValue("margin-right") === "8px", `global margin did not update the right side: ${target.style.cssText}`)
+    assert(getComputedStyle(target).marginBottom === "8px", "global margin did not affect the computed bottom side")
+
+    target.setAttribute("style", "margin: 2px; margin-top: 3px")
+    editor.features.manipulation.setElementStyles(target, {margin: "8px"})
+    editor.features.manipulation.setElementStyles(target, {"margin-top": "4px"})
+    editor.features.manipulation.setElementStyles(target, {opacity: "0.5"})
+    editor.features.manipulation.setElementStyles(target, {margin: "10px"})
+    assert(target.style.getPropertyValue("margin-top") === "4px", "successive global margin edit lost the direction after an opacity edit")
+    assert(target.style.getPropertyValue("margin-right") === "10px", "successive global margin edit left a stale shorthand-expanded side")
+    const styleState = editor.features.manipulation.getStyleState(["margin"], target, false)
+    assert(styleState.authoredProperties?.includes("margin-top") && !styleState.authoredProperties.includes("margin-right"),
+      "authored-property metadata included sides expanded from the global shorthand")
+
+    target.setAttribute("style", "padding: 16px; padding-left: 8px")
+    const paddingState = editor.features.manipulation.getStyleState(["padding"], target, false)
+    assert(paddingState.authoredProperties?.join(",") === "padding,padding-left", "padding metadata does not match its raw declarations")
+    assert(paddingState.inline.padding?.value === "16px", "padding shorthand projection lost its raw value")
+    assert(paddingState.inline["padding-left"]?.value === "8px", "explicit padding-left projection lost its authored value")
+
+    target.setAttribute("style", "margin: 2px; margin-top: 3px; margin-right: 4px; margin-bottom: 5px; margin-left: 6px")
+    editor.features.manipulation.setElementStyles(target, {margin: "8px"})
+    assert(["top", "right", "bottom", "left"].map(side => target.style.getPropertyValue(`margin-${side}`)).join(",") === "3px,4px,5px,6px",
+      "global margin changed an authored side when every side was specified")
+  }
+  finally {target.remove()}
+})
+
 await check("gap carets track their authored boundary", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:400px"

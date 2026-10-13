@@ -1,4 +1,5 @@
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
+import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
@@ -47,6 +48,148 @@ type ValidatedStyleEntry = {
   name: string
   value: string | null
   priority: "" | "important"
+}
+
+/** CSSOM exposes values for shorthand-expanded longhands. Read the original
+ * declaration names from the reflected style attribute to distinguish those
+ * values from longhands the author declared directly. */
+const authoredStyleDeclarations = (cssText: string) => {
+  const declarations = new Map<string, {value: string, priority: "" | "important"}>()
+  let property: string | null = null, colonEnd = -1, depth = 0
+  const add = (end: number) => {
+    if(property === null || colonEnd < 0) return
+    const source = cssText.slice(colonEnd + 1, end)
+    const valueTokens = tokenize({css: source}).filter(token => token[0] !== "whitespace-token" && token[0] !== "comment" && token[0] !== "EOF-token")
+    const last = valueTokens.at(-1), beforeLast = valueTokens.at(-2)
+    const important = last?.[0] === "ident-token" && (last[4] as {value: string} | undefined)?.value.toLowerCase() === "important"
+      && beforeLast?.[0] === "delim-token" && beforeLast[1] === "!"
+    const value = important && beforeLast ? source.slice(0, beforeLast[2]).trim() : source.trim()
+    const key = property.startsWith("--") ? property : property.toLowerCase()
+    const declaration = {value, priority: important ? "important" as const : "" as const}
+    const previous = declarations.get(key)
+    if(!previous?.priority || declaration.priority) declarations.set(key, declaration)
+  }
+  for(const token of tokenize({css: cssText})) {
+    const [type, text, start, end, value] = token
+    if(type === "function-token" || type === "(-token" || type === "[-token" || type === "{-token") depth++
+    else if(type === ")-token" || type === "]-token" || type === "}-token") depth = Math.max(0, depth - 1)
+    if(type === "semicolon-token" && depth === 0) {
+      add(start)
+      property = null
+      colonEnd = -1
+      continue
+    }
+    if(property !== null && colonEnd >= 0 || type === "whitespace-token" || type === "comment") continue
+    if(property === null && type === "ident-token") property = (value as {value: string} | undefined)?.value ?? text
+    else if(property !== null && colonEnd < 0 && type === "colon-token") {
+      colonEnd = end
+    }
+    else if(property !== null) property = ""
+  }
+  add(cssText.length)
+  return declarations
+}
+
+const directionalLonghands: Record<string, string[]> = {
+  margin: ["top", "right", "bottom", "left", "block-start", "block-end", "inline-start", "inline-end"].map(side => `margin-${side}`),
+  padding: ["top", "right", "bottom", "left", "block-start", "block-end", "inline-start", "inline-end"].map(side => `padding-${side}`),
+  "border-width": ["top", "right", "bottom", "left", "block-start", "block-end", "inline-start", "inline-end"].flatMap(side => [`border-${side}`, `border-${side}-width`]),
+  "border-style": ["top", "right", "bottom", "left", "block-start", "block-end", "inline-start", "inline-end"].flatMap(side => [`border-${side}`, `border-${side}-style`]),
+  "border-color": ["top", "right", "bottom", "left", "block-start", "block-end", "inline-start", "inline-end"].flatMap(side => [`border-${side}`, `border-${side}-color`]),
+  "border-radius": ["top-left", "top-right", "bottom-right", "bottom-left", "start-start", "start-end", "end-start", "end-end"].map(corner => `border-${corner}-radius`),
+}
+const directionalFamilyProperties = new Set([
+  ...Object.keys(directionalLonghands), "border",
+  ...Object.values(directionalLonghands).flat(),
+  "border-block", "border-inline",
+  "border-block-start", "border-block-end", "border-inline-start", "border-inline-end",
+])
+
+const styleDeclarationSegments = (cssText: string) => {
+  const segments: {text: string, name?: string}[] = []
+  let start = 0, depth = 0
+  const add = (end: number) => {
+    const text = cssText.slice(start, end)
+    const tokens = tokenize({css: text})
+    const significant = tokens.filter(token => token[0] !== "whitespace-token" && token[0] !== "comment" && token[0] !== "EOF-token")
+    const name = significant[0]?.[0] === "ident-token" && significant[1]?.[0] === "colon-token"
+      ? (significant[0][4] as {value: string} | undefined)?.value ?? significant[0][1]
+      : undefined
+    segments.push({text, name})
+  }
+  for(const token of tokenize({css: cssText})) {
+    const [type, _text, tokenStart, tokenEnd] = token
+    if(type === "function-token" || type === "(-token" || type === "[-token" || type === "{-token") depth++
+    else if(type === ")-token" || type === "]-token" || type === "}-token") depth = Math.max(0, depth - 1)
+    if(type === "semicolon-token" && depth === 0) {
+      add(tokenStart)
+      start = tokenEnd + 1
+    }
+  }
+  add(cssText.length)
+  return segments
+}
+
+const applyRawStyleEntries = (target: Element, entries: ValidatedStyleEntry[]) => {
+  const source = target.getAttribute("style") ?? ""
+  const segments = styleDeclarationSegments(source)
+  const keyFor = (name: string) => name.startsWith("--") ? name : name.toLowerCase()
+  const remaining = new Map(entries.map(entry => [keyFor(entry.name), entry]))
+  const lastIndexByKey = new Map<string, number>()
+  segments.forEach((segment, index) => {
+    if(segment.name) lastIndexByKey.set(keyFor(segment.name), index)
+  })
+  const result: string[] = []
+  for(const [index, segment] of segments.entries()) {
+    const key = segment.name ? keyFor(segment.name) : undefined
+    const entry = key ? remaining.get(key) : undefined
+    if(!entry) {
+      result.push(segment.text)
+      continue
+    }
+    // Keep the last duplicate declaration, matching CSSStyleDeclaration.setProperty.
+    if(lastIndexByKey.get(key!) !== index) continue
+    remaining.delete(key!)
+    if(entry.value !== null) {
+      const leading = segment.text.match(/^\s*/)?.[0] ?? ""
+      const declaration = `${leading}${entry.name}: ${entry.value}${entry.priority ? " !important" : ""}`
+      const directional = directionalLonghands[entry.name]
+      if(directional) {
+        const insertionIndex = result.findIndex(candidate => {
+          const candidateName = styleDeclarationSegments(candidate)[0]?.name
+          return candidateName && directional.includes(candidateName)
+        })
+        if(insertionIndex < 0) result.push(declaration)
+        else result.splice(insertionIndex, 0, declaration)
+      }
+      else result.push(declaration)
+    }
+  }
+  for(const entry of remaining.values()) if(entry.value !== null) {
+    const declaration = `${entry.name}: ${entry.value}${entry.priority ? " !important" : ""}`
+    const directional = directionalLonghands[entry.name]
+    const insertionIndex = directional
+      ? result.findIndex(candidate => {
+        const candidateName = styleDeclarationSegments(candidate)[0]?.name
+        return candidateName && directional.includes(candidateName)
+      })
+      : -1
+    if(insertionIndex < 0) result.push(declaration)
+    else result.splice(insertionIndex, 0, declaration)
+  }
+  const cssText = result.join(";")
+  if(cssText.trim()) target.setAttribute("style", cssText)
+  else target.removeAttribute("style")
+}
+
+const preserveDirectionalFamilyDeclarations = (target: Element, declarations: {text: string, name?: string}[]) => {
+  if(!declarations.length) return
+  const preserved = declarations.filter(segment => segment.name && directionalFamilyProperties.has(segment.name.toLowerCase()))
+  const current = styleDeclarationSegments(target.getAttribute("style") ?? "")
+    .filter(segment => !segment.name || !directionalFamilyProperties.has(segment.name.toLowerCase()))
+  const cssText = [...current.map(segment => segment.text), ...preserved.map(segment => segment.text)].join(";")
+  if(cssText.trim()) target.setAttribute("style", cssText)
+  else target.removeAttribute("style")
 }
 
 /** Only display a value shared by every selected element. */
@@ -2196,13 +2339,16 @@ export class ManipulationFeature extends EditorFeature {
   getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true): ElementStyleState {
     if(includeSelection && $.isMultiElementSelection) {
       const styles = $.selectedElements.map(element => this.getStyleState(properties, element, false))
-      return {...styles[0], inline: commonValues(styles.map(state => state.inline)), computed: commonValues(styles.map(state => state.computed))}
+      return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
+        authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
+        computed: commonValues(styles.map(state => state.computed))}
     }
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
       return {
         target: null,
         inline: {},
+        authoredProperties: [],
         computed: {},
         context: {display: "", parentDisplay: ""},
       }
@@ -2216,6 +2362,16 @@ export class ManipulationFeature extends EditorFeature {
         priority: style.getPropertyPriority(name) === "important"? "important": "",
       }
     }
+    const declarationsByTarget = new Map<Element, Map<string, {value: string, priority: "" | "important"}>>()
+    const declarationsFor = (element: Element) => {
+      let declarations = declarationsByTarget.get(element)
+      if(!declarations) {
+        declarations = authoredStyleDeclarations(element.getAttribute("style") ?? "")
+        declarationsByTarget.set(element, declarations)
+      }
+      return declarations
+    }
+    const authoredProperties = [...declarationsFor(target).keys()]
     const requested = Array.from(new Set(properties.filter(name => typeof name === "string" && name.trim())))
     // CSSOM may enumerate border sides rather than the aggregate control's
     // property. Read requested shorthand values from the same inline style.
@@ -2223,8 +2379,15 @@ export class ManipulationFeature extends EditorFeature {
       const propertyTarget = this.stylePropertyTarget(target, name)
       const propertyStyle = propertyTarget ? this.inlineStyleOf(propertyTarget) : null
       const value = propertyStyle?.getPropertyValue(name) ?? ""
+      const authoredValue = propertyTarget
+        ? declarationsFor(propertyTarget).get(name)
+        : undefined
       if(propertyTarget !== target) delete inline[name]
-      if(value) inline[name] = {value, priority: propertyStyle?.getPropertyPriority(name) === "important" ? "important" : ""}
+      if(authoredValue !== undefined) inline[name] = {
+        value: authoredValue.value,
+        priority: authoredValue.priority,
+      }
+      else if(value) inline[name] = {value, priority: propertyStyle?.getPropertyPriority(name) === "important" ? "important" : ""}
     }
     const computedStyle = getComputedStyle(target)
     const computed = Object.fromEntries(requested.map(name => {
@@ -2259,6 +2422,7 @@ export class ManipulationFeature extends EditorFeature {
           ? {float: floatSideFromStyles(computedStyle.float, style, target.classList)} : {}),
         ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},
       inline,
+      authoredProperties,
       computed,
       context: {display: computedStyle.display, parentDisplay, positioning: this.editor.features.canvas.active || this.editor.features.slides.active,
         floatLeftForcedRight: computedStyle.getPropertyValue("--ww-responsive-float").trim() === "right",
@@ -2338,7 +2502,9 @@ export class ManipulationFeature extends EditorFeature {
       const widget = widgets[0]
       return {
         element: {...states[0], attributes: commonValues(states.map(state => state.attributes))},
-        style: {...styles[0], inline: commonValues(styles.map(state => state.inline)), computed: commonValues(styles.map(state => state.computed))},
+        style: {...styles[0], inline: commonValues(styles.map(state => state.inline)),
+          authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
+          computed: commonValues(styles.map(state => state.computed))},
         count: elements.length,
         styleProperties: [...new Set(styles.flatMap(state => Object.keys(state.inline)))],
         configuredWidgetOptions: [...new Set(widgets.flatMap(state => state?.options.filter(option => option.value !== null && option.value !== "").map(option => option.name) ?? []))],
@@ -3659,27 +3825,54 @@ export class ManipulationFeature extends EditorFeature {
   ) {
     const style = this.inlineStyleOf(target)
     if(!style) return false
-    entries.forEach(({name, value, priority}) => {
+    const isDirectionalFamily = (name: string) => directionalFamilyProperties.has(name.toLowerCase())
+    const supported = entries.filter(({name, value}) => value === null
+      || typeof CSS?.supports !== "function" || CSS.supports(name, value))
+    const rawEntries = supported.filter(({name}) => isDirectionalFamily(name))
+    const clearedBorderParts = new Set(supported.filter(entry => entry.value === null
+      && ["border-width", "border-style", "border-color"].includes(entry.name)).map(entry => entry.name.slice("border-".length)))
+    if(clearedBorderParts.size) {
+      const declarations = authoredStyleDeclarations(target.getAttribute("style") ?? "")
+      const sideNames = ["top", "right", "bottom", "left", "block-start", "block-end", "inline-start", "inline-end"]
+      for(const side of sideNames) {
+        const shorthand = `border-${side}`
+        if(!declarations.has(shorthand)) continue
+        rawEntries.push({name: shorthand, value: null, priority: ""})
+        for(const part of ["width", "style", "color"]) {
+          rawEntries.push({name: `border-${side}-${part}`, value: null, priority: ""})
+          if(clearedBorderParts.has(part)) continue
+          const property = `border-${side}-${part}`
+          const value = style.getPropertyValue(property)
+          if(value) rawEntries.push({name: property, value, priority: style.getPropertyPriority(property) === "important" ? "important" : ""})
+        }
+      }
+      for(const side of sideNames) for(const part of clearedBorderParts) {
+        rawEntries.push({name: `border-${side}-${part}`, value: null, priority: ""})
+      }
+    }
+    const cssomEntries = supported.filter(({name}) => !isDirectionalFamily(name))
+    if(rawEntries.length) applyRawStyleEntries(target, rawEntries)
+    const declarationsToPreserve = styleDeclarationSegments(target.getAttribute("style") ?? "")
+    for(const {name, value, priority} of cssomEntries) {
       if(value === null) style.removeProperty(name)
       else style.setProperty(name, value, priority)
-    })
+    }
+    if(cssomEntries.length) preserveDirectionalFamilyDeclarations(target, declarationsToPreserve)
+    const additional: ValidatedStyleEntry[] = []
     // Keep the authored float size in sync with width edits through the CSS controls.
     if(floatSideFromStyles(getComputedStyle(target).float, style, target.classList) !== "none"
       && entries.some(({name}) => name === "width" || name === "inline-size")
       && !entries.some(({name}) => name === "--ww-float-size")) {
       const width = style.getPropertyValue("inline-size") || style.getPropertyValue("width")
-      style.setProperty("--ww-float-size", `min(100%, var(--ww-float-width), ${width && width !== "auto" ? width : "var(--ww-float-width)"})`)
+      additional.push({name: "--ww-float-size", value: `min(100%, var(--ww-float-width), ${width && width !== "auto" ? width : "var(--ww-float-width)"})`, priority: ""})
     }
     if(entries.some(({name, value}) => value && ["border-width", "border-style", "border-color"].includes(name))) {
-      // Resolve missing parts from the live inline declaration, including
-      // shorthands and per-side overrides, within the same edit transaction.
       for(const [part, fallback] of [["width", "1px"], ["style", "solid"], ["color", "black"]]) {
-        for(const side of ["top", "right", "bottom", "left"]) {
-          const property = `border-${side}-${part}`
-          if(!style.getPropertyValue(property)) style.setProperty(property, fallback)
-        }
+        const property = `border-${part}`
+        if(!style.getPropertyValue(property)) additional.push({name: property, value: fallback, priority: ""})
       }
     }
+    if(additional.length) applyRawStyleEntries(target, additional)
     return true
   }
 

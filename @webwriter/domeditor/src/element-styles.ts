@@ -328,7 +328,9 @@ export const elementStyleCategories: readonly ElementStyleCategory[] = [
 ] as const
 
 export const elementStylePropertyNames = Array.from(new Set(
-  elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced].map(definition => definition.name)),
+  [...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced].map(definition => definition.name)),
+    ...["top", "right", "bottom", "left"].flatMap(side => ["width", "style", "color"].map(part => `border-${side}-${part}`)),
+    ...["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => `border-${corner}-radius`)],
 ))
 
 export const elementStylePropertyNameSet = new Set(elementStylePropertyNames)

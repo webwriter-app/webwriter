@@ -567,34 +567,25 @@ describe("compact preset menus", () => {
 })
 
 
-it.each(["0.625", "62.5%"])("displays opacity %s as a percentage and supports editing and clearing", async value => {
+it.each(["0.625", "62.5%"])("displays opacity %s in a slider and preserves priority", async value => {
   const editor = await mount([], state({opacity: {value, priority: "important"}}), "compact")
   editor.propertyNames = ["opacity"]
   await editor.updateComplete
-  const input = comboInput(editor, "opacity")
-  expect(input.value).toBe("62.5")
-  expect(combo(editor, "opacity").unit).toBe("%")
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="range"]')!
+  expect(input.value).toBe("0.625")
+  expect([input.min, input.max, input.step]).toEqual(["0", "1", "0.01"])
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
-  for(const [percentage, css] of [["0", "0"], ["100", "1"], ["25.5", "0.255"]]) {
-    input.value = percentage
-    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
-    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(changes.at(-1)).toEqual({property: "opacity", mutation: {value: css, priority: "important"}})
+  for(const value of ["0", "1", "0.25"]) {
+    input.value = value
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(changes.at(-1)).toEqual({property: "opacity", mutation: {value, priority: "important"}})
   }
-  const count = changes.length
-  for(const invalid of ["-1", "101", "invalid"]) {
-    input.value = invalid
-    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
-    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    await combo(editor, "opacity").updateComplete
-    expect(input.value).toBe("62.5")
-    expect(changes).toHaveLength(count)
-  }
-  input.value = ""
-  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
-  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Opacity"]')!.click()
   expect(changes.at(-1)).toEqual({property: "opacity", mutation: null})
+  editor.state = state()
+  await editor.updateComplete
+  expect(input.value).toBe("1")
 })
 
 it("displays authored scale as a percentage and preserves priority when editing or clearing", async () => {
@@ -869,6 +860,125 @@ it("edits and clears corner rounding using pixels and presets", async () => {
   expect(changes.at(-1)).toEqual({property: "border-radius", mutation: null})
 })
 
+it.each([
+  ["margin", "Margin", "margin-top", "7px"],
+  ["padding", "Padding", "padding-left", "8px"],
+  ["border-width", "Border", "border-right-width", "3px"],
+  ["border-radius", "Rounding", "border-top-left-radius", "9px"],
+])("opens spatial %s controls and edits only the chosen direction", async (property, label, direction, value) => {
+  const editor = await mount([], state({[direction]: {value, priority: "important"}}), "compact")
+  editor.propertyNames = [property]
+  editor.selectionKey = "first"
+  await editor.updateComplete
+  const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".directional-label")!
+  expect(trigger.textContent).toBe(label)
+  expect(trigger.hasAttribute("data-set")).toBe(true)
+  expect(trigger.getAttribute("aria-haspopup")).toBe("dialog")
+  trigger.click()
+  await editor.updateComplete
+  await editor.updateComplete
+  const dialog = editor.shadowRoot!.querySelector<HTMLDialogElement>(".directional-dialog")!
+  expect(dialog.open).toBe(true)
+  const parts = Array.from(dialog.querySelectorAll<HTMLElement>(".directional-part"))
+  expect(parts.map(part => part.style.gridArea)).toEqual(["top", "right", "left", "bottom"])
+  expect(dialog.querySelectorAll("style-combobox")).toHaveLength(16)
+  expect(parts.every(part => part.querySelectorAll("style-combobox").length === 4)).toBe(true)
+  const changes: unknown[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  const name = property === "border-width" ? "border-top-width" : property === "border-radius" ? "border-top-left-radius" : `${property}-top`
+  await combo(editor, name).updateComplete
+  const input = comboInput(editor, name)
+  changeComboInput(editor, name, "12")
+  expect(changes.at(-1)).toEqual({property: name, mutation: {value: "12px", priority: name === direction ? "important" : ""}})
+  editor.state = {...editor.state, inline: {...editor.state.inline, [name]: {value: "12px", priority: name === direction ? "important" : ""}}}
+  await editor.updateComplete
+  await combo(editor, name).updateComplete
+  changeComboInput(editor, name, "invalid")
+  await combo(editor, name).updateComplete
+  expect(changes).toHaveLength(1)
+  changeComboInput(editor, name, "")
+  expect(changes.at(-1)).toEqual({property: name, mutation: null})
+  if(property === "border-width") {
+    dialog.querySelector<HTMLButtonElement>('[aria-label="Top border: dashed"]')!.click()
+    expect(changes.at(-1)).toEqual({property: "border-top-style", mutation: {value: "dashed", priority: ""}})
+    dialog.querySelector<HTMLButtonElement>('[aria-label="Color #5b9bd5"]')!.click()
+    expect(changes.at(-1)).toEqual({property: "border-top-color", mutation: {value: "#5b9bd5", priority: ""}})
+  }
+  editor.selectionKey = "second"
+  await editor.updateComplete
+  expect(dialog.open).toBe(false)
+  editor.state = state()
+  await editor.updateComplete
+  expect(trigger.hasAttribute("data-set")).toBe(false)
+})
+
+it("distinguishes directional declarations from shorthand-expanded values", async () => {
+  const current = state({margin: {value: "8px", priority: ""}, "margin-top": {value: "8px", priority: ""}})
+  current.authoredProperties = ["margin"]
+  const editor = await mount([], current, "compact")
+  editor.propertyNames = ["margin"]
+  await editor.updateComplete
+  const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".directional-label")!
+  expect(trigger.hasAttribute("data-set")).toBe(false)
+  trigger.click()
+  await editor.updateComplete
+  await editor.updateComplete
+  await combo(editor, "margin-top").updateComplete
+  expect(comboInput(editor, "margin-top").value).toBe("")
+  editor.state = {...current, authoredProperties: ["margin", "margin-top"]}
+  await editor.updateComplete
+  expect(trigger.hasAttribute("data-set")).toBe(true)
+  await combo(editor, "margin-top").updateComplete
+  expect(comboInput(editor, "margin-top").value).toBe("8")
+  editor.remove()
+  expect(editor.shadowRoot!.querySelector<HTMLDialogElement>(".directional-dialog")!.open).toBe(false)
+})
+
+it("closes the directional dialog with its heading close button", async () => {
+  const editor = await mount([], state(), "compact")
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".directional-label")!.click()
+  await editor.updateComplete
+  await editor.updateComplete
+  const dialog = editor.shadowRoot!.querySelector<HTMLDialogElement>(".directional-dialog")!
+  expect(dialog.open).toBe(true)
+  dialog.querySelector<HTMLButtonElement>('.directional-heading [aria-label="Close directional styles"]')!.click()
+  expect(dialog.open).toBe(false)
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector(".directional-dialog")).toBeNull()
+})
+
+it.each([["background-color", "color"], ["color", "background-color"]])("combines %s and %s into one Color field with independent palettes", async (first, second) => {
+  const editor = await mount([], state({
+    color: {value: "#5b9bd5", priority: "important"},
+    "background-color": {value: "#ffffff", priority: ""},
+  }), "compact")
+  editor.propertyNames = [first, second]
+  await editor.updateComplete
+  const rows = editor.shadowRoot!.querySelectorAll(".compact-row")
+  expect(rows).toHaveLength(1)
+  expect(rows[0].querySelector(".field-label > span")!.textContent).toBe("Color")
+  const parts = Array.from(rows[0].querySelectorAll<HTMLElement>(".color-fields > [data-property]"))
+  expect(parts.map(part => part.dataset.property)).toEqual(["color", "background-color"])
+  expect(parts.map(part => part.querySelector("summary")!.getAttribute("aria-label"))).toEqual(["Text color", "Background color"])
+  const changes: unknown[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  for(const [index, property] of ["color", "background-color"].entries()) {
+    parts[index].querySelector<HTMLButtonElement>('[aria-label="Color #ed7d31"]')!.click()
+    expect(changes.at(-1)).toEqual({property, mutation: {value: "#ed7d31", priority: index === 0 ? "important" : ""}})
+    parts[index].querySelector<HTMLButtonElement>(".palette-automatic")!.click()
+    expect(changes.at(-1)).toEqual({property, mutation: null})
+  }
+  const clear = rows[0].querySelector<HTMLButtonElement>('[aria-label="Clear Color"]')!
+  clear.click()
+  expect(changes.at(-1)).toEqual({styles: {color: null, "background-color": null}})
+  editor.state = state({"background-color": {value: "red", priority: ""}})
+  await editor.updateComplete
+  expect(clear.style.visibility).not.toBe("hidden")
+  editor.state = state()
+  await editor.updateComplete
+  expect(clear.style.visibility).toBe("hidden")
+})
+
 it("shows text color as an Abc preview and changes or resets it through the palette", async () => {
   const editor = await mount([], state({color: {value: "#5b9bd5", priority: "important"}}), "compact")
   editor.propertyNames = ["color"]
@@ -959,7 +1069,7 @@ it("groups shadow and filter preview fields and reflects their current effects",
 })
 
 it.each([
-  ["rotate", "Straight", "0deg"], ["scale", "Original", "1"], ["opacity", "Half", "0.5"],
+  ["rotate", "Straight", "0deg"], ["scale", "Original", "1"],
 ])("offers named numerical %s presets and preserves priority", async (property, label, value) => {
   const editor = await mount([], state({[property]: {value: "0", priority: "important"}}), "compact")
   editor.propertyNames = [property]

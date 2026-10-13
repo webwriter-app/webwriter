@@ -470,7 +470,7 @@ describe("toolbox", () => {
     expect(drawer.shadowRoot!.querySelector(".pane-icon .icon-tabler-palette")).not.toBeNull()
     const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
     await advanced.updateComplete
-    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter"])
+    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "rotate", "scale", "opacity", "box-shadow", "filter"])
     const compactCombos = advanced.shadowRoot!.querySelectorAll<HTMLElement>('style-combobox[id^="compact-"]')
     expect(compactCombos.length).toBeGreaterThan(0)
     expect(Array.from(compactCombos).every(combo => combo.shadowRoot?.querySelector("input"))).toBe(true)
@@ -1054,7 +1054,8 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
   const changes: unknown[] = []
   toolbox.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
   reset().click()
-  expect(changes).toEqual([{styles: {color: null, width: null, padding: null, "border-radius": null, "border-color": null, opacity: null}}])
+  expect(changes).toEqual([{styles: {color: null, width: null, padding: null, "border-radius": null, "border-color": null, opacity: null,
+    "padding-top": null, "border-top-left-radius": null, "border-left-color": null}}])
   toolbox.documentSelected = true
   await toolbox.updateComplete
   expect(reset().disabled).toBe(true)

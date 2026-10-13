@@ -818,6 +818,8 @@ export class DomEditorToolbox extends EditingControls {
     const properties = documentTarget ? ["background-color"] : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
       "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter",
+      ...Object.keys(this.elementStyle.inline).filter(name => /^(margin|padding)-(top|right|bottom|left|block(?:-start|-end)?|inline(?:-start|-end)?)$/.test(name)
+        || /^border-(top|right|bottom|left|block|inline|start|end)(-|$)/.test(name)),
     ]
     // Resolve authored shorthands and side declarations through CSSOM, so
     // resetting the drawer leaves unrelated styles such as typography intact.
@@ -850,7 +852,7 @@ export class DomEditorToolbox extends EditingControls {
   private renderUniversalStyleDrawer() {
     const disabled = !this.elementStyle.target
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "padding", "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter"]
+    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "rotate", "scale", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
     const advancedCount = advancedProperties.filter(name => name === "border-width"
       ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
@@ -870,6 +872,7 @@ export class DomEditorToolbox extends EditingControls {
         <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
         ${this.renderElementLayoutControls()}
         <element-style-editor slot="more" mode="compact" orientation="vertical"
+          .selectionKey=${JSON.stringify([this.elementAttributes?.path, this.elementStyle.target])}
           .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>
       </ribbon-drawer>
     `

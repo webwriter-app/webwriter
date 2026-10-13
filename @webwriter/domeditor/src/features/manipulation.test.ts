@@ -1295,6 +1295,65 @@ describe("column insertion", () => {
     expect(target.style.getPropertyValue("--ww-float-size")).toBe("")
   })
 
+  it.each([
+    ["margin", "margin-top", "7px", "8px", "margin-right"],
+    ["margin", "margin-inline-start", "11px", "8px", "margin-bottom"],
+    ["padding", "padding-block-end", "13px", "8px", "padding-left"],
+    ["border-width", "border-left-width", "3px", "2px", "border-right-width"],
+    ["border-width", "border-block-start-width", "5px", "2px", "border-bottom-width"],
+    ["border-style", "border-inline-end-style", "dashed", "solid", "border-top-style"],
+    ["border-color", "border-bottom-color", "red", "blue", "border-top-color"],
+    ["border-radius", "border-top-left-radius", "4px", "8px", "border-bottom-right-radius"],
+    ["border-radius", "border-start-start-radius", "6px", "8px", ""],
+  ])("preserves authored %s longhand %s while updating untouched sides", (shorthand, longhand, value, globalValue, untouched) => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", `${longhand}: ${value}${longhand === "margin-top" ? " !important" : ""}`)
+    editor.features.manipulation.setElementStyles(target, {[shorthand]: globalValue})
+    expect(target.style.getPropertyValue(longhand)).toBe(value)
+    if(untouched) expect(target.style.getPropertyValue(untouched)).toBe(globalValue)
+    if(longhand === "margin-top") expect(target.style.getPropertyPriority(longhand)).toBe("important")
+  })
+
+  it("preserves all authored sides when setting a global margin shorthand", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px; margin-top: 3px; margin-right: 4px; margin-bottom: 5px; margin-left: 6px")
+    editor.features.manipulation.setElementStyles(target, {margin: "8px"})
+    expect(["top", "right", "bottom", "left"].map(side => target.style.getPropertyValue(`margin-${side}`)))
+      .toEqual(["3px", "4px", "5px", "6px"])
+  })
+
+  it("keeps raw directional declarations across successive shorthand and unrelated edits", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px; margin-top: 3px")
+    const manipulation = editor.features.manipulation
+    manipulation.setElementStyles(target, {margin: "8px"})
+    manipulation.setElementStyles(target, {"margin-top": "4px"})
+    manipulation.setElementStyles(target, {opacity: "0.5"})
+    manipulation.setElementStyles(target, {margin: "10px"})
+    expect(target.style.getPropertyValue("margin-top")).toBe("4px")
+    expect(target.style.getPropertyValue("margin-right")).toBe("10px")
+    expect(manipulation.getStyleState(["margin"], target, false).authoredProperties).toEqual(expect.arrayContaining(["margin", "margin-top"]))
+    expect(manipulation.getStyleState(["margin"], target, false).authoredProperties).not.toContain("margin-right")
+  })
+
+  it("reports raw global shorthand value and priority beside a directional override", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px !important; margin-top: 3px !important")
+    const state = editor.features.manipulation.getStyleState(["margin"], target, false)
+    expect(state.inline.margin).toEqual({value: "2px", priority: "important"})
+    expect(state.authoredProperties).toEqual(["margin", "margin-top"])
+  })
+
+  it("parses authored priorities and case-sensitive custom property names", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px ! /* comment */ important; margin: 3px; --Theme: red; --theme: blue")
+    const state = editor.features.manipulation.getStyleState(["margin", "--Theme", "--theme"], target, false)
+    expect(state.inline.margin).toEqual({value: "2px", priority: "important"})
+    expect(state.authoredProperties).toEqual(["margin", "--Theme", "--theme"])
+    expect(state.inline["--Theme"]?.value).toBe("red")
+    expect(state.inline["--theme"]?.value).toBe("blue")
+  })
+
   it("refuses far floating disconnected targets, the document root and widget internals", () => {
     const target = document.createElement("aside")
     expect(editor.features.manipulation.setFloat(target, "far-left")).toBe(false)

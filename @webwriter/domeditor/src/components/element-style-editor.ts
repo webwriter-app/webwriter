@@ -90,6 +90,7 @@ export class ElementStyleEditor extends LitElement {
     compactMenu: {state: true},
     galleryPage: {state: true},
     customEffect: {state: true},
+    directionalProperty: {state: true},
     customProperty: {type: String, state: true},
     customValue: {type: String, state: true},
     customImportant: {type: Boolean, state: true},
@@ -194,6 +195,29 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .specialized-input:has(.specialized-choice-group) {border: 0; align-items: center;}
     .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
     .field-label .property-action {flex: 0 0 .9rem; width: .9rem; height: .9rem; margin-left: auto; padding: 0; border: 0; background: transparent; color: #666; font: inherit; cursor: pointer;}
+    .directional-label {padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; text-align: left;}
+    .directional-label[data-set] {text-decoration: underline dotted; text-underline-offset: .2em;}
+    .directional-label:hover, .directional-label:focus-visible {color: #1e6bb8; text-decoration: underline solid; text-underline-offset: .2em;}
+    .directional-dialog {box-sizing: border-box; width: min(44rem, calc(100vw - 2rem)); padding: 1rem; border: 1px solid #c5ccd5; border-radius: .4rem; color: #2f3742; background: white; font: .8rem/1.4 system-ui;}
+    .directional-dialog::backdrop {background: #0004;}
+    .directional-heading {display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem;}
+    .directional-dialog h2 {margin: 0; font-size: 1rem;}
+    .directional-close {display: grid; place-items: center; flex: 0 0 1.5rem; width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: 4px; background: transparent; font-size: 1.2rem; cursor: pointer;}
+    .directional-close:hover {background: #e8eef5;}
+    .directional-close svg {display: block; width: 1rem; height: 1rem;}
+    .directional-close:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px;}
+    .directional-grid {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "top right" "left bottom"; gap: 1rem; align-items: start;}
+    .directional-part {min-width: 0;}
+    .directional-part > strong {display: block; text-align: left; margin-bottom: .5rem;}
+    .directional-actions {display: flex; justify-content: flex-end; margin-top: 1rem;}
+    .directional-actions button {padding: .35rem .75rem; border: 1px solid #c5ccd5; border-radius: 4px; background: #f2f2f2; cursor: pointer;}
+    .directional-part:is([data-direction="left"], [data-direction="bottom"]) .border-color-palette {top: auto; bottom: 100%;}
+    .directional-part:is([data-direction="top"], [data-direction="left"]) .border-color-palette {left: 0; right: auto;}
+    .directional-part .field-label {flex-basis: 4.5rem;}
+    @media (max-width: 32rem) {
+      .directional-part .compact-row {flex-direction: column; align-items: stretch; gap: .2rem;}
+      .directional-part .compact-row > .field-label {flex: 0 0 auto; justify-content: flex-start;}
+    }
     .compact-row > .field-label {flex: 0 0 4.4rem;}
     .effect-control.compact-row > .field-label {flex: none;}
     ${choiceGroupStyles}
@@ -309,6 +333,8 @@ export class ElementStyleEditor extends LitElement {
     .background-control { border: 1px solid #c5ccd5; height: 1.7rem; box-sizing: border-box; }
     .background-control .border-color-picker { width: 100%; border-left: 0; }
     .background-control .border-color-picker > summary { width: 100%; }
+    .color-fields > [data-property] { display: flex; flex: 1; min-width: 0; }
+    .color-fields > [data-property] + [data-property] { border-left: 1px solid #c5ccd5; }
     .border-color-picker { position: static; border-left: 1px solid #c5ccd5; }
     .border-group .border-color-picker {box-sizing: border-box; width: 1rem;}
     .border-group .border-color-picker > summary {width: 100%;}
@@ -841,6 +867,8 @@ export class ElementStyleEditor extends LitElement {
   private galleryPage = 0
   private customEffect: string | null = null
   private compactMenu: string | null = null
+  private directionalProperty: string | null = null
+  private directionalSelectionKey = ""
   private markerImageBusy = false
   private markerImageError = ""
   private markerImageFilename = ""
@@ -882,6 +910,9 @@ export class ElementStyleEditor extends LitElement {
   }
 
   protected updated(changed: Map<PropertyKey, unknown>) {
+    if(changed.has("selectionKey") && this.selectionKey !== this.directionalSelectionKey) {
+      this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")?.close()
+    }
     if((changed.has("state") || changed.has("selectionKey")) && this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")?.open && !this.markerImageSelectionUnchanged) {
       this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")?.close()
       this.cancelMarkerImageRead()
@@ -902,6 +933,7 @@ export class ElementStyleEditor extends LitElement {
     this.cancelMarkerImageRead()
     const dialog = this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")
     if(dialog?.open) dialog.close()
+    this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")?.close()
     super.disconnectedCallback()
   }
 
@@ -1110,7 +1142,8 @@ export class ElementStyleEditor extends LitElement {
   private renderRange(definition: ElementStylePropertyDefinition, declaration?: ElementStyleDeclaration) {
     const current = this.editableValue(definition.name)
     const computed = this.state.computed[definition.name]?.trim() ?? ""
-    const effective = current || computed || String(definition.min ?? 0)
+    const raw = current || computed || String(definition.min ?? 0)
+    const effective = definition.name === "opacity" && raw.endsWith("%") ? String(parseFloat(raw) / 100) : raw
     const commit = (event: Event) => this.commitValue(
       definition.name,
       (event.currentTarget as HTMLInputElement).value,
@@ -1273,8 +1306,7 @@ export class ElementStyleEditor extends LitElement {
     this.commitValue(name, value)
   }
 
-  private renderCompactValue(name: string, label: string, presets: readonly number[], unit = "px") {
-    const current = this.declaration(name)?.value ?? ""
+  private renderCompactValue(name: string, label: string, presets: readonly number[], unit = "px", current = this.declaration(name)?.value ?? "") {
     const value = current === "none" && name === "scale" ? "1"
       : current === "none" && name === "rotate" ? "0deg" : current
     const percentage = name === "scale" || name === "opacity"
@@ -1286,7 +1318,7 @@ export class ElementStyleEditor extends LitElement {
       : name === "rotate" ? ["Quarter left", "Eighth left", "Straight", "Eighth right", "Quarter right"]
       : ["Tiny", "Small", "Medium", "Large", "Huge"]
     return html`<style-combobox id=${`compact-${name}`} .label=${label} .showValue=${true}
-      .value=${displayed} .unit=${unit} .joined=${name === "border-width"} .persistent=${false} placeholder="Default"
+      .value=${displayed} .unit=${unit} .joined=${name === "border-width" || /^border-(top|right|bottom|left)-width$/.test(name)} .persistent=${false} placeholder="Default"
       .options=${presets.map((preset, index) => ({value: String(preset), label: labels[index], description: `${preset}${unit === "deg" ? "°" : unit}`}))}
       @combobox-change=${(event: CustomEvent<{value: string}>) => {
         const raw = event.detail.value.trim()
@@ -1693,20 +1725,102 @@ export class ElementStyleEditor extends LitElement {
       }}></style-combobox>`
   }
 
-  private renderCompactLabel(name: string, label: string, id = `style-label-${name}`) {
+  private renderCompactLabel(name: string, label: string, id = `style-label-${name}`, properties = [name]) {
+    const directional = ["border-width", "padding", "margin", "border-radius"].includes(name)
+    const hasDirections = (this.state.authoredProperties ?? Object.keys(this.state.inline)).some(property => name === "border-width"
+      ? /^border-(top|right|bottom|left|block(?:-start|-end)?|inline(?:-start|-end)?)(?:-(width|style|color))?$/.test(property)
+      : name === "border-radius" ? /^border-.+-radius$/.test(property)
+      : new RegExp(`^${name}-(top|right|bottom|left|block(?:-start|-end)?|inline(?:-start|-end)?)$`).test(property))
     const imageMarker = name === "list-style-type" && this.declaration("list-style-image")
     const borderParts = ["border-width", "border-style", "border-color"]
     const hasBorder = name === "border-width" && Object.keys(this.state.inline)
       .some(property => /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(property))
-    return html`<span class="field-label"><span id=${id}>${label}</span>
-      <button type="button" class="property-action" style=${this.declaration(name) || imageMarker || hasBorder ? "" : "visibility: hidden"}
+    return html`<span class="field-label">${directional ? html`<button type="button" id=${id} class="directional-label" ?data-set=${hasDirections}
+      aria-haspopup="dialog" title=${`Set individual ${label.toLowerCase()} directions`}
+      @click=${async () => {
+        this.directionalProperty = name
+        this.directionalSelectionKey = this.selectionKey
+        await this.updateComplete
+        if(!this.isConnected || this.selectionKey !== this.directionalSelectionKey) return
+        this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")!.showModal()
+      }}>${label}</button>` : html`<span id=${id}>${label}</span>`}
+      <button type="button" class="property-action" style=${properties.some(property => this.declaration(property)) || imageMarker || hasBorder ? "" : "visibility: hidden"}
         title=${`Clear ${label}`} aria-label=${`Clear ${label}`}
         @click=${() => name === "border-width" ? this.dispatchEvent(new CustomEvent("element-style-change", {
           detail: {styles: Object.fromEntries(borderParts.map(property => [property, null]))}, bubbles: true, composed: true,
         })) : imageMarker ? this.dispatchEvent(new CustomEvent("element-style-change", {
           detail: {styles: {"list-style-type": null, "list-style-image": null, [listMarkerImageProperty]: null}}, bubbles: true, composed: true,
+        })) : properties.length > 1 ? this.dispatchEvent(new CustomEvent("element-style-change", {
+          detail: {styles: Object.fromEntries(properties.map(property => [property, null]))}, bubbles: true, composed: true,
         })) : this.dispatchChange(name, null)}>×</button>
     </span>`
+  }
+
+  private renderBorderGroup(styleProperty = "border-style", colorProperty = "border-color", label = "Border") {
+    const current = this.declaration(styleProperty)?.value || this.state.computed[styleProperty] || "solid"
+    return html`<div class="border-group">
+      <details class="border-picker" @toggle=${this.syncCompactPopupState}>
+        <summary aria-label=${`${label} line style`} title=${`${label} line style`}>
+          <span class="border-sample" style=${`border-left-style:${current}`} aria-hidden="true"></span>
+        </summary>
+        <div class="border-options">
+          ${["solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"].map(style => html`
+            <button type="button" aria-label=${styleProperty === "border-style" ? style : `${label}: ${style}`} title=${style} aria-pressed=${current === style}
+              @click=${(event: Event) => {
+                this.commitValue(styleProperty, style)
+                const picker = (event.currentTarget as HTMLElement).closest("details")!
+                picker.open = false
+              }}><span class="border-sample" style=${`border-top-style:${style}`} aria-hidden="true"></span></button>
+          `)}
+          ${styleProperty !== "border-style" ? html`<button type="button" aria-label=${`Automatic ${label.toLowerCase()} line style`}
+            @click=${(event: Event) => {
+              this.commitValue(styleProperty, "")
+              const picker = (event.currentTarget as HTMLElement).closest("details")!
+              picker.open = false
+            }}>Automatic</button>` : nothing}
+        </div>
+      </details>
+      ${this.renderCompactColorPicker(colorProperty, `${label} color`)}
+    </div>`
+  }
+
+  private renderDirectionalDialog() {
+    if(!this.directionalProperty) return nothing
+    const directions = ["top", "right", "left", "bottom"]
+    const corners = ["top-left", "top-right", "bottom-left", "bottom-right"]
+    const arrows = ["↖", "↗", "↙", "↘"]
+    const explicitValue = (property: string) => !this.state.authoredProperties || this.state.authoredProperties.includes(property)
+      ? this.declaration(property)?.value ?? "" : ""
+    return html`<dialog class="directional-dialog" aria-labelledby="directional-title" @close=${() => this.directionalProperty = null}>
+      <div class="directional-heading">
+        <h2 id="directional-title">Directional styles</h2>
+        <button type="button" class="directional-close" aria-label="Close directional styles" title="Close"
+          @click=${() => this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")!.close()}>${ribbonIcon("Reject")}</button>
+      </div>
+      <div class="directional-grid">
+        ${directions.map((direction, index) => {
+          const title = direction[0].toUpperCase() + direction.slice(1)
+          const corner = corners[index]
+          const field = (property: string, label: string, presets: readonly number[], border = false) => html`<div class="compact-row" data-property=${property}>
+            <span class="field-label" title=${property === `border-${corner}-radius` ? `${corner.replace("-", " ")} corner` : nothing}>
+              ${label === "Rounding" ? html`${label} <span aria-hidden="true">${arrows[index]}</span>` : label}
+            </span>
+            <div class="compact-controls">
+              ${border ? this.renderBorderGroup(`border-${direction}-style`, `border-${direction}-color`, `${title} border`) : nothing}
+              ${this.renderCompactValue(property, `${label === "Rounding" ? corner.replace("-", " ") : title} ${label.toLowerCase()}`, presets, "px", explicitValue(property))}
+            </div>
+          </div>`
+          return html`<section class="directional-part" data-direction=${direction} style=${`grid-area:${direction}`} aria-label=${title}>
+            <strong>${title}</strong>
+            ${field(`border-${direction}-width`, "Border", [0.5, 1, 2, 4, 8], true)}
+            ${field(`padding-${direction}`, "Padding", [2, 4, 8, 16, 32])}
+            ${field(`margin-${direction}`, "Margin", [2, 4, 8, 16, 32])}
+            ${field(`border-${corner}-radius`, "Rounding", [1, 2, 4, 8, 16])}
+          </section>`
+        })}
+      </div>
+      <div class="directional-actions"><button type="button" @click=${() => this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")!.close()}>Done</button></div>
+    </dialog>`
   }
 
   private renderMediaCrop(definition: ElementStylePropertyDefinition) {
@@ -1781,7 +1895,9 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private renderCompact() {
-    const borderStyle = this.declaration("border-style")?.value || this.state.computed["border-style"] || "solid"
+    const properties = (this.propertyNames ?? ["width", "height", "margin", "border-width", "padding", "background-color"])
+      .filter(name => !this.documentRootTarget || name === "background-color")
+    const combinedColors = properties.includes("color") && properties.includes("background-color")
     return html`<div @combobox-toggle=${this.syncCompactPopupState} @mouseenter=${() => this.dispatchTargetHover(true)} @mouseleave=${() => this.dispatchTargetHover(false)}
       @change=${(event: Event) => {
         // Native change events do not cross the component's shadow boundary.
@@ -1790,9 +1906,22 @@ export class ElementStyleEditor extends LitElement {
         }))
       }}>
       ${this.showPresets ? this.renderStyleGallery() : nothing}
-      ${(this.propertyNames ?? ["width", "height", "margin", "border-width", "padding", "background-color"])
-        .filter(name => !this.documentRootTarget || name === "background-color").map(name => {
+      ${properties.map(name => {
         if(name === "list-style-image" && this.propertyNames?.includes("list-style-type")) return nothing
+        if(name === "opacity") return html`<div class="compact-row" data-property="opacity">
+          ${this.renderCompactLabel(name, "Opacity")}
+          <div class="compact-controls">${this.renderRange({name, label: "Opacity", section: "Visibility", control: "range", min: 0, max: 1, step: 0.01}, this.declaration(name))}</div>
+        </div>`
+        if(combinedColors && (name === "color" || name === "background-color")) {
+          if(name !== properties.find(property => property === "color" || property === "background-color")) return nothing
+          return html`<div class="compact-row">
+            ${this.renderCompactLabel("color", "Color", "style-label-color", ["color", "background-color"])}
+            <div class="compact-controls background-control color-fields" role="group" aria-labelledby="style-label-color">
+              <span data-property="color">${this.renderCompactColorPicker("color", "Text color")}</span>
+              <span data-property="background-color">${this.renderCompactColorPicker("background-color", "Background color")}</span>
+            </div>
+          </div>`
+        }
         const definition = this.definitions.find(definition => definition.name === name)
         if(definition) return this.renderCompactProperty(definition)
         if(name === "box-shadow" || name === "filter") {
@@ -1807,29 +1936,13 @@ export class ElementStyleEditor extends LitElement {
         return html`<div class="compact-row" data-property=${name}>
           ${this.renderCompactLabel(name, label)}
           <div class="compact-controls">
-          ${name === "border-width" ? html`<div class="border-group">
-            <details class="border-picker" @toggle=${this.syncCompactPopupState}>
-              <summary aria-label="Border line style" title="Border line style">
-                <span class="border-sample" style=${`border-left-style:${borderStyle}`} aria-hidden="true"></span>
-              </summary>
-              <div class="border-options">
-                ${["solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"].map(style => html`
-                  <button type="button" aria-label=${style} title=${style} aria-pressed=${borderStyle === style}
-                    @click=${(event: Event) => {
-                      this.commitValue("border-style", style)
-                      const picker = (event.currentTarget as HTMLElement).closest("details")!
-                      picker.open = false
-                    }}><span class="border-sample" style=${`border-top-style:${style}`} aria-hidden="true"></span></button>
-                `)}
-              </div>
-            </details>
-            ${this.renderCompactColorPicker()}
-          </div>` : nothing}
+          ${name === "border-width" ? this.renderBorderGroup() : nothing}
           ${this.renderCompactValue(name, label, name === "rotate" ? [-90, -45, 0, 45, 90] : name === "scale" ? [50, 75, 100, 125, 150] : name === "opacity" ? [0, 25, 50, 75, 100] : name === "border-width" ? [0.5, 1, 2, 4, 8] : name === "border-radius" ? [1, 2, 4, 8, 16] : name === "width" || name === "height" ? [50, 100, 200, 400, 800] : [2, 4, 8, 16, 32], name === "rotate" ? "deg" : name === "scale" || name === "opacity" ? "%" : "px")}
           </div>
         </div>`
       })}
       ${this.propertyNames?.includes("list-style-type") ? this.renderMarkerImageDialog() : nothing}
+      ${this.renderDirectionalDialog()}
     </div>`
   }
 

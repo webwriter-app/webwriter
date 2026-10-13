@@ -4513,6 +4513,7 @@ describe("DomEditor.execute()", () => {
       if(action.type === "getStyleState") return {
         target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
         inline: width ? {width: {value: width, priority: ""}} : {},
+        authoredProperties: width ? ["width", "margin", "margin-top", 1] : [],
         computed: {width: "300px"}, context: {display: "block", parentDisplay: "block", floatLeftForcedRight: width === "120px", floatRightInFlow: width === "240px"},
       }
     })
@@ -4521,6 +4522,7 @@ describe("DomEditor.execute()", () => {
     toolbox.selectTool("Edit")
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width?.value).toBe("120px"))
     expect(toolbox.elementStyle.context.floatLeftForcedRight).toBe(true)
+    expect(toolbox.elementStyle.authoredProperties).toEqual(["width", "margin", "margin-top"])
     width = "240px"
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [1], name: "Paragraph"}]}},
@@ -4535,6 +4537,7 @@ describe("DomEditor.execute()", () => {
       source: editorWindow,
     }))
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width).toBeUndefined())
+    expect(toolbox.elementStyle.authoredProperties).toEqual([])
     expect(execute.mock.calls.filter(([action]) => action.type === "getStyleState").length).toBeGreaterThanOrEqual(3)
   })
 

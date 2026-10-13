@@ -6093,6 +6093,9 @@ export class DomEditor extends LitElement {
     return {
       target,
       inline,
+      ...(Array.isArray(value.authoredProperties) ? {
+        authoredProperties: value.authoredProperties.filter((name): name is string => typeof name === "string"),
+      } : {}),
       computed,
       context: {
         display: value.context.display,

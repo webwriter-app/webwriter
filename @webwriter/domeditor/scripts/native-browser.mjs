@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "global directional shorthands preserve authored overrides in native CSSOM",
   "gap carets track their authored boundary",
   "insertion and saved-reader controls align inside symmetric scrollbar gutters",
   "SVG shape outlines and handles align inside symmetric scrollbar gutters",
