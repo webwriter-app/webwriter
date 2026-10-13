@@ -1156,7 +1156,23 @@ export class DomEditorToolbox extends EditingControls {
             <span class="icon">${ribbonIcon(option.label)}</span><span class="label">${option.label === "Record" ? "Record" : "Capture"}</span>
           </button>`)}
         </div>
-        <div class="media-source-field">
+        <div class="media-source-field"
+          @dragover=${(event: DragEvent) => {
+            const data = event.dataTransfer
+            if(!data || !data.types.includes("Files") && !Array.from(data.items).some(item => item.kind === "file")) return
+            event.preventDefault()
+            event.stopPropagation()
+            event.dataTransfer.dropEffect = "copy"
+          }}
+          @drop=${(event: DragEvent) => {
+            const file = event.dataTransfer?.files[0]
+            if(!file) return
+            event.preventDefault()
+            event.stopPropagation()
+            this.dispatchEvent(new CustomEvent("media-file-drop", {
+              detail: {type, file, attribute: undefined}, bubbles: true, composed: true,
+            }))
+          }}>
           ${source ? ribbonIcon(sourceIcon) : nothing}
           <input id="media-source-url" type=${media.sourceKind || source.startsWith("data:") || source.startsWith("blob:") || media.attributes.srcdoc ? "text" : "url"}
             inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${this.mediaLabel(type)}: Source`}

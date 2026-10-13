@@ -120,6 +120,34 @@ describe("graphic editing", () => {
     expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
   })
 
+  it.each(["audio/mpeg", "video/mp4"])("inserts %s files into an existing graphic and supports undo", async mime => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const sibling = graphic.lastElementChild
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    data.items.add(new File(["media"], "media", {type: mime}))
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
+    graphic.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 200, clientY: 100})
+    graphic.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    const container = graphic.querySelector("foreignObject")!
+    expect(container).not.toBeNull()
+    const media = container.querySelector(mime.startsWith("video") ? "video" : "audio")!
+    expect(media.getAttribute("src")).toMatch(/^blob:/)
+    expect(media).toHaveAttribute("controls")
+    expect(graphic.firstElementChild).toBe(sibling)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.querySelector("foreignObject")).toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("foreignObject")).not.toBeNull()
+  })
+
   it("rejects invalid, locked, widget and disconnected shape drops", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!

@@ -10,6 +10,21 @@ let editor: DOMEditor
 const fetchSettings = (window as unknown as TestWindow).happyDOM.settings.fetch
 const originalFetchInterceptor = fetchSettings.interceptor
 
+// Happy DOM does not carry DragEventInit.dataTransfer through its constructor.
+function mediaDragEvent(type: string, dataTransfer: DataTransfer) {
+  const event = new DragEvent(type, {bubbles: true, composed: true, cancelable: true})
+  Object.defineProperty(event, "dataTransfer", {value: dataTransfer})
+  return event
+}
+
+function fileTransfer(file: File) {
+  const transfer = new DataTransfer()
+  transfer.items.add(file)
+  // Happy DOM omits Files when a File has an empty MIME type.
+  Object.defineProperty(transfer, "types", {configurable: true, value: ["Files"]})
+  return transfer
+}
+
 beforeEach(() => {
   // Source-attribute tests should not request real iframe pages.
   fetchSettings.interceptor = {beforeAsyncRequest: async ({window}) => new window.Response("")}
@@ -1521,23 +1536,23 @@ describe("media editing", () => {
 })
 
 describe("canonical media", () => {
-  it("normalizes direct and shared media changes while preserving image identity", async () => {
+  it("preserves direct and shared media structure while enabling native controls", async () => {
     document.body.innerHTML = '<p><img alt="Image"></p><embed src="https://example.com/site"><video></video><media-widget><img><video></video></media-widget>'
     const image = document.querySelector("img")!
     $.selectElement(image)
     editor.features.selection.processSelection()
     await vi.waitFor(() => {
-      expect(image.parentElement?.localName).toBe("picture")
-      expect(document.querySelector("iframe")).toHaveAttribute("src", "https://example.com/site")
+      expect(image.parentElement?.localName).toBe("p")
+      expect(document.querySelector("embed")).toHaveAttribute("src", "https://example.com/site")
       expect(document.querySelector("video")).toHaveAttribute("controls")
     })
-    expect($.selectedElement).toBe(image.parentElement)
+    expect($.selectedElement).toBe(image)
     expect(document.querySelector("media-widget")!.innerHTML).toBe('<img><video></video>')
     const video = document.querySelector("video")!
     video.removeAttribute("controls")
     await vi.waitFor(() => expect(video).toHaveAttribute("controls"))
     editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).toContain('<picture><img alt="Image"></img></picture>')
+    expect(editor.doc.body.toString()).toContain('<p><img alt="Image"></img></p>')
     expect(editor.toHTML(true)).not.toContain('◆')
   })
 })
@@ -1605,4 +1620,134 @@ it.each(["unchanged", "remote change", "disconnected", "disabled"])("guards repl
     expect(editor.features.media.getState()).toMatchObject({sourceLabel: "song.mp3", sourceKind: "file"})
     expect(editor.toHTML(true)).not.toContain("song.mp3")
   }
+})
+
+describe("media file drag and drop", () => {
+  const mediaCases = [
+    ["picture", '<picture><source media="(min-width: 20rem)" srcset="old-large.webp"><img src="old-small.png" alt="Keep me"></picture>', "img", "src"],
+    ["img", '<img src="old.png" alt="Keep me">', "img", "src"],
+    ["audio", '<audio controls><source src="old.mp3" type="audio/mpeg"><track kind="captions" src="captions.vtt"></audio>', "audio", "src"],
+    ["video", '<video controls poster="cover.jpg"><source src="old.mp4" type="video/mp4"><track kind="captions" src="captions.vtt"></video>', "video", "src"],
+    ["iframe", '<iframe title="Keep me" src="about:blank"></iframe>', "iframe", "src"],
+    ["embed", '<embed type="text/html" src="about:blank">', "embed", "src"],
+    ["object", '<object type="text/html" data="about:blank"><param name="view" value="full">Fallback</object>', "object", "data"],
+  ] as const
+
+  it.each(mediaCases)("replaces the source of a populated %s in place", async (_name, html, selector, attribute) => {
+    document.body.innerHTML = html
+    const surface = document.querySelector(selector)!
+    const file = new File(["replacement"], "replacement.bin", {type: ""})
+    const transfer = fileTransfer(file)
+    const source = "blob:media-drop-test"
+    vi.spyOn(editor, "createMediaURL").mockReturnValue(source)
+    const beforeChildren = Array.from(surface.childNodes)
+    const over = mediaDragEvent("dragover", transfer)
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = mediaDragEvent("drop", transfer)
+    surface.dispatchEvent(drop)
+
+    expect(drop.defaultPrevented).toBe(true)
+    expect(editor.createMediaURL).toHaveBeenCalledOnce()
+    expect(editor.createMediaURL).toHaveBeenCalledWith(file)
+    expect(surface.getAttribute(attribute)).toBe(source)
+    expect(Array.from(surface.childNodes)).toEqual(beforeChildren)
+    if(selector === "img") expect(surface).toHaveAttribute("alt", "Keep me")
+    if(selector === "iframe") expect(surface).toHaveAttribute("title", "Keep me")
+    if(selector === "audio" || selector === "video") {
+      expect(surface.querySelector("source")?.getAttribute("type")).toMatch(/audio|video/)
+      expect(surface.querySelector("source")?.getAttribute("src")).toMatch(/old\.(mp3|mp4)/)
+      expect(surface.querySelector("track")?.getAttribute("src")).toBe("captions.vtt")
+    }
+    if(_name === "picture") expect(document.querySelector("picture source")).not.toHaveAttribute("srcset")
+    if(selector === "object") expect(surface.querySelector("param")?.getAttribute("value")).toBe("full")
+  })
+
+  it("fills an empty placeholder from the first file and supports the poster action", async () => {
+    document.body.innerHTML = "<video controls></video>"
+    const video = document.querySelector("video")!
+    const file = new File(["poster"], "poster.png", {type: "image/png"})
+    const transfer = fileTransfer(file)
+    vi.spyOn(editor, "createMediaURL").mockReturnValue("blob:poster-drop")
+    editor.features.media.refresh()
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    const placeholder = editor.features.media.placeholder.element
+    const drop = mediaDragEvent("drop", transfer)
+    placeholder.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(video).toHaveAttribute("src", "blob:poster-drop")
+
+    $.selectElement(video)
+    expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file, attribute: "poster"})).toBe(true)
+    expect(video).toHaveAttribute("poster", "blob:poster-drop")
+    expect(video).toHaveAttribute("src", "blob:poster-drop")
+  })
+
+  it("recognizes file items with an empty MIME type and leaves text drags alone", () => {
+    document.body.innerHTML = "<img alt=\"empty\">"
+    const image = document.querySelector("img")!
+    const transfer = fileTransfer(new File(["file"], "unknown", {type: ""}))
+    const over = mediaDragEvent("dragover", transfer)
+    image.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = mediaDragEvent("drop", transfer)
+    image.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(image.getAttribute("src")).toMatch(/^blob:/)
+
+    const text = new DataTransfer()
+    text.setData("text/plain", "ordinary text")
+    const textOver = mediaDragEvent("dragover", text)
+    editor.features.media.captureListeners.dragover(textOver)
+    const textDrop = mediaDragEvent("drop", text)
+    editor.features.media.captureListeners.drop(textDrop)
+    expect(textOver.defaultPrevented).toBe(false)
+    expect(textDrop.defaultPrevented).toBe(false)
+    expect(image.getAttribute("src")).toMatch(/^blob:/)
+  })
+
+  it.each(["locked", "disabled", "inside widget"])("ignores file drops when media is %s", state => {
+    document.body.innerHTML = "<img alt=\"keep\">"
+    const image = document.querySelector("img")!
+    if(state === "locked") vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    if(state === "disabled") editor.features.media.disable()
+    if(state === "inside widget") {
+      const widget = document.createElement("media-widget")
+      image.replaceWith(widget)
+      widget.append(image)
+    }
+    const transfer = fileTransfer(new File(["file"], "photo.png", {type: "image/png"}))
+    const createURL = vi.spyOn(editor, "createMediaURL")
+    const over = mediaDragEvent("dragover", transfer)
+    image.dispatchEvent(over)
+    const drop = mediaDragEvent("drop", transfer)
+    image.dispatchEvent(drop)
+    expect(over.defaultPrevented).toBe(false)
+    expect(drop.defaultPrevented).toBe(false)
+    expect(createURL).not.toHaveBeenCalled()
+    expect(image).not.toHaveAttribute("src")
+  })
+
+  it("sets the selected media file source in one undoable edit", async () => {
+    document.body.innerHTML = '<picture><source media="(min-width: 20rem)" srcset="large.webp"><img src="old.png" alt="Diagram"></picture>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const picture = document.querySelector("picture")!
+    const image = picture.querySelector("img")!
+    $.selectElement(picture)
+    const file = new File(["new"], "new.png", {type: "image/png"})
+    vi.spyOn(editor, "createMediaURL").mockReturnValue("blob:action-file")
+    expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file})).toBe(true)
+    expect(image).toHaveAttribute("src", "blob:action-file")
+    expect(image).toHaveAttribute("alt", "Diagram")
+    expect(picture.querySelector("source")).not.toHaveAttribute("srcset")
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toContain('<img src="old.png" alt="Diagram">')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toContain('src="blob:action-file"')
+  })
 })

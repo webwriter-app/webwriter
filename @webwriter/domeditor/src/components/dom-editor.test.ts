@@ -5193,6 +5193,17 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("routes a dropped media source file through the iframe bridge", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
+    const file = new File(["video"], "movie.mp4", {type: "video/mp4"})
+    toolbox.dispatchEvent(new CustomEvent("media-file-drop", {
+      detail: {type: "video", file}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file, attribute: undefined})
+  })
+
   it.each([
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],

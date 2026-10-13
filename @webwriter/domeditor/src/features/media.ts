@@ -10,7 +10,7 @@ import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
-import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker} from "../utility"
+import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -1303,7 +1303,54 @@ export class MediaFeature extends EditorFeature {
     },
   }
 
+  mediaDropTarget(event: DragEvent) {
+    if(this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
+    const path = event.composedPath()
+    let target = this.mediaPlaceholder && path.includes(this.mediaPlaceholder.element) ? this.mediaPlaceholder.target : null
+    for(const [media, shield] of this.interactionShields) {
+      if(path.includes(shield.element)) target = media
+    }
+    for(const [image, placeholder] of this.graphicImagePlaceholders) {
+      if(path.includes(placeholder)) target = image
+    }
+    if(!target && event.target instanceof Node) target = mediaContainerForNode(event.target)
+    return target && document.body.contains(target) && !sourceEditingBlocked(target, this.editor.schema) ? target : null
+  }
+
+  private setFile(element: Element, file: Blob, attribute?: "poster") {
+    if(!this.isEnabled || this.editor.isEditingLocked || !document.body.contains(element)
+      || sourceEditingBlocked(element, this.editor.schema) || attribute && (attribute !== "poster" || !element.matches("video"))) return false
+    const source = this.editor.createMediaURL(file)
+    this.rememberSource(element, source, file instanceof File ? file.name : "Media file", "file")
+    this.editor.doc.stopCapturing()
+    const changed = this.setSource(element, source, true, attribute)
+    this.editor.doc.stopCapturing()
+    return changed
+  }
+
+  captureListeners = {
+    dragover: (event: DragEvent) => {
+      const data = event.dataTransfer
+      if(!data || !this.mediaDropTarget(event) || !data.types.includes("Files") && !Array.from(data.items).some(item => item.kind === "file")) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      data.dropEffect = "copy"
+    },
+    drop: (event: DragEvent) => {
+      const target = this.mediaDropTarget(event)
+      const file = event.dataTransfer?.files[0]
+      if(!target || !file) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.setFile(target, file)
+    },
+  }
+
   actions = {
+    setMediaFile: ({file, attribute}: {type: "setMediaFile", file: Blob, attribute?: "poster"}) => {
+      const element = this.selectedMedia()
+      return element && file instanceof Blob ? this.setFile(element, file, attribute) : false
+    },
     setMediaCrop: ({crop}: {type: "setMediaCrop", crop: import("../editor-bridge").ElementStyleMutation}) => {
       if(!this.isEnabled) return false
       const media = this.selectedMedia()
@@ -1872,13 +1919,22 @@ export class MediaFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
-  private setSource(element: Element, source: string, replace = false) {
+  private setSource(element: Element, source: string, replace = false, attribute?: "poster") {
     if(!element.isConnected || !document.body.contains(element) || !(element.matches(mediaSelector) || isGraphicImage(element))
-      || (!replace && !isEmptyMedia(element)) || sourceEditingBlocked(element, this.editor.schema)) return false
+      || (attribute && !element.matches("video")) || (!replace && !isEmptyMedia(element)) || sourceEditingBlocked(element, this.editor.schema)) return false
     const target = mediaSourceTarget(element)
     if(isGraphicImage(element)) this.editor.doc.stopCapturing()
-    target.setAttribute(mediaSourceAttribute(target), source)
-    if(element.matches("audio, video")) element.setAttribute("controls", "")
+    if(replace && !attribute) {
+      target.removeAttribute("srcset")
+      if(element.matches("iframe")) element.removeAttribute("srcdoc")
+      if(element.matches("picture")) {
+        for(const child of Array.from(element.children)) {
+          if(child.localName === "source") child.removeAttribute("srcset")
+        }
+      }
+    }
+    target.setAttribute(attribute ?? mediaSourceAttribute(target), source)
+    if(!attribute && element.matches("audio, video")) element.setAttribute("controls", "")
     if(!isGraphicImage(element)) {
       this.editor.features.selection.captureElement(element)
     }
@@ -1951,20 +2007,12 @@ export class MediaFeature extends EditorFeature {
 
   private refresh() {
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
-    const selectedBefore = $.selectedElement
-    const capturedBefore = this.editor.features.selection.captureSelectedElement
-    const replacements = this.editor.schema.enforceMedia(document.body)
-    const replacement = selectedBefore && replacements.get(selectedBefore)
-    if(replacement) {
-      $.selectElement(replacement)
-      this.editor.features.selection.processSelection()
-      if(capturedBefore === selectedBefore) this.editor.features.selection.captureElement(replacement)
-    }
     document.querySelectorAll(`${mediaSelector}, svg image`).forEach(element => {
       if(sourceEditingBlocked(element, this.editor.schema)) {
         if(element.classList.contains("◆media-empty")) this.setEmptyMarker(element, false)
         return
       }
+      if(element.matches("audio, video") && !element.hasAttribute("controls")) element.setAttribute("controls", "")
       const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))
       if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
     })

@@ -854,7 +854,7 @@ export class GraphicFeature extends EditorFeature {
       }
       if(!this.#imageDropGraphic(event) || !event.dataTransfer) return
       const data = event.dataTransfer
-      if(!Array.from(data.items).some(item => item.kind === "file" && item.type.startsWith("image/"))
+      if(!Array.from(data.items).some(item => item.kind === "file" && (!item.type || /^(image|audio|video)\//.test(item.type)))
         && !Array.from(data.types).some(type => type === "text/html" || type === "text/uri-list")) return
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -865,9 +865,8 @@ export class GraphicFeature extends EditorFeature {
 
   #imageDropGraphic(event: DragEvent) {
     if(this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
-    const placeholder = this.editor.features.media.placeholder
-    const target = event.composedPath().includes(placeholder.element) ? placeholder.target
-      : event.target instanceof Node ? event.target : null
+    const target = this.editor.features.media.mediaDropTarget(event)
+      ?? (event.target instanceof Node ? event.target : null)
     const graphic = graphicContainerForNode(target)
     return graphic?.isConnected && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
   }
@@ -876,7 +875,7 @@ export class GraphicFeature extends EditorFeature {
     const graphic = this.#imageDropGraphic(event)
     const data = event.dataTransfer
     if(!graphic || !data) return
-    const files = Array.from(data.files).filter(file => file.type.startsWith("image/"))
+    const files = Array.from(data.files).filter(file => /^(image|audio|video)\//.test(file.type))
     const template = document.createElement("template")
     template.innerHTML = data.getData("text/html")
     stripActiveContent(template.content)
@@ -912,7 +911,30 @@ export class GraphicFeature extends EditorFeature {
       this.editor.postSelectionPath()
       this.editor.doc.stopCapturing()
     }
-    if(files.length) files.forEach((file, index) => commit(this.editor.createMediaURL(file), index))
+    if(files.length) files.forEach((file, index) => {
+      if(file.type.startsWith("image/")) { commit(this.editor.createMediaURL(file), index); return }
+      if(!this.isEnabled || this.editor.isEditingLocked || !graphic.isConnected
+        || atomicEditingContainer(graphic.parentElement, this.editor.schema)) return
+      const container = document.createElementNS(SVG_NAMESPACE, "foreignObject")
+      const video = file.type.startsWith("video/")
+      const width = 320, height = video ? 180 : 54
+      container.setAttribute("x", cleanNumber(point.x - width / 2 + index * 24))
+      container.setAttribute("y", cleanNumber(point.y - height / 2 + index * 24))
+      container.setAttribute("width", String(width))
+      container.setAttribute("height", String(height))
+      const media = document.createElement(video ? "video" : "audio")
+      media.setAttribute("controls", "")
+      media.setAttribute("src", this.editor.createMediaURL(file))
+      media.style.width = "100%"
+      media.style.height = "100%"
+      container.append(media)
+      this.editor.doc.stopCapturing()
+      graphic.append(container)
+      this.editor.features.selection.captureElement(graphic)
+      this.#refresh()
+      this.editor.postSelectionPath()
+      this.editor.doc.stopCapturing()
+    })
     else if(safeSource) commit(safeSource, 0)
   }
 

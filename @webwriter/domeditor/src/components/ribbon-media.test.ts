@@ -456,3 +456,34 @@ describe("primary media Source control", () => {
     expect(field.querySelector('button')).toBeNull()
   })
 })
+
+
+describe("media source file drops", () => {
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("accepts a file on the %s source input", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {src: "old"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const file = new File(["file"], "media.bin")
+    const data = new DataTransfer()
+    data.items.add(file)
+    const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>("#media-source-url")!
+    const event = (type: string) => {
+      const event = new Event(type, {bubbles: true, cancelable: true})
+      Object.defineProperty(event, "dataTransfer", {value: data})
+      return event
+    }
+    const received = vi.fn()
+    toolbox.addEventListener("media-file-drop", received)
+    const over = event("dragover")
+    input.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    const drop = event("drop")
+    input.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(received).toHaveBeenCalledOnce()
+    expect((received.mock.calls[0][0] as CustomEvent).detail).toEqual({type, file, attribute: undefined})
+  })
+})

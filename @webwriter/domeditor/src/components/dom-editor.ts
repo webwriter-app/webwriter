@@ -6998,6 +6998,12 @@ export class DomEditor extends LitElement {
       "heading-level-change": this.handleHeadingLevelChange.bind(this),
       "heading-group-level-change": this.handleHeadingGroupLevelChange.bind(this),
       "comment-action": this.handleCommentAction.bind(this),
+      "media-file-drop": (event: Event) => {
+        const detail = (event as CustomEvent).detail
+        if(!isMediaType(detail?.type) || !(detail.file instanceof Blob)
+          || detail.attribute !== undefined && detail.attribute !== "poster") return
+        void this.execute({type: "setMediaFile", file: detail.file, attribute: detail.attribute})
+      },
       "media-attribute-change": this.handleMediaAttributeChange.bind(this),
       "media-resource-action": this.handleMediaResourceAction.bind(this),
       "image-map-action": this.handleImageMapAction.bind(this),
