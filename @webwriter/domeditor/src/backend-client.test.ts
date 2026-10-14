@@ -133,6 +133,37 @@ const cloudSession: BackendSession = {
 const cloudService = {id: "cloud", type: "url" as const, url: "https://cloud.example", username: "ada"}
 
 describe("authenticated cloud services", () => {
+  it.each([
+    {url: session.apiBaseUrl, status: 200, body: ""},
+    {url: cloudService.url, status: 204, body: null},
+    {url: cloudService.url, status: 502, body: ""},
+    {url: cloudService.url, status: 503, body: " \n\t "},
+  ])("reports an empty session response from $url with HTTP $status", async ({url, status, body}) => {
+    const fetch = vi.fn().mockResolvedValue(new Response(body, {status}))
+    const endpoint = `${url.endsWith("/api") ? url : `${url}/api`}/session`
+
+    await expect(connectCloudService({...cloudService, url}, {fetchImplementation: fetch})).rejects.toThrow(
+      `Service request to ${endpoint} failed (HTTP ${status}): empty response; expected JSON.`,
+    )
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it("reports malformed session responses with the service URL and HTTP status", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("<html>Bad gateway</html>", {status: 502}))
+
+    await expect(connectCloudService(cloudService, {fetchImplementation: fetch})).rejects.toThrow(
+      "Service request to https://cloud.example/api/session failed (HTTP 502): invalid JSON response.",
+    )
+  })
+
+  it("preserves service errors with the request URL and HTTP status", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({error: {message: "Service unavailable"}}, 503))
+
+    await expect(connectCloudService(cloudService, {fetchImplementation: fetch})).rejects.toThrow(
+      "Service request to https://cloud.example/api/session failed (HTTP 503): Service unavailable",
+    )
+  })
+
   it("discovers sign-in, submits credentials once, and restores using only a bearer token", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(response({...cloudSession, user: null}))
@@ -177,7 +208,7 @@ describe("authenticated cloud services", () => {
   })
 
   it("validates saved tokens against the service and supports the no-auth dev server", async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(response({}, 401)).mockResolvedValueOnce(response(session))
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(null, {status: 401})).mockResolvedValueOnce(response(session))
     await expect(connectCloudService({...cloudService, accessToken: "revoked"}, {fetchImplementation: fetch})).rejects.toThrow("Sign in")
     const dev = await connectCloudService({...cloudService, url: session.apiBaseUrl}, {fetchImplementation: fetch})
     expect(dev.service.authentication).toBe("none")

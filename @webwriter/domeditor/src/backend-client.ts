@@ -262,8 +262,17 @@ export async function connectCloudService(service: CloudService, options: {
       cache: "no-store", headers: {Accept: "application/json", ...(init.body ? {"Content-Type": "application/json"} : {}),
         ...(service.accessToken && options.password === undefined ? {Authorization: `Bearer ${service.accessToken}`} : {})}})
     if(response.status === 401 && options.password === undefined) throw new CloudAuthenticationError("Sign in again in Settings.")
-    const value = await response.json()
-    if(!response.ok) throw new Error(errorText(value, `Cloud request failed (${response.status})`))
+    const context = `Service request to ${url} failed (HTTP ${response.status})`
+    const body = await response.text()
+    if(!body.trim()) throw new Error(`${context}: empty response; expected JSON.`)
+    let value: unknown
+    try {
+      value = JSON.parse(body)
+    }
+    catch {
+      throw new Error(`${context}: invalid JSON response.`)
+    }
+    if(!response.ok) throw new Error(`${context}: ${errorText(value, "Request failed")}`)
     return value
   }
   if(options.password === undefined && cloudServiceExpired(service)) throw new CloudAuthenticationError("Sign in again in Settings.")
