@@ -537,7 +537,11 @@ export class MarkFeature extends EditorFeature {
     if(changed) {
       const [anchorNode, anchorOffset] = this.textPoint(block, anchor)
       const [focusNode, focusOffset] = this.textPoint(block, focus)
-      if(anchorNode.isConnected && focusNode.isConnected) selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+      if(anchorNode.isConnected && focusNode.isConnected
+        && (selection.anchorNode !== anchorNode || selection.anchorOffset !== anchorOffset
+          || selection.focusNode !== focusNode || selection.focusOffset !== focusOffset)) {
+        selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+      }
       this.observer?.takeRecords()
     }
   }

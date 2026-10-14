@@ -1023,6 +1023,44 @@ describe("automatic links in the edited text block", () => {
     expect($.anchorOffset).toBe(1)
   })
 
+  it("does not reset a live caret that remains correct when wrapping a link", async () => {
+    const block = setContent("<p>example.com/path</p>")
+    const text = block.firstChild as Text
+    $.move(text, text.length)
+    const selection = document.getSelection()!
+    const restore = vi.spyOn(selection, "setBaseAndExtent")
+
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await settle()
+
+    expect(block.querySelector("a")?.textContent).toBe("example.com/path")
+    expect($.anchor).toBe(block.querySelector("a")!.firstChild)
+    expect($.anchorOffset).toBe(text.length)
+    expect(restore).not.toHaveBeenCalled()
+  })
+
+  it("restores backward selection endpoints when unwrapping changes their text points", async () => {
+    const block = setContent("<p>example.com</p>")
+    $.move(block.firstChild!, block.firstChild!.textContent!.length)
+    await settle()
+    const link = block.querySelector("a")!
+    const text = link.firstChild as Text
+    const selection = document.getSelection()!
+    selection.setBaseAndExtent(block, 1, text, 3)
+    const restore = vi.spyOn(selection, "setBaseAndExtent")
+
+    text.data = "plain prose"
+    await settle()
+
+    expect(block.querySelector("a")).toBeNull()
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(text.length)
+    expect(selection.focusNode).toBe(text)
+    expect(selection.focusOffset).toBe(3)
+    expect($.isBackwards).toBe(true)
+    expect(restore).toHaveBeenCalledOnce()
+  })
+
   it("links complete email addresses with mailto while leaving surrounding punctuation intact", async () => {
     const block = setContent('<p>Email reader@example.com, (First.Last+tag@sub.example.co.uk); support@example.org.</p><p>untouched@example.com</p>')
     const text = block.firstChild as Text
