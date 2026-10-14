@@ -478,6 +478,9 @@ export class DomEditorToolbox extends EditingControls {
       border-bottom: 1px solid #d8dee6;
     }
     .proofreading-section h2 {flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0; font-size: .72rem; font-weight: 650; color: #465465; min-height: 2.15rem}
+    .proofreading-heading {display: inline-flex; align-items: center; gap: .35rem;}
+    .proofreading-heading-icon {display: block; flex: 0 0 1rem; width: 1rem; height: 1rem; color: var(--ribbon-control-color, #526b86);}
+    .proofreading-heading-icon svg {display: block; width: 100%; height: 100%;}
     .proofreading-content {display: grid; align-content: start; flex: 1 1 auto; min-height: 0; gap: .55rem; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin;}
     .proofreading-check {display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; margin-left: auto; padding: .25rem; border: 0; border-radius: .25rem; color: inherit; background: transparent; cursor: pointer}
     .proofreading-check svg {display: block; width: 1rem; height: 1rem}
@@ -763,7 +766,7 @@ export class DomEditorToolbox extends EditingControls {
     const cardsLocked = editingLocked || !state.ready || state.loading
     const checkingEnabled = state.enabled
     return html`<section class="proofreading-section" aria-labelledby="proofreading-title">
-      <h2 id="proofreading-title">Issues
+      <h2 id="proofreading-title"><span class="proofreading-heading"><span class="proofreading-heading-icon" aria-hidden="true">${ribbonIcon("Spelling")}</span>Issues</span>
         ${checkingEnabled && !state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling, grammar and style"></span>` : ""}
         ${checkingEnabled && state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling, grammar and style"></span>` : ""}
         <button class="proofreading-check" type="button" title="Check for issues" aria-label="Check for issues"
@@ -1542,7 +1545,7 @@ export class DomEditorToolbox extends EditingControls {
           @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: false}, bubbles: true, composed: true}))}
         >${ribbonIcon("Reject")}</button>` : ""}
       </div>
-    </footer>`
+    `
   }
 
   protected willUpdate(changed: Map<string, unknown>) {

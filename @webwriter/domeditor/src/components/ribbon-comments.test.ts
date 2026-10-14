@@ -100,14 +100,21 @@ describe("comment ribbon controls", () => {
     expect(drawer.querySelector<HTMLElement>(".comment-thread[data-thread-id]")!.hasAttribute("data-active")).toBe(true)
     drawer.querySelector<HTMLElement>(".comment-thread[data-thread-id]")!.click()
     const reply = drawer.querySelector<HTMLTextAreaElement>('textarea[aria-label="Reply to comment"]')!
-    reply.value = "Agreed"
+    expect(reply.placeholder).toBe("Write a reply…")
+    expect(reply.getAttribute("rows")).toBe("1")
+    const submit = reply.form!.querySelector<HTMLButtonElement>(".comment-submit")!
+    expect(submit.getAttribute("aria-label")).toBe("Reply to comment")
+    expect(submit.title).toBe("Enter")
+    expect(submit.querySelector("svg")).not.toBeNull()
+    expect(submit.disabled).toBe(true)
+    reply.value = "Agreed\nA second line"
     reply.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
     await toolbox.updateComplete
     expect(drawer.querySelector<HTMLButtonElement>(".comment-thread[data-thread-id] .comment-reply button")!.disabled).toBe(false)
     drawer.querySelector<HTMLFormElement>(".comment-thread[data-thread-id] .comment-reply")!.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}))
     expect(actions.map(event => event.detail)).toEqual([
       {action: "select", id: "comment-1"},
-      {action: "reply", id: "comment-1", text: "Agreed"},
+      {action: "reply", id: "comment-1", text: "Agreed\nA second line"},
     ])
   })
 
@@ -158,6 +165,10 @@ describe("comment ribbon controls", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Comments"]')!
+    await drawer.updateComplete
+    expect(drawer.showPaneIcon).toBe(true)
+    expect(drawer.shadowRoot!.querySelector(".pane-label .pane-icon svg")).not.toBeNull()
+    expect(drawer.shadowRoot!.querySelector(".pane-icon")!.getAttribute("aria-hidden")).toBe("true")
     expect(drawer.querySelector("h3")).toBeNull()
     const highlight = drawer.querySelector<HTMLInputElement>('input[aria-label="Highlight"]')!
     expect(highlight.closest('[slot="heading-action"]')).not.toBeNull()
@@ -169,22 +180,51 @@ describe("comment ribbon controls", () => {
     expect(drawer.querySelector('ribbon-button[action="toggle"]')).toBeNull()
     expect(Array.from(drawer.querySelectorAll('[slot="heading-action"] button'), button => button.getAttribute("aria-label")))
       .toEqual(["Previous comment", "Next comment", "Clear comments"])
+    const emptyCard = drawer.querySelector<HTMLElement>(".comment-thread-empty")!
+    expect(emptyCard).toBe(drawer.querySelector(".comment-threads")!.lastElementChild)
+    expect(emptyCard.hasAttribute("inert")).toBe(false)
+    for(const label of ["Delete comment", "Edit comment"]) {
+      const button = drawer.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+      expect(button.title).toBe(label)
+      expect(button.textContent!.trim()).toBe("")
+      expect(button.querySelector("svg")).not.toBeNull()
+    }
     expect(drawer.querySelector(".comment-delete svg")).not.toBeNull()
     expect(drawer.querySelector(".comment-message-actions button svg")).not.toBeNull()
     const form = drawer.querySelector<HTMLFormElement>(".comment-thread-empty form")!
     form.dispatchEvent(new Event("submit", {cancelable: true}))
     expect(actions).not.toHaveBeenCalled()
     const input = form.querySelector<HTMLTextAreaElement>("textarea")!
-    input.value = "First reply"
+    expect(input.placeholder).toBe("Add a comment...")
+    expect(input.getAttribute("rows")).toBe("1")
+    const submit = form.querySelector<HTMLButtonElement>(".comment-submit")!
+    expect(submit.getAttribute("aria-label")).toBe("Add comment")
+    expect(submit.title).toBe("Enter")
+    expect(submit.querySelector("svg")).not.toBeNull()
+    expect(submit.disabled).toBe(true)
+    input.value = "First comment\nA second line"
     input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
     await toolbox.updateComplete
     form.dispatchEvent(new Event("submit", {cancelable: true}))
-    expect(actions.mock.calls[0][0].detail).toEqual({action: "add", text: "First reply"})
+    expect(actions.mock.calls[0][0].detail).toEqual({action: "add", text: "First comment\nA second line"})
     await toolbox.updateComplete
     expect(input.value).toBe("")
     toolbox.commentState = {...toolbox.commentState, canComment: false, count: 0, threads: []}
     await toolbox.updateComplete
     expect(input.disabled).toBe(true)
+    expect(emptyCard.hasAttribute("inert")).toBe(true)
+    expect(emptyCard.getAttribute("aria-disabled")).toBe("true")
+    actions.mockClear()
+    input.value = "Unavailable comment"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await toolbox.updateComplete
+    form.dispatchEvent(new Event("submit", {cancelable: true}))
+    expect(actions).not.toHaveBeenCalled()
+    toolbox.commentState = {...toolbox.commentState, canComment: true}
+    await toolbox.updateComplete
+    expect(emptyCard.hasAttribute("inert")).toBe(false)
+    expect(emptyCard.hasAttribute("aria-disabled")).toBe(false)
+    expect(input.disabled).toBe(false)
     expect(drawer.querySelectorAll('[slot="heading-action"] button:disabled')).toHaveLength(3)
   })
 

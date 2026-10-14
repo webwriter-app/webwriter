@@ -108,6 +108,10 @@ it("relays cards and their invalidation over the authenticated bridge", async ()
   relay([issue])
   await editor.updateComplete
   await toolbox.updateComplete
+  const heading = toolbox.shadowRoot!.querySelector("#proofreading-title")!
+  expect(heading.querySelector(".proofreading-heading")!.textContent!.trim()).toBe("Issues")
+  expect(heading.querySelector(".proofreading-heading-icon svg")).not.toBeNull()
+  expect(heading.querySelector(".proofreading-heading-icon")!.getAttribute("aria-hidden")).toBe("true")
   expect(toolbox.shadowRoot!.querySelector(".proofreading-issue")?.textContent).toContain("teh")
   expect(toolbox.shadowRoot!.querySelector(".proofreading-suggestion")?.textContent).toContain("the")
   const add = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".proofreading-add-word")!

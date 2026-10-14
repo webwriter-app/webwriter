@@ -842,22 +842,6 @@ export abstract class EditingControls extends LitElement {
     const state = this.commentState
     const threads = this.commentThreads()
     return html`<section class="comment-threads" aria-label="Document comment threads">
-      <article class="comment-thread comment-thread-empty">
-        <form class="comment-reply" @submit=${(event: Event) => {
-          event.preventDefault()
-          const text = this.newCommentDraft.trim()
-          if(!text || !state.canComment) return
-          this.dispatchEvent(new CustomEvent("comment-action", {
-            detail: {action: "add", text}, bubbles: true, composed: true,
-          }))
-          this.newCommentDraft = ""
-        }}>
-          <textarea data-ribbon-input-persistent aria-label="New comment" placeholder="Write a reply…" .value=${this.newCommentDraft}
-            ?disabled=${!state.canComment}
-            @input=${(event: Event) => { this.newCommentDraft = (event.currentTarget as HTMLTextAreaElement).value }}></textarea>
-          <button type="submit" ?disabled=${!state.canComment || !this.newCommentDraft.trim()}>Reply</button>
-        </form>
-      </article>
       ${threads.map(thread => html`
         <article class="comment-thread" data-thread-id=${thread.id} tabindex="0" aria-label="Comment thread"
           aria-description="Press Enter or Space to select the commented content"
@@ -874,7 +858,7 @@ export abstract class EditingControls extends LitElement {
           }}>
           ${thread.comments.map(comment => html`
             <div class="comment-message" data-comment-id=${comment.id}>
-              <button class="comment-delete" type="button" @click=${() => this.dispatchThreadAction("remove", comment.id)}>${ribbonIcon("Delete")}delete</button>
+              <button class="comment-delete comment-icon-button" type="button" aria-label="Delete comment" title="Delete comment" @click=${() => this.dispatchThreadAction("remove", comment.id)}>${ribbonIcon("Delete")}</button>
               <div class="comment-message-meta"><strong>${comment.author.name || "Anonymous"}</strong><time>${comment.editedAt > comment.createdAt
                 ? `Edited ${new Date(comment.editedAt).toLocaleString()}`
                 : comment.createdAt ? new Date(comment.createdAt).toLocaleString() : "Creation time unavailable"}</time></div>
@@ -885,7 +869,7 @@ export abstract class EditingControls extends LitElement {
                 <button type="button" @click=${() => { this.commentEditDrafts.delete(comment.id); this.requestUpdate() }}>Cancel</button>
               ` : html`<p>${comment.text}</p>`}
               <div class="comment-message-actions">
-                <button type="button" @click=${() => { this.commentEditDrafts.set(comment.id, comment.text); this.requestUpdate() }}>${ribbonIcon("Pencil")}Edit</button>
+                <button class="comment-icon-button" type="button" aria-label="Edit comment" title="Edit comment" @click=${() => { this.commentEditDrafts.set(comment.id, comment.text); this.requestUpdate() }}>${ribbonIcon("Pencil")}</button>
               </div>
             </div>
           `)}
@@ -897,19 +881,35 @@ export abstract class EditingControls extends LitElement {
             this.commentReplyDrafts.delete(thread.id)
             this.requestUpdate()
           }}>
-            <textarea data-ribbon-input-persistent aria-label="Reply to comment" placeholder="Write a reply…" .value=${this.commentReplyDrafts.get(thread.id) ?? ""}
+            <textarea data-ribbon-input-persistent aria-label="Reply to comment" rows="1" placeholder="Write a reply…" .value=${this.commentReplyDrafts.get(thread.id) ?? ""}
               @input=${(event: Event) => { this.commentReplyDrafts.set(thread.id, (event.currentTarget as HTMLTextAreaElement).value); this.requestUpdate() }}></textarea>
-            <button type="submit" ?disabled=${!this.commentReplyDrafts.get(thread.id)?.trim()}>Reply</button>
+            <button class="comment-submit" type="submit" aria-label="Reply to comment" title="Enter" ?disabled=${!this.commentReplyDrafts.get(thread.id)?.trim()}>${ribbonIcon("AIPromptSubmit")}</button>
           </form>
         </article>
       `)}
+      <article class="comment-thread comment-thread-empty" ?inert=${!state.canComment} aria-disabled=${!state.canComment ? "true" : nothing}>
+        <form class="comment-reply" @submit=${(event: Event) => {
+          event.preventDefault()
+          const text = this.newCommentDraft.trim()
+          if(!text || !state.canComment) return
+          this.dispatchEvent(new CustomEvent("comment-action", {
+            detail: {action: "add", text}, bubbles: true, composed: true,
+          }))
+          this.newCommentDraft = ""
+        }}>
+          <textarea data-ribbon-input-persistent aria-label="New comment" rows="1" placeholder="Add a comment..." .value=${this.newCommentDraft}
+            ?disabled=${!state.canComment}
+            @input=${(event: Event) => { this.newCommentDraft = (event.currentTarget as HTMLTextAreaElement).value }}></textarea>
+          <button class="comment-submit" type="submit" aria-label="Add comment" title="Enter" ?disabled=${!state.canComment || !this.newCommentDraft.trim()}>${ribbonIcon("AIPromptSubmit")}</button>
+        </form>
+      </article>
     </section>`
   }
 
   protected renderCommentDrawer() {
     const {active, activeCount, canComment, count, highlighting} = this.commentState
     if(this.commentReviewMode) return html`
-      <ribbon-drawer label="Comments" icon="Comments" layout="comments">
+      <ribbon-drawer label="Comments" icon="Comments" layout="comments" show-pane-icon>
         <div class="comment-heading-actions" slot="heading-action">
           ${(["previous", "next", "remove-all"] as const).map(action => html`
             <button type="button" class="style-reset" aria-label=${action === "previous" ? "Previous comment" : action === "next" ? "Next comment" : "Clear comments"}
@@ -925,7 +925,7 @@ export abstract class EditingControls extends LitElement {
       </ribbon-drawer>
     `
     return html`
-      <ribbon-drawer label="Comments" icon="Comments" layout="comments" @ribbon-button-click=${this.handleCommentButton}>
+      <ribbon-drawer label="Comments" icon="Comments" layout="comments" show-pane-icon @ribbon-button-click=${this.handleCommentButton}>
         <div class="comment-editor">
           <span class="comment-editor-header">
             <span>Comment${activeCount > 1 ? ` (${activeCount} selected)` : ""}</span>
