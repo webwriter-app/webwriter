@@ -7,6 +7,8 @@ import {packageImportMapId} from "./package-dependencies"
 import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, type WebWriterPackage} from "./packages"
 import {appendSerializedAssets, escapeHTMLAttribute, restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
 import {clearEditorArtifacts} from "./editor-artifacts"
+import proofreadingWorkerURL from "./proofreading-worker.ts?worker&url"
+import {editorFrameOrigin} from "./frame-origins"
 
 type FrameDocumentOptions = {
   bridgeNonce: string
@@ -58,7 +60,11 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   // Libraries such as CodeMirror create their own style elements inside
   // widget shadows. They cannot inherit the nonce on their module script.
   const packageStyles = hasWidgetScripts ? "* data: blob: 'unsafe-inline'" : `'nonce-${nonce}'`
-  const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
+  // Module workers also fetch their imports under worker-src in Chromium.
+  // Permit the trusted frame origin for those HTTP development modules.
+  const entryURL = new URL(options.entryURL, /^[a-z]+:/i.test(options.entryURL) ? options.hostOrigin : editorFrameOrigin())
+  const workerSource = new URL(proofreadingWorkerURL, entryURL).origin
+  const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https:; worker-src blob: https: ${workerSource}; object-src 'none'; base-uri 'none'; form-action 'none'`
   const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeHTMLAttribute(policy)}">`
   const bridge = `<meta class="◆ ◆editor-only" name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeHTMLAttribute(options.hostOrigin)}">`
   // Happy DOM deliberately disables external script execution but reports

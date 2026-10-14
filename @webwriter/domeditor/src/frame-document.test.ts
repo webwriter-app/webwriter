@@ -20,6 +20,14 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
 
 describe("isolated frame documents", () => {
+  it("permits the trusted module worker origin without allowing arbitrary HTTP workers", () => {
+    const root = parse(editorFrameHTML(null, editorOptions({entryURL: "http://localhost:5173/src/editor-entry.ts"})))
+    const policy = root.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content
+    expect(policy).toContain("worker-src blob: https: http://localhost:5173;")
+    expect(policy).toContain("script-src 'nonce-host-bridge-nonce' 'strict-dynamic' 'wasm-unsafe-eval';")
+    expect(policy).not.toContain("worker-src blob: https: http:;")
+  })
+
   it("builds a fresh editing document using the supplied language and frame revision", () => {
     const source = editorFrameHTML(null, editorOptions({language: 'en\" data-untrusted="yes'}))
     const root = parse(source)

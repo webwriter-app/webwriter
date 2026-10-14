@@ -96,6 +96,7 @@ export class ProofreadingFeature extends EditorFeature {
   private lastStatus = ""
   private error: string | null = null
   private diagnostics: Diagnostic[] = []
+  private checkedRuns = new WeakMap<Text, {run: TextRun, issues: ProofreadingIssue[]}>()
   private ignored: IgnoredIssue[] = []
   private dictionary: string[] = []
   private reader: Promise<Proofreader> | null = null
@@ -184,6 +185,7 @@ export class ProofreadingFeature extends EditorFeature {
     this.observer = null
     window.removeEventListener("blur", this.handleBlur)
     this.clearDiagnostics()
+    this.checkedRuns = new WeakMap()
     this.ignored = []
     const reader = this.reader
     this.reader = null
@@ -299,7 +301,7 @@ export class ProofreadingFeature extends EditorFeature {
   private invalidate(schedule = true) {
     this.generation++
     clearTimeout(this.timer)
-    const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
+    const runs = this.diagnostics.length ? proofreadingRuns(getDocumentRoot(), this.editor.schema) : []
     // Keep the cards until the complete replacement check is ready. Stale
     // ranges are no longer painted and commands still resolve against the DOM.
     for(const diagnostic of this.diagnostics) {
@@ -309,9 +311,9 @@ export class ProofreadingFeature extends EditorFeature {
       // the text nodes and checking context remain unchanged.
       if(!sameRange(diagnostic.range, range)) diagnostic.range = range
     }
-    this.paint()
+    this.paint(runs)
     if(schedule && this.enabled && this.documentCheckingEnabled && !this.composing && !this.error) {
-      this.timer = setTimeout(() => { void this.checkNow() }, 500)
+      this.timer = setTimeout(() => { void this.checkNow(true) }, 500)
     }
     this.postStatus()
   }
@@ -402,10 +404,11 @@ export class ProofreadingFeature extends EditorFeature {
     popup.querySelector<HTMLButtonElement>("button")?.focus()
   }
 
-  async checkNow() {
+  async checkNow(reuseUnchanged = false) {
     this.flushMutations()
     clearTimeout(this.timer)
     if(!this.enabled || !this.isEnabled || this.composing) return
+    if(!reuseUnchanged) this.checkedRuns = new WeakMap()
     this.requested = true
     if(this.operation) return this.operation
     this.operation = this.checkRuns().finally(() => {
@@ -439,12 +442,33 @@ export class ProofreadingFeature extends EditorFeature {
         this.requested = false
         generation = this.generation
         const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
+        const checkedRuns = this.checkedRuns
         const diagnostics: Diagnostic[] = []
         if(runs.length) {
+          const pendingRuns = runs.filter(run => {
+            const cached = checkedRuns.get(run.parts[0].node)
+            return !cached || !sameRun(run, cached.run)
+          })
+          const pendingIndexes = new Map(pendingRuns.map((run, index) => [run, index]))
+          let checked: ProofreadingIssue[][] | null = null
+          if(reader.checkBatch) {
+            checked = []
+            // Yield between bounded batches so edits can supersede old work
+            // without waiting for the rest of a large document to be checked.
+            for(let index = 0; index < pendingRuns.length; index += 64) {
+              this.flushMutations()
+              if(generation !== this.generation || !this.enabled || !this.isEnabled) break
+              checked.push(...await reader.checkBatch(pendingRuns.slice(index, index + 64), this.dictionary))
+            }
+          }
           for(const run of runs) {
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
-            const issues = await reader.check(run.text, run.language, this.dictionary)
+            const cached = checkedRuns.get(run.parts[0].node)
+            const index = pendingIndexes.get(run)
+            const issues = index === undefined ? cached!.issues
+              : checked ? checked[index] : await reader.check(run.text, run.language, this.dictionary)
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
+            checkedRuns.set(run.parts[0].node, {run, issues})
             for(const issue of issues) {
               const range = runRange(run, issue.start, issue.end)
               if(range && !this.isDictionaryWord(run, issue) && !this.isIgnored(run, issue, range)) {
@@ -462,7 +486,7 @@ export class ProofreadingFeature extends EditorFeature {
         const current = proofreadingRuns(getDocumentRoot(), this.editor.schema)
         this.diagnostics = diagnostics.filter(diagnostic => current.some(run => sameRun(run, diagnostic.run))
           && !this.isIgnored(diagnostic.run, diagnostic, diagnostic.range))
-        this.paint()
+        this.paint(current)
         this.postStatus()
       }
     }
@@ -487,8 +511,7 @@ export class ProofreadingFeature extends EditorFeature {
     }
   }
 
-  private paint() {
-    const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
+  private paint(runs = this.diagnostics.length ? proofreadingRuns(getDocumentRoot(), this.editor.schema) : []) {
     const current = this.diagnostics.filter(issue => runs.some(run => sameRun(run, issue.run)))
     if(this.hoveredIssueId && !current.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
     if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId

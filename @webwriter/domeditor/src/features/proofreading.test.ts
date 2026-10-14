@@ -97,6 +97,65 @@ describe("proofreading prose extraction", () => {
 })
 
 describe("proofreading feature", () => {
+  it("batches current prose and reuses only unchanged runs for automatic checks", async () => {
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [] as ProofreadingIssue[]))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    content('<p>First paragraph.</p><aside><p>Second paragraph.</p></aside>')
+    await start()
+    expect(batch.mock.calls[0][0].map(run => run.text)).toEqual(["First paragraph.", "Second paragraph."])
+    expect(check).not.toHaveBeenCalled()
+    batch.mockClear()
+    const first = document.querySelector("p")!.firstChild as Text
+    first.data = "Changed paragraph."
+    await editor.features.proofreading.checkNow(true)
+    expect(batch.mock.calls[0][0].map(run => run.text)).toEqual(["Changed paragraph."])
+    batch.mockClear()
+    await editor.features.proofreading.checkNow(true)
+    expect(batch).not.toHaveBeenCalled()
+    await editor.features.proofreading.checkNow()
+    expect(batch.mock.calls[0][0]).toHaveLength(2)
+  })
+
+  it("rechecks identical prose after its text nodes or inherited language are replaced", async () => {
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [] as ProofreadingIssue[]))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    content('<section><p>English prose.</p></section>')
+    await start()
+    batch.mockClear()
+    const paragraph = document.querySelector("p")!
+    paragraph.replaceWith(paragraph.cloneNode(true))
+    await editor.features.proofreading.checkNow(true)
+    expect(batch.mock.calls[0][0]).toEqual([expect.objectContaining({text: "English prose.", language: "en-US"})])
+    batch.mockClear()
+    document.querySelector("section")!.setAttribute("lang", "en-GB")
+    await editor.features.proofreading.checkNow(true)
+    expect(batch.mock.calls[0][0]).toEqual([expect.objectContaining({text: "English prose.", language: "en-GB"})])
+    batch.mockClear()
+    document.querySelector("section")!.setAttribute("hidden", "")
+    await editor.features.proofreading.checkNow(true)
+    expect(batch).not.toHaveBeenCalled()
+  })
+
+  it("supersedes unchecked batches when the live document changes", async () => {
+    let finish!: (issues: ProofreadingIssue[][]) => void
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [] as ProofreadingIssue[]))
+    batch.mockImplementationOnce(() => new Promise(resolve => {finish = resolve}))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    content(Array.from({length: 100}, (_, index) => `<p>Paragraph ${index}.</p>`).join(""))
+    const initial = start()
+    await vi.waitFor(() => expect(batch).toHaveBeenCalledOnce())
+    expect(batch.mock.calls[0][0]).toHaveLength(64)
+    document.querySelector("p")!.firstChild!.textContent = "Current paragraph."
+    const replacement = editor.features.proofreading.checkNow(true)
+    finish(Array.from({length: 64}, () => []))
+    await initial
+    await replacement
+    expect(batch.mock.calls).toHaveLength(3)
+    expect(batch.mock.calls[1][0][0].text).toBe("Current paragraph.")
+    expect(batch.mock.calls[2][0]).toHaveLength(36)
+    expect(editor.features.proofreading.state()).toMatchObject({ready: true, error: null, issues: []})
+  })
+
   it("checks manually with automatic checking off without changing the preference or scheduling later checks", async () => {
     editor.features.proofreading.setDocumentChecking(false)
     const before = editor.toHTML()
@@ -346,7 +405,8 @@ describe("proofreading feature", () => {
     expect(contextMenu(button).defaultPrevented).toBe(false)
     const overlay = document.createElement("button")
     editor.addAppendix(overlay)
-    expect(contextMenu(overlay).defaultPrevented).toBe(false)
+    // General appendix menu suppression belongs to SelectionFeature.
+    expect(contextMenu(overlay).defaultPrevented).toBe(true)
     expect(contextMenu(document.querySelector("p")!, 200, 200).defaultPrevented).toBe(false)
     expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
   })

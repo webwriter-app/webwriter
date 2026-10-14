@@ -5549,11 +5549,15 @@ await check("bottom layout cards retain native editing focus after rendering", a
 })
 
 await check("Harper checks English in a worker without authored DOM artifacts", async () => {
-  const {DomEditor} = await import("../src/components/dom-editor")
-  const host = new DomEditor()
+  const {editorFrameHTML} = await import("../src/frame-document")
   const {DomEditorToolbox} = await import("../src/components/toolbox")
   const toolbox = new DomEditorToolbox()
-  const source = new DOMParser().parseFromString((host as unknown as {editorSrcdoc: string}).editorSrcdoc, "text/html")
+  toolbox.style.cssText = "width:320px;height:500px"
+  // This fixture intentionally shares the host origin for direct DOM assertions.
+  const source = new DOMParser().parseFromString(editorFrameHTML(null, {
+    bridgeNonce: crypto.randomUUID(), revision: 0, language: "en-US", packages: [],
+    hostOrigin: location.origin, entryURL: `${location.origin}/tests/native-browser-frame.ts`, executeScripts: true,
+  }), "text/html")
   const policy = source.querySelector('meta[http-equiv="Content-Security-Policy"]')!.outerHTML
   const nonce = source.querySelector("script[nonce]")!.getAttribute("nonce")!
   const frame = document.createElement("iframe")

@@ -13,6 +13,11 @@ declare module '*?url' {
   export default url;
 }
 
+declare module '*?worker&url' {
+  const url: string;
+  export default url;
+}
+
 // @jspm/generator's published declarations refer to this private import alias.
 declare module '#fetch' {
   export function clearCache(): void
