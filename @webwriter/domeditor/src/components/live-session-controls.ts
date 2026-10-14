@@ -1,4 +1,5 @@
 import {LitElement, css, html} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 /** Compact video-style transport controls for a live session timeline. */
 export class LiveSessionControls extends LitElement {
@@ -10,6 +11,7 @@ export class LiveSessionControls extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       box-sizing: border-box;
       display: flex;

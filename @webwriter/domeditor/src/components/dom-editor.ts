@@ -16,6 +16,7 @@ import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, nothing, type PropertyValues } from "lit"
 import {guard} from "lit/directives/guard.js"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
@@ -61,7 +62,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, getInertDocument} from "../utility"
+import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, isTextFieldInteraction, getInertDocument} from "../utility"
 import {
   imageMapAreaAttributeOptions,
   isImageMapHotspotShape,
@@ -87,6 +88,8 @@ import {
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
   isHistoryStateChangeMessage,
+  isUndoStateChangeMessage,
+  type UndoState,
   isMarkStateChangeMessage,
   isCommentStateChangeMessage,
   isProofreadingStateChangeMessage,
@@ -411,6 +414,7 @@ export class DomEditor extends LitElement {
     storageLocation: {attribute: false, state: true},
     documentHead: {attribute: false, state: true},
     historyState: {attribute: false, state: true},
+    undoState: {attribute: false, state: true},
     historyLoading: {attribute: false, state: true},
     historyError: {attribute: false, state: true},
     consoleOpen: {attribute: false, state: true},
@@ -651,6 +655,7 @@ export class DomEditor extends LitElement {
   private storageLocation: StorageLocation = "local"
   private documentHead: DocumentHeadState = emptyDocumentHeadState()
   private historyState = emptyVersionHistoryState()
+  private undoState: UndoState = {canUndo: false, canRedo: false}
   private historyLoading = false
   private historyOperationCount = 0
   private historyDocumentTransitionCount = 0
@@ -683,6 +688,7 @@ export class DomEditor extends LitElement {
   }>()
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       box-sizing: border-box;
       display: grid;
@@ -2978,6 +2984,7 @@ export class DomEditor extends LitElement {
     this.commentState = {...this.commentState, highlighting: this.documentSettings.commentHighlighting ?? true}
     this.proofreadingReloading = false
     this.historyState = emptyVersionHistoryState()
+    this.undoState = {canUndo: false, canRedo: false}
     this.historyLoading = false
     this.historyOperationCount = 0
     this.historyDocumentTransitionCount = 0
@@ -6726,6 +6733,11 @@ export class DomEditor extends LitElement {
       }
       return
     }
+    if(isUndoStateChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.undoState = {...event.data.detail}
+      return
+    }
     if(isHistoryStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.updateHistoryState(event.data.detail)
@@ -6858,6 +6870,12 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private handleUIContextMenu = (event: Event) => {
+    if(!isTextFieldInteraction(event)) {
+      event.preventDefault()
+    }
+  }
+
   connectedCallback() {
     super.connectedCallback()
     this.recentDocumentsReady = this.restoreRecentDocuments()
@@ -6871,6 +6889,7 @@ export class DomEditor extends LitElement {
     window.addEventListener("focus", this.handleHostWindowFocus)
     this.addEventListener("dragstart", this.handleRibbonDragStart)
     this.addEventListener("dragend", this.handleRibbonDragEnd)
+    this.addEventListener("contextmenu", this.handleUIContextMenu, true)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     const liveSessionId = this.liveSessionIdFromURL()
     const open = new URL(location.href).searchParams.get("open")
@@ -6931,6 +6950,7 @@ export class DomEditor extends LitElement {
     window.removeEventListener("focus", this.handleHostWindowFocus)
     this.removeEventListener("dragstart", this.handleRibbonDragStart)
     this.removeEventListener("dragend", this.handleRibbonDragEnd)
+    this.removeEventListener("contextmenu", this.handleUIContextMenu, true)
     this.ribbonDrag = null
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.localPackageManager.disconnect()
@@ -7039,6 +7059,7 @@ export class DomEditor extends LitElement {
     }
     this.documentHead = emptyDocumentHeadState()
     this.historyState = emptyVersionHistoryState()
+    this.undoState = {canUndo: false, canRedo: false}
     this.historyLoading = false
     this.historyOperationCount = 0
     this.historyDocumentTransitionCount = 0
@@ -7168,6 +7189,7 @@ export class DomEditor extends LitElement {
           logo-url=${appIconUrl}
           .breadcrumbVisible=${this.breadcrumbVisible}
           .presenceUsers=${this.presenceUsers}
+          .undoState=${this.undoState}
           .collaborationLink=${this.collaborationLink}
           .linkSharingEnabled=${this.linkSharingEnabled}
           .linkSharingBusy=${this.linkSharingBusy || Boolean(this.sharedDocumentToken)}

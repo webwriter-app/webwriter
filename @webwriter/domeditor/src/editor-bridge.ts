@@ -34,6 +34,7 @@ export const proofreadingDictionaryAddEvent = "dom-editor-proofreading-dictionar
 export const presenceChangeEvent = "dom-editor-presence-change"
 export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
 export const historyStateChangeEvent = "dom-editor-history-state-change"
+export const undoStateChangeEvent = "dom-editor-undo-state-change"
 export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
 export const editorFrameControlMessage = "editor-frame-control"
@@ -605,6 +606,15 @@ export const emptyVersionHistoryState = (): VersionHistoryState => ({
 export type HistoryStateChangeMessage = {
   type: typeof historyStateChangeEvent
   detail: VersionHistoryState
+}
+
+export type UndoState = {canUndo: boolean, canRedo: boolean}
+
+export function isUndoStateChangeMessage(value: unknown): value is {type: typeof undoStateChangeEvent, detail: UndoState} {
+  if(!value || typeof value !== "object") return false
+  const message = value as {type?: unknown, detail?: Partial<UndoState>}
+  return message.type === undoStateChangeEvent && !!message.detail && typeof message.detail === "object"
+    && typeof message.detail.canUndo === "boolean" && typeof message.detail.canRedo === "boolean"
 }
 
 export type DocumentHeadStateChangeMessage = {

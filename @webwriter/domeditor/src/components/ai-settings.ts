@@ -1,4 +1,5 @@
 import {LitElement, css, html, nothing, type PropertyValues} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {repeat} from "lit/directives/repeat.js"
 import {live} from "lit/directives/live.js"
 import {
@@ -37,6 +38,7 @@ export class AISettingsDialog extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       color: #202833;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

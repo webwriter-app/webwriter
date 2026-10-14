@@ -1,6 +1,7 @@
 import {LitElement, css, html, nothing} from "lit"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {colorHex} from "../css-color"
 import {mediaSourceButtonStyles} from "./media-source.styles"
 import {mediaCropInsets} from "../media"
@@ -101,6 +102,7 @@ export class ElementStyleEditor extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       box-sizing: border-box;
       display: block;

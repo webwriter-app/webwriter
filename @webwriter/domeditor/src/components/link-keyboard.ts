@@ -1,4 +1,5 @@
 import {LitElement, css, html, nothing} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {ribbonIcon} from "../ribbon-icons"
 import {parseReference} from "../document-viewer.js"
 import {normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
@@ -29,6 +30,7 @@ export class LinkKeyboard extends LitElement {
     validationError: {state: true}, dialogOpen: {state: true},
   }
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       display: block; box-sizing: border-box; width: min(100%, 760px); height: 280px;
       margin-inline: auto; padding: .45rem .6rem max(.45rem, env(safe-area-inset-bottom, 0px));

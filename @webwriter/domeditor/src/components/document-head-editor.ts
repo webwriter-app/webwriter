@@ -12,6 +12,7 @@ import {
   type DocumentHeadState,
 } from "../document-head"
 import {EditorCombobox, type ComboboxOption} from "./editor-combobox"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {documentLanguages} from "../document-languages"
 import {documentThemes} from "../document-themes"
 
@@ -105,6 +106,7 @@ class DocumentThemePicker extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       display: block;
       min-width: 0;
@@ -360,6 +362,7 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     .caption-enumeration { margin-top: 1rem; }
     .caption-enumeration summary { cursor: pointer; }
     .caption-enumeration fieldset { border: 0; padding: .75rem 0; margin: 0; display: grid; gap: .5rem; }

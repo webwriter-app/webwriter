@@ -129,16 +129,21 @@ function serialize(block: HTMLScriptElement, value: Value): string {
 
 export const widgetDataHistoryTime = "widget-data-history-time"
 export const widgetDataHistoryGroup = "widget-data-history-group"
-export function stampUndo(manager: Y.UndoManager, group?: () => object | undefined, changed?: () => void) {
+export function stampUndo(manager: Y.UndoManager, group?: () => object | undefined, changed?: () => void, stateChanged?: () => void) {
   const stamp = ({stackItem}: {stackItem: {meta: Map<unknown, unknown>}}) => {
     stackItem.meta.set(widgetDataHistoryTime, performance.now())
     const token = manager.undoing || manager.redoing
       ? manager.currStackItem?.meta.get(widgetDataHistoryGroup) : group?.()
     if(token) stackItem.meta.set(widgetDataHistoryGroup, token)
     if(!manager.undoing && !manager.redoing) changed?.()
+    stateChanged?.()
   }
   manager.on("stack-item-added", stamp)
   manager.on("stack-item-updated", stamp)
+  if(stateChanged) {
+    manager.on("stack-item-popped", stateChanged)
+    manager.on("stack-cleared", stateChanged)
+  }
 }
 
 /** Routes authored data blocks to scoped Yjs mirrors. No widget networking or UI. */
@@ -151,6 +156,7 @@ export class WidgetDataBindings {
   #destroyed = false
   #grouping: object | undefined
   readonly #historyObservers = new Set<() => void>()
+  readonly #historyStateObservers = new Set<() => void>()
   readonly #captureTimeouts = new WeakMap<Y.UndoManager, number>()
   readonly #fallbackDocumentId: string
 
@@ -261,7 +267,7 @@ export class WidgetDataBindings {
       const data = connection.doc.getMap("data")
       if(!data.has("value")) connection.doc.transact(() => data.set("value", mirrorValue(binding.before)), this.#origin)
       binding.undo = new Y.UndoManager(data, {trackedOrigins: new Set([this.#origin])})
-      stampUndo(binding.undo, () => this.#grouping, () => this.#historyObservers.forEach(callback => callback()))
+      stampUndo(binding.undo, () => this.#grouping, () => this.#historyObservers.forEach(callback => callback()), this.#notifyHistoryState)
       if(this.#grouping) this.#group(binding.undo)
       binding.observe = () => {
         // Notify outside the Yjs transaction, so widget callbacks start their own operations.
@@ -420,6 +426,14 @@ export class WidgetDataBindings {
     return () => { this.#historyObservers.delete(callback) }
   }
 
+  readonly #notifyHistoryState = () => { this.#historyStateObservers.forEach(callback => callback()) }
+
+  /** Unlike new-edit observers, this also includes undo, redo and removed bindings. */
+  observeHistoryState(callback: () => void) {
+    this.#historyStateObservers.add(callback)
+    return () => { this.#historyStateObservers.delete(callback) }
+  }
+
   clearRedo() { for(const manager of this.historyManagers("redo")) manager.clear(false, true) }
 
   stopCapturing() { for(const binding of this.#bindings.values()) binding.undo?.stopCapturing() }
@@ -458,12 +472,14 @@ export class WidgetDataBindings {
     if(binding.observe) binding.connection?.doc.getMap("data").unobserveDeep(binding.observe)
     if(binding.flush) binding.connection?.doc.off("beforeTransaction", binding.flush)
     binding.undo?.destroy()
+    this.#notifyHistoryState()
     binding.connection?.destroy?.()
   }
 
   destroy() {
     this.#destroyed = true
     this.#historyObservers.clear()
+    this.#historyStateObservers.clear()
     for(const binding of this.#bindings.values()) {
       if(this.root.contains(binding.block)) binding.block.textContent = binding.defaults
       this.#dispose(binding)

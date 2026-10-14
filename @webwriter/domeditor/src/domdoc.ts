@@ -190,6 +190,9 @@ export class SharedDOMDoc {
   #undoGroupTimeout = 0
   #undoGroup: object | undefined
   readonly #unobserveDataHistory: () => void
+  readonly #unobserveDataHistoryState: () => void
+  readonly #historyStateObservers = new Set<() => void>()
+  #historyStateQueued = false
   readonly #documentPermalinks: boolean
 
   constructor(
@@ -251,8 +254,9 @@ export class SharedDOMDoc {
     this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
       trackedOrigins: new Set([this.#domOrigin]),
     })
-    stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo)
+    stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo, this.#queueHistoryState)
     this.#unobserveDataHistory = this.widgetData.observeHistory(this.#clearRedo)
+    this.#unobserveDataHistoryState = this.widgetData.observeHistoryState(this.#queueHistoryState)
 
     const DocumentMutationObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
     this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
@@ -366,7 +370,8 @@ export class SharedDOMDoc {
     if(this.#undoManager) {
       this.#undoManager.destroy()
       this.#undoManager = new Y.UndoManager(this.#undoScopes(), {trackedOrigins: new Set([this.#domOrigin])})
-      stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo)
+      stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo, this.#queueHistoryState)
+      this.#queueHistoryState()
     }
   }
 
@@ -1059,6 +1064,24 @@ export class SharedDOMDoc {
     return true
   }
 
+  get canUndo() { return this.#undoManager.canUndo() || Boolean(this.widgetData.history("undo")) }
+
+  get canRedo() { return this.#undoManager.canRedo() || Boolean(this.widgetData.history("redo")) }
+
+  observeHistoryState(callback: () => void) {
+    this.#historyStateObservers.add(callback)
+    return () => { this.#historyStateObservers.delete(callback) }
+  }
+
+  readonly #queueHistoryState = () => {
+    if(this.#historyStateQueued || !this.#historyStateObservers.size) return
+    this.#historyStateQueued = true
+    queueMicrotask(() => {
+      this.#historyStateQueued = false
+      this.#historyStateObservers.forEach(callback => callback())
+    })
+  }
+
   undo() {
     this.#commitPendingDOMChanges()
     this.#applyHistory("undo")
@@ -1099,6 +1122,8 @@ export class SharedDOMDoc {
   destroy() {
     this.#activeDOMPreview?.reject()
     this.#unobserveDataHistory()
+    this.#unobserveDataHistoryState()
+    this.#historyStateObservers.clear()
     this.#minimumRepairs.clear()
     this.stopObserve()
     if(this.#ownsWidgetData) this.widgetData.destroy()

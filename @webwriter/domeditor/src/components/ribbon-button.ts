@@ -1,4 +1,5 @@
 import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageKeywordPresentation} from "../package-keywords"
@@ -61,6 +62,7 @@ export class RibbonButton extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host([variant="package"][developer-package]) .button-label-text { font-style: italic; }
     :host([icon-only]) .button-label { display: none; }
     :host([icon-only]) .main-button { padding: 0.3rem; justify-content: center; }

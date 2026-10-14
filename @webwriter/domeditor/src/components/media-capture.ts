@@ -2,7 +2,8 @@ import {mediaCaptureModes, type MediaCaptureMode} from "../media"
 import {adoptStylesheet, createStylesheet} from "../utility"
 
 const stylesheet = createStylesheet(`
-  :host { font: 14px/1.4 system-ui, sans-serif; color: #343740; }
+  :host { font: 14px/1.4 system-ui, sans-serif; color: #343740; user-select: none; -webkit-user-select: none; }
+  input, select { user-select: text; -webkit-user-select: text; }
   dialog {
     box-sizing: border-box; width: min(30rem, calc(100vw - 2rem));
     max-height: calc(100vh - 2rem); overflow: auto; padding: 1.1rem;

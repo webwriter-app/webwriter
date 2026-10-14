@@ -19,6 +19,38 @@ function create(markup = html(), options: WidgetDataOptions = {}) {
 const read = (peer: ReturnType<typeof create>) => JSON.parse(peer.block().textContent!)
 
 describe("grouped document and widget data history", () => {
+  it("reports widget-only history through undo, redo, new branches and binding removal", async () => {
+    const peer = create()
+    const states: boolean[][] = []
+    const unobserve = peer.shared.observeHistoryState(() => states.push([peer.shared.canUndo, peer.shared.canRedo]))
+    expect([peer.shared.canUndo, peer.shared.canRedo]).toEqual([false, false])
+    write(peer, {a: 2, b: 1})
+    await tick()
+    expect(states.at(-1)).toEqual([true, false])
+    peer.shared.undo()
+    await tick()
+    expect(states.at(-1)).toEqual([false, true])
+    peer.shared.redo()
+    await tick()
+    expect(states.at(-1)).toEqual([true, false])
+    peer.shared.undo()
+    await tick()
+    write(peer, {a: 3, b: 1})
+    await tick()
+    expect(states.at(-1)).toEqual([true, false])
+    // A remote widget removal can discard its local data history without
+    // creating an undo item in the document manager.
+    peer.shared.body.delete(0, peer.shared.body.length)
+    await tick()
+    expect(states.at(-1)).toEqual([false, false])
+    unobserve()
+    states.length = 0
+    peer.root.append(document.createElement("p"))
+    peer.shared.syncFromDOM()
+    await tick()
+    expect(states).toEqual([])
+  })
+
   it("undoes and redoes DOM and multiple widget data edits together, retaining remote data", async () => {
     const connection = resolver()
     const peer = create(html("shared") + html("shared").replace('id="widget"', 'id="second"'), connection)

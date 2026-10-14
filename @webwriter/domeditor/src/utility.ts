@@ -1756,6 +1756,16 @@ export function isWidgetShadowInteraction(event: Event, schema?: Schema) {
   return !schema?.get(widget)?.propagateEvents?.includes(event.type)
 }
 
+/** Text fields and explicitly editable UI content keep native editing menus. */
+export function isTextFieldInteraction(event: Event) {
+  const path = event.composedPath()
+  if(path.some(target => target instanceof Element && target.matches("input, textarea"))) return true
+  const origin = path[0]
+  const element = origin instanceof Element ? origin : origin instanceof Node ? origin.parentElement : null
+  const editable = element?.closest('[contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i], [contenteditable="false" i]')
+  return Boolean(editable && editable.getAttribute("contenteditable")?.toLowerCase() !== "false")
+}
+
 /** Whether an interaction originated in the editor-owned shadow appendix.
  * Composed events are retargeted to BODY at document listeners, so inspect
  * their original node. Selectionchange has no useful path; in that case the

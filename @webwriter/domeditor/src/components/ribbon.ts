@@ -17,7 +17,7 @@ import {AIProviderStore, type AIProviderConfig} from "../ai-provider"
 import {isAIReadTool} from "../ai-tools"
 import {persistAppSettings, type AppSettings} from "../app-settings"
 import type {BackendClient} from "../backend-client"
-import {type PresenceUser} from "../editor-bridge"
+import {type PresenceUser, type UndoState} from "../editor-bridge"
 import {mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
@@ -126,6 +126,7 @@ export class AppRibbon extends EditingControls {
     settingsTab: {state: true},
     logoUrl: {type: String, attribute: "logo-url"},
     presenceUsers: {attribute: false},
+    undoState: {attribute: false},
     collaborationLink: {attribute: false},
     linkSharingEnabled: {type: Boolean},
     linkSharingBusy: {type: Boolean},
@@ -579,10 +580,11 @@ export class AppRibbon extends EditingControls {
     .history-controls {
       box-sizing: border-box;
       display: flex;
-      align-items: center;
+      align-items: stretch;
       height: var(--ribbon-compact-bar-height);
       margin-inline: 0.15rem;
-      padding: 0 0.1rem;
+      padding: 0;
+      overflow: hidden;
       border: 1px solid #c4ccd6;
       border-radius: 0.62rem;
       color: #5e6977;
@@ -590,8 +592,8 @@ export class AppRibbon extends EditingControls {
     }
 
     .history-controls .history-button {
-      height: 1.35rem;
-      border-radius: 0.45rem;
+      height: auto;
+      border-radius: 0;
     }
 
     .ribbon-top-actions {
@@ -907,9 +909,19 @@ export class AppRibbon extends EditingControls {
       background: #22c55e;
     }
 
-    .history-button:hover {
+    .history-button:hover:not(:disabled) {
       color: #243447;
       background: #e8eef5;
+    }
+
+    .history-button:active:not(:disabled) {
+      color: #243447;
+      background: #d8e3ef;
+    }
+
+    .history-button:disabled {
+      color: #a4acb6;
+      cursor: default;
     }
 
     .history-button:focus-visible {
@@ -1065,6 +1077,7 @@ export class AppRibbon extends EditingControls {
   logoUrl = ""
 
   presenceUsers: PresenceUser[] = []
+  undoState: UndoState = {canUndo: false, canRedo: false}
   collaborationLink = ""
   linkSharingEnabled = false
   linkSharingBusy = false
@@ -3372,7 +3385,7 @@ export class AppRibbon extends EditingControls {
                   type="button"
                   aria-label="Undo"
                   title="Undo"
-                  ?disabled=${aiReviewPending || historyPreviewPending}
+                  ?disabled=${!this.undoState.canUndo || aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Undo")}
                 >
                   <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
@@ -3382,7 +3395,7 @@ export class AppRibbon extends EditingControls {
                   type="button"
                   aria-label="Redo"
                   title="Redo"
-                  ?disabled=${aiReviewPending || historyPreviewPending}
+                  ?disabled=${!this.undoState.canRedo || aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Redo")}
                 >
                   <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>

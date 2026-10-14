@@ -24,6 +24,8 @@ import {
   selectionChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
+  undoStateChangeEvent,
+  isUndoStateChangeMessage,
 } from "./editor-bridge"
 import {emptyDocumentHeadState, isDocumentHeadAction} from "./document-head"
 
@@ -36,6 +38,15 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("validates undo and redo availability", () => {
+    const message = {type: undoStateChangeEvent, detail: {canUndo: true, canRedo: false}}
+    expect(isUndoStateChangeMessage(message)).toBe(true)
+    expectAllRejected(isUndoStateChangeMessage, [null, {}, {...message, detail: null},
+      {...message, type: historyStateChangeEvent}, {...message, detail: {canUndo: 1, canRedo: false}},
+      {...message, detail: {canUndo: true}}, {...message, detail: {canUndo: true, canRedo: "false"}},
+    ])
+  })
+
   it("accepts Board layout state and conversion reasons while rejecting unknown layouts", () => {
     const documentLayout = {mode: "board", canConvert: true, zoom: 100, conversions: {board: null, document: null, canvas: "Unsupported content"}}
     const message = {type: selectionChangeEvent, detail: {path: [], documentLayout}}

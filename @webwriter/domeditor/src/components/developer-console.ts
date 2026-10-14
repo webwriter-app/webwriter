@@ -129,7 +129,7 @@ export class DeveloperConsole extends EditingControls {
       .develop-fields > .develop-section {position: sticky; top: var(--column-sticky-top, 0px)}
     }
     ribbon-drawer {min-width: 0; width: 100%}
-    .test-content {box-sizing: border-box; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); align-content: start; gap: 1rem; height: 100%; padding: .65rem; user-select: text; overflow: auto; scrollbar-width: thin}
+    .test-content {box-sizing: border-box; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); align-content: start; gap: 1rem; height: 100%; padding: .65rem; overflow: auto; scrollbar-width: thin}
     .test-content > div {min-width: 0}
     .test-content .develop-section {min-width: 0; margin: 0}
     .package-issue {display: flex; gap: .4rem; margin-bottom: .6rem; font-size: .75rem; color: #a34521; overflow-wrap: anywhere}
@@ -141,7 +141,7 @@ export class DeveloperConsole extends EditingControls {
     .develop-checklist [data-status="passed"] .check-icon {color: #287344}
     .develop-checklist [data-status="failed"] {color: #a34521}
     .develop-checklist [data-status="pending"] {color: #667085}
-    .element-content {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: .75rem; padding: .65rem; font-size: .8rem; user-select: text}
+    .element-content {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: .75rem; padding: .65rem; font-size: .8rem}
     .element-content .develop-section {margin: 0; min-width: 0}
     .element-content h3 {font-size: .8rem; margin: .65rem 0}
     .element-content code, .element-option small {display: block; overflow-wrap: anywhere; color: #667085; font-size: .7rem}

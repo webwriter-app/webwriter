@@ -1,15 +1,21 @@
 import {css} from "lit"
 
-export const editingControlStyles = css`
+/** UI labels stay unselectable; native fields and editable content keep text selection. */
+export const editorInteractionStyles = css`
     :host {
       -webkit-user-select: none;
       user-select: none;
     }
 
-    input, textarea {
+    input, textarea, select,
+    [contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i] {
       -webkit-user-select: text;
       user-select: text;
     }
+`
+
+export const editingControlStyles = css`
+    ${editorInteractionStyles}
 
     .history-timeline {
       box-sizing: border-box;

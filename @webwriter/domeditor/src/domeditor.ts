@@ -47,6 +47,8 @@ import {
   presenceChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
+  undoStateChangeEvent,
+  type UndoState,
   type PresenceUser,
   type SelectionChangeDetail,
   type SelectionGap,
@@ -72,6 +74,17 @@ import {runtimeDocumentBaseURL} from "./package-dependencies"
 
 const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
 const appendixStylesheet = createStylesheet(`
+  :where(:host > :not(slot)) {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input, textarea, select,
+  [contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
   @keyframes blink {
     50% { opacity: 0; }
   }
@@ -86,8 +99,6 @@ const appendixStylesheet = createStylesheet(`
     position: fixed;
     z-index: 2147483647;
     pointer-events: auto;
-    user-select: auto;
-    -webkit-user-select: auto;
     right: 1rem;
     bottom: 1rem;
     left: 1rem;
@@ -671,7 +682,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === proofreadingStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === proofreadingStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent || ev.data.type === undoStateChangeEvent) {
       return
     }
     // The frame host handles controls on the same window message target.
@@ -790,6 +801,10 @@ export class DOMEditor {
 
   postHistoryState(state: VersionHistoryState) {
     this.postBridgeEvent(historyStateChangeEvent, state)
+  }
+
+  postUndoState(state: UndoState) {
+    this.postBridgeEvent(undoStateChangeEvent, state)
   }
 
   postProofreadingState(state: ProofreadingState) {

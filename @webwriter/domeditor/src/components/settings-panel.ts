@@ -17,6 +17,7 @@ import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} fro
 import {connectCloudService} from "../backend-client"
 import {normalizeProofreadingDictionary} from "../proofreading"
 import componentLicenses from "virtual:component-licenses"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 const languageLabel = (code: string, fallback: string) => {
   try {
@@ -53,6 +54,7 @@ export class SettingsPanel extends LitElement {
   tab: SettingsTab = "Editor"
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       box-sizing: border-box;
       display: block;

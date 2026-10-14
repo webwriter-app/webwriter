@@ -3,6 +3,7 @@ import type {StyleMarkOption} from "../marks"
 import {anchorColorSubmenu, fixedPopupPosition} from "./popup-position"
 import {colorHex} from "../css-color"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 export type RibbonComboboxChangeDetail = {
   name: string
@@ -26,6 +27,7 @@ export class RibbonCombobox extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       display: block;
       min-width: 0;

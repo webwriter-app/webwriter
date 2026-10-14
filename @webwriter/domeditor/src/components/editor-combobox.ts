@@ -1,6 +1,7 @@
 import {LitElement, css, html, nothing, type CSSResultGroup} from "lit"
 import {live} from "lit/directives/live.js"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 export type ComboboxOption = {
   value: string
@@ -28,6 +29,7 @@ export class EditorCombobox extends LitElement {
   }
 
   static styles: CSSResultGroup = css`
+    ${editorInteractionStyles}
     :host([show-value]) {--metadata-combobox-height: 1.7rem;}
     :host([show-value]) .control {border-color: #c5ccd5;}
     :host([show-value]) .option {font-size: .68rem;}

@@ -400,6 +400,79 @@ await check("Ribbon custom colors show rainbow swatches and commit chosen colors
   }
 })
 
+await check("Editor UI prevents text selection while preserving editable fields and the document", async () => {
+  await Promise.all([
+    import("../src/components/ribbon"), import("../src/components/settings-panel"),
+    import("../src/components/document-head-editor"), import("../src/components/element-style-editor"),
+    import("../src/components/element-attribute-editor"), import("../src/components/link-keyboard"),
+    import("../src/components/widget-grouping-dialog"), import("../src/components/developer-console"),
+  ])
+  const stage = document.createElement("section")
+  stage.contentEditable = "false"
+  fixture.append(stage)
+  const tags = ["app-ribbon", "settings-panel", "document-head-editor", "document-head-combobox",
+    "element-style-editor", "element-attribute-editor", "dom-editor-link-keyboard",
+    "widget-grouping-dialog", "developer-console", "package-search", "ribbon-button"]
+  const controls = tags.map(tag => document.createElement(tag))
+  stage.append(...controls)
+  let editor: DOMEditor | undefined
+  try {
+    await Promise.all(controls.map(control => (control as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete))
+    await layoutFrame()
+    let fields = 0
+    const inspect = (root: ShadowRoot) => {
+      for(const element of root.querySelectorAll<HTMLElement>("*")) {
+        if(element.matches("input, textarea, select")) {
+          fields++
+          assert(getComputedStyle(element).userSelect === "text", `${element.localName} in ${root.host.localName} lost text selection`)
+        }
+        if(element.shadowRoot) inspect(element.shadowRoot)
+      }
+    }
+    for(const control of controls) {
+      assert(getComputedStyle(control).userSelect === "none", `${control.localName} permits UI text selection`)
+      inspect(control.shadowRoot!)
+    }
+    assert(fields > 10, `only ${fields} native fields were checked`)
+    const console = stage.querySelector("developer-console")!
+    for(const panel of console.shadowRoot!.querySelectorAll(".test-content, .element-content")) {
+      assert(getComputedStyle(panel).userSelect === "none", "console text remains selectable")
+    }
+    // Rich editable UI must opt back into selection, including its descendants.
+    const rich = document.createElement("div")
+    rich.contentEditable = "plaintext-only"
+    rich.innerHTML = "<span>Editable UI</span>"
+    controls.at(-1)!.shadowRoot!.append(rich)
+    assert(getComputedStyle(rich).userSelect === "text"
+      && getComputedStyle(rich.firstElementChild!).userSelect === "text", "editable UI lost selection")
+
+    editor = new DOMEditor()
+    const appendixControl = document.createElement("section")
+    appendixControl.innerHTML = "<span>Editor UI</span><input value='Editable input'><textarea>Editable textarea</textarea><div contenteditable='true'><b>Editable content</b></div>"
+    editor.addAppendix(appendixControl)
+    assert(getComputedStyle(appendixControl.firstElementChild!).userSelect === "none", "appendix label remains selectable")
+    assert(getComputedStyle(appendixControl.querySelector("input")!).userSelect === "text", "appendix field lost selection")
+    assert(getComputedStyle(appendixControl.querySelector("b")!).userSelect === "text", "nested editable appendix content lost selection")
+    assert(getComputedStyle(fixture).userSelect === "text", "authored document lost text selection")
+    const menu = (target: Element) => target.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true}))
+    assert(menu(appendixControl.querySelector("input")!), "appendix input context menu was suppressed")
+    assert(menu(appendixControl.querySelector("textarea")!), "appendix textarea context menu was suppressed")
+    assert(menu(appendixControl.querySelector("b")!), "editable appendix content context menu was suppressed")
+    // Happy DOM does not support case-insensitive attribute selectors fully.
+    for(const value of ["", "TRUE", "plaintext-only"]) {
+      appendixControl.querySelector("[contenteditable]")!.setAttribute("contenteditable", value)
+      assert(menu(appendixControl.querySelector("b")!), `editable appendix content (${value}) context menu was suppressed`)
+    }
+    const readonly = document.createElement("span")
+    readonly.contentEditable = "false"
+    appendixControl.querySelector("[contenteditable]")!.append(readonly)
+    assert(!menu(readonly), "noneditable UI inside an editable field still opens its default context menu")
+    assert(!menu(appendixControl.querySelector("span")!), "appendix label still opens its default context menu")
+    assert(menu(fixture), "authored document context menu was suppressed")
+  }
+  finally { editor?.destroy(); stage.remove() }
+})
+
 await check("File actions align with the font size controls", async () => {
   const heightDescriptor = Object.getOwnPropertyDescriptor(window, "innerHeight")
   Object.defineProperty(window, "innerHeight", {configurable: true, value: 900})

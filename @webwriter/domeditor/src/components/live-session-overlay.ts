@@ -1,4 +1,5 @@
 import {LitElement, css, html} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {keyed} from "lit/directives/keyed.js"
 import {styleMap} from "lit/directives/style-map.js"
 import {safeCssColor} from "../css-color"
@@ -59,6 +60,7 @@ export class LiveSessionOverlay extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       position: absolute;
       inset: 0;

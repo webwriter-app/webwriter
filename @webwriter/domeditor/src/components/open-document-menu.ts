@@ -1,4 +1,5 @@
 import {LitElement, css, html} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import type {BackendDocumentSummary} from "../backend-client"
 import {ribbonIcon} from "../ribbon-icons"
 
@@ -15,6 +16,7 @@ export class OpenDocumentMenu extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       display: contents;
       color: #263241;

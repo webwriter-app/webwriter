@@ -7,6 +7,7 @@ import {boardLayoutRole, isSlide, slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {isTextFieldInteraction} from "../utility"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -989,6 +990,9 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    contextmenu: event => {
+      if(isAppendixInteraction(event) && !isTextFieldInteraction(event)) event.preventDefault()
+    },
     // Preserve the pointer stream for editor selection instead of browser
     // panning/long-press selection. Widget controls and appendix UI stay native.
     touchstart: event => {

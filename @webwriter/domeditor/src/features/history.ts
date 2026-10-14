@@ -5,6 +5,7 @@ import {
   type VersionHistoryComment,
   type VersionHistoryState,
   type VersionHistoryUser,
+  type UndoState,
 } from "../editor-bridge"
 import {authoredClassValue, isEditorOwnedAttribute, isOnApple, modifierKeyDown} from "../utility"
 import {userInitials} from "../user-identity"
@@ -46,6 +47,8 @@ export class HistoryFeature extends EditorFeature {
   #restoring = false
   #previewObserver: MutationObserver | undefined
   #previewAttributeNames = new WeakMap<Element, Map<string, string>>()
+  #unobserveUndoState: (() => void) | undefined
+  #undoState: UndoState | undefined
 
   actions = {
     undo: ({}: {type: "undo"}) => {
@@ -109,6 +112,13 @@ export class HistoryFeature extends EditorFeature {
     this.postState()
   }
 
+  readonly #handleUndoStateChange = () => {
+    const state = {canUndo: this.editor.doc.canUndo, canRedo: this.editor.doc.canRedo}
+    if(this.#undoState?.canUndo === state.canUndo && this.#undoState.canRedo === state.canRedo) return
+    this.#undoState = state
+    this.editor.postUndoState(state)
+  }
+
   readonly #handleTransaction = (transaction: Y.Transaction) => {
     if(!this.#isDocumentTransaction(transaction)) return
     if(this.#previewCheckpointId) return
@@ -125,6 +135,8 @@ export class HistoryFeature extends EditorFeature {
     this.#comments = this.editor.doc.doc.getArray<StoredComment>("version-history-comments")
     this.#versions = this.editor.doc.doc.getArray<StoredVersion>("version-history-saves")
     super.enable()
+    this.#unobserveUndoState = this.editor.doc.observeHistoryState(this.#handleUndoStateChange)
+    this.#handleUndoStateChange()
     this.#checkpoints.observe(this.#handleHistoryChange)
     this.#comments.observe(this.#handleHistoryChange)
     this.#versions.observe(this.#handleHistoryChange)
@@ -140,6 +152,9 @@ export class HistoryFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.#cancelCheckpoint()
+    this.#unobserveUndoState?.()
+    this.#unobserveUndoState = undefined
+    this.#undoState = undefined
     this.#checkpoints.unobserve(this.#handleHistoryChange)
     this.#comments.unobserve(this.#handleHistoryChange)
     this.#versions.unobserve(this.#handleHistoryChange)

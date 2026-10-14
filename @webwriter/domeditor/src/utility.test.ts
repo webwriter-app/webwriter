@@ -12,7 +12,29 @@ import {
   pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement
 } from "./utility"
 import { Schema } from "./schema"
-import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect} from "./utility"
+import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect, isTextFieldInteraction} from "./utility"
+
+describe("native text field interactions", () => {
+  it.each([
+    ['<input readonly>', true], ['<textarea readonly></textarea>', true],
+    ['<div contenteditable><b>Text</b></div>', true],
+    ['<div contenteditable="plaintext-only"><b>Text</b></div>', true],
+    ['<div contenteditable="true"><span contenteditable="inherit"><b>Text</b></span></div>', true],
+    ['<div contenteditable="true"><span contenteditable="false"><b>Text</b></span></div>', false],
+    ['<div contenteditable="invalid"><b>UI</b></div>', false],
+  ])("recognizes the actual editable boundary in %s", (html, expected) => {
+    const host = document.createElement("div")
+    const shadow = host.attachShadow({mode: "open"})
+    shadow.innerHTML = html
+    document.body.append(host)
+    let result: boolean | undefined
+    host.addEventListener("contextmenu", event => { result = isTextFieldInteraction(event) })
+    const target = shadow.querySelector("b, input, textarea")!
+    target.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true}))
+    expect(result).toBe(expected)
+    host.remove()
+  })
+})
 
 // Tests for the EditingSelection class. No DOMEditor is instantiated, so the
 // selection state is not post-processed by any editor feature.

@@ -4,6 +4,7 @@ import {isMediaType, mediaAttributeOptions} from "../media"
 import {groupedLanguageOptions} from "../language-suggestions"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {
   elementAttributeEditability,
   elementAttributeOptions,
@@ -59,6 +60,7 @@ export class ElementAttributeEditor extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     ${choiceGroupStyles}
 
     :host {

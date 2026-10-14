@@ -31,6 +31,58 @@ afterEach(() => {
 })
 
 describe("collaborative version history", () => {
+  it("publishes local undo availability immediately without serializing checkpoints, and cleans up", async () => {
+    const history = editor.features.history
+    history.disable()
+    const publish = vi.spyOn(editor, "postUndoState")
+    history.enable()
+    expect(publish).toHaveBeenLastCalledWith({canUndo: false, canRedo: false})
+    const serialize = vi.spyOn(editor, "toHTML")
+    document.querySelector("p")!.textContent = "First edit"
+    await mutationsDelivered()
+    expect(publish).toHaveBeenLastCalledWith({canUndo: true, canRedo: false})
+    expect(serialize).not.toHaveBeenCalled()
+    const calls = publish.mock.calls.length
+    document.querySelector("p")!.textContent = "Same undo group"
+    await mutationsDelivered()
+    expect(publish).toHaveBeenCalledTimes(calls)
+
+    editor.doc.undo()
+    await mutationsDelivered()
+    expect(publish).toHaveBeenLastCalledWith({canUndo: false, canRedo: true})
+    editor.doc.redo()
+    await mutationsDelivered()
+    expect(publish).toHaveBeenLastCalledWith({canUndo: true, canRedo: false})
+    editor.doc.undo()
+    await mutationsDelivered()
+    document.querySelector("p")!.textContent = "New branch"
+    await mutationsDelivered()
+    expect(publish).toHaveBeenLastCalledWith({canUndo: true, canRedo: false})
+
+    history.disable()
+    publish.mockClear()
+    editor.doc.undo()
+    await mutationsDelivered()
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it("keeps remote edits out of local undo availability", async () => {
+    const publish = vi.spyOn(editor, "postUndoState")
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+      const paragraph = sharedDOMBody(remote).get(0) as Y.XmlElement
+      ;(paragraph.get(0) as Y.XmlText).insert(5, " remotely")
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+      await mutationsDelivered()
+      expect(document.body.textContent).toBe("Hello remotely")
+      expect(editor.doc.canUndo).toBe(false)
+      expect(editor.doc.canRedo).toBe(false)
+      expect(publish).not.toHaveBeenCalled()
+    }
+    finally { remote.destroy() }
+  })
+
   it("groups changes under distinct saves and keeps later edits in the unsaved version", async () => {
     const history = editor.features.history
     const initial = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id

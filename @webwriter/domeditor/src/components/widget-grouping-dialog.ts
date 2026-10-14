@@ -1,4 +1,5 @@
 import {LitElement, css, html, nothing} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {ribbonIcon} from "../ribbon-icons"
 import {defaultGroupingRules, formWidgetGroups, validateGroupingRules} from "../widget-grouping.js"
 import type {WidgetGroupingContext, WidgetGroupingRules} from "../widget-grouping"
@@ -17,6 +18,7 @@ export class WidgetGroupingDialog extends LitElement {
     error: {type: String, state: true}, preview: {attribute: false, state: true},
   }
   static styles = css`
+    ${editorInteractionStyles}
     :host { color: #202833; font: 14px/1.4 system-ui, sans-serif; }
     dialog { box-sizing: border-box; width: min(58rem, calc(100vw - 2rem)); max-height: min(48rem, calc(100dvh - 2rem)); padding: 0; border: 1px solid #cbd5e1; border-radius: .7rem; color: inherit; background: white; box-shadow: 0 1rem 3rem rgb(15 23 42 / 25%); }
     dialog::backdrop { background: rgb(15 23 42 / 42%); }

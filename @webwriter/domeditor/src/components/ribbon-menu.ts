@@ -1,6 +1,7 @@
 import {dropdownContentStyles} from "./dropdown-content.styles"
 import {SNIPPET_LABEL_MAX_LENGTH} from "../app-settings"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import { ribbonIcon } from "../ribbon-icons"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
@@ -39,6 +40,7 @@ export type RibbonMenuButton = string | {
 /** A dropdown view of the commands in a collapsed ribbon menu. */
 export class RibbonMenu extends LitElement {
   static styles = css`
+    ${editorInteractionStyles}
     ${dropdownContentStyles}
     .submenu.form-submenu { width: 19rem; }
     .submenu.shape-gallery { width: min(32rem, calc(100vw - 1rem)); }

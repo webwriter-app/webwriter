@@ -24,6 +24,7 @@ import {
   markStateChangeEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
+  undoStateChangeEvent,
   selectionChangeEvent,
   type VersionHistoryState,
 } from "../editor-bridge"
@@ -553,6 +554,48 @@ describe("DomEditor document loading", () => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("suppresses UI context menus while preserving text fields, editable content and document menus", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const search = ribbon.shadowRoot!.querySelector("package-search")!
+    await (search as any).updateComplete
+    const targets = [editor, editor.shadowRoot!.querySelector(".document-layouts-heading")!,
+      ribbon.shadowRoot!.querySelector('[aria-label="Preview"]')!,
+    ]
+    for(const target of targets) {
+      const menu = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+      expect(target.dispatchEvent(menu)).toBe(false)
+      expect(menu.defaultPrevented).toBe(true)
+    }
+    const textarea = document.createElement("textarea")
+    search.shadowRoot!.append(textarea)
+    for(const field of [search.shadowRoot!.querySelector("input")!, textarea]) {
+      for(const readOnly of [false, true]) {
+        field.readOnly = readOnly
+        const menu = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+        expect(field.dispatchEvent(menu)).toBe(true)
+        expect(menu.defaultPrevented).toBe(false)
+      }
+    }
+    for(const value of ["", "true", "plaintext-only"]) {
+      const rich = document.createElement("div")
+      rich.setAttribute("contenteditable", value)
+      rich.innerHTML = '<span>Editable</span><span contenteditable="false">Read only UI</span>'
+      search.shadowRoot!.append(rich)
+      for(const target of [rich, rich.firstElementChild!]) {
+        expect(target.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true}))).toBe(true)
+      }
+      expect(rich.lastElementChild!.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true}))).toBe(false)
+    }
+    const menu = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+    expect(iframe.contentDocument!.body.dispatchEvent(menu)).toBe(true)
+    expect(menu.defaultPrevented).toBe(false)
+
+    editor.remove()
+    const detached = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+    expect(editor.dispatchEvent(detached)).toBe(true)
+  })
+
   it("restores iframe hit testing after one paint while DevTools retains focus", async () => {
     const {iframe} = await mountEditor()
     vi.spyOn(document, "hasFocus").mockReturnValue(false)
@@ -5038,8 +5081,8 @@ describe("DomEditor.execute()", () => {
     expect(setInstalled).toHaveBeenCalledWith(demoPackage, false)
   })
 
-  it("executes undo and redo from the top ribbon controls", async () => {
-    const {editor} = await mountEditor()
+  it("disables unavailable history actions and executes enabled undo and redo controls", async () => {
+    const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const historyButtons = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".history-button"))
@@ -5049,11 +5092,31 @@ describe("DomEditor.execute()", () => {
     expect(historyButtons[1].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
     expect(historyButtons[1].parentElement?.nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
 
+    expect(historyButtons.map(button => button.disabled)).toEqual([true, true])
+    historyButtons.forEach(button => button.click())
+    expect(execute).not.toHaveBeenCalled()
+
+    const publish = async (canUndo: boolean, canRedo: boolean) => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: undoStateChangeEvent, detail: {canUndo, canRedo}, bridgeNonce: (editor as any).bridgeNonce},
+        source: editorWindow, origin: window.location.origin,
+      }))
+      await editor.updateComplete
+      await (ribbon as AppRibbon).updateComplete
+    }
+
+    await publish(true, false)
+    expect(historyButtons.map(button => button.disabled)).toEqual([false, true])
+
     historyButtons[0].click()
+    await publish(false, true)
+    expect(historyButtons.map(button => button.disabled)).toEqual([true, false])
     historyButtons[1].click()
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "undo"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
+    await publish(false, false)
+    expect(historyButtons.map(button => button.disabled)).toEqual([true, true])
   })
 
   it("opens Versions only from the Review footer and hides it on close or leaving Review", async () => {
@@ -5126,7 +5189,7 @@ describe("DomEditor.execute()", () => {
   })
 
   it("lists newest versions first and routes preview and restore for both tiers", async () => {
-    const {editor} = await mountEditor()
+    const {editor} = await mountEditor(editor => Object.assign(editor, {undoState: {canUndo: true, canRedo: false}}))
     vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
     const checkpoint = (id: string, timestamp: number) => ({id, timestamp, label: "Edited by Ada Lovelace",

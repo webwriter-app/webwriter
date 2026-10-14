@@ -25,6 +25,7 @@ const expectedChecks = [
   "Border controls are narrow and dropdown chevrons overlay field values",
   "Ribbon custom colors show rainbow swatches and commit chosen colors",
   "File actions align with the font size controls",
+  "Editor UI prevents text selection while preserving editable fields and the document",
   "Toolbox choices distinguish defaults from explicit matching values",
   "Style dropdowns draw a single border and focus ring",
   "marker image uploads preview before applying",

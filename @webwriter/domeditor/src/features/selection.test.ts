@@ -40,6 +40,47 @@ function el(tag = "p", text = "") {
 }
 
 describe("selection preservation across authored DOM shapes", () => {
+  it("suppresses appendix context menus without suppressing authored or widget menus, and cleans up", () => {
+    const authored = el("p", "Document text")
+    const widget = el("menu-widget")
+    const widgetInput = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(widgetInput)
+    const control = document.createElement("div")
+    const button = document.createElement("button")
+    const input = document.createElement("input")
+    const nested = document.createElement("div")
+    const nestedInput = document.createElement("textarea")
+    nested.attachShadow({mode: "open"}).append(nestedInput)
+    control.append(button, input, nested)
+    editor.addAppendix(control)
+    const menu = (target: Element) => target.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true, composed: true, cancelable: true,
+    }))
+    expect(menu(button)).toBe(false)
+    for(const readOnly of [false, true]) {
+      input.readOnly = nestedInput.readOnly = readOnly
+      expect(menu(input)).toBe(true)
+      expect(menu(nestedInput)).toBe(true)
+    }
+    expect(menu(authored)).toBe(true)
+    for(const value of ["", "true", "plaintext-only"]) {
+      const rich = document.createElement("div")
+      rich.setAttribute("contenteditable", value)
+      rich.innerHTML = '<span>Editable</span><span contenteditable="false">Read only UI</span>'
+      nested.shadowRoot!.append(rich)
+      expect(menu(rich)).toBe(true)
+      expect(menu(rich.firstElementChild!)).toBe(true)
+      expect(menu(rich.lastElementChild!)).toBe(false)
+    }
+    expect(menu(widgetInput)).toBe(true)
+    feature.disable()
+    expect(menu(button)).toBe(true)
+    feature.enable()
+    expect(menu(button)).toBe(false)
+    editor.destroy()
+    expect(menu(button)).toBe(true)
+  })
+
   it.each([
     '<p>before <strong>middle</strong> after</p>',
     '<section><!--keep--><p>before <a href="#target"><em>middle</em></a> after</p></section>',
