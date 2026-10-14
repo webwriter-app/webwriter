@@ -377,7 +377,8 @@ export class DOMEditor {
     if(selection && savedSelection) {
       const anchor = this.restoreTextPoint(savedSelection.anchor)
       const focus = this.restoreTextPoint(savedSelection.focus)
-      if(anchor && focus) {
+      if(anchor && focus && (selection.anchorNode !== anchor[0] || selection.anchorOffset !== anchor[1]
+        || selection.focusNode !== focus[0] || selection.focusOffset !== focus[1])) {
         selection.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])
       }
     }

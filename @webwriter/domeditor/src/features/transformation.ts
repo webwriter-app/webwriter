@@ -1283,7 +1283,7 @@ export class TransformationFeature extends EditorFeature {
     this.#updateContextMarkers()
     const overlay = document.body.shadowRoot?.querySelector<HTMLElement>("#◆transform-overlay")
     if(overlay) {
-      overlay.setAttribute("visibility", "hidden")
+      if(overlay.getAttribute("visibility") !== "hidden") overlay.setAttribute("visibility", "hidden")
       setPart(overlay, "transform-overlay-content-selected", false)
       overlay.querySelectorAll("[data-open]").forEach(control => control.removeAttribute("data-open"))
       this.#syncControlParts()

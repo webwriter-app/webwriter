@@ -1297,6 +1297,7 @@ export class MathFeature extends EditorFeature {
   }
 
   private clearPresentation() {
+    if(document.body.classList.contains("◆math-structural-caret")) removeEditorMarker(document.body, "◆math-structural-caret")
     this.resizeObserver?.disconnect()
     this.observedRoot = null
     this.marked.forEach(element => {
@@ -1543,6 +1544,10 @@ export class MathFeature extends EditorFeature {
     if(!structuralCaret) { this.caret?.remove(); this.caret = null }
     if(structuralCaret && !root.classList.contains("◆math-structural-caret")) root.classList.add("◆math-structural-caret")
     else if(!structuralCaret) removeEditorMarker(root, "◆math-structural-caret")
+    // Mirror the caret state instead of making every authored insertion
+    // invalidate a document-wide :has() rule.
+    if(structuralCaret && !document.body.classList.contains("◆math-structural-caret")) document.body.classList.add("◆math-structural-caret")
+    else if(!structuralCaret && document.body.classList.contains("◆math-structural-caret")) removeEditorMarker(document.body, "◆math-structural-caret")
     const outerRows = new Set<Element>([root])
     let outer = root
     while(outer.children.length === 1 && outer.firstElementChild?.localName === "mrow") {

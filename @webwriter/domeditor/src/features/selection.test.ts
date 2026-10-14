@@ -1910,6 +1910,35 @@ describe("processSelection()", () => {
     expect(p1.hasAttribute("class")).toBe(false)
     expect(p2.classList.contains("◆element-selected")).toBe(true)
   })
+  it("retains an unchanged text marker while moving and editing the caret", () => {
+    document.body.innerHTML = '<section><!--keep--><p class="authored">Before <em>text</em> after</p></section>'
+    const paragraph = document.querySelector("p")!, text = document.querySelector("em")!.firstChild! as Text
+    $.move(text, 1)
+    feature.processSelection()
+    const owner = paragraph
+    const observer = new MutationObserver(() => {})
+    observer.observe(document.body, {attributes: true, attributeOldValue: true, subtree: true})
+    for(const offset of [2, 3]) {
+      $.move(text, offset)
+      feature.processSelection()
+    }
+    text.insertData(3, "x")
+    feature.processSelection()
+    expect(observer.takeRecords().filter(record => record.attributeName === "class")).toEqual([])
+    observer.disconnect()
+    expect(owner).toHaveClass("◆text-selected")
+    expect(paragraph).toHaveClass("authored")
+    const replaced = document.createElement("p")
+    replaced.textContent = "Concurrent replacement"
+    paragraph.replaceWith(replaced)
+    $.move(replaced.firstChild!, 2)
+    feature.processSelection()
+    expect(owner).not.toHaveClass("◆text-selected", "◆")
+    expect(replaced).toHaveClass("◆text-selected")
+    feature.disable()
+    expect(replaced.hasAttribute("class")).toBe(false)
+    expect(editor.toHTML()).not.toContain("◆text-selected")
+  })
   it("hides the gap caret when leaving a gap selection", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectGap(p1)

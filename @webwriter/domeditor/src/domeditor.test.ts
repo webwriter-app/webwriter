@@ -1136,6 +1136,23 @@ describe("command normalization boundaries", () => {
     }
     finally { editor.destroy() }
   })
+
+  it("keeps an already normalized native caret without resetting its range", () => {
+    document.body.innerHTML = '<section><!--keep--><p>Native typing</p></section>'
+    const editor = new DOMEditor()
+    try {
+      const paragraph = document.querySelector("p")!, text = paragraph.firstChild!
+      const selection = document.getSelection()!
+      selection.setBaseAndExtent(text, 3, text, 3)
+      const restore = vi.spyOn(selection, "setBaseAndExtent")
+      editor.normalizeSurroundingElements(paragraph)
+      expect(restore).not.toHaveBeenCalled()
+      expect(selection.anchorNode).toBe(text)
+      expect(selection.anchorOffset).toBe(3)
+      restore.mockRestore()
+    }
+    finally { editor.destroy() }
+  })
 })
 
 describe("registered editor commands", () => {

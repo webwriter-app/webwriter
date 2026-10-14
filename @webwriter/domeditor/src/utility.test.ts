@@ -9,7 +9,7 @@ import {
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getStaticCoords,
   isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, authoredClassValue, removeEditorMarker,
-  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement
+  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement, setPart
 } from "./utility"
 import { Schema } from "./schema"
 import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect, isTextFieldInteraction} from "./utility"
@@ -904,6 +904,47 @@ describe("isEmptyDocumentSelection", () => {
   })
 })
 
+describe("excludedFlowElements", () => {
+  it("does not inspect intersecting nodes for a collapsed caret", () => {
+    setBody(`${Array.from({length: 40}, (_, index) => `<div style="position:absolute">${index}</div>`).join("")}<p>caret</p>`)
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+
+    try {
+      expect($.excludedFlowElements).toEqual([])
+      expect(intersectsNode).not.toHaveBeenCalled()
+    }
+    finally { intersectsNode.mockRestore() }
+  })
+
+  it("limits range intersection checks to the common ancestor scope", () => {
+    const outside = Array.from({length: 40}, (_, index) => `<div class="outside" style="position:absolute">${index}</div>`).join("")
+    setBody(`${outside}<p><b>left</b><i>right</i></p>${outside}`)
+    const paragraph = document.querySelector("p")!
+    $.selectRange(paragraph.querySelector("b")!.firstChild!, 0, paragraph.querySelector("i")!.firstChild!, 5)
+    const outsideElements = new Set(document.querySelectorAll(".outside"))
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+
+    try {
+      expect($.excludedFlowElements).toEqual([])
+      expect(intersectsNode.mock.calls.some(([node]) => outsideElements.has(node as Element))).toBe(false)
+    }
+    finally { intersectsNode.mockRestore() }
+  })
+
+  it("excludes a foreign positioned descendant intersected by a normal-flow range", () => {
+    setBody('<p>before<span style="position:absolute"><b>overlay</b><i style="position:fixed">nested</i></span>after</p>')
+    const paragraph = document.querySelector("p")!
+    const before = paragraph.firstChild!
+    const after = paragraph.lastChild!
+    const overlay = paragraph.querySelector("span")!
+    $.selectRange(before, 0, after, after.textContent!.length)
+
+    expect($.excludedFlowElements).toEqual([overlay])
+    expect($.slice.textContent).toBe("beforeafter")
+  })
+})
+
 describe("isBackwards, start/end", () => {
   it("is forwards for an ordered selection", () => {
     setBody("<p>hello</p>")
@@ -1770,6 +1811,25 @@ describe("getStaticCoords()", () => {
 
     expect(document.body.innerHTML).toBe('<p>hello</p><p class="authored">world</p>')
     expect(mutations.some(mutation => mutation.type === "childList" || mutation.type === "characterData")).toBe(false)
+  })
+})
+
+describe("idempotent editor presentation", () => {
+  it("does not mutate absent markers or unchanged parts", () => {
+    const element = document.createElement("div")
+    element.className = "authored ◆ ◆text-selected"
+    element.setAttribute("part", "caret other")
+    const observer = new MutationObserver(() => {})
+    observer.observe(element, {attributes: true})
+    removeEditorMarker(element, "◆empty-selected")
+    setPart(element, "caret")
+    setPart(element, "missing", false)
+    expect(observer.takeRecords()).toEqual([])
+    removeEditorMarker(element, "◆text-selected")
+    setPart(element, "caret", false)
+    expect(element.className).toBe("authored")
+    expect(element.getAttribute("part")).toBe("other")
+    observer.disconnect()
   })
 })
 

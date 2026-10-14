@@ -1514,7 +1514,7 @@ export class SelectionFeature extends EditorFeature {
     const caret = this.selectionCaret
     if(!caret) return
     this.#clearSelectionFloatOutline()
-    caret.setAttribute("visibility", "hidden")
+    if(caret.getAttribute("visibility") !== "hidden") caret.setAttribute("visibility", "hidden")
     setPart(caret, "selection-caret-hidden")
     caret.style.removeProperty("left")
     caret.style.removeProperty("top")
@@ -1525,15 +1525,16 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("--math-caret-height")
     for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
     ;["node", "capture", "gap", "text"].forEach(state => {
-      caret.classList.remove(`◆selection-caret-${state}`)
+      if(caret.classList.contains(`◆selection-caret-${state}`)) caret.classList.remove(`◆selection-caret-${state}`)
       setPart(caret, `selection-caret-${state}`, false)
     })
-    caret.classList.remove(
+    const removed = [
       "◆gap-before-selected",
       "◆gap-after-selected",
       "◆drop-caret-before",
       "◆drop-caret-after",
-    )
+    ].filter(marker => caret.classList.contains(marker))
+    if(removed.length) caret.classList.remove(...removed)
     setPart(caret, "gap-caret", false)
     ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"]
       .forEach(state => setPart(caret, `gap-caret-${state}`, false))
@@ -1681,12 +1682,13 @@ export class SelectionFeature extends EditorFeature {
 
   /** Retains marker owners so removal also cleans disconnected content. */
   #markSelection(element: Element, ...markers: string[]) {
-    element.classList.add("◆", ...markers)
+    const added = ["◆", ...markers].filter(marker => !element.classList.contains(marker))
+    if(added.length) element.classList.add(...added)
     this.#selectionMarkers.add(element)
   }
 
   /** Clears the previous presentation, including markers on removed nodes. */
-  #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture") {
+  #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture" | "text" | "empty") {
     this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
       "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
@@ -1694,10 +1696,12 @@ export class SelectionFeature extends EditorFeature {
       "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
+    const retainedMarker = retainedKind === "text" ? "◆text-selected"
+      : retainedKind === "empty" ? "◆empty-selected" : "◆element-selected"
     elements.forEach(element => {
       const removed = markers.filter(marker => !(
-        element === retainedElement && (marker === "◆element-selected" || marker === "◆element-capture-selected" && retainedKind === "capture")
-        || element === document.body && retainedElement && marker === "◆node-selection-active"
+        element === retainedElement && (marker === retainedMarker || marker === "◆element-capture-selected" && retainedKind === "capture")
+        || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "◆node-selection-active"
       ))
       removeEditorMarker(element, ...removed)
     })
@@ -1975,9 +1979,14 @@ export class SelectionFeature extends EditorFeature {
         : kind === "element" ? $.selectedElement ?? null : null
     // Geometry refreshes read layout below. Keep an unchanged node's anchor
     // and outline installed while those reads flush styles during a gesture.
-    const retained = selectedElement && this.#selectionMarkers.has(selectedElement)
-      && selectedElement.classList.contains("◆element-selected") ? selectedElement : null
-    this.#clearSelections(retained, retained ? kind === "capture" ? "capture" : "node" : undefined)
+    const textElement = (kind === "text" || kind === "empty") && sel?.rangeCount
+      ? getContainer(sel.getRangeAt(0).commonAncestorContainer) : null
+    const presentationElement = selectedElement ?? (isElement(textElement) ? textElement : null)
+    const retainedKind = kind === "text" || kind === "empty" ? kind : kind === "capture" ? "capture" : "node"
+    const marker = kind === "text" ? "◆text-selected" : kind === "empty" ? "◆empty-selected" : "◆element-selected"
+    const retained = presentationElement && this.#selectionMarkers.has(presentationElement)
+      && presentationElement.isConnected && presentationElement.classList.contains(marker) ? presentationElement : null
+    this.#clearSelections(retained, retained ? retainedKind : undefined)
     if(sel?.rangeCount && !sel.isCollapsed) {
       $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
     }

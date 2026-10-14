@@ -73,6 +73,30 @@ describe("DOM MathML editing", () => {
     expect(clean()).not.toContain("math-caret")
     editor.features.math.disable()
     expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+  })
+
+  it("keeps the body caret marker transient when its formula is removed", () => {
+    document.body.classList.add("authored")
+    const math = load("<mrow></mrow>")
+    $.move(math.firstElementChild!, 0)
+    editor.features.math.refresh()
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(true)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.getAttribute("class")).toBe("authored")
+    expect(clean()).not.toContain("◆math-structural-caret")
+
+    math.remove()
+    editor.features.math.refresh()
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(document.body.classList.contains("authored")).toBe(true)
+    document.body.classList.remove("authored")
+  })
+
+  it("leaves an authored empty body class alone without a math caret", () => {
+    document.body.setAttribute("class", "")
+    editor.features.math.refresh()
+    expect(document.body.getAttribute("class")).toBe("")
   })
 
   it("owns the empty radicand caret and releases it at formula and prose boundaries", () => {
@@ -82,12 +106,14 @@ describe("DOM MathML editing", () => {
     $.move(slot, 0)
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(true)
     expect(Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
       .filter(element => element.style.background)).toHaveLength(1)
     expect(clean()).toBe(original)
     $.move(math, math.childNodes.length)
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
     $.move(math.nextSibling!, 1)
     editor.features.math.refresh()
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()

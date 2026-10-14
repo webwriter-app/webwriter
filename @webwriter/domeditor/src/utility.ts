@@ -62,12 +62,13 @@ export function uiMotionDisabled(element: Element) {
 }
 
 export function setPart(element: Element, part: string, enabled = true) {
-  const parts = new Set((element.getAttribute("part") ?? "").split(/\s+/).filter(Boolean))
+  const current = element.getAttribute("part")
+  const parts = new Set((current ?? "").split(/\s+/).filter(Boolean))
   enabled ? parts.add(part) : parts.delete(part)
-  if(parts.size) {
-    element.setAttribute("part", Array.from(parts).join(" "))
-  } else {
-    element.removeAttribute("part")
+  const value = parts.size ? Array.from(parts).join(" ") : null
+  if(value !== current) {
+    if(value === null) element.removeAttribute("part")
+    else element.setAttribute("part", value)
   }
 }
 
@@ -807,24 +808,51 @@ export class EditingSelection {
 
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
-    if(this.isEmpty && this.anchor && this.summaryAtLeadingBoundary(this.anchor, this.anchorOffset)) return false
-    if(mathRoot(this.anchor)) return false
+    const anchor = this.anchor
+    if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
+    if(mathRoot(anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
     if(this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
-    const inSlide = isElement(this.anchor) && slideLayoutRole(this.anchor) === "slide"
-    const root = inSlide ? this.anchor as Element : getDocumentRoot()
-    const firstRootElement = Array.from(root.children).find(element => !isOutOfFlow(element)) ?? null
-    const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
-    const isRootBoundaryBeforeFirstElement = this.anchor === root &&
-      firstRootElementIndex >= 0 &&
-      this.anchorOffset <= firstRootElementIndex &&
-      Array.from(root.childNodes).slice(this.anchorOffset, firstRootElementIndex).every(node => !isText(node) || !node.textContent?.trim())
-    const isNestedListBoundary = isElement(this.anchor) && this.anchor.matches("li, dt, dd") &&
-      [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
+    if(!isElement(anchor)) return false
+    const inSlide = slideLayoutRole(anchor) === "slide"
+    const root = inSlide ? anchor : getDocumentRoot()
+    let isRootBoundaryBeforeFirstElement = false
+    if(anchor === root) {
+      let firstRootElementIndex = -1
+      let childIndex = 0
+      for(const node of root.childNodes) {
+        if(isElement(node) && !isOutOfFlow(node)) {
+          firstRootElementIndex = childIndex
+          break
+        }
+        childIndex++
+      }
+      if(firstRootElementIndex >= 0 && this.anchorOffset <= firstRootElementIndex) {
+        isRootBoundaryBeforeFirstElement = true
+        for(let index = this.anchorOffset; index < firstRootElementIndex; index++) {
+          const node = root.childNodes.item(index)
+          if(isText(node) && node.textContent?.trim()) {
+            isRootBoundaryBeforeFirstElement = false
+            break
+          }
+        }
+      }
+    }
+    const isNestedListBoundary = anchor.matches("li, dt, dd") &&
+      [anchor.childNodes.item(this.anchorOffset - 1), anchor.childNodes.item(this.anchorOffset)]
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
-    const isInsideTable = isElement(this.anchor) && Boolean(this.anchor.closest("table"))
-    return isElement(this.anchor) && (!isSectionElement(this.anchor) || inSlide) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
-      (!Array.from(this.anchor.childNodes).filter(node => !isOutOfFlow(node)).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
+    const isInsideTable = Boolean(anchor.closest("table"))
+    let hasTextOrMarkChild = false
+    if(this.isEmpty && !this.isEmptySelection) {
+      for(const node of anchor.childNodes) {
+        if(!isOutOfFlow(node) && (isText(node) && Boolean(node.textContent?.trim()) || isMarkElement(node))) {
+          hasTextOrMarkChild = true
+          break
+        }
+      }
+    }
+    return (!isSectionElement(anchor) || inSlide) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
+      (!hasTextOrMarkChild
         || isRootBoundaryBeforeFirstElement
         || isNestedListBoundary)
   }
@@ -928,8 +956,11 @@ export class EditingSelection {
     const root = getDocumentRoot()
     const anchor = this.anchor
     const inRoot = anchor === root || Boolean(anchor && root.contains(anchor) && editingFlowRoot(anchor) === root)
-    return this.isEmpty && inRoot
-      && !Array.from(root.children).some(element => !isOutOfFlow(element) && element.getAttribute("contenteditable") !== "false")
+    if(!this.isEmpty || !inRoot) return false
+    for(const element of root.children) {
+      if(!isOutOfFlow(element) && element.getAttribute("contenteditable") !== "false") return false
+    }
+    return true
   }
 
   /** The selection's anchor node (where it started). */
@@ -1039,16 +1070,32 @@ export class EditingSelection {
   static get excludedFlowElements() {
     if(this.isMultiElementSelection || this.isDocumentSelection) return []
     const range = this.range
+    if(range.collapsed || !(range.commonAncestorContainer instanceof Element)) return []
     const excluded: Element[] = []
+    const childAtBoundary = (parent: Element, container: Node, offset: number, start: boolean): ChildNode | null => {
+      if(container === parent) return parent.childNodes.item(start ? offset : offset - 1)
+      if(parent.contains(container)) {
+        let child = container
+        while(child.parentNode !== parent) child = child.parentNode!
+        return child as ChildNode
+      }
+      return start ? parent.firstChild : parent.lastChild
+    }
     const visit = (element: Element) => {
       if(!range.intersectsNode(element)) return
       if(!this.includesNode(element) && !element.contains(this.flowRoot)) {
         excluded.push(element)
         return
       }
-      Array.from(element.children).forEach(visit)
+      const firstChild = childAtBoundary(element, range.startContainer, range.startOffset, true)
+      const lastChild = childAtBoundary(element, range.endContainer, range.endOffset, false)
+      if(!firstChild || !lastChild) return
+      for(let child: ChildNode | null = firstChild; child; child = child.nextSibling) {
+        if(isElement(child)) visit(child)
+        if(child === lastChild) break
+      }
     }
-    Array.from(getDocumentRoot().children).forEach(visit)
+    visit(range.commonAncestorContainer)
     return excluded
   }
 
@@ -1761,9 +1808,14 @@ export function isTextFieldInteraction(event: Event) {
   const path = event.composedPath()
   if(path.some(target => target instanceof Element && target.matches("input, textarea"))) return true
   const origin = path[0]
-  const element = origin instanceof Element ? origin : origin instanceof Node ? origin.parentElement : null
-  const editable = element?.closest('[contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i], [contenteditable="false" i]')
-  return Boolean(editable && editable.getAttribute("contenteditable")?.toLowerCase() !== "false")
+  let element = origin instanceof Element ? origin : origin instanceof Node ? origin.parentElement : null
+  while(element) {
+    const value = element.getAttribute("contenteditable")?.toLowerCase()
+    if(value === "false") return false
+    if(value === "" || value === "true" || value === "plaintext-only") return true
+    element = element.parentElement
+  }
+  return false
 }
 
 /** Whether an interaction originated in the editor-owned shadow appendix.

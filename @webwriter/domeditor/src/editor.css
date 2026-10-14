@@ -53,10 +53,9 @@ body {
  * styles can opt out without a separate editor sizing rule. */
 
 html.◆key-mod-down,
-html:has(> body.◆key-mod-down),
-html:has(> body.◆key-mod-down) *,
-html:has(> body.◆key-mod-down) *::before,
-html:has(> body.◆key-mod-down) *::after {
+html.◆key-mod-down *,
+html.◆key-mod-down *::before,
+html.◆key-mod-down *::after {
   cursor: pointer !important;
 }
 
@@ -2274,8 +2273,8 @@ math, math * {
  * higher-specificity rule that normally restores a block's native caret. */
 body.◆node-selection-active math.◆element-capture-selected.◆math-structural-caret,
 body.◆node-selection-active math.◆element-capture-selected.◆math-structural-caret *,
-body:has(.◆math-structural-caret),
-body:has(.◆math-structural-caret) *,
+body.◆math-structural-caret,
+body.◆math-structural-caret *,
 .◆math-structural-caret, .◆math-structural-caret * {
   caret-color: transparent !important;
 }

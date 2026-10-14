@@ -98,8 +98,10 @@ export function clearEditorArtifacts(root: Node, ignoredAttributes: Iterable<str
 /** Removes selected transient marker classes while retaining authored classes.
  * The umbrella marker is removed when no other editor marker remains. */
 export function removeEditorMarker(element: Element, ...markers: string[]) {
-  element.classList.remove(...markers)
-  if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
-  if(!element.classList.length) element.removeAttribute("class")
+  const removed = new Set(markers.filter(marker => element.classList.contains(marker)))
+  if(element.classList.contains("◆") && !Array.from(element.classList)
+    .some(name => name !== "◆" && name.startsWith("◆") && !removed.has(name))) removed.add("◆")
+  if(removed.size) element.classList.remove(...removed)
+  if(!element.classList.length && element.hasAttribute("class")) element.removeAttribute("class")
   return element
 }
