@@ -239,6 +239,44 @@ describe("filtered frame snapshots", () => {
     expect(host.editorDocument).toBe(currentDocument)
     publish(html.replace("</body>", "<custom-widget></custom-widget></body>"), true)
     expect(tree).toHaveBeenCalledTimes(1)
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
+    }))
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(tree).toHaveBeenCalledTimes(1)
+  })
+
+  it("rebuilds the live document tree for authored structure and presentation changes, not selection", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const tree = vi.spyOn(host, "buildDocumentTree")
+    const select = () => window.dispatchEvent(new MessageEvent("message", {
+      source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
+    }))
+    const flushMutations = () => new Promise(resolve => setTimeout(resolve, 0))
+    await flushMutations()
+    tree.mockClear()
+
+    select()
+    expect(tree).not.toHaveBeenCalled()
+
+    iframe.contentDocument!.body.classList.add("ww-canvas")
+    await flushMutations()
+    expect(tree).toHaveBeenCalled()
+    expect(host.documentTree.name).toBe("Canvas")
+
+    const presentations = tree.mock.calls.length
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("custom-widget"))
+    await flushMutations()
+    expect(tree.mock.calls.length).toBeGreaterThan(presentations)
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    const structuralChange = tree.mock.calls.length
+    select()
+    expect(tree).toHaveBeenCalledTimes(structuralChange)
   })
 
   it("reuses canonical comparisons only for an immutable opaque snapshot", async () => {

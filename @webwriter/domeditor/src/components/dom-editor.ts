@@ -1855,8 +1855,15 @@ export class DomEditor extends LitElement {
       // outer-window MutationObserver when scoped-registry initialization
       // reloads the iframe and hands it an iframe-owned Node.
       const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
-        if(mutations.some(mutation => mutation.type === "childList")) {
+        const treeChanged = mutations.some(mutation => mutation.type === "childList"
+          || mutation.type === "attributes"
+            && (mutation.attributeName === "class" || mutation.attributeName === "is")
+            && isCurrentTarget(mutation.target)
+            && this.isAuthoredMutation(mutation))
+        if(treeChanged) {
           this.documentTree = this.buildDocumentTree()
+        }
+        if(mutations.some(mutation => mutation.type === "childList")) {
           observeLayouts(mutations)
         }
         const hasAuthoredMutation = mutations.some(mutation => isCurrentTarget(mutation.target) && this.isAuthoredMutation(mutation))
@@ -6682,7 +6689,6 @@ export class DomEditor extends LitElement {
         || this.figure !== null
         || path.at(-1)?.icon === "Packages"
       if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
-      this.documentTree = this.buildDocumentTree()
       if(this.stylesVisible()) this.queueElementStyleRefresh()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
