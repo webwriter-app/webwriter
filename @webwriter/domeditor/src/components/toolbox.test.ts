@@ -76,6 +76,25 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("keeps developer console controls available beside Versions in Review and locks them during pending HTML edits", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.consoleOpen = true
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    const change = vi.fn()
+    toolbox.addEventListener("developer-console-change", change)
+    const close = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!
+    expect(toolbox.shadowRoot!.querySelector(".versions-console-toggle")).not.toBeNull()
+    expect(close().disabled).toBe(false)
+    close().click()
+    expect(change.mock.calls[0][0].detail).toEqual({enabled: false})
+    toolbox.htmlPending = true
+    await toolbox.updateComplete
+    expect(close().disabled).toBe(true)
+    close().click()
+    expect(change).toHaveBeenCalledTimes(1)
+  })
+
   it("puts Comments above Issues with independent thin scroll areas and a Versions footer", async () => {
     const toolbox = await mountToolbox()
     const changes = vi.fn()

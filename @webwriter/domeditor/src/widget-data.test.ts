@@ -83,6 +83,57 @@ afterEach(() => {
 })
 
 describe("scoped widget data", () => {
+  it("skips parsing unchanged XML after the initial render", () => {
+    const source = '<board xmlns="urn:test"><card>Text</card></board>'
+    const peer = create(html("shared", source, "application/xml"))
+    const parseFromString = vi.spyOn(DOMParser.prototype, "parseFromString")
+    const callsForSource = () => parseFromString.mock.calls.filter(([text]) => text === source).length
+    const before = callsForSource()
+    peer.shared.syncFromDOM()
+    peer.shared.syncFromDOM()
+    expect(callsForSource()).toBe(before)
+    parseFromString.mockRestore()
+  })
+
+  it("parses local edits after remote renders and undo/redo", async () => {
+    const doc = new Y.Doc()
+    cleanups.push(() => doc.destroy())
+    const peer = create(html("shared"), {resolve: () => ({doc})})
+    write(peer, {a: 2, b: 1})
+    await tick()
+    doc.transact(() => (doc.getMap("data").get("value") as Y.Map<unknown>).set("b", 4), "remote")
+    await tick()
+    expect(read(peer)).toEqual({a: 2, b: 4})
+    peer.shared.undo()
+    await tick()
+    expect(read(peer)).toEqual({a: 1, b: 4})
+    peer.shared.redo()
+    await tick()
+    expect(read(peer)).toEqual({a: 2, b: 4})
+    peer.block().textContent = '{"a":3,"b":4}'
+    peer.shared.syncFromDOM()
+    expect(read(peer)).toEqual({a: 3, b: 4})
+  })
+
+  it("parses a changed source once and retries source text whose parse failed", () => {
+    const peer = create()
+    const source = '{"a":4,"b":1}'
+    const parse = vi.spyOn(JSON, "parse")
+    const sourceCalls = () => parse.mock.calls.filter(([text]) => text === source).length
+    peer.block().textContent = source
+    peer.shared.syncFromDOM()
+    expect(sourceCalls()).toBe(1)
+    peer.shared.syncFromDOM()
+    expect(sourceCalls()).toBe(1)
+
+    const invalid = '{"a":'
+    peer.block().textContent = invalid
+    peer.shared.syncFromDOM()
+    peer.shared.syncFromDOM()
+    expect(parse.mock.calls.filter(([text]) => text === invalid)).toHaveLength(2)
+    parse.mockRestore()
+  })
+
   it("uses the authored document ID and rebinds data when that identity changes", () => {
     const owner = document.implementation.createHTMLDocument("")
     owner.body.innerHTML = html()

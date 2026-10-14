@@ -148,6 +148,20 @@ afterEach(() => {
 })
 
 describe("content-derived document permalinks", () => {
+  it("renders remote paragraph text without inspecting unrelated subtrees", () => {
+    const {owner, shared} = createDocumentShared("", '<p>Before</p><section><h2>Unrelated</h2><test-widget arbitrary="keep"></test-widget><!--keep--></section>', "", undefined, true)
+    const section = owner.body.querySelector("section")!
+    const attributes = vi.spyOn(section, "attributes", "get")
+    const before = section.outerHTML
+    const paragraph = sharedDOMBody(shared.doc).get(0) as Y.XmlElement
+    const text = paragraph.get(0) as Y.XmlText
+    shared.doc.transact(() => { text.delete(0, text.length); text.insert(0, "After") }, "remote")
+    expect(owner.body.querySelector("p")!.textContent).toBe("After")
+    expect(attributes).not.toHaveBeenCalled()
+    expect(owner.body.querySelector("section")).toBe(section)
+    expect(section.outerHTML).toBe(before)
+  })
+
   it("assigns readable IDs without touching authored IDs, widgets or irregular nesting", () => {
     const {owner} = createDocumentShared("", '<!--keep--><h1>Technical <em>summary</em></h1><section><h2>Technical summary</h2></section><h3 id="authored">Keep</h3><figure><img><figcaption>Café &amp; tea</figcaption></figure><table><caption>Results</caption><tbody><tr><td>Cell</td></tr></tbody></table><test-widget><h2>Private</h2></test-widget><h4 is="special-heading">Private</h4>', "", undefined, true)
     expect(Array.from(owner.body.querySelectorAll("h1, h2, h3, figure, table")).map(element => element.id))

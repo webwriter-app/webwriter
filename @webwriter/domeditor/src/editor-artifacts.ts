@@ -1,6 +1,31 @@
 /** Marks a widget whose `contenteditable` attribute the editor set. */
 export const widgetEditableMarker = "◆widget-editable"
 
+/** Whether a DOM mutation changes authored document content. */
+export function isAuthoredMutation(mutation: MutationRecord) {
+  const element = mutation.target.nodeType === Node.ELEMENT_NODE
+    ? mutation.target as Element : mutation.target.parentElement
+  // Editor UI can live in the observed document in older integrations. Its
+  // subtree is presentation state rather than authored content.
+  if(element?.closest(".◆editor-only, [data-webwriter-editor-only]")) return false
+  if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
+  if(mutation.type === "attributes") {
+    const name = mutation.attributeName!
+    const current = mutation.attributeNamespace
+      ? element?.getAttributeNS(mutation.attributeNamespace, name) ?? null
+      : element?.getAttribute(name) ?? null
+    if(name.toLowerCase() === "contenteditable" && element?.classList.contains(widgetEditableMarker)
+      && (current === "" || mutation.oldValue === "" && current === null)) return false
+    if(name === "class") return authoredClassValue(mutation.oldValue) !== authoredClassValue(current)
+    return mutation.oldValue !== current
+  }
+  const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
+  return nodes.some(node => !(
+    node.nodeType === Node.ELEMENT_NODE && ((node as Element).classList.contains("◆editor-only")
+      || (node as Element).hasAttribute("data-webwriter-editor-only"))
+  ))
+}
+
 /** Returns authored class names, omitting transient editor markers.
  * Set `canonical` when comparing class values independent of authored order. */
 export function authoredClassValue(value: string | null, canonical = false) {

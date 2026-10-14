@@ -6,6 +6,7 @@ import {isSectionElement} from "../sections"
 import {boardLayoutRole, isSlide, slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
+import {isAuthoredMutation} from "../editor-artifacts"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -69,6 +70,26 @@ export class SelectionFeature extends EditorFeature {
   #hoverFrame: number | null = null
   #nativeHoverTarget: Element | null = null
   #hoverOwner: Element | null = null
+  #floatObserver: MutationObserver | null = null
+  #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
+  readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null }
+
+  #currentFloatCandidates() {
+    if(this.#floatObserver?.takeRecords().some(isAuthoredMutation)) this.#invalidateFloatCandidates()
+    const root = getDocumentRoot()
+    // CSSOM edits have no mutation event. Periodically rediscover candidates;
+    // running authored animations can change float membership every frame.
+    const animating = document.getAnimations?.().some(animation =>
+      animation.playState === "running" && (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document)
+    const now = performance.now()
+    if(!this.#floatCandidates || this.#floatCandidates.root !== root || this.#floatCandidates.expires <= now || animating) {
+      const elements = Array.from(root.querySelectorAll("*")).filter(element =>
+        !atomicEditingContainer(element.parentElement, this.editor.schema)
+        && ["left", "right"].includes(getComputedStyle(element).float))
+      this.#floatCandidates = {root, elements, expires: now + 250}
+    }
+    return this.#floatCandidates.elements
+  }
 
   #clearAtomicOverlays() {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
@@ -598,6 +619,14 @@ export class SelectionFeature extends EditorFeature {
       && document.body.childNodes.length === 1 && !first.childNodes.length) $.move(first)
     else $.selectDocumentStart()
     super.enable()
+    this.#floatObserver = new MutationObserver(records => {
+      if(records.some(isAuthoredMutation)) this.#invalidateFloatCandidates()
+    })
+    this.#floatObserver.observe(document.documentElement, {
+      subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true,
+    })
+    window.addEventListener("resize", this.#invalidateFloatCandidates)
+    document.addEventListener("load", this.#invalidateFloatCandidates, true)
     this.#ensureHoverCaret()
     window.addEventListener("focus", this.#handleWindowFocus)
     window.addEventListener("blur", this.#handleWindowBlur)
@@ -607,6 +636,11 @@ export class SelectionFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.#floatObserver?.disconnect()
+    this.#floatObserver = null
+    this.#invalidateFloatCandidates()
+    window.removeEventListener("resize", this.#invalidateFloatCandidates)
+    document.removeEventListener("load", this.#invalidateFloatCandidates, true)
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
@@ -991,11 +1025,13 @@ export class SelectionFeature extends EditorFeature {
       if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
     },
     pointerover: event => {
+      this.#invalidateFloatCandidates()
       if(this.#drag && this.#drag.pointerId === event.pointerId) return
       this.#nativeHoverTarget = event.target instanceof Element ? event.target : null
       this.#refreshHoverGeometry()
     },
     pointerout: event => {
+      this.#invalidateFloatCandidates()
       if(this.#drag && this.#drag.pointerId === event.pointerId) return
       this.#nativeHoverTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null
       this.#refreshHoverGeometry()
@@ -1035,6 +1071,7 @@ export class SelectionFeature extends EditorFeature {
     mouseup: event => { this.#handleModifierClick(event) },
     dblclick: event => { this.#handleModifierClick(event) },
     focusin: event => {
+      this.#invalidateFloatCandidates()
       this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
         this.processSelection(undefined, {scrollIntoView: false})
@@ -1385,8 +1422,7 @@ export class SelectionFeature extends EditorFeature {
    * Optional geometry expresses viewport exclusions in the overlay's axes. */
   floatExclusions(target: Element, rect = target.getBoundingClientRect(), geometry?: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">) {
     if(this.editor.features.canvas.active || this.editor.features.slides.active || ["left", "right"].includes(getComputedStyle(target).float)) return []
-    const floats = Array.from(getDocumentRoot().querySelectorAll("*")).filter(element => element !== target && !element.contains(target) && !target.contains(element)
-      && !atomicEditingContainer(element.parentElement, this.editor.schema)
+    const floats = this.#currentFloatCandidates().filter(element => element.isConnected && element !== target && !element.contains(target) && !target.contains(element)
       && ["left", "right"].includes(getComputedStyle(element).float)).flatMap(element => {
       const box = element.getBoundingClientRect(), style = getComputedStyle(element)
       return box.width > 0 && box.height > 0 ? [{left: box.left - Math.max(0, parseFloat(style.marginLeft) || 0), right: box.right + Math.max(0, parseFloat(style.marginRight) || 0),

@@ -10,6 +10,24 @@ The command serves `tests/native-browser.html` on `127.0.0.1` and runs it in hea
 
 Formula checks verify native inline MathML rendering, preserved operand identity, empty argument dimensions, pointer placement followed by typing, editing-only backgrounds, and shadow appendix cleanup. They also exercise distinct text insertion positions before, at the start, at the end, and after inline formulas in different text-block positions, plus gaps around block formulas.
 
+## Performance checks
+
+Run `node scripts/native-browser.mjs --performance` to measure hover float scans,
+local and remote text reconciliation, frame snapshot processing, and unchanged
+widget data. The runner uses a disposable Chrome profile and a loopback-only server.
+Each operation has three warmups and twenty timed samples at several document sizes.
+Reported medians and maxima are machine-specific development-build timings; they
+do not include end-to-end typing latency or painting. Assertions verify skipped
+style reads and parses, CSSOM float rediscovery, and the real bridge's marker-only,
+text, and structural snapshot behavior without imposing machine-specific deadlines.
+The catalog check renders 10, 100 and 300 packages (including overflow), compares
+the former per-keyword formatter construction against the cached rendering path,
+and reports constructor/lookup counts over twenty unrelated selection updates.
+It also checks that the ribbon settles while idle and after responsive resizing,
+and that the actual host/ribbon bindings settle after selection-state changes.
+These idle checks use a synthetic catalog and an isolated host with network and
+iframe startup withheld; they do not rule out loops driven by real editor events.
+
 ## Cross-browser smoke matrix
 
 Run the compact platform smoke checks in one engine with:

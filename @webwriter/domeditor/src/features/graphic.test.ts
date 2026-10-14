@@ -132,7 +132,7 @@ describe("graphic editing", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
-      {types: ["text/html", "text/plain"], getType: async (type: string) => new Blob([type === "text/plain" ? "Clipboard text" : "<b>HTML</b>"])} as ClipboardItem,
+      {types: ["text/html", "text/plain"], getType: async (type: string) => new Blob([type === "text/plain" ? "Clipboard text" : "<b>HTML</b>"]), presentationStyle: "unspecified"} as ClipboardItem,
     ])
     expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
     expect(graphic.querySelector("text")).toHaveTextContent("Clipboard text")
@@ -147,7 +147,7 @@ describe("graphic editing", () => {
     const replacement = graphic.cloneNode(true) as SVGSVGElement
     graphic.replaceWith(replacement)
     editor.features.selection.captureElement(replacement)
-    resolve([{types: ["text/plain"], getType: async () => new Blob(["Late text"])} as ClipboardItem])
+    resolve([{types: ["text/plain"], getType: async () => new Blob(["Late text"]), presentationStyle: "unspecified"} as ClipboardItem])
     expect(await pending).toBe(false)
     expect(replacement.querySelector("text")).toBeNull()
   })
@@ -166,7 +166,7 @@ describe("graphic editing", () => {
     expect(graphic.querySelectorAll("text")).toHaveLength(1)
     expect(graphic.querySelector("text")).toHaveTextContent("Pasted label")
     vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
-      {types: ["text/plain"], getType: async () => new Blob(["!"])} as ClipboardItem,
+      {types: ["text/plain"], getType: async () => new Blob(["!"]), presentationStyle: "unspecified"} as ClipboardItem,
     ])
     expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
     expect(graphic.querySelector("text")).toHaveTextContent("Pasted label!")

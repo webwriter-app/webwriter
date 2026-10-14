@@ -363,8 +363,10 @@ describe("Developer console packages", () => {
 
     const metadata = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')!
     await (metadata as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
-    expect((metadata as HTMLElement & {hidePaneLabel: boolean}).hidePaneLabel).toBe(true)
-    expect(getComputedStyle(metadata.shadowRoot!.querySelector<HTMLElement>(".pane-label")!).display).toBe("none")
+    expect((metadata as HTMLElement & {hidePaneLabel: boolean}).hidePaneLabel).toBe(false)
+    const metadataLabel = metadata.shadowRoot!.querySelector<HTMLElement>(".pane-label")!
+    expect(getComputedStyle(metadataLabel).display).not.toBe("none")
+    expect(metadataLabel.textContent).toContain("Metadata")
     const metadataChange = vi.fn()
     toolbox.addEventListener("local-package-metadata-change", metadataChange)
     expect(Array.from(metadata.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[name], textarea[name]"), field => field.name)).toEqual([

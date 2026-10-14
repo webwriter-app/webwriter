@@ -46,9 +46,50 @@ const naturalName = (keyword: string) => keyword
   .replaceAll(/[-_]+/g, " ")
   .replace(/\b\w/g, letter => letter.toUpperCase())
 
+type LanguageNameCache = {
+  displayNames: Intl.DisplayNames
+  labels: Map<string, string | undefined>
+}
+
+const languageNameCaches = new Map<string, LanguageNameCache>()
+const maxCachedLocales = 16
+const maxCachedTagsPerLocale = 256
+
 function languageName(tag: string, locale: string) {
+  if(typeof Intl === "undefined" || typeof Intl.DisplayNames !== "function") return undefined
+
+  let cache = languageNameCaches.get(locale)
+  if(cache) {
+    languageNameCaches.delete(locale)
+    languageNameCaches.set(locale, cache)
+  }
+  else {
+    try {
+      cache = {displayNames: new Intl.DisplayNames([locale], {type: "language"}), labels: new Map()}
+      languageNameCaches.set(locale, cache)
+      if(languageNameCaches.size > maxCachedLocales) {
+        languageNameCaches.delete(languageNameCaches.keys().next().value!)
+      }
+    }
+    catch {
+      return undefined
+    }
+  }
+
+  if(cache.labels.has(tag)) {
+    const label = cache.labels.get(tag)
+    cache.labels.delete(tag)
+    cache.labels.set(tag, label)
+    return label
+  }
+
   try {
-    return new Intl.DisplayNames([locale], {type: "language"}).of(tag)
+    const label = cache.displayNames.of(tag)
+    cache.labels.set(tag, label)
+    if(cache.labels.size > maxCachedTagsPerLocale) {
+      cache.labels.delete(cache.labels.keys().next().value!)
+    }
+    return label
   }
   catch {
     return undefined

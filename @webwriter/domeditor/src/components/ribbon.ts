@@ -2133,14 +2133,25 @@ export class AppRibbon extends EditingControls {
     return Boolean(this.packageSearchQuery.trim()) || this.packageDrawerOpen
   }
 
+  private readonly packageDetailsCache = new WeakMap<WebWriterPackage, {key: string, details: RibbonButtonDetails}>()
+  private readonly emptyPackageSubmenu: RibbonButton["submenu"] = []
+
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
-    return {
+    const locale = navigator.language || "en"
+    // Compare values rather than array identities: local package editing can
+    // change metadata in place, and changing UI language must update labels.
+    const key = JSON.stringify([locale, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
+    const cached = this.packageDetailsCache.get(pkg)
+    if(cached?.key === key) return cached.details
+    const details = {
       heading: pkg.label,
       subheading: `${pkg.name}@${pkg.version}`,
       description: pkg.description,
       authors: pkg.authors,
-      keywords: packageKeywordPresentations(pkg.keywords).slice(0, 8),
+      keywords: packageKeywordPresentations(pkg.keywords, locale).slice(0, 8),
     }
+    this.packageDetailsCache.set(pkg, {key, details})
+    return details
   }
 
   private packageDragHTML(pkg: WebWriterPackage, member: PackageMember | undefined) {
@@ -2163,7 +2174,7 @@ export class AppRibbon extends EditingControls {
         icon-url=${pkg.iconUrl ?? ""}
         .action=${packageAction(pkg)}
         .dragHTML=${this.packageDragHTML(pkg, members[0])}
-        .submenu=${management || !installed ? [] : members.slice(1).map(member => ({
+        .submenu=${management || !installed ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
           dragHTML: this.packageDragHTML(pkg, member),

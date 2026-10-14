@@ -3,6 +3,7 @@ import {openFrameLinksInNewTabs} from "./frame-links"
 import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
 import {isAppendixInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
+import {isAuthoredMutation} from "./editor-artifacts"
 
 /** Shortest time between two document snapshots posted to the host. */
 const snapshotInterval = 250
@@ -49,21 +50,30 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   // proportion to its size. Post the first change at once, then at most one
   // snapshot per interval while changes continue.
   let pending = false
+  let pendingTreeChanged = true
   let timer: ReturnType<typeof setTimeout> | null = null
   const flushSnapshot = () => {
     timer = null
     if(!pending) return
     pending = false
-    post({type: "editor-frame-snapshot", html: snapshot()})
+    const treeChanged = pendingTreeChanged
+    pendingTreeChanged = false
+    post({type: "editor-frame-snapshot", html: snapshot(), treeChanged})
     timer = setTimeout(flushSnapshot, snapshotInterval)
   }
-  const publishSnapshot = () => {
+  const publishSnapshot = (mutations?: MutationRecord[]) => {
+    if(mutations) {
+      const authoredMutations = mutations.filter(isAuthoredMutation)
+      if(authoredMutations.length === 0) return
+      pendingTreeChanged ||= authoredMutations.some(mutation => mutation.type === "childList" || mutation.type === "attributes")
+    }
     if(pending) return
     pending = true
     if(timer === null) queueMicrotask(flushSnapshot)
   }
   const observer = new MutationObserver(publishSnapshot)
-  observer.observe(document.documentElement, {attributes: true, characterData: true, childList: true, subtree: true})
+  observer.observe(document.documentElement, {attributes: true, attributeOldValue: true, characterData: true,
+    characterDataOldValue: true, childList: true, subtree: true})
   publishSnapshot()
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {

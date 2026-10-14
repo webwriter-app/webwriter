@@ -98,11 +98,12 @@ const expectedChecks = [
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
 const mathVisual = process.argv.includes("--math-visual")
+const performanceMode = process.argv.includes("--performance")
 const importMapMode = process.argv.includes("--import-map")
 const smoke = process.argv.includes("--smoke")
 const checkFilter = process.argv.find(argument => argument.startsWith("--filter="))?.slice("--filter=".length)
 const filteredChecks = checkFilter ? expectedChecks.filter(name => name.includes(checkFilter)) : expectedChecks
-if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode)) throw new Error("The filter must match a native check")
+if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode || performanceMode)) throw new Error("The filter must match a native check")
 const browserArgument = process.argv.find(argument => argument.startsWith("--browser="))?.slice("--browser=".length)
 const browserName = browserArgument ?? "chromium"
 if(!["chromium", "firefox", "webkit"].includes(browserName)) throw new Error(`Unsupported native browser: ${browserName}`)
@@ -200,11 +201,11 @@ let timeout
 try {
   await vite.listen()
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
+  const url = `http://127.0.0.1:${port}/tests/${performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
-    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", `--user-data-dir=${profile}`, url]
+    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
   browser = spawn(command, args, {
     stdio: ["ignore", "ignore", "pipe"],
     ...(browserName === "webkit" && swiftDeveloperDir
@@ -224,7 +225,8 @@ try {
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && (importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
+  const valid = !result?.error && (performanceMode ? checks.length === 5 && ["hover float candidates", "local and remote reconciliation", "frame snapshot processing", "unchanged widget data", "catalog rendering and Lit settling"].every(name => checks.some(check => check?.name === name))
+    : importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
     : mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
     : smoke ? checks.length === expectedSmokeChecks.length && expectedSmokeChecks.every(name => checks.some(check => check?.name === name))
     : checks.length === filteredChecks.length

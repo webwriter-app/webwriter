@@ -61,6 +61,42 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("reuses unchanged package details across unrelated ribbon updates and refreshes mutable metadata and locale", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture("cached")
+    pkg.keywords = ["widget-lang-de"]
+    const locale = vi.spyOn(navigator, "language", "get").mockReturnValue("en")
+    ribbon.packages = [pkg]
+    document.body.append(ribbon)
+    try {
+      await ribbon.updateComplete
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[variant="package"][label="Cached"]')!
+      await button.updateComplete
+      const details = button.details
+      expect(details!.keywords).toEqual([{label: "German", icon: "KeywordLanguage"}])
+      const updates = vi.spyOn(button as unknown as {performUpdate(): void}, "performUpdate")
+      ribbon.canMark = !ribbon.canMark
+      await ribbon.updateComplete
+      await button.updateComplete
+      expect(button.details).toBe(details)
+      expect(updates).not.toHaveBeenCalled()
+      pkg.authors.push("Grace")
+      pkg.keywords.push("widget-practical")
+      pkg.description = "Changed metadata"
+      ribbon.requestUpdate()
+      await ribbon.updateComplete
+      expect(button.details).not.toBe(details)
+      expect(button.details!.authors).toEqual(["Ada", "Grace"])
+      expect(button.details!.description).toBe("Changed metadata")
+      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["German", "Practice"])
+      locale.mockReturnValue("de")
+      ribbon.requestUpdate()
+      await ribbon.updateComplete
+      expect(button.details!.keywords![0].label).toBe("Deutsch")
+    }
+    finally { locale.mockRestore(); ribbon.remove() }
+  })
+
   it("announces hover and focus for element and package insertions only", async () => {
     const button = new RibbonButton()
     button.variant = "insertion"

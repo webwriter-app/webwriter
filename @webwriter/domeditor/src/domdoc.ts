@@ -170,6 +170,7 @@ export class SharedDOMDoc {
   readonly #domOrigin = {source: "domeditor-dom"}
   readonly #initialOrigin = {source: "domeditor-initial"}
   readonly #remoteReactionOrigin = {source: "domeditor-remote-reaction"}
+  readonly #renderedTransactions = new WeakSet<Y.Transaction>()
   readonly #nodes = new WeakMap<YXmlNode, Node>()
   readonly #xmlNodes = new WeakMap<Node, YXmlNode>()
   readonly #minimumRepairs = new Set<Element>()
@@ -686,7 +687,8 @@ export class SharedDOMDoc {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
     this.widgetData.sync()
     let records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
-    if(this.#documentPermalinks && derivePermalinks) {
+    if(this.#documentPermalinks && derivePermalinks && (!records || records.some(record =>
+      record.type !== "characterData" || record.target.parentElement?.closest("h1, h2, h3, h4, h5, h6, caption, figcaption")))) {
       updateDocumentPermalinks(this.root)
       // Generated attributes and ownership metadata join the content batch.
       if(records) records = [...records, ...this.#observer.takeRecords()]
@@ -1152,7 +1154,15 @@ export class SharedDOMDoc {
       this.#hasQueuedYChanges = true
       return
     }
-    this.#writeYToDOM(events, this.#documentPermalinks && !(transaction.origin instanceof Y.UndoManager))
+    if(this.#renderedTransactions.has(transaction)) return
+    this.#renderedTransactions.add(transaction)
+    // Body, head and root attributes have separate observers. Render their
+    // events together before deriving IDs that span those trees.
+    const changes = new Set(events)
+    for(const scope of [this.#body, this.#documentHead, this.#documentAttributes]) {
+      if(scope) for(const event of transaction.changedParentTypes.get(scope as any) ?? []) changes.add(event as Y.YEvent<YXmlNode>)
+    }
+    this.#writeYToDOM([...changes], this.#documentPermalinks && !(transaction.origin instanceof Y.UndoManager))
   }
 
   #writeYToDOM(events?: Y.YEvent<YXmlNode>[], derivePermalinks = false) {
@@ -1160,10 +1170,7 @@ export class SharedDOMDoc {
     this.#isWritingToDOM = true
     let reactions: MutationRecord[] | undefined
     try {
-      // A generated fragment and its ownership metadata span body and head.
-      // Their deep observers run separately, but the shared transaction already
-      // contains both; render both before checking concurrent slug collisions.
-      if(events && !derivePermalinks) {
+      if(events) {
         for(const event of events) this.#renderYChange(event)
       }
       else {

@@ -1505,12 +1505,18 @@ export class DomEditorToolbox extends EditingControls {
             detail: {enabled: false}, bubbles: true, composed: true,
           }))}>${ribbonIcon("Reject")}</button>` : nothing}
       </div>
+      ${this.consoleOpen ? this.renderDeveloperConsoleControls() : nothing}
     </footer>`
   }
 
   private renderEditModeFooter() {
     return html`<footer class="edit-mode-footer">
-      <div class="developer-console-controls" role="group" aria-label="Developer console controls">
+      ${this.renderDeveloperConsoleControls()}
+    </footer>`
+  }
+
+  private renderDeveloperConsoleControls() {
+    return html`<div class="developer-console-controls" role="group" aria-label="Developer console controls">
         <button class="developer-console-toggle" type="button" aria-label="Developer console" title="Developer console"
           aria-pressed=${this.consoleOpen} ?disabled=${this.htmlPending}
           @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: !this.consoleOpen}, bubbles: true, composed: true}))}

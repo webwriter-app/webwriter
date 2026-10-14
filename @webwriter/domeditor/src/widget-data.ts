@@ -56,6 +56,9 @@ type Binding = {
   format: string
   defaults: string
   before: Value
+  /** Source text represented by `before`; only successful parses/renders are cached. */
+  sourceText: string
+  committing?: boolean
   connection?: WidgetDataConnection
   undo?: Y.UndoManager
   observe?: () => void
@@ -234,7 +237,7 @@ export class WidgetDataBindings {
           try {
             const before = parse(block, defaults)
             const portable = serialize(block, before)
-            binding = {block, widget, key, mode, format: block.type, defaults: block.type === "application/json" ? portable : defaults, before, ready: false, disposed: false}
+            binding = {block, widget, key, mode, format: block.type, defaults: block.type === "application/json" ? portable : defaults, before, sourceText: defaults, ready: false, disposed: false}
             this.#defaults.set(block, {format: block.type, text: binding.defaults})
             this.#bindings.set(block, binding)
             const request: WidgetDataRequest = {document: this.documentId, widget: widget.id, mode, format: block.type === "application/json" ? "json" : "xml", ...(this.sessionId ? {documentRoom: this.sessionId} : {}), ...(groupingRevision ? {groupingRevision} : {})}
@@ -277,12 +280,16 @@ export class WidgetDataBindings {
   }
 
   #commit(binding: Binding) {
-    if(binding.disposed || binding.block.type !== binding.format || !this.root.contains(binding.widget)) return
+    if(binding.disposed || binding.committing || binding.block.type !== binding.format || !this.root.contains(binding.widget)) return
+    const text = binding.block.textContent ?? ""
+    if(text === binding.sourceText) return
+    binding.committing = true
     try {
-      const after = parse(binding.block, binding.block.textContent ?? "")
-      if(equal(after, binding.before)) return
+      const after = parse(binding.block, text)
       // Validate that the accepted snapshot can be represented in an HTML data block.
       serialize(binding.block, after)
+      binding.sourceText = text
+      if(equal(after, binding.before)) return
       const before = binding.before
       binding.before = after
       const doc = binding.connection!.doc
@@ -293,6 +300,7 @@ export class WidgetDataBindings {
       }, this.#origin)
     }
     catch(error) { this.#error(binding.block, error) }
+    finally { binding.committing = false }
   }
 
   #render(binding: Binding, captureWrites = true) {
@@ -304,6 +312,7 @@ export class WidgetDataBindings {
       const text = serialize(binding.block, value)
       binding.before = value
       if(binding.block.textContent !== text) binding.block.textContent = text
+      binding.sourceText = text
       const Event = binding.block.ownerDocument.defaultView?.CustomEvent ?? CustomEvent
       binding.block.dispatchEvent(new Event("datachange", {bubbles: true, detail: {mode: binding.mode}}))
     }

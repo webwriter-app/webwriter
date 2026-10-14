@@ -24,6 +24,7 @@ import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
+import {isAuthoredMutation} from "../editor-artifacts"
 import {
   defaultPackageExportSource,
   describePackageExport,
@@ -457,6 +458,8 @@ export class DomEditor extends LitElement {
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
+  private frameSnapshot: {document: Document, html: string} | null = null
+  private authoredSnapshotCache: {document: Document, value: string} | null = null
   private canMark = false
   private canSection = false
   private sectionType: SectionName = "section"
@@ -2030,7 +2033,8 @@ export class DomEditor extends LitElement {
 
   /** Dirty tracking for a generated Canvas or Slides document ignores local
    * markers and native empty-block placeholders. */
-  private authoredDocumentSnapshot() {
+  private authoredDocumentSnapshot(cached = false) {
+    if(cached && this.authoredSnapshotCache?.document === this.editorDocument) return this.authoredSnapshotCache.value
     const root = this.editorDocument?.documentElement.cloneNode(true) as HTMLElement | undefined
     if(!root) return null
     clearEditorArtifacts(root)
@@ -2054,7 +2058,9 @@ export class DomEditor extends LitElement {
       clearInlinePlacement(placeholder)
       if(!placeholder.attributes.length) paragraph.remove()
     }
-    return root.outerHTML
+    const value = root.outerHTML
+    if(cached && this.editorDocument) this.authoredSnapshotCache = {document: this.editorDocument, value}
+    return value
   }
 
   private pristineDocumentLayoutSnapshot(snapshot: string | null) {
@@ -2131,7 +2137,7 @@ export class DomEditor extends LitElement {
 
   private isFreshDocumentUnchanged() {
     if(this.fileHandle !== null || this.backendDocumentId !== null) return false
-    if(this.freshDocumentLayoutSnapshot !== null) return this.authoredDocumentSnapshot() === this.freshDocumentLayoutSnapshot
+    if(this.freshDocumentLayoutSnapshot !== null) return this.authoredDocumentSnapshot(this.editorOpaque) === this.freshDocumentLayoutSnapshot
     const body = this.editorDocument?.body
     const head = this.editorDocument?.head
     if(!body || !head) return false
@@ -2196,27 +2202,7 @@ export class DomEditor extends LitElement {
   }
 
   private isAuthoredMutation(mutation: MutationRecord) {
-    const element = mutation.target.nodeType === Node.ELEMENT_NODE
-      ? mutation.target as Element : mutation.target.parentElement
-    // Resource loaders update their own attributes and text after startup.
-    // Those changes, like appendix UI, do not edit the authored document.
-    if(element?.closest(".◆editor-only, [data-webwriter-editor-only]")) return false
-    if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
-    if(mutation.type === "attributes") {
-      const current = mutation.attributeNamespace
-        ? element?.getAttributeNS(mutation.attributeNamespace, mutation.attributeName!) ?? null
-        : element?.getAttribute(mutation.attributeName!) ?? null
-      if(mutation.attributeName === "class") {
-        return authoredClassValue(mutation.oldValue) !== authoredClassValue(current)
-      }
-      // DOM synchronization can set an attribute to the value it already has.
-      return mutation.oldValue !== current
-    }
-    const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
-    return nodes.some(node => !(
-      node.nodeType === Node.ELEMENT_NODE && ((node as Element).classList.contains("◆editor-only")
-        || (node as Element).hasAttribute("data-webwriter-editor-only"))
-    ))
+    return isAuthoredMutation(mutation)
   }
 
   private dismissFloatInfo = () => {
@@ -2975,6 +2961,8 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
     this.editorReadyPromise = null
@@ -3313,10 +3301,15 @@ export class DomEditor extends LitElement {
       const source = await file.text()
       if(beforeLoad && !await beforeLoad()) return
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
-      await this.recentDocumentsReady
-      const localDocument = handle ? (await rememberRecentDocument(this.recentDocuments, {
+      let localDocument: RecentDocument | null = handle ? {
         id: storedId ?? crypto.randomUUID(), title: file.name || handle.name, openedAt: Date.now(), kind: "local", handle,
-      }))[0] : null
+      } : null
+      // A retained deep link already has its identity. Only a newly picked
+      // handle needs history restored before matching an existing entry.
+      if(localDocument && !storedId) {
+        await this.recentDocumentsReady
+        localDocument = (await rememberRecentDocument(this.recentDocuments, localDocument))[0]
+      }
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       this.clearDocumentCollaboration()
       await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null)
@@ -4815,6 +4808,8 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
     this.editorReadyPromise = null
@@ -4871,6 +4866,8 @@ export class DomEditor extends LitElement {
     this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     this.clearMotionStylesheet()
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
     this.savedEditorSelection = null
@@ -6437,10 +6434,15 @@ export class DomEditor extends LitElement {
     if(this.handlePreviewMessage(event)) return
     if(event.data?.type === "editor-frame-snapshot") {
       if(!this.editorOpaque || !this.isEditorMessage(event) || typeof event.data.html !== "string") return
-      const before = this.authoredDocumentSnapshot()
+      if(this.frameSnapshot?.document === this.editorDocument && this.frameSnapshot.html === event.data.html) return
+      // Current frames filter editor artifacts before publishing. Older frames
+      // still need the canonical comparison for marker-only snapshots.
+      const authoredChange = typeof event.data.treeChanged === "boolean"
+      const before = authoredChange ? null : this.authoredDocumentSnapshot(true)
       this.editorDocument = new DOMParser().parseFromString(event.data.html, "text/html")
-      this.documentTree = this.buildDocumentTree()
-      if(before !== null && before !== this.authoredDocumentSnapshot()) {
+      this.frameSnapshot = {document: this.editorDocument, html: event.data.html}
+      if(event.data.treeChanged !== false || !this.documentTree) this.documentTree = this.buildDocumentTree()
+      if(authoredChange || before !== null && before !== this.authoredDocumentSnapshot(true)) {
         this.documentChangeSequence++
         this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
         if(this.historyDocumentTransitionCount === 0) {
@@ -6950,6 +6952,8 @@ export class DomEditor extends LitElement {
     iframe?.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe?.removeEventListener("blur", this.handleEditorFrameBlur)
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.savedEditorSelection = null
     this.previewActive = false

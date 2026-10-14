@@ -287,6 +287,58 @@ describe("document hover outlines around native floats", () => {
     return feature.hoverCaret!
   }
 
+  it("reuses float candidates while reading live boxes and invalidates direct DOM changes before observer delivery", () => {
+    const target = el("p", "text") as HTMLElement
+    const float = el("aside") as HTMLElement
+    rect(target, 0, 0, 100, 80)
+    rect(float, 0, 0, 30, 30)
+    const query = vi.spyOn(document.body, "querySelectorAll")
+    const scans = () => query.mock.calls.filter(([selector]) => selector === "*").length
+    expect(feature.floatExclusions(target)).toHaveLength(0)
+    const initial = scans()
+    for(let i = 0; i < 5; i++) expect(feature.floatExclusions(target)).toHaveLength(0)
+    expect(scans()).toBe(initial)
+    target.classList.add("◆element-hovered")
+    feature.floatExclusions(target)
+    expect(scans()).toBe(initial)
+    float.style.float = "left"
+    expect(feature.floatExclusions(target)).toHaveLength(1)
+    expect(scans()).toBe(initial + 1)
+    float.remove()
+    expect(feature.floatExclusions(target)).toHaveLength(0)
+    document.body.append(float)
+    expect(feature.floatExclusions(target)).toHaveLength(1)
+    feature.disable()
+    expect(target.className).not.toContain("◆")
+  })
+
+  it("rediscovers CSSOM float changes after cache expiry and on resize", () => {
+    const target = el("p", "text") as HTMLElement
+    const float = el("aside") as HTMLElement
+    rect(target, 0, 0, 100, 80)
+    rect(float, 0, 0, 30, 30)
+    const style = document.createElement("style")
+    style.textContent = "aside { float: none }"
+    document.head.append(style)
+    const rule = style.sheet!.cssRules[0] as CSSStyleRule
+    // Happy DOM does not invalidate its style cache for CSSOM writes. Native
+    // Chrome benchmarks cover the actual stylesheet; expose its current value here.
+    const computed = getComputedStyle
+    vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element, pseudo) =>
+      element === float ? {float: rule.style.float} as CSSStyleDeclaration : computed(element, pseudo))
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0)
+    try {
+      expect(feature.floatExclusions(target)).toHaveLength(0)
+      rule.style.float = "left"
+      clock.mockReturnValue(251)
+      expect(feature.floatExclusions(target)).toHaveLength(1)
+      rule.style.float = "none"
+      window.dispatchEvent(new Event("resize"))
+      expect(feature.floatExclusions(target)).toHaveLength(0)
+    }
+    finally { clock.mockRestore(); style.remove() }
+  })
+
   afterEach(() => { vi.restoreAllMocks() })
 
   it.each(["left", "right"] as const)("cuts a %s float out of a sibling's hover outline", side => {

@@ -211,6 +211,50 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
+describe("filtered frame snapshots", () => {
+  it("updates text without rebuilding the tree or canonical snapshots, and ignores duplicate snapshots", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    host.fileHandle = {} // Saved documents do not need fresh-layout comparison.
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const tree = vi.spyOn(host, "buildDocumentTree")
+    const canonical = vi.spyOn(host, "authoredDocumentSnapshot")
+    const publish = (html: string, treeChanged: boolean) => window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow, data: {type: "editor-frame-snapshot", html, treeChanged},
+    }))
+    const html = '<html><head></head><body><p arbitrary="keep">Changed<!--keep--></p></body></html>'
+    const initialTree = host.documentTree
+    publish(html, false)
+    expect(host.editorDocument.body.textContent).toBe("Changed")
+    expect(host.editorDocument.body.innerHTML).toBe('<p arbitrary="keep">Changed<!--keep--></p>')
+    expect(host.documentTree).toBe(initialTree)
+    expect(tree).not.toHaveBeenCalled()
+    expect(canonical).not.toHaveBeenCalled()
+    const sequence = host.documentChangeSequence
+    const currentDocument = host.editorDocument
+    publish(html, false)
+    expect(host.documentChangeSequence).toBe(sequence)
+    expect(host.editorDocument).toBe(currentDocument)
+    publish(html.replace("</body>", "<custom-widget></custom-widget></body>"), true)
+    expect(tree).toHaveBeenCalledTimes(1)
+  })
+
+  it("reuses canonical comparisons only for an immutable opaque snapshot", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const first = host.authoredDocumentSnapshot(true)
+    const clone = vi.spyOn(host.editorDocument.documentElement, "cloneNode")
+    expect(host.authoredDocumentSnapshot(true)).toBe(first)
+    expect(clone).not.toHaveBeenCalled()
+    host.editorDocument = new DOMParser().parseFromString('<p>New</p>', "text/html")
+    expect(host.authoredDocumentSnapshot(true)).not.toBe(first)
+    // Ordinary live-DOM callers never use a cached comparison.
+    host.editorDocument.body.querySelector("p").textContent = "Direct edit"
+    expect(host.authoredDocumentSnapshot()).toContain("Direct edit")
+  })
+})
+
 function dispatchMarkState(editor: DomEditor, editorWindow: Window, detail: Record<string, unknown>) {
   window.dispatchEvent(new MessageEvent("message", {
     data: {type: markStateChangeEvent, detail, bridgeNonce: (editor as any).bridgeNonce},
