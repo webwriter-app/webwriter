@@ -7,7 +7,7 @@ import '@testing-library/jest-dom/vitest'
 import * as Y from "yjs"
 import { DOMEditor } from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
-import { $, cloneWithoutEditorMarkers } from "../utility"
+import { $, cloneWithoutEditorMarkers, getInertDocument } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {mathElement} from "../math"
@@ -2001,6 +2001,75 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     }))
 
     expectBodyToBe("<details open=\"\"><summary>Heading</summary><p>a</p><p>b</p></details>")
+  })
+  it("validates a block split without cloning unrelated document siblings", () => {
+    document.body.innerHTML = `<section><p>ab</p><p>tail</p></section><aside>${"<span>unrelated</span>".repeat(100)}</aside>`
+    const section = document.querySelector("section")!
+    $.move(document.querySelector("section p")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(section), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenNthCalledWith(1, section, false)
+    expect(importNode).toHaveBeenNthCalledWith(2, section.querySelector("p")!, true)
+    expectBodyToBe(`<section><p>a</p><p>b</p><p>tail</p></section><aside>${"<span>unrelated</span>".repeat(100)}</aside>`)
+  })
+  it("validates direct body splits without cloning unrelated sibling subtrees", () => {
+    document.body.innerHTML = `<p>ab</p>${"<aside><span>unrelated</span></aside>".repeat(100)}`
+    const body = document.body
+    const unrelated = document.querySelector("aside")!
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(body), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenNthCalledWith(1, body, false)
+    expect(importNode).toHaveBeenNthCalledWith(2, document.querySelector("p")!, true)
+    expect(document.querySelector("p")!.textContent).toBe("a")
+    expect(document.querySelectorAll("p").item(1).textContent).toBe("b")
+    expect(document.querySelectorAll("aside")).toHaveLength(100)
+  })
+  it("uses full range context when splitting a selection across paragraphs", () => {
+    document.body.innerHTML = "<section><p>first</p><p>second</p><p>third</p></section><aside>keep</aside>"
+    const section = document.querySelector("section")!
+    const aside = document.querySelector("aside")!
+    const paragraphs = section.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 1, paragraphs[1].firstChild!, 2)
+    const importNode = vi.spyOn(getInertDocument(document.body), "importNode")
+
+    editor.features.manipulation.insert()
+
+    expect(importNode).toHaveBeenCalledWith(document.body, true)
+    expect(Array.from(section.children).map(element => element.textContent)).toEqual(["first", "second", "third"])
+    expect(document.querySelector("section")).toBe(section)
+    expect(document.querySelector("aside")).toBe(aside)
+    $.move(paragraphs[0].firstChild!, 0)
+  })
+  it("uses full root context for selector rules and rejects an invalid split", () => {
+    editor.schema.extend({body: {content: {selector: "p", min: 1, max: 3}}})
+    document.body.innerHTML = `<p>ab</p><p>second</p><p>third</p>`
+    const body = document.body
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(body), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenCalledWith(body, true)
+    expect(document.querySelectorAll("p")).toHaveLength(3)
+    expect(document.querySelector("p")!.textContent).toBe("ab")
+  })
+  it("keeps nested selector context when validating a split", () => {
+    editor.schema.extend({p: {content: {selector: ":is(body>p:first-child>b)", min: 0, max: Infinity}}})
+    document.body.innerHTML = "<p><b>ab</b></p>"
+    const body = document.body
+    $.move(document.querySelector("b")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(body), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenCalledWith(body, true)
+    expect(document.querySelector("b")!.textContent).toBe("ab")
+    expect(document.querySelectorAll("p")).toHaveLength(1)
   })
   it("continues a heading group with a paragraph when splitting its heading", () => {
     document.body.innerHTML = "<hgroup><h1>ab</h1></hgroup>"

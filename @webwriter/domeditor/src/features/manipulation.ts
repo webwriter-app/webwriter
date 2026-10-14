@@ -5,7 +5,7 @@ import {MATH_NAMESPACE} from "../math"
 import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
+import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {isParagraphContent} from "../utility"
 import {
@@ -2866,16 +2866,137 @@ export class ManipulationFeature extends EditorFeature {
     return {affected, target}
   }
 
+  /** Finds the smallest subtree that contains every node whose content model
+   * a split can change. Transparent content models need their parent context,
+   * so include that chain as well. */
+  private splitValidationRoot(range: Range, splitDepth: number) {
+    const documentRoot = getDocumentRoot()
+    let container = getContainer(range.startContainer)
+    let root: Element | null = null
+    const splittingSummary = container.matches("summary")
+    if(splittingSummary) splitDepth = 0
+
+    for(let depth = 0; depth <= splitDepth; depth++) {
+      if(isDocumentRoot(container) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+        || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
+          || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
+      const parent = container.parentElement
+      if(!parent) break
+      root = parent
+      container = parent
+    }
+
+    if(!root || !root.contains(range.endContainer)) return documentRoot
+    while(root !== documentRoot && root.parentElement
+      && this.editor.schema.get(root).content && "transparent" in this.editor.schema.get(root).content!) {
+      root = root.parentElement
+    }
+    return root
+  }
+
+  /** Selector rules can depend on a node's real parent or siblings. Keep the
+   * full validation context whenever one occurs on the split path. */
+  private hasSelectorContentRule(rule: unknown): boolean {
+    if(!rule || typeof rule !== "object") return false
+    if("selector" in rule && typeof rule.selector === "string") return true
+    return Object.values(rule).some(value => Array.isArray(value)
+      ? value.some(child => this.hasSelectorContentRule(child))
+      : this.hasSelectorContentRule(value))
+  }
+
+  /** Selectors with relationships or context-sensitive pseudo classes cannot
+   * be evaluated faithfully in a partial detached tree. */
+  private hasContextualSelectorContentRule(rule: unknown): boolean {
+    if(!rule || typeof rule !== "object") return false
+    if("selector" in rule && typeof rule.selector === "string") {
+      const tokens = tokenize({css: rule.selector}).filter(token => token[0] !== "EOF-token")
+      let attributeDepth = 0
+      for(const [index, [type, _text, _start, _end, value]] of tokens.entries()) {
+        if(type === "[-token") attributeDepth++
+        else if(type === "]-token") attributeDepth = Math.max(0, attributeDepth - 1)
+        else if(attributeDepth === 0 && type === "whitespace-token") return true
+        else if(type === "delim-token" && (attributeDepth > 0
+          ? !["^", "$", "*", "=", "|", "!", "~"].includes(_text)
+          : ![".", "#", "*", "|"].includes(_text))) return true
+        else if(type === "colon-token") {
+          const next = tokens.slice(index + 1).find(token => token[0] !== "whitespace-token")
+          const name = next?.[0] === "function-token" ? (next[4] as {value: string} | undefined)?.value.toLowerCase() : ""
+          if(!["is", "not", "where"].includes(name ?? "")) return true
+        }
+        else if(type === "function-token" && !["is", "not", "where"].includes((value as {value: string} | undefined)?.value.toLowerCase() ?? "")) return true
+        else if(!["[-token", "]-token", ")-token", "ident-token", "hash-token", "string-token", "number-token", "comma-token", "colon-token", "function-token", "delim-token"].includes(type)) return true
+      }
+    }
+    return Object.values(rule).some(value => Array.isArray(value)
+      ? value.some(child => this.hasContextualSelectorContentRule(child))
+      : this.hasContextualSelectorContentRule(value))
+  }
+
+  /** For schema-safe roots, clone only the direct children spanning the
+   * selection. Untouched siblings stay live and are supplied to root schema
+   * validation as read-only content. */
+  private cloneSplitValidationRange(root: Element, range: Range) {
+    const fullRoot = () => ({simulation: this.cloneRangeIn(getDocumentRoot(), range), partial: null})
+    if(!range.collapsed) return fullRoot()
+
+    let hasContextSensitiveRule = false
+    let reachedRoot = false
+    for(let element: Element | null = getContainer(range.startContainer); element; element = element.parentElement) {
+      const content = this.editor.schema.get(element).content
+      if(content && ("transparent" in content
+        || element === root && this.hasSelectorContentRule(content)
+        || element !== root && this.hasContextualSelectorContentRule(content))) hasContextSensitiveRule = true
+      if(element === root) {
+        reachedRoot = true
+        break
+      }
+    }
+    if(!reachedRoot || hasContextSensitiveRule || this.editor.schema.getNamespaceOfElement(root)) {
+      return fullRoot()
+    }
+
+    const startPath = pathFromNode(root, range.startContainer)
+    const endPath = pathFromNode(root, range.endContainer)
+    if(!startPath?.length || !endPath?.length) return fullRoot()
+    const first = Math.min(startPath[0], endPath[0]), last = Math.max(startPath[0], endPath[0])
+    const simulationRoot = cloneWithoutEditorMarkers(root, false, {inert: true}) as Element
+    for(let index = first; index <= last; index++) {
+      const child = root.childNodes.item(index)
+      if(!child) return fullRoot()
+      simulationRoot.append(cloneWithoutEditorMarkers(child, true, {inert: true}))
+    }
+    const point = (path: number[]) => nodeAtPath(simulationRoot, [path[0] - first, ...path.slice(1)])
+    const start = point(startPath), end = point(endPath)
+    if(!start || !end) return fullRoot()
+    const simulatedRange = getInertDocument(simulationRoot).createRange()
+    simulatedRange.setStart(start, range.startOffset)
+    simulatedRange.setEnd(end, range.endOffset)
+    return {
+      simulation: {root: simulationRoot, range: simulatedRange},
+      partial: {
+        root,
+        content: () => [
+          ...Array.from(root.childNodes).slice(0, first),
+          ...Array.from(simulationRoot.childNodes),
+          ...Array.from(root.childNodes).slice(last + 1),
+        ],
+      },
+    }
+  }
+
   /** Checks both split halves and their changed parents against the schema by
    * executing the exact operation on a detached clone. */
   private canSplitAtSelection(splitDepth: number, strict: boolean) {
-    const simulation = this.cloneRangeIn(getDocumentRoot(), $.range)
+    const root = this.splitValidationRoot($.range, splitDepth)
+    const {simulation, partial} = this.cloneSplitValidationRange(root, $.range)
     if(!simulation) return false
     try {
       simulation.range.deleteContents()
       const {affected, target} = this.splitRange(simulation.range, splitDepth, strict)
       return Boolean(target)
-        && Array.from(affected).every(element => this.editor.schema.isContentValid(element))
+        && Array.from(affected).every(element => element === simulation.root && partial
+          ? this.editor.schema.isContentValid(partial.root, partial.content())
+          : this.editor.schema.isContentValid(element))
     }
     catch {
       return false
