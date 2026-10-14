@@ -74,6 +74,10 @@ export class RibbonButton extends LitElement {
       min-width: 3rem;
     }
 
+    :host([variant="table-structure"]) .button-row {height: 100%;}
+    :host([variant="table-structure"]) .button-label,
+    :host([variant="table-structure"]) .button-label-text {white-space: normal; line-height: .65rem;}
+
     :host([compact]) {
       flex: 0 0 1.75rem;
       min-width: 1.75rem;

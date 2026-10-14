@@ -143,6 +143,8 @@ import superscript from "@tabler/icons/outline/superscript.svg?raw"
 import table from "@tabler/icons/outline/table.svg?raw"
 import trash from "@tabler/icons/outline/trash.svg?raw"
 import rowInsertBottom from "@tabler/icons/outline/row-insert-bottom.svg?raw"
+import layoutNavbar from "@tabler/icons/outline/layout-navbar.svg?raw"
+import layoutBottombar from "@tabler/icons/outline/layout-bottombar.svg?raw"
 import rowInsertTop from "@tabler/icons/outline/row-insert-top.svg?raw"
 import textCaption from "@tabler/icons/outline/text-caption.svg?raw"
 import textSize from "@tabler/icons/outline/text-size.svg?raw"
@@ -369,6 +371,8 @@ const icons: Record<string, string> = {
   Details: circleChevronRight,
   Table: table,
   TableLayout: layoutGrid,
+  TableHeader: layoutNavbar,
+  TableFooter: layoutBottombar,
   TableRowAbove: rowInsertTop,
   TableRowBelow: rowInsertBottom,
   TableColumnLeft: columnInsertLeft,

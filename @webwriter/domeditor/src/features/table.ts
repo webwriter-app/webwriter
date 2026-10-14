@@ -110,6 +110,9 @@ export class TableFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    document.body.querySelectorAll<HTMLTableElement>("table").forEach(table => {
+      if(this.editableTable(table)) this.normalizeTable(table)
+    })
     window.addEventListener("blur", this.finishResize)
     window.addEventListener("resize", this.scheduleGaps)
     const FrameResizeObserver = document.defaultView?.ResizeObserver
@@ -118,6 +121,18 @@ export class TableFeature extends EditorFeature {
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(mutations => {
+        const tables = new Set<HTMLTableElement>()
+        for(const mutation of mutations) {
+          if(mutation.type !== "childList" && !["rowspan", "colspan"].includes(mutation.attributeName ?? "")) continue
+          const table = tableForNode(mutation.target)
+          if(table) tables.add(table)
+          mutation.addedNodes.forEach(node => {
+            if(!(node instanceof Element)) return
+            if(node instanceof HTMLTableElement) tables.add(node)
+            node.querySelectorAll<HTMLTableElement>("table").forEach(table => tables.add(table))
+          })
+        }
+        tables.forEach(table => { if(this.editableTable(table)) this.normalizeTable(table) })
         const hasAuthoredMutation = mutations.some(mutation => (
           mutation.type !== "attributes"
           || mutation.attributeName !== "class"
@@ -413,6 +428,12 @@ export class TableFeature extends EditorFeature {
     return true
   }
 
+  private canToggleRowGroup(map: TableMap, type: "thead" | "tfoot") {
+    if(map.limited || !map.rows.length) return false
+    const boundary = type === "thead" ? 1 : map.rows.length - 1
+    return !map.placements.some(cell => cell.row < boundary && cell.row + cell.rowSpan > boundary)
+  }
+
   getState(): TableSelectionState | undefined {
     const map = this.selectionMap()
     if(!map) return
@@ -424,7 +445,7 @@ export class TableFeature extends EditorFeature {
       rows: map.rows.length,
       columns: map.width,
       selectedCells: selected.length,
-      canMerge: selected.length > 1,
+      canMerge: selected.length > 1 && selected.every(cell => cell.parentElement?.parentElement === selected[0].parentElement?.parentElement),
       canSplit: cells.some(cell => {
         const placement = placementForCell(map, cell)
         return Boolean(placement && (placement.rowSpan > 1 || placement.columnSpan > 1))
@@ -432,6 +453,8 @@ export class TableFeature extends EditorFeature {
       hasCaption: Boolean(map.table.caption),
       hasHeader: Boolean(map.table.querySelector(":scope > thead > tr")),
       hasFooter: Boolean(map.table.querySelector(":scope > tfoot > tr")),
+      canToggleHeader: this.canToggleRowGroup(map, "thead"),
+      canToggleFooter: this.canToggleRowGroup(map, "tfoot"),
     }
   }
 
@@ -446,9 +469,16 @@ export class TableFeature extends EditorFeature {
       map = buildTableMap(table)
     }
     const width = Math.max(1, map.width)
+    const placements = new Map(map.placements.map(placement => [placement.cell, placement]))
     map.rows.forEach((row, rowIndex) => {
+      const originals = Array.from(row.cells).map(cell => placements.get(cell)!)
+      let nextIndex = 0
       for(let column = 0; column < width; column++) {
-        if(!map.matrix[rowIndex]?.[column]) row.append(newCellForRow(row))
+        if(map.matrix[rowIndex]?.[column]) continue
+        while(originals[nextIndex] && originals[nextIndex].column < column) nextIndex++
+        const cell = newCellForRow(row, undefined, row.parentElement?.localName === "thead" ? "th" : undefined)
+        const next = originals[nextIndex]?.cell
+        next ? next.before(cell) : row.append(cell)
       }
     })
     return buildTableMap(table)
@@ -570,6 +600,8 @@ export class TableFeature extends EditorFeature {
   private mergeCells() {
     const table = this.selectedTable
     if(!table || !this.hasCellSelection) return
+    const selected = this.selectedCells
+    if(!selected.every(cell => cell.parentElement?.parentElement === selected[0]?.parentElement?.parentElement)) return
     const map = this.normalizeTable(table)
     const rectangle = this.cellRectangle(map)
     if(!rectangle) return
@@ -684,8 +716,9 @@ export class TableFeature extends EditorFeature {
   private toggleRowGroup(type: "thead" | "tfoot") {
     const table = this.selectedTable
     if(!table) return false
-    const rows = buildTableMap(table).rows
-    if(!rows.length) return false
+    const map = buildTableMap(table)
+    if(!this.canToggleRowGroup(map, type)) return false
+    const rows = map.rows
     let header = Boolean(table.querySelector(":scope > thead > tr"))
     let footer = Boolean(table.querySelector(":scope > tfoot > tr"))
     if(type === "thead") {
@@ -733,20 +766,30 @@ export class TableFeature extends EditorFeature {
     const table = tableForNode(selected[0])
     if(!selected.length || !table) return false
 
+    const map = buildTableMap(table)
+    const rectangle = this.cellRectangle(map)
+    if(map.limited || !rectangle) return false
+    const wholeRows = rectangle.left === 0 && rectangle.right === map.width - 1
+    const wholeColumns = rectangle.top === 0 && rectangle.bottom === map.rows.length - 1
+    if(!wholeRows && !wholeColumns) {
+      selected.forEach(cell => cell.replaceChildren())
+      this.selectCells(selected[0], selected.at(-1)!)
+      return true
+    }
+
     const selectedSet = new Set(selected)
-    const placements = buildTableMap(table).placements
+    const placements = map.placements
     const selectedIndexes = placements.flatMap(({cell}, index) => selectedSet.has(cell) ? [index] : [])
     const first = selectedIndexes[0]
     const last = selectedIndexes.at(-1)!
     const nextCell = placements.slice(last + 1).find(({cell}) => !selectedSet.has(cell))?.cell
       ?? placements.slice(0, first).reverse().find(({cell}) => !selectedSet.has(cell))?.cell
-    const rows = new Set(selected.map(cell => cell.parentElement).filter(row => row?.matches("tr")))
+    const rows = wholeRows ? map.rows.filter((row, index) => index >= rectangle.top && index <= rectangle.bottom
+      && map.matrix[index]?.some(placement => placement && selectedSet.has(placement.cell))) : []
 
     this.clearCellSelection(false)
     selected.forEach(cell => cell.remove())
-    rows.forEach(row => {
-      if(row && !Array.from(row.children).some(child => child.matches(tableCellSelector))) row.remove()
-    })
+    rows.forEach(row => row.remove())
 
     const hasCells = Array.from(table.querySelectorAll(tableCellSelector)).some(cell => tableForNode(cell) === table)
     if(!hasCells && table.isConnected) {

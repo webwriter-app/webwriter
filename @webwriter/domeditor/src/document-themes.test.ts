@@ -51,6 +51,14 @@ describe("document themes", () => {
       expect(theme.source).toContain("ww-slides")
     }
   })
+  it("gives header rows light blue and footer rows light gray backgrounds", () => {
+    for(const theme of documentThemes) {
+      const source = editingDocumentThemeSource(theme)
+
+      expect(source).toMatch(/@layer webwriter-theme\s*\{[\s\S]*thead > tr > :is\(th, td\)\s*\{\s*background-color: #deebf7;/)
+      expect(source).toMatch(/@layer webwriter-theme\s*\{[\s\S]*tfoot > tr > :is\(th, td\)\s*\{\s*background-color: #f2f2f2;/)
+    }
+  })
   it("blockifies ordinary top-level media in document columns across every theme", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[\s\S]*?:is\(&,\s*& > main,\s*& > article,\s*& > section\) > :is\(picture,\s*img,\s*audio\[controls\],\s*video,\s*iframe,\s*embed,\s*object\):not\(\[is\]\)\s*\{\s*display:\s*block;/)

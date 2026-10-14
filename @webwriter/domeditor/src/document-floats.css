@@ -137,4 +137,14 @@
       margin-right: auto !important;
     }
   }
+
+  /* Keep table section rows distinct across themes while allowing document
+   * styles outside this low-priority layer to override the defaults. */
+  thead > tr > :is(th, td) {
+    background-color: #deebf7;
+  }
+
+  tfoot > tr > :is(th, td) {
+    background-color: #f2f2f2;
+  }
 }

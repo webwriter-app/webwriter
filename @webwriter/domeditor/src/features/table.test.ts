@@ -7,6 +7,8 @@ import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 import {buildTableMap} from "../table"
 import {markStateChangeEvent, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
+import * as Y from "yjs"
+import {sharedDOMBody} from "../domdoc"
 
 const editor = new DOMEditor()
 
@@ -135,6 +137,151 @@ describe("table grid", () => {
 })
 
 describe("table cell selection", () => {
+  it("clears a partial two-dimensional selection while preserving cell positions and attributes", () => {
+    document.body.innerHTML = '<table><tbody><tr><td id="a" headers="one"><b>A</b></td><td>B</td><td>C</td></tr><tr><td>D</td><td id="e" headers="two"><i>E</i></td><td>F</td></tr><tr><td>G</td><td>H</td><td>I</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const [a, , , , e] = cells()
+    const originalCells = cells()
+    editor.features.table.selectCells(a, e)
+
+    expect(editor.features.table.deleteSelection()).toBe(true)
+
+    expect(cells()).toEqual(originalCells)
+    expect(buildTableMap(table).matrix.map(row => row.map(placement => placement?.cell.textContent ?? ""))).toEqual([
+      ["", "", "C"], ["", "", "F"], ["G", "H", "I"],
+    ])
+    expect(a).toHaveAttribute("id", "a")
+    expect(a).toHaveAttribute("headers", "one")
+    expect(e).toHaveAttribute("id", "e")
+    expect(a.querySelector("b")).toBeNull()
+    expect(e.querySelector("i")).toBeNull()
+  })
+
+  it("removes a complete column across every row and leaves a rectangular table", () => {
+    document.body.innerHTML = '<table><tbody><tr><td id="a">A</td><td>B</td><td>C</td></tr><tr><td id="d">D</td><td>E</td><td>F</td></tr><tr><td id="g">G</td><td>H</td><td>I</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const [a, , , d, , , g] = cells()
+    editor.features.table.selectCells(a, g)
+
+    expect(editor.features.table.deleteSelection()).toBe(true)
+
+    expect(document.querySelectorAll("#a, #d, #g")).toHaveLength(0)
+    expect(buildTableMap(table).width).toBe(2)
+    expect(buildTableMap(table).matrix.every(row => row.length === 2 && row.every(Boolean))).toBe(true)
+    expect(cells().map(cell => cell.textContent)).toEqual(["B", "C", "E", "F", "H", "I"])
+  })
+
+  it("clears a partial selection beside merged cells without leaving incomplete rows", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td rowspan="2" colspan="2" data-keep="merged">M</td><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td><td>G</td><td>H</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const [merged, a, b, c, d, e, f, g, h] = cells()
+    editor.features.table.selectCells(a, b)
+
+    expect(editor.features.table.deleteSelection()).toBe(true)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const map = buildTableMap(table)
+    expect(map.width).toBe(4)
+    expect(map.matrix.every(row => row.length === map.width && row.every(Boolean))).toBe(true)
+    expect(merged).toHaveAttribute("rowspan", "2")
+    expect(merged).toHaveAttribute("colspan", "2")
+    expect(merged).toHaveAttribute("data-keep", "merged")
+    expect(map.matrix[1][0]?.cell).toBe(merged)
+    expect([c, d, e, f, g, h].every(cell => cell.isConnected)).toBe(true)
+  })
+
+  it("deletes complete rows covered by a merged cell and preserves the remaining row", () => {
+    document.body.innerHTML = '<table><tbody><tr><td rowspan="2" colspan="2">M</td><td>A</td></tr><tr><td>B</td></tr><tr><td>C</td><td>D</td><td>E</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const remaining = Array.from(table.rows[2].cells)
+    editor.features.table.selectCells(cells()[0], cells()[2])
+
+    expect(editor.features.table.deleteSelection()).toBe(true)
+    expect(table.rows).toHaveLength(1)
+    expect(Array.from(table.rows[0].cells)).toEqual(remaining)
+    expect(buildTableMap(table).matrix[0].every(Boolean)).toBe(true)
+    expect(remaining.map(cell => cell.textContent)).toEqual(["C", "D", "E"])
+  })
+
+  it("repairs an interior occupancy hole beneath a rowspan without moving authored nodes", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td rowspan="2">A</td><td>B</td><td rowspan="2">C</td><td>D</td></tr><tr><td colspan="2" id="wide">Wide</td><td id="tail">Tail</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const merged = table.querySelector("td[rowspan]")!
+    const wide = table.querySelector("#wide")!
+    const tail = table.querySelector("#tail")!
+    const comment = document.createComment("authored")
+    tail.before(comment)
+    table.querySelector("tbody tr:last-child")!.append(document.createElement("test-widget"))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const map = buildTableMap(table)
+    expect(map.matrix[1].map(placement => placement?.cell.textContent)).toEqual(["A", "", "C", "Wide", "Wide", "Tail"])
+    expect(map.matrix.every(row => row.length === map.width && row.every(Boolean))).toBe(true)
+    expect(merged).toHaveAttribute("rowspan", "2")
+    expect(map.matrix[1][0]?.cell).toBe(merged)
+    expect(map.matrix[1][3]?.cell).toBe(wide)
+    expect(map.matrix[1][5]?.cell).toBe(tail)
+    expect(tail.previousSibling).toBe(comment)
+    expect(tail.parentElement?.querySelector("test-widget")).not.toBeNull()
+    expect(table.querySelectorAll("td")).toHaveLength(9)
+  })
+
+  it("repairs direct table mutations idempotently and leaves widget-owned tables untouched", async () => {
+    document.body.innerHTML = '<table id="normal"><tbody><tr><td>A</td><td>B</td></tr></tbody></table><table-data-widget><table id="owned"><tbody><tr><td>Widget</td></tr></tbody></table></table-data-widget>'
+    const normal = document.querySelector("#normal") as HTMLTableElement
+    const owned = document.querySelector("#owned") as HTMLTableElement
+    const ownedRow = owned.rows[0]
+    normal.rows[0].deleteCell(0)
+    owned.rows[0].deleteCell(0)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(buildTableMap(normal).matrix[0].every(Boolean)).toBe(true)
+    expect(normal.rows[0].cells).toHaveLength(1)
+    expect(owned.rows[0]).toBe(ownedRow)
+    expect(owned.rows[0].cells).toHaveLength(0)
+  })
+
+  it("shares blanks repaired after a remote cell deletion without sharing editor markers", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const table = sharedDOMBody(remote).get(0) as Y.XmlElement
+      const body = table.get(0) as Y.XmlElement
+      const firstRow = body.get(0) as Y.XmlElement
+      firstRow.delete(0, 1)
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-table")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      const live = document.querySelector("table")!
+      expect(buildTableMap(live).matrix.every(row => row.length === 2 && row.every(Boolean))).toBe(true)
+      editor.doc.syncFromDOM()
+      expect(editor.doc.body.toString()).toContain("<td></td>")
+      expect(editor.toHTML(true)).not.toContain("◆")
+      expect(editor.doc.body.toString()).not.toContain("◆")
+    }
+    finally { remote.destroy() }
+  })
+
+  it("undoes and redoes a partial cell-content clear", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><b>A</b></td><td>B</td><td>C</td></tr><tr><td>D</td><td><i>E</i></td><td>F</td></tr><tr><td>G</td><td>H</td><td><u>I</u></td></tr></tbody></table>'
+    editor.doc.syncFromDOM()
+    const original = editor.toHTML(true)
+    editor.doc.stopCapturing()
+    editor.features.table.selectCells(cells()[1], cells()[4])
+
+    editor.features.table.deleteSelection()
+    editor.doc.syncFromDOM()
+    expect(cells().map(cell => cell.textContent)).toEqual(["A", "", "C", "D", "", "F", "G", "H", "I"])
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(cells().map(cell => cell.textContent)).toEqual(["A", "", "C", "D", "", "F", "G", "H", "I"])
+  })
+
   describe.each(["MacIntel", "Win32"])("modifier node selection on %s", platform => {
     const originalPlatform = navigator.platform
     const modifier = platform === "MacIntel" ? {metaKey: true} : {ctrlKey: true}
@@ -1184,6 +1331,46 @@ describe("table actions", () => {
     expect(document.querySelector("thead, tfoot, th")).toBeNull()
     expect(cells().map(cell => cell.textContent)).toEqual(["A", "B", "C"])
     expect(document.querySelector("demo-widget")).toBe(widget)
+  })
+
+  it("designates whole boundary rows even when only one cell is selected", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[3])
+    editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+    editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})
+    expect(document.querySelectorAll("thead > tr > th")).toHaveLength(2)
+    expect(document.querySelectorAll("tfoot > tr > td")).toHaveLength(2)
+    expect(document.querySelectorAll("tbody > tr > td")).toHaveLength(2)
+    expect(document.querySelector("tbody")?.textContent).toBe("CD")
+  })
+
+  it.each(["thead", "tfoot"] as const)("leaves spanning cells intact when a full %s row cannot be designated", type => {
+    document.body.innerHTML = '<table><tbody><tr><td rowspan="2"><demo-widget>A</demo-widget></td><td>B</td></tr><tr><td>C</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[1])
+    const before = editor.toHTML(true)
+    const widget = document.querySelector("demo-widget")
+    expect(editor.features.table.getState()).toMatchObject({canToggleHeader: false, canToggleFooter: false})
+    const result = type === "thead" ? editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
+      : editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})
+    expect(result).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+    expect(document.querySelector("demo-widget")).toBe(widget)
+    expect(cells()[0].rowSpan).toBe(2)
+  })
+
+  it.each(["thead", "tfoot"] as const)("does not merge cells across a %s boundary", type => {
+    document.body.innerHTML = type === "thead"
+      ? '<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>C</td><td>D</td></tr></tbody></table>'
+      : '<table><tbody><tr><td>A</td><td>B</td></tr></tbody><tfoot><tr><td>C</td><td>D</td></tr></tfoot></table>'
+    editor.features.table.selectCells(cells()[0], cells()[2])
+    const before = editor.toHTML(true)
+    expect(editor.features.table.getState()?.canMerge).toBe(false)
+    editor.features.table.actions.mergeTableCells({type: "mergeTableCells"})
+    expect(editor.toHTML(true)).toBe(before)
+    editor.features.table.selectCells(cells()[0], cells()[1])
+    expect(editor.features.table.getState()?.canMerge).toBe(true)
+    editor.features.table.actions.mergeTableCells({type: "mergeTableCells"})
+    expect(cells()[0].colSpan).toBe(2)
   })
 
   it("keeps a selected header cell selected through tag changes and undo", () => {

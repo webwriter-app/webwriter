@@ -3,11 +3,13 @@ import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import type {DomEditor} from "../src/components/dom-editor"
+import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode} from "../src/utility"
 import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
+import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
 
 const checks: Check[] = []
@@ -4850,6 +4852,26 @@ await check("canvas and slide gestures relay pointer dismissal before feature ca
 })
 
 await check("table commands complete across the real iframe bridge", async () => {
+  const liveTable = document.createElement("table")
+  liveTable.innerHTML = '<tbody><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr></tbody>'
+  fixture.append(liveTable)
+  const tableEditor = new DOMEditor()
+  try {
+    const [spanning, second, third] = Array.from(liveTable.querySelectorAll("td"))
+    tableEditor.features.table.selectCells(second)
+    tableEditor.features.table.deleteSelection()
+    assert(liveTable.querySelectorAll("td").length === 3 && second.textContent === "", "partial deletion removed a cell")
+    tableEditor.features.table.selectCells(second, third)
+    tableEditor.features.table.deleteSelection()
+    assert(liveTable.rows.length === 2 && buildTableMap(liveTable).width === 1 && spanning.rowSpan === 2,
+      "column deletion damaged merged row coverage")
+    liveTable.rows[0].insertCell().textContent = "Added column"
+    await nextFrame()
+    const map = buildTableMap(liveTable)
+    assert(map.width === 2 && map.matrix.every(row => Array.from({length: map.width}, (_, column) => row[column]).every(Boolean)),
+      "direct table mutation left incomplete rows or columns")
+  }
+  finally {tableEditor.features.table.clearCellSelection(false); liveTable.remove(); tableEditor.destroy()}
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1280px;height:900px"
   frame.src = "/"
@@ -4874,6 +4896,57 @@ await check("table commands complete across the real iframe bridge", async () =>
     assert(doc.querySelectorAll("table tr").length === 2 && doc.querySelectorAll("table td").length === 4,
       "table bridge commands lost the inserted cells")
     assert(!doc.body.querySelector('[class*="◆"]'), "table bridge commands exported editor markers")
+    const {DomEditorToolbox} = await import("../src/components/toolbox")
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.table = {active: true, cellSelection: true, rows: 2, columns: 2, selectedCells: 1,
+      canMerge: false, canSplit: false, hasCaption: false, hasHeader: true, hasFooter: false}
+    document.body.append(toolbox)
+    try {
+      await toolbox.updateComplete
+      const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".table-structure-controls")!
+      const buttons = Array.from(controls.querySelectorAll<RibbonButton>("ribbon-button"))
+      await Promise.all(buttons.map(button => button.updateComplete))
+      const header = buttons.find(button => button.action === "table-header")!
+      const footer = buttons.find(button => button.action === "table-footer")!
+      const merge = buttons.find(button => button.action === "table-merge-cells")!
+      assert(header.parentElement === controls && footer.parentElement === controls, "section buttons are wrapped or spanning")
+      const headerRect = header.getBoundingClientRect(), footerRect = footer.getBoundingClientRect(), mergeRect = merge.getBoundingClientRect()
+      assert(headerRect.top === mergeRect.top && footerRect.top === mergeRect.top, "section buttons are not in the third row")
+      assert(Math.abs(headerRect.width - mergeRect.width) < 1 && headerRect.height === mergeRect.height
+        && Math.abs(footerRect.width - mergeRect.width) < 1 && footerRect.height === mergeRect.height,
+        "section buttons do not occupy ordinary grid cells")
+      assert(header.shadowRoot!.querySelector(".button-icon svg") && footer.shadowRoot!.querySelector(".button-icon svg"), "section buttons lack icons")
+      assert(controls.scrollWidth === controls.clientWidth, "table controls overflow the drawer")
+    }
+    finally {toolbox.remove()}
+    assert(await app!.execute({type: "toggleTableHeader"}) === true, "whole header row did not toggle")
+    assert(await app!.execute({type: "toggleTableFooter"}) === true, "whole footer row did not toggle")
+    const sectionSource = await app!.execute({type: "serializeDocument"}) as string
+    const sections = new DOMParser().parseFromString(sectionSource, "text/html")
+    assert(sections.querySelectorAll("thead > tr > th").length === 2, "header toggle did not cover the entire row")
+    assert(sections.querySelectorAll("tfoot > tr > td").length === 2, "footer toggle did not cover the entire row")
+    const preview = document.createElement("iframe")
+    preview.srcdoc = `<!doctype html><style>${defaultDocumentTheme.source}</style><table><thead><tr><th>Header</th></tr></thead><tbody><tr><td>Body</td></tr></tbody><tfoot><tr><td>Footer</td></tr></tfoot></table>`
+    const loaded = new Promise(resolve => preview.addEventListener("load", resolve, {once: true}))
+    document.body.append(preview)
+    try {
+      await loaded
+      const previewDoc = preview.contentDocument!, view = preview.contentWindow!
+      const header = previewDoc.querySelector<HTMLElement>("thead th")!
+      const footer = previewDoc.querySelector<HTMLElement>("tfoot td")!
+      const body = previewDoc.querySelector<HTMLElement>("tbody td")!
+      assert(view.getComputedStyle(header).backgroundColor === "rgb(222, 235, 247)", "default theme header rows are not light blue")
+      assert(view.getComputedStyle(footer).backgroundColor === "rgb(242, 242, 242)", "default theme footer rows are not light gray")
+      assert(view.getComputedStyle(header).backgroundColor !== view.getComputedStyle(body).backgroundColor,
+        "default theme header background is indistinguishable from body cells")
+      assert(view.getComputedStyle(footer).backgroundColor !== view.getComputedStyle(body).backgroundColor,
+        "default theme footer background is indistinguishable from body cells")
+      header.style.backgroundColor = "rgb(200, 100, 50)"
+      assert(view.getComputedStyle(header).backgroundColor === "rgb(200, 100, 50)", "theme overwrote an authored cell background")
+    }
+    finally { preview.remove() }
+
   }
   finally { frame.remove() }
 })

@@ -1867,18 +1867,6 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
-  protected toggleTableHeader = () => {
-    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
-      detail: {label: "table-header"}, bubbles: true, composed: true,
-    }))
-  }
-
-  protected toggleTableFooter = () => {
-    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
-      detail: {label: "table-footer"}, bubbles: true, composed: true,
-    }))
-  }
-
   protected dispatchGraphicParameter(name: string, event: Event) {
     const input = event.currentTarget as HTMLInputElement
     this.dispatchGraphicParameterValue(name, input.value)
@@ -2264,16 +2252,22 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderTableStructureControls(showCaption = true) {
+  protected renderTableStructureControls(showCaption = true, toolboxGrid = false) {
     const active = Boolean(this.table?.active)
+    const sections = html`
+        <ribbon-button label="Header" action="table-header" icon="TableHeader" toggle .active=${this.table?.hasHeader ?? false}
+          variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || this.table?.canToggleHeader === false}></ribbon-button>
+        <ribbon-button label="Footer" action="table-footer" icon="TableFooter" toggle .active=${this.table?.hasFooter ?? false}
+          variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || this.table?.canToggleFooter === false}></ribbon-button>
+    `
     return html`
-        <ribbon-button label="Row above" action="table-row-above" icon="TableRowAbove" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Row below" action="table-row-below" icon="TableRowBelow" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Column left" action="table-column-left" icon="TableColumnLeft" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Column right" action="table-column-right" icon="TableColumnRight" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Merge cells" action="table-merge-cells" icon="TableMergeCells" ?disabled=${!this.table?.canMerge}></ribbon-button>
-        <ribbon-button label="Split cells" action="table-split-cells" icon="TableSplitCells" ?disabled=${!this.table?.canSplit}></ribbon-button>
-        <ribbon-button label="Split table" action="table-split" icon="TableSplit" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column left" action="table-column-left" icon="TableColumnLeft" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Row above" action="table-row-above" icon="TableRowAbove" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column right" action="table-column-right" icon="TableColumnRight" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Split cells" action="table-split-cells" icon="TableSplitCells" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!this.table?.canSplit}></ribbon-button>
+        <ribbon-button label="Row below" action="table-row-below" icon="TableRowBelow" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Split table" action="table-split" icon="TableSplit" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Merge cells" action="table-merge-cells" icon="TableMergeCells" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!this.table?.canMerge}></ribbon-button>
         ${showCaption ? html`
         <label class="table-caption-toggle">
           <span class="table-caption-icon" aria-hidden="true">${ribbonIcon("TableCaption")}</span>
@@ -2286,14 +2280,7 @@ export abstract class EditingControls extends LitElement {
           /> Caption</span>
         </label>
         ` : nothing}
-        <label class="table-caption-toggle">
-          <span><input type="checkbox" aria-label="Table header" data-ribbon-input-persistent .checked=${this.table?.hasHeader ?? false}
-            ?disabled=${!active} @change=${this.toggleTableHeader} /> Header</span>
-        </label>
-        <label class="table-caption-toggle">
-          <span><input type="checkbox" aria-label="Table footer" data-ribbon-input-persistent .checked=${this.table?.hasFooter ?? false}
-            ?disabled=${!active} @change=${this.toggleTableFooter} /> Footer</span>
-        </label>
+        ${sections}
     `
   }
 

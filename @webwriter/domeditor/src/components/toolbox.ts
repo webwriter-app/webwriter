@@ -52,7 +52,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   protected renderTableStructureControls() {
-    return super.renderTableStructureControls(false)
+    return super.renderTableStructureControls(false, true)
   }
 
   static properties = {
@@ -641,6 +641,17 @@ export class DomEditorToolbox extends EditingControls {
     .field-clear:focus-visible {outline: 2px solid #b9d7f5;}
     .specialized-commands {display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-commands .mark-attribute, .specialized-commands .table-caption-toggle {width: 100%;}
+    .table-structure-controls {display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, 2.8rem); gap: .15rem; margin-bottom: .4rem;}
+    .table-structure-controls > ribbon-button {min-width: 0;}
+    .table-structure-controls > [action="table-column-left"] {grid-area: 1 / 1;}
+    .table-structure-controls > [action="table-row-above"] {grid-area: 1 / 2;}
+    .table-structure-controls > [action="table-column-right"] {grid-area: 1 / 3;}
+    .table-structure-controls > [action="table-split-cells"] {grid-area: 2 / 1;}
+    .table-structure-controls > [action="table-row-below"] {grid-area: 2 / 2;}
+    .table-structure-controls > [action="table-split"] {grid-area: 2 / 3;}
+    .table-structure-controls > [action="table-merge-cells"] {grid-area: 3 / 1;}
+    .table-structure-controls > [action="table-header"] {grid-area: 3 / 2;}
+    .table-structure-controls > [action="table-footer"] {grid-area: 3 / 3;}
     .specialized-options input, .specialized-options select {min-width: 0; border: 1px solid #c5ccd5; border-radius: 4px; background: #fff; font: inherit;}
 
     .style-reset {
@@ -1097,7 +1108,10 @@ export class DomEditorToolbox extends EditingControls {
       + (widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
-    const commands = group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
+    const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
+      ?? this.selectedElementTypes.find(item => ["td", "th"].includes(item.element.localName))
+    const tableControls = Boolean(this.table?.active && (group ? group === tableGroup : ["table", "td", "th"].includes(localName)))
+    const commands = tableControls ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
     const hasOptions = advanced.length > 0 || commands !== nothing
@@ -1112,6 +1126,7 @@ export class DomEditorToolbox extends EditingControls {
           }))
           configuredWidgetOptions.forEach(option => dispatchOption(option.name, null))
         }}>${ribbonIcon("Restore")}Reset</button>
+      ${tableControls ? html`<div class="table-structure-controls" role="group" aria-label="Table structure">${this.renderTableStructureControls()}</div>` : nothing}
       ${heading ? html`<div class="specialized-widget-primary heading-level"><div class="develop-field">
         <span class="field-label" id=${`heading-level-${localName}`}>Level</span>
         <div class="specialized-choice-group" style="--choice-columns: 3" role="group" aria-labelledby=${`heading-level-${localName}`}>
@@ -1239,7 +1254,7 @@ export class DomEditorToolbox extends EditingControls {
         <ribbon-button label="Fit" action="navigate-graphic:fit-content" icon="Fullscreen" ?disabled=${!captured}></ribbon-button>
       </div>`
     }
-    if(this.table?.active) return html`<div class="specialized-commands">${this.renderTableStructureControls()}</div>`
+    if(this.table?.active) return nothing
     if(this.media) {
       const type = this.media.type
       return html`<div class="specialized-commands media-toolbox-controls">
