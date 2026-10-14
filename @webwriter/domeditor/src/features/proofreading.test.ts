@@ -595,6 +595,23 @@ describe("proofreading feature", () => {
     expect([...painted][0]).toBe(range)
   })
 
+  it("matches many repeated issues by text node and signature while keeping equal prose occurrences distinct", async () => {
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [spelling()]))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    const count = 240
+    content(Array.from({length: count}, () => "<p>teh example.</p>").join(""))
+    const first = await start()
+    expect(first).toHaveLength(count)
+    expect(new Set(first.map(issue => issue.id)).size).toBe(count)
+    expect(first.every(issue => issue.text === "teh")).toBe(true)
+
+    await editor.features.proofreading.checkNow()
+    const second = editor.features.proofreading.state().issues
+    expect(second.map(issue => issue.id)).toEqual(first.map(issue => issue.id))
+    expect(second.map(issue => issue.text)).toEqual(first.map(issue => issue.text))
+    expect(batch).toHaveBeenCalledTimes(Math.ceil(count / 64) * 2)
+  })
+
   it("keeps all cards until replacement results are ready while removing stale underlines", async () => {
     content('<p>teh first.</p><aside><p>te<!--keep--><em>h</em> second.</p></aside>')
     check.mockImplementation(async text => text.startsWith("teh") ? [spelling()] : [])

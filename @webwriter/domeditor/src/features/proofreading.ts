@@ -62,6 +62,45 @@ function sameRun(first: TextRun, second: TextRun) {
     && first.parts.every((part, index) => part.node === second.parts[index].node && part.value === second.parts[index].value)
 }
 
+type RunIndex = Map<Text, TextRun[]>
+
+function indexRuns(runs: TextRun[]): RunIndex {
+  const index: RunIndex = new Map()
+  for(const run of runs) {
+    const first = run.parts[0]?.node
+    if(first) {
+      const grouped = index.get(first) ?? []
+      grouped.push(run)
+      index.set(first, grouped)
+    }
+  }
+  return index
+}
+
+function findSameRun(index: RunIndex, run: TextRun) {
+  const first = run.parts[0]?.node
+  return first ? index.get(first)?.find(candidate => sameRun(candidate, run)) : undefined
+}
+
+function issueSignature(issue: ProofreadingIssue) {
+  return JSON.stringify([issue.start, issue.end, issue.kind, issue.message])
+}
+
+function indexDiagnostics(diagnostics: Diagnostic[]) {
+  const index = new Map<Text, Map<string, Diagnostic[]>>()
+  for(const diagnostic of diagnostics) {
+    const first = diagnostic.run.parts[0]?.node
+    if(!first) continue
+    const byIssue = index.get(first) ?? new Map<string, Diagnostic[]>()
+    const signature = issueSignature(diagnostic)
+    const grouped = byIssue.get(signature) ?? []
+    grouped.push(diagnostic)
+    byIssue.set(signature, grouped)
+    index.set(first, byIssue)
+  }
+  return index
+}
+
 function runRange(run: TextRun, start: number, end: number) {
   if(!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > run.text.length) return null
   const first = run.parts.find(part => start < part.start + part.value.length)
@@ -304,14 +343,15 @@ export class ProofreadingFeature extends EditorFeature {
     const runs = this.diagnostics.length ? proofreadingRuns(getDocumentRoot(), this.editor.schema) : []
     // Keep the cards until the complete replacement check is ready. Stale
     // ranges are no longer painted and commands still resolve against the DOM.
+    const currentRuns = indexRuns(runs)
     for(const diagnostic of this.diagnostics) {
-      if(!runs.some(run => sameRun(run, diagnostic.run))) continue
+      if(!findSameRun(currentRuns, diagnostic.run)) continue
       const range = runRange(diagnostic.run, diagnostic.start, diagnostic.end)!
       // Moving an intact paragraph can collapse its live Range even though
       // the text nodes and checking context remain unchanged.
       if(!sameRange(diagnostic.range, range)) diagnostic.range = range
     }
-    this.paint(runs)
+    this.paint(runs, currentRuns)
     if(schedule && this.enabled && this.documentCheckingEnabled && !this.composing && !this.error) {
       this.timer = setTimeout(() => { void this.checkNow(true) }, 500)
     }
@@ -444,6 +484,7 @@ export class ProofreadingFeature extends EditorFeature {
         const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
         const checkedRuns = this.checkedRuns
         const diagnostics: Diagnostic[] = []
+        const previousDiagnostics = indexDiagnostics(this.diagnostics)
         if(runs.length) {
           const pendingRuns = runs.filter(run => {
             const cached = checkedRuns.get(run.parts[0].node)
@@ -472,9 +513,8 @@ export class ProofreadingFeature extends EditorFeature {
             for(const issue of issues) {
               const range = runRange(run, issue.start, issue.end)
               if(range && !this.isDictionaryWord(run, issue) && !this.isIgnored(run, issue, range)) {
-                const previous = this.diagnostics.find(diagnostic => sameRun(run, diagnostic.run)
-                  && diagnostic.start === issue.start && diagnostic.end === issue.end
-                  && diagnostic.kind === issue.kind && diagnostic.message === issue.message)
+                const previous = previousDiagnostics.get(run.parts[0].node)?.get(issueSignature(issue))
+                  ?.find(diagnostic => sameRun(run, diagnostic.run))
                 diagnostics.push({...issue, run, id: previous?.id ?? String(++this.sequence),
                   range: previous && sameRange(previous.range, range) ? previous.range : range})
               }
@@ -484,9 +524,10 @@ export class ProofreadingFeature extends EditorFeature {
         this.flushMutations()
         if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
         const current = proofreadingRuns(getDocumentRoot(), this.editor.schema)
-        this.diagnostics = diagnostics.filter(diagnostic => current.some(run => sameRun(run, diagnostic.run))
+        const currentRuns = indexRuns(current)
+        this.diagnostics = diagnostics.filter(diagnostic => findSameRun(currentRuns, diagnostic.run)
           && !this.isIgnored(diagnostic.run, diagnostic, diagnostic.range))
-        this.paint(current)
+        this.paint(current, currentRuns)
         this.postStatus()
       }
     }
@@ -511,8 +552,8 @@ export class ProofreadingFeature extends EditorFeature {
     }
   }
 
-  private paint(runs = this.diagnostics.length ? proofreadingRuns(getDocumentRoot(), this.editor.schema) : []) {
-    const current = this.diagnostics.filter(issue => runs.some(run => sameRun(run, issue.run)))
+  private paint(runs = this.diagnostics.length ? proofreadingRuns(getDocumentRoot(), this.editor.schema) : [], currentRuns = indexRuns(runs)) {
+    const current = this.diagnostics.filter(issue => findSameRun(currentRuns, issue.run))
     if(this.hoveredIssueId && !current.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
     if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId
       && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
