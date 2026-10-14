@@ -538,6 +538,13 @@ export class DomEditor extends LitElement {
   private htmlSourceFocused = false
   private htmlSourceHighlightActive = false
   private htmlSourceRefreshQueued = false
+  private htmlSourceWindow = {start: 0, end: 8192}
+  private htmlSourcePainted = ""
+  private htmlSourceTokens: {source: string, offsets: Uint32Array} | null = null
+  private htmlSourceRanges = new Map<string, Range[]>()
+  private htmlSourceScrollFrame = 0
+  private htmlSourceResizeObserver: ResizeObserver | null = null
+  private htmlSourceObservedInput: HTMLTextAreaElement | null = null
   private presenceUsers: PresenceUser[] = []
   private collaborationLink = ""
   private linkSharingEnabled = false
@@ -926,6 +933,7 @@ export class DomEditor extends LitElement {
     .html-source-highlight {
       pointer-events: none;
       overflow: hidden;
+      overflow-anchor: none;
     }
 
     .html-source-input {
@@ -943,6 +951,11 @@ export class DomEditor extends LitElement {
     .html-source-highlight .value { color: #166534; }
     .html-source-highlight .comment { color: #667085; }
     .html-source-highlight .entity { color: #7e22ce; }
+    ::highlight(webwriter-html-tag) { color: #155e9b; }
+    ::highlight(webwriter-html-attribute) { color: #854d0e; }
+    ::highlight(webwriter-html-value) { color: #166534; }
+    ::highlight(webwriter-html-comment) { color: #667085; }
+    ::highlight(webwriter-html-entity) { color: #7e22ce; }
 
     @media (forced-colors: active) {
       .html-source-input { color: CanvasText; caret-color: auto; }
@@ -5776,9 +5789,130 @@ export class DomEditor extends LitElement {
   }
 
   private syncHTMLSourceScroll(input: HTMLTextAreaElement) {
-    const highlight = input.previousElementSibling as HTMLElement
-    highlight.scrollTop = input.scrollTop
-    highlight.scrollLeft = input.scrollLeft
+    if(this.htmlSourceScrollFrame) return
+    this.htmlSourceScrollFrame = requestAnimationFrame(() => {
+      this.htmlSourceScrollFrame = 0
+      if(!input.isConnected || !this.consoleOpen || this.consoleTab !== "HTML") return
+      const highlight = input.previousElementSibling as HTMLElement
+      highlight.scrollTop = input.scrollTop
+      highlight.scrollLeft = input.scrollLeft
+      if(!this.nativeHTMLSourceHighlight) return
+      // Keep one stable text layout; syntax colors are native ranges over the
+      // visible source (plus ten lines), rather than thousands of token nodes.
+      const parts: {node: Text, start: number}[] = []
+      const walker = document.createTreeWalker(highlight, NodeFilter.SHOW_TEXT)
+      let length = 0
+      while(walker.nextNode()) {
+        const node = walker.currentNode as Text
+        if(node.length) parts.push({node, start: length})
+        length += node.length
+      }
+      if(!parts.length) return
+      const point = (offset: number): [Text, number] => {
+        let first = 0, last = parts.length - 1
+        while(first < last) {
+          const middle = Math.ceil((first + last) / 2)
+          if(parts[middle].start <= offset) first = middle
+          else last = middle - 1
+        }
+        return [parts[first].node, offset - parts[first].start]
+      }
+      const range = document.createRange()
+      const rectangle = highlight.getBoundingClientRect()
+      const offsetAt = (y: number) => {
+        let low = 0, high = Math.min(length, this.htmlSource.length)
+        while(low < high) {
+          const offset = (low + high) >>> 1
+          range.setStart(...point(offset))
+          range.setEnd(...point(Math.min(offset + 1, this.htmlSource.length)))
+          if(range.getBoundingClientRect().bottom < y) low = offset + 1
+          else high = offset
+        }
+        return low
+      }
+      const bounds = input.getBoundingClientRect()
+      const visible: number[] = []
+      if(bounds.height > 24 && document.caretPositionFromPoint) {
+        // Native text-control hit testing already knows wrapping, tabs and
+        // Unicode glyph widths. Avoid probing many ranges through long text.
+        for(const x of [bounds.left + 12, bounds.right - 20]) {
+          for(const y of [bounds.top + 12, bounds.bottom - 12]) {
+            const position = document.caretPositionFromPoint(x, y, {shadowRoots: this.shadowRoot ? [this.shadowRoot] : []})
+            if(position?.offsetNode === input) visible.push(position.offset)
+          }
+        }
+      }
+      let start = visible.length === 4 ? Math.max(0, Math.min(...visible) - 2048)
+        : highlight.clientHeight ? offsetAt(rectangle.top - 180) : 0
+      let end = visible.length === 4 ? Math.min(this.htmlSource.length, Math.max(...visible) + 2048)
+        : highlight.clientHeight ? Math.min(this.htmlSource.length, offsetAt(rectangle.bottom + 180) + 1) : Math.min(8192, this.htmlSource.length)
+      // Never separate UTF-16 surrogate pairs across token/text boundaries.
+      if(start && /[\uDC00-\uDFFF]/.test(this.htmlSource[start])) start--
+      if(end < this.htmlSource.length && /[\uDC00-\uDFFF]/.test(this.htmlSource[end])) end++
+      if(start !== this.htmlSourceWindow.start || end !== this.htmlSourceWindow.end || this.htmlSourcePainted !== this.htmlSource) {
+        this.clearHTMLSourceRanges(false)
+        this.htmlSourceWindow = {start, end}
+        const kinds = ["text", "tag", "attribute", "value", "comment", "entity"] as const
+        if(this.htmlSourceTokens?.source !== this.htmlSource) {
+          const offsets: number[] = []
+          let offset = 0
+          for(const token of tokenizeHTMLSource(this.htmlSource)) {
+            if(token.kind !== "text") offsets.push(offset, offset + token.text.length, kinds.indexOf(token.kind))
+            offset += token.text.length
+          }
+          this.htmlSourceTokens = {source: this.htmlSource, offsets: Uint32Array.from(offsets)}
+        }
+        const tokens = this.htmlSourceTokens.offsets
+        let first = 0, last = tokens.length / 3
+        while(first < last) {
+          const middle = (first + last) >>> 1
+          if(tokens[middle * 3 + 1] <= start) first = middle + 1
+          else last = middle
+        }
+        for(let index = first * 3; index < tokens.length && tokens[index] < end; index += 3) {
+          const colored = document.createRange()
+          colored.setStart(...point(Math.max(start, tokens[index])))
+          colored.setEnd(...point(Math.min(end, tokens[index + 1])))
+          const name = `webwriter-html-${kinds[tokens[index + 2]]}`
+          const ranges = this.htmlSourceRanges.get(name) ?? []
+          ranges.push(colored)
+          this.htmlSourceRanges.set(name, ranges)
+        }
+        for(const [name, ranges] of this.htmlSourceRanges) {
+          let colored = CSS.highlights.get(name)
+          if(!colored) {
+            colored = new Highlight()
+            CSS.highlights.set(name, colored)
+          }
+          for(const range of ranges) colored.add(range)
+        }
+        this.htmlSourcePainted = this.htmlSource
+      }
+    })
+  }
+
+  private renderHTMLSourceHighlight() {
+    const source = this.htmlSource
+    const native = this.nativeHTMLSourceHighlight
+    return guard([source, native], () => native ? source : tokenizeHTMLSource(source)
+      .map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))
+  }
+
+  private get nativeHTMLSourceHighlight() {
+    return this.htmlSource.length > 20000 && Boolean(globalThis.CSS?.highlights) && typeof globalThis.Highlight === "function"
+  }
+
+  private clearHTMLSourceRanges(removeEmpty = true) {
+    for(const [name, ranges] of this.htmlSourceRanges) {
+      const colored = globalThis.CSS?.highlights?.get(name)
+      if(colored) {
+        for(const range of ranges) colored.delete(range)
+        if(removeEmpty && !colored.size) CSS.highlights.delete(name)
+      }
+      ranges.length = 0
+    }
+    if(removeEmpty) this.htmlSourceRanges.clear()
+    this.htmlSourcePainted = ""
   }
 
   private renderHTMLSourceEditor() {
@@ -5824,7 +5958,7 @@ export class DomEditor extends LitElement {
           >
           ${when(this.consoleOpen && this.consoleTab === "HTML", () => html`<section class="html-source-editor" aria-label="Selected HTML source" ?hidden=${this.consoleTab !== "HTML"}>
             <div class="html-source-field">
-              <pre class="html-source-highlight" aria-hidden="true">${cache(this.htmlSource ? html`${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}` : nothing)}${"\n"}</pre>
+              <pre class="html-source-highlight" aria-hidden="true">${cache(this.htmlSource ? html`${this.renderHTMLSourceHighlight()}` : nothing)}${"\n"}</pre>
               <textarea
                 class="html-source-input"
                 aria-label="Selected HTML"
@@ -5861,8 +5995,21 @@ export class DomEditor extends LitElement {
       if(this.isConnected) ribbon.aiToolboxTarget = toolbox.renderRoot.querySelector<HTMLElement>(".ai-toolbox-content")
     })
     if(changed.has("htmlSource")) {
+      this.clearHTMLSourceRanges(!this.nativeHTMLSourceHighlight)
+      if(this.htmlSource && !this.nativeHTMLSourceHighlight) this.htmlSourceTokens = null
+    }
+    if(!this.consoleOpen || this.consoleTab !== "HTML") this.clearHTMLSourceRanges()
+    if(changed.has("htmlSource") || changed.has("consoleOpen") || changed.has("consoleTab")) {
       const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
-      if(input) this.syncHTMLSourceScroll(input)
+      if(input) {
+        if(input !== this.htmlSourceObservedInput) {
+          this.htmlSourceResizeObserver?.disconnect()
+          this.htmlSourceObservedInput = input
+          this.htmlSourceResizeObserver = new ResizeObserver(() => this.syncHTMLSourceScroll(input))
+          this.htmlSourceResizeObserver.observe(input)
+        }
+        this.syncHTMLSourceScroll(input)
+      }
     }
   }
 
@@ -6939,6 +7086,13 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.clearHTMLSourceRanges()
+    this.htmlSourceTokens = null
+    if(this.htmlSourceScrollFrame) cancelAnimationFrame(this.htmlSourceScrollFrame)
+    this.htmlSourceScrollFrame = 0
+    this.htmlSourceResizeObserver?.disconnect()
+    this.htmlSourceResizeObserver = null
+    this.htmlSourceObservedInput = null
     this.frameTouchPointer = null
     this.cancelFileInput?.()
     this.recentRefreshGeneration++

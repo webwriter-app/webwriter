@@ -4452,6 +4452,7 @@ describe("DomEditor.execute()", () => {
     input.scrollTop = 24
     input.scrollLeft = 40
     input.dispatchEvent(new Event("scroll"))
+    await new Promise(resolve => requestAnimationFrame(resolve))
     expect(highlight.scrollTop).toBe(24)
     expect(highlight.scrollLeft).toBe(40)
     ;(editor as any).htmlSource = '<img src=x onerror="alert(1)">\n'
@@ -4460,6 +4461,60 @@ describe("DomEditor.execute()", () => {
     expect(highlight.textContent).toBe((editor as any).htmlSource + "\n")
     expect(highlight.querySelector("img")).toBeNull()
     expect(highlight.getAttribute("aria-hidden")).toBe("true")
+  })
+
+  it("colors large source with bounded native ranges while retaining exact text, input identity and selection", async () => {
+    const highlights = new Map<string, Set<Range>>()
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {highlights}))
+    vi.stubGlobal("Highlight", class extends Set<Range> {})
+    const {editor} = await mountEditor()
+    const source = Array.from({length: 1000}, (_, index) => `<p title="${index}">Line ${index} &amp; text</p>`).join("\n")
+    vi.spyOn(editor, "execute").mockResolvedValue({html: source} as any)
+    const host = editor as any
+    await host.setHTMLMode(true)
+    await editor.updateComplete
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    const input = editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    const highlight = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-highlight")!
+    input.setSelectionRange(30000, 30010)
+    expect(input.value).toBe(source)
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(highlight.querySelectorAll("span")).toHaveLength(0)
+    const ranges = Array.from(highlights.values()).flatMap(ranges => Array.from(ranges))
+    expect(ranges.length).toBeGreaterThan(0)
+    expect(ranges.length).toBeLessThan(2000)
+    expect(ranges.every(range => highlight.contains(range.startContainer) && range.toString().length > 0)).toBe(true)
+    const text = ranges[0].startContainer
+    input.scrollTop = 40
+    input.dispatchEvent(new Event("scroll"))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(highlight.contains(text)).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".html-source-input")).toBe(input)
+    expect([input.selectionStart, input.selectionEnd]).toEqual([30000, 30010])
+    const colors = highlights.get("webwriter-html-tag")
+    input.value = source.slice(0, 30000) + "x" + source.slice(30010)
+    input.setSelectionRange(30001, 30001)
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await editor.updateComplete
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    expect(highlight.textContent).toBe(input.value + "\n")
+    expect(highlights.get("webwriter-html-tag")).toBe(colors)
+    expect(input.selectionStart).toBe(30001)
+    editor.remove()
+    expect(highlights.size).toBe(0)
+  })
+
+  it("retains large-source syntax colors when native highlights are unavailable", async () => {
+    vi.stubGlobal("Highlight", undefined)
+    const {editor} = await mountEditor()
+    const source = Array.from({length: 700}, () => '<p title="plain">Text &amp; more</p>').join("\n")
+    vi.spyOn(editor, "execute").mockResolvedValue({html: source} as any)
+    await (editor as any).setHTMLMode(true)
+    await editor.updateComplete
+    const highlight = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-highlight")!
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(highlight.querySelector(".attribute")?.textContent).toBe("title")
   })
 
   it("posts an action and resolves with the completion result", async () => {
