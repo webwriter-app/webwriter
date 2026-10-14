@@ -313,6 +313,59 @@ describe("collaborative version history", () => {
     expect(parse).not.toHaveBeenCalled()
   })
 
+  it("yields large background checkpoint parsing and cancels stale work at an explicit history boundary", async () => {
+    const history = editor.features.history
+    document.body.innerHTML = `<p>Hello</p><aside>${"<p>Unchanged prose and context.</p>".repeat(3500)}</aside>`
+    await mutationsDelivered()
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString").mockClear()
+    const publish = vi.spyOn(editor, "postHistoryState")
+    try {
+      document.querySelector("p")!.textContent = "Captured edit"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(700)
+      expect(parse).not.toHaveBeenCalled()
+      expect(publish).not.toHaveBeenCalled()
+      document.querySelector("p")!.textContent = "Latest edit"
+      const state = history.actions.getVersionHistory({type: "getVersionHistory"})
+      expect(state.checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
+      expect(publish).toHaveBeenCalledTimes(1)
+      const checkpoints = state.checkpoints.length
+      await vi.advanceTimersByTimeAsync(20)
+      expect(history.state().checkpoints).toHaveLength(checkpoints)
+      expect(publish).toHaveBeenCalledTimes(1)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("publishes the same changes after a large background checkpoint finishes and releases work on disable", async () => {
+    const history = editor.features.history
+    document.body.innerHTML = `<p>Hello</p><aside>${"<p>Unchanged prose and context.</p>".repeat(3500)}</aside>`
+    await mutationsDelivered()
+    const initial = history.actions.getVersionHistory({type: "getVersionHistory"})
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+    const publish = vi.spyOn(editor, "postHistoryState")
+    const isEqualNode = vi.spyOn(Node.prototype, "isEqualNode").mockClear()
+    try {
+      document.querySelector("p")!.textContent = "Background edit"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(700)
+      await vi.advanceTimersByTimeAsync(100)
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(publish.mock.calls[0][0].checkpoints).toHaveLength(initial.checkpoints.length + 1)
+      expect(publish.mock.calls[0][0].checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
+      expect(isEqualNode.mock.contexts.some(node => node instanceof Element && node.localName === "aside")).toBe(false)
+      document.querySelector("p")!.textContent = "Disabled edit"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(700)
+      history.disable()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(publish).toHaveBeenCalledTimes(1)
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("skips equal sibling subtrees when diffing a changed document", async () => {
     const history = editor.features.history
     const nested = Array.from({length: 30}, (_, index) => `<span data-index="${index}">Nested ${index}</span>`).join("")

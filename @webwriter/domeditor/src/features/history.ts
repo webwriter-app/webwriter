@@ -26,6 +26,7 @@ type StoredComment = VersionHistoryComment
 type StoredVersion = StoredCheckpoint & {checkpointIds: string[]}
 
 const checkpointDelay = 700
+const deferredCheckpointSize = 100000
 const unsavedVersionId = "unsaved"
 
 const emptyChanges = (): VersionHistoryChanges => ({added: 0, removed: 0, modified: 0})
@@ -40,6 +41,8 @@ export class HistoryFeature extends EditorFeature {
   #versions!: Y.Array<StoredVersion>
   readonly #historyOrigin = {source: "domeditor-version-history"}
   #checkpointTimer: ReturnType<typeof setTimeout> | undefined
+  #checkpointGeneration = 0
+  #checkpointWorking = false
   #previewCheckpointId: string | null = null
   #previewChanges: VersionHistoryState["preview"] = null
   #previewCurrentSource: string | null = null
@@ -110,6 +113,7 @@ export class HistoryFeature extends EditorFeature {
 
   readonly #handleHistoryChange = () => {
     if(this.#publishingSource !== null) return
+    if(this.#checkpointWorking) this.#queueCheckpoint()
     const source = this.#previewCheckpointId ? null : this.#source()
     this.postState(this.#state(source ?? undefined))
   }
@@ -269,23 +273,51 @@ export class HistoryFeature extends EditorFeature {
     this.#cancelCheckpoint()
     this.#checkpointTimer = setTimeout(() => {
       this.#checkpointTimer = undefined
-      this.#recordCheckpoint()
+      const source = this.#source()
+      if(source.length < deferredCheckpointSize) this.#recordCheckpoint(undefined, {source})
+      else {
+        const generation = this.#checkpointGeneration
+        this.#checkpointWorking = true
+        void this.#recordDeferredCheckpoint(source, generation).finally(() => {
+          if(generation === this.#checkpointGeneration) this.#checkpointWorking = false
+        })
+      }
     }, checkpointDelay)
   }
 
   #cancelCheckpoint() {
     if(this.#checkpointTimer !== undefined) clearTimeout(this.#checkpointTimer)
     this.#checkpointTimer = undefined
+    this.#checkpointGeneration++
+    this.#checkpointWorking = false
   }
 
   #flushCheckpoint() {
-    if(this.#checkpointTimer === undefined) return
+    if(this.#checkpointTimer === undefined && !this.#checkpointWorking) return
     this.#cancelCheckpoint()
     this.#recordCheckpoint()
   }
 
-  #recordCheckpoint(label?: string) {
-    const source = this.#source()
+  async #recordDeferredCheckpoint(source: string, generation: number) {
+    const checkpoints = this.#checkpoints.toArray()
+    const previousSource = checkpoints.at(-1)?.source ?? source
+    const diffSource = this.#versions.toArray().at(-1)?.source ?? checkpoints[0]?.source ?? source
+    const changes = await this.#deferredDiff(previousSource, source, generation)
+    if(!changes) return
+    const stateChanges = diffSource === previousSource ? changes : await this.#deferredDiff(diffSource, source, generation)
+    if(!stateChanges || generation !== this.#checkpointGeneration) return
+    // Direct DOM and template edits can precede collaboration notifications.
+    // Publish only if the captured source is still the authored document.
+    if(this.#source() !== source) {
+      this.#queueCheckpoint()
+      return
+    }
+    this.#recordCheckpoint(undefined, {source, changes, stateDiff: {beforeSource: diffSource, afterSource: source, changes: stateChanges}})
+  }
+
+  #recordCheckpoint(label?: string, prepared?: {source: string, changes?: VersionHistoryChanges,
+    stateDiff?: {beforeSource: string, afterSource: string, changes: VersionHistoryChanges}}) {
+    const source = prepared?.source ?? this.#source()
     const matchingCheckpoint = this.#checkpoints.toArray().at(-1)
     if(matchingCheckpoint?.source === source) {
       const previousCheckpointId = this.#currentCheckpointId
@@ -295,7 +327,7 @@ export class HistoryFeature extends EditorFeature {
     }
     const previous = this.#checkpoints.toArray().at(-1)
     const user = this.#localUser()
-    const changes = previous ? this.#diff(previous.source, source) : emptyChanges()
+    const changes = prepared?.changes ?? (previous ? this.#diff(previous.source, source) : emptyChanges())
     const checkpoint: StoredCheckpoint = {
       id: this.#id("checkpoint"),
       timestamp: Date.now(),
@@ -335,7 +367,7 @@ export class HistoryFeature extends EditorFeature {
       this.#publishingSource = previousPublishingSource
       if(committed) {
         const publicationSource = sourceChangedDuringPublication ? this.#source() : source
-        this.postState(this.#state(publicationSource, {
+        this.postState(this.#state(publicationSource, prepared?.stateDiff ?? {
           beforeSource: previous?.source ?? source,
           afterSource: source,
           changes,
@@ -597,13 +629,43 @@ export class HistoryFeature extends EditorFeature {
     const after = parser.parseFromString(afterSource, "text/html")
     const changes = emptyChanges()
     if(this.#attributeSignature(before.documentElement) !== this.#attributeSignature(after.documentElement)) changes.modified++
-    this.#diffElement(before.head, after.head, changes)
-    this.#diffElement(before.body, after.body, changes)
+    for(const _ of this.#diffElement(before.head, after.head, changes)) {}
+    for(const _ of this.#diffElement(before.body, after.body, changes)) {}
     return changes
   }
 
-  #diffElement(before: Element, after: Element, changes: VersionHistoryChanges) {
-    if(before.isEqualNode(after)) return
+  async #deferredDiff(beforeSource: string, afterSource: string, generation: number) {
+    if(generation !== this.#checkpointGeneration) return null
+    if(beforeSource === afterSource) return emptyChanges()
+    const yieldTask = () => new Promise<void>(resolve => setTimeout(resolve, 0))
+    const parser = new DOMParser()
+    await yieldTask()
+    if(generation !== this.#checkpointGeneration) return null
+    const before = parser.parseFromString(beforeSource, "text/html")
+    await yieldTask()
+    if(generation !== this.#checkpointGeneration) return null
+    const after = parser.parseFromString(afterSource, "text/html")
+    await yieldTask()
+    if(generation !== this.#checkpointGeneration) return null
+    const changes = emptyChanges()
+    if(this.#attributeSignature(before.documentElement) !== this.#attributeSignature(after.documentElement)) changes.modified++
+    let deadline = performance.now() + 4
+    for(const [previous, current] of [[before.head, after.head], [before.body, after.body]]) {
+      for(const _ of this.#diffElement(previous, current, changes, false)) {
+        if(performance.now() < deadline) continue
+        await yieldTask()
+        if(generation !== this.#checkpointGeneration) return null
+        deadline = performance.now() + 4
+      }
+    }
+    return changes
+  }
+
+  *#diffElement(before: Element, after: Element, changes: VersionHistoryChanges, compareSubtrees = true): Generator<void> {
+    yield
+    // Native subtree equality is useful for synchronous commands. Background
+    // work compares only leaves at once, keeping large equal branches yieldable.
+    if((compareSubtrees || !before.childElementCount && !after.childElementCount) && before.isEqualNode(after)) return
     if(this.#attributeSignature(before) !== this.#attributeSignature(after)) {
       changes.modified++
     }
@@ -621,7 +683,7 @@ export class HistoryFeature extends EditorFeature {
         continue
       }
       if(previous instanceof Element && current instanceof Element) {
-        this.#diffElement(previous, current, changes)
+        yield* this.#diffElement(previous, current, changes, compareSubtrees)
       }
       else if(previous.textContent !== current.textContent) {
         changes.modified++
