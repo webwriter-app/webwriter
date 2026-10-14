@@ -1035,6 +1035,26 @@ describe("Schema methods", () => {
       expect(schema.get(parsedSvg)).toBe(schema.get("svg"))
       expect(schema.get(parsedMath)).toBe(schema.get("math"))
     })
+    it("resolves detached namespaced descendants and custom namespace types", () => {
+      const svgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+      const mathMi = document.createElementNS("http://www.w3.org/1998/Math/MathML", "mi")
+      expect(schema.get(svgRect)).toBe(schema.get("svg|rect"))
+      expect(schema.get(mathMi)).toBe(schema.get("math|mi"))
+
+      const namespaceURL = "urn:example:custom"
+      schema.extend({
+        "x-custom": {contentNamespace: namespaceURL},
+        "x-custom|item": {},
+      })
+      const customRoot = document.createElementNS(namespaceURL, "x-custom")
+      const customItem = document.createElementNS(namespaceURL, "item")
+      expect(schema.get(customRoot)).toBe(schema.get("x-custom"))
+      expect(schema.get(customItem)).toBe(schema.get("x-custom|item"))
+
+      customRoot.append(customItem)
+      expect(schema.getNamespaceNameOfElement(customItem)).toBe("x-custom")
+      expect(schema.get(customItem)).toBe(schema.get("x-custom|item"))
+    })
     it("throws for unsupported node types", () => {
       expect(() => schema.get(document as any)).toThrow(TypeError)
     })
@@ -1070,6 +1090,56 @@ describe("Schema methods", () => {
     })
     it("returns the namespace URL of a type", () => {
       expect(schema.getNamespaceURL("svg")).toBe("http://www.w3.org/2000/svg")
+    })
+    it("rebuilds namespace metadata after extending the schema", () => {
+      const namespaceURL = "urn:example:custom"
+      // Prime the cached namespace metadata before extending the schema.
+      expect(schema.namespaceTypes["x-custom"]).toBeUndefined()
+
+      schema.extend({
+        "x-custom": {contentNamespace: namespaceURL},
+        "x-custom|item": {},
+      })
+
+      expect(schema.namespaceTypes["x-custom"].contentNamespace).toBe(namespaceURL)
+      expect(schema.getNamespaceURL("x-custom")).toBe(namespaceURL)
+    })
+    it("keeps content-rule entries live when namespace metadata is cached", () => {
+      schema.extend({"x-mutable-rule": {content: {selector: "p", min: 0, max: Infinity}}})
+      void schema.namespaceTypes
+      const entry = schema.get("x-mutable-rule")
+      entry.content = {selector: "h1", min: 0, max: Infinity}
+
+      expect(schema.isContentValid("x-mutable-rule", [el("h1")])).toBe(true)
+      expect(schema.isContentValid("x-mutable-rule", [el("p")])).toBe(false)
+    })
+    it("tracks namespace URI changes through live schema entries", () => {
+      void schema.namespaceTypes
+      const namespaceURL = "urn:example:updated-svg"
+      schema.get("svg").contentNamespace = namespaceURL
+
+      expect(schema.getNamespaceURL("svg")).toBe(namespaceURL)
+      expect((schema.create("svg|rect") as Element).namespaceURI).toBe(namespaceURL)
+      expect(schema.get(document.createElementNS(namespaceURL, "rect"))).toBe(schema.get("svg|rect"))
+    })
+    it("recognizes existing entries promoted to namespace roots, including detached descendants", () => {
+      const namespaceURL = "urn:example:promoted"
+      schema.extend({
+        "x-promoted": {contentNamespace: namespaceURL},
+        "x-promoted|child": {},
+      })
+      schema.get("x-promoted").contentNamespace = undefined
+      void schema.namespaceTypes
+      schema.get("x-promoted").contentNamespace = namespaceURL
+
+      expect(schema.namespaceTypes["x-promoted"].contentNamespace).toBe(namespaceURL)
+      const root = document.createElementNS(namespaceURL, "x-promoted")
+      const child = document.createElementNS(namespaceURL, "child")
+      root.append(child)
+      expect(schema.get(root)).toBe(schema.get("x-promoted"))
+      expect(schema.getNamespaceNameOfElement(child)).toBe("x-promoted")
+      expect(schema.get(child)).toBe(schema.get("x-promoted|child"))
+      expect(schema.get(document.createElementNS(namespaceURL, "child"))).toBe(schema.get("x-promoted|child"))
     })
   })
 
