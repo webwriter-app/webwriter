@@ -786,18 +786,23 @@ export class SharedDOMDoc {
 
   #reconcileMutations(records: MutationRecord[]) {
     const relevant = records.filter(record => this.#isRelevantMutation(record))
+    const containers = new Set(relevant.filter(record => record.type === "childList").map(record => record.target))
+    const mappedContainers = [...containers].filter(node => {
+      const shared = this.#xmlNodes.get(node)
+      return isElement(node) && shared instanceof Y.XmlElement && this.#isSelectionNode(shared)
+    })
     // Changes to template fragments, ignored-node membership and unmapped
     // structure need the full reconciler. Ordinary typing/attribute changes
     // only inspect their current DOM targets.
     if(relevant.some(record => !this.#xmlNodes.has(record.target)
       && record.target !== this.#document.documentElement
+      && !mappedContainers.some(parent => parent.contains(record.target))
       || record.type === "attributes" && (record.attributeName === "data-webwriter-editor-only"
         || record.attributeName === "class" && ((record.oldValue ?? "").includes("◆editor-only")
           || (record.target as Element).classList.contains("◆editor-only"))))) {
       this.#reconcileDocument()
       return
     }
-    const containers = new Set(relevant.filter(record => record.type === "childList").map(record => record.target))
     // Containers revisit only retained children whose subtree has records.
     const changed = new Set<Node>()
     for(const record of relevant) {
@@ -1749,17 +1754,27 @@ export class SharedDOMDoc {
       return domChild ? [{yChild, domChild}] : []
     })
     const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)
-
-    let current = container.firstChild
-    desiredDOMChildren.forEach(desiredChild => {
-      while(current && !this.#isSyncableNode(current)) current = current.nextSibling
-      if(current !== desiredChild) container.insertBefore(desiredChild, current ?? null)
-      else current = current.nextSibling
-    })
     const desiredSet = new Set(desiredDOMChildren)
-    Array.from(container.childNodes)
-      .filter(child => this.#isSyncableNode(child) && !desiredSet.has(child))
-      .forEach(child => child.remove())
+    const currentChildren = Array.from(container.childNodes)
+    if(currentChildren.every(child => this.#isSyncableNode(child) && !desiredSet.has(child))) {
+      // A new mirror can replace every child. Install that fragment in one
+      // operation instead of repeatedly assigning thousands of BODY slots.
+      if(currentChildren.length || desiredDOMChildren.length) {
+        const fragment = domElement.ownerDocument.createDocumentFragment()
+        for(const child of desiredDOMChildren) fragment.append(child)
+        container.replaceChildren(fragment)
+      }
+    }
+    else {
+      let current = container.firstChild
+      desiredDOMChildren.forEach(desiredChild => {
+        while(current && !this.#isSyncableNode(current)) current = current.nextSibling
+        if(current !== desiredChild) container.insertBefore(desiredChild, current ?? null)
+        else current = current.nextSibling
+      })
+      currentChildren.filter(child => this.#isSyncableNode(child) && !desiredSet.has(child))
+        .forEach(child => child.remove())
+    }
 
     if(deep) renderableChildren.forEach(({yChild, domChild}) => {
       if(yChild instanceof Y.XmlText && isText(domChild)) this.#reconcileDOMText(yChild, domChild)

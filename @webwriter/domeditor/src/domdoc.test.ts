@@ -572,6 +572,64 @@ describe("SharedDOMDoc initialization", () => {
     expect(attributes).not.toHaveBeenCalled()
   })
 
+  it("maps new descendant mutations within their changed container", async () => {
+    const {root, shared} = createShared('<p>edited</p><aside>untouched</aside>')
+    const unrelated = shared.body.get(1) as Y.XmlElement
+    const attributes = vi.spyOn(unrelated, "getAttributes")
+    const children = vi.spyOn(unrelated, "toArray")
+    const paragraph = root.firstElementChild!
+    const link = document.createElement("a")
+    paragraph.append(link)
+    link.append(document.createTextNode("first"))
+    link.firstChild!.textContent = "current"
+    link.setAttribute("href", "https://example.com")
+    await mutationsDelivered()
+
+    expect(shared.body.get(0).toString()).toContain('<a href="https://example.com">current</a>')
+    expect(attributes).not.toHaveBeenCalled()
+    expect(children).not.toHaveBeenCalled()
+    const peer = cloneShared(shared)
+    expect(peer.root.innerHTML).toBe(root.innerHTML)
+    shared.undo()
+    expect(root.innerHTML).toBe('<p>edited</p><aside>untouched</aside>')
+    shared.redo()
+    expect(root.querySelector("a")?.textContent).toBe("current")
+  })
+
+  it("batches a complete remote child replacement without changing retained nodes", () => {
+    const {root, shared} = createShared('<p>Old one</p><p>Old two</p>')
+    const replace = vi.spyOn(root, "replaceChildren")
+    const paragraph = new Y.XmlElement("p")
+    paragraph.insert(0, [new Y.XmlText("New")])
+    const comment = shared.domToYxmlNode(document.createComment("keep"))!
+    shared.doc.transact(() => {
+      shared.body.delete(0, shared.body.length)
+      shared.body.insert(0, [paragraph, comment])
+    }, "remote-client")
+    expect(replace).toHaveBeenCalledOnce()
+    expect(root.innerHTML).toBe('<p>New</p><!--keep-->')
+
+    replace.mockClear()
+    const retained = root.firstElementChild!
+    shared.doc.transact(() => shared.body.insert(1, [new Y.XmlElement("hr")]), "remote-client")
+    expect(root.firstElementChild).toBe(retained)
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it("retains ignored children during a complete remote content replacement", () => {
+    const {root, shared} = createShared('<p>Old</p><aside class="◆editor-only">Editor</aside>')
+    const appendix = root.lastElementChild!
+    const replace = vi.spyOn(root, "replaceChildren")
+    shared.doc.transact(() => {
+      shared.body.delete(0, shared.body.length)
+      shared.body.insert(0, [new Y.XmlElement("hr")])
+    }, "remote-client")
+    expect(replace).not.toHaveBeenCalled()
+    expect(root.contains(appendix)).toBe(true)
+    expect(root.querySelector("hr")).not.toBeNull()
+    expect(shared.body.toString()).not.toContain("Editor")
+  })
+
   it("continues observing templates inserted immediately before a remote update", async () => {
     const {root, shared} = createShared("<p>Initial</p>")
     const template = document.createElement("template")

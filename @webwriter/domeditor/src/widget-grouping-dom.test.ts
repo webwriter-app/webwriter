@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import {defaultGroupingRules, groupingTarget} from "./widget-grouping.js"
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, readWidgetGrouping, restoreWidgetGroupingClones, widgetGroupingRevision, writeWidgetGrouping} from "./widget-grouping-dom"
 
@@ -76,5 +76,97 @@ describe("portable widget grouping instructions", () => {
     restoreWidgetGroupingClones(source, clone)
     expect(clone.firstChild?.nodeType).toBe(7)
     expect(clone.querySelector("template")!.content.firstChild?.nodeType).toBe(7)
+  })
+
+  it("leaves a no-PI clone untouched, including recursively nested template contents", () => {
+    const source = document.createElement("section")
+    source.innerHTML = "<p><!--keep--><b>text</b></p><template><template><i>nested</i></template></template>"
+    const clone = source.cloneNode(true) as Element
+    const paragraph = clone.firstElementChild
+    const outerTemplate = clone.querySelector("template")!
+    const innerTemplate = outerTemplate.content.querySelector("template")!
+    const createTreeWalker = vi.spyOn(document, "createTreeWalker")
+    const observer = new MutationObserver(() => {})
+    observer.observe(clone, {childList: true, subtree: true, characterData: true})
+    observer.observe(outerTemplate.content, {childList: true, subtree: true, characterData: true})
+    observer.observe(innerTemplate.content, {childList: true, subtree: true, characterData: true})
+
+    try {
+      expect(restoreWidgetGroupingClones(source, clone)).toBe(clone)
+      expect(createTreeWalker).toHaveBeenCalled()
+      expect(clone.firstElementChild).toBe(paragraph)
+      expect(clone.querySelector("template")!.content.querySelector("template")).toBe(innerTemplate)
+      expect(observer.takeRecords()).toEqual([])
+    }
+    finally {
+      createTreeWalker.mockRestore()
+      observer.disconnect()
+    }
+  })
+
+  it("restores arbitrary processing instructions through nested templates across documents", () => {
+    const sourceDocument = document.implementation.createHTMLDocument()
+    const source = sourceDocument.createElement("section")
+    const outer = sourceDocument.createElement("template")
+    const inner = sourceDocument.createElement("template")
+    outer.content.append("before", sourceDocument.createProcessingInstruction("custom-target", "outer data"), inner)
+    inner.content.append(sourceDocument.createProcessingInstruction("nested-target", "nested data"), "after")
+    source.append(outer)
+
+    const cloneDocument = document.implementation.createHTMLDocument()
+    const clone = cloneDocument.importNode(source, true) as Element
+    const cloneOuter = clone.querySelector("template")!
+    const cloneInner = cloneOuter.content.querySelector("template")!
+    cloneOuter.content.childNodes[1].remove()
+    cloneInner.content.firstChild!.remove()
+
+    restoreWidgetGroupingClones(source, clone)
+
+    const restoredOuterInstruction = cloneOuter.content.childNodes[1] as ProcessingInstruction
+    const restoredInnerInstruction = cloneInner.content.firstChild as ProcessingInstruction
+    expect([restoredOuterInstruction.target, restoredOuterInstruction.data]).toEqual(["custom-target", "outer data"])
+    expect([restoredInnerInstruction.target, restoredInnerInstruction.data]).toEqual(["nested-target", "nested data"])
+    expect(restoredOuterInstruction.ownerDocument).toBe(cloneDocument)
+    expect(restoredInnerInstruction.ownerDocument).toBe(cloneDocument)
+    expect(cloneOuter.content.firstChild?.textContent).toBe("before")
+    expect(cloneInner.content.lastChild?.textContent).toBe("after")
+  })
+
+  it("treats namespaced elements named template as ordinary elements", () => {
+    const source = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const svgTemplate = document.createElementNS("http://www.w3.org/2000/svg", "template")
+    svgTemplate.append(document.createProcessingInstruction("custom-target", "svg data"))
+    source.append(svgTemplate)
+    const clone = source.cloneNode(true) as Element
+    const cloneSvgTemplate = clone.firstElementChild!
+    cloneSvgTemplate.firstChild!.remove()
+
+    restoreWidgetGroupingClones(source, clone)
+
+    const instruction = cloneSvgTemplate.firstChild as ProcessingInstruction
+    expect(svgTemplate.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    expect("content" in svgTemplate).toBe(false)
+    expect([instruction.target, instruction.data]).toEqual(["custom-target", "svg data"])
+
+    const restoreHTML = prepareWidgetGroupingsForSerialization(clone)
+    const marker = (cloneSvgTemplate.firstChild as Comment).data
+    expect(restoreHTML(`<!--${marker}-->`)).toBe("<?custom-target svg data?>")
+
+    const encoded = encodeURIComponent(JSON.stringify(defaultGroupingRules("svg-template")))
+    cloneSvgTemplate.append(document.createComment(`?${groupingTarget} ${encoded}?`))
+    hydrateWidgetGroupings(clone)
+    const hydratedInstruction = cloneSvgTemplate.lastChild as ProcessingInstruction
+    expect([hydratedInstruction.target, hydratedInstruction.data]).toEqual([groupingTarget, encoded])
+  })
+
+  it("does not treat meta content text as a template fragment", () => {
+    const source = document.implementation.createHTMLDocument()
+    const meta = source.createElement("meta")
+    meta.setAttribute("content", "value")
+    source.head.append(meta)
+    const clone = source.cloneNode(true) as Document
+
+    expect(restoreWidgetGroupingClones(source, clone)).toBe(clone)
+    expect(clone.head.querySelector("meta")?.getAttribute("content")).toBe("value")
   })
 })
