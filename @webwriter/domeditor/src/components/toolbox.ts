@@ -2,6 +2,7 @@ import type {LiveSessionFeedback, LiveSessionLearner} from "../live-session"
 import "./float-info"
 import type {FloatInfo} from "./float-info"
 import {css, html, nothing, type TemplateResult} from "lit"
+import {guard} from "lit/directives/guard.js"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
@@ -1717,7 +1718,10 @@ export class DomEditorToolbox extends EditingControls {
             ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}
             ${this.activeTool === "Review" ? html`
               <div class="review-section review-comments">${this.renderCommentDrawer()}</div>
-              <div class="review-section review-issues">${this.renderProofreadingSection()}</div>
+              <div class="review-section review-issues">${guard(
+                [this.proofreadingState, this.htmlPending, this.historyState.preview],
+                () => this.renderProofreadingSection(),
+              )}</div>
             ` : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderWidgetSharing() : ""}

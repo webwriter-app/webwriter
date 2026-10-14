@@ -98,6 +98,27 @@ const modelsResponse = (models: string[]) => new Response(JSON.stringify({
 }), {headers: {"content-type": "application/json"}})
 
 describe("AI prompt ribbon", () => {
+  it("memoizes chat templates on unrelated updates and refreshes replies and preview locks", async () => {
+    const ribbon = await mountRibbon()
+    const renderChat = vi.spyOn(ribbon as any, "renderAIChat")
+    const prompt = ribbon.shadowRoot!.querySelector(".ai-prompt-input")!
+    ribbon.undoState = {canUndo: true, canRedo: false}
+    await ribbon.updateComplete
+    expect(renderChat).not.toHaveBeenCalled()
+    expect(ribbon.shadowRoot!.querySelector(".ai-prompt-input")).toBe(prompt)
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-messages")).toBeNull()
+
+    ribbon.appendAIResponse("A fresh reply")
+    await ribbon.updateComplete
+    expect(renderChat).toHaveBeenCalledTimes(2)
+    expect(ribbon.aiToolboxTarget!.querySelector(".ai-chat-messages")!.textContent).toContain("A fresh reply")
+    expect(ribbon.shadowRoot!.querySelector(".ai-bar-reply-content")!.textContent).toBe("A fresh reply")
+    ribbon.historyState = {...ribbon.historyState, preview: {checkpointId: "before", isCurrent: false, added: 1, removed: 0, modified: 0}}
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")!.hasAttribute("inert")).toBe(true)
+    expect(ribbon.aiToolboxTarget!.querySelector(".ai-chat-panel")!.hasAttribute("inert")).toBe(true)
+  })
+
   it("allows navigation during Thinking and runs queued messages in their original chats without changing the selected chat", async () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)
@@ -397,7 +418,7 @@ describe("AI prompt ribbon", () => {
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-submit")!.click()
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
     await ribbon.updateComplete
-    const working = ribbon.shadowRoot!.querySelector(".ai-chat-working")!
+    const working = ribbon.aiToolboxTarget!.querySelector(".ai-chat-working")!
     expect(working.textContent).toBe("Thinking...")
     expect(working.querySelector("span")!.title).toContain("Waiting for test-model (step 1 of 16)")
     expect(working.getAttribute("role")).toBe("status")
@@ -804,9 +825,9 @@ describe("AI prompt ribbon", () => {
     await ribbon.updateComplete
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-send")!.click()
 
-    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('.ai-chat-message[data-edit-phase="review"]')).not.toBeNull())
+    await vi.waitFor(() => expect(ribbon.aiToolboxTarget!.querySelector('.ai-chat-message[data-edit-phase="review"]')).not.toBeNull())
     expect(review).toHaveBeenCalledWith("preview", expect.objectContaining({name: "queue_document_change"}), {signal: expect.any(AbortSignal)})
-    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Review document change: Add a heading"))
+    await vi.waitFor(() => expect(ribbon.aiToolboxTarget!.textContent).toContain("Review document change: Add a heading"))
     expect((ribbon as any).aiBusy).toBe(false)
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.disabled).toBe(true)
@@ -824,7 +845,7 @@ describe("AI prompt ribbon", () => {
 
     ribbon.aiToolboxTarget!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="approve"]')!.click()
     await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", expect.objectContaining({id: expect.stringContaining("/edit-1")})))
-    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Accepted: Add a heading"))
+    await vi.waitFor(() => expect(ribbon.aiToolboxTarget!.textContent).toContain("Accepted: Add a heading"))
     expect(ribbon.aiToolboxTarget!.querySelector('.ai-chat-message[data-edit-phase="accepted"]')).toBe(reviewMessage)
     expect(ribbon.aiToolboxTarget!.querySelectorAll('.ai-chat-message[data-role="event"]')).toHaveLength(1)
     expect(ribbon.aiToolboxTarget!.querySelector(".ai-prompt-input")).not.toBeNull()
@@ -838,7 +859,7 @@ describe("AI prompt ribbon", () => {
 
     ribbon.aiToolboxTarget!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="undo"]')!.click()
     await vi.waitFor(() => expect(review).toHaveBeenCalledWith("undo", expect.objectContaining({id: expect.stringContaining("/edit-1")})))
-    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Undone: Add a heading"))
+    await vi.waitFor(() => expect(ribbon.aiToolboxTarget!.textContent).toContain("Undone: Add a heading"))
   })
 
   it("rejects a preview from the collapsed bar and records the decision", async () => {
@@ -872,7 +893,7 @@ describe("AI prompt ribbon", () => {
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Reject AI change"]')!.click()
 
     await vi.waitFor(() => expect(review).toHaveBeenCalledWith("reject", expect.objectContaining({id: expect.stringContaining("/edit-reject")})))
-    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Rejected: Remove the introduction"))
+    await vi.waitFor(() => expect(ribbon.aiToolboxTarget!.textContent).toContain("Rejected: Remove the introduction"))
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-review-actions")).toBeNull()
     expect(ribbon.aiToolboxTarget!.querySelector('[data-edit-phase="rejected"]')).toBe(reviewMessage)
     expect(ribbon.aiToolboxTarget!.querySelectorAll('[data-role="event"]')).toHaveLength(1)

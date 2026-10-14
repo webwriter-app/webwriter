@@ -13,8 +13,10 @@ import type {LinkKeyboard} from "./link-keyboard"
 import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
-import { LitElement, css, html, nothing, type PropertyValues } from "lit"
+import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
 import {guard} from "lit/directives/guard.js"
+import {cache} from "lit/directives/cache.js"
+import {when} from "lit/directives/when.js"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
@@ -521,6 +523,7 @@ export class DomEditor extends LitElement {
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
   private consoleOpen = false
+  private consoleRendered = false
   private reviewOpen = false
   private consoleTab: "HTML" | "Packages" | "Tests" | "Element" = "Packages"
   private htmlMode = false
@@ -5772,10 +5775,12 @@ export class DomEditor extends LitElement {
   }
 
   private renderHTMLSourceEditor() {
+    // Keep the opened console through collapse; inactive consoles suspend rendering.
+    this.consoleRendered ||= this.consoleOpen || this.reviewOpen
     return html`
       <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen} aria-hidden=${String(!this.consoleOpen && !this.reviewOpen)}>
         <div class="html-source-clip">
-          <developer-console .review=${this.reviewOpen} .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
+          ${when(this.consoleRendered, () => html`<developer-console .active=${this.consoleOpen || this.reviewOpen} .review=${this.reviewOpen} .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
             .packageDraft=${this.localPackageDraft?.manifest ?? null} .packageSaving=${this.localPackageDraftSaving}
             .packageDraftRevision=${this.localPackageDraftRevision}
             ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
@@ -5810,9 +5815,9 @@ export class DomEditor extends LitElement {
             @html-source-apply=${this.handleHTMLSourceApply}
             @html-source-discard=${this.handleHTMLSourceDiscard}
           >
-          <section class="html-source-editor" aria-label="Selected HTML source" ?hidden=${this.consoleTab !== "HTML"}>
+          ${when(this.consoleOpen && this.consoleTab === "HTML", () => html`<section class="html-source-editor" aria-label="Selected HTML source" ?hidden=${this.consoleTab !== "HTML"}>
             <div class="html-source-field">
-              <pre class="html-source-highlight" aria-hidden="true">${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}${"\n"}</pre>
+              <pre class="html-source-highlight" aria-hidden="true">${cache(this.htmlSource ? html`${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}` : nothing)}${"\n"}</pre>
               <textarea
                 class="html-source-input"
                 aria-label="Selected HTML"
@@ -5827,8 +5832,8 @@ export class DomEditor extends LitElement {
               ></textarea>
             </div>
             ${this.htmlSourceError ? html`<p class="html-source-error" role="alert">${this.htmlSourceError}</p>` : ""}
-          </section>
-          </developer-console>
+          </section>`, () => noChange)}
+          </developer-console>`, () => noChange)}
         </div>
       </div>
     `
@@ -7176,6 +7181,8 @@ export class DomEditor extends LitElement {
 
   render() {
     const documentLoading = this.documentLoading || this.linkedDocumentLoading
+    const recentDocumentsDependencies = [this.recentDocuments, this.accessibleRecentDocumentIds,
+      this.savedDocuments, this.backendClient, this.backendClient?.session]
     return html`
       <header class="app-bar">
         <div class="ribbon-header">
@@ -7199,7 +7206,7 @@ export class DomEditor extends LitElement {
           .localPackages=${this.localPackages}
           .installedPackages=${this.installedPackages}
           .consoleOpen=${this.consoleOpen}
-          .recentDocuments=${this.visibleRecentDocuments.map(({id, title}) => ({id, title}))}
+          .recentDocuments=${guard(recentDocumentsDependencies, () => this.visibleRecentDocuments.map(({id, title}) => ({id, title})))}
           @recent-documents-refresh=${this.handleRecentDocumentsRefresh}
           @ribbon-submenu-open=${(event: CustomEvent<{label: string}>) => {if(event.detail.label === "Open") this.handleRecentDocumentsRefresh()}}
           @ribbon-dropdown-open=${(event: Event) => {if(event.composedPath().some(target => target instanceof HTMLElement && target.matches('ribbon-button[label="Open"]'))) this.handleRecentDocumentsRefresh()}}
@@ -7407,7 +7414,10 @@ export class DomEditor extends LitElement {
       ${this.previewActive || this.liveSessionActive ? "" : html`
         <div class="document-layouts-panel" ?inert=${this.documentLayoutsDismissed} aria-hidden=${String(this.documentLayoutsDismissed)}>
           <div class="document-layouts-clip">
-            <section class="document-layouts-bar" aria-labelledby="document-layouts-title">
+            ${when(!this.documentLayoutsDismissed && !documentLoading, () => guard([
+              this.documentLayout, this.historyState.preview, this.htmlPending, this.fileOperationActive,
+              this.documentLayoutError, ...recentDocumentsDependencies,
+            ], () => html`<section class="document-layouts-bar" aria-labelledby="document-layouts-title">
               <div class="document-layouts-heading">
                 <h2 id="document-layouts-title">Layouts<span class="document-layouts-combined-title"> &amp; Recently opened</span></h2>
                 <h2 id="recent-documents-title" class="recent-documents-title"><span class="recent-documents-full-title">Recently opened</span><span class="recent-documents-short-title">Recent</span></h2>
@@ -7438,7 +7448,7 @@ export class DomEditor extends LitElement {
                 </nav>
               </div>
               ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
-            </section>
+            </section>`), () => noChange)}
           </div>
         </div>
       `}

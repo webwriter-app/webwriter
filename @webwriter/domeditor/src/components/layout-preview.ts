@@ -1,4 +1,5 @@
 import {css, html} from "lit"
+import {guard} from "lit/directives/guard.js"
 import {documentLayoutConversionReason, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 import {ribbonIcon} from "../ribbon-icons"
 
@@ -167,5 +168,5 @@ export function renderDocumentLayoutCard(mode: DocumentLayoutMode, state: Docume
     @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
     @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
     @click=${() => select(mode)}
-  ><span class="layout-preset-icon" aria-hidden="true">${ribbonIcon({document: "Document", canvas: "Canvas", slides: "KeywordPresentation", board: "Columns"}[mode])}</span>${renderDocumentLayoutPreview(mode)}</button>`
+  >${guard([mode], () => html`<span class="layout-preset-icon" aria-hidden="true">${ribbonIcon({document: "Document", canvas: "Canvas", slides: "KeywordPresentation", board: "Columns"}[mode])}</span>${renderDocumentLayoutPreview(mode)}`)}</button>`
 }

@@ -2075,6 +2075,7 @@ describe("Develop local packages", () => {
     host.installedPackages = [local, other]
     host.localPackageRuntimeWarnings = {[local.name]: [{message: "Old warning"}], [other.name]: []}
     host.localPackageTestResults = {[`${local.name}/test`]: "running", [`${other.name}/test`]: "running"}
+    host.consoleOpen = true
     const unregister = vi.spyOn(LocalPackageWorkerClient.prototype, "unregister").mockResolvedValue(undefined)
     const reload = vi.spyOn(host, "reloadEditor").mockImplementation(async (packages: any) => { host.installedPackages = packages })
     await editor.updateComplete
@@ -2154,6 +2155,8 @@ describe("Develop local packages", () => {
     const host = editor as any
     const source = {repository: "https://github.com/example/demo.git", ref: "v1.0.0", path: ""}
     const load = vi.spyOn(host.localPackageManager, "loadGit").mockResolvedValue(undefined)
+    host.consoleOpen = true
+    await editor.updateComplete
     editor.shadowRoot!.querySelector("developer-console")!.dispatchEvent(new CustomEvent("git-package-load", {detail: source, bubbles: true, composed: true}))
     await vi.waitFor(() => expect(load).toHaveBeenCalledWith(source))
     expect(host.localPackagesLoading).toBe(false)
@@ -4204,6 +4207,32 @@ describe("DomEditor.execute()", () => {
     expect(layoutsPanel.getAttribute("aria-hidden")).toBe("true")
   })
 
+  it("mounts the developer console on demand, retains it for collapse, and refreshes on reopen", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-panel")!
+    expect(panel.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBeNull()
+    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    expect(console.tab).toBe("Packages")
+    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
+    expect(panel.inert).toBe(true)
+    host.localPackageError = "Updated while closed"
+    await editor.updateComplete
+    expect(console.localPackageError).toBe("Updated while closed")
+    expect(console.shadowRoot!.textContent).not.toContain("Updated while closed")
+    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await editor.updateComplete
+    await console.updateComplete
+    expect(console.localPackageError).toBe("Updated while closed")
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")).toBe(panel)
+  })
+
   it("keeps package tools and checks in the bottom console and protects pending HTML across tabs", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
@@ -4245,6 +4274,40 @@ describe("DomEditor.execute()", () => {
     toolbox.selectTool("Review")
     await editor.updateComplete
     expect(panel.inert).toBe(true)
+  })
+
+  it("reuses unchanged HTML highlighting on reopen and refreshes changed source", async () => {
+    const {editor} = await mountEditor()
+    let source = "<p>Hello</p>"
+    let holdSource = false
+    let resolveSource: ((value: any) => void) | undefined
+    vi.spyOn(editor, "execute").mockImplementation(async action => action.type === "beginHTMLSelectionEdit"
+      ? holdSource ? new Promise(resolve => {resolveSource = resolve}) : {html: source} as any
+      : true)
+    const host = editor as any
+    await host.setHTMLMode(true)
+    await editor.updateComplete
+    const highlight = editor.shadowRoot!.querySelector(".html-source-highlight")!
+    const token = highlight.querySelector(".tag")!
+    expect(token.textContent).toBe("<p")
+    await host.setHTMLMode(false)
+    await editor.updateComplete
+    holdSource = true
+    const reopening = host.setHTMLMode(true)
+    await editor.updateComplete
+    expect(highlight.querySelector(".tag")).toBeNull()
+    resolveSource!({html: source})
+    await reopening
+    holdSource = false
+    await editor.updateComplete
+    expect(highlight.querySelector(".tag")).toBe(token)
+    expect(highlight.textContent).toBe(source + "\n")
+    await host.setHTMLMode(false)
+    source = "<section>Changed</section>"
+    await host.setHTMLMode(true)
+    await editor.updateComplete
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!.value).toBe(source)
   })
 
   it("highlights HTML only while its source is hovered or focused, without restoring editor selection", async () => {
@@ -6608,6 +6671,28 @@ describe("DomEditor.execute()", () => {
       expect(toolbox.documentSelected).toBe(true)
       expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="document"]')).not.toBeNull()
     }
+  })
+
+  it("keeps dismissed Layouts lazy and refreshes their controls when showing a fresh document", async () => {
+    const {editor} = await mountEditor(editor => Object.assign(editor, {documentLayoutsDismissed: true}))
+    expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).toBeNull()
+    const host = editor as any
+    host.documentLayoutsDismissed = false
+    await editor.updateComplete
+    const bar = editor.shadowRoot!.querySelector(".document-layouts-bar")!
+    expect(bar).not.toBeNull()
+    host.documentLayoutsDismissed = true
+    await editor.updateComplete
+    host.documentLayout = {mode: "canvas", canConvert: true, zoom: 100}
+    await editor.updateComplete
+    expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("false")
+    host.documentLayoutsDismissed = false
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).toBe(bar)
+    expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("true")
+    host.htmlPending = true
+    await editor.updateComplete
+    expect(Array.from(bar.querySelectorAll<HTMLButtonElement>(".layout-preset"), button => button.disabled)).toEqual([true, true, true, true])
   })
 
   it("keeps the full-width Layouts bar in every layout and reflects live conversion availability", async () => {

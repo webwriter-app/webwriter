@@ -233,6 +233,34 @@ describe("toolbox", () => {
     expect(toggle.disabled).toBe(true)
   })
 
+  it("reuses the proof-reading section for unrelated updates and refreshes it when Review reopens", async () => {
+    const toolbox = await mountToolbox()
+    const renderIssues = vi.spyOn(toolbox as unknown as {renderProofreadingSection: () => unknown}, "renderProofreadingSection")
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    expect(renderIssues).toHaveBeenCalledTimes(1)
+
+    toolbox.consoleOpen = true
+    await toolbox.updateComplete
+    expect(renderIssues).toHaveBeenCalledTimes(1)
+
+    toolbox.proofreadingState = {...emptyProofreadingState(), enabled: false, documentEnabled: false}
+    await toolbox.updateComplete
+    expect(renderIssues).toHaveBeenCalledTimes(2)
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-status")?.textContent)
+      .toContain("Automatic proofreading is disabled for this document")
+
+    toolbox.selectTool(null)
+    await toolbox.updateComplete
+    toolbox.proofreadingState = {...emptyProofreadingState(), ready: true}
+    await toolbox.updateComplete
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    expect(renderIssues).toHaveBeenCalledTimes(3)
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-status")?.textContent)
+      .toContain("No spelling, grammar or style issues found")
+  })
+
   it("offers a manual check beside Issues even when automatic checking is off, with busy and editing locks", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")

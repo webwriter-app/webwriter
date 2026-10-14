@@ -183,6 +183,81 @@ describe("Developer console", () => {
     expect(tabs.map(tab => tab.tabIndex)).toEqual([-1, -1, -1, 0])
   })
 
+  it("keeps inactive panels lazy, preserves metadata drafts, and refreshes cached test content", async () => {
+    const console = await mount()
+    const pkg = {
+      name: "@local/demo", version: "1.0.0", label: "Demo", description: "", authors: [], keywords: [], links: {},
+      members: [], scripts: [], styles: [], manifest: {name: "@local/demo", version: "1.0.0", exports: {}},
+      tests: [{name: "basics", scriptUrl: "https://example.test/test.js"}],
+    }
+    console.localPackages = [pkg]
+    await console.updateComplete
+    const root = console.shadowRoot!
+    const renderTests = vi.spyOn(console as any, "renderLocalPackageTests")
+    expect(root.querySelector(".package-content, .test-content, .element-content")).toBeNull()
+    expect(renderTests).not.toHaveBeenCalled()
+
+    root.querySelector<HTMLButtonElement>("#console-tab-Packages")!.click()
+    await console.updateComplete
+    const nameInput = root.querySelector<HTMLInputElement>('#console-panel-Packages input[name="name"]')!
+    nameInput.value = "Draft package name"
+    nameInput.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+
+    root.querySelector<HTMLButtonElement>("#console-tab-Tests")!.click()
+    await console.updateComplete
+    expect(root.querySelector("#console-panel-Packages .package-content")).toBeNull()
+    expect(renderTests).toHaveBeenCalledTimes(1)
+    expect(root.querySelector('.develop-test[data-status="idle"]')).not.toBeNull()
+
+    root.querySelector<HTMLButtonElement>("#console-tab-Packages")!.click()
+    await console.updateComplete
+    expect(root.querySelector('#console-panel-Packages input[name="name"]')).toBe(nameInput)
+    expect(nameInput.value).toBe("Draft package name")
+
+    console.localPackageTestResults = {"@local/demo/basics": {status: "passed", tests: [{id: "works", path: ["works"], passed: true}]}}
+    await console.updateComplete
+    expect(renderTests).toHaveBeenCalledTimes(1)
+    root.querySelector<HTMLButtonElement>("#console-tab-Tests")!.click()
+    await console.updateComplete
+    expect(renderTests).toHaveBeenCalledTimes(2)
+    expect(root.querySelector('.develop-test[data-status="passed"]')).not.toBeNull()
+    expect(root.querySelector('.develop-test [role="status"]')?.textContent).toBe("1/1 passed")
+  })
+
+  it("keeps property values current while inactive and renders their latest state when reactivated", async () => {
+    const console = await mount()
+    const root = console.shadowRoot!
+    const pkg = {
+      name: "@local/demo", version: "1.0.0", label: "Demo", description: "", authors: [], keywords: [], links: {},
+      members: [], scripts: [], styles: [], tests: [{name: "basics", scriptUrl: "https://example.test/test.js"}],
+    }
+    const renderTests = vi.spyOn(console as any, "renderLocalPackageTests")
+    const observeColumns = vi.spyOn(console as any, "observePackageColumns")
+    const disconnect = vi.fn()
+    ;(console as any).columnObserver = {disconnect}
+    console.active = false
+    await console.updateComplete
+    expect(disconnect).toHaveBeenCalledTimes(1)
+
+    console.localPackages = [pkg]
+    console.tab = "Tests"
+    console.localPackageTestResults = {"@local/demo/basics": {status: "failed", tests: [{id: "fails", path: ["fails"], passed: false}]}}
+    await console.updateComplete
+    expect(console.tab).toBe("Tests")
+    expect(root.querySelector('#console-tab-HTML[aria-selected="true"]')).not.toBeNull()
+    expect(root.querySelector(".test-content")).toBeNull()
+    expect(renderTests).not.toHaveBeenCalled()
+    expect(observeColumns).not.toHaveBeenCalled()
+
+    console.active = true
+    await console.updateComplete
+    expect(observeColumns).toHaveBeenCalledTimes(1)
+    expect(root.querySelector('#console-tab-Tests[aria-selected="true"]')).not.toBeNull()
+    expect(renderTests).toHaveBeenCalledTimes(1)
+    expect(root.querySelector('.develop-test[data-status="failed"]')).not.toBeNull()
+    expect(root.querySelector('.develop-test .develop-check')?.textContent).toBe("fails")
+  })
+
   it("keeps a fixed 300px height without a resize handle", async () => {
     const console = await mount()
     expect(getComputedStyle(console).height).toBe("300px")

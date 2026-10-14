@@ -1,4 +1,5 @@
-import {css, html, nothing} from "lit"
+import {css, html, noChange, nothing} from "lit"
+import {cache} from "lit/directives/cache.js"
 import {keyed} from "lit/directives/keyed.js"
 import {ribbonIcon} from "../ribbon-icons"
 import {DocumentHeadCombobox} from "./document-head-editor"
@@ -14,6 +15,7 @@ const tabs: DeveloperConsoleTab[] = ["Packages", "Tests", "Element", "HTML"]
 export class DeveloperConsole extends EditingControls {
   static properties = {
     ...EditingControls.properties,
+    active: {type: Boolean},
     tab: {type: String},
     htmlPending: {type: Boolean, attribute: "html-pending"},
     pinned: {type: Boolean},
@@ -155,6 +157,7 @@ export class DeveloperConsole extends EditingControls {
   `
 
   tab: DeveloperConsoleTab = "Packages"
+  active = true
   autoReload = true
   pinned = false
   review = false
@@ -239,6 +242,8 @@ export class DeveloperConsole extends EditingControls {
     resolve?.(choice)
   }
   private columnObserver: ResizeObserver | undefined
+  private inactiveHistoryPreviousState: unknown
+  private inactiveHistoryStatePending = false
   disconnectedCallback() {
     this.pendingChangesResolve?.("cancel")
     this.pendingChangesResolve = undefined
@@ -291,8 +296,26 @@ export class DeveloperConsole extends EditingControls {
   }
 
   protected updated(changed: Map<string, unknown>) {
-    super.updated(changed)
     if(changed.has("packageDraftRevision")) this.dirtyPackageInputs.clear()
+    if(!this.active) {
+      this.columnObserver?.disconnect()
+      this.columnObserver = undefined
+      if(changed.has("historyState") && !this.inactiveHistoryStatePending) {
+        this.inactiveHistoryPreviousState = changed.get("historyState")
+        this.inactiveHistoryStatePending = true
+      }
+      const superclassChanges = new Map(changed)
+      superclassChanges.delete("historyState")
+      super.updated(superclassChanges)
+      return
+    }
+    const superclassChanges = new Map(changed)
+    if(this.inactiveHistoryStatePending) {
+      superclassChanges.set("historyState", this.inactiveHistoryPreviousState)
+      this.inactiveHistoryPreviousState = undefined
+      this.inactiveHistoryStatePending = false
+    }
+    super.updated(superclassChanges)
     this.observePackageColumns()
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => {
       drawer.collapsed = false
@@ -346,6 +369,7 @@ export class DeveloperConsole extends EditingControls {
   }
 
   protected render() {
+    if(!this.active) return noChange
     if(this.review) {
       const versions = [...this.historyState.versions].sort((a, b) => b.timestamp - a.timestamp)
       const active = versions.find(version => version.id === this.activeVersionId) ?? versions[0]
@@ -404,10 +428,10 @@ export class DeveloperConsole extends EditingControls {
       </header>
       <div role="tabpanel" id="console-panel-HTML" aria-labelledby="console-tab-HTML" ?hidden=${this.tab !== "HTML"}><slot></slot></div>
       <div role="tabpanel" id="console-panel-Packages" aria-labelledby="console-tab-Packages" ?hidden=${this.tab !== "Packages"}>
-        ${this.tab === "Packages" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
+        ${cache(this.tab === "Packages" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
           ?inert=${this.packageSaving} @input=${this.handlePackageInput} @combobox-input=${this.handlePackageInput}
           @change=${(event: Event) => {const input = event.composedPath()[0] as HTMLInputElement; if(input.checkValidity?.()) this.dirtyPackageInputs.delete(input)}}
-          @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>${keyed(this.packageDraftRevision, this.renderMetadataDrawer())}</div>` : ""}
+          @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>${keyed(this.packageDraftRevision, this.renderMetadataDrawer())}</div>` : nothing)}
         ${this.packageDraft ? html`<div class="package-pending-bar" role="group" aria-label="Pending package changes">
           <span>${this.packageSaving ? "Saving changes…" : "Pending changes"}</span>
           <button type="button" ?disabled=${this.packageSaving} @click=${() => this.dispatchEvent(new Event("local-package-changes-discard", {bubbles: true, composed: true}))}>Discard</button>
@@ -416,7 +440,7 @@ export class DeveloperConsole extends EditingControls {
       </div>
       <div role="tabpanel" id="console-panel-Element" aria-labelledby="console-tab-Element" ?hidden=${this.tab !== "Element"}
         @mousedown=${this.handleRibbonPointerDown} @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>
-        ${this.tab === "Element" ? this.renderWidgetElement() : ""}
+        ${cache(this.tab === "Element" ? this.renderWidgetElement() : nothing)}
       </div>
       <widget-grouping-dialog></widget-grouping-dialog>
       <dialog class="package-changes-dialog" aria-labelledby="package-changes-title"
@@ -431,7 +455,7 @@ export class DeveloperConsole extends EditingControls {
         </div>
       </dialog>
       <div role="tabpanel" id="console-panel-Tests" aria-labelledby="console-tab-Tests" ?hidden=${this.tab !== "Tests"}>
-        ${this.tab === "Tests" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
+        ${cache(this.tab === "Tests" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
           @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>
           <div class="test-content">
             <div class="tests-column">${pkg?.tests?.length ? this.renderLocalPackageTests(pkg) : html`<section class="develop-section"><span class="develop-section-title">Tests</span><span class="develop-empty">${pkg ? "No tests defined" : "Select a package to view tests"}</span></section>`}</div>
@@ -440,7 +464,7 @@ export class DeveloperConsole extends EditingControls {
               ${pkg ? this.renderLocalPackageChecks(pkg) : html`<section class="develop-section"><span class="develop-section-title">Checks</span><span class="develop-empty">Select a package to view checks</span></section>`}
             </div>
           </div>
-        </div>` : ""}
+        </div>` : nothing)}
       </div>
     `
   }

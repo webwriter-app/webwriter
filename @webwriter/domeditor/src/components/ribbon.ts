@@ -1,4 +1,6 @@
-import {css, html, nothing, render} from "lit"
+import {css, html, noChange, nothing, render} from "lit"
+import {guard} from "lit/directives/guard.js"
+import {when} from "lit/directives/when.js"
 import type {QRCodeElement} from "./qr-code"
 import {styleMap} from "lit/directives/style-map.js"
 import {aiChatStyles} from "./ai-chat.styles"
@@ -2080,7 +2082,9 @@ export class AppRibbon extends EditingControls {
     }
     const previousTarget = changed.get("aiToolboxTarget") as HTMLElement | null | undefined
     if(previousTarget && previousTarget !== this.aiToolboxTarget) render(nothing, previousTarget)
-    if(this.aiToolboxTarget) render(this.settings.disableAI ? nothing : this.renderAIChat(true), this.aiToolboxTarget, {host: this})
+    if(this.aiToolboxTarget) render(guard(this.aiChatRenderDependencies, () => when(
+      !this.settings.disableAI, () => this.renderAIChat(true),
+    )), this.aiToolboxTarget, {host: this})
     if((changed.has("aiChatOpen") || changed.has("aiChats") || changed.has("activeAIChatId")) && this.aiChatOpen) this.dismissedAIBarReplyId = this.latestAIBarReply?.id ?? ""
     const reply = this.renderRoot.querySelector<HTMLElement>(".ai-bar-reply")
     if(reply && typeof reply.showPopover === "function") {
@@ -3064,6 +3068,12 @@ export class AppRibbon extends EditingControls {
     </div>`
   }
 
+  private get aiChatRenderDependencies() {
+    return [this.settings.disableAI, this.previewActive, this.historyState.preview,
+      this.aiChats, this.activeAIChatId, this.aiChatOpen, this.aiBusy, this.aiRequestChatId,
+      this.aiProviders, this.activeAIProvider, this.aiModel, this.aiEffort, this.aiProgress, this.pendingAIEdit]
+  }
+
   private renderAIChat(expanded: boolean) {
     const requestBusy = this.aiBusy && this.aiRequestChatId === this.activeAIChatId
     const pending = this.pendingAIEdit?.chatId === this.activeAIChatId ? this.pendingAIEdit : null
@@ -3129,7 +3139,7 @@ export class AppRibbon extends EditingControls {
               @click=${this.showAISettings}
             ><span class="ai-chat-settings-icon" aria-hidden="true">${ribbonIcon("AISettings")}</span></button>
           </header>
-          <div
+          ${when(expanded, () => html`<div
             class="ai-chat-messages"
             ?hidden=${!expanded}
             role="log"
@@ -3172,6 +3182,7 @@ export class AppRibbon extends EditingControls {
             ${requestBusy && !pending ? html`<div class="ai-chat-working" role="status"><span title=${this.aiProgress}>Thinking...</span></div>` : ""}
             ${this.aiError ? html`<div class="ai-chat-error" role="alert">${this.aiError}</div>` : ""}
           </div>
+          `)}
           <form
             class="ai-chat-composer"
             ?data-review=${Boolean(pending) && expanded}
@@ -3284,10 +3295,23 @@ export class AppRibbon extends EditingControls {
     `
   }
 
-  render() {
+  private fileMenuGroups(): RibbonMenuGroup[] {
     const configuredFileMenu = menuGroups.File.find(group => group.label === "File")!
     const fileMenu = {...configuredFileMenu, buttons: [...this.fileButtonsForStorage(configuredFileMenu.buttons.filter(button => (typeof button === "string" ? button : button.label) !== "Print")),
       ...(this.settings.activeCloudServiceId ? [{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: fileFormatButtons("download")}] : []), "Print"]}
+    return [
+      {...fileMenu, buttons: fileMenu.buttons.map(button =>
+        (typeof button === "string" ? button : button.label) === "Open"
+          ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
+      ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
+      {label: "Settings", buttons: [
+        ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
+        {label: "Settings", warning: this.cloudSessionWarning},
+      ]},
+    ]
+  }
+
+  render() {
     const visibleTabs = this.previewActive ? ["File"] : menuTabs
     const aiReviewPending = Boolean(this.pendingAIEdit)
     const historyPreviewPending = this.historyState.preview !== null
@@ -3416,20 +3440,11 @@ export class AppRibbon extends EditingControls {
             </button>
           </div>
         </div>
-        ${this.settings.disableAI ? nothing : this.renderAIChat(false)}
+        ${guard(this.aiChatRenderDependencies, () => when(!this.settings.disableAI, () => this.renderAIChat(false)))}
         ${this.renderDocumentDialogs()}
         <ribbon-menu
           id="ribbon-file-menu"
-          .groups=${[
-            {...fileMenu, buttons: fileMenu.buttons.map(button =>
-              (typeof button === "string" ? button : button.label) === "Open"
-                ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
-            ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
-            {label: "Settings", buttons: [
-              ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
-              {label: "Settings", warning: this.cloudSessionWarning},
-            ]},
-          ]}
+          .groups=${when(this.menuOpen, () => this.fileMenuGroups(), () => noChange)}
           @ribbon-button-click=${this.handleFileMenuAction}
           @keydown=${(event: KeyboardEvent) => {
             if(event.key !== "Escape") return

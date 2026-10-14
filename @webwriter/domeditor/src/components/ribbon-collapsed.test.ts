@@ -28,6 +28,37 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("collapsed ribbon file menu", () => {
+  it("defers closed menu content and refreshes commands when reopening", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.expanded = false
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("#ribbon-file-menu")!
+    await menu.updateComplete
+    expect(menu.groups).toEqual([])
+    const renderGroups = vi.spyOn(ribbon as any, "fileMenuGroups")
+    ribbon.canMark = true
+    await ribbon.updateComplete
+    expect(renderGroups).not.toHaveBeenCalled()
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    await menu.updateComplete
+    expect(renderGroups).toHaveBeenCalledOnce()
+    expect(menu.groups.flatMap(group => group.buttons).some(button => typeof button !== "string" && button.label === "Format")).toBe(true)
+    ribbon.menuOpen = false
+    await ribbon.updateComplete
+    const previous = menu.groups
+    ribbon.settings = {...ribbon.settings, activeCloudServiceId: "cloud"}
+    await ribbon.updateComplete
+    expect(menu.groups).toBe(previous)
+    expect(renderGroups).toHaveBeenCalledOnce()
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    await menu.updateComplete
+    expect(menu.groups).not.toBe(previous)
+    expect(menu.groups[0].buttons.some(button => typeof button !== "string" && button.label === "Download")).toBe(true)
+  })
+
   it("uses direct cloud save actions and restores local format submenus", async () => {
     const {ribbon, menu} = await mount()
     const commands = vi.fn()
@@ -43,6 +74,7 @@ describe("collapsed ribbon file menu", () => {
     }
     expect(commands.mock.calls.map(([event]) => event.detail.label)).toEqual(["Save", "Save as"])
     ribbon.settings = {...ribbon.settings, activeCloudServiceId: null}
+    ribbon.menuOpen = true
     await ribbon.updateComplete
     await menu.updateComplete
     for(const label of ["Save", "Save as"]) {
@@ -103,6 +135,8 @@ describe("collapsed ribbon file menu", () => {
     expect(menu.shadowRoot!.querySelector('[title="Format"]')).toBeNull()
     ribbon.expanded = false
     ribbon.previewActive = true
+    await ribbon.updateComplete
+    ribbon.menuOpen = true
     await ribbon.updateComplete
     await menu.updateComplete
     expect(menu.shadowRoot!.querySelector('[title="Insert"]')).toBeNull()
