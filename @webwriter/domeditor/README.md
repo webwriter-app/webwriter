@@ -18,6 +18,12 @@ Opening or saving a document updates the editor URL's `open` parameter. Reloadin
 
 A server document link contains its full API document URL, for example `?open=http%3A%2F%2Flocalhost%3A1234%2Fapi%2Fdocuments%2F<document-id>`. The editor connects to that exact endpoint and loads the document by ID. Server links use the existing supported backend and its access rules. Links store references only; they do not contain document content or credentials. Creating a new document clears `open`, while failed or cancelled opens keep the previous document URL. Live-session links take precedence over document links.
 
+## Widget documentation
+
+Start with the [widget documentation](docs/widgets/index.md) for an introduction, quick start, quiz tutorial, guides, and interface reference.
+
+With `npm start`, browse [Widget documentation](http://127.0.0.1:1234/docs/) for section navigation, syntax highlighting, and live tutorial examples in JS, Lit, React, Vue, Angular, and Svelte. The header's library selector keeps the choice across pages. Markdown changes reload the page automatically. The same `/docs/` route is available with `npm run start:frontend` on its printed local URL.
+
 ## Developer packages
 
 Open the developer console, then use **Add package → Add from local folder** for a local folder or **Add package → Add from Git repository** for an anonymous public Git remote (HTTP, HTTPS, or `git://`, including GitHub and GitLab). Enter a branch or tag, or leave it empty for the default branch. An optional package folder supports repositories containing multiple packages. The selected ref must contain `package.json` and the package's built exports; the editor does not run repository build scripts.
@@ -69,7 +75,7 @@ Before any widget script runs, the editor links the scripts of all installed pac
 
 jsDelivr is the canonical CDN: maps, package metadata and exports use its URLs. When jsDelivr fails, throttles or does not answer within 8 seconds, the frames' service worker and the package registry fetch the same npm file from unpkg, jsDelivr's other networks or raw.esm.sh, and keep the jsDelivr URL, so import-map scopes and relative imports are unchanged. When jsDelivr is unreachable while linking, the map is linked on the first reachable mirror and mapped back to jsDelivr. Exported HTML documents load from jsDelivr directly.
 
-Import maps resolve JavaScript modules only. Export widget CSS separately, for example with a `"./widgets/my-widget.*"` export whose target provides both `my-widget.js` and `my-widget.css`. The editor loads that stylesheet in the live frame, preview, and HTML export; offline export embeds it. A widget using Shoelace components must provide its theme CSS rather than relying on another installed widget's stylesheet. [`@webwriter/build`](packages.md#building) builds widget scripts that share dependencies this way, and prebuilds those that cannot or should not be shared.
+Import maps resolve JavaScript modules only. Export widget CSS separately, for example with a `"./widgets/my-widget.*"` export whose target provides both `my-widget.js` and `my-widget.css`. The editor loads that stylesheet in the live frame, preview, and HTML export; offline export embeds it. A widget using Shoelace components must provide its theme CSS rather than relying on another installed widget's stylesheet. [`@webwriter/build`](docs/widgets/reference/build-test.md) builds widget scripts that share dependencies this way, and prebuilds those that cannot or should not be shared.
 
 ## Formula editing
 

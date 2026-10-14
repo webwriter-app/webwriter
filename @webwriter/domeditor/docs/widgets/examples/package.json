@@ -1,0 +1,25 @@
+{
+  "name": "@webwriter/quiz",
+  "version": "1.0.0",
+  "description": "A true-or-false quiz from the widget tutorial.",
+  "keywords": [
+    "webwriter-widget",
+    "widget-practical",
+    "widget-lang-en"
+  ],
+  "exports": {
+    "./widgets/ww-quiz.js": "./ww-quiz.js",
+    "./snippets/quiz.html": "./quiz.html",
+    "./tests/quiz.js": "./quiz-tests.js"
+  },
+  "editingConfig": {
+    "./widgets/ww-quiz": {
+      "label": "Quiz",
+      "content": "p+",
+      "sharedData": true
+    },
+    "./snippets/quiz": {
+      "label": "Quiz with question"
+    }
+  }
+}

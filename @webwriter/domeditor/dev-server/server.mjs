@@ -1162,4 +1162,5 @@ if(isDirectRun) {
   const address = await developmentServer.listen()
   console.log(`WebWriter development server: ${address.url}`)
   console.log(`Admin dashboard: ${address.url}/admin`)
+  console.log(`Widget documentation: ${address.url}/docs/`)
 }
