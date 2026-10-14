@@ -230,6 +230,109 @@ describe("collaborative version history", () => {
     expect(editor.toHTML()).toContain("Edit 7")
   })
 
+  it("reuses one source snapshot when publishing a checkpoint", async () => {
+    const history = editor.features.history
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+    const serialize = vi.spyOn(editor, "toHTML")
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString")
+    const publish = vi.spyOn(editor, "postHistoryState")
+
+    try {
+      document.querySelector("p")!.textContent = "Checkpointed"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(700)
+
+      expect(serialize).toHaveBeenCalledTimes(1)
+      expect(parse).toHaveBeenCalledTimes(2)
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(publish.mock.calls[0][0].checkpoints[0].changes.modified).toBeGreaterThan(0)
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("refreshes the checkpoint publication snapshot after a nested authored DOM mutation", async () => {
+    const history = editor.features.history
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+    const serialize = vi.spyOn(editor, "toHTML")
+    const publish = vi.spyOn(editor, "postHistoryState")
+    const checkpoints = editor.doc.doc.getArray("version-history")
+    const mutateDuringPublication = () => {
+      checkpoints.unobserve(mutateDuringPublication)
+      document.querySelector("p")!.textContent = "Nested edit"
+    }
+    checkpoints.observe(mutateDuringPublication)
+
+    try {
+      document.querySelector("p")!.textContent = "Checkpoint source"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(700)
+
+      expect(serialize).toHaveBeenCalledTimes(2)
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(publish.mock.calls[0][0].versions[0].changes.modified).toBeGreaterThan(0)
+    }
+    finally {
+      checkpoints.unobserve(mutateDuringPublication)
+      vi.useRealTimers()
+    }
+  })
+
+  it("publishes checkpoints with foreign elements named template", async () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const foreignTemplate = document.createElementNS(svg.namespaceURI, "template")
+    foreignTemplate.textContent = "Before"
+    svg.append(foreignTemplate)
+    document.body.append(svg)
+    await mutationsDelivered()
+    // Happy DOM serializes every template name as HTML; isolate observation
+    // from that emulation limitation while varying the checkpoint source.
+    vi.spyOn(editor, "toHTML").mockImplementation(() => `<p>${foreignTemplate.textContent}</p>`)
+    const history = editor.features.history
+    const before = history.actions.getVersionHistory({type: "getVersionHistory"})
+    foreignTemplate.textContent = "After"
+    await mutationsDelivered()
+    const after = history.actions.getVersionHistory({type: "getVersionHistory"})
+    expect(after.checkpoints).toHaveLength(before.checkpoints.length + 1)
+    expect(after.checkpoints[0].changes.modified).toBeGreaterThan(0)
+    expect(document.querySelector("svg template")).toBe(foreignTemplate)
+    expect(editor.toHTML()).toContain("After")
+  })
+
+  it("skips HTML parsing when the pending diff has identical sources", () => {
+    const history = editor.features.history
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    const serialize = vi.spyOn(editor, "toHTML")
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString")
+
+    const state = history.state()
+
+    expect(state.versions[0].changes).toEqual({added: 0, removed: 0, modified: 0})
+    expect(serialize).toHaveBeenCalledTimes(1)
+    expect(parse).not.toHaveBeenCalled()
+  })
+
+  it("skips equal sibling subtrees when diffing a changed document", async () => {
+    const history = editor.features.history
+    const nested = Array.from({length: 30}, (_, index) => `<span data-index="${index}">Nested ${index}</span>`).join("")
+    document.body.innerHTML = `<article>${nested}</article><p>Hello</p>`
+    await mutationsDelivered()
+    history.actions.getVersionHistory({type: "getVersionHistory"})
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+    const isEqualNode = vi.spyOn(Node.prototype, "isEqualNode")
+
+    try {
+      document.querySelector("p")!.textContent = "Changed"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(700)
+
+      expect(isEqualNode.mock.calls.some(([other]) => other instanceof Element && other.localName === "article")).toBe(true)
+      expect(history.state().checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("previews and restores document-level direction, classes and styles", async () => {
     const history = editor.features.history
     const initial = history.actions.getVersionHistory({type: "getVersionHistory"})
