@@ -44,11 +44,13 @@ describe("editor bridge message guards", () => {
     expect(isSelectionChangeMessage({...message, detail: {path: [], documentLayout: {...documentLayout, conversions: {unknown: null}}}})).toBe(false)
   })
 
-  it("validates the optional global spell-checking preference in initialization messages", () => {
+  it("validates the optional document preferences in initialization messages", () => {
     const message = {type: initializeEditorMessage, syncUrl: "ws://localhost/session"}
     expect(isInitializeEditorMessage(message)).toBe(true)
-    for(const disableSpellChecking of [true, false]) expect(isInitializeEditorMessage({...message, disableSpellChecking})).toBe(true)
-    for(const disableSpellChecking of [null, "false", 0]) expect(isInitializeEditorMessage({...message, disableSpellChecking})).toBe(false)
+    for(const property of ["proofreadingEnabled", "commentHighlighting"]) {
+      for(const value of [true, false]) expect(isInitializeEditorMessage({...message, [property]: value})).toBe(true)
+      for(const value of [null, "false", 0]) expect(isInitializeEditorMessage({...message, [property]: value})).toBe(false)
+    }
   })
 
   it("accepts the style proofreading category and rejects unknown categories", () => {

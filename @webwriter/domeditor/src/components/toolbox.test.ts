@@ -76,6 +76,38 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("puts Comments above Issues with independent thin scroll areas and a Versions footer", async () => {
+    const toolbox = await mountToolbox()
+    const changes = vi.fn()
+    toolbox.addEventListener("versions-console-change", changes)
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
+    expect(getComputedStyle(content).overflow).toBe("hidden")
+    const sections = Array.from(content.querySelectorAll<HTMLElement>(".review-section"))
+    expect(sections.map(section => section.classList.contains("review-comments"))).toEqual([true, false])
+    for(const section of sections) {
+      expect(getComputedStyle(section).overflow).toBe("hidden")
+      expect(getComputedStyle(section).flexBasis).toBe("50%")
+    }
+    expect(content.querySelector('ribbon-drawer[label="Versions"]')).toBeNull()
+    const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!
+    expect(button.closest("footer")).not.toBeNull()
+    expect(button.getAttribute("aria-pressed")).toBe("false")
+    expect(button.textContent?.trim()).toBe("Versions")
+    expect(button.getAttribute("aria-label")).toBe("Versions")
+    const issues = sections[1].querySelector<HTMLElement>(".proofreading-content")!
+    expect(getComputedStyle(issues).overflowY).toBe("auto")
+    button.click()
+    expect(changes.mock.calls.at(-1)![0].detail).toEqual({enabled: true})
+    toolbox.versionsOpen = true
+    await toolbox.updateComplete
+    expect(button.getAttribute("aria-pressed")).toBe("true")
+    expect(toolbox.hasAttribute("versions-open")).toBe(true)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close versions"]')!.click()
+    expect(changes.mock.calls.at(-1)![0].detail).toEqual({enabled: false})
+  })
+
   it("reuses toolbox tabs and pane for Feedback in preview and restores the normal tool", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Edit")
@@ -153,14 +185,16 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".feedback-messages script")).toBeNull()
   })
 
-  it("offers a document spell-checking toggle even when the checker is loading or failed", async () => {
+  it("offers a document proofreading toggle even when the checker is loading or failed", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")
     const actions = vi.fn()
     toolbox.addEventListener("proofreading-action", actions)
     await toolbox.updateComplete
     const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
-    expect(toggle.parentElement!.textContent?.trim()).toBe("Check for issues automatically")
+    expect(toggle.parentElement!.textContent?.trim()).toBe("")
+    expect(toggle.getAttribute("aria-label")).toBe("Check for issues automatically")
+    expect(toggle.closest("h2")?.id).toBe("proofreading-title")
     expect(toggle.checked).toBe(true)
     expect(toggle.disabled).toBe(false)
     toggle.click()
@@ -209,63 +243,31 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(button.disabled).toBe(true)
     toolbox.historyState = emptyVersionHistoryState()
-    toolbox.disableSpellChecking = true
     await toolbox.updateComplete
-    expect(button.disabled).toBe(true)
+    expect(button.disabled).toBe(false)
   })
 
-  it("explains the global override and suppresses stale proofreading UI while keeping Review", async () => {
+  it("allows explicit document proofreading even when automatic checking is off", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")
-    toolbox.proofreadingState = {...emptyProofreadingState(), loading: true,
-      issues: [{id: "stale", start: 0, end: 3, kind: "spelling", message: "Spelling", text: "teh", suggestions: []}]}
-    toolbox.disableSpellChecking = true
+    toolbox.proofreadingState = {...emptyProofreadingState(), enabled: false, documentEnabled: false}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!.disabled).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!.checked).toBe(true)
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).toContain("disabled for all documents")
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBeNull()
+    const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
+    expect(toggle.disabled).toBe(false)
+    expect(toggle.checked).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).toContain("Automatic proofreading is disabled for this document")
     expect(toolbox.shadowRoot!.querySelector(".proofreading-spinner")).toBeNull()
-    expect(toolButton(toolbox, "Review")).not.toBeNull()
-    toolbox.disableSpellChecking = false
+    const actions = vi.fn()
+    toolbox.addEventListener("proofreading-action", actions)
+    toggle.click()
+    expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setDocumentProofreadingEnabled", enabled: true})
+    toolbox.proofreadingState = {...emptyProofreadingState(), ready: true}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!.disabled).toBe(false)
+    expect(toggle.checked).toBe(true)
+    expect(toggle.disabled).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).not.toContain("disabled")
   })
 
-  it("shows creation and single-edit snapshots only as versions and retains earlier changes", async () => {
-    const toolbox = await mountToolbox()
-    toolbox.selectTool("Review")
-    const user = {clientId: 7, name: "Ada", initials: "AD", color: "#64748b"}
-    const checkpoint = (id: string, timestamp: number, modified = 1) => ({
-      id, timestamp, label: "Edited by Ada", user, changes: {added: 0, removed: 0, modified}, commentCount: 0,
-    })
-    const initial = {...checkpoint("initial", 0, 0), label: "Document created"}
-    const version = {...initial, id: "unsaved", label: "Unsaved changes", checkpointIds: [initial.id],
-      isUnsaved: true, isCurrent: true}
-    toolbox.historyState = {...emptyVersionHistoryState(), checkpoints: [initial], versions: [version], currentCheckpointId: initial.id}
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelectorAll(".history-version-card")).toHaveLength(1)
-    expect(toolbox.shadowRoot!.querySelector(".history-version-changes")).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector(".history-change-card")).toBeNull()
-
-    const first = checkpoint("first", 1)
-    toolbox.historyState = {...toolbox.historyState, checkpoints: [first, initial],
-      versions: [{...version, changes: first.changes, checkpointIds: [first.id, initial.id]}], currentCheckpointId: first.id}
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".history-version-changes")).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector(".history-checkpoint-counts")!.getAttribute("aria-label"))
-      .toBe("0 added, 0 removed, 1 changed")
-
-    const undo = checkpoint("undo", 2, 0)
-    const latest = checkpoint("latest", 3)
-    toolbox.historyState = {...toolbox.historyState, checkpoints: [latest, undo, first, initial],
-      versions: [{...version, checkpointIds: [latest.id, "missing", undo.id, first.id, initial.id]}], currentCheckpointId: latest.id}
-    await toolbox.updateComplete
-    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
-      .map(card => card.dataset.checkpointId)).toEqual([undo.id, first.id])
-    expect(toolbox.shadowRoot!.querySelector(".history-version-changes summary")!.textContent).toBe("2 changes")
-    expect(toolbox.historyState.versions[0].checkpointIds).toEqual([latest.id, "missing", undo.id, first.id, initial.id])
-  })
 
   it("shows a generic proofreading loading failure and dispatches a retry", async () => {
     const toolbox = await mountToolbox()
@@ -273,8 +275,8 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     const review = toolButton(toolbox, "Review")
-    expect(review.getAttribute("aria-label")).toBe("Review. Spell and grammar checking unavailable")
-    expect(review.title).toBe("Spell and grammar checking unavailable")
+    expect(review.getAttribute("aria-label")).toBe("Review. Proofreading unavailable")
+    expect(review.title).toBe("Proofreading unavailable")
     expect(review.querySelector(".proofreading-error-badge")?.textContent).toBe("!")
 
     review.click()
@@ -950,11 +952,11 @@ describe("toolbox", () => {
     toolButton(toolbox, "Review").click()
     await toolbox.updateComplete
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Versions"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Comments"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
     expect(toolbox.shadowRoot!.querySelector(".proofreading-section h2")?.textContent?.trim()).toBe("Issues")
     expect(drawers.find(drawer => drawer.label === "Comments")!
-      .querySelector('textarea[aria-label="Comment text"]')).not.toBeNull()
+      .querySelector('textarea[aria-label="New comment"]')).not.toBeNull()
 
     toolButton(toolbox, "Style").click()
     await toolbox.updateComplete

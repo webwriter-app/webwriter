@@ -144,6 +144,7 @@ export abstract class EditingControls extends LitElement {
     ruby: {attribute: false},
     commentState: {attribute: false},
     commentDraft: {type: String, state: true},
+    newCommentDraft: {type: String, state: true},
     localPackages: {attribute: false},
     localPackageRefreshingNames: {attribute: false},
     localPackagesLoading: {type: Boolean, attribute: "local-packages-loading"},
@@ -213,6 +214,8 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected commentDraft = ""
+
+  private newCommentDraft = ""
 
   protected get commentReviewMode() { return false }
 
@@ -839,14 +842,39 @@ export abstract class EditingControls extends LitElement {
     const state = this.commentState
     const threads = this.commentThreads()
     return html`<section class="comment-threads" aria-label="Document comment threads">
-      <h3>Threads <span>${threads.length}</span></h3>
-      ${threads.length ? threads.map(thread => html`
-        <article class="comment-thread" data-thread-id=${thread.id} ?data-active=${(thread.comments[0]?.id ?? thread.id) === state.activeThreadId}>
-          <button class="comment-thread-target" type="button" @click=${() => this.dispatchThreadAction("select", thread.comments[0]?.id ?? thread.id)}>
-            ${thread.target === "text" ? "Text comment" : "Element comment"}${thread.active ? " · selected" : ""}
-          </button>
+      <article class="comment-thread comment-thread-empty">
+        <form class="comment-reply" @submit=${(event: Event) => {
+          event.preventDefault()
+          const text = this.newCommentDraft.trim()
+          if(!text || !state.canComment) return
+          this.dispatchEvent(new CustomEvent("comment-action", {
+            detail: {action: "add", text}, bubbles: true, composed: true,
+          }))
+          this.newCommentDraft = ""
+        }}>
+          <textarea data-ribbon-input-persistent aria-label="New comment" placeholder="Write a reply…" .value=${this.newCommentDraft}
+            ?disabled=${!state.canComment}
+            @input=${(event: Event) => { this.newCommentDraft = (event.currentTarget as HTMLTextAreaElement).value }}></textarea>
+          <button type="submit" ?disabled=${!state.canComment || !this.newCommentDraft.trim()}>Reply</button>
+        </form>
+      </article>
+      ${threads.map(thread => html`
+        <article class="comment-thread" data-thread-id=${thread.id} tabindex="0" aria-label="Comment thread"
+          aria-description="Press Enter or Space to select the commented content"
+          aria-current=${thread.active ? "true" : nothing}
+          ?data-active=${(thread.comments[0]?.id ?? thread.id) === state.activeThreadId}
+          @click=${(event: MouseEvent) => {
+            if(event.composedPath().some(target => target instanceof Element && target.matches("button, input, textarea, select, form, a, [contenteditable]"))) return
+            this.dispatchThreadAction("select", thread.comments[0]?.id ?? thread.id)
+          }}
+          @keydown=${(event: KeyboardEvent) => {
+            if(event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return
+            event.preventDefault()
+            this.dispatchThreadAction("select", thread.comments[0]?.id ?? thread.id)
+          }}>
           ${thread.comments.map(comment => html`
             <div class="comment-message" data-comment-id=${comment.id}>
+              <button class="comment-delete" type="button" @click=${() => this.dispatchThreadAction("remove", comment.id)}>${ribbonIcon("Delete")}delete</button>
               <div class="comment-message-meta"><strong>${comment.author.name || "Anonymous"}</strong><time>${comment.editedAt > comment.createdAt
                 ? `Edited ${new Date(comment.editedAt).toLocaleString()}`
                 : comment.createdAt ? new Date(comment.createdAt).toLocaleString() : "Creation time unavailable"}</time></div>
@@ -857,8 +885,7 @@ export abstract class EditingControls extends LitElement {
                 <button type="button" @click=${() => { this.commentEditDrafts.delete(comment.id); this.requestUpdate() }}>Cancel</button>
               ` : html`<p>${comment.text}</p>`}
               <div class="comment-message-actions">
-                <button type="button" @click=${() => { this.commentEditDrafts.set(comment.id, comment.text); this.requestUpdate() }}>Edit</button>
-                <button type="button" @click=${() => this.dispatchThreadAction("remove", comment.id)}>Delete</button>
+                <button type="button" @click=${() => { this.commentEditDrafts.set(comment.id, comment.text); this.requestUpdate() }}>${ribbonIcon("Pencil")}Edit</button>
               </div>
             </div>
           `)}
@@ -875,12 +902,28 @@ export abstract class EditingControls extends LitElement {
             <button type="submit" ?disabled=${!this.commentReplyDrafts.get(thread.id)?.trim()}>Reply</button>
           </form>
         </article>
-      `) : html`<p class="comment-threads-empty">No comments yet.</p>`}
+      `)}
     </section>`
   }
 
   protected renderCommentDrawer() {
     const {active, activeCount, canComment, count, highlighting} = this.commentState
+    if(this.commentReviewMode) return html`
+      <ribbon-drawer label="Comments" icon="Comments" layout="comments">
+        <div class="comment-heading-actions" slot="heading-action">
+          ${(["previous", "next", "remove-all"] as const).map(action => html`
+            <button type="button" class="style-reset" aria-label=${action === "previous" ? "Previous comment" : action === "next" ? "Next comment" : "Clear comments"}
+              title=${action === "previous" ? "Previous comment" : action === "next" ? "Next comment" : "Clear comments"}
+              ?disabled=${count === 0} @click=${() => this.dispatchEvent(new CustomEvent("comment-action", {
+                detail: {action}, bubbles: true, composed: true,
+              }))}>${ribbonIcon(action === "previous" ? "Previous" : action === "next" ? "Next" : "RemoveMarks")}</button>
+          `)}
+          <input class="comment-review-highlight" type="checkbox" data-ribbon-input-persistent
+            aria-label="Highlight" title="Highlight" .checked=${highlighting} @change=${this.changeCommentHighlighting}>
+        </div>
+        ${this.renderCommentThreads()}
+      </ribbon-drawer>
+    `
     return html`
       <ribbon-drawer label="Comments" icon="Comments" layout="comments" @ribbon-button-click=${this.handleCommentButton}>
         <div class="comment-editor">
@@ -912,7 +955,6 @@ export abstract class EditingControls extends LitElement {
         <ribbon-button compact label="Remove all" action="remove-all" icon="RemoveMarks" ?disabled=${count === 0}></ribbon-button>
         <ribbon-button compact label="Previous comment" action="previous" icon="Previous" ?disabled=${count === 0}></ribbon-button>
         <ribbon-button compact label="Next comment" action="next" icon="Next" ?disabled=${count === 0}></ribbon-button>
-        ${this.commentReviewMode ? this.renderCommentThreads() : nothing}
       </ribbon-drawer>
     `
   }
@@ -2589,8 +2631,7 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
-  protected renderHistoryEntry(entry: VersionHistoryCheckpoint, isVersion: boolean, isCurrent: boolean, isUnsaved = false) {
-    const selected = this.selectedHistoryCheckpointId === entry.id
+  protected renderHistoryEntry(entry: VersionHistoryCheckpoint, isVersion: boolean, isCurrent: boolean, isUnsaved = false, selected = this.selectedHistoryCheckpointId === entry.id) {
     return html`
       <div class=${isVersion ? "history-version-card" : "history-change-card"}
         data-checkpoint-id=${entry.id} ?data-selected=${selected}>
@@ -2601,35 +2642,40 @@ export abstract class EditingControls extends LitElement {
             aria-hidden="true">${entry.user.initials}</span>
           <span class="history-checkpoint-label">${isUnsaved ? "Unsaved changes" : this.historyTimestamp(entry.timestamp)}</span>
           <span class="history-checkpoint-meta">By ${this.historyAuthor(entry.user)}</span>
-          <span class="history-checkpoint-counts" aria-label=${`${entry.changes.added} added, ${entry.changes.removed} removed, ${entry.changes.modified} changed`}>
+          ${isVersion ? html`<span class="history-change-count" aria-label=${`${entry.changes.added + entry.changes.removed + entry.changes.modified} changes`}>
+            ${entry.changes.added + entry.changes.removed + entry.changes.modified}
+          </span>` : html`<span class="history-checkpoint-counts" aria-label=${`${entry.changes.added} added, ${entry.changes.removed} removed, ${entry.changes.modified} changed`}>
             <span class="history-count" data-kind="added">+${entry.changes.added}</span>
             <span class="history-count" data-kind="removed">−${entry.changes.removed}</span>
             <span class="history-count" data-kind="modified">~${entry.changes.modified}</span>
-            ${entry.commentCount ? html`<span class="history-count" data-kind="comments">${entry.commentCount} 💬</span>` : nothing}
-          </span>
+          </span>`}
         </button>
         <button class="history-card-restore-button" type="button" data-checkpoint-id=${entry.id}
           aria-label=${`Restore ${isVersion ? "version" : "change"} from ${this.historyTimestamp(entry.timestamp)}`}
           title=${isCurrent ? "Already active" : entry.label}
           ?disabled=${this.historyLoading || isCurrent} @click=${this.revertHistoryCheckpoint}>
           <span class="history-card-restore-icon" aria-hidden="true">${ribbonIcon("Restore")}</span>
-          <span>Restore</span>
+          ${isVersion ? html`<span>Restore</span>` : nothing}
         </button>
       </div>
     `
   }
 
-  protected renderHistoryVersionsDrawer() {
+  protected renderHistoryPreviewClear() {
+    return this.historyState.preview ? html`
+      <button class="history-preview-clear" type="button" ?disabled=${this.historyLoading}
+        @click=${() => this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))}>
+        Return to current document
+      </button>` : nothing
+  }
+
+  protected renderHistoryVersionsDrawer(expandedChanges = false, showPreviewClear = true) {
     const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
     const initialCheckpointId = this.historyState.checkpoints.at(-1)?.id
     return html`
       <ribbon-drawer label="Versions" icon="History" layout="history-versions">
         <div class="history-timeline" role="list" aria-label="Document versions">
-          ${this.historyState.preview ? html`
-            <button class="history-preview-clear" type="button" ?disabled=${this.historyLoading}
-              @click=${() => this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))}>
-              Return to current document
-            </button>` : nothing}
+          ${showPreviewClear ? this.renderHistoryPreviewClear() : nothing}
           ${this.historyError ? html`<div class="history-error" role="alert">${this.historyError}</div>`
           : this.historyLoading && !this.historyState.versions.length
             ? html`<div class="history-loading">Loading versions…</div>`
@@ -2644,7 +2690,7 @@ export abstract class EditingControls extends LitElement {
                 <div class="history-version-group" role="listitem">
                   ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved)}
                   ${changeIds.length ? html`
-                    <details class="history-version-changes">
+                    <details class="history-version-changes" ?open=${expandedChanges}>
                       <summary>${changeIds.length} ${changeIds.length === 1 ? "change" : "changes"}</summary>
                       <div role="list" aria-label=${`Changes in ${version.label}`}>
                         ${changeIds.map(id => {

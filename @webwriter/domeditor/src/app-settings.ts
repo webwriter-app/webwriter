@@ -144,13 +144,48 @@ export const appCommands: readonly AppCommand[] = [
 export const SNIPPET_LABEL_MAX_LENGTH = 250
 export type UserSnippet = {id: string, label: string, html: string}
 
+export type DocumentSettings = {
+  proofreadingEnabled?: boolean
+  commentHighlighting?: boolean
+}
+
+export function loadDocumentSettings(id: string | null): DocumentSettings {
+  if(id === null) return {}
+  try {
+    const stored = globalThis.localStorage?.getItem(`webwriter_document_settings_v1:${id}`)
+    if(!stored) return {}
+    const value = JSON.parse(stored) as Partial<DocumentSettings> | null
+    if(!value || typeof value !== "object") return {}
+    return {
+      ...(typeof value.proofreadingEnabled === "boolean" ? {proofreadingEnabled: value.proofreadingEnabled} : {}),
+      ...(typeof value.commentHighlighting === "boolean" ? {commentHighlighting: value.commentHighlighting} : {}),
+    }
+  }
+  catch {
+    return {}
+  }
+}
+
+export function persistDocumentSettings(id: string | null, settings: DocumentSettings) {
+  if(id === null) return
+  try {
+    globalThis.localStorage?.setItem(`webwriter_document_settings_v1:${id}`, JSON.stringify({
+      ...(typeof settings.proofreadingEnabled === "boolean" ? {proofreadingEnabled: settings.proofreadingEnabled} : {}),
+      ...(typeof settings.commentHighlighting === "boolean" ? {commentHighlighting: settings.commentHighlighting} : {}),
+    }))
+  }
+  catch {
+    // Document settings remain active for this session when storage is unavailable.
+  }
+}
+
 export type AppSettings = {
   localUsername: string
   cloudServices: CloudService[]
   activeCloudServiceId: string | null
   cloudServicesConfigured: boolean
   proofreadingDictionary: string[]
-  disableSpellChecking: boolean
+  proofreadingEnabledByDefault: boolean
   userSnippets: UserSnippet[]
   language: string
   defaultLayout: DocumentLayoutMode
@@ -171,7 +206,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     activeCloudServiceId: null,
     cloudServicesConfigured: false,
     proofreadingDictionary: [],
-    disableSpellChecking: false,
+    proofreadingEnabledByDefault: true,
     userSnippets: [],
     language: "en",
     defaultLayout: "document",
@@ -194,7 +229,7 @@ export function loadAppSettings(): AppSettings {
   try {
     const stored = globalThis.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY)
     if(!stored) return defaults
-    const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number; defaultTemplate?: DocumentLayoutMode; offlineUsername?: unknown}
+    const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number; defaultTemplate?: DocumentLayoutMode; offlineUsername?: unknown; disableSpellChecking?: unknown}
     const shortcuts = value.shortcuts && typeof value.shortcuts === "object"
       ? Object.fromEntries(appCommands.map(command => [
         command.id,
@@ -231,8 +266,10 @@ export function loadAppSettings(): AppSettings {
         ? value.activeCloudServiceId! : null,
       cloudServicesConfigured: value.cloudServicesConfigured === true,
       proofreadingDictionary: normalizeProofreadingDictionary(value.proofreadingDictionary),
-      disableSpellChecking: typeof value.disableSpellChecking === "boolean"
-        ? value.disableSpellChecking : defaults.disableSpellChecking,
+      proofreadingEnabledByDefault: typeof value.proofreadingEnabledByDefault === "boolean"
+        ? value.proofreadingEnabledByDefault
+        : typeof value.disableSpellChecking === "boolean"
+          ? !value.disableSpellChecking : defaults.proofreadingEnabledByDefault,
       userSnippets: Array.isArray(value.userSnippets) ? value.userSnippets.filter((snippet): snippet is UserSnippet =>
         Boolean(snippet && typeof snippet.id === "string" && snippet.id && typeof snippet.label === "string"
           && snippet.label && typeof snippet.html === "string" && snippet.html)) : [],

@@ -40,7 +40,7 @@ import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
-import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings} from "../app-settings"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings, loadDocumentSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
 
 const configureCloudStorage = (host: any) => {
@@ -3190,7 +3190,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Imported</p>"], "import.html")]})
     input.dispatchEvent(new Event("change"))
     await opening
-    expect(reload).toHaveBeenCalledWith("<p>Imported</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null)
     expect(host.backendClient.listDocuments).not.toHaveBeenCalled()
     expect(host.fileHandle).toBeNull()
     expect(host.fileName).toBe("import")
@@ -3271,10 +3271,16 @@ describe("DomEditor file actions", () => {
     host.fileName = "Renamed in editor"
     const picker = vi.fn()
     vi.stubGlobal("showSaveFilePicker", picker)
+    host.updateDocumentSettings({proofreadingEnabled: false, commentHighlighting: false})
     mockSaveSnapshot(editor, "<p>Saved</p>")
     await host.saveDocument()
     expect(write).toHaveBeenCalledOnce()
     expect(picker).not.toHaveBeenCalled()
+    expect(host.documentSettingsId).toMatch(/^local:/)
+    expect(loadDocumentSettings(host.documentSettingsId)).toEqual({proofreadingEnabled: false, commentHighlighting: false})
+    const id = host.documentSettingsId
+    await host.saveDocument()
+    expect(host.documentSettingsId).toBe(id)
   })
 
   it("keeps the cloud endpoint and dirty state when downloading a local copy", async () => {
@@ -3369,7 +3375,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Upload</p>"], "Uploaded.html")]})
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Upload</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null)
     expect(host.settings.activeCloudServiceId).toBe("test-cloud")
     expect(host.backendDocumentId).toBeNull()
   })
@@ -3383,7 +3389,7 @@ describe("DomEditor file actions", () => {
 
     await (editor as any).openDocument()
 
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"))
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/))
     expect((editor as any).fileHandle).toBe(handle)
     expect((editor as any).fileName).toBe("opened")
     expect((editor as any).fileDirty).toBe(false)
@@ -3436,7 +3442,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileName).toBe("Server lesson"))
     expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false)
     expect(backend.getDocument).toHaveBeenCalledWith("doc-1")
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"))
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null)
     expect((editor as any).backendDocumentId).toBe("doc-1")
     expect((editor as any).fileName).toBe("Server lesson")
   })
@@ -3485,7 +3491,7 @@ describe("DomEditor file actions", () => {
     })
     await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored")
     expect(picker).not.toHaveBeenCalled()
     expect(new URL(location.href).searchParams.get("open")).toBe("local:stored")
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
@@ -3543,7 +3549,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
     expect(login).toHaveBeenCalledWith(base)
     expect(getDocument).toHaveBeenCalledWith("folder/lesson")
-    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference)
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
   })
 
@@ -3556,6 +3562,7 @@ describe("DomEditor file actions", () => {
     host.storageLocation = "development-server"
     configureCloudStorage(host)
     host.backendDocumentId = "previous"
+    host.updateDocumentSettings({proofreadingEnabled: true, commentHighlighting: false})
     mockSaveSnapshot(editor, "<p>Saved content</p>")
     history.replaceState({}, "", "/?other=keep&open=local%3Aprevious")
     await host.saveDocument(true)
@@ -3564,6 +3571,7 @@ describe("DomEditor file actions", () => {
     const reference = "http://localhost:1234/api/documents/folder%2Fnew%20document"
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
     expect(client.createDocument).toHaveBeenCalledOnce()
+    expect(loadDocumentSettings(reference)).toEqual({proofreadingEnabled: true, commentHighlighting: false})
     await host.saveDocument()
     expect(client.updateDocument).toHaveBeenCalledWith(saved.id, expect.objectContaining({content: "<p>Saved content</p>"}))
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
@@ -5004,7 +5012,76 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
   })
 
-  it("groups newest versions first, expands changes, and routes preview and restore for both tiers", async () => {
+  it("opens Versions only from the Review footer and hides it on close or leaving Review", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(emptyVersionHistoryState())
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-panel")!
+    expect(panel.inert).toBe(true)
+    expect(execute).not.toHaveBeenCalledWith({type: "getVersionHistory"})
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(panel.inert).toBe(false)
+    expect(editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!.review).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"})
+    expect(toolbox.versionsOpen).toBe(true)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close versions"]')!.click()
+    await editor.updateComplete
+    expect(panel.inert).toBe(true)
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await editor.updateComplete
+    toolbox.selectTool("Edit")
+    await editor.updateComplete
+    expect(panel.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!.review).toBe(false)
+  })
+
+  it("keeps pending package changes available before switching the bottom pane to Versions", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as unknown as {reviewOpen: boolean, resolvePendingPackageChanges(): Promise<boolean>}
+    vi.spyOn(editor, "execute").mockResolvedValue(emptyVersionHistoryState())
+    Object.assign(editor, {consoleOpen: true, localPackageDraft: {manifest: {}, errors: {}}, settings: {...loadAppSettings(), pinDeveloperConsole: true}})
+    const resolve = vi.spyOn(host, "resolvePendingPackageChanges").mockResolvedValue(false)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await Promise.resolve()
+    expect(resolve).toHaveBeenCalledOnce()
+    expect(host.reviewOpen).toBe(false)
+    expect(editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!.review).toBe(false)
+  })
+
+  it("leaves HTML source mode while viewing Versions and restores a pinned console on close", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as unknown as {htmlMode: boolean, consoleOpen: boolean, refreshHTMLSource(): Promise<void>}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(emptyVersionHistoryState())
+    vi.spyOn(host, "refreshHTMLSource").mockResolvedValue(undefined)
+    Object.assign(editor, {consoleOpen: true, consoleTab: "HTML", htmlMode: true, settings: {...loadAppSettings(), pinDeveloperConsole: true}})
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await editor.updateComplete
+    await Promise.resolve()
+    expect(host.htmlMode).toBe(false)
+    expect(host.consoleOpen).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "discardHTMLSelectionEdit"})
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close versions"]')!.click()
+    await editor.updateComplete
+    expect(host.htmlMode).toBe(true)
+    expect(host.consoleOpen).toBe(true)
+  })
+
+  it("lists newest versions first and routes preview and restore for both tiers", async () => {
     const {editor} = await mountEditor()
     vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
@@ -5027,47 +5104,52 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Review")
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
     await toolbox.updateComplete
-    const cards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.versions-console-toggle')!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!
+    await console.updateComplete
+    expect(console.review).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector('.history-timeline')).toBeNull()
+    const cards = Array.from(console.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
     expect(cards.map(card => card.dataset.checkpointId)).toEqual(["unsaved", "saved"])
     expect(cards[0].querySelector(".history-checkpoint-label")?.textContent).toBe("Unsaved changes")
     expect(cards[1].querySelector(".history-checkpoint-meta")?.textContent).toBe("By you")
-    expect(cards[1].querySelector(".history-checkpoint-counts")?.textContent).toContain("+1")
-    const groups = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLDetailsElement>("details.history-version-changes"))
-    expect(groups).toHaveLength(1)
-    expect(groups.every(group => !group.open)).toBe(true)
-    expect(groups[0].querySelector("summary")!.textContent).toBe("1 change")
-    groups[0].querySelector("summary")!.click()
-    expect(groups[0].open).toBe(true)
-    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
+    expect(cards[1].querySelector(".history-change-count")?.textContent?.trim()).toBe(String(saved.changes.added + saved.changes.removed + saved.changes.modified))
+    expect(console.shadowRoot!.querySelector("details")).toBeNull()
+    console.shadowRoot!.querySelector<HTMLButtonElement>('.version-sidebar .history-checkpoint[data-checkpoint-id="saved"]')!.click()
+    await console.updateComplete
+    expect(Array.from(console.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
       .map(card => card.dataset.checkpointId)).toEqual(["first"])
 
     for(const id of ["saved", "first", "unsaved"]) {
-      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-checkpoint[data-checkpoint-id="${id}"]`)!.click()
+      console.shadowRoot!.querySelector<HTMLButtonElement>(`.history-checkpoint[data-checkpoint-id="${id}"]`)!.click()
       await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "previewVersionCheckpoint", checkpointId: id}))
       await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true))
       await toolbox.updateComplete
-      expect(groups[0].open).toBe(true)
+      expect(console.shadowRoot!.querySelector(".version-sidebar")).not.toBeNull()
     }
+    console.shadowRoot!.querySelector<HTMLButtonElement>('.version-sidebar .history-checkpoint[data-checkpoint-id="saved"]')!.click()
+    await console.updateComplete
     for(const id of ["saved", "first"]) {
-      await vi.waitFor(() => expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.disabled).toBe(false))
-      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.click()
+      await vi.waitFor(() => expect(console.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.disabled).toBe(false))
+      console.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.click()
       await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "revertVersionCheckpoint", checkpointId: id}))
       await toolbox.updateComplete
     }
-    await vi.waitFor(() => expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.disabled).toBe(false))
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.click()
+    await vi.waitFor(() => expect(console.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.disabled).toBe(false))
+    console.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.click()
     await vi.waitFor(() => expect(toolbox.historyState.preview).not.toBeNull())
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".history-preview-clear")!.click()
+    console.shadowRoot!.querySelector<HTMLButtonElement>(".history-preview-clear")!.click()
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(false))
 
-    toolbox.historyState = {...state, versions: [{...saved, id: "newest", checkpointIds: []}, ...state.versions]}
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".history-version-card")!.dataset.checkpointId).toBe("newest")
-    expect(groups[0].open).toBe(true)
+    console.historyState = {...state, versions: [{...saved, id: "newest", timestamp: unsaved.timestamp + 1, checkpointIds: []}, ...state.versions]}
+    await console.updateComplete
+    expect(console.shadowRoot!.querySelector<HTMLElement>(".history-version-card")!.dataset.checkpointId).toBe("newest")
+    expect(console.shadowRoot!.querySelector(".version-sidebar")).not.toBeNull()
   })
 
   it("routes media ribbon commands through the iframe bridge", async () => {
@@ -8255,7 +8337,7 @@ it("opens a server editing link without an account and passes its token to colla
   vi.stubGlobal("fetch", fetch)
   const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
   await host.restoreLinkedDocument(`http://localhost:1234/api/shared-documents/${token}`)
-  expect(reload).toHaveBeenCalledWith("<p>Editable</p>")
+  expect(reload).toHaveBeenCalledWith("<p>Editable</p>", false, "http://localhost:1234/api/documents/shared")
   expect(host.backendDocumentId).toBe("shared")
   expect(new URL(host.syncUrl).searchParams.get("session")).toBe("document-shared")
   expect(new URL(host.syncUrl).searchParams.get("share")).toBe(token)

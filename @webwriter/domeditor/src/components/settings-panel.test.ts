@@ -6,7 +6,9 @@ import {
   APP_SETTINGS_STORAGE_KEY,
   appCommands,
   defaultAppSettings,
+  loadDocumentSettings,
   loadAppSettings,
+  persistDocumentSettings,
   persistAppSettings,
   reservedShortcutReason,
   shortcutMatchesEvent,
@@ -91,32 +93,66 @@ describe("settings panel", () => {
     expect(loadAppSettings().proofreadingDictionary).toEqual(["Word", "Another"])
   })
 
-  it("loads, persists, and changes the global spell-checking preference", async () => {
+  it("loads, persists, and changes the proofreading default", async () => {
     const defaults = defaultAppSettings()
-    expect(defaults.disableSpellChecking).toBe(false)
+    expect(defaults.proofreadingEnabledByDefault).toBe(true)
     for(const value of [undefined, null, "true", 1, {}]) {
-      localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableSpellChecking: value}))
-      expect(loadAppSettings().disableSpellChecking).toBe(false)
+      localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({proofreadingEnabledByDefault: value}))
+      expect(loadAppSettings().proofreadingEnabledByDefault).toBe(true)
     }
-    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableSpellChecking: true}))
-    expect(loadAppSettings().disableSpellChecking).toBe(true)
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({proofreadingEnabledByDefault: false}))
+    expect(loadAppSettings().proofreadingEnabledByDefault).toBe(false)
 
-    const settings = {...defaultAppSettings(), disableSpellChecking: false, language: "de", proofreadingDictionary: ["WebWriter"]}
+    const settings = {...defaultAppSettings(), proofreadingEnabledByDefault: true, language: "de", proofreadingDictionary: ["WebWriter"]}
     persistAppSettings(settings)
-    expect(loadAppSettings().disableSpellChecking).toBe(false)
+    expect(loadAppSettings().proofreadingEnabledByDefault).toBe(true)
     const panel = await mountPanel(settings)
     const changes: AppSettings[] = []
     panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
     const root = panel.shadowRoot!
-    const checkbox = root.querySelector<HTMLInputElement>('section[aria-label="Spell checking"] input')!
+    const checkbox = root.querySelector<HTMLInputElement>('section[aria-label="Proofreading"] input')!
+    expect(checkbox.checked).toBe(true)
     expect(root.querySelector("section[aria-label=\"Local dictionary\"] input")).not.toBeNull()
-    expect(root.textContent).toContain("Disable spelling, grammar, and style suggestions.")
-    checkbox.checked = true
+    expect(root.textContent).toContain("Enable proofreading by default")
+    checkbox.checked = false
     checkbox.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(changes.at(-1)).toMatchObject({disableSpellChecking: true, language: "de", proofreadingDictionary: ["WebWriter"]})
+    expect(changes.at(-1)).toMatchObject({proofreadingEnabledByDefault: false, language: "de", proofreadingDictionary: ["WebWriter"]})
     expect(changes.at(-1)?.shortcuts).toEqual(settings.shortcuts)
     persistAppSettings(changes.at(-1)!)
-    expect(loadAppSettings()).toMatchObject({disableSpellChecking: true, language: "de", proofreadingDictionary: ["WebWriter"]})
+    expect(loadAppSettings()).toMatchObject({proofreadingEnabledByDefault: false, language: "de", proofreadingDictionary: ["WebWriter"]})
+  })
+
+  it("migrates the legacy disable spell checking preference when the new setting is absent", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableSpellChecking: true}))
+    expect(loadAppSettings().proofreadingEnabledByDefault).toBe(false)
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableSpellChecking: false}))
+    expect(loadAppSettings().proofreadingEnabledByDefault).toBe(true)
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({disableSpellChecking: true, proofreadingEnabledByDefault: true}))
+    expect(loadAppSettings().proofreadingEnabledByDefault).toBe(true)
+  })
+
+  it("stores optional settings separately for each document", () => {
+    persistDocumentSettings("one", {proofreadingEnabled: false})
+    persistDocumentSettings("two", {commentHighlighting: false})
+    expect(loadDocumentSettings("one")).toEqual({proofreadingEnabled: false})
+    expect(loadDocumentSettings("two")).toEqual({commentHighlighting: false})
+    expect(loadDocumentSettings("three")).toEqual({})
+  })
+
+  it("ignores null document IDs, invalid values, and unavailable storage", () => {
+    persistDocumentSettings(null, {proofreadingEnabled: false})
+    expect(loadDocumentSettings(null)).toEqual({})
+    localStorage.setItem("webwriter_document_settings_v1:invalid", JSON.stringify({proofreadingEnabled: "yes", commentHighlighting: 1, extra: true}))
+    expect(loadDocumentSettings("invalid")).toEqual({})
+    localStorage.setItem("webwriter_document_settings_v1:corrupt", "{")
+    expect(loadDocumentSettings("corrupt")).toEqual({})
+
+    vi.stubGlobal("localStorage", {
+      getItem: () => {throw new Error("unavailable")},
+      setItem: () => {throw new Error("unavailable")},
+    })
+    expect(loadDocumentSettings("unavailable")).toEqual({})
+    expect(() => persistDocumentSettings("unavailable", {proofreadingEnabled: true})).not.toThrow()
   })
 
   it("adds, removes, and clears local dictionary words through settings changes", async () => {

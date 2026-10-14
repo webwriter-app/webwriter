@@ -148,7 +148,8 @@ export type InitializeEditorMessage = {
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
   proofreadingDictionary?: string[]
-  disableSpellChecking?: boolean
+  proofreadingEnabled?: boolean
+  commentHighlighting?: boolean
 }
 
 export type LoadWidgetsMessage = {
@@ -201,7 +202,8 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
     && (message.language === undefined || typeof message.language === "string")
     && (message.username === undefined || typeof message.username === "string")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
-    && (message.disableSpellChecking === undefined || typeof message.disableSpellChecking === "boolean")
+    && (message.proofreadingEnabled === undefined || typeof message.proofreadingEnabled === "boolean")
+    && (message.commentHighlighting === undefined || typeof message.commentHighlighting === "boolean")
     && (message.proofreadingDictionary === undefined || Array.isArray(message.proofreadingDictionary)
       && message.proofreadingDictionary.every(word => typeof word === "string" && Boolean(word.trim()) && !/\s/u.test(word)))
     && (message.shortcuts === undefined || !!message.shortcuts && typeof message.shortcuts === "object"

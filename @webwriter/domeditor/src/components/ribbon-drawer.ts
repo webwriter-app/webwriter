@@ -939,7 +939,7 @@ export class RibbonDrawer extends LitElement {
       min-height: 0;
       padding: 0 var(--ribbon-drawer-pane-padding-inline, 0.7rem) 0.75rem;
       border: 0;
-      border-bottom: 1px solid #d8dee6;
+      border-bottom: var(--ribbon-drawer-pane-border-bottom, 1px solid #d8dee6);
       background: transparent;
       box-shadow: none;
       clip-path: none;
@@ -955,8 +955,16 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
     }
 
-    :host([pane]) .drawer.options .pane-label { padding-right: 0; }
+    :host([pane]) .drawer.options .pane-label,
+    :host([pane][layout="comments"]) .pane-label { padding-right: 0; }
     slot[name="heading-action"] { display: flex; margin-left: auto; }
+
+    :host([pane][hide-pane-label][layout="history-versions"]) .drawer {
+      display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0; border: 0; overflow: hidden;
+    }
+    :host([pane][hide-pane-label][layout="history-versions"]) .controls {
+      display: block; flex: 1; min-height: 0; height: 100%; overflow: hidden;
+    }
 
     :host([pane][hide-pane-label]) .pane-label {
       display: none;
@@ -1024,6 +1032,11 @@ export class RibbonDrawer extends LitElement {
     :host([pane][layout="marks"]) ::slotted(.font-size) {
       grid-column: span 2 !important;
     }
+
+    :host([pane][layout="comments"]) {display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;}
+    :host([pane][layout="comments"]) .drawer {display: flex; flex-direction: column; flex: 1 1 auto; overflow: hidden; padding-bottom: 0;}
+    :host([pane][layout="comments"]) .pane-label {flex: 0 0 auto;}
+    :host([pane][layout="comments"]) .controls {display: block; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; padding-bottom: .75rem;}
 
     :host([pane][layout="comments"]) ::slotted(.comment-threads) {
       grid-column: 1 / -1;

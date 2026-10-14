@@ -45,6 +45,7 @@ const expectedChecks = [
   "wide widgets remain centered between symmetric float lanes",
   "far floats adapt to column margins and survive standalone export",
   "Harper checks English in a worker without authored DOM artifacts",
+  "Review shares bounded scroll areas and lays out versions beside responsive changes",
   "version previews preserve editing mode and reject native and direct mutations",
   "collaborated scripts remain inert with namespace prefixes, clones and later edits",
   "new paragraphs and line breaks reveal the caret at the document end",

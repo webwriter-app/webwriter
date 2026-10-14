@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DeveloperConsole} from "./developer-console"
+import {emptyVersionHistoryState} from "../editor-bridge"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -13,6 +14,72 @@ async function mount() {
 }
 
 describe("Developer console", () => {
+  it("shows versions beside responsive changes and retains the active version", async () => {
+    const console = new DeveloperConsole()
+    console.review = true
+    const user = {clientId: 7, name: "Ada", initials: "AD", color: "#64748b"}
+    const checkpoint = (id: string, timestamp: number, modified = 1) => ({
+      id, timestamp, label: "Edited by Ada", user, changes: {added: 0, removed: 0, modified}, commentCount: 0,
+    })
+    const initial = {...checkpoint("initial", 0, 0), label: "Document created"}
+    const version = {...initial, id: "unsaved", label: "Unsaved changes", checkpointIds: [initial.id], isUnsaved: true, isCurrent: true}
+    console.historyState = {...emptyVersionHistoryState(), checkpoints: [initial], versions: [version], currentCheckpointId: initial.id}
+    document.body.append(console)
+    await console.updateComplete
+    const root = console.shadowRoot!
+    expect(root.querySelector(".version-sidebar h2")).toBeNull()
+    expect(root.querySelector("[role=tablist], .package-sidebar, .auto-reload, .console-pin")).toBeNull()
+    expect(root.querySelectorAll(".history-version-card")).toHaveLength(1)
+    expect(root.querySelector(".history-version-changes")).toBeNull()
+    expect(root.querySelector(".version-sidebar")).not.toBeNull()
+    expect(root.querySelector(".version-change-list")).toBeNull()
+
+    const first = {...checkpoint("first", 1), changes: {added: 2, removed: 1, modified: 3}}
+    const undo = checkpoint("undo", 2, 0)
+    const latest = checkpoint("latest", 3)
+    console.historyState = {...console.historyState, checkpoints: [latest, undo, first, initial],
+      versions: [{...version, checkpointIds: [latest.id, "missing", undo.id, first.id, initial.id]}], currentCheckpointId: latest.id}
+    await console.updateComplete
+    expect(Array.from(root.querySelectorAll<HTMLElement>(".history-change-card")).map(card => card.dataset.checkpointId)).toEqual(["undo", "first"])
+    expect(root.querySelector("details")).toBeNull()
+    const count = root.querySelector(".history-change-card .history-checkpoint-counts")!
+    expect(count.getAttribute("aria-label")).toBe("0 added, 0 removed, 0 changed")
+    expect(root.querySelector(".history-change-card .history-change-count")).toBeNull()
+    expect(root.querySelector(".history-version-card .history-change-count")).not.toBeNull()
+    expect(root.querySelector(".history-change-card .history-card-restore-button")!.textContent!.trim()).toBe("")
+    console.historyState = {...console.historyState, versions: [
+      {...version, id: "older", timestamp: 0, checkpointIds: [undo.id, first.id]},
+      {...version, timestamp: 3, checkpointIds: [latest.id, undo.id, first.id]},
+    ]}
+    await console.updateComplete
+    expect(Array.from(root.querySelectorAll<HTMLElement>(".history-version-card")).map(card => card.dataset.checkpointId)).toEqual(["unsaved", "older"])
+    root.querySelector<HTMLButtonElement>('.version-sidebar .history-checkpoint[data-checkpoint-id="older"]')!.click()
+    await console.updateComplete
+    expect(root.querySelector(".version-list li[data-active] .history-version-card")?.getAttribute("data-checkpoint-id")).toBe("older")
+    expect(Array.from(root.querySelectorAll<HTMLElement>(".history-change-card")).map(card => card.dataset.checkpointId)).toEqual(["first"])
+    expect(root.querySelector(".history-change-count")?.getAttribute("aria-label")).toBeDefined()
+    const counts = root.querySelector(".history-change-card .history-checkpoint-counts")!
+    expect(counts.querySelector('[data-kind="added"]')!.textContent).toBe("+2")
+    expect(counts.querySelector('[data-kind="removed"]')!.textContent).toBe("−1")
+    expect(counts.querySelector('[data-kind="modified"]')!.textContent).toBe("~3")
+    const selected = vi.fn(), reverted = vi.fn(), cleared = vi.fn()
+    console.addEventListener("history-checkpoint-select", selected)
+    console.addEventListener("history-revert", reverted)
+    console.addEventListener("history-preview-clear", cleared)
+    root.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="first"]')!.click()
+    root.querySelector<HTMLButtonElement>('.history-card-restore-button[data-checkpoint-id="first"]')!.click()
+    console.historyState = {...console.historyState, preview: {checkpointId: "first", html: "<p>preview</p>"} as never}
+    await console.updateComplete
+    root.querySelector<HTMLButtonElement>(".history-preview-clear")!.click()
+    expect(selected).toHaveBeenCalledWith(expect.objectContaining({detail: {checkpointId: "first"}}))
+    expect(reverted).toHaveBeenCalledWith(expect.objectContaining({detail: {checkpointId: "first"}}))
+    expect(cleared).toHaveBeenCalledTimes(1)
+    expect(root.querySelector(".version-list li[data-active] .history-version-card")?.getAttribute("data-checkpoint-id")).toBe("older")
+    console.historyState = {...console.historyState, versions: console.historyState.versions.filter(version => version.id !== "older")}
+    await console.updateComplete
+    expect(root.querySelector(".version-list li[data-active] .history-version-card")?.getAttribute("data-checkpoint-id")).toBe("unsaved")
+  })
+
   it("keeps one full-height package list beside the tab bar and greys it out on HTML", async () => {
     const console = new DeveloperConsole()
     document.body.append(console)

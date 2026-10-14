@@ -200,6 +200,9 @@ import {
   appCommands,
   builtinShortcuts,
   loadAppSettings,
+  loadDocumentSettings,
+  persistDocumentSettings,
+  type DocumentSettings,
   persistAppSettings,
   SNIPPET_LABEL_MAX_LENGTH,
   shortcutFromEvent,
@@ -410,6 +413,7 @@ export class DomEditor extends LitElement {
     historyLoading: {attribute: false, state: true},
     historyError: {attribute: false, state: true},
     consoleOpen: {attribute: false, state: true},
+    reviewOpen: {attribute: false, state: true},
     consoleTab: {attribute: false, state: true},
     localPackageDraft: {attribute: false, state: true},
     localPackageDraftSaving: {attribute: false, state: true},
@@ -475,7 +479,10 @@ export class DomEditor extends LitElement {
     count: 0,
     highlighting: true,
   }
-  private proofreadingState: ProofreadingState = emptyProofreadingState()
+  private settings: AppSettings = loadAppSettings()
+  private documentSettingsId: string | null = null
+  private documentSettings: DocumentSettings = {}
+  private proofreadingState: ProofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled, documentEnabled: this.documentProofreadingEnabled}
   private proofreadingReloading = false
   private listType: ListType | null = null
   private listStyle = ""
@@ -507,6 +514,7 @@ export class DomEditor extends LitElement {
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
   private consoleOpen = false
+  private reviewOpen = false
   private consoleTab: "HTML" | "Packages" | "Tests" | "Element" = "Packages"
   private htmlMode = false
   private htmlSource = ""
@@ -644,7 +652,6 @@ export class DomEditor extends LitElement {
   private historyOperationCount = 0
   private historyDocumentTransitionCount = 0
   private historyError = ""
-  private settings: AppSettings = loadAppSettings()
   private editingSnippetId: string | null = null
   private freshDocumentLayoutSnapshot: string | null = null
   private initialDocumentLayoutStarted = false
@@ -1913,7 +1920,8 @@ export class DomEditor extends LitElement {
         disableAnimations: this.settings.disableAnimations,
         shortcuts: {...this.settings.shortcuts},
         proofreadingDictionary: [...this.settings.proofreadingDictionary],
-        disableSpellChecking: this.settings.disableSpellChecking,
+        proofreadingEnabled: this.documentProofreadingEnabled,
+        commentHighlighting: this.documentSettings.commentHighlighting ?? true,
         ...(this.frameState ? {initialState: this.frameState} : {}),
       }
       const importMap = this.packageImportMap ?? undefined
@@ -2800,13 +2808,12 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
-    if(previous.disableSpellChecking !== settings.disableSpellChecking) {
-      if(settings.disableSpellChecking) {
-        this.proofreadingReloading = false
-        this.proofreadingState = {...this.proofreadingState, enabled: false, loading: false,
-          ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
-      }
-      void this.execute({type: "setProofreadingEnabled", enabled: !settings.disableSpellChecking}).catch(() => {})
+    if(previous.proofreadingEnabledByDefault !== settings.proofreadingEnabledByDefault
+      && this.documentSettings.proofreadingEnabled === undefined) {
+      this.proofreadingReloading = false
+      this.proofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled,
+        documentEnabled: this.documentProofreadingEnabled}
+      void this.execute({type: "setDocumentProofreadingEnabled", enabled: this.documentProofreadingEnabled}).catch(() => {})
     }
     if(JSON.stringify(previous.proofreadingDictionary) !== JSON.stringify(settings.proofreadingDictionary)) {
       void this.execute({type: "setProofreadingDictionary", words: [...settings.proofreadingDictionary]}).catch(() => {})
@@ -2938,7 +2945,21 @@ export class DomEditor extends LitElement {
     return !this.fileDirty || window.confirm("Discard the unsaved changes to this document?")
   }
 
-  private async reloadDocument(htmlSource: string, isNewDocument = false) {
+  private get documentProofreadingEnabled() {
+    return this.documentSettings.proofreadingEnabled ?? this.settings.proofreadingEnabledByDefault
+  }
+
+  private updateDocumentSettings(settings: DocumentSettings) {
+    this.documentSettings = {...this.documentSettings, ...settings}
+    persistDocumentSettings(this.documentSettingsId, this.documentSettings)
+  }
+
+  private saveDocumentSettingsAs(id: string | null) {
+    this.documentSettingsId = id
+    persistDocumentSettings(id, this.documentSettings)
+  }
+
+  private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null) {
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
     this.editorFrameStartupError = null
@@ -2962,7 +2983,11 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
     this.frameState = undefined
     this.documentHead = emptyDocumentHeadState()
-    this.proofreadingState = emptyProofreadingState()
+    this.documentSettingsId = settingsId
+    this.documentSettings = loadDocumentSettings(settingsId)
+    this.proofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled,
+      documentEnabled: this.documentProofreadingEnabled}
+    this.commentState = {...this.commentState, highlighting: this.documentSettings.commentHighlighting ?? true}
     this.proofreadingReloading = false
     this.historyState = emptyVersionHistoryState()
     this.historyLoading = false
@@ -3095,10 +3120,15 @@ export class DomEditor extends LitElement {
     history.replaceState(history.state, "", url.href)
   }
 
+  private backendDocumentReference(id: string, client: BackendClient) {
+    const apiBaseUrl = client.apiBaseUrl ?? this.backendSession?.apiBaseUrl
+    return apiBaseUrl ? `${apiBaseUrl.replace(/\/$/, "")}/documents/${encodeURIComponent(id)}` : null
+  }
+
   private updateBackendDocumentURL(id: string, client: BackendClient) {
     if(this.sharedDocumentToken) return
-    const apiBaseUrl = client.apiBaseUrl ?? this.backendSession?.apiBaseUrl
-    if(apiBaseUrl) this.updateDocumentURL(`${apiBaseUrl.replace(/\/$/, "")}/documents/${encodeURIComponent(id)}`)
+    const reference = this.backendDocumentReference(id, client)
+    if(reference) this.updateDocumentURL(reference)
   }
 
   private async restoreLinkedDocument(value: string, startupReady: Promise<void> = Promise.resolve()) {
@@ -3120,7 +3150,7 @@ export class DomEditor extends LitElement {
         this.backendState = "connected"
         this.collaborationRoom = `document-${document.id}`
         this.sharedDocumentToken = token
-        await this.reloadDocument(document.content)
+        await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client))
         this.backendDocumentId = document.id
         this.fileHandle = null
         this.storageLocation = "development-server"
@@ -3283,8 +3313,13 @@ export class DomEditor extends LitElement {
       const source = await file.text()
       if(beforeLoad && !await beforeLoad()) return
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
+      await this.recentDocumentsReady
+      const localDocument = handle ? (await rememberRecentDocument(this.recentDocuments, {
+        id: storedId ?? crypto.randomUUID(), title: file.name || handle.name, openedAt: Date.now(), kind: "local", handle,
+      }))[0] : null
+      if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       this.clearDocumentCollaboration()
-      await this.reloadDocument(source)
+      await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null)
       this.backendDocumentId = null
       this.fileHandle = handle
       this.storageLocation = "local"
@@ -3293,8 +3328,8 @@ export class DomEditor extends LitElement {
       this.fileName = this.baseFileName(openedName)
       this.fileFormat = this.formatForFileName(openedName)
       this.fileDirty = false
-      if(handle) {
-        const opened = await this.rememberOpenedDocument({id: storedId ?? crypto.randomUUID(), title: openedName, openedAt: Date.now(), kind: "local", handle})
+      if(localDocument) {
+        const opened = await this.rememberOpenedDocument(localDocument)
         this.updateDocumentURL(documentOpenReference(opened))
       }
       else this.updateDocumentURL(null)
@@ -3385,6 +3420,7 @@ export class DomEditor extends LitElement {
         this.fileDirty = revision !== this.documentChangeSequence
         if(handle) {
           const saved = await this.rememberOpenedDocument({id: crypto.randomUUID(), title: handle.name, openedAt: Date.now(), kind: "local", handle})
+          this.saveDocumentSettingsAs(documentOpenReference(saved))
           this.updateDocumentURL(documentOpenReference(saved))
         }
         else this.updateDocumentURL(null)
@@ -3409,7 +3445,7 @@ export class DomEditor extends LitElement {
       this.linkSharingEnabled = false
       this.collaborationRoom = `document-${document.id}`
       this.sharedDocumentToken = null
-      await this.reloadDocument(document.content)
+      await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client))
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.downloadedFileName = null
@@ -3477,6 +3513,7 @@ export class DomEditor extends LitElement {
       this.fileDirty = revision !== this.documentChangeSequence
       const {id, title: savedTitle, format, createdAt, updatedAt} = document
       this.savedDocuments = [{id, title: savedTitle, format, createdAt, updatedAt}, ...this.savedDocuments.filter(summary => summary.id !== id)]
+      this.saveDocumentSettingsAs(this.backendDocumentReference(id, client))
       this.updateBackendDocumentURL(id, client)
       if(this.collaborationRoom && this.collaborationRoom !== `document-${id}`) {
         const previousRoom = this.collaborationRoom
@@ -4844,7 +4881,7 @@ export class DomEditor extends LitElement {
   }
 
   private retainProofreadingDuringReload() {
-    const checking = this.proofreadingState.enabled && !this.settings.disableSpellChecking
+    const checking = this.proofreadingState.enabled
     this.proofreadingReloading = checking
     this.proofreadingState = {...this.proofreadingState, loading: checking, ready: false,
       checking, error: null, hoveredIssueId: null}
@@ -5142,6 +5179,10 @@ export class DomEditor extends LitElement {
     const revision = this.frameRevision
     void this.execute(action).then(result => {
       if(revision !== this.frameRevision) return
+      if(action.type === "setDocumentProofreadingEnabled" && result !== false) {
+        this.updateDocumentSettings({proofreadingEnabled: action.enabled})
+        this.proofreadingState = {...this.proofreadingState, documentEnabled: action.enabled}
+      }
       if(result === true && (action.type === "selectProofreadingIssue" || action.type === "applyProofreadingSuggestion")) this.focusEditor()
     }).catch(() => {
       // A replaced frame or stale command should refresh the cards safely.
@@ -5156,7 +5197,9 @@ export class DomEditor extends LitElement {
   private handleCommentAction = (event: Event) => {
     const detail = (event as CustomEvent<{action?: unknown, id?: unknown, text?: unknown, enabled?: unknown}>).detail
     if(!detail || typeof detail.action !== "string") return
-    const action = detail.action === "select" && typeof detail.id === "string"
+    const action = detail.action === "add" && typeof detail.text === "string"
+      ? {type: "addComment", text: detail.text} as const
+      : detail.action === "select" && typeof detail.id === "string"
       ? {type: "selectComment", id: detail.id} as const
       : detail.action === "reply" && typeof detail.id === "string" && typeof detail.text === "string"
         ? {type: "addCommentReply", id: detail.id, text: detail.text} as const
@@ -5178,8 +5221,15 @@ export class DomEditor extends LitElement {
                 ? {type: "setCommentHighlighting", enabled: detail.enabled} as const
               : null
     if(!action) return
-    void this.execute(action).finally(() => {
-      if(["toggle", "remove-all", "previous", "next"].includes(detail.action as string)) this.focusEditor()
+    const revision = this.frameRevision
+    void this.execute(action).then(result => {
+      if(revision !== this.frameRevision) return
+      if(action.type === "setCommentHighlighting" && result !== false) {
+        this.updateDocumentSettings({commentHighlighting: action.enabled})
+      }
+      if(action.type === "selectComment" && result === true) this.focusEditor()
+    }).catch(() => {}).finally(() => {
+      if(revision === this.frameRevision && ["toggle", "remove-all", "previous", "next"].includes(detail.action as string)) this.focusEditor()
     })
   }
 
@@ -5543,7 +5593,7 @@ export class DomEditor extends LitElement {
         // selection change; leaving the visual mode must still succeed.
       }
       if(sequence !== this.htmlSourceRefreshSequence) return
-      if(this.consoleTab === "HTML") this.consoleOpen = false
+      if(this.consoleTab === "HTML" && !this.reviewOpen) this.consoleOpen = false
       // Keep the source visible while the HTML view collapses; it is reset
       // when the view opens again.
       this.htmlOriginalSource = ""
@@ -5565,6 +5615,7 @@ export class DomEditor extends LitElement {
     if(typeof enabled !== "boolean" || this.htmlPending) return
     if(!enabled && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
     this.consoleOpen = enabled
+    if(enabled) this.reviewOpen = false
     if(enabled) {
       this.documentLayoutsDismissed = true
       this.selectWidgetElementPackage()
@@ -5622,12 +5673,36 @@ export class DomEditor extends LitElement {
 
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
+    if(tool !== "Review" && this.reviewOpen) {
+      this.reviewOpen = false
+      void this.setHTMLMode(this.consoleOpen && this.consoleTab === "HTML")
+    }
     this.aiToolboxOpen = tool === "AI"
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     if(ribbon) ribbon.aiChatOpen = this.aiToolboxOpen
     if(tool !== "Edit" && !this.htmlPending && !this.settings.pinDeveloperConsole) {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
     }
+  }
+
+  private handleVersionsConsoleChange = (event: Event) => {
+    const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
+    if(typeof enabled !== "boolean" || this.htmlPending) return
+    if(enabled && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool !== "Review") return
+    if(enabled && this.consoleOpen && this.renderRoot.querySelector<DeveloperConsole>("developer-console")?.flushPackageInputs() === false) return
+    if(enabled && this.localPackageDraft) {
+      void this.resolvePendingPackageChanges().then(continueAction => {
+        if(continueAction) this.handleVersionsConsoleChange(new CustomEvent("versions-console-change", {detail: {enabled: true}}))
+      })
+      return
+    }
+    this.reviewOpen = enabled
+    void this.setHTMLMode(!enabled && this.consoleOpen && this.consoleTab === "HTML")
+    if(enabled) {
+      this.documentLayoutsDismissed = true
+      void this.requestHistoryState()
+    }
+    else void this.clearHistoryPreview()
   }
 
   private handleDocumentLayoutChange = (event: Event) => {
@@ -5694,9 +5769,9 @@ export class DomEditor extends LitElement {
 
   private renderHTMLSourceEditor() {
     return html`
-      <div class="html-source-panel" ?inert=${!this.consoleOpen} aria-hidden=${String(!this.consoleOpen)}>
+      <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen} aria-hidden=${String(!this.consoleOpen && !this.reviewOpen)}>
         <div class="html-source-clip">
-          <developer-console .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
+          <developer-console .review=${this.reviewOpen} .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
             .packageDraft=${this.localPackageDraft?.manifest ?? null} .packageSaving=${this.localPackageDraftSaving}
             .packageDraftRevision=${this.localPackageDraftRevision}
             ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
@@ -6491,10 +6566,7 @@ export class DomEditor extends LitElement {
     }
     if(isProofreadingStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
-      const state: ProofreadingState = this.settings.disableSpellChecking
-        ? {...event.data.detail, enabled: false, loading: false, ready: false, checking: false,
-          error: null, hoveredIssueId: null, issues: []}
-        : event.data.detail
+      const state = event.data.detail
       const retain = this.proofreadingReloading && state.enabled && (!state.ready || state.loading || state.checking)
       if(!retain) this.proofreadingReloading = false
       this.proofreadingState = {
@@ -6930,9 +7002,10 @@ export class DomEditor extends LitElement {
       text: "",
       activeCount: 0,
       count: 0,
-      highlighting: true,
+      highlighting: this.documentSettings.commentHighlighting ?? true,
     }
-    this.proofreadingState = emptyProofreadingState()
+    this.proofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled,
+      documentEnabled: this.documentProofreadingEnabled}
     this.proofreadingReloading = false
     this.mediaSelection = null
     this.dialogSelection = null
@@ -6945,6 +7018,7 @@ export class DomEditor extends LitElement {
     this.htmlSourceRefreshQueued = false
     this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
     this.consoleOpen = false
+    this.reviewOpen = false
     this.consoleTab = "Packages"
     this.htmlMode = false
     this.htmlSource = ""
@@ -7280,7 +7354,6 @@ export class DomEditor extends LitElement {
           if(this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive) this.shapePaint = {...event.detail.paint}
         }}
         .proofreadingState=${this.proofreadingState}
-        .disableSpellChecking=${this.settings.disableSpellChecking}
         .disableAI=${this.settings.disableAI}
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
@@ -7292,6 +7365,7 @@ export class DomEditor extends LitElement {
         .documentHead=${this.documentHead}
         @document-head-action=${this.handleDocumentHeadAction}
         .consoleOpen=${this.consoleOpen}
+        .versionsOpen=${this.reviewOpen}
         .htmlPending=${this.htmlPending}
         .table=${this.tableSelection}
         .aiSidebar=${!this.breadcrumbVisible && this.aiToolboxOpen}
@@ -7300,9 +7374,10 @@ export class DomEditor extends LitElement {
         @proofreading-action=${this.handleProofreadingAction}
         @document-layout-change=${this.handleDocumentLayoutChange}
         @developer-console-change=${this.handleDeveloperConsoleChange}
+        @versions-console-change=${this.handleVersionsConsoleChange}
         @developer-console-pin-change=${this.handleDeveloperConsolePinChange}
       ></dom-editor-toolbox>
-      ${(this.breadcrumbVisible || this.consoleOpen || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
+      ${(this.breadcrumbVisible || this.consoleOpen || this.reviewOpen || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
       ${this.previewActive || this.liveSessionActive ? "" : html`
         <div class="document-layouts-panel" ?inert=${this.documentLayoutsDismissed} aria-hidden=${String(this.documentLayoutsDismissed)}>
           <div class="document-layouts-clip">

@@ -136,21 +136,28 @@ export const editingControlStyles = css`
     .history-count[data-kind="modified"] { color: #9a6700; }
     .history-count[data-kind="comments"] { margin-left: auto; color: #526b86; }
 
-    .comment-threads {display: flex; flex-direction: column; gap: .45rem; grid-column: 1 / -1; min-width: 0; max-height: 24rem; overflow: auto; padding-top: .5rem; border-top: 1px solid #d8dee6;}
-    .comment-threads h3 {display: flex; justify-content: space-between; margin: 0; color: #344054; font-size: .72rem;}
+    .comment-threads {display: flex; flex-direction: column; gap: .45rem; grid-column: 1 / -1; min-width: 0;}
+    .comment-heading-actions {display: flex; align-items: center; gap: .15rem;}
+    .comment-review-highlight {margin: 0 0 0 .25rem; accent-color: #1769aa;}
+    .comment-thread button:disabled {opacity: .5; cursor: default;}
+    .comment-message button svg {width: .85rem; height: .85rem; flex-shrink: 0;}
+    .comment-message button {display: inline-flex; align-items: center; gap: .2rem;}
+    .comment-delete {float: right; margin: 0 0 .3rem .3rem;}
+
     .comment-thread {display: flex; flex-direction: column; gap: .35rem; min-width: 0; padding: .45rem; border: 1px solid #d8dee6; border-radius: .4rem; background: #fff;}
     .comment-thread[data-active] {border-color: #3977c7; background: #f1f7ff; box-shadow: inset 0 0 0 1px rgb(57 119 199 / 10%);}
     .comment-thread button {border: 0; border-radius: .25rem; padding: .28rem .4rem; color: #344054; background: #edf2f7; font: inherit; font-size: .62rem; cursor: pointer;}
     .comment-thread button:hover {background: #dce8f5;}
-    .comment-thread-target {text-align: left; font-weight: 700 !important;}
+    .comment-thread[data-thread-id] {cursor: pointer;}
+    .comment-thread[data-thread-id]:hover {border-color: #8caed8;}
+    .comment-thread[data-thread-id]:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px;}
     .comment-message {min-width: 0; padding: .35rem; border-radius: .3rem; background: #f8fafc;}
-    .comment-message-meta {display: flex; justify-content: space-between; gap: .3rem; color: #667085; font-size: .56rem;}
+    .comment-message-meta {display: flex; flex-direction: column; justify-content: space-between; gap: .3rem; color: #667085; font-size: .56rem;}
     .comment-message-meta strong {overflow: hidden; color: #344054; text-overflow: ellipsis;}
     .comment-message p {margin: .3rem 0; overflow-wrap: anywhere; color: #344054; font-size: .68rem; line-height: 1.35; white-space: pre-wrap;}
-    .comment-message-actions {display: flex; justify-content: flex-end; gap: .25rem;}
+    .comment-message-actions {clear: both; display: flex; justify-content: flex-end; gap: .25rem;}
     .comment-thread textarea {box-sizing: border-box; width: 100%; min-height: 2.8rem; resize: vertical; border: 1px solid #c5ccd5; border-radius: .3rem; padding: .35rem; color: inherit; background: #fff; font: inherit; font-size: .66rem;}
     .comment-reply {display: flex; flex-direction: column; align-items: flex-end; gap: .25rem;}
-    .comment-threads-empty {margin: 0; color: #667085; font-size: .65rem;}
 
     .history-version-changes {font-size: .6rem; color: #526b86;}
     .history-version-changes summary {padding: .3rem; cursor: pointer;}

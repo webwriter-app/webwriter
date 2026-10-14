@@ -90,6 +90,7 @@ export class ProofreadingFeature extends EditorFeature {
   private enabled = false
   private manualChecking = false
   private checkingAllowed = true
+  private documentCheckingEnabled = true
   private loading = false
   private ready = false
   private lastStatus = ""
@@ -160,7 +161,7 @@ export class ProofreadingFeature extends EditorFeature {
     this.observer = new MutationObserver(records => this.handleMutations(records))
     this.observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true,
       attributeFilter: ["lang", "hidden", "inert", "contenteditable", "is", "style", "class"]})
-    this.observer.observe(document.documentElement, {attributes: true, attributeFilter: ["lang", "spellcheck"]})
+    this.observer.observe(document.documentElement, {attributes: true, attributeFilter: ["lang"]})
     this.observer.observe(document.head, {subtree: true, childList: true, characterData: true, attributes: true})
     this.enabled = this.checkingAllowed && this.documentCheckingEnabled
     this.error = null
@@ -237,21 +238,11 @@ export class ProofreadingFeature extends EditorFeature {
     return this.state()
   }
 
-  private get documentCheckingEnabled() {
-    return document.documentElement.getAttribute("spellcheck")?.toLowerCase() !== "false"
-  }
-
   setDocumentChecking(enabled: boolean) {
     if(typeof enabled !== "boolean" || !this.isEnabled || this.editor.isEditingLocked) return false
+    this.documentCheckingEnabled = enabled
     this.manualChecking = false
-    const finish = this.editor.doc.beginUndoGroup()
-    try {
-      // The native HTML preference travels with the document and its history.
-      if(enabled) document.documentElement.removeAttribute("spellcheck")
-      else document.documentElement.setAttribute("spellcheck", "false")
-    }
-    finally { finish() }
-    this.updateChecking(this.checkingAllowed && this.documentCheckingEnabled)
+    this.updateChecking(this.checkingAllowed && enabled)
     return this.state()
   }
 

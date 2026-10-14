@@ -5502,7 +5502,15 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     const heading = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2")!
     const spinner = heading.querySelector<HTMLElement>(".proofreading-spinner")!
     assert(spinner?.getAttribute("aria-label") === "Checking spelling, grammar and style", "heading has no accessible checking spinner")
-    assert(Math.abs(spinner.getBoundingClientRect().right - heading.getBoundingClientRect().right) < 1, "heading spinner is not aligned right")
+    const headingToggle = heading.querySelector<HTMLInputElement>(".proofreading-toggle input")!
+    const headingCheck = heading.querySelector<HTMLButtonElement>(".proofreading-check")!
+    assert(Math.abs(headingToggle.getBoundingClientRect().right - heading.getBoundingClientRect().right) < 1, "document proofreading checkbox is not aligned right")
+    assert(spinner.getBoundingClientRect().right <= headingCheck.getBoundingClientRect().left, "heading spinner overlaps the check button")
+    assert(headingToggle.parentElement!.textContent!.trim() === "", "document proofreading checkbox has a visible label")
+    const commentsDrawer = toolbox.shadowRoot!.querySelector<import("../src/components/ribbon-drawer").RibbonDrawer>('ribbon-drawer[label="Comments"]')!
+    await commentsDrawer.updateComplete
+    assert(getComputedStyle(heading).fontSize === getComputedStyle(commentsDrawer.shadowRoot!.querySelector<HTMLElement>(".pane-label")!).fontSize, "Issues heading size differs from Comments")
+    assert(getComputedStyle(heading.parentElement!).borderBottomWidth === "1px", "Issues and Comments have no divider")
     const recheck = feature.checkNow()
     assert(feature.state().issues.some(current => current.id === issue!.id), "rechecking removed the existing issue")
     assert(registry.get("webwriter-spelling") === highlight, "rechecking removed the existing underline")
@@ -5647,18 +5655,17 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(!documentToggle.checked && !feature.state().enabled, "Review did not disable document checking")
     assert(!toolbox.shadowRoot!.querySelector(".proofreading-card") && !toolbox.shadowRoot!.querySelector(".proofreading-spinner"), "disabled checking left suggestions or a loading spinner")
     const savedPreference = new DOMParser().parseFromString(child.toHTML(), "text/html")
-    assert(savedPreference.documentElement.getAttribute("spellcheck") === "false", "document preference was not serialized")
+    assert(savedPreference.documentElement.getAttribute("spellcheck") !== "false", "proofreading preference leaked into authored HTML")
+    const {loadDocumentSettings, persistDocumentSettings} = await import("../src/app-settings")
+    persistDocumentSettings("native-proofreading", {proofreadingEnabled: feature.state().documentEnabled})
     childWindow.reinitializeEditor!()
     const restored = childWindow.editor!, restoredFeature = restored.features.proofreading
+    restoredFeature.setDocumentChecking(loadDocumentSettings("native-proofreading").proofreadingEnabled !== false)
     await restoredFeature.checkNow()
-    assert(!restoredFeature.state().enabled && !restoredFeature.state().documentEnabled, "frame reinitialization lost the document preference")
-    restoredFeature.setChecking(false)
-    restoredFeature.setChecking(true)
-    assert(!restoredFeature.state().enabled, "global re-enable overwrote the document preference")
-    restoredFeature.setChecking(false)
+    assert(!restoredFeature.state().enabled && !restoredFeature.state().documentEnabled, "restoring local document settings lost the proofreading preference")
     restoredFeature.setDocumentChecking(true)
-    assert(!restoredFeature.state().enabled && restoredFeature.state().documentEnabled, "document preference bypassed global disabling")
-    restoredFeature.setChecking(true)
+    assert(restoredFeature.state().enabled && restoredFeature.state().documentEnabled, "document override did not enable proofreading")
+    localStorage.removeItem("webwriter_document_settings_v1:native-proofreading")
     await restoredFeature.checkNow()
     assert(restoredFeature.state().ready && restoredFeature.state().issues.length > 0, "re-enabling checking did not restore findings")
     restored.destroy()
@@ -5666,6 +5673,93 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(!registry.has("webwriter-spelling") && !doc.body.shadowRoot!.querySelector(".◆proofreading-panel"), "proofreading leaked on teardown")
   }
   finally { window.removeEventListener("message", update); frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }
+})
+
+await check("Review shares bounded scroll areas and lays out versions beside responsive changes", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const {DeveloperConsole} = await import("../src/components/developer-console")
+  const {emptyProofreadingState, emptyVersionHistoryState} = await import("../src/editor-bridge")
+  const toolbox = new DomEditorToolbox()
+  toolbox.style.cssText = "position:fixed;top:60px;right:10px;width:218px;height:480px"
+  toolbox.selectTool("Review")
+  fixture.append(toolbox)
+  const console = new DeveloperConsole()
+  console.review = true
+  console.style.cssText = "position:fixed;top:60px;left:10px;width:800px"
+  fixture.append(console)
+  const scenario = async (comments: number, issues: number) => {
+    toolbox.commentState = {canComment: false, active: false, text: "", activeCount: 0, count: comments,
+      highlighting: true, activeThreadId: null, threads: Array.from({length: comments}, (_, index) => ({
+        id: `thread-${index}`, target: "text", active: false, comments: [{id: `comment-${index}`, text: "Review this sentence and its supporting detail.", author: {id: "ada", name: "Ada"}, createdAt: 1, editedAt: 1}],
+      }))}
+    toolbox.proofreadingState = {...emptyProofreadingState(), ready: true, issues: Array.from({length: issues}, (_, index) => ({
+      id: `issue-${index}`, start: 0, end: 3, text: "teh", kind: "spelling", message: "Check this spelling", suggestions: [{kind: "replace", text: "the"}],
+    }))}
+    await toolbox.updateComplete
+    await Promise.all(Array.from(toolbox.shadowRoot!.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>("ribbon-drawer"), drawer => drawer.updateComplete))
+    await layoutFrame()
+  }
+  try {
+    await scenario(20, 20)
+    const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
+    const comments = content.querySelector<HTMLElement>(".review-comments")!, issues = content.querySelector<HTMLElement>(".review-issues")!
+    assert(comments.getBoundingClientRect().top < issues.getBoundingClientRect().top, "Comments are not above Issues")
+    assert(Math.abs(comments.offsetHeight - issues.offsetHeight) <= 1, "long Review sections do not share space equally")
+    assert(content.scrollHeight <= content.clientHeight + 1 && getComputedStyle(content).overflowY === "hidden", "Review toolbox scrolls or overflows")
+    const commentsDrawer = comments.querySelector<import("../src/components/ribbon-drawer").RibbonDrawer>("ribbon-drawer")!
+    const commentList = commentsDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const commentHeading = commentsDrawer.shadowRoot!.querySelector<HTMLElement>(".pane-label")!
+    const issueList = issues.querySelector<HTMLElement>(".proofreading-content")!
+    const issueHeading = issues.querySelector<HTMLElement>("h2")!
+    const headingTops = [commentHeading, issueHeading].map(heading => heading.getBoundingClientRect().top)
+    for(const list of [commentList, issueList]) {
+      assert(list.scrollHeight > list.clientHeight && getComputedStyle(list).scrollbarWidth === "thin", "long list has no independent thin scroll area")
+      list.scrollTop = 100
+    }
+    await layoutFrame()
+    for(const [index, heading] of [commentHeading, issueHeading].entries()) assert(Math.abs(heading.getBoundingClientRect().top - headingTops[index]) < 1, "Review heading moves while its list scrolls")
+    assert(comments.scrollTop === 0 && issues.scrollTop === 0, "Review section scrolls instead of only its list")
+    const half = comments.offsetHeight
+    await scenario(20, 0)
+    assert(comments.offsetHeight > half && issues.scrollHeight <= issues.clientHeight + 1, "short Issues do not release space to Comments")
+    await scenario(0, 20)
+    assert(issues.offsetHeight > half && comments.scrollHeight <= comments.clientHeight + 1, "short Comments do not release space to Issues")
+    const user = {clientId: 1, name: "Ada", initials: "AD", color: "#64748b"}
+    const checkpoint = (id: string) => ({id, timestamp: 1, label: "Change", user, changes: {added: 0, removed: 0, modified: 1}, commentCount: 0})
+    const checkpoints = Array.from({length: 16}, (_, index) => checkpoint(`change-${index}`))
+    console.historyState = {...emptyVersionHistoryState(), checkpoints, versions: Array.from({length: 8}, (_, index) => ({
+      ...checkpoint(`version-${index}`), checkpointIds: checkpoints.map(checkpoint => checkpoint.id), isUnsaved: index === 0, isCurrent: index === 0,
+    }))}
+    await console.updateComplete
+    await Promise.all(Array.from(console.shadowRoot!.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>("ribbon-drawer"), drawer => drawer.updateComplete))
+    await layoutFrame()
+    const sidebar = console.shadowRoot!.querySelector<HTMLElement>(".version-list")!
+    const main = console.shadowRoot!.querySelector<HTMLElement>("#console-panel-Review")!
+    const changes = Array.from(main.querySelectorAll<HTMLElement>(".history-change-card"))
+    assert(sidebar.scrollHeight > sidebar.clientHeight && getComputedStyle(sidebar).scrollbarWidth === "thin", "versions list does not scroll")
+    assert(main.getBoundingClientRect().left >= sidebar.getBoundingClientRect().right, "changes are not beside versions")
+    assert(changes.length === 14 && changes[1].getBoundingClientRect().top > changes[0].getBoundingClientRect().top, "changes are not a vertical list")
+    const label = changes[0].querySelector<HTMLElement>(".history-checkpoint-label")!
+    const meta = changes[0].querySelector<HTMLElement>(".history-checkpoint-meta")!
+    assert(Math.abs(label.getBoundingClientRect().top - meta.getBoundingClientRect().top) < 3, "wide changes do not use a single row")
+    assert(main.scrollHeight > main.clientHeight && getComputedStyle(main).scrollbarWidth === "thin", "long change list does not scroll")
+    assert(getComputedStyle(changes[0]).backgroundColor === "rgba(0, 0, 0, 0)", "change cards are not transparent")
+    const counts = changes[0].querySelector<HTMLElement>(".history-checkpoint-counts")!
+    assert(counts.getBoundingClientRect().left - meta.getBoundingClientRect().right < 12, "wide change counts are not beside the text")
+    assert(!changes[0].querySelector(".history-change-count"), "change cards still show a total badge")
+    const versionCard = sidebar.querySelector<HTMLElement>(".history-version-card")!
+    const versionBadge = versionCard.querySelector<HTMLElement>(".history-change-count")!
+    assert(versionBadge.getBoundingClientRect().right > versionCard.getBoundingClientRect().right - 10, "version badge is not on the right edge")
+    console.style.width = "424px"
+    await layoutFrame()
+    assert(main.getBoundingClientRect().width >= 195 && main.getBoundingClientRect().width <= 205, "narrow changes fixture is not about 200px")
+    assert(Math.abs(counts.getBoundingClientRect().left - label.getBoundingClientRect().left) < 1, "narrow counts do not align with text")
+    assert(meta.getBoundingClientRect().top > label.getBoundingClientRect().top, "narrow changes do not wrap into compact cards")
+    assert(main.scrollWidth <= main.clientWidth && changes[0].scrollWidth <= changes[0].clientWidth, "narrow changes overflow horizontally")
+    assert(!toolbox.shadowRoot!.querySelector(".version-list") && toolbox.shadowRoot!.querySelector("footer .versions-console-toggle"), "Versions remain in the Review toolbox")
+
+  }
+  finally {toolbox.remove(); console.remove()}
 })
 
 await check("Elements pullout reserves matching padding after its opening animation", async () => {

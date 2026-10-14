@@ -76,11 +76,11 @@ export class DomEditorToolbox extends EditingControls {
     documentHead: {attribute: false},
     documentHeadAttributeEditorId: {state: true},
     consoleOpen: {type: Boolean, attribute: "console-open", reflect: true},
+    versionsOpen: {type: Boolean, attribute: "versions-open", reflect: true},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
     proofreadingState: {attribute: false},
-    disableSpellChecking: {type: Boolean},
   }
 
   shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
@@ -464,13 +464,20 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     .proofreading-section {
-      display: grid;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
       align-content: start;
       gap: .55rem;
       padding: .75rem;
       color: #2f3742;
+      border-bottom: 1px solid #d8dee6;
     }
-    .proofreading-section h2 {display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0; font-size: .95rem; font-weight: 650}
+    .proofreading-section h2 {flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0; font-size: .72rem; font-weight: 650; color: #465465; min-height: 2.15rem}
+    .proofreading-content {display: grid; align-content: start; flex: 1 1 auto; min-height: 0; gap: .55rem; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin;}
     .proofreading-check {display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; margin-left: auto; padding: .25rem; border: 0; border-radius: .25rem; color: inherit; background: transparent; cursor: pointer}
     .proofreading-check svg {display: block; width: 1rem; height: 1rem}
     .proofreading-check:hover:not(:disabled) {background: #e7eef5}
@@ -590,6 +597,10 @@ export class DomEditorToolbox extends EditingControls {
       scrollbar-width: thin;
     }
 
+    :host([active-tool="Review"]) .toolbox-pane-content {overflow: hidden;}
+    .review-section {box-sizing: border-box; display: flex; flex-direction: column; flex: 1 1 50%; max-height: max-content; min-height: 0; min-width: 0; overflow: hidden;}
+    .review-comments {border-bottom: 1px solid #d8dee6; --ribbon-drawer-pane-border-bottom: 0;}
+
     :host([active-tool="Edit"]) .toolbox-pane-content {
       padding-right: 2px;
       scrollbar-gutter: stable both-edges;
@@ -679,8 +690,8 @@ export class DomEditorToolbox extends EditingControls {
       background: #e9e9e9;
     }
     .edit-mode-footer .developer-console-controls {justify-content: space-between}
-    :host([console-open]) .toolbox-pane {clip-path: inset(0 0 0 -1rem)}
-    :host([console-open][active-tool])::after {
+    :host(:is([console-open], [versions-open])) .toolbox-pane {clip-path: inset(0 0 0 -1rem)}
+    :host([active-tool]:is([console-open], [versions-open]))::after {
       content: "";
       position: absolute;
       bottom: -1px;
@@ -721,11 +732,11 @@ export class DomEditorToolbox extends EditingControls {
   documentHead: DocumentHeadState = emptyDocumentHeadState()
   private documentHeadAttributeEditorId = ""
   consoleOpen = false
+  versionsOpen = false
   htmlPending = false
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
   documentLayoutError = ""
   proofreadingState: ProofreadingState = emptyProofreadingState()
-  disableSpellChecking = false
 
   private dispatchProofreadingAction(action: ProofreadingAction) {
     this.dispatchEvent(new CustomEvent<ProofreadingAction>("proofreading-action", {
@@ -738,30 +749,32 @@ export class DomEditorToolbox extends EditingControls {
     const hoveredIssue = state.issues.find(issue => issue.id === state.hoveredIssueId)
     const editingLocked = this.htmlPending || this.historyState.preview !== null
     const cardsLocked = editingLocked || !state.ready || state.loading
-    const checkingEnabled = state.enabled && !this.disableSpellChecking
+    const checkingEnabled = state.enabled
     return html`<section class="proofreading-section" aria-labelledby="proofreading-title">
       <h2 id="proofreading-title">Issues
         ${checkingEnabled && !state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling, grammar and style"></span>` : ""}
         ${checkingEnabled && state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling, grammar and style"></span>` : ""}
         <button class="proofreading-check" type="button" title="Check for issues" aria-label="Check for issues"
-          ?disabled=${editingLocked || this.disableSpellChecking || state.loading || state.checking}
+          ?disabled=${editingLocked || state.loading || state.checking}
           @click=${() => this.dispatchProofreadingAction({type: "checkProofreading"})}>${ribbonIcon("Refresh")}</button>
+        <label class="proofreading-toggle"><input type="checkbox" .checked=${state.documentEnabled}
+          aria-label="Check for issues automatically" title="Check for issues automatically"
+          ?disabled=${editingLocked}
+          @change=${(event: Event) => this.dispatchProofreadingAction({type: "setDocumentProofreadingEnabled", enabled: (event.currentTarget as HTMLInputElement).checked})}></label>
       </h2>
-      <label class="proofreading-toggle"><input type="checkbox" .checked=${state.documentEnabled}
-        ?disabled=${editingLocked || this.disableSpellChecking}
-        @change=${(event: Event) => this.dispatchProofreadingAction({type: "setDocumentProofreadingEnabled", enabled: (event.currentTarget as HTMLInputElement).checked})}>
-        Check for issues automatically</label>
-      ${this.disableSpellChecking ? html`<p class="proofreading-status">Spell checking is disabled for all documents. Enable it in Settings.</p>`
-        : !state.documentEnabled ? html`<p class="proofreading-status">Automatic checking is disabled for this document.</p>` : ""}
-      ${checkingEnabled && state.error ? html`<div class="proofreading-error" role="alert">
-        <span>Could not load proofreading.</span>
-        <button class="proofreading-retry" type="button" ?disabled=${editingLocked}
-          @click=${() => this.dispatchProofreadingAction({type: "retryProofreading"})}>Retry</button>
-      </div>` : ""}
-      ${checkingEnabled && state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling, grammar or style issues found.</p>` : ""}
-      <div class="proofreading-issues">
-        ${checkingEnabled ? repeat(state.issues, issue => issue.id, issue => renderProofreadingCard(issue,
-          action => this.dispatchProofreadingAction(action), {disabled: cardsLocked, hovered: issue.id === hoveredIssue?.id})) : nothing}
+
+      <div class="proofreading-content">
+        ${!state.documentEnabled ? html`<p class="proofreading-status">Automatic proofreading is disabled for this document.</p>` : ""}
+        ${checkingEnabled && state.error ? html`<div class="proofreading-error" role="alert">
+          <span>Could not load proofreading.</span>
+          <button class="proofreading-retry" type="button" ?disabled=${editingLocked}
+            @click=${() => this.dispatchProofreadingAction({type: "retryProofreading"})}>Retry</button>
+        </div>` : ""}
+        ${checkingEnabled && state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling, grammar or style issues found.</p>` : ""}
+        <div class="proofreading-issues">
+          ${checkingEnabled ? repeat(state.issues, issue => issue.id, issue => renderProofreadingCard(issue,
+            action => this.dispatchProofreadingAction(action), {disabled: cardsLocked, hovered: issue.id === hoveredIssue?.id})) : nothing}
+        </div>
       </div>
     </section>`
   }
@@ -1479,6 +1492,22 @@ export class DomEditorToolbox extends EditingControls {
     }))
   }
 
+  private renderVersionsFooter() {
+    return html`<footer class="edit-mode-footer">
+      <div class="developer-console-controls" role="group" aria-label="Versions controls">
+        <button type="button" class="versions-console-toggle" aria-label="Versions" title="Versions"
+          aria-pressed=${this.versionsOpen} ?disabled=${this.htmlPending}
+          @click=${() => this.dispatchEvent(new CustomEvent("versions-console-change", {
+            detail: {enabled: !this.versionsOpen}, bubbles: true, composed: true,
+          }))}>${ribbonIcon("History")}<span>Versions</span></button>
+        ${this.versionsOpen ? html`<button type="button" aria-label="Close versions" title="Close versions"
+          ?disabled=${this.htmlPending} @click=${() => this.dispatchEvent(new CustomEvent("versions-console-change", {
+            detail: {enabled: false}, bubbles: true, composed: true,
+          }))}>${ribbonIcon("Reject")}</button>` : nothing}
+      </div>
+    </footer>`
+  }
+
   private renderEditModeFooter() {
     return html`<footer class="edit-mode-footer">
       <div class="developer-console-controls" role="group" aria-label="Developer console controls">
@@ -1522,10 +1551,7 @@ export class DomEditorToolbox extends EditingControls {
       this.documentHeadAttributeEditorId = ""
     }
     if(changed.has("activeTool")) {
-      if(this.activeTool === "Review") {
-        this.dispatchEvent(new Event("history-state-request", {bubbles: true, composed: true}))
-      }
-      else if(changed.get("activeTool") === "Review") {
+      if(changed.get("activeTool") === "Review" && this.activeTool !== "Review") {
         this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))
       }
     }
@@ -1620,10 +1646,10 @@ export class DomEditorToolbox extends EditingControls {
                     type="button"
                     role="tab"
                     aria-label=${tool.label === "Review" && this.proofreadingState.error
-                      ? "Review. Spell and grammar checking unavailable"
+                      ? "Review. Proofreading unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
                     title=${tool.label === "Review" && this.proofreadingState.error
-                      ? "Spell and grammar checking unavailable"
+                      ? "Proofreading unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
                     aria-description=${commentCount > 0 ? `${commentCount} comments` : nothing}
                     aria-controls="toolbox-pane"
@@ -1668,14 +1694,18 @@ export class DomEditorToolbox extends EditingControls {
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
             ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}
-            ${this.activeTool === "Review" ? this.renderProofreadingSection() : ""}
+            ${this.activeTool === "Review" ? html`
+              <div class="review-section review-comments">${this.renderCommentDrawer()}</div>
+              <div class="review-section review-issues">${this.renderProofreadingSection()}</div>
+            ` : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderWidgetSharing() : ""}
-            ${this.activeTool && this.activeTool !== "AI" ? this.renderDrawers() : ""}
+            ${this.activeTool && this.activeTool !== "AI" && this.activeTool !== "Review" ? this.renderDrawers() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
-          ${(this.activeTool === "Edit" || this.consoleOpen && this.activeTool !== "Feedback") ? this.renderEditModeFooter() : ""}
+          ${this.activeTool === "Review" ? this.renderVersionsFooter()
+            : (this.activeTool === "Edit" || this.consoleOpen && this.activeTool !== "Feedback") ? this.renderEditModeFooter() : ""}
         </aside>
       </div>
     `

@@ -50,6 +50,22 @@ function markers(root: Node = document.body) {
 }
 
 describe("CommentFeature spans", () => {
+  it("adds a comment on an already commented selection without removing the original", () => {
+    const paragraph = setContent("<p>abcd</p>")
+    selectTextOffsets(paragraph, 1, 3)
+    feature.toggleComment("Original")
+    expect(feature.actions.addComment({type: "addComment", text: "First reply"})).toBe(true)
+    expect(feature.getState().threads?.flatMap(thread => thread.comments.map(comment => comment.text))).toEqual(["Original", "First reply"])
+    expect(document.getSelection()?.toString()).toBe("bc")
+    expect(feature.addComment("  ")).toBe(false)
+    const detached = document.createTextNode("detached")
+    const getSelection = vi.spyOn(document, "getSelection").mockReturnValue({
+      anchorNode: detached, focusNode: detached, rangeCount: 1,
+    } as unknown as Selection)
+    expect(feature.addComment("Disconnected")).toBe(false)
+    getSelection.mockRestore()
+  })
+
   it("does not construct widget copies while comparing comment boundaries", () => {
     const constructed = vi.fn()
     const tag = "comment-query-widget"
@@ -150,29 +166,84 @@ describe("CommentFeature spans", () => {
 })
 
 describe("CommentFeature node comments", () => {
-  it("appends a collapsed element comment without splitting text and toggles it off", () => {
+  it("does not create comments from collapsed text, element, or empty-paragraph carets", () => {
     const paragraph = setContent("<p>abcd</p>")
     $.move(paragraph.firstChild!, 2)
 
-    expect(feature.toggleComment("About ab")).toBe(true)
-    expect(paragraph.childNodes).toHaveLength(2)
-    expect(paragraph.firstChild!.textContent).toBe("abcd")
-    expect(parseCommentMarker(paragraph.lastChild!)).toMatchObject({kind: "node", text: "About ab"})
-    expect(feature.getState()).toMatchObject({active: true, activeCount: 1, count: 1})
-
-    expect(feature.toggleComment("ignored")).toBe(true)
+    expect(feature.getState().canComment).toBe(false)
+    expect(feature.addComment("About ab")).toBe(false)
+    expect(feature.toggleComment("About ab")).toBe(false)
     expect(editor.toHTML(true)).toBe("<p>abcd</p>")
+    expect(markers()).toHaveLength(0)
+
+    const element = document.createElement("span")
+    paragraph.append(element)
+    $.move(paragraph, 1)
+    expect(feature.getState().canComment).toBe(false)
+    expect(feature.addComment("Element caret")).toBe(false)
+    expect(feature.toggleComment("Element caret")).toBe(false)
+    expect(editor.toHTML(true)).toBe("<p>abcd<span></span></p>")
+    expect(markers()).toHaveLength(0)
+
+    const empty = setContent("<p></p>")
+    $.move(empty, 0)
+    expect(feature.getState().canComment).toBe(false)
+    expect(feature.addComment("Empty paragraph")).toBe(false)
+    expect(feature.toggleComment("Empty paragraph")).toBe(false)
+    expect(editor.toHTML(true)).toBe("<p></p>")
+    expect(markers()).toHaveLength(0)
   })
 
   it("refers to the parent when no sibling precedes the marker", () => {
     const paragraph = setContent("<p>text</p>")
-    $.move(paragraph.firstChild!, 0)
+    $.selectElement(paragraph)
     feature.toggleComment("Paragraph note")
 
     $.move(paragraph.firstChild!, 2)
     expect(feature.getState()).toMatchObject({active: true, text: "Paragraph note"})
     expect(feature.nextComment()).toBe(true)
     expect(document.getSelection()?.toString()).toBe("text")
+  })
+
+  it("selects the complete text range across irregular wrappers by comment id", () => {
+    const paragraph = setContent("<p>ab<strong>cd</strong><em><span>ef</span>gh</em></p>")
+    selectTextOffsets(paragraph, 1, 7)
+    expect(feature.toggleComment("Across wrappers")).toBe(true)
+    const id = markers(paragraph)[0].marker.id
+
+    $.move(paragraph.firstChild!, 0)
+    expect(feature.selectComment(id)).toBe(true)
+    expect(document.getSelection()?.toString()).toBe("bcdefg")
+  })
+
+  it("selects moved element and custom-widget targets by comment id", () => {
+    const section = setContent("<section><aside><b>note</b></aside><custom-note>inside</custom-note></section>")
+    const aside = section.querySelector("aside")!
+    $.selectElement(aside)
+    expect(feature.toggleComment("Aside note")).toBe(true)
+    const asideId = markers(aside)[0].marker.id
+    section.append(aside)
+    $.move(aside.querySelector("b")!.firstChild!, 2)
+    expect(feature.selectComment(asideId)).toBe(true)
+    expect(document.getSelection()?.toString()).toBe("note")
+
+    const widget = section.querySelector("custom-note")!
+    $.selectElement(widget)
+    expect(feature.toggleComment("Widget note")).toBe(true)
+    const widgetId = markers(widget)[0].marker.id
+    section.insertBefore(widget, section.firstChild)
+    $.move(widget.firstChild!, 1)
+    expect(feature.selectComment(widgetId)).toBe(true)
+    expect(document.getSelection()?.toString()).toBe("inside")
+  })
+
+  it("fails safely when the selected comment target has been removed", () => {
+    const paragraph = setContent("<p>abcd</p>")
+    selectTextOffsets(paragraph, 1, 3)
+    expect(feature.toggleComment("Removed target")).toBe(true)
+    const id = markers(paragraph)[0].marker.id
+    paragraph.remove()
+    expect(feature.selectComment(id)).toBe(false)
   })
   it("attaches an explicit element selection to that element and follows moves and copies", () => {
     const section = setContent('<section><aside><b>unfamiliar</b><!--authored--></aside><p>Other</p></section>')
@@ -195,7 +266,7 @@ describe("CommentFeature node comments", () => {
     const paragraph = setContent("<p>Original</p>")
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
-    $.move(paragraph.firstChild!, 3)
+    $.selectElement(paragraph)
     feature.toggleComment("Element note")
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
@@ -328,6 +399,18 @@ describe("CommentFeature highlights and threads", () => {
     expect(editor.appendix.querySelector(".◆comment-thread-pane, .◆comment-bauble")).toBeNull()
   })
 
+  it("rejects replies when concurrent edits collapse the thread target", () => {
+    const paragraph = setContent("<p>abcd</p>")
+    selectTextOffsets(paragraph, 1, 3)
+    feature.addComment("Original")
+    const id = markers(paragraph)[0].marker.id
+    const selected = document.getSelection()!.getRangeAt(0)
+    selected.deleteContents()
+    const before = editor.toHTML(true)
+    expect(feature.actions.addCommentReply({type: "addCommentReply", id, text: "Reply"})).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
   it("manages range replies by id while preserving paired markers", () => {
     const paragraph = setContent("<p>abcd</p>")
     selectTextOffsets(paragraph, 1, 3)
@@ -346,7 +429,7 @@ describe("CommentFeature highlights and threads", () => {
 
   it("reuses parsed comment markers until the document changes", () => {
     const paragraph = setContent("<p>abcd</p>")
-    $.move(paragraph.firstChild!, 2)
+    $.selectElement(paragraph)
     feature.toggleComment("Cached")
     document.dispatchEvent(new Event("selectionchange"))
     const walkers = vi.spyOn(document, "createTreeWalker")
@@ -365,7 +448,7 @@ describe("CommentFeature highlights and threads", () => {
 
   it("groups replies to a node comment without adding authored UI elements", () => {
     const paragraph = setContent("<p>abcd</p>")
-    $.move(paragraph.firstChild!, 2)
+    $.selectElement(paragraph)
     feature.toggleComment("Node primary")
     document.dispatchEvent(new Event("selectionchange"))
 

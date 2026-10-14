@@ -163,6 +163,7 @@ export class CommentFeature extends EditorFeature {
     addCommentReply: ({id, text}: {type: "addCommentReply", id: string, text: string}) => this.addReply(id, text),
     updateComment: ({id, text}: {type: "updateComment", id: string, text: string}) => this.updateCommentTextById(id, text),
     removeComment: ({id}: {type: "removeComment", id: string}) => this.removeCommentById(id),
+    addComment: ({text}: {type: "addComment", text: string}) => this.addComment(text),
     toggleComment: ({text}: {type: "toggleComment", text: string}) => this.toggleComment(text),
     setCommentText: ({text}: {type: "setCommentText", text: string}) => this.setCommentText(text),
     removeAllComments: ({}: {type: "removeAllComments"}) => this.removeAllComments(),
@@ -215,7 +216,7 @@ export class CommentFeature extends EditorFeature {
       ? active[0].text
       : ""
     return {
-      canComment: context !== null && !this.isVoidTarget(this.elementTarget(context.range)),
+      canComment: context !== null && !context.range.collapsed && !this.isVoidTarget(this.elementTarget(context.range)),
       active: active.length > 0,
       text,
       activeCount: active.length,
@@ -236,7 +237,16 @@ export class CommentFeature extends EditorFeature {
     if(!context) return false
     const active = this.comments().filter(comment => this.isActive(comment, context.range))
     if(active.length) return this.removeComments(active, context)
-    if(this.isVoidTarget(this.elementTarget(context.range))) return false
+    if(context.range.collapsed || this.isVoidTarget(this.elementTarget(context.range))) return false
+    this.insertComment(context.range, text, context.backwards, true)
+    this.renderCommentUI()
+    this.editor.postCommentState()
+    return true
+  }
+
+  addComment(text: string) {
+    const context = this.getSelection()
+    if(!context || context.range.collapsed || !text.trim() || this.isVoidTarget(this.elementTarget(context.range))) return false
     this.insertComment(context.range, text, context.backwards, true)
     this.renderCommentUI()
     this.editor.postCommentState()
@@ -494,8 +504,11 @@ export class CommentFeature extends EditorFeature {
   selectComment(id: string) {
     const thread = this.threads().find(candidate => candidate.comments.some(comment => comment.id === id))
     if(!thread) return false
-    this.activeThreadId = thread.comments[0].id
     const comment = thread.comments.find(comment => comment.id === id)!
+    const range = this.commentRange(comment)
+    if(!range) return false
+    this.restoreRange(range, false)
+    this.activeThreadId = thread.comments[0].id
     this.scrollCommentIntoView(comment)
     this.renderCommentUI()
     this.editor.postCommentState()
@@ -504,7 +517,7 @@ export class CommentFeature extends EditorFeature {
 
   private addReply(primaryId: string, text: string) {
     const thread = this.threads().find(candidate => candidate.comments.some(comment => comment.id === primaryId))
-    if(!thread) return false
+    if(!thread || thread.range.collapsed || !text.trim()) return false
     const id = this.createId()
     const metadata = this.newMetadata()
     const primary = thread.comments[0]
@@ -514,7 +527,7 @@ export class CommentFeature extends EditorFeature {
     else {
       const innermost = [...thread.comments].reverse().find(comment => comment.kind === "span") as SpanComment | undefined
       const range = innermost ? this.spanRange(innermost.start, innermost.end) : thread.range.cloneRange()
-      if(!range) return false
+      if(!range || range.collapsed) return false
       const startContainer = range.startContainer
       const startOffset = range.startOffset
       const endContainer = range.endContainer

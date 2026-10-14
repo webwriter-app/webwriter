@@ -1,4 +1,4 @@
-import {css, html} from "lit"
+import {css, html, nothing} from "lit"
 import {keyed} from "lit/directives/keyed.js"
 import {ribbonIcon} from "../ribbon-icons"
 import {DocumentHeadCombobox} from "./document-head-editor"
@@ -17,6 +17,8 @@ export class DeveloperConsole extends EditingControls {
     tab: {type: String},
     htmlPending: {type: Boolean, attribute: "html-pending"},
     pinned: {type: Boolean},
+    review: {type: Boolean, reflect: true},
+    activeVersionId: {state: true},
     autoReload: {type: Boolean},
     packageDraft: {attribute: false},
     packageSaving: {type: Boolean, attribute: false},
@@ -26,6 +28,34 @@ export class DeveloperConsole extends EditingControls {
   static styles = css`
     ${EditingControls.styles}
     :host {box-sizing: border-box; display: grid; position: relative; grid-template-columns: 14rem minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 300px; min-width: 0; color: #2f3742; background: #e9e9e9; border-top: 1px solid #c8c8c8; font-family: system-ui, sans-serif}
+    :host([review]) {grid-template-columns: 14rem minmax(0, 1fr)}
+    :host([review]) header {padding: .25rem .65rem; font-size: .8rem; font-weight: 600}
+    .version-sidebar {grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid #c8c8c8}
+    .version-list {display: grid; align-content: start; gap: .35rem; margin: 0; padding: .35rem; list-style: none; min-height: 0; overflow: auto; scrollbar-width: thin}
+    .version-list li {min-width: 0}
+    .version-list li[data-active] .history-version-card {border-color: #8cb5e5; background: #dbe7f2}
+    .version-list .history-checkpoint {grid-template-rows: auto auto; padding-right: 1.8rem}
+    .history-version-card {position: relative}
+    .history-change-count {position: absolute; top: .25rem; right: .35rem; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 1rem; height: 1rem; padding: 0 .2rem; border-radius: 999px; color: #fff; background: #526b86; font-size: .55rem; font-weight: 700; line-height: 1}
+    #console-panel-Review {container-type: inline-size; overflow: auto; scrollbar-width: thin}
+    .version-change-list {display: grid; align-content: start; gap: .15rem; margin: 0; padding: .35rem .65rem; list-style: none}
+    .history-change-card {position: relative; display: block; min-width: 0; background: transparent; border-color: transparent; border-radius: .25rem}
+    .history-change-card:hover {background: #dce5ef}
+    .history-change-card[data-selected] {background: transparent; border-color: #8cb5e5}
+    .history-change-card .history-checkpoint {padding: .25rem 1.6rem .25rem .25rem; grid-template-columns: 1.35rem auto auto minmax(0, 1fr); grid-template-rows: auto; align-items: center; gap: .3rem .5rem}
+    .history-change-card .history-checkpoint-counts {grid-column: 4; grid-row: 1; justify-self: start; align-items: center; flex-wrap: wrap; padding-top: 0}
+    .history-change-card .history-checkpoint-avatar {grid-row: 1; grid-column: 1}
+    .history-change-card .history-checkpoint-label, .history-change-card .history-checkpoint-meta {min-width: 0; overflow-wrap: anywhere}
+    .history-change-card .history-card-restore-button {position: absolute; top: .25rem; right: .15rem; width: 1.2rem; height: 1.2rem; padding: .2rem; border: 0; background: transparent}
+    .version-empty {margin: .65rem; font-size: .75rem; color: #667085}
+    :host([review]) .history-preview-clear {margin-left: auto; font-size: .72rem}
+    @container (width < 400px) {
+      .history-change-card .history-checkpoint {grid-template-columns: 1.35rem minmax(0, 1fr); grid-template-rows: auto auto; gap: .15rem .3rem}
+      .history-change-card .history-checkpoint-counts {grid-column: 2; grid-row: 3}
+      .history-change-card .history-checkpoint-avatar {grid-row: 1 / 3}
+      .history-change-card .history-checkpoint-label, .history-change-card .history-checkpoint-meta {grid-column: 2; white-space: normal}
+    }
+    .review-heading {font-size: .8rem; font-weight: 600}
     [role="tabpanel"] {grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; overflow: auto}
     #console-panel-HTML, #console-panel-Packages, #console-panel-Tests {overflow: hidden}
     ::slotted(.html-source-editor) {height: 100%}
@@ -127,6 +157,8 @@ export class DeveloperConsole extends EditingControls {
   tab: DeveloperConsoleTab = "Packages"
   autoReload = true
   pinned = false
+  review = false
+  private activeVersionId: string | null = null
   htmlPending = false
   packageDraft: Record<string, unknown> | null = null
   packageSaving = false
@@ -265,6 +297,7 @@ export class DeveloperConsole extends EditingControls {
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => {
       drawer.collapsed = false
       drawer.pane = true
+      drawer.hidePaneLabel = this.review
     })
   }
 
@@ -313,6 +346,36 @@ export class DeveloperConsole extends EditingControls {
   }
 
   protected render() {
+    if(this.review) {
+      const versions = [...this.historyState.versions].sort((a, b) => b.timestamp - a.timestamp)
+      const active = versions.find(version => version.id === this.activeVersionId) ?? versions[0]
+      const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
+      const initialId = this.historyState.checkpoints.at(-1)?.id
+      const changes = (active?.checkpointIds.slice(1) ?? []).filter(id => id !== initialId && checkpoints.has(id))
+      return html`
+        <aside class="version-sidebar" aria-label="Document versions">
+          <ul class="version-list" @click=${(event: MouseEvent) => {
+            const button = (event.target as Element).closest<HTMLElement>(".history-checkpoint")
+            if(button) this.activeVersionId = button.dataset.checkpointId ?? null
+          }}>
+            ${versions.map(version => html`<li ?data-active=${version.id === active?.id}>
+              ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved, version.id === active?.id)}
+            </li>`)}
+          </ul>
+        </aside>
+        <header><span class="review-heading">Changes</span>${this.renderHistoryPreviewClear()}</header>
+        <div role="tabpanel" id="console-panel-Review" aria-label="Version changes">
+          ${this.historyError ? html`<p class="version-empty" role="alert">${this.historyError}</p>` : nothing}
+          ${this.historyLoading && !versions.length ? html`<p class="version-empty">Loading versions…</p>` : nothing}
+          ${changes.length ? html`<ul class="version-change-list" aria-label=${`Changes in ${active.label}`}>
+            ${changes.map(id => {
+              const checkpoint = checkpoints.get(id)!
+              return html`<li>${this.renderHistoryEntry(checkpoint, false, checkpoint.id === this.historyState.currentCheckpointId)}</li>`
+            })}
+          </ul>` : html`<p class="version-empty">${active ? "No changes in this version" : "No versions yet"}</p>`}
+        </div>
+      `
+    }
     const pkg = this.selectedLocalPackage
     return html`
       <div class="package-sidebar" ?inert=${this.tab === "HTML" || this.packageSaving} aria-disabled=${this.tab === "HTML" || this.packageSaving}

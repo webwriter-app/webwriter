@@ -808,13 +808,13 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
-        <section class="setting-card" aria-label="Spell checking">
+        <section class="setting-card" aria-label="Proofreading">
           <label class="checkbox-setting">
-            <input type="checkbox" .checked=${this.settings.disableSpellChecking}
-              @change=${(event: Event) => this.emitSettings({...this.settings, disableSpellChecking: (event.currentTarget as HTMLInputElement).checked})}
+            <input type="checkbox" .checked=${this.settings.proofreadingEnabledByDefault}
+              @change=${(event: Event) => this.emitSettings({...this.settings, proofreadingEnabledByDefault: (event.currentTarget as HTMLInputElement).checked})}
             />
-            <span class="checkbox-label">Disable spell checking for all documents</span>
-            <span class="checkbox-description">Disable spelling, grammar, and style suggestions.</span>
+            <span class="checkbox-label">Enable proofreading by default</span>
+            <span class="checkbox-description">Enable spelling, grammar, and style suggestions in new documents.</span>
           </label>
         </section>
         ${this.renderProofreadingDictionary()}
