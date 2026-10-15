@@ -294,6 +294,117 @@ describe("filtered frame snapshots", () => {
   })
 })
 
+describe("guided tour", () => {
+  const flushTour = async(editor: DomEditor) => {
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+  }
+  const tour = (editor: DomEditor) => editor.shadowRoot!.querySelector<HTMLElement>("guided-tour")
+  const reenable = async(editor: DomEditor) => {
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+      detail: {...(editor as any).settings, showGuidedTour: true}, bubbles: true, composed: true,
+    }))
+    await editor.updateComplete
+  }
+  const flushMutations = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  it("shows after the initial frame is ready, and dismissal persists across reload", async() => {
+    const {editor} = await mountEditor()
+    await flushTour(editor)
+    expect(tour(editor)).not.toBeNull()
+
+    tour(editor)!.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss tour"]')!.click()
+    await editor.updateComplete
+    expect(tour(editor)).toBeNull()
+    expect(loadAppSettings().showGuidedTour).toBe(false)
+
+    const reloaded = await mountEditor()
+    await flushTour(reloaded.editor)
+    expect(tour(reloaded.editor)).toBeNull()
+  })
+
+  it("can be reenabled from app settings", async() => {
+    const {editor} = await mountEditor(editor => {
+      Object.assign(editor, {settings: {...(editor as any).settings, showGuidedTour: false}})
+    })
+    await flushTour(editor)
+    expect(tour(editor)).toBeNull()
+    await reenable(editor)
+    expect(tour(editor)).not.toBeNull()
+    expect(loadAppSettings().showGuidedTour).toBe(true)
+  })
+
+  it("dismisses on authored text, attribute, custom element, head, and template edits", async() => {
+    const {editor, iframe} = await mountEditor()
+    await flushTour(editor)
+    const doc = iframe.contentDocument!
+    doc.querySelector("p")!.textContent = "Initial text"
+    await flushMutations()
+    const mutate = async(change: () => void) => {
+      await reenable(editor)
+      expect(tour(editor)).not.toBeNull()
+      change()
+      await flushMutations()
+      await editor.updateComplete
+      expect(tour(editor)).toBeNull()
+    }
+
+    await mutate(() => { doc.querySelector("p")!.firstChild!.textContent = "Edited" })
+    await mutate(() => { doc.querySelector("p")!.setAttribute("title", "Authored") })
+    await mutate(() => { doc.body.append(doc.createElement("custom-element")) })
+    await mutate(() => { doc.head.append(doc.createElement("meta")) })
+    const template = doc.createElement("template")
+    doc.body.append(template)
+    await flushMutations()
+    // The template itself is authored content, so reenable after inserting it.
+    await mutate(() => { template.content.append(doc.createTextNode("Template content")) })
+  })
+
+  it("stays open for editor markers and widget shadow mutations", async() => {
+    const {editor, iframe} = await mountEditor()
+    const doc = iframe.contentDocument!
+    const widget = doc.createElement("custom-widget")
+    const shadow = widget.attachShadow({mode: "open"})
+    doc.body.append(widget)
+    await flushMutations()
+    await reenable(editor)
+    expect(tour(editor)).not.toBeNull()
+
+    doc.querySelector("p")!.classList.add("◆selection")
+    await flushMutations()
+    await editor.updateComplete
+    expect(tour(editor)).not.toBeNull()
+
+    shadow.append(doc.createElement("span"))
+    await flushMutations()
+    await editor.updateComplete
+    expect(tour(editor)).not.toBeNull()
+  })
+
+  it("dismisses when an opaque frame publishes an authored snapshot change", async() => {
+    const {editor, iframe} = await mountEditor()
+    await flushTour(editor)
+    const host = editor as any
+    host.editorOpaque = true
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: "editor-frame-snapshot", html: host.editorDocument.documentElement.outerHTML},
+    }))
+    await editor.updateComplete
+    expect(tour(editor)).not.toBeNull()
+
+    const html = '<html><head></head><body><p>Authored snapshot edit</p></body></html>'
+    window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: "editor-frame-snapshot", html},
+    }))
+    await editor.updateComplete
+    expect(tour(editor)).toBeNull()
+    expect(loadAppSettings().showGuidedTour).toBe(false)
+  })
+})
+
 function dispatchMarkState(editor: DomEditor, editorWindow: Window, detail: Record<string, unknown>) {
   window.dispatchEvent(new MessageEvent("message", {
     data: {type: markStateChangeEvent, detail, bridgeNonce: (editor as any).bridgeNonce},

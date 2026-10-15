@@ -191,6 +191,7 @@ export type AppSettings = {
   defaultLayout: DocumentLayoutMode
   updateDocumentLanguage: boolean
   disableAI: boolean
+  showGuidedTour: boolean
   showStyleToolbox: boolean
   pinDeveloperConsole: boolean
   autoReloadPackages: boolean
@@ -212,6 +213,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     defaultLayout: "document",
     updateDocumentLanguage: true,
     disableAI: false,
+    showGuidedTour: true,
     showStyleToolbox: false,
     pinDeveloperConsole: false,
     autoReloadPackages: true,
@@ -286,6 +288,9 @@ export function loadAppSettings(): AppSettings {
         ? value.disableAnimations
         : defaults.disableAnimations,
       disableAI: typeof value.disableAI === "boolean" ? value.disableAI : defaults.disableAI,
+      showGuidedTour: typeof value.showGuidedTour === "boolean"
+        ? value.showGuidedTour
+        : defaults.showGuidedTour,
       showStyleToolbox: typeof value.showStyleToolbox === "boolean"
         ? value.showStyleToolbox
         : defaults.showStyleToolbox,

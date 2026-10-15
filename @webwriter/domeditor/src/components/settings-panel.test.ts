@@ -616,6 +616,23 @@ it("offers Disable AI, validates its saved value, and persists the preference", 
   expect(loadAppSettings().disableAI).toBe(false)
 })
 
+it("offers and persists the guided tour preference", async () => {
+  expect(defaultAppSettings().showGuidedTour).toBe(true)
+  for(const value of [undefined, "yes", true, false]) {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({showGuidedTour: value}))
+    expect(loadAppSettings().showGuidedTour).toBe(value === true || value === false ? value : true)
+  }
+  const panel = await mountPanel()
+  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Guided tour"] input')!
+  expect(checkbox.checked).toBe(true)
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  checkbox.click()
+  expect(panel.settings.showGuidedTour).toBe(false)
+  expect(loadAppSettings().showGuidedTour).toBe(false)
+  checkbox.click()
+  expect(loadAppSettings().showGuidedTour).toBe(true)
+})
+
 
 it("keeps cloud bundle autosave off by default and offers a persisted developer setting", async () => {
   expect(defaultAppSettings().autosaveCloudOnBundleChange).toBe(false)

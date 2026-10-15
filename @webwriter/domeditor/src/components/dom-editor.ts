@@ -9,6 +9,7 @@ import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
 import "./shape-keyboard"
 import "./link-keyboard"
+import "./guided-tour"
 import type {LinkKeyboard} from "./link-keyboard"
 import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
@@ -435,6 +436,7 @@ export class DomEditor extends LitElement {
     editingSnippetId: {state: true},
     breadcrumbVisible: {attribute: false, state: true},
     aiToolboxOpen: {state: true},
+    guidedTourReady: {state: true},
   }
 
   private editorDocument: Document | null = null
@@ -489,6 +491,7 @@ export class DomEditor extends LitElement {
     highlighting: true,
   }
   private settings: AppSettings = loadAppSettings()
+  private guidedTourReady = false
   private documentSettingsId: string | null = null
   private documentSettings: DocumentSettings = {}
   private proofreadingState: ProofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled, documentEnabled: this.documentProofreadingEnabled}
@@ -1797,6 +1800,7 @@ export class DomEditor extends LitElement {
   }
 
   private initializeEditorFrame(iframe: HTMLIFrameElement) {
+    this.guidedTourReady = false
     this.handleHostWindowFocus()
     for(const pending of this.frameRequests.values()) {
       clearTimeout(pending.timer)
@@ -1881,6 +1885,7 @@ export class DomEditor extends LitElement {
         }
         const hasAuthoredMutation = mutations.some(mutation => isCurrentTarget(mutation.target) && this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
+          this.dismissGuidedTour()
           this.documentChangeSequence++
           this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
           if(this.historyDocumentTransitionCount === 0) {
@@ -2040,6 +2045,7 @@ export class DomEditor extends LitElement {
             void this.applyDefaultLayout(this.settings.defaultLayout, 0).catch(error => this.reportFileError(error))
           }
           if(this.isConnected && this.editorWindow === editorWindow && this.stylesVisible()) this.queueElementStyleRefresh()
+          if(this.isConnected && this.editorWindow === editorWindow) this.guidedTourReady = true
         },
         error => editorReadyReject?.(error),
       )
@@ -2875,6 +2881,21 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private dismissGuidedTour = () => {
+    if(!this.guidedTourReady || !this.settings.showGuidedTour) return
+    this.settings = {...this.settings, showGuidedTour: false}
+    persistAppSettings(this.settings)
+  }
+
+  private guidedTourAnchor = (step: number) => {
+    if(step === 0) return this.renderRoot.querySelector<HTMLElement>(".document-stage")
+    const ribbon = this.renderRoot.querySelector("app-ribbon")?.shadowRoot
+    const selectors = ["", 'ribbon-drawer[label="Elements"]', ".preview-button", 'ribbon-tab[label="File"]']
+    const anchor = ribbon?.querySelector<HTMLElement>(selectors[step])
+    const rect = anchor?.getBoundingClientRect()
+    return anchor && rect?.width && rect.height ? anchor : ribbon?.querySelector<HTMLElement>(".brand") ?? null
+  }
+
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
@@ -2975,6 +2996,7 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null) {
+    this.dismissGuidedTour()
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
     this.editorFrameStartupError = null
@@ -6609,6 +6631,7 @@ export class DomEditor extends LitElement {
       this.frameSnapshot = {document: this.editorDocument, html: event.data.html}
       if(event.data.treeChanged !== false || !this.documentTree) this.documentTree = this.buildDocumentTree()
       if(authoredChange || before !== null && before !== this.authoredDocumentSnapshot(true)) {
+        this.dismissGuidedTour()
         this.documentChangeSequence++
         this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
         if(this.historyDocumentTransitionCount === 0) {
@@ -7123,6 +7146,7 @@ export class DomEditor extends LitElement {
     this.dirtyTrackingTimer = undefined
     this.dirtyTrackingReady = false
     this.dirtyTrackingMutationPending = false
+    this.guidedTourReady = false
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
@@ -7445,6 +7469,9 @@ export class DomEditor extends LitElement {
         @documents-retry=${this.loadSavedDocuments}
       ></open-document-menu>
       <div class="document-stage" aria-busy=${documentLoading || this.previewFramePending ? "true" : "false"}>
+        ${this.settings.showGuidedTour && this.guidedTourReady && !documentLoading && !this.previewActive && !this.liveSessionActive ? html`
+          <guided-tour .anchor=${this.guidedTourAnchor} @tour-dismiss=${this.dismissGuidedTour}></guided-tour>
+        ` : nothing}
         ${documentLoading ? html`
           <div class="document-loading" role="status" aria-label="Loading document">
             <div class="document-loading-spinner" aria-hidden="true"></div>

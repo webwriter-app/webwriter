@@ -788,6 +788,18 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        <section class="setting-card" aria-label="Guided tour">
+          <label class="checkbox-setting">
+            <input
+              type="checkbox"
+              .checked=${this.settings.showGuidedTour}
+              @change=${(event: Event) => this.emitSettings({...this.settings, showGuidedTour: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Show guided tour</span>
+            <span class="checkbox-description">A quick tour of the editor. Editing dismisses it.</span>
+          </label>
+        </section>
+
         <section class="setting-card" aria-label="AI">
           <label class="checkbox-setting">
             <input type="checkbox" .checked=${this.settings.disableAI}
