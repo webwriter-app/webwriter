@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Count like a computer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+</head>
+<body>
+<p><small>Computer science · about 15 minutes</small></p>
+<h1>Count like a computer</h1>
+<p>A computer can use two symbols, <code>0</code> and <code>1</code>, to represent a number. Let’s read four of those symbols using place values.</p>
+<h2>Two symbols are enough</h2>
+<p>We usually count with ten digits, from 0 to 9. A computer can represent information with two states, such as a signal being off or on. A single 0 or 1 is called a <em>bit</em>. Groups of bits can represent numbers and other information.</p>
+<p>In ordinary counting, places have values 1, 10, 100, and so on. In binary, each place doubles as you move left: 1, 2, 4, 8. For this activity, read a 4-bit number from left to right using the place values shown below. A 1 means “include this value”; a 0 means “leave it out.”</p>
+<p>These symbols are a human-friendly way to describe the two states. Inside a real computer, circuits store and work with patterns of states.</p>
+
+<table>
+<caption>Four binary places</caption>
+<thead><tr><th scope="col">Place value</th><th scope="col">8</th><th scope="col">4</th><th scope="col">2</th><th scope="col">1</th></tr></thead>
+<tbody>
+<tr><th scope="row">Bit pattern</th><td>0 or 1</td><td>0 or 1</td><td>0 or 1</td><td>0 or 1</td></tr>
+<tr><th scope="row">Example: 1010</th><td>1 → 8</td><td>0 → 0</td><td>1 → 2</td><td>0 → 0</td></tr>
+</tbody>
+</table>
+
+<h2>Add the places that are on</h2>
+<p>For <code>1010</code>, the 8 and 2 places are on. Add them: 8 + 2 = 10. So the four-bit binary number <code>1010</code> means ten in our familiar decimal system. The bit pattern is not a row of four separate decimal digits; it is one number whose places have different values.</p>
+<p>Try the same method with <code>0111</code>: include 4, 2, and 1, then add. The leading zero is useful because it keeps every example four bits long. Four bits can make sixteen different patterns, from <code>0000</code> (zero) through <code>1111</code> (fifteen).</p>
+
+<h2>Build and check a number</h2>
+<p>Run this little program. Then change a bit from <code>0</code> to <code>1</code> and run it again. Predict the new total before you press Run. The program below is editable: it is your experiment, not a picture of code.</p>
+<webwriter-code-javascript code="const bits = [1, 0, 1, 0];
+const places = [8, 4, 2, 1];
+const total = bits.reduce((sum, bit, i) =&gt; sum + bit * places[i], 0);
+console.log(bits.join('') + ' = ' + total);"></webwriter-code-javascript>
+<p>Can you make the program print 7? How about the largest number possible with four bits? Try adding a fifth place with value 16, and explain which other line needs to change.</p>
+<details><summary>A hint if you get stuck</summary><p>For seven, turn on the 4, 2, and 1 places: <code>[0, 1, 1, 1]</code>. For a fifth place, add a bit at the start of <code>bits</code> and put <code>16</code> at the start of <code>places</code>.</p></details>
+<p>Write the place values above a pattern before adding. This makes it easier to catch a common slip: reading from the wrong side. The rightmost place is always 1; the next place to its left is 2, then 4, then 8.</p>
+<ol>
+<li>Decode <code>0101</code> by adding its on places.</li>
+<li>Write the four-bit pattern for six. Check that its 4 and 2 places are on.</li>
+<li>Compare your method with a partner: which place did you start with?</li>
+</ol>
+
+
+
+<h2>Reflect</h2>
+<p><label for="binary-reflection">How would you explain the 8/4/2/1 method to someone who has never seen binary?</label></p>
+<textarea id="binary-reflection" name="binary-reflection" rows="4" placeholder="Write your explanation here."></textarea>
+
+<h2>Sources</h2>
+<ul>
+<li><a href="https://www.computerhistory.org/blog/generative-music-with-the-muse/">Computer History Museum, “Generative Music with the Muse”</a> (four-bit counter example).</li>
+</ul>
+</body>
+</html>

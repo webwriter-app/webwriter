@@ -1,7 +1,7 @@
 import type {IImportMap} from "@jspm/import-map"
 import {stripActiveContent} from "./active-content"
 import {WEBWRITER_GENERATOR} from "./document-head"
-import {defaultDocumentTheme, documentTheme} from "./document-themes"
+import {ensureDefaultDocumentTheme} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
 import {packageImportMapId} from "./package-dependencies"
 import type {WebWriterPackage} from "./packages"
@@ -26,17 +26,6 @@ export type EditorFrameOptions = FrameDocumentOptions & {
 export type PreviewFrameOptions = FrameDocumentOptions & {
   frameOrigin: string
   importMap: IImportMap | null
-}
-
-const ensureDefaultDocumentTheme = (root: Document) => {
-  const hasTheme = Array.from(root.head.querySelectorAll<HTMLStyleElement>("style[data-ww-theme]"))
-    .some(style => documentTheme(style.getAttribute("data-ww-theme") ?? ""))
-  if(hasTheme) return
-  const style = root.createElement("style")
-  style.setAttribute("data-ww-theme", defaultDocumentTheme.value)
-  style.setAttribute("blocking", "render")
-  style.textContent = defaultDocumentTheme.source
-  root.head.append(style)
 }
 
 const defaultDocumentThemeHTML = () => {

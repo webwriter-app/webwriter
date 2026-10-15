@@ -438,6 +438,7 @@ afterEach(async() => {
   mountedEditors.clear()
   const url = new URL(location.href)
   url.searchParams.delete("open")
+  url.searchParams.delete("example")
   history.replaceState(history.state, "", url.href)
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
@@ -467,6 +468,49 @@ beforeEach(() => {
 })
 
 describe("DomEditor document loading", () => {
+  it("opens a curated example as an editable local copy and rejects unknown examples", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState(null, "", "/editor/?example=binary")
+    vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockImplementation(async ({name, version}) => {
+      const tagName = name === "@webwriter/code" ? "webwriter-code-javascript" : "webwriter-quiz"
+      const script = `https://cdn.jsdelivr.net/npm/${name}@${version}/dist/widgets/${name === "@webwriter/code" ? "ww-code-javascript" : tagName}.js`
+      return {...demoPackage, name, version, scripts: [script], members: [{...demoPackage.members[0], tagName, scriptUrl: script}]}
+    })
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    await host.restoreExampleDocument("binary", Promise.resolve())
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"))
+    expect(reload.mock.calls[0][0]).toContain('data-ww-theme="base"')
+    expect(reload.mock.calls[0][0]).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"')
+    expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/code"])
+    expect(host.fileName).toBe("Count like a computer")
+    expect(host.fileHandle).toBeNull()
+    expect(host.backendDocumentId).toBeNull()
+    const error = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    await host.restoreExampleDocument("../other.html", Promise.resolve())
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({message: "This example could not be found."}))
+    expect(reload).toHaveBeenCalledOnce()
+    host.updateDocumentURL(null)
+    expect(new URL(location.href).searchParams.has("example")).toBe(false)
+  })
+
+  it("discards a curated example when the user leaves its link during startup", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState(null, "", "/editor/?example=binary")
+    vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    let ready!: () => void
+    const startup = new Promise<void>(resolve => {ready = resolve})
+    const opening = host.restoreExampleDocument("binary", startup)
+    history.replaceState(null, "", "/editor/")
+    ready()
+    await opening
+    expect(reload).not.toHaveBeenCalled()
+    expect(host.linkedDocumentLoading).toBe(false)
+  })
+
   it("does not show a spinner while the initial empty preset is loading", async () => {
     const editor = new DomEditor()
     mountedEditors.add(editor)
@@ -8650,8 +8694,37 @@ describe("heading toolbox level changes", () => {
 })
 
 describe("document collaboration menu", () => {
+  it("keeps the editor path and unrelated URL state when generating an open link", async () => {
+    const {editor} = await mountEditor()
+    history.replaceState({previous: true}, "", "/editor/?other=a+b&open=old#part%20one")
+    ;(editor as any).updateDocumentURL("https://storage.example/api/documents/new%2Flesson")
+    const url = new URL(location.href)
+    expect(url.pathname).toBe("/editor/")
+    expect(url.search).toBe("?other=a+b&open=https%3A%2F%2Fstorage.example%2Fapi%2Fdocuments%2Fnew%252Flesson")
+    expect(url.hash).toBe("#part%20one")
+    expect(history.state).toEqual({previous: true})
+    history.replaceState({}, "", "/")
+  })
+
+  it("keeps the editor path, unrelated query, and hash in live-session learner links", async () => {
+    const {editor} = await mountEditor()
+    history.replaceState({}, "", "/editor/?other=keep&session=collab&source=local&open=old#anchor")
+    const link = new URL((editor as any).liveSessionShareLink("lesson-1", "a".repeat(32)))
+    expect(link.pathname).toBe("/editor/")
+    expect(link.searchParams.get("other")).toBe("keep")
+    expect(link.searchParams.get("liveSession")).toBe("lesson-1")
+    expect(link.searchParams.get("liveToken")).toBe("a".repeat(32))
+    expect(link.searchParams.get("role")).toBe("learner")
+    expect(link.searchParams.has("session")).toBe(false)
+    expect(link.searchParams.has("source")).toBe(false)
+    expect(link.searchParams.has("open")).toBe(false)
+    expect(link.hash).toBe("#anchor")
+    history.replaceState({}, "", "/")
+  })
+
   it("enables and revokes editing links through the server for a saved document", async () => {
     const {editor} = await mountEditor()
+    history.replaceState({}, "", "/editor/?other=keep&session=collab&share=old&liveSession=old&liveToken=old&role=host#section")
     const host = editor as any
     const setDocumentSharing = vi.fn().mockResolvedValueOnce({enabled: true, token: "editing-token"}).mockResolvedValueOnce({enabled: false})
     host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
@@ -8660,7 +8733,17 @@ describe("document collaboration menu", () => {
     host.collaborationRoom = "document-saved"
     await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
     expect(setDocumentSharing).toHaveBeenCalledWith("saved", true)
-    expect(new URL(host.collaborationLink).searchParams.get("open")).toBe("http://localhost:1234/api/shared-documents/editing-token")
+    const link = new URL(host.collaborationLink)
+    expect(link.pathname).toBe("/editor/")
+    expect(link.searchParams.get("open")).toBe("http://localhost:1234/api/shared-documents/editing-token")
+    expect(link.searchParams.get("other")).toBe("keep")
+    expect(link.searchParams.has("session")).toBe(false)
+    expect(link.searchParams.has("share")).toBe(false)
+    expect(link.searchParams.has("liveSession")).toBe(false)
+    expect(link.searchParams.has("liveToken")).toBe(false)
+    expect(link.searchParams.has("role")).toBe(false)
+    expect(link.hash).toBe("#section")
+    history.replaceState({}, "", "/")
     expect(host.linkSharingEnabled).toBe(true)
     await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: false}}))
     expect(setDocumentSharing).toHaveBeenLastCalledWith("saved", false)

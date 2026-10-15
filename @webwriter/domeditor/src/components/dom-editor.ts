@@ -3155,6 +3155,7 @@ export class DomEditor extends LitElement {
   private updateDocumentURL(reference: string | null) {
     if(this.liveSessionActive) return
     const url = new URL(location.href)
+    url.searchParams.delete("example")
     if(reference === null) url.searchParams.delete("open")
     else url.searchParams.set("open", reference)
     history.replaceState(history.state, "", url.href)
@@ -3169,6 +3170,43 @@ export class DomEditor extends LitElement {
     if(this.sharedDocumentToken) return
     const reference = this.backendDocumentReference(id, client)
     if(reference) this.updateDocumentURL(reference)
+  }
+
+  private async restoreExampleDocument(id: string, startupReady: Promise<void>) {
+    this.linkedDocumentLoading = true
+    const revision = this.documentChangeSequence
+    try {
+      const {findExampleDocument, loadExampleDocument, loadExamplePackages} = await import("../example-documents")
+      const example = findExampleDocument(id)
+      if(!example) throw new Error("This example could not be found.")
+      const source = await loadExampleDocument(id)
+      const packages = await loadExamplePackages(source, this.packageRegistry)
+      await startupReady
+      if(!this.isConnected || this.liveSessionActive || new URL(location.href).searchParams.get("example") !== id
+        || revision !== this.documentChangeSequence) return
+      await this.runFileOperation(async () => {
+        this.documentLoading = true
+        this.clearDocumentCollaboration()
+        this.installedPackages = [...this.installedPackages.filter(pkg => !packages.some(examplePackage => examplePackage.name === pkg.name)), ...packages]
+        // The trusted package loader supplies these modules inside the editor;
+        // exports restore them through the existing package serialization path.
+        const modules = new Set(packages.flatMap(pkg => pkg.scripts))
+        source.querySelectorAll<HTMLScriptElement>('script[type="module"][src]').forEach(script => {
+          if(modules.has(script.getAttribute("src")!)) script.remove()
+        })
+        await this.reloadDocument(serializeDoctype(source.doctype) + source.documentElement.outerHTML)
+        this.backendDocumentId = null
+        this.fileHandle = null
+        this.storageLocation = "local"
+        this.fileName = source.title || example.title
+        this.downloadedFileName = `${example.id}.html`
+        this.fileFormat = "html"
+        this.fileDirty = false
+        this.focusEditor()
+      })
+    }
+    catch(error) { this.reportFileError(error) }
+    finally { this.documentLoading = false; this.linkedDocumentLoading = false }
   }
 
   private async restoreLinkedDocument(value: string, startupReady: Promise<void> = Promise.resolve()) {
@@ -7076,12 +7114,14 @@ export class DomEditor extends LitElement {
     const open = new URL(location.href).searchParams.get("open")
     const reference = open === null ? null : parseDocumentOpenReference(open)
     const openingLinkedDocument = !liveSessionId && open !== null
+    const exampleId = new URL(location.href).searchParams.get("example")
+    const openingExample = !liveSessionId && !openingLinkedDocument && exampleId !== null
     if(!liveSessionId && reference?.kind !== "backend" && reference?.kind !== "shared" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
     this.restoreInstalledPackages()
     const catalog = this.loadPackageCatalog()
     const restoration = this.restoreLocalPackages()
-    const timer = this.frameStarted || openingLinkedDocument ? undefined : setTimeout(() => startFrame(), 250)
+    const timer = this.frameStarted || openingLinkedDocument || openingExample ? undefined : setTimeout(() => startFrame(), 250)
     this.frameStartTimer = timer
     const startFrame = () => {
       if(!this.isConnected || this.frameStartTimer !== timer) return
@@ -7093,7 +7133,7 @@ export class DomEditor extends LitElement {
       if(restored.status === "rejected") {
         this.localPackageError = restored.reason instanceof Error ? restored.reason.message : String(restored.reason)
       }
-      if(!openingLinkedDocument) startFrame()
+      if(!openingLinkedDocument && !openingExample) startFrame()
     })
     this.localPackageManager.connect()
     // Fetch linked content alongside package restoration, then mount the first
@@ -7101,6 +7141,13 @@ export class DomEditor extends LitElement {
     if(openingLinkedDocument) {
       const startupReady = Promise.allSettled([restoration]).then(() => {})
       void this.restoreLinkedDocument(open!, startupReady).finally(async () => {
+        await startupReady
+        startFrame()
+      })
+    }
+    else if(openingExample) {
+      const startupReady = Promise.allSettled([restoration]).then(() => {})
+      void this.restoreExampleDocument(exampleId!, startupReady).finally(async () => {
         await startupReady
         startFrame()
       })

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Zählen wie ein Computer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+</head>
+<body>
+<p><small>Informatik · etwa 15 Minuten</small></p>
+<h1>Zählen wie ein Computer</h1>
+<p>Ein Computer kann zwei Zeichen verwenden, <code>0</code> und <code>1</code>, um eine Zahl darzustellen. Wir lesen vier dieser Zeichen mithilfe ihrer Stellenwerte.</p>
+<h2>Zwei Zeichen genügen</h2>
+<p>Normalerweise zählen wir mit zehn Ziffern von 0 bis 9. Ein Computer kann Informationen mit zwei Zuständen darstellen, etwa einem aus- oder eingeschalteten Signal. Eine einzelne 0 oder 1 heißt <em>Bit</em>. Bitgruppen können Zahlen und andere Informationen darstellen.</p>
+<p>Beim Dezimalsystem haben die Stellen die Werte 1, 10, 100 und so weiter. Im Binärsystem verdoppelt sich der Stellenwert nach links: 1, 2, 4, 8. Lies für diese Aufgabe die 4-Bit-Zahl von links nach rechts anhand der Stellenwerte unten. Eine 1 bedeutet „Wert mitzählen“, eine 0 „Wert weglassen“.</p>
+<p>Diese Zeichen beschreiben die zwei Zustände auf verständliche Weise. In einem echten Computer speichern Schaltkreise Zustandsmuster und verarbeiten sie.</p>
+
+<table>
+<caption>Vier Binärstellen</caption>
+<thead><tr><th scope="col">Stellenwert</th><th scope="col">8</th><th scope="col">4</th><th scope="col">2</th><th scope="col">1</th></tr></thead>
+<tbody>
+<tr><th scope="row">Bitmuster</th><td>0 oder 1</td><td>0 oder 1</td><td>0 oder 1</td><td>0 oder 1</td></tr>
+<tr><th scope="row">Beispiel: 1010</th><td>1 → 8</td><td>0 → 0</td><td>1 → 2</td><td>0 → 0</td></tr>
+</tbody>
+</table>
+
+<h2>Addiere die eingeschalteten Stellen</h2>
+<p>Bei <code>1010</code> sind die Stellen 8 und 2 eingeschaltet. Addiere sie: 8 + 2 = 10. Die vierstellige Binärzahl <code>1010</code> steht also im vertrauten Dezimalsystem für zehn. Das Bitmuster ist keine Reihe aus vier Dezimalziffern, sondern eine Zahl mit Stellen unterschiedlichen Werts.</p>
+<p>Probiere dieselbe Methode mit <code>0111</code>: Zähle 4, 2 und 1 mit und addiere. Die führende Null sorgt dafür, dass jedes Beispiel vier Bit lang ist. Mit vier Bit gibt es sechzehn Muster, von <code>0000</code> (null) bis <code>1111</code> (fünfzehn).</p>
+
+<h2>Bilde und überprüfe eine Zahl</h2>
+<p>Starte dieses kleine Programm. Ändere dann ein Bit von <code>0</code> auf <code>1</code> und starte es erneut. Sage die neue Summe voraus, bevor du auf „Run“ klickst. Das Programm ist bearbeitbar: Es ist dein Experiment und kein Bild von Code.</p>
+<webwriter-code-javascript code="const bits = [1, 0, 1, 0];
+const places = [8, 4, 2, 1];
+const total = bits.reduce((sum, bit, i) =&gt; sum + bit * places[i], 0);
+console.log(bits.join('') + ' = ' + total);"></webwriter-code-javascript>
+<p>Kannst du das Programm 7 ausgeben lassen? Und die größte Zahl mit vier Bit? Füge eine fünfte Stelle mit dem Wert 16 hinzu und erkläre, welche weitere Zeile geändert werden muss.</p>
+<details><summary>Ein Tipp, falls du nicht weiterkommst</summary><p>Für sieben schaltest du die Stellen 4, 2 und 1 ein: <code>[0, 1, 1, 1]</code>. Für eine fünfte Stelle fügst du am Anfang von <code>bits</code> ein Bit ein und setzt <code>16</code> an den Anfang von <code>places</code>.</p></details>
+<p>Schreibe vor dem Addieren die Stellenwerte über das Muster. So fällt ein häufiger Fehler leichter auf: von der falschen Seite zu lesen. Ganz rechts steht immer 1, links daneben 2, dann 4 und 8.</p>
+<ol>
+<li>Entschlüssle <code>0101</code> durch Addition der eingeschalteten Stellen.</li>
+<li>Schreibe das Vier-Bit-Muster für sechs auf. Prüfe, ob die Stellen 4 und 2 eingeschaltet sind.</li>
+<li>Vergleiche deine Methode mit einer Partnerin oder einem Partner: Mit welcher Stelle hast du begonnen?</li>
+</ol>
+
+
+
+<h2>Nachdenken</h2>
+<p><label for="binary-reflection">Wie würdest du jemandem ohne Vorkenntnisse die Methode mit 8/4/2/1 erklären?</label></p>
+<textarea id="binary-reflection" name="binary-reflection" rows="4" placeholder="Schreibe deine Erklärung hier."></textarea>
+
+<h2>Quellen</h2>
+<ul>
+<li><a href="https://www.computerhistory.org/blog/generative-music-with-the-muse/">Computer History Museum, “Generative Music with the Muse”</a> (Beispiel für einen Vier-Bit-Zähler).</li>
+</ul>
+</body>
+</html>
