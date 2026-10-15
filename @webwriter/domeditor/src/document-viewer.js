@@ -69,7 +69,9 @@ function targets(body) {
 }
 
 /** Mount controls in the body's shadow appendix without changing authored nodes. */
-export function mountDocumentReader(licenses = [], appIcon = "", formatReferences = null) {
+export function mountDocumentReader(licenses = [], appIcon = "", formatReferences = null, translations = {}) {
+  const t = (source, values = {}) => (translations[source] ?? source).replace(/\{(\w+)\}/g,
+    (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match)
   const body = document.body
   if(blocked(body)) return null
   if(activeReaders.has(body)) return activeReaders.get(body)
@@ -166,26 +168,26 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   const controls = new Map()
   const pane = document.createElement("aside")
   pane.className = "◆document-pane"
-  pane.setAttribute("aria-label", "Document information and actions")
+  pane.setAttribute("aria-label", t("Document information and actions"))
   pane.hidden = true
   const brand = document.createElement("a")
   brand.className = "◆document-brand"
   brand.href = "https://edumix.eu"; brand.target = "_blank"; brand.rel = "noopener noreferrer"
-  brand.title = "WebWriter on edumix.eu"; brand.setAttribute("aria-label", brand.title)
+  brand.title = t("WebWriter on edumix.eu"); brand.setAttribute("aria-label", brand.title)
   const brandImage = document.createElement("img")
   brandImage.alt = "WebWriter"; brandImage.src = appIcon
   brand.append(brandImage)
   const metadata = document.createElement("button")
   metadata.type = "button"; metadata.className = "◆document-copyright"
-  metadata.setAttribute("aria-label", "How to reuse this document")
+  metadata.setAttribute("aria-label", t("How to reuse this document"))
   metadata.setAttribute("aria-expanded", "false")
   const reuse = document.createElement("div")
   reuse.className = "◆document-reuse"; reuse.hidden = true; reuse.tabIndex = -1
-  reuse.setAttribute("role", "dialog"); reuse.setAttribute("aria-label", "Reuse this document")
+  reuse.setAttribute("role", "dialog"); reuse.setAttribute("aria-label", t("Reuse this document"))
   const reuseHeader = document.createElement("header")
-  const reuseTitle = document.createElement("strong"); reuseTitle.textContent = "Reuse this document"
+  const reuseTitle = document.createElement("strong"); reuseTitle.textContent = t("Reuse this document")
   const closeReuseButton = document.createElement("button")
-  closeReuseButton.type = "button"; closeReuseButton.textContent = "×"; closeReuseButton.setAttribute("aria-label", "Close reuse information")
+  closeReuseButton.type = "button"; closeReuseButton.textContent = "×"; closeReuseButton.setAttribute("aria-label", t("Close reuse information"))
   const reuseContent = document.createElement("div")
   reuseHeader.append(reuseTitle, closeReuseButton); reuse.append(reuseHeader, reuseContent)
   const closeReuse = (restoreFocus = false) => {
@@ -207,7 +209,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   const actions = document.createElement("div")
   actions.className = "◆document-pane-actions"
   actions.setAttribute("role", "group")
-  actions.setAttribute("aria-label", "Document actions")
+  actions.setAttribute("aria-label", t("Document actions"))
   pane.append(brand, metadata, actions, reuse)
   appendix.append(pane)
   const downloadURLs = new Map()
@@ -223,7 +225,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       if(!fileHandle && typeof window.showSaveFilePicker === "function") {
         try {
           fileHandle = await window.showSaveFilePicker({suggestedName: filename,
-            types: [{description: "HTML document", accept: {"text/html": [".html", ".htm"]}}]})
+            types: [{description: t("HTML document"), accept: {"text/html": [".html", ".htm"]}}]})
         } catch(error) {
           if(error?.name === "AbortError") return
           // Unsupported contexts and denied access can still download a copy.
@@ -250,7 +252,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       const link = document.createElement("a")
       link.href = url; link.download = filename; link.click()
       downloadURLs.set(url, setTimeout(() => { URL.revokeObjectURL(url); downloadURLs.delete(url) }, 0))
-    } catch { if(!destroyed) showFeedback(saveButton, "Couldn’t save document") }
+    } catch { if(!destroyed) showFeedback(saveButton, t("Couldn’t save document")) }
     finally { saving = false; saveButton.disabled = false }
   }
   const iconButton = (name, label, path, handler) => {
@@ -267,22 +269,22 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     actions.append(button)
     return button
   }
-  const saveButton = iconButton("save", "Save document", "M5 3h12l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8", save)
-  iconButton("print", "Print document", "M6 9V3h12v6M6 18H4V9h16v9h-2M6 15h12v6H6zM17 12h.01", () => window.print())
+  const saveButton = iconButton("save", t("Save document"), "M5 3h12l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8", save)
+  iconButton("print", t("Print document"), "M6 9V3h12v6M6 18H4V9h16v9h-2M6 15h12v6H6zM17 12h.01", () => window.print())
   const referencesPanel = document.createElement("div")
   referencesPanel.className = "◆document-references"; referencesPanel.hidden = true; referencesPanel.tabIndex = -1
-  referencesPanel.setAttribute("role", "dialog"); referencesPanel.setAttribute("aria-label", "References")
+  referencesPanel.setAttribute("role", "dialog"); referencesPanel.setAttribute("aria-label", t("References"))
   const referencesHeader = document.createElement("header")
-  const referencesTitle = document.createElement("strong"); referencesTitle.textContent = "References"
+  const referencesTitle = document.createElement("strong"); referencesTitle.textContent = t("References")
   const referencesClose = document.createElement("button")
-  referencesClose.type = "button"; referencesClose.textContent = "×"; referencesClose.setAttribute("aria-label", "Close references")
+  referencesClose.type = "button"; referencesClose.textContent = "×"; referencesClose.setAttribute("aria-label", t("Close references"))
   referencesHeader.append(referencesTitle, referencesClose)
   const referencesList = document.createElement("ol")
   const referencesPreview = document.createElement("pre")
-  referencesPreview.setAttribute("aria-label", "Formatted bibliography")
+  referencesPreview.setAttribute("aria-label", t("Formatted bibliography"))
   const referencesFooter = document.createElement("footer")
   const referencesStyle = document.createElement("select")
-  referencesStyle.setAttribute("aria-label", "Citation style")
+  referencesStyle.setAttribute("aria-label", t("Citation style"))
   for(const name of ["apa", "vancouver", "harvard1"]) {
     const option = document.createElement("option"); option.value = name
     option.textContent = {apa: "APA", vancouver: "Vancouver", harvard1: "Harvard"}[name]
@@ -307,9 +309,9 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       const title = document.createElement("p"); title.textContent = reference.data.title
       item.append(title)
       if(reference.conflict) {
-        const warning = document.createElement("p"); warning.textContent = "Conflicting metadata for this reference. Resolve it in the editor before copying."; item.append(warning)
+        const warning = document.createElement("p"); warning.textContent = t("Conflicting metadata for this reference. Resolve it in the editor before copying."); item.append(warning)
       }
-      const jump = document.createElement("button"); jump.type = "button"; jump.textContent = "Go to citation"
+      const jump = document.createElement("button"); jump.type = "button"; jump.textContent = t("Go to citation")
       jump.addEventListener("click", () => {
         const current = collectReferences(body).find(entry => entry.href === reference.href)?.anchors[0]
         if(current?.isConnected) { closeReferences(); current.scrollIntoView?.({block: "center"}); current.focus() }
@@ -319,7 +321,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     const unavailable = !formatReferences || references.some(reference => reference.conflict)
     referencesPreview.textContent = ""
     if(!unavailable) try { referencesPreview.textContent = formatReferences(references, "bibliography", referencesStyle.value) }
-    catch { referenceStatus.textContent = "Couldn’t format this reference." }
+    catch { referenceStatus.textContent = t("Couldn’t format this reference.") }
     copyReferences.disabled = unavailable; copyBibtex.disabled = unavailable
   }
   const openReferences = href => {
@@ -328,7 +330,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     referencesPanel.hidden = false; referencesButton.setAttribute("aria-expanded", "true"); referencesPanel.focus()
     if(href) Array.from(referencesList.children).find(item => item.getAttribute("data-reference-href") === href)?.scrollIntoView?.({block: "nearest"})
   }
-  const referencesButton = iconButton("references", "References", "M4 3h6v18H4zM14 3h6v18h-6zM4 7h6M14 7h6", () => {
+  const referencesButton = iconButton("references", t("References"), "M4 3h6v18H4zM14 3h6v18h-6zM4 7h6M14 7h6", () => {
     if(referencesPanel.hidden) openReferences(); else closeReferences()
   })
   referencesButton.setAttribute("aria-expanded", "false")
@@ -339,13 +341,13 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       const output = formatReferences(references, format, referencesStyle.value)
       if(!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable")
       await navigator.clipboard.writeText(output)
-      if(!destroyed) referenceStatus.textContent = "Copied references"
-    } catch { if(!destroyed) referenceStatus.textContent = "Couldn’t copy references" }
+      if(!destroyed) referenceStatus.textContent = t("Copied references")
+    } catch { if(!destroyed) referenceStatus.textContent = t("Couldn’t copy references") }
   }
   const copyReferences = document.createElement("button"), copyBibtex = document.createElement("button")
   copyReferences.type = copyBibtex.type = "button"
-  copyReferences.name = "copy-references"; copyReferences.textContent = "Copy references"
-  copyBibtex.name = "copy-bibtex"; copyBibtex.textContent = "Copy BibTeX"
+  copyReferences.name = "copy-references"; copyReferences.textContent = t("Copy references")
+  copyBibtex.name = "copy-bibtex"; copyBibtex.textContent = t("Copy BibTeX")
   copyReferences.addEventListener("click", () => copy("bibliography"))
   copyBibtex.addEventListener("click", () => copy("bibtex"))
   referencesFooter.append(referencesStyle, copyReferences, copyBibtex)
@@ -373,7 +375,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       metadataKey = key
       closeReuse()
       const known = licenses.find(item => item.url.replace(/\/$/, "") === href.replace(/\/$/, ""))
-      const label = known?.code.replace(/-\d+(?:\.\d+)?$/, "") || title || (href ? "License" : "")
+      const label = known?.code.replace(/-\d+(?:\.\d+)?$/, "") || title || (href ? t("License") : "")
       metadata.textContent = [author && `© ${author} ${year}`, label].filter(Boolean).join(", ")
       metadata.title = metadata.textContent
       metadata.hidden = !author && !href
@@ -381,20 +383,23 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       const paragraph = text => { const p = document.createElement("p"); p.textContent = text; reuseContent.append(p) }
       if(known) {
         const code = known.code
-        if(code.startsWith("CC0-")) paragraph("You may copy, edit and share this document, including commercially, without requesting permission. Credit is appreciated.")
+        if(code.startsWith("CC0-")) paragraph(t("You may copy, edit and share this document, including commercially, without requesting permission. Credit is appreciated."))
         else {
-          paragraph(`You may copy and share this document${code.includes("-NC") ? " for noncommercial purposes" : ", including commercially"}. ${code.includes("-ND") ? "You may edit it privately, but cannot distribute modified versions." : "You may also edit and adapt it."}`)
-          paragraph(`Credit ${author || "the creator"}, retain supplied notices, link to the document and license, and indicate changes. Do not imply endorsement.`)
-          if(code.includes("-SA")) paragraph("Share adaptations under the same or a compatible license.")
-          paragraph("Do not add legal or technical restrictions that prevent others from exercising the license permissions.")
+          paragraph(t("You may copy and share this document{commercial}. {editing}", {
+            commercial: code.includes("-NC") ? t(" for noncommercial purposes") : t(", including commercially"),
+            editing: code.includes("-ND") ? t("You may edit it privately, but cannot distribute modified versions.") : t("You may also edit and adapt it."),
+          }))
+          paragraph(t("Credit {creator}, retain supplied notices, link to the document and license, and indicate changes. Do not imply endorsement.", {creator: author || t("the creator")}))
+          if(code.includes("-SA")) paragraph(t("Share adaptations under the same or a compatible license."))
+          paragraph(t("Do not add legal or technical restrictions that prevent others from exercising the license permissions."))
         }
-        paragraph("This is a summary. Check the full terms and any separately credited material before reuse.")
-      } else paragraph(href ? "Review the linked license for permission and conditions before copying, editing or sharing this document." : `No reuse license is specified. Ask ${author || "the copyright holder"} for permission unless your use is otherwise permitted.`)
+        paragraph(t("This is a summary. Check the full terms and any separately credited material before reuse."))
+      } else paragraph(href ? t("Review the linked license for permission and conditions before copying, editing or sharing this document.") : t("No reuse license is specified. Ask {holder} for permission unless your use is otherwise permitted.", {holder: author || t("the copyright holder")}))
       if(href) try {
         const url = new URL(href, document.baseURI)
         if(["http:", "https:"].includes(url.protocol)) {
           const link = document.createElement("a")
-          link.textContent = known?.name || title || "Read license terms"; link.href = url.href
+          link.textContent = known?.name || title || t("Read license terms"); link.href = url.href
           link.target = "_blank"; link.rel = "noopener noreferrer"; reuseContent.append(link)
         }
       } catch {}
@@ -486,13 +491,14 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     group.className = "◆document-reader-control"
     group.setAttribute("role", "group")
     const kind = element.tagName.toLowerCase()
-    group.setAttribute("aria-label", `${kind} controls`)
+    const kindLabel = t(kind)
+    group.setAttribute("aria-label", t("{kind} controls", {kind: kindLabel}))
     let permalink = null
     if(element.id) {
       permalink = document.createElement("a")
       permalink.textContent = "#"
-      permalink.title = "Copy link to this section"
-      permalink.setAttribute("aria-label", "Copy link to this section")
+      permalink.title = t("Copy link to this section")
+      permalink.setAttribute("aria-label", permalink.title)
       permalink.addEventListener("click", async event => {
         // Keep the native href for context menus and modified navigation.
         if(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
@@ -503,12 +509,12 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
         hideFeedback()
         const url = new URL(document.location.href)
         url.hash = encodeURIComponent(id)
-        let message = "Link copied!"
+        let message = t("Link copied!")
         try {
           if(!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable")
           await navigator.clipboard.writeText(url.href)
         }
-        catch { message = "Couldn’t copy link" }
+        catch { message = t("Couldn’t copy link") }
         if(!destroyed && attempt === copyAttempt && group.isConnected && element.isConnected
           && body.contains(element) && element.id === id) showFeedback(permalink, message)
       })
@@ -518,8 +524,8 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       const fullscreen = document.createElement("button")
       fullscreen.type = "button"
       fullscreen.textContent = "⛶"
-      fullscreen.title = "View fullscreen"
-      fullscreen.setAttribute("aria-label", "View fullscreen")
+      fullscreen.title = t("View fullscreen")
+      fullscreen.setAttribute("aria-label", fullscreen.title)
       fullscreen.addEventListener("click", () => {
         if(!element.isConnected || !body.contains(element)) return
         const api = element.requestFullscreen

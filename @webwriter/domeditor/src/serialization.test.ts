@@ -28,6 +28,16 @@ it("includes aligned marker styling in standalone exports without changing the b
   expect(root.querySelector("#webwriter-list-marker-styles")).toBeNull()
 })
 
+it("passes the document language dictionary into the import-free document reader", () => {
+  const root = new DOMParser().parseFromString('<html lang="de-AT"><body><p>Text</p></body></html>', "text/html")
+  appendSerializedAssets(root, [])
+  const viewer = root.querySelector<HTMLScriptElement>("#webwriter-document-viewer")!
+  expect(viewer.textContent).toMatch(/mountDocumentReader\([\s\S]*?, null, \{/)
+  expect(viewer.textContent).toContain('"Document information and actions":"Dokumentinformationen und Aktionen"')
+  expect(viewer.textContent).toContain('"Print document":"Dokument drucken"')
+  expect(viewer.textContent).not.toContain('import {')
+})
+
 describe("serializeDoctype()", () => {
   it("omits a missing doctype", () => {
     expect(serializeDoctype(null)).toBe("")

@@ -41,6 +41,22 @@ afterEach(() => {
 describe("document pane", () => {
   const pane = () => document.body.shadowRoot!.querySelector<HTMLElement>(".◆document-pane")!
 
+  it("localizes static reader controls from the optional translation map", () => {
+    reader = mountDocumentReader([], "", null, {
+      "Document actions": "Aktionen des Dokuments",
+      "Save document": "Dokument speichern",
+      "Print document": "Dokument drucken",
+      "View fullscreen": "Vollbild anzeigen",
+      "Document information and actions": "Dokumentaktionen",
+    })
+    expect(pane().getAttribute("aria-label")).toBe("Dokumentaktionen")
+    expect(pane().querySelector(".◆document-pane-actions")?.getAttribute("aria-label")).toBe("Aktionen des Dokuments")
+    expect(pane().querySelector('[name="save"]')?.getAttribute("aria-label")).toBe("Dokument speichern")
+    expect(pane().querySelector('[name="print"]')?.getAttribute("title")).toBe("Dokument drucken")
+    expect(document.body.shadowRoot!.querySelector('[aria-label="View fullscreen"]')).toBeNull()
+    expect(document.body.shadowRoot!.querySelector('[title="Vollbild anzeigen"]')).not.toBeNull()
+  })
+
   it.each(["auto", "stable both-edges"])("aligns the action pane with the page edge with %s scrollbar gutters", gutter => {
     const root = document.documentElement, original = root.style.scrollbarGutter
     root.style.scrollbarGutter = gutter

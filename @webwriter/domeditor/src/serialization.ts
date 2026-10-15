@@ -8,6 +8,7 @@ import {collectReferences} from "./document-viewer.js"
 import {documentLayoutMode} from "./document-layout"
 import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
+import {siteTranslations} from "./site-translations"
 import scopedCustomElementRegistrySource from "./scoped-custom-element-registry.js?raw"
 import type {WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
@@ -115,7 +116,9 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     script.id = "webwriter-document-viewer"
     script.type = "module"
     const hasReferences = collectReferences(root.body).length > 0
-    script.textContent = `${hasReferences ? referenceFormatterSource : ""}\n${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)}${hasReferences ? ", referenceFormatter.formatReferences" : ""})\n`
+    const locale = (root.documentElement.lang || "").toLowerCase().split(/[-_]/)[0]
+    const translations = siteTranslations[locale] ?? {}
+    script.textContent = `${hasReferences ? referenceFormatterSource : ""}\n${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)}, ${hasReferences ? "referenceFormatter.formatReferences" : "null"}, ${JSON.stringify(translations)})\n`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
