@@ -1,0 +1,51 @@
+@import "./site-header.css";
+
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #263142; background: #fff; line-height: 1.65; --accent: #155e9b; --border: #dfe5ed; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--accent); text-underline-offset: .2em; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+main, footer { max-inline-size: 76rem; margin-inline: auto; padding-inline: 1.5rem; }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: 1.5rem; padding: .8rem 1.2rem; background: var(--accent); border: 1px solid var(--accent); border-radius: .4rem; color: white; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.button:hover { background: #104a7b; }
+.hero { display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; gap: 4rem; padding-block: 5rem 4.5rem; }
+.eyebrow { margin: 0 0 1.25rem; font-size: .75rem; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+h1, h2, h3 { color: #172033; line-height: 1.15; }
+h1 { margin: 0 0 1.5rem; font-size: clamp(2.5rem, 4.7vw, 4rem); letter-spacing: -.055em; }
+.lead { max-inline-size: 31rem; margin: 0; font-size: 1.1rem; color: #536174; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1.25rem; margin-block: 2rem 1rem; font-size: .875rem; }
+.note { font-size: .8rem; color: #617084; }
+.possibilities { display: grid; grid-template-columns: 1fr 2fr; gap: 3rem; padding-block: 3rem 4rem; border-top: 1px solid var(--border); }
+.section-intro h2 { margin: 0; font-size: 1.8rem; letter-spacing: -.04em; }
+.capabilities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.75rem; }
+h3 { margin: .8rem 0; font-size: 1rem; line-height: 1.4; }
+.capabilities p { margin: 0; font-size: .875rem; color: #536174; }
+.tools { padding-block: 3rem 4rem; border-top: 1px solid var(--border); }
+.tools .section-intro { margin-block-end: 2rem; }
+.widget-showcase { padding-block: 3rem 4rem; border-top: 1px solid var(--border); }
+.widget-showcase .section-intro { margin-block-end: 2rem; }
+.widget-showcase .section-intro p { max-inline-size: 45rem; margin-block: 1rem 0; font-size: .95rem; color: #536174; }
+.developer-invitation {
+  display: flex; align-items: center; justify-content: space-between; gap: 2rem; padding: 2.5rem; margin-block-end: 4rem; border: 1px solid var(--border); border-radius: .6rem;
+  background-color: #f7f9fc;
+  background-image:
+    linear-gradient(rgb(21 94 155 / .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(21 94 155 / .035) 1px, transparent 1px),
+    linear-gradient(rgb(21 94 155 / .012) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(21 94 155 / .012) 1px, transparent 1px);
+  background-size: 5rem 5rem, 5rem 5rem, 1rem 1rem, 1rem 1rem;
+}
+.developer-invitation .eyebrow { margin-block-end: .75rem; }
+.developer-invitation h2 { margin: 0; font-size: 1.65rem; letter-spacing: -.025em; }
+.developer-invitation p:last-child { max-inline-size: 40rem; margin-block-end: 0; font-size: .9rem; color: #536174; }
+.button.secondary { flex-shrink: 0; color: var(--accent); background: white; border-color: var(--border); font-size: .875rem; }
+.button.secondary:hover { background: #eaf2fb; }
+footer { display: flex; align-items: center; flex-wrap: wrap; gap: 1.5rem; padding-block: 1.5rem; border-top: 1px solid var(--border); font-size: .8rem; }
+footer .brand { font-size: .9rem; }
+footer > span { flex: 1; color: #617084; }
+.skip-link { position: absolute; top: .5rem; left: 1rem; padding: .5rem 1rem; background: white; transform: translateY(-200%); z-index: 1; }
+.skip-link:focus { transform: none; }
+@media (max-width: 60rem) { .hero { gap: 2rem; padding-block: 3.5rem; } .possibilities { grid-template-columns: 1fr; gap: 2rem; } .developer-invitation { align-items: start; flex-direction: column; } }
+@media (max-width: 42rem) { .hero { grid-template-columns: 1fr; gap: 2.5rem; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .developer-invitation { padding: 1.5rem; } footer > span { flex-basis: 60%; } }
+@media (max-width: 24rem) { main, footer { padding-inline: 1rem; } }

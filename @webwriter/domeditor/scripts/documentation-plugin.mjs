@@ -1,7 +1,8 @@
-import {readFile} from "node:fs/promises"
+import {readFile, readdir} from "node:fs/promises"
 import {isAbsolute, relative, resolve} from "node:path"
 import {Marked, Renderer} from "marked"
 import {createHighlighter} from "shiki"
+import {renderSiteHeader} from "./site-header.mjs"
 
 const home = "/docs/widgets/index.md"
 const libraries = [
@@ -29,7 +30,7 @@ function markdown(source, library = "lit") {
     : result
 }
 
-function libraryURL(href, path, library) {
+function libraryURL(href, path, library, staticBuild = false) {
   const url = new URL(href, `http://docs.local${path}`)
   if(url.origin !== "http://docs.local" || !url.pathname.startsWith("/docs/")
     && !["/README.md", "/packages.md"].includes(url.pathname)) return href
@@ -41,6 +42,10 @@ function libraryURL(href, path, library) {
   }
   if(url.pathname.startsWith(examples) && sourcePattern.test(url.pathname)) url.searchParams.set("download", "1")
   url.searchParams.set("library", library)
+  if(staticBuild && (url.pathname.endsWith(".md") || url.pathname.endsWith("/"))) {
+    if(url.pathname.endsWith("/")) url.pathname += "index.md"
+    url.pathname = url.pathname.replace(/\.md$/, `${library === "lit" ? "" : `.${library}`}.html`)
+  }
   return url.pathname + url.search + url.hash
 }
 
@@ -67,7 +72,7 @@ async function embedExamples(source, {root, path, library, highlighter}) {
   return source.replace(pattern, () => examples[index++])
 }
 
-function renderMarkdown(source, {path, library, highlighter}) {
+function renderMarkdown(source, {path, library, highlighter, staticBuild}) {
   const headings = new Map()
   const parser = new Marked({renderer: {
     code({text, lang}) {
@@ -78,11 +83,14 @@ function renderMarkdown(source, {path, library, highlighter}) {
       }) + "\n"
     },
     link(token) {
-      return Renderer.prototype.link.call(this, {...token, href: libraryURL(token.href, path, library)})
+      const href = libraryURL(token.href, path, library, staticBuild)
+      const html = Renderer.prototype.link.call(this, {...token, href})
+      return staticBuild && new URL(href, "http://docs.local").searchParams.get("download") === "1"
+        ? html.replace("<a ", '<a download ') : html
     },
     html({text}) {
       return text.replace(/\b(src|href)=(["'])(.*?)\2/g, (_match, attribute, quote, href) =>
-        `${attribute}=${quote}${escapeHTML(libraryURL(href.replaceAll("&amp;", "&"), path, library))}${quote}`)
+        `${attribute}=${quote}${escapeHTML(libraryURL(href.replaceAll("&amp;", "&"), path, library, staticBuild))}${quote}`)
     },
     heading({text, tokens, depth}) {
       const slug = text.toLowerCase().replace(/<[^>]*>/g, "")
@@ -121,13 +129,13 @@ async function navigation(root) {
   })))
 }
 
-function renderPage({source, path, sections, library, highlighter, missing = false}) {
+function renderPage({source, path, sections, library, highlighter, missing = false, staticBuild = false}) {
   const title = new Marked().lexer(source).find(token => token.type === "heading" && token.depth === 1)?.text ?? "Documentation"
   const pages = [{path: home, title: "Widgets"}, ...sections.flatMap(section => [section, ...section.pages])]
   const index = pages.findIndex(page => page.path === path)
   const section = sections.find(section => section.path.endsWith("/index.md")
     && path.startsWith(section.path.slice(0, -"index.md".length)))
-  const href = value => escapeHTML(libraryURL(value, path, library))
+  const href = value => escapeHTML(libraryURL(value, path, library, staticBuild))
   const link = page => `<a href="${href(page.path)}"${page.path === path ? ' aria-current="page"' : ""}>${escapeHTML(page.title)}</a>`
   const menu = `<ul><li>${link({path: home, title: "Overview"})}</li>${sections.map(section =>
     section.path.endsWith("/index.md")
@@ -135,7 +143,7 @@ function renderPage({source, path, sections, library, highlighter, missing = fal
       : `<li>${link(section)}</li>`,
   ).join("")}</ul>`
   const adjacent = (page, direction) => page ? `<a class="${direction.toLowerCase()}" href="${href(page.path)}"><span>${direction}</span>${escapeHTML(page.title)}</a>` : "<span></span>"
-  const breadcrumb = [{path: home, title: "Widgets"}, ...(section && section.path !== path ? [section] : [])]
+  const breadcrumb = section && section.path !== path ? [section] : []
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -143,40 +151,48 @@ function renderPage({source, path, sections, library, highlighter, missing = fal
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHTML(title)} · WebWriter documentation</title>
     <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/dev-server/documentation.css">
-    <script type="module" src="/dev-server/documentation.js"></script>
+    <link rel="stylesheet" href="${staticBuild ? "/assets/docs" : "/dev-server"}/documentation.css">
+    <link rel="stylesheet" href="${staticBuild ? "/assets/site-header.css" : "/src/site-header.css"}">
+    <script type="module" src="${staticBuild ? "/assets/docs" : "/dev-server"}/documentation.js"></script>
+    <script type="module" src="${staticBuild ? "/assets/site-entry.js" : "/src/site-entry.ts"}"></script>
   </head>
-  <body>
+  <body class="site-layout">
     <a class="skip-link" href="#content">Skip to content</a>
-    <header class="site-header">
-      <a class="brand" href="${href("/docs/")}"><img src="/assets/app-icon.svg" alt="" width="32" height="32"><span class="brand-name">WebWriter <span class="brand-subtitle">Documentation</span></span></a>
-      <div class="header-tools">
-        <form class="library-switch" method="get" action="${escapeHTML(path)}">
-          <label for="library">Library</label>
-          <select id="library" name="library" aria-label="Rendering library">
-            <button type="button"><selectedcontent></selectedcontent></button>
-            ${libraries.map(({value, label, icon}) => `<option value="${value}"${library === value ? " selected" : ""}><img src="/dev-server/icons/${icon}.svg" alt="" width="20" height="20">${label}</option>`).join("\n            ")}
-          </select>
-          <noscript><button type="submit">Apply</button></noscript>
-        </form>
-        <a href="/">Open editor <span aria-hidden="true">↗</span></a>
-      </div>
-    </header>
-    <div class="docs-layout">
-      <aside><nav aria-label="Documentation">${menu}</nav></aside>
-      <div class="page">
+    ${renderSiteHeader("/docs/")}
+    <div class="docs-layout site-content">
+      <aside>
+          <form class="library-switch" method="get" action="${href(path)}">
+            <label for="library">Library</label>
+            <select id="library" name="library" aria-label="Rendering library">
+              <button type="button"><selectedcontent></selectedcontent></button>
+              ${libraries.map(({value, label, icon}) => `<option value="${value}"${library === value ? " selected" : ""}${staticBuild ? ` data-href="${escapeHTML(libraryURL(path, path, value, true))}"` : ""}><img src="${staticBuild ? "/assets/docs" : "/dev-server"}/icons/${icon}.svg" alt="" width="20" height="20">${label}</option>`).join("\n            ")}
+            </select>
+            <noscript>${staticBuild ? libraries.map(({value, label}) => `<a href="${escapeHTML(libraryURL(path, path, value, true))}">${label}</a>`).join(" ") : '<button type="submit">Apply</button>'}</noscript>
+          </form>
+        <nav aria-label="Documentation">${menu}</nav>
+      </aside>
+      <div class="page" tabindex="0" role="region" aria-label="Documentation content">
         <details class="mobile-navigation"><summary>Browse documentation</summary><nav aria-label="Mobile documentation">${menu}</nav></details>
-        <nav class="breadcrumb" aria-label="Breadcrumb">${breadcrumb.map(link).join('<span aria-hidden="true">/</span>')}</nav>
-        <main id="content" tabindex="-1"><article>${renderMarkdown(source, {path, library, highlighter})}</article></main>
+        ${breadcrumb.length ? `<nav class="breadcrumb" aria-label="Breadcrumb">${breadcrumb.map(link).join('<span aria-hidden="true">/</span>')}</nav>` : ""}
+        <main id="content" tabindex="-1"><article>${renderMarkdown(source, {path, library, highlighter, staticBuild})}</article></main>
         ${!missing && index !== -1 ? `<nav class="page-navigation" aria-label="Page navigation">${adjacent(pages[index - 1], "Previous")}${adjacent(pages[index + 1], "Next")}</nav>` : ""}
+        <footer class="site-footer"><site-language-switcher></site-language-switcher></footer>
       </div>
     </div>
   </body>
 </html>`
 }
 
-/** Browse the existing Markdown on both development server entry points. */
+async function filesIn(directory) {
+  const entries = await readdir(directory, {withFileTypes: true})
+  return (await Promise.all(entries.filter(entry => !entry.name.startsWith(".")
+    && !["node_modules", "dist"].includes(entry.name) && (entry.isDirectory() || entry.isFile()))
+    .map(entry => entry.isDirectory() ? filesIn(resolve(directory, entry.name)) : resolve(directory, entry.name)))).flat()
+}
+
+/** Use the same renderer for development requests and static production pages. */
 export function documentationPlugin() {
+  let config
   let highlighting
   const highlighter = () => highlighting ??= createHighlighter({
     themes: ["github-light"],
@@ -184,7 +200,7 @@ export function documentationPlugin() {
   })
   return {
     name: "documentation",
-    apply: "serve",
+    configResolved(value) { config = value },
     config() {
       // Preload dynamically selected tutorial imports so first navigation does
       // not replace Vite's dependency cache while a preview is loading.
@@ -281,6 +297,32 @@ export function documentationPlugin() {
         }
         catch(error) { next(error) }
       })
+    },
+    async generateBundle() {
+      const root = config.root
+      const files = await filesIn(resolve(root, "docs"))
+      const sections = await navigation(root)
+      const codeHighlighter = await highlighter()
+      const emit = (fileName, source) => this.emitFile({type: "asset", fileName, source})
+      for(const file of [...files.filter(file => file.endsWith(".md")), resolve(root, "README.md"), resolve(root, "packages.md")]) {
+        const path = `/${relative(root, file)}`
+        const content = await readFile(file, "utf8")
+        for(const {value: library} of libraries) {
+          const source = await embedExamples(markdown(content, library), {root, path, library, highlighter: codeHighlighter})
+          const html = renderPage({source, path, sections, library, highlighter: codeHighlighter, staticBuild: true})
+          const output = new URL(libraryURL(path, path, library, true), "http://docs.local").pathname.slice(1)
+          emit(output, html)
+          if(path === home) emit(`docs/index${library === "lit" ? "" : `.${library}`}.html`, html)
+        }
+      }
+      // Downloads retain their original source; executable previews are Vite HTML entries.
+      for(const file of files.filter(file => !file.endsWith(".md")
+        && !["docs/widgets/examples/preview.html", "docs/widgets/examples/hello.html"].includes(relative(root, file)))) {
+        emit(relative(root, file), await readFile(file))
+      }
+      for(const name of ["documentation.css", "documentation.js", ...libraries.map(({icon}) => `icons/${icon}.svg`)]) {
+        emit(`assets/docs/${name}`, await readFile(resolve(root, "dev-server", name)))
+      }
     },
     async closeBundle() {
       if(highlighting) (await highlighting).dispose()

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Explore published WebWriter widgets and try interactive learning activities as a learner.">
+    <title>Widgets · WebWriter</title>
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/src/landing.css">
+    <script type="module" src="/src/site-entry.ts"></script>
+    <script type="module" src="/src/components/widget-gallery.ts"></script>
+    <style>
+      .gallery-intro {padding-block: 2.5rem .5rem}
+      .gallery-intro h1 {font-size: clamp(2.3rem, 5vw, 3.5rem)}
+      widget-gallery {display: block; margin-block-end: 4rem}
+    </style>
+  </head>
+  <body class="site-layout">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <!-- site-header -->
+    <div class="site-content" tabindex="0" role="region" aria-label="Page content">
+    <main id="content" tabindex="-1">
+      <section class="gallery-intro" aria-labelledby="headline"><h1 id="headline">Widgets</h1></section>
+      <widget-gallery></widget-gallery>
+      <noscript><p>Enable JavaScript to load the current widget catalog and try its interactive examples.</p></noscript>
+    </main>
+    <footer><a class="brand" href="/"><span class="brand-name">WebWriter<span class="brand-subtitle">by Edumix</span></span></a><span>Make it interactive.</span><a href="/examples/">Examples</a><a href="/gallery/">Widgets</a><a href="/docs/">Documentation</a><a href="/editor/">Open WebWriter</a><site-language-switcher></site-language-switcher></footer>
+    </div>
+  </body>
+</html>

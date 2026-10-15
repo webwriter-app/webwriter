@@ -1015,7 +1015,7 @@ export async function createDevServer(options = {}) {
     const {createServer: createViteServer} = await import("vite")
     viteServer = await createViteServer({
       root: projectRoot,
-      appType: "spa",
+      appType: "mpa",
       server: {middlewareMode: true, hmr: {server}},
     })
   }
@@ -1161,6 +1161,7 @@ if(isDirectRun) {
   const developmentServer = await createDevServer()
   const address = await developmentServer.listen()
   console.log(`WebWriter development server: ${address.url}`)
+  console.log(`Editor: ${address.url}/editor/`)
   console.log(`Admin dashboard: ${address.url}/admin`)
   console.log(`Widget documentation: ${address.url}/docs/`)
 }

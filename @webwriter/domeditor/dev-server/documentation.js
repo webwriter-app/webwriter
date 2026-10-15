@@ -17,9 +17,20 @@ if(sidebar) {
 const library = document.querySelector('select[name="library"]')
 library?.addEventListener("change", () => {
   const url = new URL(location.href)
+  const target = library.selectedOptions[0]?.dataset.href
+  if(target) url.pathname = new URL(target, location.href).pathname
   url.searchParams.set("library", library.value)
   location.assign(url)
 })
+
+// Static pages have a pre-rendered variant for each library, including old query links.
+const requestedLibrary = new URL(location.href).searchParams.get("library")
+const requestedOption = [...(library?.options ?? [])].find(option => option.value === requestedLibrary)
+if(requestedOption?.dataset.href && requestedOption.value !== library.value) {
+  const url = new URL(location.href)
+  url.pathname = new URL(requestedOption.dataset.href, location.href).pathname
+  location.replace(url)
+}
 
 // Keep same-origin examples fitted to their content, including narrow layouts.
 document.querySelectorAll("article iframe").forEach(frame => {

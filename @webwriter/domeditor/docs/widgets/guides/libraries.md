@@ -3,7 +3,7 @@
 A widget can use native web APIs or a library that produces custom elements.
 
 <!-- library:vanilla -->
-The [tutorial](../tutorial/index.md) uses `HTMLElement`; Lit is another option in the header's library selector.
+The [tutorial](../tutorial/index.md) uses `HTMLElement`; Lit is another option in the library selector.
 <!-- /library -->
 <!-- library:lit -->
 The [tutorial](../tutorial/index.md) uses `LitElementWw`, a Lit base class that supplies WebWriter behavior such as edit mode, inherited language updates, and scoped-data hooks. Select **JS** in the header for the implementation using `HTMLElement` directly.

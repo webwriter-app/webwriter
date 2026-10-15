@@ -148,6 +148,20 @@ it("renders linked sections, adjacent page navigation, frontmatter, headings, an
   expect(response.body).toContain('<a href="/docs/widgets/basics/example.js?library=lit">Example source</a>')
   expect(response.body).toContain("Lit-only instructions.")
   expect(response.body).not.toContain("Vanilla-only instructions.")
+  const header = response.body.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0]
+  expect(header).toContain('aria-label="Main navigation"')
+  expect(header).toContain('href="/docs/" aria-current="page">Documentation</a>')
+  expect(header).toContain('class="button small" href="/editor/"')
+  expect(header).not.toContain('library-switch')
+  const sidebar = response.body.match(/<aside>[\s\S]*?<\/aside>/)?.[0] ?? ""
+  expect(sidebar).toContain('class="library-switch"')
+  expect(sidebar.indexOf('class="library-switch"')).toBeLessThan(sidebar.indexOf('aria-label="Documentation"'))
+  expect(response.body).not.toContain('class="docs-toolbar"')
+  expect(response.body.match(/<select\b/g)).toHaveLength(1)
+  expect(response.body).toContain('<body class="site-layout">')
+  expect(response.body).toContain('<div class="docs-layout site-content">')
+  expect(response.body).toContain('<div class="page" tabindex="0" role="region" aria-label="Documentation content">')
+  expect(response.body).toContain('href="/src/site-header.css"')
   expect(transformIndexHtml).toHaveBeenCalledOnce()
 })
 
@@ -199,7 +213,7 @@ it("places standalone pages before sections in menus and adjacent navigation", a
     if(index < paths.length - 1) expect(adjacent).toContain(`<a class="next" href="${paths[index + 1]}?library=lit">`)
     if(index === 1 || index === 2) {
       const breadcrumb = response.body.match(/<nav class="breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
-      expect(breadcrumb).toBe('<a href="/docs/widgets/index.md?library=lit">Widgets</a>')
+      expect(breadcrumb).toBeUndefined()
     }
   }
 })
@@ -369,7 +383,9 @@ it("returns a rendered 404 for a missing documentation page", async () => {
   const response = await get(base, "/docs/widgets/basics/missing.md")
   expect(response.status).toBe(404)
   expect(response.body).toContain("Page not found")
-  expect(response.body).not.toContain('aria-current="page"')
+  const navigation = response.body.match(/<nav aria-label="Documentation">([\s\S]*?)<\/nav>/)?.[1]
+  expect(navigation).toBeDefined()
+  expect(navigation).not.toContain('aria-current="page"')
   expect(response.body).not.toContain('class="page-navigation"')
 })
 
@@ -438,4 +454,44 @@ it("reads changed Markdown and navigation on later requests", async () => {
   expect(second.body).toContain('href="/docs/widgets/basics/first.md?library=lit" aria-current="page">Renamed page</a>')
   expect(second.body).toContain("Renamed page")
   expect(second.body).not.toContain("First page")
+})
+
+it("emits static documentation variants, navigation, assets, and original example downloads", async () => {
+  const {plugin} = await fixture()
+  const assets = join(directory, "dev-server")
+  mkdirSync(join(assets, "icons"), {recursive: true})
+  writeFileSync(join(assets, "documentation.css"), 'body {color: black}')
+  writeFileSync(join(assets, "documentation.js"), '// documentation navigation')
+  for(const icon of ["javascript", "lit", "react", "vue", "angular", "svelte"]) {
+    writeFileSync(join(assets, `icons/${icon}.svg`), `<svg id="${icon}"></svg>`)
+  }
+  mkdirSync(join(directory, "docs/images"))
+  writeFileSync(join(directory, "docs/images/diagram.svg"), '<svg id="diagram"></svg>')
+  plugin.configResolved({root: directory})
+  const emitted = new Map()
+  await plugin.generateBundle.call({emitFile: asset => emitted.set(asset.fileName, asset.source)})
+
+  for(const library of ["lit", "vanilla", "react", "vue", "angular", "svelte"]) {
+    const suffix = library === "lit" ? "" : `.${library}`
+    const page = emitted.get(`docs/widgets/basics/first${suffix}.html`)
+    expect(page).toContain('<title>First page · WebWriter documentation</title>')
+    expect(page).toContain(`href="/docs/widgets/basics/second${suffix}.html?step=2&library=${library}#setup"`)
+    expect(page).toContain(`data-href="/docs/widgets/basics/first.react.html?library=react"`)
+    const breadcrumb = page.match(/<nav class="breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
+    expect(breadcrumb).toBe(`<a href="/docs/widgets/basics/index${suffix}.html?library=${library}">Basics</a>`)
+    expect(page).toContain('href="/gallery/">Widgets</a>')
+    expect(page).toContain('href="/editor/">Open WebWriter')
+    expect(page).toContain('href="/assets/docs/documentation.css"')
+    expect(page).toContain('href="/assets/site-header.css"')
+    expect(page).toContain('src="/assets/docs/documentation.js"')
+    expect(page).not.toContain('/dev-server/')
+    expect(page).not.toContain('<!-- script:')
+    expect(page).toContain('<a download href="/docs/widgets/examples/')
+    expect(emitted.get(`docs/index${suffix}.html`)).toBe(emitted.get(`docs/widgets/index${suffix}.html`))
+    expect(emitted.get(`README${suffix}.html`)).toContain('Project README')
+  }
+  expect(emitted.get("docs/widgets/examples/react/04-state.jsx").toString()).toBe("export const state = 'react'")
+  expect(emitted.get("docs/images/diagram.svg").toString()).toContain('id="diagram"')
+  expect(emitted.get("assets/docs/documentation.css").toString()).toContain('color: black')
+  expect(emitted.get("assets/docs/icons/react.svg").toString()).toContain('id="react"')
 })

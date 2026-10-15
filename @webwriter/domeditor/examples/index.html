@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Try interactive WebWriter documents across the arts, languages, sciences, and mathematics. Open a copy and make it your own.">
+    <title>Examples · WebWriter</title>
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/src/landing.css">
+    <script type="module" src="/src/site-entry.ts"></script>
+    <script type="module" src="/src/components/example-gallery.ts"></script>
+    <style>
+      .examples-intro {padding-block: 2.5rem 2rem}
+      .examples-intro h1 {font-size: clamp(2.3rem, 5vw, 3.5rem); margin-block-end: 1rem}
+      .examples-intro p {max-inline-size: 40rem; margin: 0; color: #536174}
+    </style>
+  </head>
+  <body class="site-layout">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <!-- site-header -->
+    <div class="site-content" tabindex="0" role="region" aria-label="Page content">
+      <main id="content" tabindex="-1">
+        <section class="examples-intro" aria-labelledby="headline"><h1 id="headline">Examples</h1><p>A few ways to make learning interactive. Try a document as a learner, then open a copy in WebWriter and make it your own.</p></section>
+        <example-gallery></example-gallery>
+        <noscript><p>Enable JavaScript to explore and download the interactive example documents.</p></noscript>
+      </main>
+      <footer><a class="brand" href="/"><span class="brand-name">WebWriter<span class="brand-subtitle">by Edumix</span></span></a><span>Make it interactive.</span><a href="/examples/">Examples</a><a href="/gallery/">Widgets</a><a href="/docs/">Documentation</a><a href="/editor/">Open WebWriter</a><site-language-switcher></site-language-switcher></footer>
+    </div>
+  </body>
+</html>
