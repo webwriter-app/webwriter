@@ -32,6 +32,7 @@ interface ImportMetaEnv {
 }
 
 interface ImportMeta {
+  readonly glob: import("vite").ImportGlobFunction;
   readonly env: ImportMetaEnv;
 }
 declare module 'virtual:reference-formatter-source' {
