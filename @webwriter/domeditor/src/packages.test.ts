@@ -292,6 +292,51 @@ describe("WebWriterPackageRegistry", () => {
     ])
   })
 
+  it("paginates npm search and deduplicates packages by name", async () => {
+    const packages = Array.from({length: 250}, (_, index) => ({package: {
+      name: `@webwriter/pkg-${index}`,
+      version: "1.0.0",
+      keywords: ["webwriter-widget"],
+    }}))
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if(url.origin === "https://registry.npmjs.org" && url.pathname === "/-/v1/search") {
+        const from = Number(url.searchParams.get("from"))
+        expect(url.searchParams.get("text")).toBe("scope:webwriter keywords:webwriter-widget")
+        return Response.json({total: 252, objects: from === 0 ? packages : [packages[0], {package: {
+          name: "@webwriter/last", version: "2.0.0", keywords: ["webwriter-widget"],
+        }}]})
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const result = await new WebWriterPackageRegistry(fetcher as typeof fetch).search()
+
+    expect(result).toHaveLength(251)
+    expect(result[0]).toMatchObject({name: "@webwriter/pkg-0", version: "1.0.0"})
+    expect(result.at(-1)).toMatchObject({name: "@webwriter/last", version: "2.0.0"})
+    expect(fetcher.mock.calls.filter(([input]) => String(input).includes("/-/v1/search"))
+      .map(([input]) => new URL(String(input)).searchParams.get("from"))).toEqual(["0", "250"])
+  })
+
+  it("excludes other publishers and accepts a final page without a total", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if(url.pathname === "/-/v1/search") {
+        expect(url.searchParams.get("text")).toBe("scope:webwriter keywords:webwriter-widget")
+        return Response.json({objects: [
+          {package: {name: "@webwriter/official", version: "1.0.0", keywords: ["webwriter-widget"]}},
+          {package: {name: "@school/lesson", version: "1.0.0", keywords: ["webwriter-widget"]}},
+          {package: {name: "lesson-widget", version: "1.0.0", keywords: ["webwriter-widget"]}},
+        ]})
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const result = await new WebWriterPackageRegistry(fetcher as typeof fetch).search()
+    expect(result.map(pkg => pkg.name)).toEqual(["@webwriter/official"])
+    expect(fetcher.mock.calls.filter(([input]) => String(input).includes("/-/v1/search"))).toHaveLength(1)
+  })
+
   it("pins scoped package assets to their selected versions", () => {
     expect(packageCdnUrl("@webwriter/demo", "2.0.1", "./dist/widget.js"))
       .toBe("https://cdn.jsdelivr.net/npm/@webwriter/demo@2.0.1/dist/widget.js")
